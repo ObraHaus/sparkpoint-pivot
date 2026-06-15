@@ -1,0 +1,61 @@
+# ---- Node / Next.js / frontend ----
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+.next/
+out/
+build/
+dist/
+.turbo/
+*.tsbuildinfo
+.vercel/
+
+# ---- Environment & secrets ----
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+*.pem
+*.key
+
+# ---- Foundry / smart contracts ----
+cache/
+artifacts/
+broadcast/
+forge-cache/
+typechain-types/
+coverage/
+lcov.info
+
+# ---- Python / agent service ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Logs & runtime ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.pids
+*.pid
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ---- Agent / tooling local state (keep shared Spec Kit skills & templates tracked) ----
+.claude/settings.local.json
+.claude/*.local.json
+CLAUDE.local.md
