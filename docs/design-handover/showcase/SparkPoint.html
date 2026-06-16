@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SparkPoint</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="app.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body class="sp">
+<div id="app"></div>
+
+<!-- global overlays mount here -->
+<div id="overlays"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ============================ SP CORE ============================ */
+window.SP = (function(){
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- icons (lucide-style) ---- */
+  const P = {
+    spark:'<path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z"/>',
+    chat:'<path d="M21 11.5a8.5 8.5 0 0 1-12.2 7.7L3 21l1.8-5.8A8.5 8.5 0 1 1 21 11.5Z"/>',
+    portfolio:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+    vault:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M12 4v2M12 18v2"/>',
+    strategies:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+    shieldcheck:'<path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z"/><path d="M9 12l2 2 4-4"/>',
+    shield:'<path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z"/>',
+    key:'<path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-1 1L20 4l-2-2"/>',
+    wallet:'<path d="M3 7h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12"/><circle cx="17" cy="13" r="1.3"/>',
+    command:'<path d="M15 6a3 3 0 1 1 3 3h-3V6Zm-6 0a3 3 0 1 0-3 3h3V6Zm0 12a3 3 0 1 1-3-3h3v3Zm6 0a3 3 0 1 0 3-3h-3v3ZM9 9h6v6H9z"/>',
+    bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    door:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"/>',
+    pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+    flask:'<path d="M9 3h6M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3"/>',
+    check:'<path d="M5 13l4 4L19 7"/>',
+    x:'<path d="M6 6l12 12M18 6L6 18"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
+    alert:'<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/>',
+    up:'<path d="M12 19V5M5 12l7-7 7 7"/>',
+    down:'<path d="M12 5v14M5 12l7 7 7-7"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4 15H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.5 8.3l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.2A1.6 1.6 0 0 0 21 11H21a2 2 0 1 1 0 4h-.2"/>',
+    book:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14Z"/><path d="M4 5.5V19"/>',
+    coins:'<circle cx="9" cy="9" r="6"/><path d="M15.5 3.8a6 6 0 0 1 0 10.4M14 21a6 6 0 0 0 0-12"/>',
+    activity:'<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+    zap:'<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8Z"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+    ext:'<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+    lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"/>',
+    chevr:'<path d="M9 6l6 6-6 6"/>',
+    chevd:'<path d="M6 9l6 6 6-6"/>',
+    grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>',
+    sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'
+  };
+  function icon(name,size=18,stroke=2){
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${P[name]||''}</svg>`;
+  }
+  function sparkmark(size=22){
+    const id='spk'+Math.floor(Math.random()*1e6);
+    return `<svg class="smark" viewBox="0 0 24 24" width="${size}" height="${size}" fill="url(#${id})"><defs><linearGradient id="${id}" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F2683C"/><stop offset=".5" stop-color="#F5B62E"/><stop offset="1" stop-color="#4D83FF"/></linearGradient></defs>${P.spark}</svg>`;
+  }
+
+  /* ---- mock data ---- */
+  const data = {
+    wallet:'0x12A4…b9Ef',
+    mandate:{tier:1, name:'Lower risk', goal:'Steady USDC yield', timeline:'1–3 years', experience:'Some'},
+    netWorth:12184.42,
+    pnl:{abs:312.40, pct:2.83, window:'1M'},
+    idleUSDC:2150.00,
+    vault:{ name:'Aave Yield Vault', netApy:4.3, supplyApy:4.3, fee:0, shares:9834.5031, shareValue:10034.42,
+      accrued:34.42, risk:1, capUser:25000, capUsed:10034, tvl:8.42, tvlCap:12 },
+    allocation:[ {k:'Aave Yield Vault',v:10034.42,risk:1}, {k:'Idle USDC',v:2150.00,risk:0} ],
+    series1M:[11700,11760,11690,11820,11880,11810,11950,12010,11980,12080,12040,12120,12184],
+    apyHist:[4.0,4.1,4.05,4.2,4.15,4.3,4.28,4.3],
+    recs:[
+      {id:'r1', rank:'Best fit · #1 vs your goal', title:'Move idle USDC into the Aave Yield Vault',
+       thesis:"Aave's USDC rate rose to 4.3% net APY. Moving your idle 2,150 USDC in could earn more, at the same low risk.",
+       apy:4.3, risk:1, fit:'Fits your plan: lower risk, steady yield.'},
+      {id:'r2', rank:'#2 vs your goal', title:'Keep a 1-month cash buffer',
+       thesis:"Holding ~10% idle keeps funds ready without chasing yield. Honest tradeoff: less earning, more flexibility.",
+       apy:0, risk:0, fit:'Conservative, capital-preservation-first.'}
+    ],
+    outcomes:[
+      {id:'o1', kind:'gain', pnl:'+$48.20', pct:'+0.5%', win:'1M', from:'the May 18 deposit recommendation', cause:'The Aave rate held steady and yield accrued.', date:'May 18'},
+      {id:'o2', kind:'loss', pnl:'−$88.10', pct:'−0.7%', win:'1M', from:'the Jun 2 rebalance recommendation', cause:'The rate dropped after the move.', date:'Jun 2'},
+      {id:'o3', kind:'gain', pnl:'+$12.04', pct:'+0.1%', win:'1W', from:'the Jun 9 top-up recommendation', cause:'Small steady accrual since the top-up.', date:'Jun 9'}
+    ],
+    notifications:[
+      {t:'Aave USDC rate moved to 4.3%', s:'A recommendation is ready in chat.', time:'2m ago', unread:true, icon:'activity'},
+      {t:'Yield accrued: +$2.04 today', s:'Your vault position updated.', time:'1h ago', unread:true, icon:'up'},
+      {t:'Deposit confirmed', s:'You now hold 9,834.50 spvUSDC.', time:'yesterday', unread:false, icon:'check'}
+    ],
+    txs:[
+      {type:'Deposit', amt:'+9,834.50 spvUSDC', usd:'$10,000.00', time:'Jun 1', dir:'in'},
+      {type:'Yield', amt:'+34.42 USDC', usd:'$34.42', time:'ongoing', dir:'in'},
+      {type:'Withdraw', amt:'−500.00 USDC', usd:'$500.00', time:'May 24', dir:'out'}
+    ],
+    sessionKey:null // no active automation by default
+  };
+
+  const TIER={0:{n:'Cash',v:'--muted-foreground'},1:{n:'Lower',v:'--risk-1'},2:{n:'Low',v:'--risk-2'},3:{n:'Moderate',v:'--risk-3'},4:{n:'Elevated',v:'--risk-4'},5:{n:'High',v:'--risk-5'}};
+  function riskChip(tier,opts={}){
+    const t=TIER[tier]; const lab = tier===0?'Cash':`${t.n} · ${tier}/5`;
+    const segs=Array.from({length:5},(_,i)=>`<i style="background:${i<tier?`var(${t.v})`:'var(--border)'}"></i>`).join('');
+    return `<span class="riskchip" style="background:${tier===0?'var(--muted)':`var(${t.v}-subtle)`};color:var(${t.v});border:1px solid ${tier===0?'var(--border)':`color-mix(in srgb,var(${t.v}) 30%,transparent)`}">
+      <span class="riskmeter">${tier===0?'<i></i>':segs}</span>${lab}</span>`;
+  }
+  function fmt(n,d=2){return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+  function money(n,d=2){return '$'+fmt(n,d);}
+
+  /* ---- routing ---- */
+  const PUBLIC = ['landing','connect','verify'];
+  const PRIMARY = [['chat','Chat','chat'],['portfolio','Portfolio','portfolio'],['vault','Vault','vault'],['strategies','Strategies','strategies']];
+  const SECONDARY = [
+    ['trust','Trust Center','shieldcheck'],['automation','Automation','zap'],['outcomes','Outcome Log','activity'],
+    ['learn','Learn','book'],['srk','SRK','coins'],['settings','Settings','settings']
+  ];
+  const screens = {};
+  let current='landing';
+
+  function parse(){ return (location.hash.replace(/^#\/?/,'')||'landing'); }
+  function base(r){ return r.split('/')[0]; }
+  function navigate(r){ location.hash = '#/'+r; }
+
+  function render(){
+    current = parse();
+    const root = document.getElementById('app');
+    const b = base(current);
+    if(PUBLIC.includes(b)){
+      root.innerHTML = `<div id="public"></div>`;
+      const sc = screens[b]; (sc?sc.render:notFound)(document.getElementById('public'), {route:current});
+      closeAllOverlays();
+      return;
+    }
+    // authed shell
+    root.innerHTML = shellHTML(b);
+    wireShell();
+    const host = document.getElementById('main');
+    const sc = screens[b] || screens[current];
+    if(sc){ sc.render(host, {route:current}); }
+    else { comingSoon(host, b); }
+    // entrance
+    if(!reduce && typeof gsap!=='undefined'){
+      gsap.fromTo('#main .page, #main .fullbleed',{opacity:0,y:10},{opacity:1,y:0,duration:.32,ease:'power2.out'});
+    }
+    closeAllOverlays(true);
+  }
+
+  function shellHTML(b){
+    const nav = PRIMARY.map(([r,l,ic])=>`<a data-nav="${r}" class="${b===r?'active':''}">${icon(ic,17)}${l}</a>`).join('');
+    const tabs = PRIMARY.map(([r,l,ic])=>`<a data-nav="${r}" class="${b===r?'active':''}">${icon(ic,21)}<span>${l}</span></a>`).join('')
+      + `<a data-more class="${SECONDARY.some(s=>s[0]===b)?'active':''}">${icon('grid',21)}<span>More</span></a>`;
+    const rail = `<div class="rail-label">Trust &amp; control</div>`+
+      SECONDARY.map(([r,l,ic])=>`<div class="navlink ${b===r?'active':''}" data-nav="${r}">${icon(ic,18)}${l}${r==='outcomes'?'<span class="badge-sm">3</span>':''}</div>`).join('')
+      + `<div style="flex:1"></div>`
+      + `<div class="navlink exit" data-nav="trust/exit">${icon('door',18)}Withdraw / Exit</div>`;
+    const unread = data.notifications.filter(n=>n.unread).length;
+    return `
+    <div class="appshell">
+      <div class="topbar">
+        <div class="brand" data-nav="chat" style="cursor:pointer">${sparkmark(23)}SparkPoint</div>
+        <nav class="primnav">${nav}</nav>
+        <div class="grow"></div>
+        <div class="rightcluster">
+          <span class="pill" id="badgeNC" title="What SparkPoint can & can't do"><span class="led"></span>Non-custodial</span>
+          <span class="pill" id="netPill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0052FF"/><path d="M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm-1.7 4.5c0-.94.76-1.7 1.7-1.7.6 0 1.13.31 1.44.78h1.06a2.7 2.7 0 1 0 0 1.84h-1.06a1.7 1.7 0 0 1-3.14-.92Z" fill="#fff"/></svg>Base</span>
+          <span class="pill" id="walletPill"><span class="mono">${data.wallet}</span>${icon('chevd',12)}</span>
+          <button class="iconbtn only-desktop" id="cmdkBtn" title="Command (⌘K)">${icon('command',18)}</button>
+          <button class="iconbtn" id="bellBtn" title="Notifications">${icon('bell',18)}${unread?`<span class="count">${unread}</span>`:''}</button>
+          <button class="avatar-btn" id="avatarBtn">SP</button>
+        </div>
+      </div>
+      <div class="disclaimer">
+        <span class="di">${icon('info',15)}</span>
+        <span class="txt"><b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice · capital at risk · SparkPoint can never move your funds.</span>
+        <span class="links"><a id="proveLink">Prove it</a><a data-nav="trust/exit">Exit anytime</a></span>
+      </div>
+      <div class="layout">
+        <aside class="railnav">${rail}</aside>
+        <main class="main" id="main"></main>
+      </div>
+      <nav class="tabbar">${tabs}</nav>
+    </div>`;
+  }
+
+  function wireShell(){
+    document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();navigate(el.getAttribute('data-nav'));}));
+    document.getElementById('badgeNC')?.addEventListener('click',openProveIt);
+    document.getElementById('proveLink')?.addEventListener('click',openProveIt);
+    document.getElementById('walletPill')?.addEventListener('click',openWalletMenu);
+    document.getElementById('bellBtn')?.addEventListener('click',openNotifications);
+    document.getElementById('avatarBtn')?.addEventListener('click',openAvatarMenu);
+    document.getElementById('cmdkBtn')?.addEventListener('click',openCmdk);
+    document.querySelector('[data-more]')?.addEventListener('click',openMore);
+  }
+
+  /* ---- overlays ---- */
+  const ov = ()=>document.getElementById('overlays');
+  function scrim(onclose){ const s=document.createElement('div'); s.className='scrim'; s.onclick=onclose; ov().appendChild(s); void s.offsetWidth; s.classList.add('show'); return s; }
+  function closeAllOverlays(keep){ if(!keep) ov().innerHTML=''; else ov().innerHTML=''; }
+  function dismiss(...els){ els.forEach(e=>e&&e.classList.remove('show')); setTimeout(()=>ov().innerHTML='',260); }
+
+  function openSheet(title, bodyHTML, footHTML){
+    const s=scrim(()=>dismiss(sh,s));
+    const sh=document.createElement('div'); sh.className='sheet';
+    sh.innerHTML=`<div class="sheet-hd"><span class="t">${title}</span><button class="iconbtn" id="shx">${icon('x',18)}</button></div>
+      <div class="sheet-bd">${bodyHTML}</div>${footHTML?`<div class="sheet-ft">${footHTML}</div>`:''}`;
+    ov().appendChild(sh); void sh.offsetWidth; sh.classList.add('show');
+    sh.querySelector('#shx').onclick=()=>dismiss(sh,s);
+    return {sh,close:()=>dismiss(sh,s)};
+  }
+  function openDialog(html, w){
+    const s=scrim(()=>dismiss(d,s));
+    const d=document.createElement('div'); d.className='dialog'; if(w)d.style.width=w+'px';
+    d.innerHTML=html; ov().appendChild(d); void d.offsetWidth; d.classList.add('show');
+    return {d,close:()=>dismiss(d,s)};
+  }
+
+  function openProveIt(){
+    const sk = data.sessionKey;
+    const rows = [
+      ['shieldcheck','--gain','No admin withdrawal','We have no code path to send your funds anywhere but back to you — not us, not anyone.'],
+      ['door','--gain','Withdraw anytime','Exit directly on-chain, even if SparkPoint\'s app and AI are completely offline.', 'Withdraw now','trust/exit'],
+      ['key','--gain','You own your keys','You own your keys and your account. We never generate a wallet for you or hold your keys.'],
+      ['zap','--caution','Scoped, revocable automation', sk?'1 active session key — scoped, capped, time-limited.':'No automation granted. Any you grant is instantly revocable by you.', sk?'Manage':'Set up','automation'],
+      ['pause','--gain','Non-upgradeable, pause-only','The vault is single-purpose and non-upgradeable. Any pause control governs pausing only — never your funds.']
+    ];
+    const body = `
+      <p style="font-size:13px;color:var(--muted-foreground);line-height:1.5;margin:0 0 14px">These five guarantees are structural — provable from the contracts, not promised. Each links to its on-chain evidence.</p>
+      <div class="cancan">
+        <div class="col can"><h5>Can</h5><ul>
+          <li>${icon('check',13)}Direct strategy</li><li>${icon('check',13)}Suggest moves</li><li>${icon('check',13)}Simulate</li><li>${icon('check',13)}Pause new deposits</li></ul></div>
+        <div class="col cant"><h5>Can't</h5><ul>
+          <li>${icon('x',13)}Move your funds</li><li>${icon('x',13)}Withdraw to itself</li><li>${icon('x',13)}Change the rules</li><li>${icon('x',13)}Stop you withdrawing</li></ul></div>
+      </div>
+      <div style="margin-top:6px">${rows.map(r=>`
+        <div class="proveitem">
+          <span class="pi-ico" style="background:var(${r[1]}-subtle);color:var(${r[1]})">${icon(r[0],17)}</span>
+          <div style="flex:1"><div class="pi-t">${r[2]}</div><div class="pi-d">${r[3]}</div>
+            ${r[4]?`<button class="btn ${r[4]==='Withdraw now'?'btn-outline':'btn-ghost'} btn-sm" data-go="${r[5]}" style="margin-top:8px">${r[4]}</button>`:''}</div>
+        </div>`).join('')}</div>
+      <div class="mono" style="font-size:11px;color:var(--muted-foreground);margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)">
+        Vault 0x9f…2C1 · Policy 0x3a…77B · ${icon('ext',11)} View all permissions</div>`;
+    const {sh,close} = openSheet('What SparkPoint can &amp; can\'t do', body,
+      `<button class="btn btn-primary btn-md" style="width:100%" data-go="trust/permissions">See exact on-chain permissions</button>`);
+    sh.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{close();navigate(b.getAttribute('data-go'));});
+    sh.querySelector('.sheet-ft [data-go]').onclick=()=>{close();navigate('trust/permissions');};
+  }
+
+  function openWalletMenu(){
+    const items=[['copy','Copy address',()=>toast('Address copied')],['ext','View on Basescan',()=>toast('Opens Basescan ↗')],
+      ['shieldcheck','View exact permissions',()=>navigate('trust/permissions')],['refresh','Switch wallet',()=>toast('Wallet switcher')],
+      ['logout','Disconnect',()=>{toast('Disconnected — funds untouched');navigate('landing');}]];
+    menuPopover('walletPill', `<div style="padding:10px 12px;border-bottom:1px solid var(--border-soft)"><div style="font-size:11px;color:var(--muted-foreground)">Connected · Base</div><div class="mono" style="font-size:13px;margin-top:3px">${data.wallet}</div></div>`+
+      items.map((it,i)=>`<button class="menu-item" data-i="${i}">${icon(it[0],16)}${it[1]}</button>`).join(''), items);
+  }
+  function openAvatarMenu(){
+    const items=[['user','Account',()=>navigate('settings/account')],['settings','Settings',()=>navigate('settings')],
+      ['sliders','Mandate',()=>navigate('settings')],['book','Learn',()=>navigate('learn')],
+      ['logout','Log out',()=>{toast('Logged out — funds untouched');navigate('landing');}]];
+    menuPopover('avatarBtn', `<div style="padding:10px 12px;border-bottom:1px solid var(--border-soft)"><div style="font-size:13px;font-weight:600">SparkPoint user</div><div class="mono" style="font-size:11px;color:var(--muted-foreground);margin-top:2px">${data.wallet}</div></div>`+
+      items.map((it,i)=>`<button class="menu-item" data-i="${i}">${icon(it[0],16)}${it[1]}</button>`).join(''), items);
+  }
+  function menuPopover(anchorId, html, items){
+    const a=document.getElementById(anchorId); const r=a.getBoundingClientRect();
+    const s=scrim(()=>dismiss(m,s));
+    const m=document.createElement('div'); m.className='menu show';
+    m.style.cssText=`position:fixed;top:${r.bottom+8}px;right:${Math.max(12,innerWidth-r.right)}px;z-index:100;background:var(--popover);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:6px;min-width:220px;`;
+    m.innerHTML=html; ov().appendChild(m);
+    m.querySelectorAll('.menu-item').forEach(b=>b.onclick=()=>{dismiss(m,s);items[+b.dataset.i][2]();});
+  }
+
+  function openNotifications(){
+    const body = data.notifications.map(n=>`
+      <div class="proveitem" style="${n.unread?'':'opacity:.7'}">
+        <span class="pi-ico" style="background:var(--spark-subtle);color:var(--primary)">${icon(n.icon,16)}</span>
+        <div style="flex:1"><div class="pi-t">${n.t}${n.unread?' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--primary);vertical-align:middle;margin-left:4px"></span>':''}</div>
+        <div class="pi-d">${n.s}</div><div style="font-size:11px;color:var(--muted-foreground);margin-top:4px">${n.time}</div></div>
+      </div>`).join('');
+    openSheet('Notifications', body, `<button class="btn btn-ghost btn-md" style="width:100%" onclick="SP.navigate('notifications')">Open notifications</button>`);
+  }
+
+  function openMore(){
+    const links = SECONDARY.concat([['notifications','Notifications','bell']]);
+    const body = `<div class="navlink exit" data-go="trust/exit" style="margin-bottom:12px">${icon('door',18)}Withdraw / Exit</div>`+
+      `<div class="navlink" data-go="trust/permissions">${icon('shieldcheck',18)}Prove it — permissions</div>`+
+      `<div class="divider"></div>`+
+      links.map(([r,l,ic])=>`<div class="navlink" data-go="${r}">${icon(ic,18)}${l}</div>`).join('');
+    const {sh,close}=openSheet('More', body);
+    sh.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{close();navigate(b.getAttribute('data-go'));});
+  }
+
+  function openCmdk(){
+    const acts=[['Withdraw now','door','trust/exit'],['Prove it — permissions','shieldcheck','trust/permissions'],
+      ['Go to Chat','chat','chat'],['Open Portfolio','portfolio','portfolio'],['Open Vault','vault','vault'],
+      ['Strategies','strategies','strategies'],['Trust Center','shieldcheck','trust'],['Revoke automation','zap','automation'],
+      ['Outcome Log','activity','outcomes'],['Settings','settings','settings']];
+    const {d,close}=openDialog(`<div style="padding:0">
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border-soft)">
+        ${icon('search',18)}<input id="cmdkin" placeholder="Search actions, screens…" style="flex:1;background:none;border:none;outline:none;color:var(--foreground);font-size:15px;font-family:inherit"/>
+        <span class="kbd">esc</span></div>
+      <div id="cmdklist" style="max-height:340px;overflow:auto;padding:8px"></div></div>`);
+    const list=d.querySelector('#cmdklist'); const inp=d.querySelector('#cmdkin');
+    function draw(q=''){ list.innerHTML=acts.filter(a=>a[0].toLowerCase().includes(q.toLowerCase())).map((a,i)=>
+      `<button class="menu-item" style="width:100%" data-r="${a[2]}">${icon(a[1],16)}${a[0]}</button>`).join('')||'<div style="padding:14px;color:var(--muted-foreground);font-size:13px">No matches</div>';
+      list.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{close();navigate(b.dataset.r);});}
+    draw(); inp.oninput=()=>draw(inp.value); setTimeout(()=>inp.focus(),60);
+  }
+
+  function toast(msg, linkText, linkFn){
+    const t=document.createElement('div'); t.className='toast';
+    t.innerHTML=`<span style="color:var(--gain)">${icon('check',16)}</span><span style="flex:1">${msg}</span>${linkText?`<a>${linkText}</a>`:''}`;
+    document.getElementById('toasts').appendChild(t);
+    if(linkFn) t.querySelector('a').onclick=linkFn;
+    setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300);},3200);
+  }
+
+  function comingSoon(host,b){
+    host.innerHTML=`<div class="page"><div class="empty" style="padding-top:90px">
+      <span class="ei">${icon('sliders',24)}</span><div class="et">${b.charAt(0).toUpperCase()+b.slice(1)}</div>
+      <div class="eb">This screen is part of the build and will render here. Use the nav to explore the finished flows.</div>
+      <button class="btn btn-outline btn-md" onclick="SP.navigate('chat')">Back to chat</button></div></div>`;
+  }
+  function notFound(host){ host.innerHTML='<div style="padding:40px">Not found</div>'; }
+
+  /* keyboard */
+  addEventListener('keydown',e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault(); if(!PUBLIC.includes(base(current))) openCmdk();}
+    if(e.key==='Escape') closeAllOverlays();
+  });
+
+  /* boot */
+  addEventListener('hashchange',render);
+  function boot(){ if(!location.hash) location.hash='#/landing'; render(); }
+
+  return { boot, render, navigate, screens, data, icon, sparkmark, riskChip, fmt, money, TIER,
+    openSheet, openDialog, openProveIt, toast, reduce, P, PRIMARY, SECONDARY,
+    registerScreen:(k,o)=>{screens[k]=o;} };
+})();
+</script>
+
+<style>
+.menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:8px;border:none;
+  background:none;color:var(--foreground);font-size:13.5px;font-weight:500;cursor:pointer;text-align:left;font-family:inherit;}
+.menu-item:hover{background:var(--muted);}
+.menu-item svg{color:var(--muted-foreground);}
+.only-desktop{display:grid;}
+@media(max-width:1023px){.only-desktop{display:none;}}
+</style>
+
+<!-- screen modules -->
+<script src="screens/public.js"></script>
+<script src="screens/chat.js"></script>
+<script src="screens/portfolio.js"></script>
+<script src="screens/vault.js"></script>
+<script src="screens/strategies.js"></script>
+<script src="screens/confirm.js"></script>
+<script src="screens/trust.js"></script>
+<script src="screens/support.js"></script>
+<script>SP.boot();</script>
+</body>
+</html>

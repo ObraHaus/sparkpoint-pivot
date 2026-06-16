@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SparkPoint — Onboarding</title>
+<link rel="stylesheet" href="../tokens.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;}
+  body{background:var(--background);}
+  .ob{min-height:100vh;display:flex;flex-direction:column;}
+
+  /* ---- focused shell ---- */
+  .shell-top{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border-soft);}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px;color:var(--foreground);}
+  .smark{width:22px;height:22px;flex:none;}
+  .grow{flex:1;}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:var(--foreground);
+    background:var(--card);border:1px solid var(--border);padding:6px 11px;border-radius:999px;cursor:pointer;
+    transition:border-color .15s;}
+  .pill:hover{border-color:var(--primary);}
+  .pill{white-space:nowrap;}
+  .stateswitch button{white-space:nowrap;}
+  .pill .led{width:7px;height:7px;border-radius:50%;background:var(--gain);
+    box-shadow:0 0 0 3px var(--gain-subtle);}
+  .pill .mono{color:var(--muted-foreground);font-size:11.5px;}
+  .save-exit{font-size:12.5px;}
+
+  /* ---- progress stepper ---- */
+  .stepper{display:flex;align-items:center;gap:0;padding:16px 22px 6px;max-width:980px;margin:0 auto;width:100%;}
+  .stepwrap{display:flex;align-items:center;flex:1;}
+  .stepwrap:last-child{flex:none;}
+  .stepdot{display:flex;align-items:center;gap:9px;cursor:default;}
+  .stepdot .ring{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);
+    display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--muted-foreground);
+    background:var(--background);transition:all .25s;flex:none;}
+  .stepdot .lbl{font-size:12px;color:var(--muted-foreground);font-weight:500;white-space:nowrap;transition:color .25s;}
+  .stepdot.done{cursor:pointer;}
+  .stepdot.done .ring{border-color:var(--primary);background:var(--spark-subtle);color:var(--primary);}
+  .stepdot.active .ring{border-color:var(--primary);background:var(--primary);color:var(--primary-foreground);
+    box-shadow:0 0 0 4px var(--spark-subtle);}
+  .stepdot.active .lbl{color:var(--foreground);}
+  .stepline{flex:1;height:2px;background:var(--border);margin:0 10px;border-radius:2px;overflow:hidden;position:relative;}
+  .stepline .fill{position:absolute;inset:0;background:var(--primary);transform:scaleX(0);transform-origin:left;
+    transition:transform .4s ease;}
+  .stepline.done .fill{transform:scaleX(1);}
+  .stepcount{max-width:980px;margin:0 auto;width:100%;padding:0 22px;font-size:12px;color:var(--muted-foreground);}
+
+  /* ---- disclaimer strip ---- */
+  .disc{display:flex;align-items:flex-start;gap:9px;max-width:760px;margin:10px auto 0;width:100%;padding:9px 16px;
+    background:var(--info-subtle);border:1px solid color-mix(in srgb,var(--info) 24%,transparent);
+    border-radius:var(--radius);font-size:12px;line-height:1.5;color:var(--muted-foreground);}
+  .disc b{color:var(--foreground);font-weight:600;}
+  .disc a{color:var(--primary);text-decoration:none;font-weight:500;cursor:pointer;}
+  .disc a:hover{text-decoration:underline;}
+  .disc .ico{flex:none;margin-top:1px;color:var(--info);}
+
+  /* ---- conversation column ---- */
+  .stage{flex:1;overflow-y:auto;padding:8px 22px 140px;}
+  .stream{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:20px;padding-top:20px;}
+
+  .turn{display:flex;gap:12px;}
+  .turn.ai .avatar{width:30px;height:30px;border-radius:50%;background:var(--spark-subtle);
+    display:grid;place-items:center;flex:none;border:1px solid color-mix(in srgb,var(--primary) 25%,transparent);}
+  .turn .content{flex:1;min-width:0;}
+  .turn.user{justify-content:flex-end;}
+  .bubble-user{background:var(--card-2);border:1px solid var(--border);border-radius:14px 14px 4px 14px;
+    padding:11px 15px;font-size:14.5px;color:var(--foreground);max-width:75%;}
+  .ai-name{font-size:12px;font-weight:600;color:var(--primary);margin-bottom:5px;}
+  .ai-text{font-size:15.5px;line-height:1.55;color:var(--foreground);}
+  .ai-text .soft{color:var(--muted-foreground);}
+  .ai-sub{font-size:13.5px;line-height:1.5;color:var(--muted-foreground);margin-top:6px;}
+
+  /* promise chips (welcome) */
+  .promises{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
+  .promise{display:flex;align-items:center;gap:11px;font-size:14px;color:var(--foreground);}
+  .promise .pico{width:30px;height:30px;border-radius:9px;background:var(--spark-subtle);color:var(--primary);
+    display:grid;place-items:center;flex:none;}
+
+  /* option cards / chips */
+  .opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;}
+  .opt{flex:1;min-width:150px;text-align:left;background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px;cursor:pointer;transition:all .16s;display:flex;gap:12px;align-items:flex-start;}
+  .opt:hover{border-color:color-mix(in srgb,var(--primary) 55%,transparent);background:var(--card-2);transform:translateY(-1px);}
+  .opt.sel{border-color:var(--primary);box-shadow:0 0 0 3px var(--spark-subtle);background:var(--card-2);}
+  .opt .oico{width:34px;height:34px;border-radius:9px;background:var(--muted);display:grid;place-items:center;
+    color:var(--muted-foreground);flex:none;}
+  .opt.sel .oico{background:var(--spark-subtle);color:var(--primary);}
+  .opt .otitle{font-size:14.5px;font-weight:600;color:var(--foreground);}
+  .opt .ogloss{font-size:12.5px;color:var(--muted-foreground);margin-top:2px;line-height:1.4;}
+  .opt .rhint{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;font-weight:500;
+    color:var(--muted-foreground);}
+
+  .opts.grid2{display:grid;grid-template-columns:1fr 1fr;}
+  .opts.col .opt{flex:none;width:100%;}
+  .opts.row .opt{flex:1;}
+
+  /* timeline chips */
+  .tchips{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+  .tchip{flex:1;min-width:110px;text-align:center;background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px 12px;cursor:pointer;transition:all .16s;}
+  .tchip:hover{border-color:color-mix(in srgb,var(--primary) 55%,transparent);transform:translateY(-1px);}
+  .tchip.sel{border-color:var(--primary);box-shadow:0 0 0 3px var(--spark-subtle);background:var(--card-2);}
+  .tchip .tt{font-size:15px;font-weight:600;color:var(--foreground);}
+  .tchip .ts{font-size:11.5px;color:var(--muted-foreground);margin-top:3px;}
+
+  /* tip card */
+  .tip{display:flex;gap:10px;margin-top:14px;padding:12px 14px;border-radius:var(--radius);
+    background:var(--info-subtle);border:1px solid color-mix(in srgb,var(--info) 22%,transparent);}
+  .tip .tico{color:var(--info);flex:none;margin-top:1px;}
+  .tip .ttl{font-size:13px;font-weight:600;color:var(--foreground);}
+  .tip .tbd{font-size:12.5px;color:var(--muted-foreground);line-height:1.5;margin-top:2px;}
+  .tip .tlink{font-size:12px;color:var(--info);font-weight:500;cursor:pointer;margin-top:4px;display:inline-block;}
+
+  /* mandate card */
+  .mandate{margin-top:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+    padding:20px;}
+  .mhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+  .mtitle{font-size:13px;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.05em;}
+  .riskbadge{display:inline-flex;align-items:center;gap:9px;background:var(--risk-1-subtle);
+    border:1px solid color-mix(in srgb,var(--risk-1) 30%,transparent);border-radius:999px;padding:6px 12px;white-space:nowrap;}
+  .riskbadge .rname{font-size:12.5px;font-weight:600;}
+  .mpara{font-size:15.5px;line-height:1.6;color:var(--foreground);}
+  .mpara b{font-weight:600;}
+  .mslider{margin-top:18px;}
+  .mslider .slabel{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted-foreground);margin-bottom:8px;white-space:nowrap;gap:12px;}
+  input[type=range].srange{width:100%;-webkit-appearance:none;appearance:none;height:6px;border-radius:999px;
+    background:linear-gradient(90deg,var(--risk-1),var(--risk-3),var(--risk-5));outline:none;cursor:pointer;}
+  input[type=range].srange::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:var(--foreground);border:3px solid var(--background);box-shadow:0 0 0 2px var(--primary),0 2px 6px rgba(0,0,0,.4);cursor:grab;}
+  input[type=range].srange::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--foreground);
+    border:3px solid var(--background);box-shadow:0 0 0 2px var(--primary);cursor:grab;}
+  .whythis{margin-top:16px;border-top:1px solid var(--border-soft);padding-top:14px;}
+  .whytrig{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:var(--primary);cursor:pointer;
+    background:none;border:none;font-family:inherit;padding:0;}
+  .whybody{font-size:13px;line-height:1.6;color:var(--muted-foreground);margin-top:10px;
+    max-height:0;overflow:hidden;transition:max-height .35s ease;}
+  .whybody.open{max-height:200px;}
+  .mwarn{display:none;align-items:flex-start;gap:9px;margin-top:14px;padding:11px 13px;border-radius:var(--radius);
+    background:var(--caution-subtle);border:1px solid color-mix(in srgb,var(--caution) 28%,transparent);
+    font-size:12.5px;line-height:1.5;color:var(--foreground);}
+  .mwarn.show{display:flex;}
+  .mwarn .wico{color:var(--caution);flex:none;margin-top:1px;}
+
+  /* recommendation preview card */
+  .reccard{margin-top:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+    padding:18px;position:relative;overflow:hidden;}
+  .rechead{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px;}
+  .rankbadge{font-size:11px;font-weight:600;color:var(--foreground);background:var(--muted);border-radius:999px;padding:3px 9px;}
+  .recthesis{font-size:14.5px;line-height:1.55;color:var(--foreground);margin-bottom:14px;}
+  .recrow{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;}
+  .recapy{display:flex;flex-direction:column;gap:2px;}
+  .recapy .big{font-size:28px;font-weight:600;letter-spacing:-.01em;color:var(--foreground);line-height:1;}
+  .recapy .lbl{font-size:11.5px;color:var(--muted-foreground);}
+  .cite{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--primary);
+    border:1px solid color-mix(in srgb,var(--primary) 28%,transparent);background:var(--spark-subtle);
+    border-radius:999px;padding:2px 7px;cursor:pointer;margin-left:8px;}
+  .estnote{font-size:11.5px;color:var(--muted-foreground);font-style:normal;}
+  .recact{display:flex;gap:10px;margin-top:4px;}
+
+  /* completion */
+  .complete{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:40px 0;}
+  .checkwrap{width:64px;height:64px;border-radius:50%;background:var(--gain-subtle);
+    border:1px solid color-mix(in srgb,var(--gain) 30%,transparent);display:grid;place-items:center;margin-bottom:8px;}
+
+  /* sticky CTA dock */
+  .dock{position:fixed;left:0;right:0;bottom:0;padding:18px 22px;
+    background:linear-gradient(to top,var(--background) 55%,transparent);}
+  .dockinner{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:12px;justify-content:flex-end;}
+  .dock .hint{font-size:12px;color:var(--muted-foreground);margin-right:auto;}
+
+  /* state switcher (review affordance) — hidden when embedded in the showcase */
+  .stateswitch{position:fixed;bottom:18px;left:22px;display:flex;gap:6px;z-index:60;background:var(--card);padding:5px;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);}
+  .embedded .stateswitch{display:none !important;}
+  .stateswitch .lbljump{font-size:10px;color:var(--muted-foreground);align-self:center;padding:0 4px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+  .stateswitch button{font-family:inherit;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;
+    border:1px solid var(--border);background:var(--card);color:var(--muted-foreground);cursor:pointer;}
+  .stateswitch button:hover{border-color:var(--primary);color:var(--foreground);}
+
+  @media (max-width:640px){
+    html,body{overflow-x:hidden;max-width:100%;}
+    .ob{max-width:100vw;overflow-x:hidden;}
+    .shell-top{padding:12px 14px;gap:8px;}
+    .shell-top .pill-base,.shell-top .pill-wallet{display:none;} /* collapse to fit 390px; badge stays */
+    .save-exit{padding:6px 9px;}
+    .stepper{padding:14px 14px 6px;}
+    .stepcount{padding:0 14px;}
+    .disc{margin-top:10px;}
+    .stage{padding:8px 14px 130px;}
+    .stepper .lbl{display:none;}
+    .stage{padding-bottom:130px;}
+    .opts.grid2{grid-template-columns:1fr;}
+    .recrow{gap:14px;}
+    .dock{padding:14px;}
+    .dockinner{flex-wrap:wrap;}
+    .stateswitch{left:8px;right:8px;bottom:96px;flex-wrap:wrap;justify-content:center;}
+  }
+</style>
+</head>
+<body class="sp">
+<div class="ob" id="ob">
+  <!-- shell -->
+  <div class="shell-top">
+    <span class="brand"><svg class="smark" viewBox="0 0 24 24"><defs><linearGradient id="obspk" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F2683C"/><stop offset=".5" stop-color="#F5B62E"/><stop offset="1" stop-color="#4D83FF"/></linearGradient></defs><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" fill="url(#obspk)"/></svg>SparkPoint</span>
+    <span class="grow"></span>
+    <span class="pill" id="badgeNC" title="What SparkPoint can & can't do"><span class="led"></span>Non-custodial</span>
+    <span class="pill pill-base"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0052FF"/><path d="M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm-1.7 4.5c0-.94.76-1.7 1.7-1.7.6 0 1.13.31 1.44.78h1.06a2.7 2.7 0 1 0 0 1.84h-1.06a1.7 1.7 0 0 1-3.14-.92Z" fill="#fff"/></svg>Base</span>
+    <span class="pill pill-wallet"><span class="mono">0x12…ab</span></span>
+    <button class="btn btn-ghost btn-sm save-exit">Save &amp; exit</button>
+  </div>
+
+  <!-- stepper -->
+  <div class="stepper" id="stepper"></div>
+  <div class="stepcount tnum" id="stepcount">Step 1 of 6</div>
+
+  <!-- disclaimer -->
+  <div class="disc">
+    <svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+    <div><b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice. Capital at risk. SparkPoint can never move or withhold your funds. <a id="proveLink">See what we can &amp; can't do</a> · <a>Exit anytime</a></div>
+  </div>
+
+  <!-- conversation -->
+  <div class="stage" id="stage">
+    <div class="stream" id="stream"></div>
+  </div>
+
+  <!-- sticky dock -->
+  <div class="dock">
+    <div class="dockinner" id="dock"></div>
+  </div>
+</div>
+
+<!-- quick state jumps for the review board -->
+<div class="stateswitch">
+  <span class="lbljump">Jump</span>
+  <button onclick="jump(0)">Welcome</button>
+  <button onclick="jump(5)">Risk wedge</button>
+  <button onclick="jump(6)">Mandate</button>
+  <button onclick="jump(7)">First rec</button>
+  <button onclick="jump(8)">Done</button>
+</div>
+
+<script>
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// hide the in-page jump bar when this page is shown inside the showcase frames
+try{ if(window.self!==window.top) document.documentElement.classList.add('embedded'); }catch(e){ document.documentElement.classList.add('embedded'); }
+const SMARK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" fill="var(--primary)"/></svg>';
+const stream = document.getElementById('stream');
+const dock = document.getElementById('dock');
+const stage = document.getElementById('stage');
+
+// input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends
+const STEP_LABELS = ['Connect','Experience','Goal','Timeline','Risk','Your plan'];
+const answers = {experience:null, goal:null, timeline:null, riskTier:1};
+let stepIndex = 0; // 0..8 (0 welcome,1 connect,2 exp,3 goal,4 timeline,5 risk,6 mandate,7 rec,8 done)
+
+function buildStepper(){
+  const el = document.getElementById('stepper'); el.innerHTML='';
+  // map stepIndex(1..6 inputs) — welcome(0) shows none active, rec(7)/done(8) show all done
+  const inputActive = Math.min(Math.max(stepIndex,1),6); // 1..6
+  STEP_LABELS.forEach((lbl,i)=>{
+    const n=i+1;
+    const done = stepIndex>6 || n<inputActive;
+    const active = (stepIndex>=1 && stepIndex<=6) && n===inputActive;
+    const w=document.createElement('div'); w.className='stepwrap';
+    const d=document.createElement('div'); d.className='stepdot'+(done?' done':'')+(active?' active':'');
+    d.innerHTML=`<span class="ring">${done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>':n}</span><span class="lbl">${lbl}</span>`;
+    if(done) d.onclick=()=>jump(n);
+    w.appendChild(d);
+    if(i<STEP_LABELS.length-1){const ln=document.createElement('div');ln.className='stepline'+(done?' done':'');ln.innerHTML='<span class="fill"></span>';w.appendChild(ln);}
+    el.appendChild(w);
+  });
+  const sc=document.getElementById('stepcount');
+  if(stepIndex>=1&&stepIndex<=6){sc.style.visibility='visible';sc.textContent=`Step ${inputActive} of 6`;}
+  else sc.style.visibility='hidden';
+}
+
+function animIn(node, delay=0){
+  if(reduce || typeof gsap==='undefined'){node.style.opacity=1;return;}
+  gsap.fromTo(node,{opacity:0,y:14},{opacity:1,y:0,duration:.5,ease:'power2.out',delay});
+  // safety net: if rAF is throttled (e.g. backgrounded capture), force the resting state
+  setTimeout(()=>{node.style.opacity=1;node.style.transform='none';}, 700+delay*1000);
+}
+function aiTurn(html){
+  const t=document.createElement('div'); t.className='turn ai';
+  t.innerHTML=`<div class="avatar">${SMARK}</div><div class="content"><div class="ai-name">SparkPoint AI</div>${html}</div>`;
+  stream.appendChild(t); animIn(t); scrollDown(); return t;
+}
+function userTurn(text){
+  const t=document.createElement('div'); t.className='turn user';
+  t.innerHTML=`<div class="bubble-user">${text}</div>`;
+  stream.appendChild(t); animIn(t); scrollDown(); return t;
+}
+function thinking(steps, done){
+  const t=document.createElement('div'); t.className='turn ai';
+  t.innerHTML=`<div class="avatar">${SMARK}</div><div class="content"><div class="ai-name">SparkPoint AI</div><div class="think"></div></div>`;
+  stream.appendChild(t); animIn(t);
+  const box=t.querySelector('.think');
+  let i=0;
+  function next(){
+    if(i>=steps.length){ setTimeout(()=>{t.remove();done&&done();}, 260); return; }
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--muted-foreground);padding:3px 0;';
+    row.innerHTML=`<span class="ai-dot"></span><span>${steps[i].a}…</span>`;
+    box.appendChild(row); scrollDown();
+    setTimeout(()=>{
+      row.querySelector('.ai-dot').outerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>';
+      row.querySelector('span:last-child').textContent=steps[i].b;
+      i++; setTimeout(next, reduce?60:240);
+    }, reduce?120:520);
+  }
+  next();
+}
+function scrollDown(){ stage.scrollTo({top:stage.scrollHeight,behavior:reduce?'auto':'smooth'}); }
+function setDock(html){ dock.innerHTML=html; }
+function primaryBtn(label,fn,extraHint){
+  return `${extraHint?`<span class="hint">${extraHint}</span>`:''}<button class="btn btn-primary btn-lg" id="pcta">${label}</button>`;
+}
+
+// ---------- STEP DEFINITIONS ----------
+function render(){ buildStepper(); }
+
+function clearFrom(){ stream.innerHTML=''; }
+
+const STEPS = {
+  0(){ // Welcome
+    aiTurn(`<div class="ai-text">An AI fund manager that <span class="soft">can't hold your money.</span> Let's build your plan.</div>
+      <div class="ai-sub">I read your wallet to personalize, suggest moves, and explain every one. You approve and sign each — and you can leave anytime, even if we're offline.</div>
+      <div class="promises">
+        <div class="promise"><span class="pico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-1 1L20 4l-2-2"/></svg></span>You own your keys — we never generate or hold a wallet for you.</div>
+        <div class="promise"><span class="pico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"/></svg></span>Withdraw anytime — even if SparkPoint is completely offline.</div>
+        <div class="promise"><span class="pico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z"/></svg></span>The AI suggests; deterministic guardrails check; you sign.</div>
+      </div>`);
+    setDock(`<span class="hint">Takes about 3 minutes.</span><button class="btn btn-outline btn-lg">How this works</button><button class="btn btn-primary btn-lg" id="pcta">Get started</button>`);
+    document.getElementById('pcta').onclick=()=>go(1);
+  },
+  1(){ // Connect — reassurance
+    userTurn(`Get started`);
+    thinking([{a:'Reading your wallet',b:'Read your wallet'},{a:'Confirming you\'re on Base',b:'Confirmed you\'re on Base'}],()=>{
+      aiTurn(`<div class="ai-text">You're connected — <span class="mono" style="color:var(--foreground)">0x12…ab</span> on Base.</div>
+      <div class="tip"><span class="tico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <div><div class="ttl">You own your keys and your account.</div><div class="tbd">We never generate a wallet for you or hold your keys. We read your wallet to personalize your plan — nothing moves without your signature.</div></div></div>`);
+      setDock(`<button class="btn btn-primary btn-lg" id="pcta">Continue</button>`);
+      document.getElementById('pcta').onclick=()=>go(2);
+    });
+  },
+  2(){ // Experience
+    aiTurn(`<div class="ai-text">How familiar are you with DeFi or crypto investing?</div>
+      <div class="ai-sub">This just tunes how much detail I show. You can change it anytime.</div>
+      <div class="opts row" id="optExp">
+        ${optCard('New',"I'm just getting started",'M12 20v-6m0 0V8m0 6h6m-6 0H6')}
+        ${optCard('Some',"I've used a few apps",'M3 12h4l3 8 4-16 3 8h4')}
+        ${optCard('Pro','I read contracts','M8 6l-6 6 6 6m8-12l6 6-6 6')}
+      </div>`);
+    wireOpts('optExp','experience',()=>{ setDock(`<button class="btn btn-primary btn-lg" id="pcta">Continue</button>`); document.getElementById('pcta').onclick=()=>go(3);});
+    setDock(`<span class="hint">Pick one to continue</span>`);
+  },
+  3(){ // Goal
+    aiTurn(`<div class="ai-text">What's your main goal right now?</div>
+      <div class="opts grid2" id="optGoal">
+        ${goalCard('Grow my savings','Build steadily over time','1–2 · Lower','M3 17l6-6 4 4 8-8','--risk-2')}
+        ${goalCard('Steady yield','Earn predictable USDC yield','1 · Lower','M4 12h16M4 12l3-3M4 12l3 3','--risk-1')}
+        ${goalCard('Aggressive growth','Chase higher returns, more risk','4–5 · Higher','M13 2L3 14h7l-1 8 10-12h-7l1-8Z','--risk-5')}
+        ${goalCard('Reach a target','Hit a specific amount','varies','M12 2v4m0 12v4m10-10h-4M6 12H2','--risk-3')}
+      </div>`);
+    wireOpts('optGoal','goal',()=>{ setDock(`<button class="btn btn-primary btn-lg" id="pcta">Continue</button>`); document.getElementById('pcta').onclick=()=>go(4);});
+    setDock(`<span class="hint">Pick one to continue</span>`);
+  },
+  4(){ // Timeline
+    aiTurn(`<div class="ai-text">When might you need this money?</div>
+      <div class="ai-sub">Longer horizons can usually take more ups and downs.</div>
+      <div class="tchips" id="optTime">
+        ${tchip('< 1 year','Short term')}
+        ${tchip('1–3 years','Medium term')}
+        ${tchip('3+ years','Long term')}
+      </div>`);
+    wireChips('optTime','timeline',()=>{ setDock(`<button class="btn btn-primary btn-lg" id="pcta">Continue</button>`); document.getElementById('pcta').onclick=()=>go(5);});
+    setDock(`<span class="hint">Pick one to continue</span>`);
+  },
+  5(){ // Risk scenario (the wedge)
+    aiTurn(`<div class="ai-text">Your $1,000 drops to $800 in a week. What do you do?</div>
+      <div class="ai-sub">No right answer — this tells me how to set your risk, not test you.</div>
+      <div class="opts col" id="optRisk">
+        ${riskOpt('Sell to stop the bleeding','Protect what\'s left',1)}
+        ${riskOpt('Hold and wait','Ride it out',2)}
+        ${riskOpt('Buy more while it\'s low','Lean in on the dip',4)}
+      </div>
+      <div class="tip"><span class="tico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg></span>
+        <div><div class="ttl">What's volatility?</div><div class="tbd">How much a value swings up and down over time. Higher volatility can mean bigger gains — and bigger drops.</div></div></div>`);
+    wireOpts('optRisk','riskAns',(tier)=>{ answers.riskTier=tier; setDock(`<button class="btn btn-primary btn-lg" id="pcta">See my plan</button>`); document.getElementById('pcta').onclick=()=>go(6);});
+    setDock(`<span class="hint">Choose what feels honest</span>`);
+  },
+  6(){ // Mandate review
+    thinking([{a:'Mapping your answers to a risk tier',b:'Mapped your answers to a risk tier'},{a:'Building your plan',b:'Built your plan'}],()=>{
+      const tier = answers.riskTier||1;
+      aiTurn(`<div class="ai-text">Here's your plan — capital-preservation-first. You can adjust it anytime.</div>
+      <div class="mandate" id="mandate">
+        <div class="mhead">
+          <span class="mtitle">Your mandate</span>
+          <span class="riskbadge" id="rbadge"><span class="riskmeter" id="rmeter"></span><span class="rname" id="rname"></span></span>
+        </div>
+        <div class="mpara" id="mpara"></div>
+        <div class="mslider">
+          <div class="slabel"><span>Adjust your risk</span><span id="sval"></span></div>
+          <input type="range" min="1" max="5" step="1" value="${tier}" class="srange" id="rslider"/>
+        </div>
+        <div class="mwarn" id="mwarn"><span class="wico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+          <div>Only the Lower-risk Aave vault is live today. Higher-risk strategies will rank here as more vaults open — this is information, not a block.</div></div>
+        <div class="whythis">
+          <button class="whytrig" id="whytrig"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/></svg>Why this profile?</button>
+          <div class="whybody" id="whybody"></div>
+        </div>
+      </div>`);
+      initMandate();
+      setDock(`<span class="hint">You can change this anytime in Settings.</span><button class="btn btn-outline btn-lg" onclick="document.getElementById('rslider').focus()">Adjust</button><button class="btn btn-primary btn-lg" id="pcta">Set my plan</button>`);
+      document.getElementById('pcta').onclick=()=>go(7);
+    });
+  },
+  7(){ // First-rec preview
+    userTurn(`Set my plan`);
+    thinking([{a:'Reading your wallet',b:'Read your wallet'},{a:'Checking current Aave rates',b:'Checked current Aave rates'},{a:'Scanning the Base vault',b:'Scanned the Base vault'}],()=>{
+      aiTurn(`<div class="ai-text">Your plan's set. Here's the first move I'd suggest — tied to your goal.</div>
+      <div class="reccard" id="reccard">
+        <div class="rechead"><span class="rankbadge">Best fit · #1 vs your goal</span><span class="badge badge-ai">AI suggestion — you approve &amp; sign</span></div>
+        <div class="recthesis">Move your idle USDC into the <b>Aave Yield Vault</b>. It fits your plan — lower risk, capital-preservation-first, steady yield.</div>
+        <div class="recrow">
+          <div class="recapy"><span class="big tnum">4.3%<span class="cite" id="apycite"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Based on Aave · 2m</span></span><span class="lbl">net APY · <span class="estnote">estimate · see breakdown</span></span></div>
+          <div><div style="font-size:11.5px;color:var(--muted-foreground);margin-bottom:6px;">Risk tier</div><span class="riskbadge" style="background:var(--risk-1-subtle);border-color:color-mix(in srgb,var(--risk-1) 30%,transparent)"><span class="riskmeter"><i style="background:var(--risk-1)"></i><i></i><i></i><i></i><i></i></span><span class="rname" style="color:var(--risk-1)">Lower · 1/5</span></span></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:14px;">Estimates, not guarantees. · 4.3% Aave supply rate − 0% SparkPoint fee</div>
+        <div class="recact"><button class="btn btn-primary btn-md">Review this move</button><button class="btn btn-ghost btn-md">Not now</button></div>
+      </div>`);
+      if(!reduce && typeof gsap!=='undefined') gsap.fromTo('#reccard',{boxShadow:'0 0 0 0 rgba(31,224,200,0)'},{boxShadow:'0 0 0 6px rgba(31,224,200,.18)',duration:.5,yoyo:true,repeat:1});
+      setDock(`<button class="btn btn-ghost btn-lg">Not now</button><button class="btn btn-primary btn-lg" id="pcta">Continue to chat</button>`);
+      document.getElementById('pcta').onclick=()=>go(8);
+    });
+  },
+  8(){ // Completion
+    clearFrom();
+    const t=document.createElement('div'); t.className='turn'; t.style.opacity=1; t.style.justifyContent='center';
+    t.innerHTML=`<div class="complete">
+      <div class="checkwrap" id="cwrap"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="2.5" id="cmark"><path d="M5 13l4 4L19 7" stroke-dasharray="26" stroke-dashoffset="0"/></svg></div>
+      <div class="t-h1">Your plan is set.</div>
+      <div class="t-base" style="color:var(--muted-foreground);max-width:420px;">Lower risk (1/5), steady USDC yield. The AI will suggest; you approve and sign. Change any of this anytime in Settings.</div>
+    </div>`;
+    stream.appendChild(t);
+    if(!reduce){ gsap.fromTo('#cmark path',{strokeDashoffset:26},{strokeDashoffset:0,duration:.5,ease:'power2.out'}); gsap.fromTo('#cwrap',{scale:.6,opacity:0},{scale:1,opacity:1,duration:.4,ease:'back.out(2)'}); }
+    setDock(`<button class="btn btn-outline btn-lg">View my plan</button><button class="btn btn-primary btn-lg" id="pcta">Go to chat</button>`);
+    document.getElementById('pcta').onclick=()=>{ location.href='../SparkPoint.html#/chat'; };
+  }
+};
+
+// ---------- helpers for option markup ----------
+function optCard(title,gloss,path){
+  return `<button class="opt" data-val="${title}"><span class="oico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${path}"/></svg></span><span><span class="otitle">${title}</span><span class="ogloss">${gloss}</span></span></button>`;
+}
+function goalCard(title,gloss,hint,path,riskvar){
+  return `<button class="opt" data-val="${title}"><span class="oico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${path}"/></svg></span><span><span class="otitle">${title}</span><span class="ogloss">${gloss}</span><span class="rhint"><span class="riskmeter"><i style="background:var(${riskvar})"></i></span>Risk ${hint}</span></span></button>`;
+}
+function tchip(tt,ts){ return `<button class="tchip" data-val="${tt}"><div class="tt">${tt}</div><div class="ts">${ts}</div></button>`; }
+function riskOpt(title,gloss,tier){
+  return `<button class="opt" data-val="${title}" data-tier="${tier}"><span class="oico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></span><span><span class="otitle">${title}</span><span class="ogloss">${gloss}</span></span></button>`;
+}
+function wireOpts(id,key,cb){
+  const box=document.getElementById(id); if(!box)return;
+  box.querySelectorAll('.opt').forEach(o=>o.onclick=()=>{
+    box.querySelectorAll('.opt').forEach(x=>x.classList.remove('sel')); o.classList.add('sel');
+    answers[key]=o.dataset.val; const tier=o.dataset.tier?+o.dataset.tier:null;
+    userTurn(o.dataset.val); cb&&cb(tier);
+  });
+}
+function wireChips(id,key,cb){
+  const box=document.getElementById(id); if(!box)return;
+  box.querySelectorAll('.tchip').forEach(o=>o.onclick=()=>{
+    box.querySelectorAll('.tchip').forEach(x=>x.classList.remove('sel')); o.classList.add('sel');
+    answers[key]=o.dataset.val; userTurn(o.dataset.val); cb&&cb();
+  });
+}
+
+const TIER_NAMES={1:'Lower risk',2:'Low risk',3:'Moderate',4:'Elevated',5:'High risk'};
+function initMandate(){
+  const sl=document.getElementById('rslider');
+  const upd=()=>{
+    const t=+sl.value; answers.riskTier=t;
+    const rv=`var(--risk-${t})`;
+    document.getElementById('rname').textContent=`${TIER_NAMES[t]} · ${t}/5`;
+    document.getElementById('rname').style.color=rv;
+    const badge=document.getElementById('rbadge');
+    badge.style.background=`var(--risk-${t}-subtle)`;
+    badge.style.borderColor=`color-mix(in srgb,${rv} 30%,transparent)`;
+    document.getElementById('sval').textContent=`${TIER_NAMES[t]} (${t}/5)`;
+    const meter=document.getElementById('rmeter');
+    meter.innerHTML=Array.from({length:5},(_,i)=>`<i style="background:${i<t?rv:'var(--border)'}"></i>`).join('');
+    const goal=answers.goal||'steady USDC yield';
+    document.getElementById('mpara').innerHTML=`Your plan: <b>${TIER_NAMES[t]} (${t}/5)</b>, capital preservation first, target ${goal.toLowerCase().includes('yield')?'steady USDC yield':'goal-aligned yield'}. The AI will only suggest moves that fit this. <b>You approve and sign each one.</b>`;
+    document.getElementById('mwarn').classList.toggle('show', t>2);
+    document.getElementById('whybody').textContent=`You chose to ${answers.riskAns?answers.riskAns.toLowerCase():'hold through a drop'} after a 20% drop, with a ${answers.timeline||'medium'} horizon. That maps to a ${TIER_NAMES[t].toLowerCase()} profile — steady, capital-preservation-first.`;
+  };
+  sl.oninput=upd; upd();
+  document.getElementById('whytrig').onclick=()=>document.getElementById('whybody').classList.toggle('open');
+}
+
+// ---------- navigation ----------
+function go(n){ stepIndex=n; render();
+  if(n===0||n===8) clearFrom();
+  STEPS[n]();
+}
+function jump(n){ // rebuild fresh to a step (review affordance)
+  clearFrom(); stepIndex=n;
+  // replay minimal context so the target renders coherently
+  if(n>=6 && !answers.riskTier) answers.riskTier=1;
+  render(); STEPS[n]();
+}
+document.getElementById('proveLink').onclick=()=>alert('Prove-it panel → opens the "What SparkPoint can & can\'t do" sheet (Trust Center). Wired in the shell build.');
+document.getElementById('badgeNC').onclick=()=>document.getElementById('proveLink').onclick();
+
+// boot
+go(0);
+</script>
+</body>
+</html>

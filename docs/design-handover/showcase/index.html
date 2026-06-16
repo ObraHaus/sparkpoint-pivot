@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SparkPoint — App Showcase</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  html,body{margin:0;height:100%;}
+  body{background:#0c0f15;color:var(--foreground);font-family:var(--font-sans);overflow:hidden;display:flex;flex-direction:column;}
+  .sc-top{display:flex;align-items:center;gap:16px;padding:14px 22px;border-bottom:1px solid var(--border-soft);flex:none;background:#0a0d12;}
+  .sc-brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px;}
+  .sc-sub{font-size:12px;color:var(--muted-foreground);}
+  .sc-routes{display:flex;gap:6px;overflow-x:auto;padding:10px 22px;border-bottom:1px solid var(--border-soft);flex:none;background:#0a0d12;}
+  .rchip{flex:none;font-size:12px;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--border);
+    background:var(--card);color:var(--muted-foreground);cursor:pointer;white-space:nowrap;transition:.15s;font-family:inherit;}
+  .rchip:hover{border-color:var(--primary);color:var(--foreground);}
+  .rchip.active{background:var(--spark-subtle);border-color:color-mix(in srgb,var(--primary) 40%,transparent);color:var(--primary);}
+  .rchip .sep{opacity:.4;}
+  .stage{flex:1;overflow:auto;padding:34px;display:flex;gap:48px;align-items:flex-start;justify-content:center;}
+  @media(max-width:1240px){.stage{flex-direction:column;align-items:center;gap:30px;}}
+  .frame-wrap{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .frame-label{font-size:12px;font-weight:600;color:var(--muted-foreground);letter-spacing:.03em;}
+  .frame-label b{color:var(--foreground);}
+
+  /* desktop browser chrome */
+  .browser{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);box-shadow:0 30px 80px -30px rgba(0,0,0,.7);}
+  .bchrome{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#11151d;border-bottom:1px solid var(--border-soft);}
+  .dots{display:flex;gap:6px;}
+  .dots i{width:11px;height:11px;border-radius:50%;display:block;}
+  .burl{flex:1;margin-left:8px;background:var(--background);border:1px solid var(--border-soft);border-radius:7px;
+    padding:5px 12px;font-size:11.5px;color:var(--muted-foreground);font-family:var(--font-mono);}
+  .scaler{transform-origin:top left;}
+
+  /* phone bezel */
+  .phone{border-radius:44px;background:#1b1f27;padding:11px;box-shadow:0 30px 80px -30px rgba(0,0,0,.7);position:relative;}
+  .phone .notch{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#1b1f27;border-radius:0 0 16px 16px;z-index:5;}
+  .phone .screen{border-radius:34px;overflow:hidden;background:var(--background);width:390px;}
+  /* iOS-style status bar so the app sits below the notch */
+  .statusbar{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;
+    background:var(--background);color:var(--foreground);font-family:var(--font-sans);position:relative;z-index:4;}
+  .sb-time{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+  .sb-icons{display:flex;align-items:center;gap:7px;color:var(--foreground);}
+  iframe{border:none;display:block;background:var(--background);}
+  .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted-foreground);
+    background:var(--card);border:1px solid var(--border);border-radius:999px;padding:6px 14px;}
+  .footbar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;
+    background:var(--card);border:1px solid var(--border);border-radius:999px;padding:6px 10px;max-width:94vw;flex-wrap:wrap;justify-content:center;box-shadow:var(--shadow-md);}
+  .foothint{font-size:11.5px;color:var(--muted-foreground);padding:0 4px;}
+  .footlbl{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground);padding:0 4px;}
+  .footbar.onb{padding:6px 8px;}
+  .jbtn{font-family:inherit;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--border);
+    background:transparent;color:var(--muted-foreground);cursor:pointer;transition:.15s;}
+  .jbtn:hover{border-color:var(--primary);color:var(--foreground);}
+  .jbtn.on{background:var(--spark-subtle);border-color:color-mix(in srgb,var(--primary) 40%,transparent);color:var(--primary);}
+</style>
+</head>
+<body>
+  <div class="sc-top">
+    <span class="sc-brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--primary)"><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z"/></svg>SparkPoint</span>
+    <span class="sc-sub">Full app — login → logout · desktop 1440 &amp; mobile 390 · click a flow to drive both</span>
+    <div style="flex:1"></div>
+    <a class="rchip" href="SparkPoint.html" target="_blank">Open app ↗</a>
+    <a class="rchip" href="flows/Onboarding.html" target="_blank">Onboarding ↗</a>
+  </div>
+  <div class="sc-routes" id="routes"></div>
+  <div class="stage">
+    <div class="frame-wrap">
+      <div class="frame-label"><b>Desktop</b> · 1440 × 900</div>
+      <div class="browser">
+        <div class="bchrome"><span class="dots"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span>
+          <span class="burl" id="durl">sparkpoint.app/chat</span></div>
+        <div class="scaler" id="dscale"><iframe id="desktop" width="1440" height="900" src="SparkPoint.html#/chat"></iframe></div>
+      </div>
+    </div>
+    <div class="frame-wrap">
+      <div class="frame-label"><b>Mobile</b> · 390 × 844</div>
+      <div class="phone"><div class="notch"></div>
+        <div class="screen">
+          <div class="statusbar">
+            <span class="sb-time">9:41</span>
+            <span class="sb-icons">
+              <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx=".5"/><rect x="4.5" y="5" width="3" height="6" rx=".5"/><rect x="9" y="2.5" width="3" height="8.5" rx=".5"/><rect x="13.5" y="0" width="3" height="11" rx=".5"/></svg>
+              <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0"/><path d="M3.4 6.6a6.5 6.5 0 0 1 9.2 0"/><path d="M5.8 9a3 3 0 0 1 4.4 0"/><circle cx="8" cy="11" r=".6" fill="currentColor"/></svg>
+              <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".7" y="1" width="21" height="10" rx="2.6" stroke="currentColor" stroke-opacity=".45" stroke-width="1"/><rect x="2.2" y="2.5" width="16" height="7" rx="1.4" fill="currentColor"/><path d="M23.2 4v4a2 2 0 0 0 0-4Z" fill="currentColor" fill-opacity=".45"/></svg>
+            </span>
+          </div>
+          <iframe id="mobile" width="390" height="804" src="SparkPoint.html#/chat"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footbar" id="footbar"><span class="foothint">Tip — the frames are live. Click around inside them, or use the flow chips above to jump both at once.</span></div>
+
+<script>
+  const ROUTES=[
+    ['Landing','landing','app'],['Connect','connect','app'],['Onboarding','__onb','onb'],
+    ['Chat','chat','app'],['Portfolio','portfolio','app'],['Position','portfolio/vault','app'],
+    ['Strategies','strategies','app'],['Vault','vault','app'],['Deposit','vault/deposit','app'],
+    ['Withdraw','vault/withdraw','app'],['Confirm + sign','confirm/deposit','app'],
+    ['Trust Center','trust','app'],['Prove-it','trust/permissions','app'],['Withdraw-always','trust/exit','app'],
+    ['Automation','automation','app'],['Grant key','automation/grant','app'],
+    ['Outcomes','outcomes','app'],['Learn','learn','app'],['SRK','srk','app'],
+    ['Notifications','notifications','app'],['Settings','settings','app']
+  ];
+  const desktop=document.getElementById('desktop'), mobile=document.getElementById('mobile');
+  const durl=document.getElementById('durl'), routesEl=document.getElementById('routes');
+
+  function fitScale(){
+    // scale desktop iframe to fit available width nicely
+    const stacked = window.innerWidth <= 1240;
+    const avail = stacked ? (window.innerWidth-80) : (window.innerWidth-48-360-80);
+    const s = Math.max(.42, Math.min(.66, avail/1440));
+    const sc=document.getElementById('dscale');
+    sc.style.transform='scale('+s+')';
+    sc.style.width=(1440*s)+'px'; sc.style.height=(900*s)+'px';
+  }
+  window.addEventListener('resize',fitScale); fitScale();
+
+  let active='chat';
+  function navFrame(frame, url){
+    // Assigning src is robust in every case:
+    //  • different file (e.g. Onboarding → app): full load to the route
+    //  • same file, different hash: same-document fragment nav → fires hashchange → re-renders
+    // If the target equals the current location exactly, force a reload so a re-click still refreshes.
+    let cur=''; try{ cur=frame.contentWindow.location.href; }catch(e){}
+    const abs = new URL(url, location.href).href;
+    if(cur===abs){ try{ frame.contentWindow.location.reload(); return; }catch(e){} }
+    frame.src=url;
+  }
+  function jumpOnb(n){ [desktop,mobile].forEach(f=>{ try{ f.contentWindow.jump(n); }catch(e){} }); 
+    document.querySelectorAll('#footbar .jbtn').forEach(b=>b.classList.toggle('on', +b.dataset.n===n)); }
+  const ONB_STATES=[['Welcome',0],['Risk wedge',5],['Mandate',6],['First rec',7],['Done',8]];
+  function setFootbar(kind){
+    const fb=document.getElementById('footbar');
+    if(kind==='onb'){
+      fb.classList.add('onb');
+      fb.innerHTML='<span class="footlbl">Jump to step</span>'+ONB_STATES.map(s=>`<button class="jbtn${s[1]===0?' on':''}" data-n="${s[1]}">${s[0]}</button>`).join('');
+      fb.querySelectorAll('.jbtn').forEach(b=>b.onclick=()=>jumpOnb(+b.dataset.n));
+    } else {
+      fb.classList.remove('onb');
+      fb.innerHTML='<span class="foothint">Tip — the frames are live. Click around inside them, or use the flow chips above to jump both at once.</span>';
+    }
+  }
+  function go(route,kind){
+    active=route;
+    routesEl.querySelectorAll('.rchip').forEach(c=>c.classList.toggle('active',c.dataset.r===route));
+    const url = kind==='onb' ? 'flows/Onboarding.html' : 'SparkPoint.html#/'+route;
+    navFrame(desktop,url); navFrame(mobile,url);
+    durl.textContent = 'sparkpoint.app/' + (kind==='onb' ? 'onboarding' : route);
+    setFootbar(kind);
+  }
+  ROUTES.forEach(([label,route,kind],i)=>{
+    const b=document.createElement('button'); b.className='rchip'+(route==='chat'?' active':''); b.dataset.r=route;
+    b.textContent=label; b.onclick=()=>go(route,kind);
+    routesEl.appendChild(b);
+  });
+</script>
+</body>
+</html>

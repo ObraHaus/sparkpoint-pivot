@@ -1,0 +1,169 @@
+/* ===========================================================================
+   SparkPoint Pivot — Design Tokens (W1–2)
+   Brand-matched to sparkpoint.io: cobalt-blue spark, gold + coral warm accents,
+   signature blue→cyan→gold→coral gradient, on a deep indigo-navy (dark-first).
+   Risk scale = violet→magenta so it never collides with the cobalt brand blue.
+   Token-driven; mirrors shadcn CSS-variable convention.
+   =========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root, .dark {
+  /* ---- neutral ramp (deep indigo-navy, dark-first) ---- */
+  --background:        #080C17;
+  --card:              #101626;
+  --card-2:            #151D30;   /* secondary raised surface */
+  --popover:           #182033;
+  --muted:             #1B2438;
+  --muted-foreground:  #8C98AE;
+  --foreground:        #EAEEF7;
+  --border:            #283455;
+  --border-soft:       #1D2740;
+  --input:             #313D5E;
+
+  /* ---- spark accent (SparkPoint cobalt blue) — CTAs + AI presence ONLY ---- */
+  --primary:           #4D83FF;
+  --primary-foreground:#FFFFFF;
+  --primary-hover:     #3A72F5;
+  --spark-subtle:      rgba(77,131,255,.14);
+  --spark-subtle-2:    rgba(77,131,255,.24);
+  --spark-glow:        rgba(77,131,255,.30);
+  --ring:              #4D83FF;
+
+  /* ---- brand warm accents (logo + gradient + data-viz; NOT semantic) ---- */
+  --brand-gold:        #F5B62E;
+  --brand-coral:       #F2683C;
+  --brand-cyan:        #38C6F4;
+  --brand-blue:        #4D83FF;
+  /* the signature SparkPoint gradient */
+  --brand-gradient: linear-gradient(110deg,#4D83FF 0%,#38C6F4 34%,#F5B62E 72%,#F2683C 100%);
+
+  /* ---- semantic (outcome & safety) — always color + icon + text ---- */
+  --gain:              #34CF7A;
+  --gain-subtle:       rgba(52,207,122,.14);
+  --loss:              #FF5C5C;
+  --loss-subtle:       rgba(255,92,92,.14);
+  --caution:           #FFC53D;
+  --caution-subtle:    rgba(255,197,61,.14);
+  --info:              #38C6F4;
+  --info-subtle:       rgba(56,198,244,.14);
+  --on-solid:          #06121F;
+
+  /* ---- risk palette (violet→magenta, 5-step; abstract intensity scale) ---- */
+  --risk-1:            #8B7CF0;  /* Lower  — launch Aave vault */
+  --risk-2:            #A06FE8;
+  --risk-3:            #C45FD6;  /* Moderate */
+  --risk-4:            #D8559F;
+  --risk-5:            #E0518F;  /* Higher */
+  --risk-1-subtle:     rgba(139,124,240,.16);
+  --risk-2-subtle:     rgba(160,111,232,.16);
+  --risk-3-subtle:     rgba(196,95,214,.16);
+  --risk-4-subtle:     rgba(216,85,159,.16);
+  --risk-5-subtle:     rgba(224,81,143,.16);
+
+  /* ---- radius / elevation ---- */
+  --radius:            10px;
+  --radius-sm:         8px;
+  --radius-lg:         14px;
+  --shadow-md:         0 8px 24px -10px rgba(0,0,0,.55);
+  --shadow-lg:         0 24px 60px -20px rgba(0,0,0,.65);
+
+  /* ---- type ---- */
+  --font-sans: "Geist","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono: "Geist Mono","JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+
+/* light theme (brand-bright; reflects the sparkpoint.io look) */
+.light {
+  --background:#F6F9FE; --card:#FFFFFF; --card-2:#F1F5FC; --popover:#FFFFFF;
+  --muted:#EDF2FA; --muted-foreground:#586079; --foreground:#101A33;
+  --border:#DCE4F2; --border-soft:#E9EFF8; --input:#CFD9EC;
+  --primary:#2F6BFF; --primary-foreground:#FFFFFF; --primary-hover:#1E59F0;
+  --spark-subtle:rgba(47,107,255,.10); --spark-subtle-2:rgba(47,107,255,.16); --spark-glow:rgba(47,107,255,.18); --ring:#2F6BFF;
+  --brand-gold:#E59A12; --brand-coral:#E2562B; --brand-cyan:#1AA3D6; --brand-blue:#2F6BFF;
+  --gain:#0E8A52; --gain-subtle:rgba(14,138,82,.12); --loss:#D23B2E; --loss-subtle:rgba(210,59,46,.12);
+  --caution:#9A6A00; --caution-subtle:rgba(154,106,0,.12); --info:#1387B5; --info-subtle:rgba(19,135,181,.12); --on-solid:#FFFFFF;
+  --risk-1:#6E5FD6; --risk-2:#8A53CC; --risk-3:#A93FBE; --risk-4:#C53C8C; --risk-5:#C53C76;
+}
+
+/* ===========================================================================
+   Base + utilities shared across all SparkPoint screens
+   =========================================================================== */
+*{box-sizing:border-box;}
+html,body{max-width:100%;}
+.sp{
+  font-family:var(--font-sans);
+  color:var(--foreground);
+  background:var(--background);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.tnum{font-variant-numeric:tabular-nums slashed-zero;}
+.mono{font-family:var(--font-mono);}
+
+/* ---- themed scrollbars everywhere (no default OS bar) ---- */
+*{scrollbar-width:thin;scrollbar-color:var(--input) transparent;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--input);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:var(--muted-foreground);background-clip:padding-box;}
+::-webkit-scrollbar-corner{background:transparent;}
+
+/* type scale (doc-04 §3.2) */
+.t-display{font-size:36px;line-height:40px;font-weight:600;letter-spacing:-.01em;}
+.t-h1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.01em;}
+.t-h2{font-size:22px;line-height:28px;font-weight:600;}
+.t-h3{font-size:18px;line-height:24px;font-weight:600;}
+.t-base{font-size:15px;line-height:22px;font-weight:400;}
+.t-sm{font-size:13px;line-height:18px;}
+.t-xs{font-size:12px;line-height:16px;font-weight:500;}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+
+/* focus ring (doc-04 §10.3) */
+.sp :focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px;}
+
+/* buttons */
+.btn{font-family:inherit;font-weight:600;border-radius:var(--radius);border:1px solid transparent;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .12s ease,background .15s ease,border-color .15s ease,opacity .15s ease;}
+.btn:active{transform:translateY(.5px) scale(.995);}
+.btn-lg{font-size:15px;padding:13px 20px;}
+.btn-md{font-size:13.5px;padding:10px 16px;}
+.btn-sm{font-size:12.5px;padding:7px 12px;}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);}
+.btn-primary:hover{background:var(--primary-hover);}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-outline{background:transparent;color:var(--foreground);border-color:var(--border);}
+.btn-outline:hover{background:var(--muted);}
+.btn-ghost{background:transparent;color:var(--muted-foreground);}
+.btn-ghost:hover{background:var(--muted);color:var(--foreground);}
+
+/* chips / badges */
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;
+  border-radius:999px;padding:6px 12px;border:1px solid var(--border);color:var(--foreground);
+  background:var(--card);cursor:pointer;transition:border-color .15s,background .15s;}
+.chip:hover{border-color:var(--primary);background:var(--spark-subtle);}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+  border-radius:999px;padding:3px 9px;line-height:1;}
+.badge-ai{color:var(--primary);background:var(--spark-subtle);
+  border:1px solid color-mix(in srgb,var(--primary) 32%,transparent);}
+
+/* card surface */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);}
+
+/* segmented risk meter */
+.riskmeter{display:flex;gap:3px;}
+.riskmeter i{width:16px;height:5px;border-radius:2px;background:var(--border);display:block;}
+
+/* AI thinking dot */
+@keyframes sp-pulse{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1);}}
+.ai-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);
+  box-shadow:0 0 0 0 var(--spark-glow);animation:sp-pulse 1s ease-in-out infinite;}
+@keyframes sp-shimmer{0%{background-position:-200% 0;}100%{background-position:200% 0;}}
+.skel{background:linear-gradient(90deg,var(--muted) 25%,#283455 37%,var(--muted) 63%);
+  background-size:200% 100%;animation:sp-shimmer 1.2s linear infinite;border-radius:6px;}
+
+@media (prefers-reduced-motion: reduce){
+  .ai-dot{animation:none;}
+  .skel{animation:none;}
+}
