@@ -79,6 +79,18 @@ Read in this order on a first pass — each doc assumes you have read the ones a
 | 6 | [`02-flows/06-execution-confirmation-simulation.md`](./02-flows/06-execution-confirmation-simulation.md) | **Flow 6 — Execution Confirmation & Pre-Trade Simulation** (the trust gate; sign-disabled-until-acknowledged). |
 | 7 | [`02-flows/07-automation-session-keys.md`](./02-flows/07-automation-session-keys.md) | **Flow 7 — Automation / Session Keys** (opt-in, scoped, instantly revocable — ERC-4337). |
 | 8 | [`02-flows/08-srk-literacy-outcomes-settings.md`](./02-flows/08-srk-literacy-outcomes-settings.md) | **Supporting Surfaces** — SRK · financial-literacy · outcome log · settings · notifications. |
+| 9 | [`02-flows/09-ai-swap.md`](./02-flows/09-ai-swap.md) | **Flow 9 — AI Swap** (conversational ETH→USDC via Aerodrome; transparent ~20 bps routing fee; chains into vault/Aave). |
+| 10 | [`02-flows/10-subscriptions-premium-srk.md`](./02-flows/10-subscriptions-premium-srk.md) | **Flow 10 — Subscriptions & Premium (SRK freemium)** (free-vs-premium matrix · upgrade · pay-with-SRK · manage/cancel · acquire-SRK; SRK never gates the vault). |
+| 11 | [`02-flows/11-fee-transparency.md`](./02-flows/11-fee-transparency.md) | **Flow 11 — Fee Transparency / Revenue Surfaces** ("we only earn when you earn" — fee line item · `/fees` page · receipts · perf-fee disclosure · portfolio/outcome fees). |
+
+### Admin / Stakeholder Panel (a distinct, separately-gated surface — `../admin-panel/`)
+
+> A **separate admin-only surface**, not part of the end-user `(app)`. Secret base path, SSO+2FA (no wallet-connect), **read-only over funds** (no key custody, builds no transactions; only displays pause-only kill-switch status). Centerpiece = a graphical **revenue dashboard**. Desktop-first. Design it as its own product, in the product's design language.
+
+| File | What it is |
+|---|---|
+| [`../admin-panel/design-spec.md`](../admin-panel/design-spec.md) | **Admin Panel — Design Spec** (Claude-Design-ready) — admin shell, RBAC, the 12 admin screens A0–A11 (Login · Overview · User analytics · Per-user drilldown · Usage · TVL/vault · **Revenue dashboard** · Ops health · Stakeholder/Client overview · Admin mgmt · Non-custodial config · Audit log), states, responsiveness, acceptance. |
+| [`../admin-panel/README.md`](../admin-panel/README.md) | **Admin Panel — Plan** — purpose & audiences (Ops / Stakeholder / Client), access & security model, the non-custody read-only checklist, dashboards & sections, data sources, screen inventory, roadmap. |
 
 ### Upstream source material (outside this folder)
 
