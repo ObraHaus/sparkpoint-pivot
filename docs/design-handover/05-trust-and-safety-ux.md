@@ -1,10 +1,12 @@
-# 05 — Trust & Safety UX (Native Non-Custody, Visible & Provable)
+# 05 — Trust & Safety UX (Fully Self-Custodial, Visible & Provable)
 
-> **Handover doc** for Claude Design. This file specifies how SparkPoint makes **native non-custody** *visible and provable* in the UI — the trust spine the entire product rides on. It covers: the **persistent non-custodial badge** + tap-through **"prove-it" permissions panel**; the **Trust Center hub** (five self-custody guarantees, caps dashboard, pause-only multisig kill-switch status, audits & risk ratings); the **always-available self-service / escape-hatch withdrawal**; **default per-action signing**; the **"AI suggestion, you approve & sign"** labeling system; **friction-as-safety** (sign disabled until alerts acknowledged — Rabby pattern); and the **outcome log** as an accountability surface.
+> **Terminology (client-directed):** the canonical user-facing trust term is **"fully self-custodial"** — used on the persistent badge and in user-facing copy. *"Non-custodial / self-custodial"* remain accurate **technical** descriptors and are retained in architecture text below. Both name the same structural invariant.
+>
+> **Handover doc** for Claude Design. This file specifies how SparkPoint makes the product **fully self-custodial** *and visible/provable* in the UI — the trust spine the entire product rides on, and one that **holds on every network (Base and Sui) and across the Bridge**. It covers: the **persistent "Fully self-custodial" badge** + tap-through **"prove-it" permissions panel**; the **Trust Center hub** (five self-custody guarantees, caps dashboard, **governed pause-only multisig kill-switch** status, audits & risk ratings); the **always-available self-service / escape-hatch withdrawal (on every network)**; **default per-action signing**; the **"AI suggestion, you approve & sign"** labeling system; **friction-as-safety** (sign disabled until alerts acknowledged — Rabby pattern); and the **outcome log** as an accountability surface.
 >
 > **Read first:** `00-brief.md` (positioning, five guarantees, tone) and `01-information-architecture.md` (routes, app shell, badge/disclaimer-strip placement). This doc *deepens* the trust surfaces sketched in `01 §2.2–2.4`, `§3`, and the routes under `(app)/trust/*`, `(app)/automation/*`, `(app)/activity/*`. Where this doc and `01` disagree on placement, `01` wins; this doc is authoritative on **anatomy, states, copy, and acceptance criteria** for the trust surfaces.
 >
-> **Authoritative scope:** Single chain (Base), single launch vault (Aave Yield Vault, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user caps + geo-fence). Per-action user signing is the **default**; scoped, instantly-revocable session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take, move, or withhold user funds**. Multisig/timelock governs **pause only** and the timelocked, hard-capped (20%) fee rate, never fund movement.
+> **Authoritative scope:** **Multi-network — Base at launch, Sui as the designated fast-follow** — plus a dedicated **Bridge** (Base ↔ Sui); single launch vault (Aave Yield Vault on Base, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user + per-network/per-bridge caps + geo-fence). Per-action user signing is the **default**; scoped, instantly-revocable session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take, move, or withhold user funds** — *fully self-custodial on every network*. A **governed multisig/timelock governs pause only** (the Admin kill-switch is **2-of-3 multisig, propose-and-sign only**; execution requires the on-chain threshold) and the timelocked, hard-capped (20%) fee rate, **never fund movement and never a withdrawal block**. **Sui is non-EVM (Move-based)** — the Sui-side account/vault architecture and the bridge mechanism/provider are a **follow-on increment to be designed** (`docs/INCREMENT-multi-network.md`); this doc specifies the **product/UX/non-custody** obligations only and keeps the Base/EVM model intact.
 >
 > **Stack mapping target:** Next.js (App Router) + TailwindCSS + shadcn/ui. Component callouts map to shadcn primitives. **Do not write code.**
 
@@ -38,7 +40,7 @@
 | Element | Detail | shadcn primitive |
 |---|---|---|
 | **Status dot** | Live invariant health. Green = all invariants nominal (default). Amber = degraded mode / kill-switch active (pause-only) / session key near expiry. Never red — custody invariants are structural and cannot fail; red on this badge would falsely imply funds at risk. | colored dot inside `Badge` |
-| **Label** | Desktop: "Non-custodial". Mobile/condensed: shield/lock glyph only, label hidden ≥sm hidden. | `Badge` (outline/secondary variant) |
+| **Label** | Desktop: **"Fully self-custodial"** (canonical user-facing term; "non-custodial" is its technical synonym). Mobile/condensed: shield/lock glyph only, label hidden ≥sm hidden. | `Badge` (outline/secondary variant) |
 | **Caret / affordance** | Small chevron signaling "tap to open". | inline icon |
 | **Desktop hover summary** | On hover (pointer devices only): a compact `HoverCard` with the 5 guarantees as one-line checks + "Tap to see proof". | `HoverCard` |
 | **Trigger behavior** | Click/tap opens the **prove-it panel**: desktop = right `Sheet`; mobile = bottom `Sheet`. | `Sheet` |
@@ -47,12 +49,12 @@
 
 | State | Trigger | Visual | Copy |
 |---|---|---|---|
-| **Default / nominal** | All invariants nominal | Green dot, "Non-custodial" | Hover: "SparkPoint can't hold, move, or lose your money. Tap to prove it." |
+| **Default / nominal** | All invariants nominal | Green dot, "Fully self-custodial" | Hover: "SparkPoint can't hold, move, or lose your money — on any network. Tap to prove it." |
 | **Degraded mode** | Frontend/agent backend unhealthy | Amber dot; tooltip explains exit still works | "Some SparkPoint services are degraded. Your funds are unaffected — and you can still withdraw on-chain. Tap to exit." |
 | **Kill-switch active (pause-only)** | Multisig has paused new deployments | Amber dot + small "Paused" sub-label | "New deposits/rebalances are paused. Withdrawals are never paused. Tap for status." |
 | **Automation active** | ≥1 live session key | Green dot + small "Auto" chip | Hover lists active session keys + "[Revoke]". |
 | **Loading (connection resolving)** | Wallet/network resolving | Dot in muted/neutral with subtle pulse | "Checking your connection…" — badge remains tappable; opens panel in its own loading state. |
-| **Wrong network** | Connected to non-Base chain | Amber dot; panel cross-links wallet chip's switch-network action | "You're not on Base. Switch network to manage funds — withdrawals are unaffected." |
+| **Wrong network** | Connected to a network outside the supported set (Base / Sui) | Amber dot; panel cross-links the **network switcher** + wallet chip's switch-network action | "You're on an unsupported network. Switch to Base or Sui to manage funds — withdrawals are unaffected on every supported network." |
 
 **Treatment note for the "CANNOT" list elsewhere:** when listing capabilities SparkPoint lacks (e.g., "Cannot withdraw to its own address"), render as a **lock icon + muted strike or "✕ (good)"** in a reassuring neutral/green frame — *not* red. Red is reserved for user-facing loss/blocked states.
 
@@ -82,21 +84,21 @@ The badge **is** the touchpoint. Its mere persistence is the message; its tap-th
 
 ### 2.2 Anatomy — the two-column truth + five guarantees
 
-**Header:** "What SparkPoint can — and can't — do with your money." Sub: connected address (truncated) + "on Base" + a "Last verified on-chain: <relative time>" stamp with a refresh affordance.
+**Header:** "What SparkPoint can — and can't — do with your money." Sub: connected address (truncated, **per active network**) + the **active network** (Base / Sui) + a "Last verified on-chain: <relative time>" stamp with a refresh affordance. The panel reflects the **active network**; the non-custody guarantees hold identically on every supported network.
 
 **Section A — The five guarantees (each a `Card`/row with status + evidence link):**
 
 | Guarantee | One-liner | Live state shown | Evidence / action |
 |---|---|---|---|
 | **No admin withdrawal** | "Only you can send funds to an outside address." | ✓ verified (read-only check of vault permissions) | "[View on-chain proof]" → `/trust/permissions` row |
-| **Withdraw-always** | "Exit anytime — even if SparkPoint is offline." | ✓ available now | **[Withdraw now]** → `/trust/exit` (primary action in panel) |
+| **Withdraw-always (every network)** | "Exit anytime, on any network — even if SparkPoint is offline." | ✓ available now on each supported network | **[Withdraw now]** → `/trust/exit` (primary action in panel) |
 | **You own your keys** | "We never hold or generate your wallet." | ✓ user is sole admin signer | "[View signer set]" → permissions detail |
 | **Scoped, revocable automation** | "Auto-rebalance only within limits you set — revoke instantly." | List of active session keys (or "None active") | per key: scope chips + **[Revoke]** → `/automation/[id]` |
 | **Non-upgradeable, pause-only** | "We can pause new deposits; we can never move your money." | Vault: non-upgradeable ✓; kill-switch: <Active/Inactive> | "[View kill-switch status]" → `/trust` |
 
 **Section B — Two-column capability matrix (condensed):**
 
-- **CAN (green/neutral, with check):** read your wallet; propose strategies; simulate trades; route a transaction *for you to sign*; execute in-scope auto-rebalances *only if you granted a session key*; pause new deployments (multisig).
+- **CAN (green/neutral, with check):** read your wallet; propose strategies; simulate trades; route a transaction *for you to sign*; execute in-scope auto-rebalances *only if you granted a session key*; **propose & sign a pause of new deployments (governed 2-of-3 multisig; execution needs the on-chain threshold)**.
 - **CANNOT (lock icon, reassuring):** withdraw to a SparkPoint address; move funds without your signature; exceed your session-key caps/allowlist/slippage; block your withdrawals; upgrade the vault to change custody; access your keys.
 
 **Footer of panel:** persistent **[Withdraw / Exit]** and **[See full Trust Center]** (`/trust`). On mobile these are pinned at the bottom of the sheet.
@@ -187,7 +189,7 @@ All meters use **tabular numerals**, semantic fill (green→amber as capacity sh
 **Anatomy:** a status `Card` with:
 - **State pill:** "Inactive — system nominal" (green) / "Active — new deployments paused" (amber).
 - **Scope statement (always shown, both states):** two-line CAN/CANNOT — "Can: pause new deposits & rebalances. **Cannot: block your withdrawals, move your funds, or change custody.**"
-- **Controller transparency:** "Controlled by a <n-of-m> multisig" with signer addresses (explorer links) and any timelock parameter; "Governs **pause only**." Map: `Accordion` for signer detail.
+- **Controller transparency:** "Controlled by a <n-of-m> multisig" (the governed kill-switch is **2-of-3**) with signer addresses (explorer links) and any timelock parameter; "Governs **pause only**." Make the governance explicit: the Admin / Stakeholder panel can only **propose & sign** — **execution requires the on-chain multisig threshold**, and the switch can pause new deposits/rebalances but can **never block withdrawals or move funds**. Map: `Accordion` for signer detail.
 - **When active:** a prominent reassurance row + **[Withdraw now]** — withdrawing must be demonstrably available while paused.
 
 **States:** **inactive/nominal** (green, default); **active/paused** (amber banner at top of Trust Center + on badge; exit CTA elevated); **loading**; **read-error** (last-known state + "limits enforced on-chain" reassurance + retry). Acceptance: in the **active** state the design must still present a working withdraw path on the same screen.
@@ -271,6 +273,36 @@ The escape hatch is the *physical proof* of withdraw-always. Designing Path B to
 - [ ] Empty-state users still see the escape-hatch documentation (exit is shown *before* deposit).
 - [ ] `/unavailable` (geo/whitelist-blocked) still surfaces a working on-chain exit for existing positions.
 - [ ] Kill-switch "active" state explicitly affirms withdrawals are not paused and provides a working path.
+
+---
+
+## 4A. Multi-network non-custody & the Bridge (Base ↔ Sui)
+
+> **Client-directed scope amendment (multi-network).** The product is now **multi-network — Base at launch, Sui as the designated fast-follow** — with a dedicated **Bridge**. This section specifies the **trust/non-custody obligations** that the network switcher and Bridge must satisfy in the UI. (Sui is **non-EVM, Move-based** — no fabricated Sui contract spec; the Sui account/vault architecture and the bridge mechanism/provider are a **follow-on increment** — `docs/INCREMENT-multi-network.md`.)
+
+### 4A.1 Non-custody holds on every network
+
+- **Fully self-custodial on Base AND Sui.** Every guarantee in §§1–4 (no admin withdrawal, you own your keys, scoped/revocable automation, non-upgradeable/pause-only, withdraw-always) holds **per network**. The persistent badge and prove-it panel reflect the **active network** and never imply custody changes when switching.
+- **Withdraw-always (N2) holds on EVERY network.** The escape-hatch hub (§4) documents a working **on-chain, no-frontend** exit **for each supported network** (Base today; Sui when live), each backend-independent. A user can always exit on whichever network holds their funds — including funds already bridged.
+- **Proof status — Base proven, Sui a design requirement (do not over-claim).** Withdraw-always (N2) and the self-service self-custody exit are **PROVEN today on Base** (ERC-4626 redeem + the prove-it permissions read, backend-independent — §2.3, §4.2 Path B). On **Sui** they are a **design requirement** that the follow-on Sui (non-EVM / Move) custody increment MUST satisfy before the Sui self-custody claim is treated as demonstrated — the Sui self-service exit path and permissions read are **to-be-designed**. The product **commits to fully-self-custodial parity on Sui**; it is a **commitment pending that increment, not a shipped Base-equivalent proof**. The UI must present Sui withdraw-always / self-custody as a committed-but-pending guarantee (Base reads "Live"; Sui reads "Fast-follow"), never as already proven.
+- **Network switcher honesty (`01 §2`):** switching the active network updates the indicator and the **per-network wallet address**; it never moves funds and never changes what SparkPoint can/can't do.
+
+### 4A.2 Bridge non-custody (must hold in the build)
+
+The Bridge (`#/bridge` → `#/confirm/bridge`) moves assets Base ↔ Sui and is **fully self-custodial**:
+
+- **You sign a lock/burn on the SOURCE network; you receive funds in your OWN wallet on the DESTINATION network. SparkPoint NEVER custodies funds in transit.** The "how custody is preserved" explainer on the Bridge surface must state this in plain language and keep it true.
+- **Same trust gate as swaps/deposits.** A bridge action runs the **single simulation-backed confirmation + guardrail checklist + you-sign** gate exactly like any other state change — pre-bridge simulation reveal → balance changes (out on source / in on destination) → guardrail checklist → **sign-disabled-until-acknowledged** → "nothing moves until you sign" → success with a tracking link. No bespoke bridge sign UI.
+- **Caps:** per-network and per-bridge caps are shown and **wire to real policy-layer limits**; near-/at-cap states mirror §3.4 (reassuring, withdrawals unaffected).
+- **Honest in-flight state:** the post-sign "Bridge initiated" state must not imply SparkPoint holds the funds; it tracks an on-chain lock/burn → mint/release that the user controls end-to-end.
+
+### 4A.3 Acceptance criteria
+
+- [ ] Badge + prove-it panel reflect the **active network** and assert non-custody identically on Base and Sui.
+- [ ] Withdraw-always escape hatch documents a working on-chain, no-frontend exit **per supported network**, backend-independent.
+- [ ] The Bridge surface states the lock/burn-on-source → receive-in-your-own-wallet-on-destination model and that **SparkPoint never custodies funds in transit**.
+- [ ] Bridge actions route through the **same** simulation + guardrail + sign-disabled-until-acknowledged gate as swaps/deposits (no bespoke sign UI).
+- [ ] Per-network and per-bridge caps render as reassuring meters wired to policy limits; near/at-cap never blocks withdrawals.
 
 ---
 
@@ -431,9 +463,10 @@ The outcome log proves the *behavioral* side of trust (the AI is accountable), c
 ## 9. Cross-surface acceptance criteria (trust spine as a whole)
 
 - [ ] **≤1 tap, everywhere:** prove-it permissions panel AND withdraw-always escape hatch reachable in one tap from every authenticated screen, on desktop and mobile.
+- [ ] **Fully self-custodial on every network:** the badge term is **"Fully self-custodial"**; non-custody and **withdraw-always hold on Base AND Sui**, and the **Bridge** is fully self-custodial (lock/burn on source → receive in your own wallet on destination; never custodied in transit) and runs the same simulation + guardrail + sign gate.
 - [ ] **Provable everywhere:** every guarantee/claim terminates in an inspectable on-chain artifact (address, read result, audit, explorer link). No unbacked reassurance.
 - [ ] **Custody/exit survive degraded mode:** prove-it panel, Trust Center exit references, and `/trust/exit` Path B all render and function when the backend is offline.
-- [ ] **Pause-only is unambiguous:** kill-switch UI states pause-only scope in both states and never implies withdrawals can be blocked.
+- [ ] **Pause-only is unambiguous:** the **governed 2-of-3 multisig** kill-switch UI states pause-only scope in both states, shows that the Admin panel can only propose & sign (execution needs the on-chain threshold), and never implies withdrawals can be blocked.
 - [ ] **Caps are reassuring, not alarming:** caps render as remaining-capacity meters with explainers; at-cap states affirm withdrawals are unaffected.
 - [ ] **Consent is deliberate:** per-action signing is the default and labeled; Sign is gated behind acknowledgement of all warns; blocks cannot be overridden.
 - [ ] **Accountability is permanent:** outcome log shows wins and losses equally, each tied to its recommendation and tx.

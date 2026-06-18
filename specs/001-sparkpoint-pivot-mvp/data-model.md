@@ -48,6 +48,8 @@ It exists to make two things true at once:
 | E14 | Literacy Tip | `literacy_tips` + `literacy_tip_impressions` | OFFCHAIN | Postgres |
 | E15 | Beta Whitelist Entry | `beta_whitelist` | OFFCHAIN | Postgres |
 | E16 | Audit Log | `audit_logs` | OFFCHAIN | Postgres |
+| E17 | Network (multi-network) | `networks` | ONCHAIN config mirror | Postgres |
+| E18 | BridgeTransfer (cross-network) | `bridge_transfers` | OFFCHAIN intent → ONCHAIN-DERIVED legs | Postgres |
 | — | (supporting) Chat | `chat_messages` | OFFCHAIN | Postgres |
 | — | (supporting) Memory/RAG | `memory_chunks` | OFFCHAIN (pgvector) | Postgres |
 | — | (supporting) Frozen context | `context_snapshots` | OFFCHAIN snapshot of ONCHAIN-DERIVED | Postgres |
@@ -658,6 +660,53 @@ Records every policy verdict, cap check, kill-switch read, simulation, signature
 - VR-A1: `audit_logs` is append-only; the model MUST forbid UPDATE/DELETE (trigger-enforced) so the record is tamper-evident.
 - VR-A2 (SC-001/004/006): every `signature_requested`, `policy_verdict`, and `cap_check` on a state-changing action MUST produce an audit row; the absence of an audit row for an executed action is itself a flagged anomaly.
 - VR-A3: `payload` MUST never contain private keys, signatures, or session private keys (only their *existence*/hashes).
+
+---
+
+## 15a. E17 — Network  *(multi-network; ONCHAIN config mirror)* and E18 — BridgeTransfer  *(cross-network)*
+
+The multi-network amendment (plan §Multi-network architecture note) makes the product operate across more than one network. **Phase order: Base at launch (live), Sui as the designated fast-follow network**; networks beyond Base + Sui are out of scope. These two **light** entities carry the per-network state and the bridge ledger. Custody identity, balances, and PnL remain ONCHAIN/ONCHAIN-DERIVED per network exactly as in §4–§13 — these tables only add the network dimension and a bridge record; they are **never** on the custody/withdrawal path, and **withdraw-always (N2) holds on every network**.
+
+> **Per-network state.** Every per-network entity above (smart accounts, positions, balances, vault state, session keys) is scoped to a `network_id`. The Base stack is the EVM stack specified in §4–§13. **Sui is a non-EVM (Move) stack designed as a separate follow-on** (plan §Follow-on) and its account/vault tables are NOT modeled here; this section adds only the network registry + the bridge ledger needed at the product/UX level.
+
+**Table `networks`** *(small config mirror; one row per supported network)*
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | TEXT PK | Network id (`base`, `sui`). |
+| `name` | TEXT NOT NULL | Display name. |
+| `live` | BOOLEAN NOT NULL | `true` for Base at launch; `sui` flips live when the follow-on ships. |
+| `vm_kind` | ENUM `vm_kind` NOT NULL | `evm` (Base) \| `move` (Sui, non-EVM — separate follow-on stack). |
+| `chain_ref` | TEXT NULL | EVM chainId (e.g. `8453`) or the Sui chain identifier. |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Per-network balances.** Display balances are read per network from `indexed_positions` (§6) scoped by `network_id` (the active-network indicator + network switcher select which network's balances/address are shown); no new balance store is introduced — the network is just an added dimension. Custody-critical balances are still read fresh from each network's RPC (Sui equivalent for the Move stack), never from this mirror.
+
+**Table `bridge_transfers`** *(the cross-network move — OFFCHAIN intent over ONCHAIN-DERIVED legs)*
+
+A self-custodial Base ↔ Sui asset move: the user signs a **lock/burn on the source** network; funds are received in the **user's own wallet** on the **destination** network; SparkPoint **never** custodies funds in transit. Runs the same simulation + guardrail + you-sign gate as swaps/deposits.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | UUID v7 PK | |
+| `smart_account_address` | CITEXT NOT NULL | The user's account on the source network. |
+| `from_network` | TEXT NOT NULL FK→networks.id | Source network. |
+| `to_network` | TEXT NOT NULL FK→networks.id | Destination network (`from_network != to_network`). |
+| `asset` | TEXT NOT NULL | Bridged asset (e.g. USDC, ETH). |
+| `amount_raw` | NUMERIC(78,0) NOT NULL | Base units. |
+| `dest_recipient` | CITEXT NOT NULL | The **user's own** wallet on the destination network (never a SparkPoint address). |
+| `status` | ENUM `bridge_status` NOT NULL | `proposed` → `source_locked` → `dest_released` → `completed`; or `blocked` (policy/sim) \| `failed`. |
+| `source_tx_hash` | BYTEA NULL | Lock/burn tx on the source network (ONCHAIN-DERIVED). |
+| `dest_tx_hash` | BYTEA NULL | Mint/release tx on the destination network (ONCHAIN-DERIVED). |
+| `intent_bundle_id` | UUID NULL FK→intent_bundles | The unsigned, simulated, policy-approved proposal (per-network/per-bridge caps applied). |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**Validation rules.**
+- VR-N1: `networks` is a config mirror only; `live=false` networks (e.g. Sui until the follow-on ships) are presented in the design but carry no custody path here. The Move-stack custody model is the deferred follow-on (plan §Follow-on), not modeled in this doc.
+- VR-BT1 (non-custody): `dest_recipient` MUST be the user's own wallet on the destination network; no `bridge_transfers` field may name a SparkPoint-controlled recipient, and SparkPoint never holds the asset in transit (lock/burn on source → release to the user on destination).
+- VR-BT2 (N2): a bridge is **never** a precondition for withdraw on either network; withdraw-always holds independently on `from_network` and `to_network`.
+- VR-BT3 (gate parity): a bridge MUST pass the same `evaluate()` gate as any state-changing action — schema/allowlist/asset/recipient-pin/caps (per-network **and** per-bridge)/simulation/freshness — before it is signable; `blocked` bridges never become signable artifacts.
+- VR-BT4 (provability): the two legs (`source_tx_hash`, `dest_tx_hash`) are ONCHAIN-DERIVED and reconstructable from each network's events; Postgres is an accelerator, never the source of truth for the asset movement.
 
 ---
 

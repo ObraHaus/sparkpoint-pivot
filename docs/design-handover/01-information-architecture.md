@@ -2,7 +2,7 @@
 
 > **Handover doc** for Claude Design. This file defines the **sitemap / route map** (Next.js App Router segments), the **global app shell** (persistent non-custodial badge, wallet/connection status, AI disclaimer strip), how the **six core flows + supporting surfaces** connect, **primary vs secondary navigation** for desktop and mobile, and a **user-journey map** from first visit → onboarded → first deposit → ongoing management.
 >
-> **Scope reminder (authoritative):** Single chain (Base), single launch vault (Aave Yield Vault, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user caps + geo-fence), SRK non-essential. Per-action user signing is the **default**; scoped session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take user funds**. Design must make non-custody **visible and provable**, not promised.
+> **Scope reminder (authoritative):** **Multi-network — Base at launch, Sui as the designated fast-follow** — plus a dedicated **Bridge** (Base ↔ Sui) with a **persistent network switcher** in the authenticated shell; single launch vault (Aave Yield Vault on Base, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user + per-network/per-bridge caps + geo-fence), SRK non-essential. Per-action user signing is the **default**; scoped session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take user funds**. Design must make the product **fully self-custodial** and **visible/provable**, not promised — on **every network**, and across the Bridge. *(Client-directed amendment, supersedes the original "Base only"; Sui is **non-EVM (Move)** — the Sui account/vault architecture and the bridge mechanism are a **follow-on increment**, `docs/INCREMENT-multi-network.md`. Networks beyond Base + Sui are out of scope.)*
 >
 > **Design thesis to encode in IA:** *AI proposes — deterministic guardrails + you dispose — and the protocol never holds your money.* Two affordances must be reachable from **anywhere** in ≤1 tap: **(1) "prove-it" permissions panel** (what SparkPoint can/cannot do) and **(2) withdraw-always escape hatch** (exit without us).
 >
@@ -14,7 +14,7 @@
 
 1. **Non-custody is global, not a page.** The non-custodial badge and the escape hatch live in the **app shell**, present on every authenticated route — never buried in settings.
 2. **Chat is the home/hub.** The Chat AI Assistant is the primary surface and the connective tissue; structured cards in chat **deep-link into** the dedicated flows (Portfolio, Strategies, Vault, Confirmation) and back.
-3. **Every state-changing path funnels through one Confirmation surface.** Deposit, withdraw, swap, and rebalance all converge on the same Execution Confirmation pattern (simulation + guardrail checklist + user sign). No bespoke per-flow signing UI.
+3. **Every state-changing path funnels through one Confirmation *pattern* (one component, two mount points).** Deposit, withdraw, swap, **bridge**, and rebalance all converge on the same Execution Confirmation pattern (simulation → balance changes → guardrail checklist → ack-gated sign). **One `ConfirmFlow` component**; **chat-initiated** deposit/swap/bridge render it **INLINE in the chat thread (no navigation)**, while the standalone **`/confirm/[txIntentId]` routes remain** for non-chat entry points (vault page, command palette, etc.). No bespoke per-flow signing UI; the trust gate (sim/guardrails/ack/"nothing moves until you sign") is identical in both mounts. *(Client-directed: inline-in-chat confirm is a UX-surface change only — the sign-disabled-until-acknowledged invariant and non-custody are preserved 1:1.)*
 4. **Two-tier nav.** Primary nav = the daily loop (Chat, Portfolio, Vault, Strategies). Secondary nav = trust/control surfaces (Trust Center, Automation, Outcome Log, Literacy, SRK, Settings, Notifications).
 5. **Gated-by-default.** Most routes require: connected wallet **and** whitelist pass **and** geo pass. The IA must define what unconnected / not-whitelisted / geo-blocked users see at each route (see §3 and §8).
 6. **Withdraw-always survives degraded mode.** If agents/frontend are degraded, the IA must still route users to a working withdraw path (and surface the on-chain self-service exit). Custody and exit are never gated on our backend being healthy.
@@ -38,8 +38,12 @@ app/
 │
 ├── (public)/                       # PUBLIC SHELL — no wallet required, marketing + entry
 │   ├── layout.tsx                  #   slim public header + footer; AI disclaimer in footer
-│   ├── page.tsx                    # "/"  Landing — "AI hedge fund" headline, NON-CUSTODY anchor,
-│   │                               #        primary CTA: Connect / Enter app
+│   ├── page.tsx                    # "/"  Spark Core Landing — animated MARKETING entry page;
+│   │                               #        "AI hedge fund" headline, FULLY-SELF-CUSTODIAL anchor,
+│   │                               #        animated "Spark Core" centerpiece; primary CTA: Connect /
+│   │                               #        Enter app. (Flavor selector Ember/Plasma/Constellation is
+│   │                               #        an OPEN client choice — not locked. Distinct from the
+│   │                               #        in-app `landing`/`connect` surfaces.)
 │   ├── how-it-works/page.tsx       # "/how-it-works" — AI proposes / you dispose explainer
 │   ├── trust/page.tsx              # "/trust" — PUBLIC trust overview (no account data); links
 │   │                               #        to audits, non-custody guarantees, on-chain addresses
@@ -81,14 +85,27 @@ app/
     │   ├── page.tsx                # "/strategies" — ranked vs mandate, "why this?"
     │   └── [recId]/page.tsx        # "/strategies/[recId]" — recommendation detail + rationale
     │
-    ├── vault/                      # FLOW 5 — Vault Deposit / Withdraw (single Aave Yield Vault)
+    ├── vault/                      # FLOW 5 — Vault Deposit / Withdraw (single Aave Yield Vault, Base)
     │   ├── page.tsx                # "/vault" — overview: net APY, shares, caps meter, your position
     │   ├── deposit/page.tsx        # "/vault/deposit"
-    │   └── withdraw/page.tsx       # "/vault/withdraw" — withdraw-always entry (manual path)
+    │   └── withdraw/page.tsx       # "/vault/withdraw" — withdraw-always entry (manual path, every network)
+    │
+    ├── bridge/                     # MULTI-NETWORK — Bridge (Base <-> Sui)  [client-directed add]
+    │   └── page.tsx                # "/bridge" (#/bridge) — asset picker, from/to network + flip,
+    │                               #        amount/max, route/fee/ETA preview, "how custody is
+    │                               #        preserved" explainer. CTA -> /confirm/bridge. FULLY
+    │                               #        SELF-CUSTODIAL: lock/burn on source, receive in your own
+    │                               #        wallet on destination; never custodied in transit.
     │
     ├── confirm/                    # FLOW 6 — Execution Confirmation (shared by ALL state changes)
     │   └── [txIntentId]/page.tsx   # "/confirm/[txIntentId]" — Tenderly-style sim + guardrail
-    │                               #        checklist + sign (sign disabled until acks)
+    │                               #        checklist + sign (sign disabled until acks). Variants
+    │                               #        include deposit/withdraw/swap/premium/BRIDGE
+    │                               #        (#/confirm/bridge). NOTE: chat-initiated deposit/swap/
+    │                               #        bridge render this SAME ConfirmFlow INLINE in chat (no
+    │                               #        navigation); these routes remain for NON-CHAT entry
+    │                               #        points (vault page, command palette, etc.). One
+    │                               #        ConfirmFlow component, two mount points (see §2.5, §4.2).
     │
     ├── trust/                      # SUPPORTING — Trust Center (account-aware)
     │   ├── page.tsx                # "/trust" — caps dashboard, kill-switch status, whitelist, audits
@@ -164,7 +181,7 @@ The authenticated shell is identical across all core + supporting surfaces. Thre
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ TOP BAR                                                                        │
 │ [Spark logo]   [Primary nav: Chat · Portfolio · Vault · Strategies]            │
-│                       [● Non-custodial ▸] [Wallet 0x12…ab ▸] [⌘K] [🔔] [avatar]│
+│        [● Fully self-custodial ▸] [◆ Network: Base ▾] [Wallet 0x12…ab ▸] [⌘K] [🔔] [avatar]│
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ AI DISCLAIMER STRIP  — "AI suggestion. You approve & sign. SparkPoint never    │
 │                         holds your funds. [Prove it] [Exit anytime]"  (dismiss?)│
@@ -185,18 +202,19 @@ The authenticated shell is identical across all core + supporting surfaces. Thre
 
 | Element | Where | Behavior | shadcn mapping | Non-custody role |
 |---|---|---|---|---|
-| **Non-custodial badge** | Top bar, right cluster, left of wallet status | Status dot (green = non-custodial, all invariants nominal). Tap → opens **"prove-it" permissions panel** (see below). | `Badge` trigger → `Popover`/`Sheet`; `HoverCard` for desktop summary | THE persistent proof affordance. ≤1 tap to "what we can/can't do." |
-| **Wallet / connection status** | Top bar, right cluster | Shows connected address (truncated) + network (Base) + smart-account state. Tap → menu: copy address, view on explorer, switch wallet, disconnect, **"View exact permissions"** (→ `/trust/permissions`). Surfaces wrong-network / disconnected / pending states. | `DropdownMenu` + `Badge` (network) | Reinforces user-owned keys; entry to permissions + disconnect. |
+| **"Fully self-custodial" badge** | Top bar, right cluster, left of the network switcher + wallet status | Status dot (green = fully self-custodial, all invariants nominal). Label reads **"Fully self-custodial"** (canonical user-facing term; "non-custodial" is its technical synonym). Tap → opens **"prove-it" permissions panel** (see below). | `Badge` trigger → `Popover`/`Sheet`; `HoverCard` for desktop summary | THE persistent proof affordance. ≤1 tap to "what we can/can't do." Asserts non-custody on the **active network**. |
+| **Network switcher (persistent)** | Top bar, right cluster, **next to the wallet pill** | **Multi-network:** shows the active network (Base / Sui). Tap → menu to switch network; switching updates the **active-network indicator** and the **per-network wallet address**, and re-scopes per-network views. Base is live; Sui is the designated fast-follow. **Switching never moves funds and never changes what SparkPoint can/can't do.** | `DropdownMenu` + `Badge` (active network) | Client-directed multi-network control; present on every `(app)` route. |
+| **Wallet / connection status** | Top bar, right cluster | Shows connected address (truncated, **per active network**) + smart-account state. Tap → menu: copy address, view on explorer, switch wallet, disconnect, **"View exact permissions"** (→ `/trust/permissions`). Surfaces wrong-network (outside Base/Sui) / disconnected / pending states. | `DropdownMenu` + `Badge` (network) | Reinforces user-owned keys; entry to permissions + disconnect; works alongside the network switcher. |
 | **AI disclaimer strip** | Full-width, directly under top bar | Persistent (not a one-time toast). Copy: *"AI suggestion — you approve & sign. SparkPoint never holds your funds."* with two inline links: **[Prove it]** (→ permissions panel) and **[Exit anytime]** (→ `/trust/exit`). Collapsible to a thin line on scroll; never fully removable. | `Alert` (info variant) pinned; `Collapsible` for compact form | Encodes "AI proposes, you dispose" + escape hatch on every screen. |
 | **Command menu** | `⌘K` | Jump to any route/flow; "Withdraw now", "Prove it", "Revoke automation" as top actions. | `Command` (cmdk) | Fast path to exit + permissions from anywhere. |
 | **Notifications** | Bell icon | Unread count; opens `/notifications` or a `Sheet` preview. | `Sheet` + `Badge` | Surfaces guardrail blocks, caps near-limit, session-key expiry, outcome updates. |
 
 ### 2.3 The "prove-it" permissions panel (global, badge-triggered)
 
-Opens as a **`Sheet`** (mobile bottom sheet, desktop right sheet) from the non-custodial badge. Summarizes the **five non-custody guarantees** as live, checkable claims, then links into the full Trust Center:
+Opens as a **`Sheet`** (mobile bottom sheet, desktop right sheet) from the **"Fully self-custodial"** badge. Summarizes the **five non-custody guarantees** as live, checkable claims (asserted on the **active network**), then links into the full Trust Center:
 
 - **No admin withdrawal** — "Only you can send funds out." (link: on-chain proof)
-- **Withdraw-always** — "Exit anytime, even if we're offline." → **[Withdraw now]** (→ `/trust/exit`)
+- **Withdraw-always (every network)** — "Exit anytime, on any network, even if we're offline." → **[Withdraw now]** (→ `/trust/exit`)
 - **You own your keys** — "We never hold or generate your wallet."
 - **Scoped, revocable automation** — shows active session keys + **[Revoke]** (→ `/automation`)
 - **Non-upgradeable, pause-only** — "We can pause new deposits; we can never move your money."
@@ -205,7 +223,7 @@ Each row links to its on-chain evidence in `/trust/permissions`. **This panel is
 
 ### 2.4 Mobile shell
 
-- **Top bar (condensed):** [logo] … [● badge] [wallet chip] [🔔]. Tapping the badge opens the **bottom sheet** prove-it panel.
+- **Top bar (condensed):** [logo] … [● badge] [◆ network ▾] [wallet chip] [🔔]. Tapping the badge opens the **bottom sheet** prove-it panel; the **network switcher** stays reachable next to the wallet chip (multi-network: Base / Sui).
 - **AI disclaimer strip:** condensed to one line with a chevron to expand; persists.
 - **Primary nav → bottom tab bar** (4 tabs): **Chat · Portfolio · Vault · Strategies**. Chat is the default/center-weighted tab.
 - **Secondary nav → "More" / hamburger** (`Sheet` drawer): Trust Center, Automation, Outcome Log, Learn, SRK, Settings, Notifications — with **Withdraw / Exit** pinned to the top of the drawer for one-tap reach.
@@ -234,6 +252,7 @@ The four surfaces a user touches every session.
 
 | Label | Route | Group |
 |---|---|---|
+| **Bridge** | `/bridge` | Multi-network (Base ↔ Sui) |
 | **Trust Center** | `/trust` | Trust |
 | **Automation** | `/automation` | Control |
 | **Outcome Log** | `/activity` | Trust (proof loop) |
@@ -283,8 +302,8 @@ The four surfaces a user touches every session.
 ### 4.2 Key connective rules
 
 1. **Mandate is the spine.** `(1) Onboarding` produces the human-readable **mandate** stored on the account. `(4) Strategies` ranks **vs the mandate**; `(3) Portfolio`'s risk panel reads against it; Chat references it. Editing it lives at `/settings/mandate` (re-runs the review/confirm steps).
-2. **Chat is the hub; cards deep-link.** Chat **Recommendation cards** link to `/strategies/[recId]`. Chat **Action cards** (deposit/withdraw/swap) create a `txIntent` → `/confirm/[txIntentId]`. Chat **Confirmation cards** mirror the confirm surface inline but always offer "open full confirmation." (≤2 actions per card — OpenAI Apps SDK convention.)
-3. **All state changes converge on `/confirm`.** Vault deposit/withdraw, accepted strategy, chat action, and automation-proposed rebalance all build a `txIntent` and route to `/confirm/[txIntentId]`. Sign happens **only** here (or inline mirror), and **only after** guardrail acks.
+2. **Chat is the hub; cards deep-link.** Chat **Recommendation cards** link to `/strategies/[recId]`. Chat **Action cards** (deposit/swap/**bridge**) create a `txIntent`. **Chat-initiated actions confirm INLINE:** the full `ConfirmFlow` (sim → balance changes → guardrail checklist → ack-gated sign → success) renders **in the chat thread, no navigation** — the standalone `/confirm/[txIntentId]` route remains available for non-chat entry. (≤2 actions per card — OpenAI Apps SDK convention.)
+3. **All state changes converge on one ConfirmFlow.** Vault deposit/withdraw, accepted strategy, chat action, **bridge**, and automation-proposed rebalance all build a `txIntent` and run the **same `ConfirmFlow`** — **inline in chat** for chat-initiated intents, or at **`/confirm/[txIntentId]`** for non-chat entry points (vault page, ⌘K, strategy accept). Sign happens **only** through this flow, in either mount, and **only after** guardrail acks. One component, two mount points.
 4. **Acceptance writes to Outcome Log.** Accepting a recommendation (via `/strategies/[recId]` or a chat card) → executes via `/confirm` → creates an **Outcome Log** entry (`/activity/[entryId]`) linked to the originating `recId`, updated over time with realized PnL. Losses are shown as plainly as wins.
 5. **Trust Center is reachable from everywhere** (badge, disclaimer strip, secondary nav, wallet menu). `/trust/permissions` (prove-it) and `/trust/exit` (escape hatch) are the two privileged children.
 6. **Automation wraps `/confirm`, not bypasses it conceptually.** Granting a session key (`/automation/grant`) is itself a signed action routed through `/confirm`. In-scope automated actions then execute under the on-chain policy; each still appears in `/activity` and `/notifications`. **Revoke** is instant from `/automation/[sessionKeyId]` and from the prove-it panel.
@@ -299,7 +318,8 @@ The four surfaces a user touches every session.
 | Portfolio `/portfolio` | Primary nav; chat "see portfolio"; vault position; notifications |
 | Strategies `/strategies` | Primary nav; chat recommendation card; portfolio risk panel ("improve this"); notifications |
 | Vault `/vault` | Primary nav; chat action card; strategy "accept"; portfolio allocation |
-| Confirm `/confirm/[id]` | **Only** contextually — from vault deposit/withdraw, accepted strategy, chat action, automation grant/rebalance |
+| Bridge `/bridge` | Secondary nav; network switcher; chat **bridge intent** ("bridge", "sui", "cross-chain"); ⌘K |
+| Confirm (ConfirmFlow) | **Only** contextually — **inline in chat** for chat-initiated deposit/swap/bridge; or at **`/confirm/[id]`** from vault deposit/withdraw, accepted strategy, **bridge** (`/confirm/bridge`), automation grant/rebalance, ⌘K |
 | Trust Center `/trust` | Non-custodial badge; disclaimer strip; wallet menu; secondary nav; footer; command menu |
 | Automation `/automation` | Secondary nav; prove-it panel; settings/security; chat ("automate this?") |
 | Outcome Log `/activity` | Secondary nav; recommendation detail ("track outcome"); notifications; portfolio position |
@@ -313,7 +333,7 @@ The four surfaces a user touches every session.
 ## 5. User-journey map (first visit → onboarded → first deposit → ongoing)
 
 ### Stage A — First visit (unauthenticated, public shell)
-- **Entry:** `/` (landing). Headline: AI hedge fund; anchored by **NATIVE NON-CUSTODY**.
+- **Entry:** `/` — the animated **Spark Core marketing Landing**. Headline: AI hedge fund; anchored by **FULLY SELF-CUSTODIAL** framing. (Flavor selector Ember/Plasma/Constellation is an open client choice.)
 - **Goal:** establish trust + convert to connect. Public Trust (`/trust`), How-it-works, Security all reachable **before** connecting.
 - **CTA:** "Connect wallet" → `/connect`. Beta-gated, so a **[Join waitlist]** path (`/waitlist`) exists for non-whitelisted visitors.
 - **Exit/branch:** geo-fence may apply at the app boundary, not the marketing site.
@@ -339,7 +359,7 @@ The four surfaces a user touches every session.
 ### Stage E — Ongoing management (loop across Flows 2–6 + supporting)
 - **Monitor:** `/portfolio` (PnL, risk panel) and `/vault` (accruing yield, shares).
 - **Decide:** `/strategies` ranks recs vs mandate with "why this?"; or ask in `/chat`.
-- **Act:** accept rec / deposit / withdraw / swap → `/confirm` → sign.
+- **Act:** accept rec / deposit / withdraw / swap / **bridge (Base ↔ Sui)** → `ConfirmFlow` (inline in chat for chat-initiated, or `/confirm`) → sign.
 - **Prove:** non-custodial badge → prove-it panel → `/trust/permissions`; review caps + kill-switch in `/trust`.
 - **Automate (optional, P3):** `/automation/grant` (scope + cap + expiry) → signed via `/confirm`; **revoke instantly** anytime.
 - **Account for results:** `/activity` outcome log shows each acted-on rec's realized PnL — **wins and losses** — linked back to the rec.
@@ -370,7 +390,7 @@ The IA must define what renders at each route under non-happy-path conditions. T
 | Condition | What the IA does | Escape hatch preserved? |
 |---|---|---|
 | **Wallet disconnected** | App routes redirect to `/connect` (preserve intended route as `?next=`). Public + Trust remain viewable. | Public `/trust` + on-chain exit docs visible. |
-| **Wrong network** | Top-bar wallet status shows "Switch to Base"; blocking inline prompt, not a separate route. | Yes — exit instructions remain. |
+| **Wrong network** | Network switcher + top-bar wallet status show "Switch to a supported network (Base / Sui)"; blocking inline prompt, not a separate route. | Yes — exit instructions remain on every supported network. |
 | **Not whitelisted (beta)** | `/verify` → `/unavailable`; app routes blocked. | **Yes** — `/unavailable` surfaces withdraw-always for existing users. |
 | **Geo-blocked** | App boundary blocks `(app)` + `(onboarding)`; routes to `/unavailable`. | **Yes** — withdraw-always preserved (N2). |
 | **Agents/backend degraded** | Chat, Strategies, Portfolio show **stale/unavailable** banners; **no execution on stale data**. `/vault` + `/confirm` may warn. | **Yes** — `/vault/withdraw` and `/trust/exit` keep a working manual + on-chain path. |
@@ -390,14 +410,15 @@ The IA must define what renders at each route under non-happy-path conditions. T
 | Top bar nav (desktop) | `NavigationMenu` / Tailwind nav + `Button` (ghost) |
 | Bottom tab bar (mobile) | custom Tailwind tab bar (icon `Button`s) |
 | Secondary nav rail | `Collapsible` + `ScrollArea` + nav list |
-| Non-custodial badge | `Badge` (trigger) → `Sheet` (prove-it) / `HoverCard` (desktop hint) |
+| "Fully self-custodial" badge | `Badge` (trigger) → `Sheet` (prove-it) / `HoverCard` (desktop hint) |
 | Prove-it permissions panel | `Sheet` (right desktop / bottom mobile) + `Accordion` (per-guarantee) |
+| Network switcher (persistent, Base/Sui) | `DropdownMenu` + `Badge` (active network) |
 | Wallet / connection status | `DropdownMenu` + `Badge` (network) + `Avatar` |
 | AI disclaimer strip | `Alert` (info) pinned + `Collapsible` |
 | Command menu | `Command` (cmdk) inside `Dialog` |
 | Notifications | `Sheet` preview + `Badge` count; `/notifications` list |
 | Toasts (success/blocked) | `Sonner` / `Toast` |
-| Confirmation surface scaffold | `Card` + `Checkbox` (guardrail acks) + `Button` (disabled until acks) + `AlertDialog` for final sign |
+| Confirmation surface scaffold (`ConfirmFlow`) | `Card` + `Checkbox` (guardrail acks) + `Button` (disabled until acks) + `AlertDialog` for final sign — **one component, mounted inline in chat (chat-initiated) or on `/confirm/[txIntentId]` (non-chat)** |
 | Loading states | `Skeleton` per `loading.tsx` |
 | Errors | `Alert` (destructive) per `error.tsx` |
 
@@ -408,9 +429,9 @@ The IA must define what renders at each route under non-happy-path conditions. T
 A design satisfies this IA doc when:
 
 1. **Sitemap completeness.** Every route in §1 has a designed screen (or an explicit "inherits shell / state-only" note), and every one of the six core flows + every supporting surface (Trust Center, Automation, Outcome Log, Learn, SRK, Settings, Notifications) maps to a route here.
-2. **Persistent non-custody shell.** The non-custodial badge, wallet/connection status, and AI disclaimer strip appear on **100% of `(app)` routes** in both desktop and mobile shells.
+2. **Persistent non-custody + network shell.** The **"Fully self-custodial"** badge, the **persistent network switcher** (Base/Sui), wallet/connection status, and AI disclaimer strip appear on **100% of `(app)` routes** in both desktop and mobile shells.
 3. **One-tap proof + exit.** From any authenticated screen, the **prove-it permissions panel** and a **withdraw/exit path** are each reachable in **≤1 tap** (badge, disclaimer strip, command menu, and mobile drawer/sheet all expose them).
-4. **Single confirmation funnel.** Deposit, withdraw, swap, accepted-strategy, and automation grant all route through `/confirm/[txIntentId]`; **no flow has a bespoke sign UI**, and sign is disabled until guardrail acks complete.
+4. **Single confirmation funnel (one component, two mounts).** Deposit, withdraw, swap, **bridge**, accepted-strategy, and automation grant all run the **same `ConfirmFlow`** — **inline in chat** for chat-initiated intents and at **`/confirm/[txIntentId]`** for non-chat entry points; **no flow has a bespoke sign UI**, and sign is disabled until guardrail acks complete in either mount.
 5. **Mandate spine.** Onboarding produces a mandate that visibly drives Strategies ranking, Portfolio risk panel, and Chat; editing it is reachable from Settings and re-runs review/confirm.
 6. **Proof loop closed.** Every acted-on recommendation has a path to an Outcome Log entry (`/activity/[entryId]`) linked to its `recId`, with realized PnL shown for both wins and losses.
 7. **Two-tier nav defined for both platforms.** Primary nav = Chat/Portfolio/Vault/Strategies (top bar desktop, bottom tabs mobile). Secondary = Trust/Automation/Outcome Log/Learn/SRK/Settings/Notifications (left rail desktop, drawer mobile), with Withdraw/Exit + Prove-it pinned in both.

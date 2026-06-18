@@ -4,6 +4,7 @@
 **Standards:** ERC-4337 (EntryPoint **v0.7**, `PackedUserOperation`) · ERC-4626 (vault) · ERC-20.
 **Tooling:** Foundry. **Solidity:** `^0.8.24` (`evm_version = cancun`).
 **Status:** Phase 1 interface sketch. Signatures + NatSpec + events + invariants are normative; bodies are illustrative.
+**Scope:** This document covers the **Base / EVM** contracts only. The product is now multi-network (Base at launch + Sui fast-follow + a non-custodial bridge — plan §Multi-network architecture note); the bridge's EVM-side interface + non-custody invariants are sketched in §7a, while the **Sui (non-EVM / Move) stack and the bridge mechanism/provider are a separate follow-on** and are NOT specified here.
 
 ---
 
@@ -583,6 +584,24 @@ function accrueFee() public returns (uint256 feeShares) {
 
 ---
 
+## 7a. Bridge (cross-network) — interface + non-custody invariants  *(EVM side; Sui side is non-EVM/Move and OUT OF SCOPE here)*
+
+The product is now **multi-network** (plan §Multi-network architecture note; constitution v1.2.0): **Base at launch (live), Sui as the designated fast-follow network**, with a **non-custodial bridge** to move assets Base ↔ Sui. This section sketches the **EVM-side** bridge contract surface and the non-custody invariants the build must hold. It deliberately specifies the bridge only at the **interface + invariant** level; the concrete lock-mint mechanism, route, and provider are a **separate follow-on** (see the note at the end of this section and plan §Follow-on / tasks Phase 9b).
+
+**Non-custody invariants (the bridge must hold these by construction):**
+
+- **Lock/burn on source, mint/release to the user's OWN wallet on destination — never custodied.** The user signs a **lock or burn on the source** network; the asset is **minted/released to the user's own wallet on the destination** network. SparkPoint **never** holds the asset in transit and no SparkPoint-controlled address is ever a recipient or an intermediary that can divert funds. The destination recipient is **pinned to the user's own destination wallet** (the off-chain policy layer rejects any other recipient; the on-source contract forces it).
+- **Withdraw-always (N2) holds on every network.** The bridge is **never** a precondition for withdraw on either network; a stuck/abandoned bridge can never trap the user's funds on either side, and the source-network withdraw path is unaffected by bridge state.
+- **No admin diversion (N1-equivalent).** No admin/governance selector on the EVM-side bridge contracts may move a user's locked/burned funds to a SparkPoint or arbitrary external address; the only release path is mint/release to the pinned user destination recipient.
+- **Per-bridge (and per-network) caps.** Bridge amounts are bounded by per-bridge caps wired to the same policy limits as deposits/swaps (in addition to the per-network caps), enforced before signing and re-checked on-chain where applicable.
+- **Same simulation + you-sign gate.** A bridge runs the **same** deterministic `evaluate()` gate + Tenderly (source-leg) simulation + guardrail checklist + user-signature chokepoint as swaps/deposits; an out-of-policy or unsimulatable bridge never becomes a signable artifact.
+
+**EVM-side interface sketch (illustrative; finalized in the follow-on):** a stateless, allowlist-style bridge adapter analogous to `AaveV3Adapter`/`AerodromeAdapter` — it names only the vetted bridge endpoint + selector, forces the source-side caller to the user's account, pins the declared destination recipient to the user's own wallet, and emits an `IntentLog`-tagged event for cross-network attribution. It exposes **no** admin asset-movement path. The minimal `(target, selector)` surface added for bridging is, like the vault adapters, the **only** code naming the bridge endpoint, so the allowlist stays auditable in one place.
+
+> ⚠️ **SUI-SIDE CONTRACTS ARE OUT OF SCOPE FOR THIS DOC (follow-on).** This document specifies the **EVM (Base)** contracts only. **Sui is non-EVM (Move-based)** and does **not** use ERC-4337 / ERC-4626 / Solidity — its account/vault contracts and the Sui half of the bridge **cannot** be expressed here and are a **separate technical design** (plan §Follow-on; tasks Phase 9b FE-T001/FE-T002). **No Move code or detailed Sui contract spec is invented here.** Likewise, the concrete cross-network bridge **mechanism/provider** (lock-mint route, provider/route selection) is part of that follow-on; this section fixes only the EVM-side interface shape and the non-custody invariants the eventual design must satisfy.
+
+---
+
 ## 8. Traceability
 
 | Contract / property | FR / SC | Invariant | Guardrail |
@@ -597,5 +616,6 @@ function accrueFee() public returns (uint256 feeShares) {
 | Caps in `maxDeposit`/`deposit` | FR-025, SC-009 | caps | G2 |
 | `(target,selector)` allowlist | FR-016/027, SC-006 | — | G5 |
 | Public-view roles for Trust Center | FR-038, SC-012 | N1/N5 provability | — |
+| Bridge (EVM side): lock/burn on source → mint/release to user's own destination wallet, never custodied; per-bridge caps; same sim+sign gate | plan §Multi-network | **N1, N2** (every network) | G2, G4, G5 |
 
 **Net:** custody guarantees are enforced at the bytecode/modifier level — pause never touches withdraw, no admin asset-movement selector exists, session scope is checked deterministically in `validateUserOp` against account-associated storage, the protocol allowlist is unreachable to bypass, and the vault is hard non-upgradeable with governance limited to PAUSE plus a single timelocked, hard-capped (≤20%) performance-fee rate that touches only forward yield-above-HWM. The profit-only performance fee is realized as fail-open fee-share dilution to a non-privileged recipient, so it never reaches principal and the withdraw-always path is fully independent of it.

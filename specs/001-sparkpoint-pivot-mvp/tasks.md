@@ -332,6 +332,49 @@ description: "Task list for SparkPoint Pivot — AI-Native Onchain Hedge Fund (L
 
 ---
 
+## Phase 9a: Multi-Network (Base → Sui) + Bridge + In-Chat Inline Confirm (client-directed scope amendment)
+
+**Purpose**: Realize the client-directed **multi-network** amendment (plan §Multi-network architecture note; constitution v1.2.0) at the **product / UX / non-custody level on the existing Base EVM stack**, plus the in-chat inline confirm surface. **Phase order: Base at launch (live), Sui as the designated fast-follow network**; networks beyond Base + Sui are out of scope. The Sui (non-EVM / Move) account/vault stack and the concrete bridge mechanism/provider contracts are a **separate follow-on** (see the FOLLOW-ON epic below) and are NOT broken into detailed tasks here.
+
+**Non-custody discipline (must hold)**: the bridge stays **fully self-custodial** — user signs a lock/burn on the **source** network, receives funds in **their own wallet** on the **destination** network, SparkPoint **never** custodies in transit; **withdraw-always (N2) holds on every network**; bridge actions run the **same** simulation + guardrail checklist + you-sign gate as swaps/deposits, with per-network **and** per-bridge caps wired to policy limits. The in-chat confirm is a **UX-surface change only** — the trust gate and the sign-disabled-until-acknowledged invariant are preserved 1:1.
+
+**Maps to**: plan §Multi-network architecture note + §In-chat inline confirm; data-model E17 (Network), E18 (BridgeTransfer); contracts/ "Bridge (cross-network)" note. User-facing trust term: **"fully self-custodial."**
+
+### Network switcher + per-network state (frontend)
+
+- [ ] T111 [P] **Network switcher** in the authenticated top bar (next to the wallet pill) in `apps/web/components/NetworkSwitcher.tsx` + `apps/web/lib/chain/networks.ts`: persistent control listing supported networks from `networks` (E17; `base` live, `sui` presented per phase order), switching sets the active-network indicator and the **per-network wallet address**; networks beyond Base + Sui are out of scope per plan §Multi-network architecture note
+- [ ] T112 [P] **Per-network state** wiring in `apps/web/lib/chain/` + the authenticated shell `apps/web/app/app/layout.tsx`: scope per-network balances/positions/address by active `network_id`, custody-critical balances still read fresh per-network from RPC (never the mirror); user-facing trust copy reads **"fully self-custodial"** (NonCustodyBadge), keeping "non-custodial/self-custodial" only in technical/architecture text per data-model §15a (VR-N1)
+- [ ] T113 [P] `networks` registry migration `services/agent/migrations/0007_networks.sql`: `networks` (id/name/live/vm_kind/chain_ref) per data-model.md §15a (E17), seeded with `base` (evm, live) and `sui` (move, not-yet-live)
+
+### Bridge surface + confirm/bridge gate (frontend + agent + data)
+
+- [ ] T114 [US-bridge] **Bridge surface** `apps/web/app/app/bridge/page.tsx` (route `#/bridge`): asset picker (USDC/ETH), from/to network selectors with a flip control, amount + max, route/fee/ETA preview, per-network + per-bridge caps meter, and a "how custody is preserved" explainer (lock/burn on source → received in your own wallet on destination → never custodied); CTA routes to `/confirm/bridge`
+- [ ] T115 [US-bridge] **`/confirm/bridge` sign gate** reusing the single `ConfirmFlow`/`ExecutionDrawer` chokepoint in `apps/web/app/app/confirm/bridge/page.tsx`: pre-bridge simulation reveal → balance changes (out on source / in on destination) → guardrail checklist (incl. N1 recipient pinned to the user's OWN destination wallet + per-bridge cap) → "nothing moves until you sign" → Sign → "bridge initiated" success with tracking link; **Sign disabled** without a passed sim / on policy-reject (same trust gate as swaps/deposits)
+- [ ] T116 [US-bridge] **Bridge policy + build endpoints** in `services/agent/src/sparkpoint_agent/api/bridge.py` + `services/agent/src/sparkpoint_agent/policy/`: extend `evaluate()` with a bridge action that pins `dest_recipient` to the user's own destination wallet (VR-BT1), enforces **per-network AND per-bridge caps** against policy limits, runs the source-leg simulation, and emits an UNSIGNED, policy-approved `IntentBundle` only on full pass (else error envelope + reasons, no bundle); service holds no keys and never custodies (VR-BT1/BT3)
+- [ ] T117 [P] [US-bridge] `bridge_transfers` migration `services/agent/migrations/0008_bridge.sql` + indexer in `services/agent/src/sparkpoint_agent/data/bridge_indexer.py`: `bridge_transfers` (from/to network, asset, amount, dest_recipient, status, source/dest tx) per data-model.md §15a (E18); index the source lock/burn + destination mint/release legs (ONCHAIN-DERIVED, reconstructable; never on the withdraw path — VR-BT2/BT4)
+
+### Chat bridge intent + in-chat inline confirm
+
+- [ ] T118 [P] [US-bridge] **Chat bridge intent** in `services/agent/src/sparkpoint_agent/agents/` + `apps/web/lib/agent/cards.ts`: recognize "bridge" / "sui" / "cross-chain" / "move to <network>" → emit a non-signable `BridgeCard` `ChatBlock` proposing the Base ↔ Sui move → routes to the bridge confirm; whitelist/policy-cleared only, never a signable bundle from chat directly
+- [ ] T119 **In-chat inline confirm — ONE `ConfirmFlow`, SECOND mount point** in `apps/web/components/ConfirmFlow.tsx` (extracted/shared) mounted inline in `apps/web/app/app/chat/page.tsx`: chat-initiated deposit/swap/**bridge** render the full confirm+sign flow INLINE in the chat thread (no navigation) running the **same** trust gate (simulation → balance changes → guardrail checklist → acknowledgement checkbox that GATES the Sign button → "nothing moves until you sign" → Sign → success); the standalone `/confirm/[intent]` routes REMAIN for non-chat entry points (vault page, ⌘K, etc.) — one component, two mount points; the sign-disabled-until-acknowledged invariant + whole trust gate + non-custody preserved 1:1 (UX-surface change only)
+
+### Light frontend test
+
+- [ ] T120 [P] [US-bridge] Playwright E2E in `apps/web/e2e/bridge-and-inline-confirm.spec.ts`: switch network updates indicator + per-network address; a chat bridge intent renders an inline confirm whose **Sign is disabled until the ack checkbox is checked**; rejecting yields no tx; assert the inline confirm and `/confirm/bridge` route mount the **same** `ConfirmFlow` (UX parity)
+
+> **NOTE:** Phase 9a delivers the multi-network + bridge experience on the **existing Base EVM stack** at the product/UX/non-custody level. The Sui-side custody stack and the bridge's on-chain lock-mint contracts are the FOLLOW-ON epic below — do not implement them as part of these tasks.
+
+---
+
+## Phase 9b: FOLLOW-ON EPIC — Sui (non-EVM) stack + bridge contracts (SEPARATE technical design — NOT yet broken into detailed tasks)
+
+> ⚠️ **FOLLOW-ON / DEFERRED — separate technical design required before any build.** This epic is **intentionally NOT decomposed into detailed tasks**. Sui is **non-EVM (Move-based)** and does **not** use ERC-4337 / ERC-4626 / Solidity, so its account/vault architecture cannot be expressed as a refinement of the Base EVM contracts, and the concrete bridge mechanism/provider is a separate cross-network contract design. Per plan §Follow-on and the contracts/ "Bridge (cross-network)" note, these are deferred technical designs flagged here, not specified. **Do NOT fabricate Move code or a detailed Sui contract spec.** The existing Base/EVM contract spec stays intact and authoritative for Base.
+
+- [ ] FE-T001 [FOLLOW-ON] **Sui (Move) account + vault stack — technical design.** Design a Move-based account/vault architecture that re-establishes the non-custody invariants on Sui **by construction** — especially withdraw-always (N2) and user-sole-key (N3), plus Sui-native equivalents of N1/N4/N5 and the policy/simulation/sign gate. Output is a design doc + its own Phase 0/1 artifacts, NOT covered by the Base contract spec. *(Blocks any Sui custody build; not estimated here.)*
+- [ ] FE-T002 [FOLLOW-ON] **Bridge mechanism / provider — cross-network contract design.** Design the on-source lock/burn + on-destination mint/release contracts (EVM-side notes in `contracts/`; the Sui side is non-EVM/Move), provider/route selection, per-bridge caps wired to policy limits, and the cross-network proof that funds are never custodied in transit (lock/burn → user's own destination wallet). *(Blocks any real bridge execution; the Phase 9a bridge UX/policy surface targets this design once ratified.)*
+
+---
+
 ## Phase 10: Polish & Cross-Cutting Concerns
 
 **Purpose**: Security hardening, contract fuzz/static analysis, monitoring, quickstart validation, and docs across all stories.

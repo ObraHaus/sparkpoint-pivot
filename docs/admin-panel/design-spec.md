@@ -19,9 +19,9 @@
 **Mirrors [`README §0`].** Every screen in this doc is **observe-only**. The panel answers *"what is happening?"* and *"is the system healthy?"* — never *"make it do X to a user's money."* This is a **design rule on every screen**:
 
 1. **No fund-moving controls exist anywhere.** No "withdraw," "rebalance," "sweep," "force-redeem," "pause user," or any button that emits a transaction. If a control would *do* something to funds, it does not belong on the screen. There is no spark "primary action" CTA that moves value — **the spark accent is used only for active-nav, focus rings, and the AI-presence marker on AI-derived figures, never for a fund action** (`04` §2.3).
-2. **The kill-switch is status-display-only.** The `KillSwitchStatus` component (`06` §19) renders here in a **read-only variant**: state pill + pause-only scope statement + multisig controller transparency. **No pause/unpause control.** The "action lives in the multisig," shown as an external-link reference to the Safe/multisig, never an in-panel button. Per `05`/`07`, it is **never red** — pause is reassurance, not alarm.
+2. **The kill-switch is GOVERNED — pause-only, propose-&-sign, never executes.** *(Client-directed scope amendment vs the original "status-display-only" plan — see `README §0`; logged, not silent.)* On analytics screens (A5, A7, A8) the `KillSwitchStatus` component (`06` §19) renders in a **read-only status variant**: state pill + pause-only scope statement + **2-of-3 multisig** controller transparency, **no in-panel action**, linking to the dedicated **governed manual kill-switch screen (A12)**. On A12 itself an admin may **propose & sign** a pause/unpause, but the panel **can never _execute_** one — **execution requires the on-chain 2-of-3 multisig threshold**. The action is **pause-only** and **NEVER blocks withdrawals (N2)**, the confirm is **ack-gated**, and every propose/sign is written to a **history log** + the admin audit log. Per `05`/`07`, the kill-switch is **never red** — pause is reassurance, not alarm; signing a pause proposal moves **no funds**.
 3. **The only "writes" the panel may proxy** are **non-custodial operational config** (whitelist invites, feature flags) on the Super-Admin/Ops `config` screen — these route through the product's existing governed path with their own audit, are **absent from Stakeholder/Client roles entirely**, and never touch a fund path. They are styled as ordinary form actions, never as spark fund-CTAs.
-4. **Persistent observe-only marker.** Every screen carries a small, always-visible **"Observe-only · read-only over funds"** chip in the top bar (the admin analogue of the product's non-custodial badge). It opens a one-tap explainer: *"This panel can watch SparkPoint but cannot move a single unit of user funds. The kill-switch shown here is status-only — pausing is a multisig action outside this panel."*
+4. **Persistent observe-only marker.** Every screen carries a small, always-visible **"Observe-only · read-only over funds"** chip in the top bar `.opsbar` (the admin analogue of the product's **"fully self-custodial"** badge). It opens a one-tap explainer: *"This panel can watch SparkPoint and propose & sign a pause — but it cannot move a single unit of user funds. The kill-switch is pause-only and never blocks withdrawals; execution requires the on-chain 2-of-3 multisig threshold, not this panel."*
 5. **Projection honesty (carried from `README §3` / Constitution III / `07` §5.2).** Every projected/estimated figure (forecast, run-rate, future-stream revenue lanes, expected APY) is **visually differentiated** — **dashed/hatched series + an "est." `Badge`** — and never presented as realized. Realized = solid; projected = dashed. A reviewer must be able to tell them apart at a glance.
 
 ---
@@ -32,8 +32,8 @@
 
 | Role | Default landing | Nav set (visible screens) | Never sees |
 |---|---|---|---|
-| **Super-Admin** | A1 Overview | All (A1–A11) | (nothing withheld; still no fund-movement — none exists) |
-| **Ops / Internal** | A1 Overview | A1–A8, A10, A11 (no A9 Admin management) | A9; secret keys/config |
+| **Super-Admin** | A1 Overview | All (A1–A12) | (nothing withheld; still no fund-movement — none exists; A12 kill-switch is propose-&-sign only, executes only at the 2-of-3 multisig threshold) |
+| **Ops / Internal** | A1 Overview | A1–A8, A10, A11, A12 (no A9 Admin management) | A9; secret keys/config |
 | **Stakeholder (read-only)** | A8 Stakeholder Overview | A1 Overview (curated), A5 TVL, A6 Revenue, A8 Overview — **aggregate only** | A2/A3 user detail, A4 usage, A7 system, A9/A10/A11; PII; config |
 | **Client (read-only)** | A8 Stakeholder Overview | **A8 only** | Everything else (server-denied → 404) |
 
@@ -72,7 +72,9 @@
 └──────────────┴─────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Top bar (left→right):** spark **AppLogo** ("SparkPoint Ops") · **env badge** (`PROD` red-outline / `STAGING` amber-outline — semantic, informational) · **global data-freshness stamp** ("data fresh {Xs} ago", with a `⟳` refresh) · the **Observe-only chip** (§0.4) · admin identity + role `DropdownMenu` · sign-out. **No wallet connect** — admin auth is separate from user wallet-connect (`README §2.2`).
+- **Top bar (the `.opsbar` — left→right):** spark **AppLogo** ("SparkPoint Ops") · **env badge** (`PROD` red-outline / `STAGING` amber-outline — semantic, informational) · **global data-freshness stamp** ("data fresh {Xs} ago", with a `⟳` refresh) · the **Observe-only chip** (§0.4) · admin identity + a **role-switcher** ("View as": Super-Admin / Ops / Stakeholder / Client) · sign-out. **No wallet connect** — admin auth is separate from user wallet-connect (`README §2.2`).
+  - **`.opsbar` is a plain, non-sticky, non-transformed block** (delivered design): `position: relative`, **no `position: sticky`**, **no `transform`** on the bar and no reliance on a transformed ancestor. This is deliberate — a `sticky`+`transform` combination was found to make browsers drop the bar ~1s after load. The body sits beneath it via a simple height chain (`.opsbody { height: calc(100% - var(--barh)) }`), not a sticky offset.
+  - **The role-switcher is a CUSTOM (non-native) button-dropdown**, **not** a native `<select>` — `DropdownMenu`-style (`04` §11). The native control misbehaved inside an embedded/scaled iframe and had a mobile width quirk; the custom dropdown fixes both. See the **KNOWN ISSUE** note in §2.4 below.
 - **Sidebar nav (left rail):** icons + labels, role-scoped (§1). Active item uses **spark `--spark-subtle` tint + spark left-border** (`04` §2.3 — active-nav is a sanctioned spark usage). Collapsible to icon-only with `Tooltip` (tablet default-collapsed).
 - **Page header:** `text-h1` title + one-line subtitle, the **global time-range selector** (`Tabs`/`ToggleGroup`: 24h / 7d / 30d / 90d / YTD / All), a **granularity** toggle (day/week/month) where applicable, and an **Export** affordance (`DropdownMenu`: CSV / PNG — **audited + role-gated**, absent for roles without export).
 - **Stat-card band + chart grid:** 12-col grid, 24px gutters; stat cards 4-across desktop, 2-across tablet, 1-across phone; charts 2-across desktop, 1-across tablet/phone.
@@ -99,6 +101,14 @@
 - **No-permission** — **server-side 404** for sections a role can't see (secrecy). Within a page, hide (don't disable) controls a role lacks.
 - **Provenance on every chart** — a small source+freshness caption ("RPC, 42s ago" / "materialized, 03:00"); **projected/estimated values always flagged** (dashed + "est.").
 
+### 2.4 ⚠ KNOWN ISSUE (NOT confirmed fixed) — ops top bar in the Showcase's scaled iframe
+
+**Document, do not claim fixed.** When the Admin panel is opened **inside the Showcase's _scaled_ desktop iframe** (the Showcase renders the panel in a `transform: scale(...)`-ed 1440 desktop frame and a 390 phone frame), the **ops top bar (`.opsbar`) can flicker or disappear after ~1s in some browsers** — a **transformed-ancestor + iframe compositing quirk** (a transformed *ancestor* can break descendant layout/compositing). The `.opsbar` has already been de-stickied/de-transformed (§2.1) and the role-switcher de-nativized, and live measurement in a real browser showed the bar `display:flex`, full height, visible, stable past 4.5s — **yet the client still reports the vanish, so this is explicitly NOT confirmed fixed.**
+
+- **Workaround:** **open Admin in its own tab** (`SparkPoint Admin.html` standalone), where the bar is stable.
+- **Tooling caveat:** preview/html-to-image screenshots **cannot rasterize the bar** (inline `<svg>` gradients) and may show a false "blank bar" — verify in a real browser (watch `.opsbar` computed `display`/`height` across the first ~2s; confirm the `?v=` admin loads fresh, not cached).
+- **Next steps to investigate:** de-scaling the desktop frame, caching/service-worker freshness of the embedded admin file, and the transformed-ancestor compositing interaction. Do **not** reintroduce `position:sticky`/`transform` on `.opsbar` as a "fix."
+
 ---
 
 ## 3. Screen inventory (routes under the secret base path — `README §5`)
@@ -117,6 +127,7 @@
 | **A9** | `/admin/users` Admin management | Super-Admin | Manage admins/roles | loading · error · no-permission |
 | **A10** | `/admin/config` Non-custodial config | Super-Admin, Ops | Whitelist invites, feature flags | loading · error · no-permission · **confirm-change (audited)** |
 | **A11** | `/admin/audit` Admin audit log | Super-Admin, Ops (step-up) | Forensics | loading · empty · error · **step-up-required** · no-permission |
+| **A12** | `/admin/killswitch` **Governed manual kill-switch** | Super-Admin, Ops (step-up) | **Propose & sign** pause/unpause (pause-only · 2-of-3 multisig · executes on-chain · never blocks withdrawals) | loading · status-only(no pending) · **ack-gated confirm** · pending-signatures · error · no-permission |
 
 ---
 
@@ -166,7 +177,7 @@
 **Charts:**
 1. **Growth at a glance** — `ComposedChart` (wide, 2-col span). X = date; **left Y = TVL (`Area`, categorical-ramp fill)**; **right Y = active users (`Line`)**; shared 30/90d range. One glance ties money to people.
 2. **Revenue snapshot** — small **stacked `AreaChart`** of cumulative revenue by stream (the revenue-stream color contract §2.2; projected lanes dashed); links into A6.
-3. **Activity heat** — `BarChart` of daily executions **colored by success/fail** (semantic green stack / red stack).
+3. **Activity heat** — `BarChart` of **daily executions** with **explicit green/red colors** (semantic green = success stack, semantic red = fail stack — set fills explicitly, never the default categorical ramp).
 
 **States.**
 - **Loading** — skeleton cards + shimmer sparklines + chart frames.
@@ -274,7 +285,7 @@
 
 **States.** Loading skeleton · empty (pre-deposit) = zeroed + "Vault live, no deposits yet" · per-widget error with a "data source: RPC/subgraph" provenance note.
 
-**Non-custody / read-only touchpoint.** **This is the screen where read-only-over-funds is most load-bearing.** TVL/flows/share-price are **display-only, never a gate**. The withdraw-always drill panel + kill-switch status make the non-custody guarantee *observable* — and both are **status-only, zero controls** (the kill-switch action lives in the multisig, shown as an external-link reference). Per `05`/`07`, kill-switch is **never red**.
+**Non-custody / read-only touchpoint.** **This is the screen where read-only-over-funds is most load-bearing.** TVL/flows/share-price are **display-only, never a gate**. The withdraw-always drill panel + kill-switch status make the non-custody guarantee *observable* — both are **status-only here, zero controls** (the kill-switch panel on A5 is read-only and **links to the governed kill-switch screen A12** for propose & sign; even on A12 the panel only proposes & signs, execution is the on-chain 2-of-3 multisig). Per `05`/`07`, kill-switch is **never red**.
 
 **Acceptance.** TVL stacked area (future-proofed for N vaults); diverging deposit/withdraw bars + net-flow line; caps utilization with cap reference line + amber-near-cap; share-price + net-APY lines (labeled realized, never projected); withdraw-always drill + kill-switch **status panels with no controls**; provenance notes on RPC/subgraph widgets; Stakeholder sees aggregate; both breakpoints.
 
@@ -292,7 +303,7 @@
 |---|---|---|
 | **Swap-routing fee** (Aerodrome swaps from chat) | **Launch-era, ACTIVE** (~20 bps; early volume may be low (first-N-free)) | solid lane |
 | **Premium AI subscription** (SRK-paid freemium Premium tier; Stripe-or-equiv normalized) | **Launch-era, ACTIVE** (modeled now) | solid lane |
-| **Performance fee** (Aave Yield Vault, realized yield only, HWM) | **Launch-era, ACTIVE** (10% of yield, profit-only, high-water mark; cap 20%, default 10%) | solid lane |
+| **Performance fee** (Aave Yield Vault, realized yield only, HWM) | **ACTIVE · v1** (active in v1 per constitution v1.1.0 — 10% of yield, profit-only, high-water mark; cap 20%, default 10%) | **solid/realized lane (never dashed, never "not active at launch")** |
 | **Management fee** (≤0.25%, multi-strategy only) | **Future / projected** | dashed lane + "(projected)" |
 | **SRK fee-share / buyback** | **Future / projected** | dashed lane + "(projected)" |
 | **Treasury float** (own capital) | Phase-0, non-user | informational, labeled "non-user" |
@@ -306,7 +317,7 @@
 4. **MRR / ARR-equivalent over time** — **`LineChart`** (or `ComposedChart`: bars = monthly bookings + line = MRR). X = month, Y = USD. MRR = subscription MRR + normalized recurring fee portion (normalization defined in a `Tooltip`/footnote). ARR = MRR × 12.
 5. **Revenue per user / per vault** — **two `BarChart`s** (or a toggle): ARPU over time (X = period, Y = USD/user) + revenue-per-vault (X = vault, Y = revenue; one bar at launch, future-proofed).
 6. **Fee-vs-TVL & take-rate** — **`ComposedChart`**: `Area` = TVL (context) + `Line` = blended take-rate (revenue ÷ TVL, bps) on a secondary axis. The "are we extracting modestly?" story (restraint as a feature).
-7. **Performance-fee high-water-mark status** — a **panel + small chart** (live at launch — the perf fee is active on the Aave Yield Vault): per vault, **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`** + a status `Badge` ("above HWM → fee accrues" / "at/below HWM → no fee, recovering"). Reinforces "we only earn when you earn — never on your principal, never by taking custody."
+7. **Performance-fee high-water-mark status** — a **panel + small chart**, **ACTIVE · v1** (the perf fee is active in v1 on the Aave Yield Vault per constitution v1.1.0 — render **solid/realized**, with an **"Active · v1"** status `Badge`; **never dashed/projected, never "not active at launch"**): per vault, **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`** + a status `Badge` ("Active · v1 · above HWM → fee accrues" / "Active · v1 · at/below HWM → no fee, recovering"). Reinforces "we only earn when you earn — never on your principal, never by taking custody."
 8. **Top revenue-generating cohorts** — **horizontal `BarChart`**: revenue by cohort (signup-month / risk-tier / top-vaults); Y = cohort, X = revenue.
 
 **"We only earn when you earn" panel (near the hero chart — the honesty framing, `README §3.5`).** A dual `Area` chart: **cumulative user yield** vs **cumulative protocol revenue**, side by side, with the one-line copy *"We only earn when you earn — never on your principal, never by taking custody."* The revenue story is **always shown against the value delivered to users**, and never leads with a projection.
@@ -340,14 +351,14 @@
 3. **Simulation latency** — `LineChart` of p50/p95 Tenderly sim latency (multi-series).
 4. **Error rates (Sentry)** — `AreaChart` of errors/period split by service (web / agent / indexer) + a `Line` overlay of error-rate %.
 5. **Guardrail triggers** — `BarChart` of `risk_events` by type (owner-mismatch, impl-change, cap-breach attempt, oracle staleness, large drawdown) — defense-in-depth signals.
-6. **Kill-switch status** — **read-only status panel** (`KillSwitchStatus` read-only variant, `06` §19): current pause state (`deposits_paused` from chain) · who-can-pause (multisig address → BaseScan) · last change (from events). **No control. Display only.** A note: *"Pause never blocks withdrawals (N2) and is governed by the multisig, not this panel."* **Never red** (`05`/`07`).
+6. **Kill-switch status** — **read-only status panel** (`KillSwitchStatus` read-only variant, `06` §19): current pause state (`deposits_paused` from chain) · who-can-pause (the **2-of-3** multisig address → BaseScan) · last change (from events). **No action on this panel — it links to the governed kill-switch screen (A12)** for propose & sign. A note: *"Pause-only; never blocks withdrawals (N2); the panel proposes & signs but executes only at the on-chain 2-of-3 multisig threshold."* **Never red** (`05`/`07`).
 7. **RPC / indexer health** — `Table` + sparkline per source from `data_source_health` (liveness, staleness, last block) and `indexer_cursors` (lag, reorg watermark); amber/red on degradation; ties to the "no execution on stale data" guarantee.
 
 **States.** Loading skeleton · **healthy-empty** = green "All systems nominal" · **error (monitoring-source-down)** — the health page must **itself degrade gracefully**: if Sentry is down, show "Monitoring source unavailable," not a blank · no-permission (404 for Stakeholder/Client).
 
-**Non-custody / read-only touchpoint.** The **kill-switch panel is the canonical read-only example** — it displays multisig-governed pause status with an external link to the multisig, **never a pause/unpause button**. Health surfaces never expose a fund or execution control.
+**Non-custody / read-only touchpoint.** The **A7 kill-switch panel is read-only** — it displays the 2-of-3 multisig-governed pause status and **links to the governed kill-switch screen (A12)**; it carries **no propose/sign control itself**. The governed propose-&-sign action lives on A12, and even there the panel only proposes & signs — **execution is the on-chain 2-of-3 multisig threshold**, never an in-panel button. Health surfaces never expose a fund or execution control.
 
-**Acceptance.** 8 status tiles (color+icon+text, kill-switch never red); policy-decision stacked bars by block-reason; sim-latency p50/p95 lines; Sentry error area + rate line; guardrail-trigger bars; kill-switch **status-only panel** (multisig link, no control, withdraw-unaffected note); RPC/indexer health table; the page degrades gracefully when a monitoring source is down; SA/Ops only.
+**Acceptance.** 8 status tiles (color+icon+text, kill-switch never red); policy-decision stacked bars by block-reason; sim-latency p50/p95 lines; Sentry error area + rate line; guardrail-trigger bars; kill-switch **read-only status panel** on A7 (2-of-3 multisig link, links to A12, no in-panel control, withdraw-unaffected note); RPC/indexer health table; the page degrades gracefully when a monitoring source is down; SA/Ops only.
 
 ---
 
@@ -363,7 +374,7 @@
 3. **Revenue trajectory** — the **A6 trajectory chart** (realized solid + forecast dashed, labeled illustrative — the centerpiece for the client) + the cumulative-revenue `AreaChart`.
 4. **"We only earn when you earn"** — the user-yield vs protocol-revenue **dual-area**, reinforcing the trust thesis.
 5. **TVL & flows** — a simplified net-flows `BarChart` (deposits up / withdrawals down) — proof of real, sticky money.
-6. **Trust badges** — a small status row (all observe-only, reading the same status sources): **non-custodial ✓** (read-only over funds) · **withdraw-always: last drill passed ✓** · **0-management / profit-only performance-fee vault ✓** (10% of yield, high-water mark, 0% on principal) · **kill-switch: multisig-governed, status shown ✓**.
+6. **Trust badges** — a small status row (all observe-only, reading the same status sources): **fully self-custodial ✓** (read-only over funds) · **withdraw-always: last drill passed ✓** · **0-management / profit-only performance-fee vault ✓** (10% of yield, high-water mark, 0% on principal; active in v1) · **kill-switch: pause-only, 2-of-3 multisig-governed, never blocks withdrawals ✓** (status shown; governed propose-&-sign on A12).
 
 Everything here is **derived from the richer dashboards** (one source of truth, simplified presentation). **Tone (`07`):** confident, plain-language, honest — **no projection shown without an "illustrative" label.** This view is **export-to-PDF/PNG** friendly for leave-behinds (audited export).
 
@@ -375,7 +386,7 @@ Everything here is **derived from the richer dashboards** (one source of truth, 
 
 **RBAC.** Client sees **only** this screen (server-denied elsewhere → 404). Stakeholder sees this + A1(curated)/A5/A6.
 
-**Non-custody / read-only touchpoint.** The **trust-badge row** surfaces the non-custody story at presentation altitude — non-custodial, withdraw-always drill, 0-management / profit-only performance-fee vault (0% on principal), multisig kill-switch — all **observe-only**, reading the same status sources as A5/A7, with **no controls**. The "we only earn when you earn" panel is the revenue-honesty centerpiece.
+**Non-custody / read-only touchpoint.** The **trust-badge row** surfaces the non-custody story at presentation altitude — fully self-custodial, withdraw-always drill, 0-management / profit-only performance-fee vault (0% on principal, active in v1), pause-only 2-of-3-multisig kill-switch (never blocks withdrawals) — all **observe-only here**, reading the same status sources as A5/A7, with **no controls on A8** (the governed propose-&-sign lives on A12, and even there execution is the on-chain multisig). The "we only earn when you earn" panel is the revenue-honesty centerpiece.
 
 **Acceptance.** Six-section story order; headline KPI band; Growth `ComposedChart`; revenue trajectory (forecast dashed + illustrative label) + cumulative area; "we only earn when you earn" dual-area; simplified net-flows bars; trust-badge status row (observe-only); export-to-PDF/PNG (audited) + export-mode render; pre-launch "launching Sept" hero; Client sees only this screen; desktop + tablet + a phone courtesy render (this screen is the one heavy view phones keep).
 
@@ -434,6 +445,29 @@ Everything here is **derived from the richer dashboards** (one source of truth, 
 
 ---
 
+## A12 — Governed manual kill-switch (`/admin/killswitch`)
+
+**Goal.** The one place an admin may **propose & sign** a **pause/unpause** — **pause-only, governed by a 2-of-3 multisig, executed on-chain, and NEVER able to block withdrawals.** *(Client-directed scope amendment vs the original "status-display-only" plan — `README §0`, logged not silent.)* The panel is a **co-signing console, not an executor**: it builds and signs a proposal; **execution requires the on-chain 2-of-3 multisig threshold** to be met. SA/Ops, **step-up required**.
+
+**Entry points.** Sidebar "Kill-switch" (SA/Ops); the read-only kill-switch status panels on **A5/A7** and the **A8** trust badge link here.
+
+**Step-up gate.** Re-2FA `Dialog` before render (proposing/signing is a sensitive governance action); the view and every propose/sign are written to the admin audit log.
+
+**Layout.**
+- **Current state band** — the `KillSwitchStatus` (`06` §19) read variant: pause state pill (`deposits active` / `deposits paused`), **pause-only scope statement**, the **2-of-3 multisig** controller (address → BaseScan), last change (from events). **Never red** (`05`/`07`).
+- **Propose action** — a single primary action (`Propose pause` / `Propose unpause`, pause-only — there is no other proposable action). It is styled as an ordinary governance action, **not** a spark fund-CTA.
+- **Ack-gated confirm `Dialog`** — before signing, the signer must tick acknowledgements that **gate the Sign button** (mirrors the product's sign-disabled-until-acknowledged trust gate): *"This pauses deposits only."* · *"Withdrawals are never blocked (N2)."* · *"This does not execute — execution needs the on-chain 2-of-3 multisig threshold."* Sign is disabled until all are checked.
+- **Pending-signatures panel** — current proposal's signature progress (e.g., **1 of 2 required**, the 2-of-3 threshold), who has signed (admin refs), and an external link to the multisig (Safe) where execution happens. The panel shows progress; **it cannot push execution** — that occurs on-chain when the threshold is met.
+- **History log** — an append-only `Table` of past kill-switch governance actions: `ts` · `admin_ref` · `action` (`propose` / `sign`) · `target` (pause/unpause) · `result` · multisig-tx link. (In addition to the admin audit log; this is the in-screen forensics view.)
+
+**States.** Loading skeleton · **status-only (no pending proposal)** — current state + "Propose…" affordance · **ack-gated confirm** — the acknowledgement `Dialog`, Sign disabled until acked · **pending-signatures** — proposal awaiting the 2-of-3 threshold · error · **step-up-required** · no-permission (404 for Stakeholder/Client).
+
+**Non-custody / read-only touchpoint.** **Pause-only, never withdrawals.** The panel **proposes & signs but cannot execute** — execution lives at the on-chain 2-of-3 multisig threshold, so no single admin (and not the whole panel) can pause anything alone. Signing a *pause* proposal **moves no funds** and emits no fund-moving calldata (N1 intact). Kill-switch is **never red**. The screen carries the note: *"Pause-only. Never blocks withdrawals. The panel proposes & signs; execution requires the on-chain 2-of-3 multisig."*
+
+**Acceptance.** Step-up gate + every propose/sign audited; **pause-only** (no other proposable action, no withdrawal-affecting control); **ack-gated** confirm that gates Sign (sign-disabled-until-acknowledged); **2-of-3 multisig** signature-progress panel with execution shown as on-chain (panel cannot execute); append-only history log; kill-switch **never red**; SA/Ops only (404 otherwise); withdrawals-never-blocked note present; both breakpoints.
+
+---
+
 ## 4. Tablet & phone responsiveness (carry on every screen — `README §5`)
 
 - **Desktop (1440px, design target):** sidebar rail + 12-col content grid; stat cards 4-across; charts 2-across (hero charts span 2 cols).
@@ -447,9 +481,9 @@ Everything here is **derived from the richer dashboards** (one source of truth, 
 
 A design satisfies this spec when **all** hold:
 
-1. **Read-only over funds, visibly.** No screen contains a control that moves, withdraws, sweeps, reallocates, pauses, or otherwise touches user funds. The persistent **"Observe-only · read-only over funds"** chip is present in the top bar on 100% of screens, with its one-tap explainer. (`README §0`.)
-2. **Kill-switch is status-only.** Wherever the kill-switch appears (A5, A7, A8 trust badges), it is the `KillSwitchStatus` **read-only variant**: pause-only scope statement + multisig controller transparency + an external link to the multisig — **never an in-panel pause/unpause control**, **never red**, always noting "pause never blocks withdrawals." (`README §0`, `05` §3.5, `07`.)
-3. **RBAC by construction.** Each role gets its own default landing + role-scoped nav; denied sections return a **server-side 404 (never 403)**; per-user drilldown (A3) and the audit log (A11) require **step-up + are themselves audited**; Stakeholder/Client are **aggregate-only, pseudonymized, config-free**, and cannot reach A2/A3/A4/A7/A9/A10/A11. (`README §1`, §2.3, §2.4.)
+1. **Read-only over funds, visibly.** No screen contains a control that moves, withdraws, sweeps, reallocates, or otherwise touches user funds. The single governed exception is the **pause-only kill-switch (A12)**, which can only **propose & sign** (never execute, never move funds, never block withdrawals). The persistent **"Observe-only · read-only over funds"** chip is present in the top bar (`.opsbar`) on 100% of screens, with its one-tap explainer. (`README §0`.)
+2. **Kill-switch is governed (pause-only, propose-&-sign, never executes).** On analytics screens (A5, A7, A8 trust badges) the kill-switch is the `KillSwitchStatus` **read-only variant** linking to **A12**; on **A12** an admin may **propose & sign** a pause/unpause, but the panel **cannot execute** — **execution requires the on-chain 2-of-3 multisig threshold**. Pause-only scope statement + 2-of-3 multisig transparency + external multisig link, **ack-gated confirm + history log**, **never red**, always noting **"pause never blocks withdrawals."** Signing a pause proposal moves no funds. (`README §0`, `05` §3.5, `07`.)
+3. **RBAC by construction.** Each role gets its own default landing + role-scoped nav; denied sections return a **server-side 404 (never 403)**; per-user drilldown (A3) and the audit log (A11) require **step-up + are themselves audited**; Stakeholder/Client are **aggregate-only, pseudonymized, config-free**, and cannot reach A2/A3/A4/A7/A9/A10/A11/A12. (`README §1`, §2.3, §2.4.)
 4. **Projection honesty everywhere.** Realized = solid (incl. the three active launch streams: swap fee, premium tier, performance fee); **projected/forecast/future-stream (mgmt fee, SRK, run-rate forecast) = dashed/hatched + "est." badge**; only genuine forecasts are dashed; the revenue trajectory marks "today" with a `ReferenceLine`; the revenue pre-revenue empty state shows zeroed-but-live active lanes + visible projected lanes + the illustrative banner. **No projection is ever presented as realized, and no realized stream is dashed.** (`README §3`, Constitution III, `07` §5.2.)
 5. **The revenue dashboard (A6) is the centerpiece.** All eight specified charts + the "we only earn when you earn" dual-area + the revenue history table are present, with the **one-color-per-stream contract** consistent across every chart, and **no fee-authorizing controls.** (`README §3.5`.)
 6. **Design-system conformance (`04`).** Dark-first; three color systems never crossed (spark only for active-nav/focus/AI-presence, **never** revenue-up or gain/loss/risk); semantic green/red/amber/blue pair color+icon+text; risk palette only for risk tiers; **tabular numerals on 100% of financial figures**; net-APY rule (never bare); chart axes/grids/tooltips per `04` §6; mono for addresses/hashes; motion subtle + reduced-motion safe.
@@ -472,4 +506,4 @@ A design satisfies this spec when **all** hold:
 - **The revenue streams the central dashboard visualizes (and the §5.2 amendment gating future lanes):** [`../revenue-model/README.md`](../revenue-model/README.md).
 - **Spec Kit formalization target:** `specs/002-admin-panel/` (`README §7`).
 
-> **Final reminder (carried from `README §0`):** every figure in this panel is **observed, never actuated**. The admin panel watches SparkPoint; it cannot touch a single unit of user funds. The lone privileged surface — the kill-switch — is **status-display-only**, with the action governed by the existing pause-only multisig, outside this panel.
+> **Final reminder (carried from `README §0`):** every figure in this panel is **observed, never actuated**. The admin panel watches SparkPoint; it cannot touch a single unit of user funds. The lone privileged surface — the kill-switch (A12) — is **pause-only and governed**: the panel may **propose & sign** but **never execute** (execution requires the on-chain 2-of-3 multisig threshold), and it **never blocks withdrawals**. Signing a pause proposal moves no funds.

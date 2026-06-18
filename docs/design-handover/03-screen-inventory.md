@@ -19,15 +19,16 @@
 
 | Area | Screens / overlays / states-as-screens |
 |---|---|
-| 0. Global shell & cross-cutting | 1–14 (14) |
-| 1. Public / marketing | 15–24 (10) |
+| 0. Global shell & cross-cutting | 1–14 **+ 5a (network switcher)** (15) |
+| 1. Public / marketing | 15–24 **+ 15a (Spark Core landing)** (11) |
 | 2. Connection & gating | 25–30 (6) |
 | 3. Onboarding (Flow 1) | 31–40 (10) |
-| 4. Chat AI Assistant (Flow 2) | 41–57 (17) |
+| 4. Chat AI Assistant (Flow 2) | 41–57 **+ 53a (bridge `ActionCard`)** (18) |
 | 5. Portfolio (Flow 3) | 58–64 (7) |
 | 6. Strategy Recommendations (Flow 4) | 65–72 (8) |
 | 7. Vault Deposit / Withdraw (Flow 5) | 73–82 (10) |
-| 8. Execution & Simulation (Flow 6) | 83–93 (11) |
+| 8. Execution & Simulation (Flow 6) | 83–93 **+ 93a (confirm/bridge)** (12) |
+| **8-bis. Bridge — Multi-Network (Flow 12)** | **93b–93f (Bridge surface · selectors+flip · route/fee/ETA+caps+custody explainer) (5)** |
 | 9. Automation / Session Keys (Flow 7) | 94–101 (8) |
 | 10. Trust & Safety | 102–113 (12) |
 | 11. SRK / Literacy / Outcomes / Settings / Notifications | 114–137 (24) |
@@ -35,11 +36,13 @@
 | 13. Subscriptions / Premium AI tier (Flow 10) | 143–153 (11) |
 | 14. Fee Transparency / Revenue Surfaces (Flow 11) | 154–161 (8) |
 | 15. Admin / Stakeholder Panel (separate surface) | 162–174 (13) |
-| **TOTAL** | **174 numbered screens/overlays** |
+| **TOTAL** | **183 numbered screens/overlays** (174 base + 9 client-directed multi-network/bridge additions: #5a, #15a, #53a, #93a, #93b–93f) |
 
 > **Read the count as "designed artifacts," not "routes."** It includes route screens, the global shell variants, overlays/sheets/panels, and the in-chat structured cards — each of which the designer must produce with its full state set. Routes alone number ~40 (see `01` §1); the rest are overlays, cards, and shell/gating/degraded variants that each demand their own high-fidelity treatment.
 >
 > **§12–§15 are the additive design surfaces** (#138–174): the **AI Swap** flow (Flow 9), the **Subscriptions / Premium AI tier** (Flow 10), the **Fee Transparency / Revenue Surfaces** (Flow 11), and the **Admin / Stakeholder Panel** (a separate, separately-gated surface). They reuse the same state discipline; the swap, premium-pay, and fee line item all funnel through `/confirm` (§8) — only their *contextual* screens are counted here, not a second sign UI.
+>
+> **The client-directed multi-network / bridge increment** (`docs/INCREMENT-multi-network.md`; Flow 12) adds **lettered artifacts** rather than renumbering the base inventory: the persistent **network switcher** (#5a, shell), the **Spark Core marketing landing** (#15a, with the Ember/Plasma/Constellation flavor left as an **open client choice**), the chat **bridge `ActionCard`** (#53a), the **confirm/bridge** sign-gate variant (#93a), and the **Bridge surface** (§8-bis, #93b–93f). The bridge runs the **single** `/confirm` gate — no second sign UI; in-chat confirm (#57) is the **same** `ConfirmFlow` mounted inline. **Fully self-custodial** terminology is canonical user-facing (the badge, #3). **Scope flag (logged):** the Sui-side account/vault architecture (non-EVM/Move) + the bridge mechanism/provider are a **follow-on increment** (single canonical route; no fabricated Sui contract spec).
 
 ---
 
@@ -49,9 +52,10 @@
 
 1. **Authenticated app shell — desktop** (`(app)/layout.tsx`). Top bar (logo · primary nav Chat/Portfolio/Vault/Strategies · non-custodial badge · wallet chip · ⌘K · bell · avatar) + AI disclaimer strip + collapsible secondary nav rail + route-content region. **States:** default · disclaimer-collapsed (on scroll) · secondary-nav-collapsed. **DT.**
 2. **Authenticated app shell — mobile.** Condensed top bar (logo · badge · wallet chip · bell) + one-line expandable AI disclaimer + bottom tab bar (Chat·Portfolio·Vault·Strategies, Chat center) + "More" drawer. **States:** default · disclaimer-expanded · More-drawer-open (Withdraw/Exit + Prove-it pinned top). **MO.**
-3. **Non-custodial badge** (top-bar element + desktop `HoverCard`). **States:** default/nominal (green) · degraded (amber) · kill-switch-active/paused (amber + "Paused") · automation-active (green + "Auto" chip) · loading/connection-resolving (muted pulse) · wrong-network (amber). Never red. (`05` §1.3.) **DT + MO.**
+3. **"Fully self-custodial" badge** (top-bar element + desktop `HoverCard`; label reads **"Fully self-custodial"** — the canonical user-facing term; "non-custodial" is its technical synonym; asserts non-custody on the **active network**). **States:** default/nominal (green) · degraded (amber) · kill-switch-active/paused (amber + "Paused") · automation-active (green + "Auto" chip) · loading/connection-resolving (muted pulse) · wrong-network (amber). Never red. (`05` §1.3; `01` §2; `docs/DESIGN-UPDATE-HANDOFF.md` terminology.) **DT + MO.**
 4. **"Prove-it" permissions panel** (badge-triggered `Sheet` — desktop right / mobile bottom). Five guarantees as live checkable rows + two-column CAN/CANNOT matrix + pinned [Withdraw/Exit] + [See full Trust Center]. **States:** default (reads succeed) · loading (skeleton rows; exit/revoke never gated) · stale/refresh-needed (amber stamp) · read-error/RPC-down (warning banner, withdraw stays functional). (`05` §2.) **DT + MO.**
-5. **Wallet / connection status menu** (`DropdownMenu` from the wallet chip). Copy address, view on explorer, switch wallet, disconnect, "View exact permissions". **States:** connected · wrong-network ("Switch to Base") · pending/connecting · disconnected. **DT + MO.**
+5. **Wallet / connection status menu** (`DropdownMenu` from the wallet chip; address shown **per active network**). Copy address, view on explorer, switch wallet, disconnect, "View exact permissions". **States:** connected · wrong-network ("Switch to Base or Sui") · pending/connecting · disconnected. **DT + MO.**
+5a. **Network switcher (persistent shell control)** (`DropdownMenu` + `Badge`, top bar **next to the wallet pill**; **multi-network — Base "Live" / Sui "Fast-follow"**). Active-network indicator (network glyph/name) + a menu of the **two** networks, each with its **per-network wallet address** (mono) + active check + "Move assets between networks" → `#/bridge`; persistent "Switching never moves your funds and never changes what SparkPoint can do." **Switching re-scopes the view + updates the address — no transaction, no signature, no fund movement.** **States:** default (active network) · switching (pill/address pending; never a blocking spinner) · loading/connection-resolving (muted pulse; never a `0x…` placeholder) · warning (wrong-network "Switch to Base or Sui"; stale per-network balance "as of {time}") · error (per-network read fail → last-known + custody reassurance; switching + withdraw still function). Network chrome is categorical, **never** semantic green/red, **never** the risk palette. (`01` §2; Flow 12 §2.) **DT + MO.**
 6. **Command menu (`⌘K`)** (`Command` in `Dialog`). Top actions: Withdraw now · Prove it · Revoke automation; jump-to-route search. **States:** default (recent/top actions) · query-typed · no-results. **DT + MO.**
 7. **AI disclaimer strip** (`Alert` info, pinned by shell + `Collapsible`). **States:** full (desktop) · compact one-line (mobile/scroll) · expanded-from-compact. Risk + custody clauses verbatim, unsoftened (`07` §3). **DT + MO.**
 8. **Notifications bell preview** (`Popover` desktop / `Sheet` mobile). Unread count, recent rows, "Mark all read", "See all". **States:** default (items) · empty/caught-up · loading · all-read. **DT + MO.** (Full center = #135.)
@@ -68,7 +72,8 @@
 
 > Source: `01` §1 `(public)`, §5 Stage A. Slim public header + footer (AI disclaimer in footer). The public `/trust` is the **no-account-data** mirror.
 
-15. **Landing `/`** — "AI hedge fund" headline anchored by **native non-custody**; primary CTA Connect/Enter; [Join waitlist] for non-whitelisted. **States:** default · loading (above-fold) · (region-aware CTA variant). **DT + MO.**
+15. **Landing `/`** — "AI hedge fund" headline anchored by **native non-custody** (canonical copy "**fully self-custodial**"); primary CTA Connect/Enter; [Join waitlist] for non-whitelisted. **States:** default · loading (above-fold) · (region-aware CTA variant). **DT + MO.**
+15a. **Spark Core marketing landing** (animated "Spark Core" hero — the signature **blue→cyan→gold→coral** brand gradient + AI bloom, on the deep indigo-navy base; brand/AI-presence moment, **not** semantic color). The **animation flavor (Ember / Plasma / Constellation) is an OPEN CHOICE intentionally left for the CLIENT to pick** — design all three flavor treatments; do not hard-select one. Leads with control + **fully self-custodial**, never a number. **States:** default (flavor TBD — produce Ember · Plasma · Constellation variants) · loading (above-fold) · reduced-motion (static/opacity fallback, no info by motion) · (region-aware CTA). (`04` §2.3 brand gradient; `docs/INCREMENT-multi-network.md` / `docs/DESIGN-UPDATE-HANDOFF.md`.) **DT + MO.**
 16. **How it works `/how-it-works`** — "AI proposes / you dispose" explainer. **States:** default · loading. **DT + MO.**
 17. **Public Trust overview `/trust`** — public mirror: guarantees + audits + on-chain addresses, **no account data** (`05` §3.7). **States:** default · loading. **DT + MO.**
 18. **Security `/security`** — guarantees + audits public mirror. **States:** default · loading. **DT + MO.**
@@ -125,11 +130,12 @@
 50. **Composer** (`Textarea` + send/stop). **States:** empty (send disabled) · typing · streaming (Stop) · send-failed (input retained + retry) · degraded (disabled + reassurance copy). **DT + MO.**
 51. **Suggested-prompt chips** (empty set · contextual follow-ups; send-vs-populate indicated). **States:** default · populate-vs-send variant. **DT + MO.**
 52. **Card — `RecommendationCard`** (rank, AI-suggestion badge, net APY+breakdown, risk chip, fit, projected, sources, "Why this?", ≤2 actions). **States:** loading · default · warning (above-plan) · error (rate unavailable). **DT + MO.**
-53. **Card — `ActionCard`** (deposit/withdraw/swap intent; editable amount; caps preview; → `/confirm`). **States:** loading · default · warning (cap near / above-plan) · **blocked** (cap reached / not-whitelisted / sim would revert) · error. **DT + MO.**
+53. **Card — `ActionCard`** (deposit/withdraw/swap/**bridge** intent; editable amount; caps preview; → `/confirm`). **States:** loading · default · warning (cap near / above-plan) · **blocked** (cap reached / not-whitelisted / sim would revert) · error. **DT + MO.**
+53a. **Card — `ActionCard` (bridge variant)** (the chat **bridge intent** — "bridge"/"sui"/"cross-chain"/"move to …"; from→to network chip Base→Sui; asset + amount; route/fee/ETA preview; **per-network/per-bridge caps**; verbatim custody note "You'll sign a lock/burn on Base; the USDC arrives in your own wallet on Sui — fully self-custodial on both networks"; "Review bridge" → **inline confirm/bridge** §7.6 / `#/confirm/bridge`; "Edit" → `#/bridge`). **States:** loading (route/fee/ETA skeleton) · default · warning (near per-network/per-bridge cap / elevated-or-stale route) · **blocked** (over cap / route unavailable / not-allowlisted — remedy, no override) · error ("Couldn't load a bridge route. Your funds are safe. Try again."). (`02` §7.2-bis; Flow 12 §6.) **DT + MO.**
 54. **Card — `PortfolioSnapshotCard`** (net worth, PnL+window, mini allocation, risk read, vault position; read-only). **States:** loading · default · empty (no positions) · error. **DT + MO.**
 55. **Card — `TipCard`** (financial-literacy, `--info` blue; "How this works"; dismissable). **States:** default · dismissed (no re-nag). **DT + MO.**
 56. **Card — `OutcomeCard`** (realized PnL of a past rec; win/loss symmetric; proof link). **States:** loading · default-win · default-loss · pending/settling · error. **DT + MO.**
-57. **Card — `ConfirmationCard`** (in-chat mirror of `/confirm`; balance-change table + guardrail checklist + sign-disabled-until-acks + "Open full confirmation"). **States:** simulating · passed · warning/needs-ack · blocked (no sign) · signing/pending · success · failure/retry. **DT + MO.**
+57. **Card — `ConfirmationCard` (in-chat inline confirm — the SAME `ConfirmFlow` gate mounted in the thread, NOT a preview/mirror)** (chat-initiated deposit/swap/**bridge** render the full gate inline — **no navigation**: pre-trade **simulation reveal** → balance changes (simulated; **bridge** = out-on-source / in-on-destination, per-row network labels) → guardrail checklist → **acknowledgement checkbox that gates the Sign button** → "Nothing moves until you sign" → Sign → success (tx hash); always offers "Open full confirmation" → the `/confirm/[intent]` route). The **sign-disabled-until-acknowledged invariant + guardrail/simulation gate are identical (1:1) to the route**; non-custody (**fully self-custodial**) unchanged. **States:** simulating · passed · warning/needs-ack · blocked (no sign) · signing/pending · success · failure/retry. (Client-directed UX-surface change, logged — `docs/DESIGN-UPDATE-HANDOFF.md` §2; `02` §7.6; `06` §0.1/§3-ter.) **DT + MO.**
 
 > Also design the **citation source popover/sheet** ("Based on {source}" + timestamp + link) and **thumbs-down follow-up** (chips + optional text) as overlay variants of #47 (states: default · submitted · dismissed). **Thread switcher** (rail desktop / `Sheet` mobile) states: default · empty (no prior threads) · loading.
 
@@ -196,8 +202,23 @@
 91. **F. Success — confirmed receipt** — plain non-celebratory + check-draw; result summary + tx hash/explorer + link-back-to-originating-rec + "See it in portfolio/activity". **DT + MO.**
 92. **G/H/I error family** — failure/retry (on-chain revert/submission fail) · user-rejected (neutral "Nothing moved") · simulation-error ("won't sign blind", retry) · not-found/expired txIntent · degraded/withdraw-protection (elevate Path B). **DT + MO.**
 93. **Approvals + bundled multi-step preview** (exact-default vs unlimited-flagged approval control; ordered per-step bundle with per-step simulated deltas; signature model stated up front). **States:** default (exact) · unlimited-selected (+ack) · already-approved (step dropped) · per-step block. **DT + MO.**
+93a. **Confirm/bridge variant (Base ↔ Sui)** `#/confirm/bridge` (the bridge runs **this same gate**, §3-ter: headline naming **source→destination network**; balance-change table **out-on-source / in-on-destination** with per-row network labels; bridge fee + ETA estimate-framed; guardrail checklist = **allowlisted-route + per-network cap + per-bridge cap + policy + simulation**; **"Sign bridge"** gated on acks; **"Bridge initiated — track it ↗"** success with source tx hash + tracking link; **fully self-custodial** — sign lock/burn on source, receive in own wallet on destination, never custodied in transit; "Details" reconciles both legs on-chain). Reached from `#/bridge` or the chat bridge intent (chat-initiated → renders inline #57). **States:** A simulating · B passed/ready-to-sign · C warning/acknowledge (near per-network/per-bridge cap, elevated/stale route) · D blocked (over cap / route unavailable / not-allowlisted — remedy, no override) · E signing/pending · F success (bridge initiated + tracking) · G/H/I error family · expired txIntent. **Scope flag (logged):** Sui-side account/vault architecture (non-EVM/Move) + the bridge mechanism/provider are a **follow-on increment** — single canonical route, no fabricated Sui contract spec. (`06` §3-ter; Flow 12 §5.) **DT + MO.**
 
 > Also design the **power-user "Details" accordion** (raw deltas / decoded events / calldata / addresses in mono + explorer) as an expandable state of #83/#84.
+
+---
+
+## 8-bis. Bridge (Multi-Network, Flow 12) — `02-flows/12-bridge-multinetwork.md`
+
+> **Client-directed multi-network increment** (supersedes "Base only"): **Base at launch (live), Sui as the designated fast-follow** (no third network). The persistent **network switcher** is in §0 (#5a). The dedicated **Bridge** surface (`#/bridge`) builds a bridge `txIntent` → **`#/confirm/bridge`** (#93a) — **no signing here**. **Fully self-custodial:** sign a lock/burn on the source, receive in your **own** wallet on the destination, **never custodied in transit**; **withdraw-always holds on every network**. **Scope flag (logged):** the Sui-side account/vault architecture (non-EVM/Move) + the bridge mechanism/provider are a **follow-on increment** (single canonical route, no fabricated Sui contract spec).
+
+93b. **Bridge surface — desktop** `#/bridge` (centered single-purpose card: title + custody promise · From block [source network + asset picker USDC/ETH + amount + Max] · **flip control** · To block [destination network + est. received] · route/fee/ETA preview · **"how custody is preserved" explainer** · per-network/per-bridge caps meter · "Review bridge" → `#/confirm/bridge` · "Exit anytime" → `/trust/exit`). **DT.**
+93c. **Bridge surface — mobile** (stacked, same order; network/asset selectors open as `Sheet`; explainer/"why caps?" as `Sheet`/`Popover`; **bottom-anchored "Review bridge" CTA** + "Exit anytime" link). **MO.**
+93d. **Bridge-surface states** (applies to #93b/#93c): default (active network = source; asset USDC; empty amount; CTA disabled; custody explainer present) · empty/unfilled (invitation, not error; route/fee/ETA show the basis) · loading (route/fee/ETA quoting — **never `0`**, en-dash + "(calculated at simulation)"; custody explainer + "Exit anytime" render immediately) · success (none here — reflected post-confirm; "Bridge initiated… Track it ↗" toast already fired) · warning (near per-network/per-bridge cap · stale route/ETA · wrong-network · "Sui fast-follow" note) · error (insufficient asset / source gas / **route unavailable** "Couldn't load a bridge route. Your funds are safe and untouched." — no raw provider/RPC strings; withdraw unaffected on every network). **DT + MO.**
+93e. **Asset / network selectors + flip control** (asset picker USDC/ETH; From/To network selectors Base/Sui with Live/Fast-follow status chips; same-network guard; the **flip** swaps source↔destination + re-quotes). **States:** default · open (menu/`Sheet`) · asset-unavailable-on-network (disabled + reason) · flipping (re-quote). **DT + MO.**
+93f. **Route / fee / ETA preview + per-network/per-bridge caps + "how custody is preserved" explainer** (single canonical route; bridge fee itemized or en-dash-until-sim; source gas; est. received; ETA estimate-framed; caps meter healthy→caution(≥80%)→destructive with text equivalent + "why caps?"; explainer = the three legs + "who can move it in transit → no one but you" + both-network explorer links + withdraw-always note). **States:** default · quoting (skeleton; explainer renders immediately) · near-cap (amber) · at-cap (CTA disabled + "Max you can bridge now: {remaining}") · stale ("as of {time}") · read-error (last-known + retry; claims stand). **DT + MO.**
+
+> The bridge **sign gate** is **not** a second sign UI — it is the shared Flow 6 gate (confirm/bridge variant #93a); the **chat bridge intent** is the bridge `ActionCard` (#53a) → inline confirm (#57). Bridge surface ships `loading.tsx`/`error.tsx` ("withdraw is still available on every network").
 
 ---
 
@@ -347,10 +368,11 @@
 
 ## Coverage map — every `01` route accounted for
 
-- **(public):** `/` #15 · `/how-it-works` #16 · `/trust` #17 · `/security` #18 · `/legal/*` #19–21 · `/waitlist` #22.
+- **(public):** `/` #15 · **Spark Core landing #15a** (animated; flavor Ember/Plasma/Constellation = open client choice) · `/how-it-works` #16 · `/trust` #17 · `/security` #18 · `/legal/*` #19–21 · `/waitlist` #22.
 - **(auth):** `/connect` #25 · `/verify` #26 · `/unavailable` #27.
 - **(onboarding):** `/onboarding` (+ goals/risk/review/mandate) #31–40.
-- **(app) primary:** `/chat`, `/chat/[threadId]` #41–57 · `/portfolio`, `/portfolio/positions/[id]` #58–64 · `/strategies`, `/strategies/[recId]` #65–72 · `/vault`, `/vault/deposit`, `/vault/withdraw` #73–82 · `/confirm/[txIntentId]` #83–93.
+- **(app) primary:** `/chat`, `/chat/[threadId]` #41–57 (+ bridge `ActionCard` #53a) · `/portfolio`, `/portfolio/positions/[id]` #58–64 · `/strategies`, `/strategies/[recId]` #65–72 · `/vault`, `/vault/deposit`, `/vault/withdraw` #73–82 · `/confirm/[txIntentId]` #83–93 (+ confirm/bridge `#/confirm/bridge` #93a) · **`/bridge` (`#/bridge`) #93b–93f (Flow 12, multi-network)**.
+- **(app) shell (multi-network):** the persistent **network switcher** (Base/Sui, active indicator, per-network wallet address) #5a — present on every `(app)` route (`01` §2).
 - **(app) supporting:** `/trust`, `/trust/permissions`, `/trust/guarantees`, `/trust/exit` #102–113 · `/automation`, `/automation/grant`, `/automation/[sessionKeyId]` #94–101 · `/activity`, `/activity/[entryId]` #122–128 · `/learn`, `/learn/[slug]` #117–121 · `/srk` #114–116 · `/notifications` #136–137 · `/settings` (+ account/mandate/notifications/appearance/security) #129–135.
 - **(app) additive surfaces:** **AI Swap** (in-chat; Preview reuses `/confirm`) #138–142 · `/premium` (+ `/premium/upgrade`, `/premium/pay`, `/premium/manage`, `/premium/get-srk`; pay reuses `/confirm`) #143–153 · `/fees` (+ `(public)/fees` mirror; line item & receipt reflected via `/confirm` #83–93) #154–161.
 - **Admin / Stakeholder Panel** (a **separate, separately-gated surface**, not part of `(app)`): `/login` · `/` · `/users` · `/users/[ref]` · `/usage` · `/tvl` · `/revenue` · `/system` · `/overview` · `/admin/users` · `/admin/config` · `/admin/audit` (under the secret base path) #162–174 — spec: `../admin-panel/design-spec.md`.
@@ -374,7 +396,8 @@
 ## Cross-references
 
 - **Routes / shell / nav / gating / degraded / flow graph:** `01-information-architecture.md` §1, §2, §3, §4, §6.
-- **Per-screen anatomy, copy, benchmarks, acceptance:** the owning flow spec in `02-flows/` (`01` onboarding · `02` chat · `03` portfolio · `04` strategies · `05` vault · `06` confirmation · `07` automation · `08` SRK/literacy/outcomes/settings/notifications).
+- **Per-screen anatomy, copy, benchmarks, acceptance:** the owning flow spec in `02-flows/` (`01` onboarding · `02` chat · `03` portfolio · `04` strategies · `05` vault · `06` confirmation · `07` automation · `08` SRK/literacy/outcomes/settings/notifications · `09` AI swap · `10` subscriptions/premium · `11` fee transparency · **`12` multi-network + bridge**).
+- **Multi-network + bridge (network switcher, Bridge surface, confirm/bridge, chat bridge intent, fully-self-custodial framing, per-network/per-bridge caps, the Sui/bridge-mechanism follow-on flag):** `02-flows/12-bridge-multinetwork.md` + `06` §3-ter (the sign-gate variant) + `02` §7.2-bis/§7.6 (chat intent + inline confirm) + `docs/INCREMENT-multi-network.md`.
 - **Trust surfaces (badge, prove-it, Trust Center, escape hatch, friction model, outcome accountability):** `05-trust-and-safety-ux.md`.
 - **Tokens, components, charts, motion, a11y, shadcn map:** `04-design-system.md`.
 - **All canonical wording / number & PnL & APY formatting / banned & required phrases:** `07-content-and-tone.md` — **wins on any conflict.**

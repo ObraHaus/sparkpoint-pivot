@@ -11,7 +11,9 @@
 >
 > **What this doc is NOT:** it does not redefine the global shell (see `01` §2), the design tokens (see `04`), the canonical microcopy rules (see `07`), or the Confirmation flow internals (see Flow 6 / `/confirm`). It specifies the **in-chat** experience and how cards connect outward.
 >
-> **Scope reminder (carry into every screen):** Base only; single Aave Yield Vault (Risk 1 / Lower); SRK non-essential and never surfaced as a gate; beta-gated (whitelist + per-user caps + geo-fence); per-action signing is the default; the AI **proposes**, deterministic guardrails **check**, the **user signs**. The chat may *suggest* anything, but **nothing money-moving executes from chat** — acceptance always routes to `/confirm`.
+> **Scope reminder (carry into every screen):** multi-network — **Base at launch (live), Sui as the designated fast-follow** (both presented in the design; networks beyond Base+Sui are out of scope); single Aave Yield Vault (Risk 1 / Lower); SRK non-essential and never surfaced as a gate; beta-gated (whitelist + per-user caps + geo-fence); per-action signing is the default; the AI **proposes**, deterministic guardrails **check**, the **user signs**. The chat may *suggest* anything, but **nothing money-moving executes from chat without the trust gate** — a chat-initiated deposit/swap/bridge runs the full simulation → guardrail → ack-gated sign gate **inline in the thread (see §7.6)**; the standalone `/confirm/[intent]` route remains for non-chat entry points. It is **one `ConfirmFlow` component with two mount points** (inline-in-chat + the route); the sign-disabled-until-acknowledged invariant is identical on both.
+>
+> **Client-directed amendments logged (not silent):** (a) **multi-network (Base→Sui) + a chat BRIDGE intent** supersede the original "Base only" scope (`docs/INCREMENT-multi-network.md`); (b) **in-chat inline confirm** moves the confirm+sign *surface* into the thread for chat-initiated intents — a UX-surface change only, the trust gate preserved 1:1 (`docs/DESIGN-UPDATE-HANDOFF.md` §2). User-facing trust copy uses **"fully self-custodial"** (client-mandated); "non-custodial / self-custodial" remain accurate as technical descriptors.
 
 ---
 
@@ -173,6 +175,7 @@ Reduce blank-canvas anxiety and teach what the assistant can do (Cloudscape; `09
 - "Explain net APY"
 - "How do you keep my funds safe?" (→ prove-it framing)
 - "How did past advice do?" (→ Outcome log)
+- "Bridge USDC to Sui" (→ classifies the **bridge** intent → §7.2-bis bridge `ActionCard`; sends for the unambiguous intent)
 
 **Contextual follow-ups** (rendered after relevant answers):
 - After a `RecommendationCard`: "Why this?", "Compare options", "What's the risk?"
@@ -261,7 +264,7 @@ Calm, specific, never blaming; raw technical strings never exposed (07 §6.1). M
 
 Per OpenAI Apps SDK and `01` §0.3:
 - **Read-only outputs** (`PortfolioSnapshotCard`, `TipCard`, `OutcomeCard`, explanatory prose) render **without** any confirmation.
-- **Data-changing outputs** (`RecommendationCard`, `ActionCard` whose primary action moves funds) **never execute in chat.** Their primary action creates a `txIntent` and routes to `/confirm/[txIntentId]` (or renders the in-chat `ConfirmationCard` mirror that itself only signs via the confirm gate, §7.6). **There is no one-click money-mover in chat** (07 §9.1).
+- **Data-changing outputs** (`RecommendationCard`, `ActionCard` whose primary action moves funds — deposit / swap / **bridge**) **never execute in chat.** Their primary action creates a `txIntent` and, for a **chat-initiated** intent, **renders the full confirm+sign trust gate inline in the thread** as the `ConfirmationCard` (§7.6) — simulation → balance changes → guardrail checklist → ack-gated Sign → success, **without navigation**. (Non-chat entry points — vault page, ⌘K, notifications — open the same gate at `/confirm/[txIntentId]`; it is **one `ConfirmFlow`, two mount points**, §7.6.) **There is no one-click money-mover in chat** (07 §9.1).
 
 ### 6.2 Deep-link & return pattern
 
@@ -328,23 +331,44 @@ All six are `Card` compositions (`CardHeader` / `CardContent` / `CardFooter`) wi
 
 ### 7.2 ActionCard
 
-**Purpose:** a concrete deposit / withdraw / swap **intent** the user expressed or the AI proposes (e.g., "deposit 500 USDC"). It is an *intent preview*, not an execution.
+**Purpose:** a concrete deposit / withdraw / swap / **bridge** **intent** the user expressed or the AI proposes (e.g., "deposit 500 USDC", "bridge 200 USDC to Sui"). It is an *intent preview*, not an execution.
 
 **Anatomy:**
-- **Header:** action type label ("Deposit" / "Withdraw" / "Swap"); **"AI suggestion — you approve & sign"** badge (when AI-proposed).
+- **Header:** action type label ("Deposit" / "Withdraw" / "Swap" / **"Bridge"**); **"AI suggestion — you approve & sign"** badge (when AI-proposed).
 - **Content:**
   - **Asset(s) + amount** with ticker (tabular): "Deposit 500 USDC".
   - **Target:** the Aave Yield Vault / Aave v3 / Aerodrome (allowlisted only; FR-027).
   - **Estimated result:** "≈ {shares} spvUSDC" with fiat equiv beneath (07 §5.4); or for swap, est. output + price impact + max slippage (labeled estimate).
   - **Net APY** (for deposit) with breakdown; **caps context** preview where relevant ("Beta cap: ${used} of ${cap} used", 07 §2.3).
   - **Editable amount** affordance (inline) — but editing routes to the proper flow/confirm, not an in-card execute.
-- **Footer (≤2):** primary **"Review deposit"** / **"Review withdrawal"** / **"Review this move"** (→ `/confirm`) + secondary **"Edit"** (opens the relevant flow screen with the amount staged).
+- **Footer (≤2):** primary **"Review deposit"** / **"Review withdrawal"** / **"Review this move"** / **"Review bridge"** (a chat-initiated intent renders the inline confirm §7.6 in the thread) + secondary **"Edit"** (opens the relevant flow screen with the amount staged).
 
 **States:** loading · default · warning (cap near/over → "You're near your beta cap" caution; or above-plan) · **blocked** (cap reached / not-whitelisted / sim would revert → destructive, with 07 §6.1 reason, e.g. "Blocked by your guardrails: this would exceed your beta cap.") · error.
 
-**Non-custody/trust:** every state-changing action funnels to `/confirm` (single funnel, `01` §0.3); withdraw action is the **escape hatch** in card form and must always be reachable; never imply the AI executes.
+**Non-custody/trust:** every state-changing action runs the single trust gate — **inline in chat (§7.6)** for chat-initiated intents, the `/confirm` route otherwise (`01` §0.3); withdraw action is the **escape hatch** in card form and must always be reachable on **every network**; never imply the AI executes.
 
 **shadcn:** `Card` + `Badge` + `Input` (inline amount) + `Button` ×2 + caps `Progress` (preview).
+
+#### 7.2-bis ActionCard — Bridge variant (Base ↔ Sui)
+
+**Purpose:** the chat **bridge intent** — when the user expresses cross-chain movement ("bridge", "sui", "cross-chain", "move to Sui/Base"), the assistant classifies the intent as `bridge`, runs the tool-step ticker ("Reading your balances on Base… → Checking the Sui route… → Simulating the bridge…"), and renders this **bridge** `ActionCard`. Faithful to the multi-network increment (`docs/INCREMENT-multi-network.md`). It is an *intent preview*, not an execution.
+
+**Anatomy (over the shared §7.2 anatomy):**
+- **Header:** action label **"Bridge"** + a **from→to network chip** (e.g. **Base → Sui**); **"AI suggestion — you approve & sign"** badge.
+- **Content:**
+  - **Asset + amount:** "Bridge **200 USDC** from **Base** to **Sui**" (tabular); helper "You hold {balance} USDC on Base."
+  - **Route / fee / ETA preview:** the canonical bridge route, est. bridge fee, and estimated time-to-arrival (clearly labeled estimate).
+  - **Per-network / per-bridge caps** preview where relevant (caps wire to policy limits; `04` caps meter).
+  - **Non-custody note (verbatim intent):** *"You'll sign a lock/burn on Base; the USDC arrives in your own wallet on Sui. SparkPoint never holds your funds in transit — fully self-custodial on both networks."*
+- **Footer (≤2):** primary **"Review bridge"** (chat-initiated → renders the **confirm/bridge** inline gate §7.6 in the thread; non-chat entry → `#/confirm/bridge`) + secondary **"Edit"** / **"Not now"**.
+
+**States:** loading (route/fee/ETA skeleton) · default · warning (near a per-network/per-bridge cap, elevated route slippage → ack at confirm) · **blocked** (over cap / route unavailable / not-allowlisted → destructive remedy, no override) · error ("Couldn't load a bridge route. Your funds are safe. Try again.").
+
+**Non-custody/trust:** the single simulation + guardrail checklist + you-sign gate applies to bridge **exactly like** swaps/deposits; **withdraw-always holds on every network** (Base *and* Sui); the user signs on the source and receives on the destination in their own wallet — **fully self-custodial**, never custodied in transit.
+
+> **Scope flag (client-directed, logged):** the **product/UX/non-custody** level of multi-network + bridge is in scope here. The **Sui-side account/vault architecture** (Sui is non-EVM / Move-based — no ERC-4337/4626/Solidity) and the **bridge mechanism/provider** are a **separate follow-on increment to be designed** — do not fabricate a Sui contract spec or a concrete bridge route here.
+
+**shadcn:** `Card` + `Badge` (action + from→to network) + `Input` (inline amount) + caps `Progress` + `Button` ×2.
 
 ---
 
@@ -406,9 +430,11 @@ All six are `Card` compositions (`CardHeader` / `CardContent` / `CardFooter`) wi
 
 ---
 
-### 7.6 ConfirmationCard (in-chat mirror of the confirm gate)
+### 7.6 ConfirmationCard (IN-CHAT INLINE CONFIRM — the trust gate, rendered in the thread)
 
-**Purpose:** the **inline, in-chat** confirmation surface that mirrors `/confirm` (Flow 6) so the user can review-and-sign without leaving the thread — but it is the **same gate**, not a shortcut. Renders only for data-changing actions, post-simulation, pre-sign (OpenAI Apps SDK: data-changing → inline confirm with inputs+outputs + explicit Confirm). **Full Flow-6 spec is authoritative; this is its chat embodiment.**
+**Purpose:** the **in-chat inline confirm** — when a deposit/swap/**bridge** is initiated **from chat**, the full confirm+sign trust gate renders **inline in the chat stream, without navigation**: simulation → balance changes → guardrail checklist → ack-gated Sign → success, all in the thread. It is **not a preview or a shortcut** — it is the **same gate** as `/confirm` (Flow 6), the **same `ConfirmFlow` component** mounted in a second place. Renders only for data-changing actions, post-simulation, pre-sign (OpenAI Apps SDK: data-changing → inline confirm with inputs+outputs + explicit Confirm). **Full Flow-6 spec is authoritative; this is its in-chat mount point.**
+
+> **Client-directed (logged):** the original plan funnelled every state change to the dedicated `/confirm/[txIntentId]` **route** and had chat only *preview* it. The latest design renders the confirm+sign **inline in chat** for chat-initiated intents (`docs/DESIGN-UPDATE-HANDOFF.md` §2). This is a **UX-surface change only** — the **sign-disabled-until-acknowledged invariant and the entire trust gate are preserved 1:1**; non-custody is unchanged. The `/confirm/[intent]` route **remains** for non-chat entry points. Implementation = **one `ConfirmFlow` component, two mount points** (inline-in-chat + the route). "Open full confirmation" still deep-links to the route for users who want the focused full-screen surface.
 
 **Anatomy (mirrors 07 §2.4 confirmation pattern + `04` confirmation mapping):**
 - **Header:** "Confirm: {action}" (no AI-suggestion badge needed here — this is the money moment; tone is precise/factual, 07 §1.3).
@@ -417,7 +443,7 @@ All six are `Card` compositions (`CardHeader` / `CardContent` / `CardFooter`) wi
   2. **Balance-change table** — simulation result; each asset in/out with USD value and direction (− out / + in), gas line; tabular; semantic +/− (Tenderly benchmark; `04` §11). No persuasion prose.
   3. **Guardrail checklist** — each item plain + binary, semantic icon (`04` §2.4): "✓ Within your beta cap", "✓ Slippage under your max", "✓ Allowlisted protocol", "✓ Simulation passed" — or "⚠ Requires your acknowledgement: {reason}".
   4. **Control reminder:** *"Nothing moves until you sign. You can cancel now with no effect."* (07 §2.4).
-- **Footer (≤2):** primary **"Review & sign"** → after acks, **"Sign deposit"** / **"Sign transaction"** (07 §2.2). **Sign is disabled until all required acks are checked** (Rabby pattern; `04` §10.4; helper: "Acknowledge the {n} item(s) above to enable signing."). Secondary **"Open full confirmation"** (→ `/confirm/[txIntentId]`) and/or **"Cancel"** (cancel = neutral, "Nothing moved").
+- **Footer (≤2):** primary **"Review & sign"** → after acks, **"Sign deposit"** / **"Sign transaction"** / **"Sign bridge"** (07 §2.2). **Sign happens here, inline** — and is **disabled until all required acks are checked** (Rabby pattern; `04` §10.4; helper: "Acknowledge the {n} item(s) above to enable signing."). Secondary **"Open full confirmation"** (→ `/confirm/[txIntentId]`, for users who prefer the focused full-screen route) and/or **"Cancel"** (cancel = neutral, "Nothing moved").
 
 **States (mirror Flow 6):**
 - **Simulating** — tool-step "Simulating this move…" + skeleton table (§5.3).
@@ -428,7 +454,7 @@ All six are `Card` compositions (`CardHeader` / `CardContent` / `CardFooter`) wi
 - **Success** — 07 §2.5 pattern: *"Deposit confirmed. You now hold {shares} spvUSDC (≈ ${value}). View transaction ↗"* + "See it in your portfolio"; drops back into the thread (§6.2).
 - **Failure/retry** — 07 §6.1: "The transaction didn't go through, so nothing moved. {reason}. You can review and try again." + custody reassurance.
 
-**Non-custody/trust (the trust gate):** simulation before any signature (SC-002); guardrail checklist visible; **sign disabled until acknowledged**; out-of-policy never offered for signing; cancel always safe; user signs (SC-001). This card is where "AI proposes — guardrails check — you sign" is fully realized inline. **Always offers "Open full confirmation"** so the user can escalate to the full `/confirm` surface.
+**Non-custody/trust (the trust gate):** simulation before any signature (SC-002); guardrail checklist visible; **sign disabled until acknowledged**; out-of-policy never offered for signing; cancel always safe; user signs (SC-001). This card is where "AI proposes — guardrails check — you sign" is **fully realized inline in the thread** — the sign genuinely happens here, not on a separate route; non-custody (**fully self-custodial**) is unchanged. **Always offers "Open full confirmation"** so a user who prefers the focused full-screen surface can open the same gate at `/confirm`. **Bridge variant:** the balance-change table shows **out on the source network / in on the destination network** (Base→Sui or Sui→Base), with the non-custody note that the user signs a lock/burn on the source and receives funds in **their own wallet** on the destination — SparkPoint never custodies funds in transit (see Flow 6 confirm/bridge variant).
 
 **shadcn:** `Card` + `Table` (balance-change) + `Alert` (sim banner) + `Checkbox` (acks) + `Button` (disabled-until-acks) + `AlertDialog` (final sign moment if escalated).
 
@@ -441,11 +467,12 @@ How each card links outward (from `01` §4).
 | Card | Primary action → | Secondary → | Writes to |
 |---|---|---|---|
 | `RecommendationCard` | `/confirm/[txIntentId]` (via txIntent) — "Review this move" | "Not now" (dismiss); "Why this?" → `/strategies/[recId]` | On accept+sign → Outcome log entry (`/activity/[entryId]`) linked to `recId` |
-| `ActionCard` | `/confirm/[txIntentId]` — "Review deposit/withdrawal" | "Edit" → `/vault/deposit`·`/withdraw` (amount staged) | Same as above on execution |
+| `ActionCard` (deposit/withdraw/swap) | inline confirm §7.6 (chat-initiated) / `/confirm/[txIntentId]` — "Review deposit/withdrawal/this move" | "Edit" → `/vault/deposit`·`/withdraw` (amount staged) | Same as above on execution |
+| `ActionCard` (bridge, §7.2-bis) | inline confirm/bridge §7.6 (chat-initiated) / `#/confirm/bridge` — "Review bridge" | "Edit" → `#/bridge` (amount/networks staged); "Not now" | On sign → bridge tx (out source / in destination) + Outcome/activity entry |
 | `PortfolioSnapshotCard` | `/portfolio` — "Open portfolio" | "Improve my yield" → Strategies/chips | — (read-only) |
 | `TipCard` | `/learn/[slug]` — "How this works" | dismiss | — |
 | `OutcomeCard` | `/strategies/[recId]` or `/activity/[entryId]` — "See the original advice" | "What changed?" (AI explains) | — |
-| `ConfirmationCard` | sign here (gated) or `/confirm/[txIntentId]` — "Open full confirmation" | "Cancel" | On sign → tx + Outcome log + `/notifications` |
+| `ConfirmationCard` (inline confirm §7.6) | **sign here inline (gated)** — chat-initiated deposit/swap/bridge; "Open full confirmation" → `/confirm/[txIntentId]` (same gate, focused route) | "Cancel" | On sign → tx + Outcome log + `/notifications` |
 
 ---
 
@@ -556,11 +583,11 @@ A design satisfies this flow doc when **all** hold:
 4. **Suggested-prompt chips present** in empty state, above the composer, and contextually after answers; none lead with a return number or imply guaranteed yield; send-vs-populate behavior indicated.
 5. **Tool-step transparency is real and honest.** "Reading your wallet → Checking Aave rates → Scanning the vault → Simulating" steps render with spark "thinking" motion, resolve to checks, collapse after; reduced-motion fallback provided; no faked progress.
 6. **All six cards specified with anatomy + ≤2 actions + states.** `RecommendationCard`, `ActionCard`, `PortfolioSnapshotCard`, `TipCard`, `OutcomeCard`, `ConfirmationCard` each have header/content/footer, ≤2 footer actions, and loading/default/success/warning/error variants.
-7. **Confirm gate enforced.** Read-only cards render without confirmation; every data-changing card routes to `/confirm` (or the in-chat `ConfirmationCard` mirror that signs only via the gate); **no one-click money-mover exists in chat**; out-of-policy actions are never offered for signing.
+7. **Confirm gate enforced.** Read-only cards render without confirmation; every data-changing card (deposit / swap / **bridge**) runs the full trust gate — **inline in the chat thread (§7.6) for chat-initiated intents** (no navigation) and at `/confirm/[txIntentId]` for non-chat entry points, **one `ConfirmFlow` component / two mount points**; **no one-click money-mover exists in chat**; out-of-policy actions are never offered for signing.
 8. **Trust motifs verbatim.** "AI suggestion — you approve & sign" on every rec/action card; "Estimates, not guarantees." on yield cards; net APY never bare and always with breakdown ≤1 tap; custody/risk disclaimer clauses unsoftened and always in view.
 9. **Citations present.** Every AI-asserted live figure carries a source affordance ("Based on {source}" + timestamp + link), with a turn-level Sources list; on-chain claims link to explorer/verified-source; stale data labeled, never shown as live.
 10. **Thumbs feedback** on AI turns (selecting one disables the opposite), with an optional non-blocking thumbs-down follow-up.
-11. **ConfirmationCard mirrors Flow 6.** Plain "what you're about to do" → balance-change table → guardrail checklist → control reminder → **Sign disabled until acks**; simulating/passed/warning/blocked/signing/success/failure states; "Open full confirmation" escalation; cancel always safe; custody reassurance on failure.
+11. **In-chat inline confirm = Flow 6, inline.** The chat-initiated confirm renders **inline in the thread (§7.6)** running the same gate: plain "what you're about to do" → balance-change table → guardrail checklist → control reminder → **Sign disabled until acks** → **Sign inline** → success — **without navigation**; simulating/passed/warning/blocked/signing/success/failure states; "Open full confirmation" opens the same gate at `/confirm`; the **bridge** variant shows out-on-source / in-on-destination; cancel always safe; custody reassurance on failure. It is the **same `ConfirmFlow` component** as the route, not a second implementation.
 12. **Card-to-flow links resolve.** Every card's ≤2 actions deep-link per §8 and return to the same thread with scroll preserved; accepted recommendations write to the Outcome log linked to the originating `recId`.
 13. **Honest outcomes.** `OutcomeCard` shows wins and losses symmetrically, tied to the originating recommendation, with on-chain proof link; no flattering default window; no euphemism.
 14. **Maps to shadcn + accessible.** Every element resolves to the §13 map; cards honor ≤2 actions; visible 2px spark focus ring; full keyboard operability incl. the sign flow; tool-steps announced politely; numbers tabular; no color-only signals; reduced-motion honored; Dialog→Sheet/Drawer on mobile.

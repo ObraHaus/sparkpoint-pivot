@@ -4,7 +4,9 @@
 > **Status:** Authoritative visual-design language for the W1–2 milestone. Every screen in flows `01`…`NN` must be built from the tokens, scales, and components defined here.
 > **Reads-before:** `00-brief.md` (positioning, thesis, non-goals). Where this doc and the brief disagree on tone or constraints, the brief wins; this doc operationalizes the brief into concrete tokens.
 > **What this doc IS:** color/type/space/elevation tokens, the spark accent, semantic + risk palettes, data-viz style, motion, accessibility rules, and a component→shadcn mapping. **What it is NOT:** flow specs or screen anatomy (those live per-flow).
-> **Hard rules carried from the brief:** dark-first; single **spark** accent reserved for primary CTAs + AI presence; strict semantic colors (green/red/amber, never the accent); a consistent **3–5 step risk palette** reused everywhere risk appears; **tabular numerals** for all financials; **WCAG AA** minimum; maps cleanly to **shadcn/ui** primitives (Card, Badge, Dialog/Drawer, Tabs, Table, Progress, Alert; charts via **Recharts**).
+> **Hard rules carried from the brief:** dark-first; the **spark** brand-accent system reserved for primary CTAs + AI presence; strict semantic colors (green/red/amber, never the accent); a consistent **5-step risk palette** (violet→magenta) reused everywhere risk appears; **tabular numerals** for all financials; **WCAG AA** minimum; maps cleanly to **shadcn/ui** primitives (Card, Badge, Dialog/Drawer, Tabs, Table, Progress, Alert; charts via **Recharts**).
+
+> **⚠️ BRAND SOURCE-OF-TRUTH NOTICE (client-directed, supersedes earlier drafts of this doc).** The delivered brand was changed by client direction to match sparkpoint.io, then improve on it. The **real brand is COBALT BLUE + GOLD + CORAL** warm accents, with a signature **blue→cyan→gold→coral gradient**, on a **deep indigo-navy** dark base; the **risk scale is VIOLET→MAGENTA (5-step)** (so it never collides with the cobalt brand blue); type is **Geist Sans + Geist Mono** with **tabular numerals** on financials. **`tokens.css` in the design showcase is the SOURCE OF TRUTH for all token *values*.** Any **orange "spark" accent** previously specified in this doc (and any teal-anchored risk scale) is **STALE** — the structure/usage rules below still hold, but read every "spark orange / `#FF8A3D`" hex as the cobalt/gold/coral brand from `tokens.css`. Hex values written inline below are illustrative reference only; `tokens.css` wins on any conflict.
 
 ---
 
@@ -12,7 +14,7 @@
 
 The visual language must encode three brand truths from the brief into pixels:
 
-1. **Trustworthy & self-sovereign** → calm, precise, fintech-grade. Restraint over decoration. No casino gradients, no hype glow except the one intentional spark.
+1. **Trustworthy & self-sovereign** → calm, precise, fintech-grade. Restraint over decoration. No casino gradients; the **one sanctioned brand gradient is the signature blue→cyan→gold→coral spark gradient** (used for brand/AI-presence moments — logo, hero, AI glow — never to carry semantic meaning), and the one sanctioned hype glow is AI presence.
 2. **Data-dense but clean** → tight, predictable spacing scale; tabular numerals; a disciplined type scale; risk and PnL legible at a glance.
 3. **Honest autonomy** → the spark accent *is* AI presence; semantic colors *are* outcome/safety; the two color systems never blur. A user must be able to read "this is the AI talking," "this is a gain," "this is blocked," and "this is the risk tier" by color alone (with a non-color fallback for AA).
 
@@ -40,11 +42,11 @@ Colors ship as **CSS custom properties on `:root` (dark = default) and `.light`*
 
 ### 2.2 Core neutral ramp (dark-first)
 
-A near-neutral, very slightly cool slate ramp — not pure black (avoids OLED smear and harsh contrast), not blue-tinted enough to read as "techy toy."
+A **deep indigo-navy** base ramp (per the delivered brand) — not pure black (avoids OLED smear and harsh contrast), and intentionally cool/indigo-tinted to sit under the cobalt brand without reading as a "techy toy." **Hex below is illustrative; `tokens.css` carries the canonical indigo-navy values.**
 
 | Token | Role | Dark (hex ref) | Light (hex ref) |
 |---|---|---|---|
-| `--background` | App canvas | `#0A0C10` | `#FBFCFD` |
+| `--background` | App canvas (deep indigo-navy) | `#0A0C10` *(→ indigo-navy per `tokens.css`)* | `#FBFCFD` |
 | `--card` | Card / panel surface (raised from canvas) | `#11141A` | `#FFFFFF` |
 | `--popover` | Popover/menu surface | `#141821` | `#FFFFFF` |
 | `--muted` | Subtle fill (table zebra, chips, inactive) | `#1A1F29` | `#F1F3F5` |
@@ -52,26 +54,30 @@ A near-neutral, very slightly cool slate ramp — not pure black (avoids OLED sm
 | `--foreground` | Primary text | `#E8ECF2` | `#0E1116` |
 | `--border` | Hairlines, dividers, input borders | `#232A36` | `#E3E7EB` |
 | `--input` | Input border (slightly stronger than border) | `#2A323F` | `#D7DCE2` |
-| `--ring` | Focus ring (spark-derived) | spark `#FF8A3D` | spark `#E2670F` |
+| `--ring` | Focus ring (brand-derived) | cobalt brand (per `tokens.css`) | cobalt brand (per `tokens.css`) |
 
 **Elevation by surface + border, not heavy shadow.** Dark UIs read depth via lighter fills and hairline borders far better than via drop shadows. Surfaces step: `background` (0) → `card`/`muted` (1) → `popover` (2). Reserve shadow for true overlays (Dialog, Popover, Drawer, dropdowns) only — see §5.
 
-### 2.3 The spark accent (single brand hue)
+### 2.3 The spark accent (brand system — cobalt blue + gold + coral)
 
-One warm **spark orange** — energetic without being alarm-red, distinct from the semantic red/amber by hue and reserved-usage. It is the *only* accent; do not introduce a secondary brand color.
+> **CLIENT-DIRECTED BRAND (supersedes the old single "spark orange").** The accent is now the sparkpoint.io-matched brand: a **cobalt blue** primary with **gold + coral** warm accents, plus a signature **blue→cyan→gold→coral gradient** for brand/AI moments. The old orange `#FF8A3D` is **STALE**. Values below are **illustrative reference**; **`tokens.css` is the source of truth** for every brand hex. The *usage discipline* (scarce, CTA + AI presence only) is unchanged — only the hues changed.
 
-| Token | Role | Dark | Light |
-|---|---|---|---|
-| `--primary` | Spark accent — primary CTA & AI presence | `#FF8A3D` | `#E2670F` |
-| `--primary-foreground` | Text/icon on spark fill | `#0A0C10` | `#FFFFFF` |
-| `--spark-subtle` | Spark at low-emphasis (AI avatar bg, active-nav tint, link hover wash) | `rgba(255,138,61,0.14)` | `rgba(226,103,15,0.10)` |
-| `--spark-glow` | AI "thinking"/presence glow (very low alpha, motion-gated) | `rgba(255,138,61,0.22)` | n/a (omit) |
+| Token | Role | Reference (illustrative — see `tokens.css`) |
+|---|---|---|
+| `--primary` | Brand accent — primary CTA & AI presence | **cobalt blue** |
+| `--primary-foreground` | Text/icon on the brand fill | near-black / white per contrast |
+| `--brand-gold` | Warm secondary accent (highlights, gradient mid-warm, premium/proof moments) | **gold** |
+| `--brand-coral` | Warm secondary accent (gradient terminus, energy/AI flourish) | **coral** |
+| `--brand-gradient` | Signature gradient: **blue → cyan → gold → coral** (brand/AI presence only; never semantic) | linear blend of the above |
+| `--spark-subtle` | Brand at low-emphasis (AI avatar bg, active-nav tint, link hover wash) | ~14% alpha of cobalt |
+| `--spark-glow` | AI "thinking"/presence glow (very low alpha, motion-gated; may bloom along the gradient) | low-alpha cobalt/cyan |
 
-**Spark usage rules (strict — from brief §6):**
-- **Primary CTA only:** "Sign & Confirm," "Deposit," "Connect Wallet," "Set Mandate." One primary spark CTA per view; everything else is `secondary`/`outline`/`ghost`.
+**Brand-accent usage rules (strict — from brief §6):**
+- **Primary CTA only:** "Sign & Confirm," "Deposit," "Connect Wallet," "Set Mandate." One primary brand CTA per view; everything else is `secondary`/`outline`/`ghost`.
 - **AI presence:** the assistant avatar, the AI "thinking" indicator, the "AI suggestion" affordance, suggested-prompt chips on hover/active. This is what makes "the AI is talking" legible by color.
-- **Do NOT** use spark for gains, success, risk tiers, or generic emphasis. Spark must stay scarce to keep its signal. If a screen has spark in five places, four are wrong.
-- **Amber-vs-spark guard:** because spark is warm/orange, keep the caution **amber** clearly more yellow (see §2.4) and never place a spark CTA and an amber caution chip adjacent without the amber carrying an icon + label, so they don't read as one warning.
+- **The signature gradient** (blue→cyan→gold→coral) is reserved for **brand identity + AI-presence moments** (logo, Spark Core landing, hero, AI glow). **Never** use it — or gold/coral — to carry semantic meaning (gain/loss/caution) or to color risk tiers.
+- **Do NOT** use the brand accent (cobalt/gold/coral/gradient) for gains, success, risk tiers, or generic emphasis. It must stay scarce to keep its signal. If a screen has the brand accent in five places, four are wrong.
+- **Warm-accent-vs-semantic guard:** gold and coral are warm and can read near the caution **amber** / loss **red**; keep caution amber clearly more yellow and loss red clearly red (see §2.4), and never place a gold/coral brand flourish adjacent to an amber/red semantic chip without the semantic element carrying an icon + label, so they don't read as one signal.
 
 ### 2.4 Semantic colors (strict — outcome & safety)
 
@@ -91,15 +97,15 @@ Reused everywhere outcome/safety appears: PnL, gains/loss arrows, guardrail pass
 
 ### 2.5 Risk palette (consistent 3–5 step — reused everywhere)
 
-A **5-step ordinal scale** (use a 3-step collapse — Lower/Moderate/Higher — for retail-facing surfaces; the full 5 for power-user/data-dense surfaces). This is its **own** hue system, distinct from semantic green/amber/red so a "high-risk" tier is not misread as a "loss/error." It runs a perceptually-spaced teal→violet→magenta progression (cool→warm = safe→risky) rather than green→red, precisely to avoid colliding with the semantic system.
+A **5-step ordinal scale** (use a 3-step collapse — Lower/Moderate/Higher — for retail-facing surfaces; the full 5 for power-user/data-dense surfaces). This is its **own** hue system, distinct from semantic green/amber/red so a "high-risk" tier is not misread as a "loss/error." **Client-directed:** it runs a perceptually-spaced **violet→magenta** progression (deepening = safe→risky) — chosen **specifically so it never collides with the cobalt brand blue** (an earlier teal/blue-anchored scale did, and is **stale**). Reference hex below is illustrative; **`tokens.css` is the source of truth.**
 
-| Step | Label (5-step) | Label (3-step) | Token | Dark hex | Use |
+| Step | Label (5-step) | Label (3-step) | Token | Dark hex (illustrative) | Use |
 |---|---|---|---|---|---|
-| 1 | Very Low | **Lower** | `--risk-1` | `#2BB3C0` (teal) | Capital-preservation; the launch Aave vault default |
-| 2 | Low | **Lower** | `--risk-2` | `#5B8DEF` (blue) | Conservative |
-| 3 | Moderate | **Moderate** | `--risk-3` | `#8B7CF0` (violet) | Balanced |
-| 4 | Elevated | **Higher** | `--risk-4` | `#C45FD6` (purple-magenta) | Growth-leaning |
-| 5 | High | **Higher** | `--risk-5` | `#E0518F` (magenta-pink) | Aggressive |
+| 1 | Very Low | **Lower** | `--risk-1` | violet (lightest) | Capital-preservation; the launch Aave vault default |
+| 2 | Low | **Lower** | `--risk-2` | violet | Conservative |
+| 3 | Moderate | **Moderate** | `--risk-3` | violet→purple | Balanced |
+| 4 | Elevated | **Higher** | `--risk-4` | purple-magenta | Growth-leaning |
+| 5 | High | **Higher** | `--risk-5` | magenta (deepest) | Aggressive |
 
 - Each step ships with a **subtle bg** variant (≈14% alpha of the hue) for chips/fills and a **solid fg** variant (AA on `--card`) for text/meter strokes.
 - **Reuse contract:** the *same* token drives the portfolio risk panel, the vault risk score, the strategy-ranking risk chip, and allocation-by-risk-tier. A user learns the scale once. Never recolor risk per-surface.
@@ -118,9 +124,9 @@ Charts get their own **categorical ramp** derived from the risk + neutral system
 
 | Role | Family | Fallback | Rationale |
 |---|---|---|---|
-| **UI / body / display** | **Geist Sans** (or **Inter** as drop-in) | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif` | Neutral, high-legibility fintech grotesque; both have excellent tabular-figure support. Pick **one** and use throughout. |
-| **Numerals / financials** | Same family with **`font-variant-numeric: tabular-nums`** (and `slashed-zero`) | — | Prefer the *tabular figures of the UI family* over switching to mono for inline numbers, so balances align without a jarring face change. |
-| **Mono** (addresses, tx hashes, code/calldata, raw permission scopes) | **Geist Mono** (or **JetBrains Mono**) | `ui-monospace, "SF Mono", Menlo, monospace` | Hashes/addresses, simulation calldata, on-chain permission strings in the "prove-it" panel and confirmation screen. |
+| **UI / body / display** | **Geist Sans** (canonical brand type) | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif` | Neutral, high-legibility fintech grotesque with excellent tabular-figure support. **Geist Sans is the brand UI face** — use throughout. (Inter is an acceptable emergency fallback only.) |
+| **Numerals / financials** | Geist Sans with **`font-variant-numeric: tabular-nums`** (and `slashed-zero`) | — | Prefer the *tabular figures of Geist Sans* over switching to mono for inline numbers, so balances align without a jarring face change. |
+| **Mono** (addresses, tx hashes, code/calldata, raw permission scopes) | **Geist Mono** (canonical brand mono) | `ui-monospace, "SF Mono", Menlo, monospace` | Hashes/addresses, simulation calldata, on-chain permission strings in the "prove-it" panel and confirmation screen. |
 
 > **Tabular-numerals rule (brief §6, non-negotiable):** every financial figure — balances, APY, PnL, shares, caps, prices — uses tabular numerals so columns align and live-updating values don't jitter. Provide a `.tnum` utility (`font-variant-numeric: tabular-nums slashed-zero`) and apply it to all numeric cells, the net-worth hero, APY readouts, and share counts. Prose stays proportional.
 
@@ -228,7 +234,7 @@ Charts must read as **calm, precise instruments**, not dashboards-for-show. All 
 ### 6.3 Allocation donut (Portfolio + Vault)
 
 - **Type:** `PieChart` with `innerRadius` (donut), center label = total + count.
-- **Color:** **allocation-by-risk-tier uses the §2.5 risk palette directly** (teal→magenta) so the donut *is* a risk read. Allocation-by-asset (USDC/vault/idle) uses the categorical ramp (risk-1, risk-3, risk-5, neutral) — distinct, legend-labeled, never relying on color alone (legend carries label + %).
+- **Color:** **allocation-by-risk-tier uses the §2.5 risk palette directly** (violet→magenta) so the donut *is* a risk read. Allocation-by-asset (USDC/vault/idle) uses the categorical ramp (risk-1, risk-3, risk-5, neutral) — distinct, legend-labeled, never relying on color alone (legend carries label + %).
 - **Legend:** right (desktop) / below (mobile), each row = swatch + label + `%` + tabular `$`.
 - Min slice handling: slices <3% collapse into "Other" with disclosure.
 
@@ -282,7 +288,8 @@ Charts must read as **calm, precise instruments**, not dashboards-for-show. All 
 | Risk | segmented meter + number | Avoid a single ambiguous "warning" icon for *tiers*. |
 | Withdraw / exit | `arrow-up-from-line` / `door-open` | Always-available exit. |
 | Pause-only kill-switch | `pause` | Never a "stop/lock-funds" metaphor — it cannot block withdrawals. |
-| Base network | Base wordmark/logo asset | Network pill. |
+| Network (Base / Sui) | Base + Sui wordmark/logo assets | **Persistent network switcher** pill (multi-network). |
+| Bridge (Base ↔ Sui) | `arrow-left-right` / `route` | Bridge surface + bridge intent. |
 | Simulation | `flask-conical` / `activity` | Tenderly-style pre-trade preview. |
 
 - **Don't** mix filled and outline styles arbitrarily; Lucide is outline — use fill only for tiny directional PnL triangles and active states.
@@ -291,7 +298,7 @@ Charts must read as **calm, precise instruments**, not dashboards-for-show. All 
 
 ## 9. Brand mark & AI identity
 
-- **Spark mark:** a single, simple spark/spark-burst glyph in `--primary`, used as the app logo and — critically — as the **AI assistant identity** (avatar, "AI is thinking," "AI suggestion — you approve & sign" affordance). Keeping the mark = the AI presence makes the spark accent do double duty as brand + "this is the model speaking."
+- **Spark mark:** a single, simple spark/spark-burst glyph in the brand accent — cobalt `--primary`, and where a richer brand moment is warranted (logo lockup, Spark Core landing, AI bloom) rendered in the **signature blue→cyan→gold→coral gradient** — used as the app logo and — critically — as the **AI assistant identity** (avatar, "AI is thinking," "AI suggestion — you approve & sign" affordance). Keeping the mark = the AI presence makes the brand accent do double duty as brand + "this is the model speaking."
 - **AI message styling:** assistant turns get the spark avatar + a faint `--spark-subtle` left border or chip; user turns are neutral. The **"AI suggestion — you approve & sign"** label (brief recurring motif) renders as a small spark-tinted `Badge` on every recommendation/action card.
 - **Never** let the spark mark imply autonomy beyond proposal — it always sits next to the sign/guardrail affordances, reinforcing "AI proposes, you dispose."
 
@@ -299,7 +306,7 @@ Charts must read as **calm, precise instruments**, not dashboards-for-show. All 
 
 ## 10. Accessibility (WCAG AA — required, both themes)
 
-1. **Contrast:** body/meaningful text ≥ **4.5:1**; large text (≥24px/≥19px bold) and UI components/graphical objects ≥ **3:1**. The token values in §2 are tuned for this on dark; light theme mirrors. Spark `--primary` as a *fill* uses near-black `--primary-foreground` for AA; spark as *text* on dark canvas is AA at the chosen `#FF8A3D` — verify any new placement.
+1. **Contrast:** body/meaningful text ≥ **4.5:1**; large text (≥24px/≥19px bold) and UI components/graphical objects ≥ **3:1**. The token values in `tokens.css` are tuned for this on the deep indigo-navy dark base; light theme mirrors. The brand `--primary` (cobalt) as a *fill* uses its `--primary-foreground` for AA; the brand accent as *text* on the dark canvas must be **verified for AA per `tokens.css`** — re-verify any new placement (and note gold/coral warm accents need particular contrast care as text).
 2. **Never color-only:** every semantic/risk signal pairs color with **icon + text/number** (PnL sign+arrow, guardrail check/slash, risk `n/5`+label, allocation legend labels). Colorblind users must read every state.
 3. **Focus visible:** a **2px spark `--ring` focus ring with 2px offset** on every interactive element (Radix/shadcn `focus-visible`). Never remove outlines; the ring is part of the spark system and must meet 3:1 against adjacent colors.
 4. **Keyboard:** full operability — logical tab order, Radix roving focus in menus/tabs/lists, Esc closes overlays, Enter/Space activate, arrow-key nav in Tabs/ToggleGroup/Select. The **sign flow must be fully keyboard-completable**, and "Sign" remains keyboard-focusable-but-disabled until guardrail alerts are acknowledged (disabled state communicated via `aria-disabled` + helper text, not color alone).
@@ -344,7 +351,7 @@ The reference map from product concepts to shadcn primitives + Recharts. The bui
 | SRK utility surface | `Card` + `Tabs` + `Badge` | Non-essential; never gates core flows. |
 | Global nav (desktop rail / mobile tabs) | custom + `Tooltip` (rail) / `Tabs`-style bottom bar | Base pill, wallet, non-custodial badge. |
 | Wallet connect | `Dialog` (connector list) + `Button` | WalletConnect/Coinbase per stack. |
-| Network indicator | `Badge` ("Base") | Base only; no chain switcher (non-goal). |
+| Network switcher (persistent) | `DropdownMenu` + `Badge` (active network) | **Multi-network: Base (live) + Sui (fast-follow).** Switching updates the active-network indicator and the per-network wallet address. Bridge (Base ↔ Sui) is a dedicated surface. |
 | Loading states | `Skeleton` | Charts, tables, cards. |
 | Empty states | `Card` + Lucide icon + microcopy + optional CTA | Per §6.1 / brief states. |
 | Beta-gate / not-whitelisted / caps-reached | `Alert` / `Card` + `Badge` | Design these explicit states (brief constraints). |
@@ -357,10 +364,10 @@ The reference map from product concepts to shadcn primitives + Recharts. The bui
 
 A screen/component conforms to this system when **all** hold:
 
-1. **Token-only color.** No raw hex in specs; every color names a token from §2. Each colored element answers "brand, outcome, or risk?" with exactly one system.
-2. **Spark scarcity.** ≤1 spark primary CTA per view; spark otherwise appears *only* on AI presence (avatar/thinking/"AI suggestion" label, suggested-prompt active, net-worth area, focus ring). No spark on gains/loss/caution/risk.
-3. **Strict semantics.** Green=gain/safe, red=loss/blocked, amber=caution, blue=info — and **never** the spark hue. Every semantic state pairs color + icon + text.
-4. **Risk palette reused.** The same 3–5-step palette (§2.5) drives every risk surface, always with a numeric step/label fallback. Launch vault reads Risk 1 (Lower).
+1. **Token-only color.** No raw hex in specs; every color names a token, with **`tokens.css` as the source of truth** for values (this doc's inline hex is illustrative). Each colored element answers "brand, outcome, or risk?" with exactly one system.
+2. **Brand-accent scarcity.** ≤1 brand (cobalt) primary CTA per view; the brand accent (cobalt/gold/coral + the signature gradient) otherwise appears *only* on AI presence (avatar/thinking/"AI suggestion" label, suggested-prompt active, net-worth area, focus ring) and brand-identity moments. No brand accent — and never gold/coral/gradient — on gains/loss/caution/risk.
+3. **Strict semantics.** Green=gain/safe, red=loss/blocked, amber=caution, blue=info — and **never** the brand accent (cobalt/gold/coral/gradient). Every semantic state pairs color + icon + text.
+4. **Risk palette reused.** The same **5-step violet→magenta** palette (§2.5) drives every risk surface, always with a numeric step/label fallback, and never collides with the cobalt brand blue. Launch vault reads Risk 1 (Lower).
 5. **Tabular everywhere financial.** All balances/APY/PnL/shares/caps use tabular numerals and right-align in tables; live values never reflow.
 6. **Typography in-scale.** Sizes/weights from §3 only; weights ≤600; mono only for addresses/hashes/calldata/raw scopes.
 7. **Dark-first, both themes AA.** Designed on dark; light provided; both meet WCAG AA contrast (§10.1) — verified, not assumed.

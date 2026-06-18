@@ -4,12 +4,13 @@
 > **Status:** Authoritative product context for the design handover. This is the front-matter that every other handover doc (`01`…`NN`) assumes you have read.
 > **Source of truth:** The high-level app plan — *SparkPoint Pivot — High-Level App Plan & Competitive Strategy — v2* (`/home/hello/.claude/plans/right-now-we-have-swift-volcano-v2.md`). Where this brief and the plan disagree, the plan wins; this brief compresses it for designers.
 > **What this doc is NOT:** flow specs, screen inventories, component anatomy, or visual design tokens. Those live in the per-flow handover docs that follow. This doc sets *context, positioning, audience, thesis, tone, goals/non-goals, and milestone framing* only.
+> **Client-directed amendments since first issue (log, do not apply silently):** (a) the product is now **multi-network — Base at launch, Sui as the designated fast-follow** — plus a dedicated **Bridge** (supersedes the original "Base only at launch"; see §8, §9, §12 and `docs/INCREMENT-multi-network.md`); (b) the canonical user-facing trust term is **"fully self-custodial"** (replaces "non-custodial" in user-facing copy; "non-custodial / self-custodial" remain accurate technical descriptors); (c) the **brand** diverges from the orange spark accent described in early drafts — the real brand is cobalt blue + gold + coral; **`tokens.css` (in the design showcase) is the source of truth** and `04-design-system.md`'s orange is **stale** (see §6, §11). New surfaces added since first issue: **Spark Core marketing Landing, Bridge, Fees, Premium, and an Admin / Stakeholder panel** (see §9).
 
 ---
 
 ## 1. What we are building (one paragraph)
 
-**SparkPoint is "The First AI-Native Onchain Hedge Fund"** — a non-custodial, chat-based **Personal DeFi Assistant** paired with an **AI-managed Aave Yield Vault** on **Base**. The AI is the *fund manager*: it reads the user's wallet, learns their goals and risk appetite, recommends strategies, explains every move, and reports outcomes like a manager would. But a **deterministic policy layer** sits between the model and the chain — **the model never has final execution authority** — and **the user signs every state-changing transaction**. The protocol can *direct* strategy; it can **never** take, move, or withhold user funds. Two products, one relationship: an engaged **chat advisor** and a passive, hands-off **ERC-4626 vault**.
+**SparkPoint is "The First AI-Native Onchain Hedge Fund"** — a **fully self-custodial**, chat-based **Personal DeFi Assistant** paired with an **AI-managed Aave Yield Vault**, **multi-network: Base at launch, Sui as the designated fast-follow network**, with a dedicated **Bridge** to move assets between them. The AI is the *fund manager*: it reads the user's wallet, learns their goals and risk appetite, recommends strategies, explains every move, and reports outcomes like a manager would. But a **deterministic policy layer** sits between the model and the chain — **the model never has final execution authority** — and **the user signs every state-changing transaction**. The protocol can *direct* strategy; it can **never** take, move, or withhold user funds. Two products, one relationship: an engaged **chat advisor** and a passive, hands-off **ERC-4626 vault**. ("Fully self-custodial" is the canonical user-facing term; "non-custodial / self-custodial" remain accurate technical descriptors — see §6 and `07-content-and-tone.md`.)
 
 The single sentence to keep in your head while designing:
 
@@ -25,9 +26,9 @@ The single sentence to keep in your head while designing:
 
 The bold "AI hedge fund" claim is the headline; it is **ambition in the title, proof in the product**. The four clauses after it — *learns / explains / proves / never touches keys* — are the credibility ballast that separates SparkPoint from a discredited 2024–25 cohort of "AI fund" projects that collapsed 90–99% and drew fraud litigation. We lead bold **on purpose**, which means the UI must **over-index on proof** to be believed.
 
-### 2.2 The anchor: native non-custody (self-custody by construction)
+### 2.2 The anchor: fully self-custodial by construction (native non-custody)
 
-Non-custody is not a feature we *add* — it is the **invariant the whole product is built on**, and the design's central trust spine. The structural promise underneath the headline is blunt:
+**Fully self-custodial** is the canonical user-facing framing; *non-custody / self-custody by construction* is the technical description of the same invariant. It is not a feature we *add* — it is the **invariant the whole product is built on**, and the design's central trust spine, and it **holds on every network** (Base and Sui) and across the Bridge. The structural promise underneath the headline is blunt:
 
 > **An AI hedge fund that *cannot* hold, move, or lose your money.**
 
@@ -39,13 +40,13 @@ A user could verify, from the contracts alone, that SparkPoint can never abscond
 4. **Scoped, revocable, time-boxed automation** — opt-in auto-rebalance via an ERC-4337 session key, bounded by an on-chain policy module (allowlist, per-tx + cumulative caps, max slippage, hard expiry), **instantly and unilaterally revocable** by the user without SparkPoint's cooperation.
 5. **Non-upgradeable custody semantics + verifiable non-custody** — single-purpose, non-upgradeable vault; any multisig/timelock governs *pause only*, never fund movement; the Trust Center surfaces exact granted on-chain permissions so non-custody is **proven, not promised**.
 
-**Design implication (carry this everywhere):** the user is always **one tap from seeing exactly what SparkPoint can and cannot do** (the "prove-it" permissions panel), and **one tap from exiting without us** (the self-service withdrawal). A persistent non-custodial badge in the global shell is the entry point.
+**Design implication (carry this everywhere):** the user is always **one tap from seeing exactly what SparkPoint can and cannot do** (the "prove-it" permissions panel), and **one tap from exiting without us** (the self-service withdrawal — **withdraw-always holds on every network**). A persistent **"Fully self-custodial"** badge in the global shell is the entry point (the badge wording is the canonical user-facing term; "non-custodial" remains its technical synonym).
 
 ### 2.3 The wedge (where we win — what the design should make legible)
 
 - **Conversational goal + risk onboarding** as the wedge (vs. a lone risk slider) — scenario-based capture → a personalized, adjustable **mandate**.
 - **"AI as fund manager," not "AI as button-presser"** — explains reasoning, reports performance, proposes changes, asks for sign-off → a *recurring relationship*.
-- **Legible guardrails + provable non-custody** — make "the AI can't drain you" *visible*.
+- **Legible guardrails + provable, fully self-custodial design** — make "the AI can't drain you" *visible*, on every network and across the bridge.
 - **Outcome accountability** — an honest log of wins *and* losses, tied to the originating recommendation.
 - **Honest yield** — net-of-everything APY, no token-incentive theater.
 
@@ -99,13 +100,14 @@ The product borrows the strongest pattern from three genres and fuses them:
 
 ## 6. Brand & tone summary
 
-- **Aesthetic:** **dark-first**, data-dense-but-clean **fintech + crypto**. Trustworthy and self-sovereign in feel — calm, precise, not hypey or casino-like.
-- **Brand accent:** a **single "spark"** accent color, reserved for **primary CTAs and AI presence**. Do not dilute it across the UI.
-- **Semantic colors (strict):** **green** = gains / safe; **red** = loss / blocked; **amber** = caution. Never use the spark accent to carry semantic meaning.
-- **Risk palette:** a **consistent 3–5 step risk palette**, reused *everywhere* risk appears (portfolio risk panel, vault risk score, strategy ranking, allocation-by-risk-tier).
+- **Aesthetic:** **dark-first**, data-dense-but-clean **fintech + crypto**. Trustworthy and self-sovereign in feel — calm, precise, not hypey or casino-like. Dark base is a **deep indigo-navy**.
+- **Brand accent:** the **spark** accent system reserved for **primary CTAs and AI presence** — but the real brand (matched to sparkpoint.io) is **cobalt blue + gold + coral** warm accents, with a signature **blue→cyan→gold→coral gradient**, **not** the orange spark of early drafts. **`tokens.css` (in the design showcase) is the source of truth; the orange accent in `04-design-system.md` is STALE.** Keep the accent scarce — do not dilute it across the UI.
+- **Semantic colors (strict):** **green** = gains / safe; **red** = loss / blocked; **amber** = caution. Never use the brand accent to carry semantic meaning.
+- **Risk palette:** a **consistent 5-step risk palette running violet→magenta** (chosen so it never collides with the cobalt brand blue), reused *everywhere* risk appears (portfolio risk panel, vault risk score, strategy ranking, allocation-by-risk-tier). (Supersedes any teal-anchored scale in early drafts.)
+- **Type:** **Geist Sans + Geist Mono**.
 - **Numerals:** **tabular numerals** for all financial figures (balances, APY, PnL, shares) so columns align and values don't jitter.
 - **Accessibility:** **WCAG AA** contrast minimum across both themes.
-- **Voice / microcopy:** honest, plain, capital-preservation-first. **Never lead with return projections** — lead with transparency, risk control, and "you're in control." State plainly **what the AI decides vs. what the deterministic policy decides** (honest autonomy is the single biggest trust lever). Avoid hype adjectives; let proof do the persuading.
+- **Voice / microcopy:** honest, plain, capital-preservation-first. **Never lead with return projections** — lead with transparency, risk control, and "you're in control." The canonical trust term is **"fully self-custodial"** ("non-custodial / self-custodial" remain technical synonyms). State plainly **what the AI decides vs. what the deterministic policy decides** (honest autonomy is the single biggest trust lever). Avoid hype adjectives; let proof do the persuading.
 
 ---
 
@@ -129,8 +131,8 @@ The product borrows the strongest pattern from three genres and fuses them:
 - **No custodial patterns.** No agent-generated wallets, no "we hold your keys for convenience," no admin-withdrawal path, no flow that implies SparkPoint can move user funds. The kill-switch is **pause-only** and must be shown as such.
 - **No return-projection-led marketing surfaces.** Don't design hero screens or cards that lead with cherry-picked APY or promised returns; lead with capital preservation, transparency, and risk.
 - **No "AI does it all, trust us" opacity.** Default is **per-action user signing**; delegated automation is **opt-in, scoped, time-boxed, instantly revocable**. Never design a flow that hides what the AI is doing.
-- **No multi-chain.** **Base only** at launch. Don't design chain-switchers or cross-chain UI.
-- **Deferred (out of scope for these mockups):** multi-strategy vaults, ZK trade proofs, SRK v2 governance, KYC/compliance gating, stocks/TradFi, a general (non-DeFi) financial assistant. Mention only where a placeholder is genuinely needed.
+- **~~No multi-chain. Base only at launch.~~ SUPERSEDED — CLIENT-DIRECTED SCOPE AMENDMENT.** The product is now **multi-network: Base at launch (live), Sui as the designated fast-follow network**, with a dedicated **Bridge** (Base ↔ Sui). **DO** design the persistent network switcher, the per-network indicators, and the Bridge surfaces. **Networks beyond Base + Sui remain out of scope.** **Discipline:** Sui is **non-EVM (Move-based)** — it does **not** use ERC-4337 / ERC-4626 / Solidity; do **not** fabricate a detailed Sui contract spec. Amend scope + principles to multi-network and add the bridge at the product/UX/non-custody level only; the **Sui-side account/vault architecture and the bridge mechanism/provider are a separate follow-on increment to be designed** (see §9, §12, and `docs/INCREMENT-multi-network.md`). Keep the existing Base/EVM contract spec intact.
+- **Deferred (out of scope for these mockups):** multi-strategy vaults, ZK trade proofs, SRK v2 governance, KYC/compliance gating, stocks/TradFi, a general (non-DeFi) financial assistant, **networks beyond Base + Sui, and the real bridge provider/route-selection logic and Sui contract spec (flagged as a follow-on increment, above)**. Mention only where a placeholder is genuinely needed.
 - **No code.** This is design handover. Map to shadcn primitives; do not write implementation.
 
 ---
@@ -146,7 +148,14 @@ The product borrows the strongest pattern from three genres and fuses them:
 5. **Vault Deposit / Withdraw** — ERC-4626 Aave Yield Vault; legible shares + net APY + caps.
 6. **Execution Confirmation** — Tenderly-style pre-trade simulation + guardrail checklist + user-signed.
 
-**Supporting surfaces (also in scope):** global shell (nav, persistent non-custodial badge, wallet connect, AI disclaimer strip); **Trust Center** (self-custody guarantees panel, "prove-it" permissions panel, caps dashboard, pause-only kill-switch status, audits); **Automation / session keys** (scope/cap/expiry grant + instant revoke); **SRK utility**; **financial-literacy hub** + contextual tip cards; **outcome log** (wins and losses); **settings**; **notifications**.
+**Supporting surfaces (also in scope):** global shell (nav, persistent **"Fully self-custodial"** badge, **persistent network switcher**, wallet connect, AI disclaimer strip); **Trust Center** (self-custody guarantees panel, "prove-it" permissions panel, caps dashboard, pause-only kill-switch status, audits); **Automation / session keys** (scope/cap/expiry grant + instant revoke); **SRK utility**; **financial-literacy hub** + contextual tip cards; **outcome log** (wins and losses); **settings**; **notifications**.
+
+**New surfaces added by client direction (also in scope):**
+- **Spark Core marketing Landing** — an animated marketing entry page (distinct from the in-app `landing` surface). The **flavor selector (Ember / Plasma / Constellation) is intentionally an open choice left for the client to pick** — note it as unresolved, do not lock it.
+- **Bridge** — move assets **Base ↔ Sui**; routes through the same simulation + guardrail + you-sign confirmation gate (`/confirm/bridge`). **Fully self-custodial:** the user signs a lock/burn on the source network and receives funds in their **own** wallet on the destination network; SparkPoint **never custodies funds in transit**.
+- **Fees** — fee-transparency page ("we only earn when you earn"); reflects the **active** 10% profit-only, high-water-mark performance fee on the Aave vault (0% on principal/deposits/withdrawals).
+- **Premium** — the SRK-paid subscription surface (framed as a subscription payment, never a vault fee; free tier never gated).
+- **Admin / Stakeholder panel** — read-only-over-funds revenue dashboard with a **governed manual kill-switch** (pause-only, 2-of-3 multisig, **never blocks withdrawals**; the panel can only *propose & sign* — execution requires the on-chain multisig threshold).
 
 ---
 
@@ -177,9 +186,10 @@ The product borrows the strongest pattern from three genres and fuses them:
 ## 12. Constraints (carry into every screen)
 
 - **Single Aave Yield Vault at launch** (ERC-4626, USDC; **0% on principal / 0 management**, with an active **10% profit-only, high-water-mark performance fee** on realized yield — configurable on-chain, hard-capped at 20%, timelocked).
-- **SRK is non-essential** — never gates core function.
-- **Beta-gated** — whitelist, per-user caps, geo-fenced frontend. Design the **gated / not-whitelisted / caps-reached** states.
-- **Base only.**
+- **SRK is non-essential** — never gates core function. (SRK *is* the payment rail for the optional **Premium** subscription — that is not a core gate.)
+- **Beta-gated** — whitelist, per-user caps, geo-fenced frontend. Design the **gated / not-whitelisted / caps-reached** states. **Per-network and per-bridge caps** wire to policy limits.
+- **Multi-network: Base at launch, Sui as the fast-follow** — design the **persistent network switcher**, per-network indicators, and the **Bridge** (Base ↔ Sui). **Networks beyond Base + Sui are out of scope.** Sui is **non-EVM (Move)** — no fabricated Sui contract spec; the Sui account/vault architecture and bridge mechanism are a **follow-on increment** (§8, §9).
+- **Withdraw-always holds on EVERY network**, not just Base.
 - **Per-action signing is the default**; automation is opt-in, scoped, revocable.
-- **Kill-switch is pause-only** — it can never block withdrawals, and the UI must say so.
-- **Map to shadcn/ui**; **dark-first**; **tabular numerals**; **WCAG AA**; single **spark** accent; strict semantic colors; consistent risk palette.
+- **Kill-switch is pause-only** — it can never block withdrawals, and the UI must say so. The Admin panel kill-switch is **governed (2-of-3 multisig, propose-and-sign only)**.
+- **Map to shadcn/ui**; **dark-first** (deep indigo-navy base); **Geist Sans + Geist Mono**; **tabular numerals**; **WCAG AA**; the **cobalt blue + gold + coral** brand accent system (signature blue→cyan→gold→coral gradient — **`tokens.css` is the source of truth; doc-04's orange is stale**); strict semantic colors; consistent **violet→magenta** 5-step risk palette.

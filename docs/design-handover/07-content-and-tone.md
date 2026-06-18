@@ -6,6 +6,7 @@
 > **What this doc IS:** voice & tone definition, reusable microcopy patterns, the persistent AI disclaimer wording, financial-literacy tone, error/empty-state copy patterns, number/PnL/APY formatting rules, and a master DOs/DON'Ts list with banned and required phrases.
 > **What it is NOT:** flow specs, screen anatomy, or visual tokens (those live elsewhere). It also does **not** write legal/Terms copy — only the in-product strings.
 > **Hard rules carried from the brief (non-negotiable, wording-level):** never present APY without a breakdown; never imply or project guaranteed returns; never lead a surface with a return number; always say **"you approve & sign"**; always distinguish **AI proposal → deterministic guardrail → your signature**; always keep the **withdraw-always / exit** framing positive and empowering; never use hype adjectives; honest about risk and losses.
+> **Canonical trust term (client-directed):** the user-facing trust term is **"fully self-custodial"** — use it on the persistent badge and in user-facing copy. *"Non-custodial / self-custodial"* remain accurate **technical** descriptors (fine in architecture text), but do not lead user-facing copy with them. The product is **fully self-custodial on every network** (Base + Sui) and across the Bridge.
 
 ---
 
@@ -60,7 +61,7 @@ These strings are **brand-load-bearing**; ship them word-for-word so users learn
 | Motif | Canonical string | Where it appears |
 |---|---|---|
 | **AI-suggestion label** | **"AI suggestion — you approve & sign"** | Badge on every recommendation/action card. Never shorten to "AI suggestion" alone; the "you approve & sign" half is the point. |
-| **Non-custody badge** | **"Non-custodial"** (badge) → opens **"What SparkPoint can & can't do"** (panel title) | Persistent shell badge → "prove-it" panel. |
+| **Self-custody badge** | **"Fully self-custodial"** (badge — canonical user-facing term) → opens **"What SparkPoint can & can't do"** (panel title) | Persistent shell badge → "prove-it" panel. "Non-custodial / self-custodial" remain accurate **technical** synonyms (use in architecture text), but the **user-facing badge and copy say "Fully self-custodial."** |
 | **Withdraw-always** | **"Withdraw anytime — even if SparkPoint is offline"** | Exit affordance, Trust Center, degraded-mode banner. |
 | **Kill-switch honesty** | **"Pause only — this can never block your withdrawals"** | Kill-switch status. Never call it "stop" or "lock." |
 | **Self-custody one-liner** | **"Your keys. Your funds. Always."** | Trust Center header, onboarding reassurance. (Borrowed register from Ledger / Trust Wallet — `00-brief.md` §10.) |
@@ -180,7 +181,7 @@ Reuse these as the tooltip/hub definitions so the same term reads the same every
 | **Net APY** | "Your estimated yearly return after all costs, if the current rate held and earnings compounded. Rates change — it's an estimate, not a promise." |
 | **Shares (spvUSDC)** | "Your slice of the vault. The count stays fixed; its USDC value grows as the vault earns. Redeem anytime." |
 | **Slippage** | "How much the price can move against you between now and when the trade lands. We cap it so you can't be surprised." |
-| **Non-custodial** | "Your funds stay in your control. SparkPoint can direct strategy but has no way to take, move, or hold your money." |
+| **Fully self-custodial** | "Your funds stay in your control. SparkPoint can direct strategy but has no way to take, move, or hold your money — on any network." *(Canonical user-facing term; "non-custodial / self-custodial" are the same thing in technical terms.)* |
 | **Guardrails** | "Deterministic rules that check every AI suggestion — caps, limits, allowlists — before you're ever asked to sign." |
 | **Session key (automation)** | "A scoped, time-limited permission you grant for hands-off rebalancing — bounded by caps and limits, and revocable by you instantly." |
 | **Kill-switch** | "An emergency pause on *new* deployments. It can never block your withdrawals." |
@@ -202,7 +203,7 @@ This section is the **canonical extension** of `04-design-system.md` §3.4. All 
 ### 5.2 APY (the most-regulated number — strict)
 
 - **Format:** one decimal + the word **"net"** + "APY": **"4.2% net APY"**. Never a bare "4.2%".
-- **Breakdown is mandatory** (`00-brief.md` §8, §9.1 below). Every APY is accompanied by, or one tap from, its breakdown: base supply rate, any incentives (stated separately and honestly), minus fees (the **10% profit-only performance fee** on realized yield above the high-water mark — **0% on principal**; state it explicitly), = net. Pattern: *"4.2% net APY = 4.7% Aave supply rate − 10% SparkPoint performance fee (profit-only, high-water mark)."*
+- **Breakdown is mandatory** (`00-brief.md` §8, §9.1 below). Every APY is accompanied by, or one tap from, its breakdown: base supply rate, any incentives (stated separately and honestly), minus fees (the **active 10% profit-only performance fee** on realized yield above the high-water mark — **0% on principal/deposits/withdrawals**; state it explicitly). The fee is **active in v1** — never write it as "not active at launch" or future-only. = net. Pattern: *"3.87% net APY = 4.3% Aave supply rate − 10% SparkPoint performance fee (profit-only, high-water mark)."*
 - **Never gross-first.** If a gross figure must appear, it appears *after* and *labeled* as gross; the lead number is always net.
 - **Never projected/extrapolated.** Show current and historical only; no "could earn", no annualized-from-a-good-week (`04-design-system.md` §6.4 honesty rule).
 - **Always estimate-framed:** APY is a rate, not a return. Pair with "rates change" wherever it leads a surface.
@@ -271,7 +272,7 @@ Every state from the brief (default / empty / loading / success / warning / erro
 | Outcome log (no history) | "No moves yet" | "Every recommendation you act on — wins and losses — will be logged here, tied to the advice that caused it." | — |
 | Notifications | "You're all caught up" | "Transaction results and important alerts will appear here." | — |
 | Strategy recs (none yet) | "No recommendations yet" | "Once I understand your goal and see your wallet, I'll rank strategies here with the reasons behind each." | "Set my plan" |
-| Vault (pre-deposit) | "Aave Yield Vault" | "Conservative, capital-preservation-first yield on USDC. {X}% net APY (estimate). Non-custodial — withdraw anytime." | "Review deposit" |
+| Vault (pre-deposit) | "Aave Yield Vault" | "Conservative, capital-preservation-first yield on USDC. {X}% net APY (estimate, after the active 10% profit-only performance fee). Fully self-custodial — withdraw anytime." | "Review deposit" |
 | Search/filter no results | "No matches" | "Try a different filter." | "Clear filters" |
 
 ### 6.3 Warning state copy
@@ -375,7 +376,7 @@ Reference strings showing the voice in situ. These are exemplary, not exhaustive
 A screen/string conforms to this content spec when **all** hold:
 
 1. **Voice intact.** Confident about process, humble about outcome; plain, transparent, non-hypey; honest about risk and losses (§1). No banned words/phrases (§9.3).
-2. **Trust motifs verbatim.** "AI suggestion — you approve & sign", "Non-custodial" → "What SparkPoint can & can't do", "Withdraw anytime…", "Pause only — never blocks withdrawals" appear word-for-word where the flow calls for them (§2.1).
+2. **Trust motifs verbatim.** "AI suggestion — you approve & sign", **"Fully self-custodial"** → "What SparkPoint can & can't do", "Withdraw anytime…", "Pause only — never blocks withdrawals" appear word-for-word where the flow calls for them (§2.1). ("Non-custodial / self-custodial" remain accurate technical synonyms, but the user-facing badge/copy use "Fully self-custodial.")
 3. **AI disclaimer present.** Full or compact persistent disclaimer visible on every AI-advice surface; risk + custody clauses verbatim and unsoftened; every recommendation card carries the AI-suggestion badge (§3).
 4. **APY rule satisfied.** No bare APY anywhere; every APY is net, estimate-framed, with a breakdown ≤1 tap away; no projections (§5.2, §9.1).
 5. **No guaranteed/led-with returns.** No guarantee language; no surface leads with a return number; capital-preservation-first framing (§9.1).
