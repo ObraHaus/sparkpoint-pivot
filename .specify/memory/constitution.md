@@ -22,7 +22,7 @@ The model is an advisor, never an authority. AI agents (portfolio reader, strate
 
 ### III. Provable, Not Promised
 
-Trust is earned on-chain, not asserted in marketing copy. Realized results and current permissions MUST be reconstructable from on-chain data. Yield MUST be reported honestly and net of everything (fees, costs, slippage); the launch vault is 0-fee, and yield MUST come from the underlying protocol (Aave v3), never from token incentives. The product MUST NOT lead with return projections or promise specific future returns. Any figure shown to users MUST be current and verifiable, and each strategy recommendation MUST be labeled over time with its realized PnL (outcome logging). The Trust Center MUST display the exact on-chain permissions granted, so users can independently confirm the non-custody invariants.
+Trust is earned on-chain, not asserted in marketing copy. Realized results and current permissions MUST be reconstructable from on-chain data. Yield MUST be reported honestly and net of everything (fees, costs, slippage); the launch vault is 0-management / profit-only performance-fee (0 management fee, 0 fee on principal, capped (≤20%) high-water-mark performance fee on realized yield, default 10%, fully disclosed), and yield MUST come from the underlying protocol (Aave v3), never from token incentives. The product MUST NOT lead with return projections or promise specific future returns. Any figure shown to users MUST be current and verifiable, and each strategy recommendation MUST be labeled over time with its realized PnL (outcome logging). The Trust Center MUST display the exact on-chain permissions granted, so users can independently confirm the non-custody invariants.
 
 ### IV. Security & Bounded Blast Radius
 
@@ -39,7 +39,7 @@ All smart contracts MUST keep a simple, auditable surface and MUST have unit and
 
 ### V. Conservative, Transparent Launch
 
-The launch is deliberately narrow and honest. The vault product at launch MUST be a SINGLE conservative, 0-fee Aave Yield Vault (ERC-4626): deposit USDC, earn Aave yield, withdraw anytime, non-upgradeable. The SRK token MUST be non-essential to core vault function — the vault MUST work fully without SRK, which activates a later cycle. The product MUST NOT offer token-incentive yield, leveraged strategies, or any product that contradicts the conservative posture at launch. New strategies MUST NOT be added under the banner of the launch vault.
+The launch is deliberately narrow and honest. The vault product at launch MUST be a SINGLE conservative Aave Yield Vault (ERC-4626) with a 0 management fee, 0 fee on principal, and a capped (≤20%), profit-only, high-water-mark performance fee on realized yield (default 10%), fully disclosed and non-custodial: deposit USDC, earn Aave yield, withdraw anytime, non-upgradeable. We only earn when you earn — never on your principal, never by taking custody. The fee recipient is a non-privileged share holder, and the performance fee NEVER touches principal or the withdraw path; feeRate is the only mutable param (timelocked, hard-capped), never altering custody. The SRK token MUST be non-essential to core vault function — the vault MUST work fully without SRK, which activates a later cycle. The product MUST NOT offer token-incentive yield, leveraged strategies, or any product that contradicts the conservative posture at launch. New strategies MUST NOT be added under the banner of the launch vault.
 
 ### VI. Spec-Driven Development (NON-NEGOTIABLE)
 
@@ -55,7 +55,7 @@ These are authoritative and non-negotiable for the launch build. External securi
 
 **Chain & scope.** Single chain: Base. Single launch vault. DeFi integrations are limited to Aave v3 (deposit/withdraw USDC and ETH) and Aerodrome (swaps from chat). No other protocols or chains at launch.
 
-**On-chain contracts (named, authoritative).** Custom ERC-4337 account abstraction: `SparkPointAccount`, `AccountFactory`, `SessionKeyValidator`, `PolicyModule`; plus `SparkPointVault` (ERC-4626, 0-fee, non-upgradeable). Contracts MUST be built with Foundry (in-house) and MUST ship with unit and fuzz tests.
+**On-chain contracts (named, authoritative).** Custom ERC-4337 account abstraction: `SparkPointAccount`, `AccountFactory`, `SessionKeyValidator`, `PolicyModule`; plus `SparkPointVault` (ERC-4626, 0-management / profit-only performance-fee — 0 management fee, 0 fee on principal, capped (≤20%) high-water-mark performance fee on realized yield, default 10%; non-upgradeable custody semantics). Contracts MUST be built with Foundry (in-house) and MUST ship with unit and fuzz tests.
 
 **Architecture — four layers.**
 1. User Layer (Frontend): Next.js (App Router), TailwindCSS, shadcn/ui. Surfaces: chat AI interface, portfolio overview (PnL/risk/allocation), strategy suggestions, execution-confirmation UI, vault dashboard, SRK view, Trust Center. Wallets: Wagmi v2 + Viem, WalletConnect v2, Coinbase Wallet SDK. Desktop and mobile are equal priority.
@@ -91,4 +91,7 @@ This constitution supersedes all other practices and conventions. When any spec,
 
 **Compliance.** All PRs and reviews MUST verify compliance with these principles. Added complexity MUST be justified against Principles IV and VII; unjustified complexity MUST be removed.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-15 | **Last Amended**: 2026-06-15
+**Amendment log.**
+- **2026-06-18 — v1.0.0 → v1.1.0 (MINOR).** Ratified the launch performance fee in Principle V (Conservative, Transparent Launch): the launch Aave Yield Vault is now 0-management / profit-only performance-fee rather than 0-fee — 0 management fee, 0 fee on principal, and a capped (≤20%), profit-only, high-water-mark performance fee on realized yield (default 10%), realized by minting fee shares to a non-privileged feeRecipient that redeems via the standard withdraw path. Custody is unchanged: N1–N5, the pause-only kill-switch, the AI-disposition rule, and non-upgradeable custody semantics all hold; fee accrual is fail-open and never blocks withdraw-always; feeRate is the only mutable param (timelocked, hard-capped, never altering custody). This is a STANDARD amendment, not a super-majority re-ratification, because N1–N5 are unchanged.
+
+**Version**: 1.1.0 | **Ratified**: 2026-06-15 | **Last Amended**: 2026-06-18

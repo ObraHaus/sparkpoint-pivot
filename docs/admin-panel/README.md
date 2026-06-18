@@ -2,7 +2,7 @@
 
 > **What this document is:** the authoritative plan for SparkPoint Pivot's **secret, admin-only** internal panel — the place where the team, stakeholders, and the client *observe* the product in motion: growth, TVL, usage, system health, and (the centerpiece) **revenue in graphical form**. It is designer- and engineer-ready: it specifies audiences, the access/security model, every dashboard with concrete metrics and Recharts chart types, the data pipeline, the screen inventory with states, the tech approach, and the delivery roadmap.
 >
-> **What this document is NOT:** code, and not a fee-authorizing document. The revenue dashboard *visualizes* the streams defined in [`../revenue-model/README.md`](../revenue-model/README.md); it does not introduce or enable any fee. Until the revenue-model §5.2 amendment is approved, the only live revenue is Phase-0 (treasury float + B2B groundwork), and the dashboard renders launch-era streams (swap-routing fee, premium AI tier) plus *projected/placeholder* lanes for future strategy-vault fees, clearly labeled as not-yet-live.
+> **What this document is NOT:** code, and not a fee-authorizing document. The revenue dashboard *visualizes* the streams defined in [`../revenue-model/README.md`](../revenue-model/README.md); it does not introduce or enable any fee. Per the ratified constitution v1.1.0 amendment, the launch revenue streams are the swap-routing fee, the premium AI tier, and the **vault performance fee** (10% of realized yield only, profit-only, high-water mark; configurable on-chain within a hard cap of 20%) — all three **active at launch** and rendered as solid lanes. The dashboard renders any genuinely future lanes (optional management fee, SRK fee-share/buyback) as *projected/placeholder* lanes, clearly labeled as not-yet-live.
 >
 > **Reads-before:** [`../../specs/001-sparkpoint-pivot-mvp/plan.md`](../../specs/001-sparkpoint-pivot-mvp/plan.md) (four-layer architecture + data layer), [`../../specs/001-sparkpoint-pivot-mvp/data-model.md`](../../specs/001-sparkpoint-pivot-mvp/data-model.md) (entities/tables this panel reads), [`../revenue-model/README.md`](../revenue-model/README.md) (the revenue streams the central dashboard visualizes), and [`../design-handover/04-design-system.md`](../design-handover/04-design-system.md) (tokens, charts, risk palette — the admin panel reuses this design language).
 
@@ -202,22 +202,22 @@ The money view — onchain truth, reconstructable. Sourced from `vaults`, `vault
 - **Total & per-vault TVL over time** — stacked `AreaChart`: X = date, Y = TVL (USDC-quote), one stacked series per vault (single series at launch; stacking is future-proofed).
 - **Deposits / withdrawals & NET FLOWS** — diverging `BarChart`: X = date; deposits as positive bars (semantic green), withdrawals as negative bars (semantic red); overlaid **net-flow `Line`** (cumulative or per-period). This is the heartbeat chart.
 - **Caps utilization** — `RadialBarChart` or horizontal `BarChart` with a reference line at the cap: shows `total_protocol_cap` utilization and (aggregate) per-user-cap headroom; amber as utilization nears the cap.
-- **Share price / APY history** — dual: `LineChart` of `share_price_ray` over time, and a separate `LineChart`/`AreaChart` of trailing APY (e.g., 7d/30d annualized from share-price growth). APY labeled "realized, net-of-everything" (0-fee at launch).
+- **Share price / APY history** — dual: `LineChart` of `share_price_ray` over time, and a separate `LineChart`/`AreaChart` of trailing APY (e.g., 7d/30d annualized from share-price growth). APY labeled "realized, net-of-everything" (net of the 10% profit-only performance fee; 0% management, 0% on principal).
 - **Withdraw-always drill status** — a **status panel** (not a chart): last successful **withdraw-always drill** timestamp/result (the quickstart drill: redeem with frontend+agents offline, while paused), the current **pause status** (read-only, from `KillSwitch`), and a green/red badge. This makes the N2 guarantee *observable* to stakeholders. **Status only — no controls.**
 
 **States:** loading skeleton; empty (pre-deposit) = zeroed with "Vault live, no deposits yet"; error = per-widget retry with a "data source: RPC/subgraph" provenance note.
 
 ### 3.5 Revenue dashboard — **CENTRAL, make it rich**
 
-> The centerpiece. This is where **revenue is shown in action, graphically** — the screen we show the client. It visualizes the streams from [`../revenue-model/README.md`](../revenue-model/README.md): **launch-era** = swap-routing fee (if/when enabled) + premium AI subscription tier; **future** = strategy-vault performance fees, optional thin management fee, SRK fee-share/buyback. Future streams render as **clearly-labeled projected/placeholder lanes** until the revenue-model §5.2 amendment makes them live; the dashboard distinguishes **realized** (solid) from **projected** (dashed + "est." badge) everywhere.
+> The centerpiece. This is where **revenue is shown in action, graphically** — the screen we show the client. It visualizes the streams from [`../revenue-model/README.md`](../revenue-model/README.md): **launch-era (active)** = swap-routing fee (if/when enabled) + premium AI subscription tier + **vault performance fee** (10% of realized yield only, profit-only, high-water mark; cap 20%, default 10%); **future** = optional thin management fee, SRK fee-share/buyback. Future streams render as **clearly-labeled projected/placeholder lanes** until the revenue-model §5.2 amendment makes them live; the dashboard distinguishes **realized** (solid) from **projected** (dashed + "est." badge) everywhere — and only genuine forecasts are dashed.
 
 **Stream taxonomy the dashboard models (one color per stream, consistent across all charts):**
 
 | Stream | Status at launch | Source |
 |---|---|---|
-| **Swap-routing fee** (Aerodrome swaps from chat) | Launch-era, ≤0.10–0.20% if enabled (likely 0) | onchain swap events / fee-recipient skim |
-| **Premium AI subscription** | Launch-era (Phase-2 in revenue plan; modeled now) | Stripe-or-equivalent subscriptions |
-| **Performance fee** (strategy vaults, realized yield, HWM) | **Future / projected** | onchain fee-share mint events (when live) |
+| **Swap-routing fee** (Aerodrome swaps from chat) | **Launch-era, ACTIVE** (~20 bps) | onchain swap events / fee-recipient skim |
+| **Premium AI subscription** | **Launch-era, ACTIVE** (SRK-paid freemium Premium tier; modeled now) | Stripe-or-equivalent / SRK subscriptions |
+| **Performance fee** (Aave Yield Vault, realized yield only, HWM) | **Launch-era, ACTIVE** (10% of yield, profit-only, high-water mark; cap 20%, default 10%) | onchain fee-share mint events (to a non-privileged feeRecipient) |
 | **Management fee** (≤0.25%, multi-strategy only) | **Future / projected** | onchain NAV-accrual (when live) |
 | **SRK fee-share / buyback** | **Future / projected** | onchain buyback/distribution events (when live) |
 | **Treasury float** (own capital) | Phase-0, non-user | own-position yield (informational) |
@@ -226,20 +226,20 @@ The money view — onchain truth, reconstructable. Sourced from `vaults`, `vault
 
 **Charts (each fully specified):**
 
-1. **Revenue by STREAM, stacked over time** — **stacked `BarChart`** (or stacked `AreaChart` for a smoother trend). **X = time** (period: day/week/month, via granularity toggle); **Y = revenue (USD)**; **one stacked series per stream** (swap fee, premium tier, [projected] perf fee, [projected] mgmt fee, [projected] SRK). Projected streams render with a dashed/hatched pattern + legend "(projected)". This is the hero chart — "where the money comes from, over time."
+1. **Revenue by STREAM, stacked over time** — **stacked `BarChart`** (or stacked `AreaChart` for a smoother trend). **X = time** (period: day/week/month, via granularity toggle); **Y = revenue (USD)**; **one stacked series per stream** (swap fee, premium tier, perf fee — all three active/solid — plus [projected] mgmt fee, [projected] SRK). Projected streams render with a dashed/hatched pattern + legend "(projected)"; active streams render solid. This is the hero chart — "where the money comes from, over time."
 2. **Cumulative revenue** — **`AreaChart`**, monotonic; **X = time**, **Y = cumulative USD**, single area (optionally stacked by stream). Shows the all-time curve.
 3. **Revenue trajectory / run-rate & simple forecast** — **`LineChart`** with two series: **realized** (solid) and **forecast** (dashed, "est."). **X = time** extending into the future; **Y = revenue (period or annualized run-rate)**. Forecast = a *simple, transparent* model (e.g., trailing-Nd average growth extrapolated, or run-rate held flat) — **clearly labeled as a naive projection, not a promise** (Constitution III). A `ReferenceLine` marks "today." Optional shaded confidence band (`Area` between low/high) labeled illustrative.
 4. **MRR / ARR-equivalent over time** — **`LineChart`** (or `ComposedChart` with bars for monthly bookings + a line for MRR). **X = month**, **Y = USD**. MRR = subscription MRR + normalized recurring portion of fees (define the normalization in a tooltip/footnote). ARR = MRR × 12.
 5. **Revenue per user / per vault** — **two `BarChart`s** (or a toggle): ARPU over time (`X = period`, `Y = USD/user`), and revenue-per-vault (`X = vault`, `Y = revenue`); at launch the latter is one bar (future-proofed).
 6. **Fee-vs-TVL & take-rate** — **`ComposedChart`**: `Area` = TVL (context), `Line` = blended take-rate (revenue ÷ TVL, in bps) on a secondary axis. Tells the "are we extracting modestly?" story the revenue model cares about (restraint as a feature).
-7. **Performance-fee high-water-mark status** — a **panel + small chart** (relevant once perf fees are live; placeholder until then): per-strategy-vault, show current **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`**, and a status badge ("above HWM → fee accrues" / "below HWM → no fee, recovering"). Reinforces "we only earn when you earn."
+7. **Performance-fee high-water-mark status** — a **panel + small chart** (live at launch — the perf fee is active on the Aave Yield Vault): per-vault, show current **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`**, and a status badge ("above HWM → fee accrues" / "at/below HWM → no fee, recovering"). Reinforces "we only earn when you earn — never on your principal, never by taking custody."
 8. **Top revenue-generating cohorts** — **horizontal `BarChart`**: revenue attributed by cohort (e.g., signup-month cohort, or risk-tier cohort, or top-vaults), `Y = cohort`, `X = revenue`. Helps see where revenue concentrates.
 
 **Revenue history table** — a sortable, exportable `Table`: columns = period, revenue by stream (one col each), total, cumulative, MoM %, take-rate. Footer totals. Export is audited/role-gated. This is the "show me the numbers behind the charts" backstop.
 
 **Take-rate & honesty framing:** the dashboard surfaces, near the hero chart, a one-line **"we only earn when you earn"** context (cumulative *user* yield vs cumulative *protocol* revenue side-by-side as two `Area`s) — so the revenue story is always shown against the value delivered to users, matching the revenue model's positioning and never leading with a projection.
 
-**States:** loading = skeletons for cards + charts; **empty / pre-revenue** (the launch reality) = charts render with **zeroed realized lanes + visible projected lanes** and a clear banner: "Realized revenue begins post-amendment; projected lanes are illustrative, not forecasts of return"; error = per-widget retry with source provenance (Stripe vs onchain vs computed).
+**States:** loading = skeletons for cards + charts; **empty / pre-revenue** (early launch, before flows accrue) = charts render with **zeroed-but-live active lanes (swap fee, premium tier, performance fee) + visible projected lanes (mgmt fee, SRK)** and a clear banner: "Active streams are live at launch and begin accruing on first activity; projected lanes are illustrative, not forecasts of return"; error = per-widget retry with source provenance (Stripe vs onchain vs computed).
 
 ### 3.6 System / ops health
 
@@ -268,7 +268,7 @@ A **curated, non-technical, mostly-graphical, presentation-grade** summary — t
 3. **Revenue trajectory** — the §3.5 **trajectory chart** (realized solid + forecast dashed, labeled illustrative) — the centerpiece for the client. Plus the cumulative-revenue `AreaChart`.
 4. **"We only earn when you earn"** — the user-yield vs protocol-revenue dual-area, reinforcing the trust thesis (a *positioning* asset per the revenue model).
 5. **TVL & flows** — a simplified net-flows `BarChart` (deposits up / withdrawals down) — proof of real, sticky money.
-6. **Trust badges** — small status row: **non-custodial ✓** (read-only over funds), **withdraw-always: last drill passed ✓**, **0-fee conservative vault ✓**, **kill-switch: multisig-governed, status shown ✓**. (Reads from the same status sources; all observe-only.)
+6. **Trust badges** — small status row: **non-custodial ✓** (read-only over funds), **withdraw-always: last drill passed ✓**, **0-management / profit-only performance-fee vault ✓** (10% of yield, high-water mark, 0% on principal), **kill-switch: multisig-governed, status shown ✓**. (Reads from the same status sources; all observe-only.)
 
 Everything here is **derived from the richer dashboards** (same data, simplified presentation) so there is one source of truth. **Tone:** confident, plain-language, honest — *no projection is shown without an "illustrative" label* (Constitution III). This view is **export-to-PDF/PNG** friendly for leave-behinds (audited export).
 
@@ -289,7 +289,8 @@ Every metric maps to a source. The admin panel **reuses the existing four-layer 
 | Usage/product (chat volume, tool-step success, rec acceptance, sim pass/fail, exec success, session-key churn, literacy, feature adoption) | `chat_messages`, `recommendations`, `intent_bundles`, `simulation_results`, `executions`, `session_keys`, `literacy_tip_impressions`, agent/coordinator telemetry | batched rollups; some near-real-time counters | Tool-step success from agent service logs/metrics. |
 | **Revenue — swap fee** | **onchain swap/fee-recipient events** (Alchemy/subgraph) | batched (indexer) | Realized, onchain-verifiable. |
 | **Revenue — premium AI subscription** | **Stripe (or equivalent) API/webhooks** | webhooks → near-real-time; nightly reconcile | The MRR/subscription source. Store normalized in app DB. |
-| **Revenue — perf fee / mgmt fee / SRK** (future) | **onchain fee-share mint / NAV-accrual / buyback events** | batched (indexer) when live | Projected/placeholder until §5.2 amendment + contracts live. |
+| **Revenue — performance fee** (active at launch) | **onchain fee-share mint events** (to a non-privileged feeRecipient; realized yield only, above HWM) | batched (indexer) | Realized, onchain-verifiable. 10% of yield, profit-only, HWM; cap 20%. |
+| **Revenue — mgmt fee / SRK** (future) | **onchain NAV-accrual / buyback events** | batched (indexer) when live | Projected/placeholder until §5.2 amendment + contracts live. |
 | MRR/ARR, run-rate, forecast, take-rate, ARPU, cohorts | **computed** in the BFF/materialized views over the above | batched (scheduled recompute) + cached | Forecast = simple, labeled model; not stored as truth. |
 | Treasury float (informational) | own-position onchain reads | batched | Non-user; clearly labeled. |
 | System health (errors, latency) | **Sentry** (errors, performance), **agent-service metrics**, **Tenderly** (sim availability) | near-real-time | Sentry API/ingest. |
@@ -362,7 +363,7 @@ A genuinely useful, demoable admin + **revenue** dashboard for the client — sm
 - **Dashboards (launch set):**
   - **Overview/Home** (north-star KPIs + sparklines) — §3.1.
   - **TVL & vault analytics** (TVL, deposits/withdrawals/net flows, caps, share price/APY, withdraw-always drill + kill-switch *status*) — §3.4.
-  - **Revenue dashboard** — §3.5, the centerpiece: revenue-by-stream stacked, cumulative, trajectory/forecast (labeled illustrative), MRR/ARR-equivalent, history table, take-rate, "we only earn when you earn." At launch most realized lanes are zero (Phase-0 reality) with **projected lanes + premium-tier (Stripe) live if enabled** — so the *graphical revenue story* is real and presentable even before fees are amended in.
+  - **Revenue dashboard** — §3.5, the centerpiece: revenue-by-stream stacked, cumulative, trajectory/forecast (labeled illustrative), MRR/ARR-equivalent, history table, take-rate, "we only earn when you earn." At launch the **three active lanes (swap fee, premium tier, performance fee) are live** alongside **projected lanes (mgmt fee, SRK)** — and the **performance-fee HWM panel** ships in the launch set — so the *graphical revenue story* is real and presentable from day one.
   - **Stakeholder/Client Overview** — §3.7, the curated screen we show the client.
   - **Basic User analytics** (totals, new/active, signups, onboarding funnel) and **basic System health** (status tiles, error rate, kill-switch status) — enough to run the beta.
 - **Data:** materialized rollups for TVL/revenue/users/flows; Stripe (or equivalent) wired for subscriptions; Sentry wired for health; onchain reads for TVL/caps/kill-switch.
@@ -372,7 +373,7 @@ A genuinely useful, demoable admin + **revenue** dashboard for the client — sm
 - Full **User analytics** (retention cohort heatmaps, geography, wallet-type mix, risk distribution) and **per-user drilldown** with step-up.
 - Full **Usage/product analytics** (tool-step success, sim pass/fail breakdowns, feature-adoption matrix, literacy engagement).
 - Full **System/ops health** (policy-decision breakdowns, sim-latency p50/p95, guardrail-trigger analytics, RPC/indexer health detail).
-- **Revenue depth:** performance-fee **HWM** panels, management-fee & **SRK fee-share/buyback** lanes (activated when the revenue-model §5.2 amendment + contracts ship), top revenue cohorts, fee-vs-TVL deep-dive, per-vault revenue (as vaults multiply).
+- **Revenue depth:** management-fee & **SRK fee-share/buyback** lanes (activated when the revenue-model §5.2 amendment + contracts ship), per-vault performance-fee HWM panels (as strategy vaults multiply beyond the launch Aave Yield Vault), top revenue cohorts, fee-vs-TVL deep-dive, per-vault revenue (as vaults multiply).
 - **Surface migration** to a separate `apps/admin` deploy (Option B) once shown externally on a recurring basis.
 - **Exports/leave-behinds** (PDF/PNG of the Stakeholder Overview), scheduled email digests, and anomaly alerting on the admin audit log.
 

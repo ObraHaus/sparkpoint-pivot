@@ -170,6 +170,40 @@ The allowlist is a closed set of `(protocol, target address, selector, asset con
 - Off-chain caps mirror the on-chain reads (read fresh from chain at decision time, never from cache) so the UX block matches the chain.
 - ERC-4626 surfacing: `maxDeposit(receiver) = min(perUserRemaining, totalRemaining, vaultRemaining)` returns 0 at cap so standard tooling reflects it; `maxWithdraw`/`maxRedeem` are never reduced by caps.
 
+### 4.1 Governance params (bounded, non-custody) — performance fee
+
+The vault charges a **profit-only performance fee**: 0% management, 0% entry/exit, 0% on principal, and **10% on REALIZED YIELD ONLY** above a share-price high-water mark — **ACTIVE AT LAUNCH** (Sept 2026 v1). `performanceFeeBps` is the **only** mutable governance parameter beyond pause/caps. Like a cap `ceiling`, it is **hard-bounded by an immutable maximum the multisig can never exceed**, and it is a **non-custody** param: it can never alter custody/withdraw/principal semantics.
+
+```jsonc
+{
+  "governanceParams": {
+    "performanceFeeBps": {
+      "amount": 1000,                      // current rate (10%); default at launch
+      "ceiling": 2000,                     // IMMUTABLE hard cap (20%) — MAX_PERFORMANCE_FEE_BPS; multisig can never exceed
+      "base": "realized_yield_above_hwm",  // charged ONLY on yield above the high-water mark — NEVER on principal
+      "highWaterMark": true,               // share-price HWM; 0 fee in flat/down periods; prior losses re-earned first
+      "managementBps": 0, "entryBps": 0, "exitBps": 0, "principalBps": 0,
+      "mutable": true,
+      "timelocked": true,                  // setPerformanceFeeBps is timelocked + multisig-bounded
+      "custodyImpact": "none",             // cannot alter custody/withdraw/principal; only the FORWARD fee on FUTURE yield
+      "gatesExit": false,                  // on-chain accrual is FAIL-OPEN — can NEVER block/delay a withdraw (N2)
+      "active": true                       // live at launch on the Aave Yield Vault
+    },
+    "feeRecipient": {
+      "kind": "ordinary_nonprivileged_holder",  // collects ONLY by redeeming its own fee shares via the normal withdraw/redeem path
+      "mutable": true, "timelocked": true,
+      "authorityOverOthers": "none"        // no admin/withdraw power over other holders; cannot block/reorder redemptions (N1)
+    }
+  }
+}
+```
+
+**Semantics (normative):**
+- The performance fee is realized by **minting fee shares** to `feeRecipient` for `performanceFeeBps × (yield above HWM)`, then advancing the HWM — **dilution only**, never an asset transfer, never a deduction from `totalAssets()` or principal (N1, N-fee).
+- `performanceFeeBps` is settable **only within `[0, ceiling]`** by the timelocked, pause-only multisig; even a compromised multisig cannot exceed `ceiling (2000)` or reach a fund/custody path. It mirrors a cap's `ceiling` bounding (§4) — a non-custody governance param.
+- **It NEVER gates exits.** On-chain accrual is FAIL-OPEN, so `direction == "exit"` (withdraw/redeem/revoke) is unaffected whether or not the fee accrues (N2). No new reason code is added — fee accrual can never produce a rejection.
+- Off-chain mirrors `performanceFeeBps()`/`highWaterMark()`/`feeRecipient()`/`MAX_PERFORMANCE_FEE_BPS()` from chain (read fresh, never cached) for net-of-fee APY projection and pre-deposit disclosure; the values are provable on-chain (Trust Center).
+
 ---
 
 ## 5. Slippage (G4) — schema + semantics
@@ -243,7 +277,7 @@ This is the structure a user signs to authorize opt-in automation, displayed **v
 {
   "mandateConformance": {
     "maxRiskClass": "conservative",            // action.riskClass ≤ mandate.maxRiskClass
-    "note": "At launch the allowlist already precludes non-conservative actions (only Aave v3 supply + 0-fee vault + plain swaps). This hook is for forward-compat with multi-strategy."
+    "note": "At launch the allowlist already precludes non-conservative actions (only Aave v3 supply + 0-management profit-only-performance-fee vault + plain swaps). This hook is for forward-compat with multi-strategy."
   }
 }
 ```
@@ -319,6 +353,7 @@ A rejected action returns to the user as an **explanation**, never as a signable
 |---|---|---|---|
 | §3 Allowlist `(target,selector)` | FR-016, FR-027, SC-006 | — | **G5** |
 | §4 Caps (exit-exempt) | FR-025, SC-009 | caps, **N2** | **G2** |
+| §4.1 Performance-fee governance param (capped 20%, timelocked, profit-only, non-custody, exit-never-gated) | FR-017, FR-037 | **N1, N2, N5, N-fee** | G6 |
 | §5 Slippage / sim | FR-021, FR-023, SC-002 | — | **G4** |
 | §6 Session-key scope grammar | FR-029/030/036, SC-008 | **N4** | G2, G5 |
 | §6 rule 7 Revocation exit-exempt | FR-031, FR-032 | **N4** | — |

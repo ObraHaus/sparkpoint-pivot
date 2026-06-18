@@ -4,7 +4,7 @@
 >
 > **Read first:** `00-brief.md` (positioning, five guarantees, tone) and `01-information-architecture.md` (routes, app shell, badge/disclaimer-strip placement). This doc *deepens* the trust surfaces sketched in `01 §2.2–2.4`, `§3`, and the routes under `(app)/trust/*`, `(app)/automation/*`, `(app)/activity/*`. Where this doc and `01` disagree on placement, `01` wins; this doc is authoritative on **anatomy, states, copy, and acceptance criteria** for the trust surfaces.
 >
-> **Authoritative scope:** Single chain (Base), single launch vault (0-fee Aave Yield Vault, ERC-4626), beta-gated (whitelist + per-user caps + geo-fence). Per-action user signing is the **default**; scoped, instantly-revocable session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take, move, or withhold user funds**. Multisig/timelock governs **pause only**, never fund movement.
+> **Authoritative scope:** Single chain (Base), single launch vault (Aave Yield Vault, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user caps + geo-fence). Per-action user signing is the **default**; scoped, instantly-revocable session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take, move, or withhold user funds**. Multisig/timelock governs **pause only** and the timelocked, hard-capped (20%) fee rate, never fund movement.
 >
 > **Stack mapping target:** Next.js (App Router) + TailwindCSS + shadcn/ui. Component callouts map to shadcn primitives. **Do not write code.**
 
@@ -230,7 +230,7 @@ All meters use **tabular numerals**, semantic fill (green→amber as capacity sh
 ### 4.2 `/trust/exit` — anatomy
 
 - **Reassurance header:** "You can always get your money out. Here's how — with or without SparkPoint."
-- **Path A — Withdraw in-app (recommended, easiest):** card summarizing current vault position (shares + redeemable value, net of nothing — 0-fee), **[Withdraw now]** → `/vault/withdraw` → `/confirm`.
+- **Path A — Withdraw in-app (recommended, easiest):** card summarizing current vault position (shares + redeemable value, net of the 10% profit-only performance fee on yield above your high-water mark — 0% on your principal), **[Withdraw now]** → `/vault/withdraw` → `/confirm`.
 - **Path B — Withdraw on-chain without SparkPoint (escape hatch):** step-by-step, tool-agnostic instructions to redeem ERC-4626 shares directly via a block explorer "write contract" tab or any wallet:
   - vault contract **address** (copy + explorer link),
   - the **function to call** (`redeem`/`withdraw`) with plain-language parameter help,

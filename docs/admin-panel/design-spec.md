@@ -85,7 +85,7 @@
   - **Semantic** (green/red/amber/blue) = outcome & safety: deposit/withdraw direction, success/fail rates, health tiles, deltas (▲ green / ▼ red), env badge. **Every semantic state pairs color + icon + text** (`04` §10.2).
   - **Risk palette** (teal→magenta, `04` §2.5) = risk *tier* only: risk-tier distribution, allocation-by-risk. The launch vault reads **Risk 1 (Lower)**.
 - **Chart palette (`04` §2.6, §6):** categorical ramp derived from risk + neutral systems; horizontal grid lines only at ~40% `--border`; axes `--muted-foreground` `text-xs` **tabular** ticks; custom shadcn-styled tooltips (`--popover`, 1px border, `shadow-md`); **every value tabular** (`04` §3.4, `07` §5).
-- **Revenue-stream color contract (`README §3.5`):** **one color per revenue stream, consistent across every chart** (swap fee, premium tier, [projected] perf fee, [projected] mgmt fee, [projected] SRK, treasury float). Projected streams render dashed/hatched + "(projected)" in the legend. Derive these from the categorical ramp; **do not reuse the semantic green/red** (revenue is not "gain/loss").
+- **Revenue-stream color contract (`README §3.5`):** **one color per revenue stream, consistent across every chart** (swap fee, premium tier, perf fee — all three active/solid — plus [projected] mgmt fee, [projected] SRK, treasury float). Projected streams render dashed/hatched + "(projected)" in the legend; active streams render solid. Derive these from the categorical ramp; **do not reuse the semantic green/red** (revenue is not "gain/loss").
 - **Tabular numerals everywhere financial** (`04` §3.4, `07` §5): all $, %, bps, counts, share prices. Currency `$1,234.56`, abbreviate dense cells `$1.23M`/`$45.6K` (full precision on hover). Net APY rule applies — "X% net APY," never bare (`07` §5.2). PnL/flows = sign + color + arrow + window.
 - **Typography (`04` §3):** `text-h1` page titles, `text-h2`/`h3` card titles, `text-display` for hero stat numbers, mono for addresses/hashes/tx (`04` §3.1).
 - **Motion (`04` §7):** skeleton shimmer on load; number tweens ≤300ms with **no width reflow** (tabular); `prefers-reduced-motion` honored. No casino motion.
@@ -269,7 +269,7 @@
 1. **Total & per-vault TVL over time** — stacked `AreaChart`: X = date, Y = TVL (USDC-quote), **one stacked series per vault** (single series at launch; stacking future-proofed).
 2. **Deposits / withdrawals & NET FLOWS** — the **heartbeat chart**: diverging `BarChart` (deposits positive, **semantic green**; withdrawals negative, **semantic red**) + overlaid **net-flow `Line`** (cumulative or per-period).
 3. **Caps utilization** — `RadialBarChart` (or horizontal `BarChart` with a `ReferenceLine` at the cap): `total_protocol_cap` utilization + aggregate per-user-cap headroom; **amber as utilization nears the cap** (reuse `CapsMeter` semantics, `06` §14 — spark/healthy → amber ≥~80% → destructive at cap).
-4. **Share price / APY history** — dual: `LineChart` of `share_price_ray` over time + a separate `LineChart`/`AreaChart` of trailing APY (7d/30d annualized from share-price growth). APY labeled **"realized, net-of-everything (0-fee at launch)"** (`07` §5.2 — never bare, never projected).
+4. **Share price / APY history** — dual: `LineChart` of `share_price_ray` over time + a separate `LineChart`/`AreaChart` of trailing APY (7d/30d annualized from share-price growth). APY labeled **"realized, net-of-everything (net of the 10% profit-only performance fee; 0% management, 0% on principal)"** (`07` §5.2 — never bare, never projected).
 5. **Withdraw-always drill status** — a **status panel (not a chart)**: last successful **withdraw-always drill** timestamp/result (the quickstart drill: redeem with frontend + agents offline, while paused), current **pause status** (read-only, from `KillSwitch` via `KillSwitchStatus` read-only variant, `06` §19), and a green/red badge. **Status only — no controls.** Makes the N2 guarantee observable.
 
 **States.** Loading skeleton · empty (pre-deposit) = zeroed + "Vault live, no deposits yet" · per-widget error with a "data source: RPC/subgraph" provenance note.
@@ -282,7 +282,7 @@
 
 ## A6 — Revenue dashboard (CENTRAL — the centerpiece)
 
-**Goal.** Show **revenue in action, graphically** — the screen we screen-share with the client (`README §3.5`). Visualizes the streams from [`../revenue-model/README.md`]: **launch-era** = swap-routing fee (if/when enabled) + premium AI subscription; **future/projected** = strategy-vault performance fee, optional management fee, SRK fee-share/buyback. **Realized = solid; projected = dashed + "est." badge — everywhere.** Visible to **Stakeholder**.
+**Goal.** Show **revenue in action, graphically** — the screen we screen-share with the client (`README §3.5`). Visualizes the streams from [`../revenue-model/README.md`]: **launch-era (active)** = swap-routing fee (if/when enabled) + premium AI subscription + **vault performance fee** (10% of realized yield only, profit-only, high-water mark; cap 20%, default 10%); **future/projected** = optional management fee, SRK fee-share/buyback. **Realized = solid; projected = dashed + "est." badge — everywhere; only genuine forecasts are dashed.** Visible to **Stakeholder**.
 
 **Entry points.** Sidebar "Revenue" (★, SA/Ops/Stakeholder). Linked from A1 Revenue snapshot and A8.
 
@@ -290,9 +290,9 @@
 
 | Stream | Status at launch | Render |
 |---|---|---|
-| **Swap-routing fee** (Aerodrome swaps from chat) | Launch-era, ACTIVE (~20 bps; launch-era, early volume may be low (first-N-free)) | solid lane |
-| **Premium AI subscription** (paid in SRK; Stripe-or-equiv normalized) | Launch-era (modeled now) | solid lane |
-| **Performance fee** (strategy vaults, realized yield, HWM) | **Future / projected** | dashed/hatched lane + "(projected)" |
+| **Swap-routing fee** (Aerodrome swaps from chat) | **Launch-era, ACTIVE** (~20 bps; early volume may be low (first-N-free)) | solid lane |
+| **Premium AI subscription** (SRK-paid freemium Premium tier; Stripe-or-equiv normalized) | **Launch-era, ACTIVE** (modeled now) | solid lane |
+| **Performance fee** (Aave Yield Vault, realized yield only, HWM) | **Launch-era, ACTIVE** (10% of yield, profit-only, high-water mark; cap 20%, default 10%) | solid lane |
 | **Management fee** (≤0.25%, multi-strategy only) | **Future / projected** | dashed lane + "(projected)" |
 | **SRK fee-share / buyback** | **Future / projected** | dashed lane + "(projected)" |
 | **Treasury float** (own capital) | Phase-0, non-user | informational, labeled "non-user" |
@@ -306,7 +306,7 @@
 4. **MRR / ARR-equivalent over time** — **`LineChart`** (or `ComposedChart`: bars = monthly bookings + line = MRR). X = month, Y = USD. MRR = subscription MRR + normalized recurring fee portion (normalization defined in a `Tooltip`/footnote). ARR = MRR × 12.
 5. **Revenue per user / per vault** — **two `BarChart`s** (or a toggle): ARPU over time (X = period, Y = USD/user) + revenue-per-vault (X = vault, Y = revenue; one bar at launch, future-proofed).
 6. **Fee-vs-TVL & take-rate** — **`ComposedChart`**: `Area` = TVL (context) + `Line` = blended take-rate (revenue ÷ TVL, bps) on a secondary axis. The "are we extracting modestly?" story (restraint as a feature).
-7. **Performance-fee high-water-mark status** — a **panel + small chart** (relevant once perf fees live; placeholder until then): per strategy-vault, **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`** + a status `Badge` ("above HWM → fee accrues" / "below HWM → no fee, recovering"). Reinforces "we only earn when you earn."
+7. **Performance-fee high-water-mark status** — a **panel + small chart** (live at launch — the perf fee is active on the Aave Yield Vault): per vault, **share price vs HWM** as a `LineChart` with the **HWM as a `ReferenceLine`** + a status `Badge` ("above HWM → fee accrues" / "at/below HWM → no fee, recovering"). Reinforces "we only earn when you earn — never on your principal, never by taking custody."
 8. **Top revenue-generating cohorts** — **horizontal `BarChart`**: revenue by cohort (signup-month / risk-tier / top-vaults); Y = cohort, X = revenue.
 
 **"We only earn when you earn" panel (near the hero chart — the honesty framing, `README §3.5`).** A dual `Area` chart: **cumulative user yield** vs **cumulative protocol revenue**, side by side, with the one-line copy *"We only earn when you earn — never on your principal, never by taking custody."* The revenue story is **always shown against the value delivered to users**, and never leads with a projection.
@@ -315,7 +315,7 @@
 
 **States.**
 - **Loading** — skeletons for cards + charts.
-- **Empty / pre-revenue (the launch reality)** — charts render with **zeroed realized lanes + visible projected lanes** + a clear banner (`AlertBanner` info): *"Realized revenue begins post-amendment; projected lanes are illustrative, not forecasts of return."* (`README §3.5`). The graphical revenue story is **real and presentable even before fees are amended in** — premium-tier (Stripe) lane shows live if enabled.
+- **Empty / pre-revenue (early launch, before flows accrue)** — charts render with **zeroed-but-live active lanes (swap fee, premium tier, performance fee) + visible projected lanes (mgmt fee, SRK)** + a clear banner (`AlertBanner` info): *"Active streams are live at launch and begin accruing on first activity; projected lanes are illustrative, not forecasts of return."* (`README §3.5`). The graphical revenue story is **real and presentable from day one** — the active lanes (incl. premium-tier Stripe) show live as activity accrues.
 - **Error / partial-source-error** — per-widget retry with **source provenance** (Stripe vs onchain vs computed).
 
 **RBAC.** SA/Ops/Stakeholder. Stakeholder sees the **same charts, aggregate, no export of raw per-user rows** (the history table is period-aggregate; per-user revenue lives only in A2/A3).
@@ -363,7 +363,7 @@
 3. **Revenue trajectory** — the **A6 trajectory chart** (realized solid + forecast dashed, labeled illustrative — the centerpiece for the client) + the cumulative-revenue `AreaChart`.
 4. **"We only earn when you earn"** — the user-yield vs protocol-revenue **dual-area**, reinforcing the trust thesis.
 5. **TVL & flows** — a simplified net-flows `BarChart` (deposits up / withdrawals down) — proof of real, sticky money.
-6. **Trust badges** — a small status row (all observe-only, reading the same status sources): **non-custodial ✓** (read-only over funds) · **withdraw-always: last drill passed ✓** · **0-fee conservative vault ✓** · **kill-switch: multisig-governed, status shown ✓**.
+6. **Trust badges** — a small status row (all observe-only, reading the same status sources): **non-custodial ✓** (read-only over funds) · **withdraw-always: last drill passed ✓** · **0-management / profit-only performance-fee vault ✓** (10% of yield, high-water mark, 0% on principal) · **kill-switch: multisig-governed, status shown ✓**.
 
 Everything here is **derived from the richer dashboards** (one source of truth, simplified presentation). **Tone (`07`):** confident, plain-language, honest — **no projection shown without an "illustrative" label.** This view is **export-to-PDF/PNG** friendly for leave-behinds (audited export).
 
@@ -375,7 +375,7 @@ Everything here is **derived from the richer dashboards** (one source of truth, 
 
 **RBAC.** Client sees **only** this screen (server-denied elsewhere → 404). Stakeholder sees this + A1(curated)/A5/A6.
 
-**Non-custody / read-only touchpoint.** The **trust-badge row** surfaces the non-custody story at presentation altitude — non-custodial, withdraw-always drill, 0-fee vault, multisig kill-switch — all **observe-only**, reading the same status sources as A5/A7, with **no controls**. The "we only earn when you earn" panel is the revenue-honesty centerpiece.
+**Non-custody / read-only touchpoint.** The **trust-badge row** surfaces the non-custody story at presentation altitude — non-custodial, withdraw-always drill, 0-management / profit-only performance-fee vault (0% on principal), multisig kill-switch — all **observe-only**, reading the same status sources as A5/A7, with **no controls**. The "we only earn when you earn" panel is the revenue-honesty centerpiece.
 
 **Acceptance.** Six-section story order; headline KPI band; Growth `ComposedChart`; revenue trajectory (forecast dashed + illustrative label) + cumulative area; "we only earn when you earn" dual-area; simplified net-flows bars; trust-badge status row (observe-only); export-to-PDF/PNG (audited) + export-mode render; pre-launch "launching Sept" hero; Client sees only this screen; desktop + tablet + a phone courtesy render (this screen is the one heavy view phones keep).
 
@@ -450,7 +450,7 @@ A design satisfies this spec when **all** hold:
 1. **Read-only over funds, visibly.** No screen contains a control that moves, withdraws, sweeps, reallocates, pauses, or otherwise touches user funds. The persistent **"Observe-only · read-only over funds"** chip is present in the top bar on 100% of screens, with its one-tap explainer. (`README §0`.)
 2. **Kill-switch is status-only.** Wherever the kill-switch appears (A5, A7, A8 trust badges), it is the `KillSwitchStatus` **read-only variant**: pause-only scope statement + multisig controller transparency + an external link to the multisig — **never an in-panel pause/unpause control**, **never red**, always noting "pause never blocks withdrawals." (`README §0`, `05` §3.5, `07`.)
 3. **RBAC by construction.** Each role gets its own default landing + role-scoped nav; denied sections return a **server-side 404 (never 403)**; per-user drilldown (A3) and the audit log (A11) require **step-up + are themselves audited**; Stakeholder/Client are **aggregate-only, pseudonymized, config-free**, and cannot reach A2/A3/A4/A7/A9/A10/A11. (`README §1`, §2.3, §2.4.)
-4. **Projection honesty everywhere.** Realized = solid; **projected/forecast/future-stream = dashed/hatched + "est." badge**; the revenue trajectory marks "today" with a `ReferenceLine`; the revenue pre-revenue empty state shows zeroed realized + visible projected lanes + the illustrative banner. **No projection is ever presented as realized.** (`README §3`, Constitution III, `07` §5.2.)
+4. **Projection honesty everywhere.** Realized = solid (incl. the three active launch streams: swap fee, premium tier, performance fee); **projected/forecast/future-stream (mgmt fee, SRK, run-rate forecast) = dashed/hatched + "est." badge**; only genuine forecasts are dashed; the revenue trajectory marks "today" with a `ReferenceLine`; the revenue pre-revenue empty state shows zeroed-but-live active lanes + visible projected lanes + the illustrative banner. **No projection is ever presented as realized, and no realized stream is dashed.** (`README §3`, Constitution III, `07` §5.2.)
 5. **The revenue dashboard (A6) is the centerpiece.** All eight specified charts + the "we only earn when you earn" dual-area + the revenue history table are present, with the **one-color-per-stream contract** consistent across every chart, and **no fee-authorizing controls.** (`README §3.5`.)
 6. **Design-system conformance (`04`).** Dark-first; three color systems never crossed (spark only for active-nav/focus/AI-presence, **never** revenue-up or gain/loss/risk); semantic green/red/amber/blue pair color+icon+text; risk palette only for risk tiers; **tabular numerals on 100% of financial figures**; net-APY rule (never bare); chart axes/grids/tooltips per `04` §6; mono for addresses/hashes; motion subtle + reduced-motion safe.
 7. **States, all of them.** Every screen designs loading (skeleton, never blank, never `0`-placeholder) · empty (zeroed-but-styled, pre-launch-intentional) · **per-widget** error (with source/freshness provenance, one failing source never blanks the page) · no-permission (404) · plus screen-specific step-up / confirm-change / export-mode states.

@@ -2,7 +2,7 @@
 
 > **Handover doc** for Claude Design. This file defines the **sitemap / route map** (Next.js App Router segments), the **global app shell** (persistent non-custodial badge, wallet/connection status, AI disclaimer strip), how the **six core flows + supporting surfaces** connect, **primary vs secondary navigation** for desktop and mobile, and a **user-journey map** from first visit → onboarded → first deposit → ongoing management.
 >
-> **Scope reminder (authoritative):** Single chain (Base), single launch vault (0-fee Aave Yield Vault, ERC-4626), beta-gated (whitelist + per-user caps + geo-fence), SRK non-essential. Per-action user signing is the **default**; scoped session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take user funds**. Design must make non-custody **visible and provable**, not promised.
+> **Scope reminder (authoritative):** Single chain (Base), single launch vault (Aave Yield Vault, ERC-4626 — 0% on principal / 0 management, with an active 10% profit-only, high-water-mark performance fee on realized yield), beta-gated (whitelist + per-user caps + geo-fence), SRK non-essential. Per-action user signing is the **default**; scoped session-key automation is **opt-in**. The protocol can **direct** strategy but has **no code path to take user funds**. Design must make non-custody **visible and provable**, not promised.
 >
 > **Design thesis to encode in IA:** *AI proposes — deterministic guardrails + you dispose — and the protocol never holds your money.* Two affordances must be reachable from **anywhere** in ≤1 tap: **(1) "prove-it" permissions panel** (what SparkPoint can/cannot do) and **(2) withdraw-always escape hatch** (exit without us).
 >

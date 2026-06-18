@@ -217,7 +217,7 @@ Benchmark register for this trust framing: **Ledger / Trust Wallet** self-custod
 - **Anatomy:** 1–3 **RecommendationCard previews** (the same card spec as Flow 4/Chat, used read-only here):
   - **"AI suggestion — you approve & sign"** `Badge` (spark-tint, `07` §2.1 verbatim) — mandatory on every rec card.
   - Rank/fit line: "Fits your plan: Lower risk, steady yield."
-  - **Net APY** readout — **"{X}% net APY (estimate · see breakdown)"** (`07` §5.2; never bare APY), with the breakdown one tap away (base Aave supply − 0% fee). **Do not lead the card with the number** (`07` §9.1 #3) — lead with fit/why.
+  - **Net APY** readout — **"{X}% net APY (estimate · see breakdown)"** (`07` §5.2; never bare APY), with the breakdown one tap away (base Aave supply − 10% performance fee, profit-only, HWM). **Do not lead the card with the number** (`07` §9.1 #3) — lead with fit/why.
   - **Risk chip** from §2.5 (Lower · 1/5 for the launch vault).
   - "Estimates, not guarantees." micro-line (`07` §3.3).
   - **≤2 actions** (OpenAI Apps SDK, `04` §11): primary "Review this move" (routes to simulation+sign via `/confirm` — **never** one-click execute, `07` §2.2/§9.1 #4) and secondary "Not now". A **"Why this?"** disclosure.

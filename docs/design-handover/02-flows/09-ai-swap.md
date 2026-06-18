@@ -164,7 +164,7 @@ The **SparkPoint routing fee** is launch revenue (revenue-model Stream 0A) and *
 - The fee is **framed as a usage fee**, **never** as a custody, vault, deposit, withdrawal, management, or yield fee.
 - The line item is **never** styled as a loss/alarm (it's a sober cost row, `--muted-foreground` label + `.tnum` value), and **never** styled as spark (it's not a CTA).
 - The free state **still shows the value the user is not paying** (struck), so "free" is provable, not vague.
-- **Vault flows show "SparkPoint fee: 0%"** (Flow 6) — this swap fee must never bleed into the vault confirm. The two are distinct and both honest.
+- **Vault flows show "SparkPoint performance fee: 10% of yield, profit-only, HWM — 0% on your principal"** (Flow 6; a deposit confirm shows $0.00) — this swap routing fee must never bleed into the vault confirm. The two are distinct and both honest.
 
 ---
 
@@ -281,11 +281,11 @@ Immediately under the success receipt, the assistant offers to **chain** — fai
 - **Header:** "Put your USDC to work?"
 - **Body:** **"You now hold ≈ {312.40} USDC. You could deposit it into the Aave Yield Vault and start earning — {X}% net APY (estimate · see breakdown). Withdraw anytime."** (`NetApyBreakdown`, never bare; "Estimates, not guarantees."). A `SharesPreview` line: "Deposit ≈ 312 USDC → receive ≈ {shares} spvUSDC."
 - **Caps preview:** a `CapsMeter` ("Beta cap: ${used} of ${cap}") — **this is where caps re-enter**, because the deposit *is* a vault flow.
-- **Footer (≤2):** primary **"Review deposit"** (→ `/confirm` via a **deposit** `txIntent`; full deposit confirm shows **"SparkPoint fee: 0%"**, `06`) · secondary **"Supply to Aave"** (alternate target, allowlisted) — with **"Not now"** available as a quiet dismiss (keeps the USDC in-wallet, no penalty).
+- **Footer (≤2):** primary **"Review deposit"** (→ `/confirm` via a **deposit** `txIntent`; full deposit confirm shows **"SparkPoint performance fee: 10% of yield, profit-only, HWM — 0% on your principal"**, $0.00 on this deposit, `06`) · secondary **"Supply to Aave"** (alternate target, allowlisted) — with **"Not now"** available as a quiet dismiss (keeps the USDC in-wallet, no penalty).
 
 **States:** loading (APY/shares skeleton) · default · **above-cap** (the deposit would exceed the beta cap → blocked at the deposit confirm, with the swap already done and the USDC safely in-wallet; the card says "Your USDC is in your wallet. Depositing the full amount would exceed your beta cap — deposit less, or hold." — **the swap success is never retroactively undone**) · "Not now" dismiss (collapses; re-openable from the thread).
 
-> **Trust note (critical):** chaining is **two separate signed actions** — the swap (done) and the deposit (a fresh `txIntent` → its own sign). The UI must **never** imply the deposit happened as part of the swap, and the swap's success stands on its own regardless of whether the user chains. The deposit confirm is **0-fee** (vault), distinct from the swap's routing fee — both shown honestly.
+> **Trust note (critical):** chaining is **two separate signed actions** — the swap (done) and the deposit (a fresh `txIntent` → its own sign). The UI must **never** imply the deposit happened as part of the swap, and the swap's success stands on its own regardless of whether the user chains. The deposit confirm carries **0% on principal** (the vault's profit-only performance fee shows $0.00 on a deposit), distinct from the swap's routing fee — both shown honestly.
 
 ---
 
@@ -379,7 +379,7 @@ A **collapsed, opt-in disclosure** on the swap Preview (and re-openable from the
 - **AI proposes, you dispose:** the proposal card and confirm banner carry the verbatim **"AI suggestion — you approve & sign"**; acceptance is never one-click — it **always** routes to the sign gate (`05` §5; `07` §9.1).
 - **One sign gate, no blind signing:** the swap reuses `/confirm` (Flow 6); a **Tenderly-style simulation precedes 100%** of swap signatures; "Simulating…" and "couldn't simulate — won't sign blind" gate the Sign (`spec.md` SC-002).
 - **Slippage protection is visible and enforced:** expected **and** minimum-received are shown; the guardrail row + the on-chain min-received guard mean a price move past the cap **reverts to protect the user** (state I) — friction shown as protection.
-- **Fee transparency (the net-new trust bar):** the routing fee is **itemized, pre-sign, USD + rate, framed as a usage fee**, never hidden, never mis-labeled as custody/vault; the **first-N-free** state still shows the value not charged; the receipt re-states the fee paid; **vault flows remain 0-fee** and clearly distinct (`07` §9.1; revenue-model §4).
+- **Fee transparency (the net-new trust bar):** the routing fee is **itemized, pre-sign, USD + rate, framed as a usage fee**, never hidden, never mis-labeled as custody/vault; the **first-N-free** state still shows the value not charged; the receipt re-states the fee paid; **vault flows carry the distinct profit-only performance fee (10% of yield, HWM — 0% on principal)** and are clearly separate from the routing fee (`07` §9.1; revenue-model §4).
 - **Non-custodial by construction:** the fee is taken **inside the user's own signed swap** (a fee leg/recipient) — SparkPoint never holds, moves, or withholds funds; the "How it works" trace makes this literal (step ⑧).
 - **The architecture trace = provable, not promised:** the optional trace shows the real intent → policy → Tenderly → Aerodrome → Outcome Log path, centered on the user's signature; it educates without persuading.
 - **Provable receipt + outcome loop:** success terminates in a **tx hash + explorer link**, writes the **Outcome Log** entry, and links back to the originating chat turn — wins and losses recorded honestly (`05` §8).
@@ -408,7 +408,7 @@ A **collapsed, opt-in disclosure** on the swap Preview (and re-openable from the
 | Edit / Cancel | `Button variant="outline"/"ghost"` |
 | Signing / pending | spark "thinking" affordance + tx-hash chip (mono) |
 | Success receipt | `Card` + `--success` check + tx/explorer link + fee-paid re-statement + "See in portfolio" |
-| Chaining card ("deposit this USDC?") | `ActionCard` (deposit) = `Card` + `NetApyBreakdown` + `SharesPreview` + `CapsMeter` + `Button` ×2 → `/confirm` (deposit, 0-fee) |
+| Chaining card ("deposit this USDC?") | `ActionCard` (deposit) = `Card` + `NetApyBreakdown` + `SharesPreview` + `CapsMeter` + `Button` ×2 → `/confirm` (deposit, 0% on principal; profit-only performance fee shows $0.00 on deposit) |
 | Slippage-exceeded / revert / sim-error | `AlertBanner` (destructive/neutral) + "Try again"/"Open wallet"/"Retry" |
 | Toast mirrors | `Sonner` ("Swap confirmed · View tx ↗", "Signature cancelled") |
 | Power-user "Details" (deltas / fee leg / calldata / addresses) | `Accordion` + `Table` + copy `Button` (mono) + explorer-link `Button` |
@@ -425,7 +425,7 @@ A design satisfies this flow doc when **all** hold:
 4. **No blind signing.** A **Tenderly-style pre-trade simulation** of the swap precedes the signature; "Simulating…" and "couldn't simulate — won't sign blind" gate Sign; there is **no path to sign an unsimulated swap** (SC-002).
 5. **Balance-change + slippage complete.** The Preview shows the **ETH out / USDC in (+ gas)** balance-change table (token + USD, signed/colored, tabular, true minus), plus **expected output** and **minimum received at the max-slippage cap** as explicit, distinct figures.
 6. **Routing fee surfaced honestly (the net-new requirement).** The **"SparkPoint routing fee · 0.20% · $X"** line item is present, **pre-sign**, **itemized (rate + USD)**, **framed as a usage fee** (ⓘ explainer: taken inside the swap, never custody, never the vault), and **reflected in net USDC received**; the **first-N-free** state shows `$0.00` with the struck original value and remaining count; the receipt re-states the fee paid. The fee is **never** hidden, never mis-labeled, never styled as a CTA or an alarm.
-7. **Fee distinct from vault 0-fee.** Nothing in this flow implies a vault/principal/custody fee; the **chained deposit confirm shows "SparkPoint fee: 0%"** (Flow 6), clearly separate from the swap's routing fee.
+7. **Routing fee distinct from the vault performance fee.** Nothing in this flow implies a fee on principal or custody; the **chained deposit confirm shows the vault's profit-only performance fee ("10% of yield, HWM — 0% on your principal", $0.00 on a deposit)** (Flow 6), clearly separate from the swap's routing fee.
 8. **Guardrail checklist correct for a swap.** Rows: **route allowlisted (Aerodrome) · slippage under max · policy approved · simulation passed**, each color + icon + text with a "what's this?" tooltip; **caps rows are absent** (swaps aren't vault flows) — and this is itself honest; a price move past the cap **blocks** (no override) or **reverts to protect** (post-sign), with a remedy.
 9. **Friction scales to severity (Rabby).** All-pass swaps are one deliberate sign; **elevated slippage** produces a **specific ack** ("I understand I might receive as little as {x} USDC") that gates Sign; **blocks** are uncheckable with a remedy, never an override.
 10. **Chaining is honest and separate.** On success, a **"Deposit this USDC into the vault?"** chaining card (deposit variant, `NetApyBreakdown` + `SharesPreview` + caps) offers to put the USDC to work via a **fresh deposit `txIntent` → `/confirm`** (and a "Supply to Aave" alternate); the swap success stands alone; the deposit is never implied to be part of the swap; "Not now" is free.
@@ -440,7 +440,7 @@ A design satisfies this flow doc when **all** hold:
 
 - **The sign gate this flow routes into (authoritative for the Preview/confirm anatomy + states):** `02-flows/06-execution-confirmation-simulation.md` (§2 layout, §3 anatomy, §5 simulation banner, §6 friction model, §7 states).
 - **The chat surface, the swap `ActionCard`, the inline `ConfirmationCard` mirror, tool-step ticker, suggested-prompt chips:** `02-flows/02-chat-assistant.md` (§5.3, §7.2, §7.6).
-- **The chaining target (vault deposit, `SharesPreview`, `NetApyBreakdown`, caps, 0-fee):** `02-flows/05-vault-deposit-withdraw.md`.
+- **The chaining target (vault deposit, `SharesPreview`, `NetApyBreakdown`, caps, 0% on principal + profit-only performance fee):** `02-flows/05-vault-deposit-withdraw.md`.
 - **The portfolio/asset entry point ("Swap" row action):** `02-flows/03-portfolio.md` (`PositionRow`).
 - **Components:** `ActionCard` (`06` §8), `ConfirmationCard` (`06` §9), `GuardrailChecklist` (`06` §13), `SimulationBalanceChangeTable` (`06` §23), `AlertBanner` (`06` §25), `NetApyBreakdown` (`06` §16), `SharesPreview` (`06` §17), `CapsMeter` (`06` §14), `AiSuggestionBadge`/`CitationChip` (`06` §6/§7).
 - **Tokens, spark = AI presence/CTA, semantic palette, tabular numerals, mono, motion, a11y, component→shadcn map:** `04-design-system.md` (§2, §3, §7, §10, §11).

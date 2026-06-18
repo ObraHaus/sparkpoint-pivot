@@ -176,7 +176,7 @@ The product borrows the strongest pattern from three genres and fuses them:
 
 ## 12. Constraints (carry into every screen)
 
-- **Single Aave Yield Vault at launch** (ERC-4626, 0-fee, USDC).
+- **Single Aave Yield Vault at launch** (ERC-4626, USDC; **0% on principal / 0 management**, with an active **10% profit-only, high-water-mark performance fee** on realized yield — configurable on-chain, hard-capped at 20%, timelocked).
 - **SRK is non-essential** — never gates core function.
 - **Beta-gated** — whitelist, per-user caps, geo-fenced frontend. Design the **gated / not-whitelisted / caps-reached** states.
 - **Base only.**

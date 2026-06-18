@@ -94,7 +94,7 @@ The one-sentence job: **explain a non-essential utility token honestly enough th
 | **Balance card** | "Your SRK: {amount} SRK" (+ "How to use ▾") | Tabular; **no fiat price by default** (A.4). En-dash if unknown; `0 SRK` if a real zero with "You don't hold any SRK — and you don't need to." | `Card` + `Badge` |
 | **Utility rows** | each SRK use = title + one plain sentence + **status badge** ("Available now" / "Planned" / "Deferred") | Honest about what's live vs roadmap (`spec.md` Assumptions: SRK v2 utility/governance deferred). Never imply a deferred benefit is live. | `Card` rows + `Badge` (status) |
 | **"How to earn"** | plain steps (if any earn mechanic is live) or "Not available in beta yet." | If nothing is earnable in beta, say so plainly — no fake quests/points theater. | `Card`/list |
-| **"How to use"** | where SRK applies (e.g., fee discounts/governance/access — **only those that are real**), each with a status badge | The launch vault is **0-fee**, so a "fee discount" utility must be honestly framed (e.g., "Not applicable — the vault is already 0-fee."). Never invent a benefit. | `Card`/list |
+| **"How to use"** | where SRK applies (e.g., fee discounts/governance/access — **only those that are real**), each with a status badge | No SRK fee-discount on the vault performance fee is live at launch, so a "fee discount" utility must be honestly framed (e.g., "Not available in beta — the performance fee is the same whether or not you hold SRK; it's always 0% on your principal."). Never invent a benefit. | `Card`/list |
 | **Non-essential callout** | "You never need SRK to deposit, earn yield, or withdraw. Holding SRK changes nothing about your custody or safety." | Persistent `--info` `Alert`; this is the trust payload of the page. | `Alert` (info) |
 | **FAQ** | plain Q→A (Is SRK required? No. Does SRK affect my custody? No. Can I use the vault without it? Yes.) | Reinforces non-essentiality. | `Accordion` |
 
@@ -110,7 +110,7 @@ The one-sentence job: **explain a non-essential utility token honestly enough th
 ## A.5 Microcopy (SRK) — defer to `07`
 - Header: "SRK" + "Optional — not needed to use SparkPoint."
 - Non-essential callout (verbatim intent): "You never need SRK to deposit, earn yield, or withdraw. Holding SRK changes nothing about your custody or safety."
-- Status badges: "Available now" / "Planned" / "Deferred" / "Not applicable (the vault is 0-fee)".
+- Status badges: "Available now" / "Planned" / "Deferred" / "Not available in beta (no SRK discount on the vault performance fee)".
 - Zero state: "You don't hold any SRK — and you don't need to."
 - **Banned here (esp.):** any price/"to the moon"/urgency/FOMO/"don't miss"/"stake to earn X% APY" register (`07` §9.3). No emoji. No projected token returns.
 
@@ -129,7 +129,7 @@ The one-sentence job: **explain a non-essential utility token honestly enough th
 2. The **"Optional — not needed to use SparkPoint"** frame is present in the header and reinforced by a persistent non-essential `--info` callout.
 3. **No core dependency, no entry that requires SRK**; the page is low-prominence (secondary/footer) (`01` §4 note 8; FR-045, SC-013).
 4. **No price/buy/market surface, no token-yield theater, no urgency** anywhere; voice is calm and honest (`07` §9.3; `09` §8).
-5. Utilities carry honest **status badges** (live vs deferred); a 0-fee-vault "fee discount" is framed honestly, never as a live benefit.
+5. Utilities carry honest **status badges** (live vs deferred); a "fee discount" on the vault performance fee is framed honestly (no SRK discount is live at launch), never as a live benefit.
 6. Balance is tabular, fiat price suppressed by default; zero vs unknown handled per `07` §5.5; withdraw-always reachable.
 
 ---

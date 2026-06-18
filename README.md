@@ -56,7 +56,7 @@ sparkpoint-pivot/
 1. **Non-custodial by construction** — the protocol can *direct* strategy but has no code path to take user funds.
 2. **AI proposes, deterministic policy + the user disposes** — the model never has final execution authority; the user signs every transaction.
 3. **Provable, not promised** — results and permissions are reconstructable on-chain.
-4. **Conservative, transparent launch** — a single 0-fee Aave Yield Vault; honest, net-of-everything yield.
+4. **Conservative, transparent launch** — a single 0-management / profit-only performance-fee Aave Yield Vault (0% management, 0% on principal, 10% performance fee on yield above a high-water mark); honest, net-of-everything yield.
 
 ## Tech stack (authoritative)
 

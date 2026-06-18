@@ -40,6 +40,7 @@ It exists to make two things true at once:
 | E7 | Strategy Recommendation | `recommendations` | OFFCHAIN | Postgres |
 | E8 | Vault | `vaults` (mirror of `SparkPointVault`) | ONCHAIN | Base + Postgres mirror |
 | E9 | Vault Position (ERC-4626 shares) | `indexed_positions` (kind=`vault_shares`) + `vault_share_events` | ONCHAIN-DERIVED | Postgres (derived) |
+| E8a | Fee Accrual / Fee Event (performance fee) | `fee_events` | ONCHAIN-DERIVED | Postgres (derived) |
 | E10 | Session Key + Policy Scope | `session_keys` (mirror of `SessionKeyValidator`/`PolicyModule`) | ONCHAIN | Base + Postgres mirror |
 | E11 | Execution / Transaction | `executions` + `intent_bundles` | OFFCHAIN intent + ONCHAIN-DERIVED result | Postgres |
 | E12 | Simulation Result | `simulation_results` | OFFCHAIN (Tenderly snapshot) | Postgres |
@@ -86,6 +87,7 @@ users ─┴──1:N──▶ chat_messages │
        │                       context_snapshots (frozen at proposal time)
        │
 vaults ──(global, single)──▶ vault_share_events ──▶ indexed_positions(kind=vault_shares)
+       └──(performance fee accrual)──▶ fee_events ──▶ fee shares minted to feeRecipient
 price_snapshots ──(block-anchored canon)──▶ used by every ONCHAIN-DERIVED computation
 memory_chunks (pgvector) ◀── embeddings of chat, mandate, recommendation, outcome
 audit_logs ◀── append-only record of every policy verdict, cap check, kill-switch read, signature event
@@ -303,9 +305,11 @@ proposed ──(expires)──▶ expired
 
 ---
 
-## 8. E8 — Vault  *(ONCHAIN, single, non-upgradeable, 0-fee)*
+## 8. E8 — Vault  *(ONCHAIN, single, non-upgradeable, 0-management / profit-only performance-fee)*
 
-The single conservative `SparkPointVault` (ERC-4626) accepting USDC, routing to Aave v3 yield, issuing/redeeming shares, withdrawable anytime, governed for **pause only**. Postgres mirrors immutable config + cap state from chain; the chain is authoritative.
+The single conservative `SparkPointVault` (ERC-4626) accepting USDC, routing to Aave v3 yield, issuing/redeeming shares, withdrawable anytime, governed for **pause only** (plus a single timelocked, hard-capped fee-rate parameter). Postgres mirrors immutable config + cap state from chain; the chain is authoritative.
+
+**Fee model (ACTIVE at launch).** The vault is **0-management / profit-only performance-fee**, not "0-fee": **0% management, 0% entry/exit, 0% on principal**, and a **performance fee of 10% on realized YIELD ONLY** (configurable on-chain within a **hard cap of 20%**; default 10%). The fee is charged **only on realized yield above a high-water mark (HWM)** on share price — **never on principal, never in flat or down periods** (no fee at/below the HWM). It is realized by **minting fee shares to a `feeRecipient`** during lazy fee accrual (on deposit/withdraw/harvest): mint shares whose claim equals `feeRate × (assets gained above HWM since last accrual)`, then advance the HWM (see §8a). `feeRecipient` is an **ordinary, non-privileged share holder** — it redeems via the same withdraw/redeem path as any user, has **no** admin/withdraw authority over other users' shares, and **cannot block, delay, or reorder** any user's redemption. Trust message intact: **we only earn when you earn — never on your principal, never by taking custody.** `feeRate` is the **only** mutable parameter (timelocked, hard-capped at 20%, multisig-bounded) and can **never** alter custody/withdraw/principal semantics; the vault remains **non-upgradeable** in custody semantics. Fully disclosed pre-deposit and in receipts; net-of-everything APY shown; **provable on-chain**.
 
 **Table `vaults`** *(mirror; effectively one row at launch)*
 
@@ -316,8 +320,13 @@ The single conservative `SparkPointVault` (ERC-4626) accepting USDC, routing to 
 | `share_symbol` | TEXT NOT NULL | ONCHAIN | yes | ERC-4626 share token symbol. |
 | `aave_pool_address` | CITEXT NOT NULL | ONCHAIN (immutable) | yes | Aave v3 Pool. |
 | `atoken_address` | CITEXT NOT NULL | ONCHAIN (immutable) | yes | aUSDC held by vault. |
-| `fee_bps` | INT NOT NULL CHECK(=0) | ONCHAIN (constant) | yes | **0-fee is a constant, not settable** (N5/FR-018). |
-| `is_upgradeable` | BOOLEAN NOT NULL CHECK(=false) | ONCHAIN | yes | No proxy/admin slot (N5). |
+| `management_fee_bps` | INT NOT NULL CHECK(=0) | ONCHAIN (constant) | yes | **0% management, a constant, not settable** (N5). |
+| `entry_fee_bps` | INT NOT NULL CHECK(=0) | ONCHAIN (constant) | yes | **0% entry/principal, pure-constant** (N1). |
+| `exit_fee_bps` | INT NOT NULL CHECK(=0) | ONCHAIN (constant) | yes | **0% exit/principal, pure-constant** (N2). |
+| `performance_fee_bps` | INT NOT NULL CHECK(BETWEEN 0 AND 2000) | ONCHAIN (mutable: timelocked, hard-capped) | yes | Performance fee on realized yield only; default 1000 (10%); **hard cap 2000 (20%)**; the **only** mutable param (timelocked, multisig-bounded). Never alters custody/withdraw/principal (N1/N2/N5). |
+| `fee_recipient` | CITEXT NOT NULL | ONCHAIN | yes | Receives minted fee shares; an **ordinary, non-privileged** share holder — redeems via the normal path, no admin/withdraw authority, cannot block/delay/reorder any redemption (N1/N2). |
+| `high_water_mark_ray` | NUMERIC(78,0) NOT NULL | ONCHAIN-DERIVED | **yes** (HWM advance events) | High-water mark on share price; fee accrues only on realized yield **above** this, never below/at it. |
+| `is_upgradeable` | BOOLEAN NOT NULL CHECK(=false) | ONCHAIN | yes | No proxy/admin slot in custody semantics (N5). |
 | `total_assets_raw` | NUMERIC(78,0) | ONCHAIN-DERIVED | **yes** (`totalAssets()`/aToken bal) | Mirror; recomputable. |
 | `total_supply_raw` | NUMERIC(78,0) | ONCHAIN-DERIVED | **yes** (`totalSupply()`) | Shares outstanding. |
 | `share_price_ray` | NUMERIC(78,0) | ONCHAIN-DERIVED | **yes** (`convertToAssets(1e18)`) | Display-only mark. |
@@ -327,9 +336,42 @@ The single conservative `SparkPointVault` (ERC-4626) accepting USDC, routing to 
 | `total_protocol_cap_raw` | NUMERIC(78,0) NOT NULL | ONCHAIN | yes | Global cap. |
 
 **Validation rules.**
-- VR-V1 (N5/FR-037): `fee_bps` MUST be 0 and `is_upgradeable` MUST be false; the post-deploy assertion script and indexer both verify EIP-1967 slots are empty and no `Upgraded`/`AdminChanged` events exist.
+- VR-V1 (N5/FR-037): `management_fee_bps`, `entry_fee_bps`, `exit_fee_bps` MUST be 0 (pure-constant, 0% on principal/management) and `is_upgradeable` MUST be false; the post-deploy assertion script and indexer both verify EIP-1967 slots are empty and no `Upgraded`/`AdminChanged` events exist.
+- VR-V1a (N1/N5): `performance_fee_bps` MUST be within `[0, 2000]` (hard cap 20%; default 1000) and is the **only** mutable parameter; rate changes MUST be timelocked + multisig-bounded, and the indexer raises a critical `risk_event` if any rate change bypasses the timelock or exceeds the hard cap. A rate change can **never** alter custody/withdraw/principal semantics.
+- VR-V1b (N1): the performance fee is charged **only on realized yield above `high_water_mark_ray`**; a user's redeemable **principal** is never reduced below deposited principal by fee shares. No fee accrues when share price is at/below the HWM.
 - VR-V2 (N2/FR-026/034): `deposits_paused=true` MUST never block a `withdraw`/`redeem`; the model only mirrors pause for **deposit** gating + display.
 - VR-V3 (FR-025/SC-009): a deposit that would breach `per_user_cap`, `deposit_cap`, or `total_protocol_cap` MUST be blocked **before signing**; caps are read fresh from chain at gate time, not from this mirror.
+
+---
+
+## 8a. E8a — Fee Accrual / Fee Event (performance fee)  *(ONCHAIN-DERIVED)*
+
+A granular ledger of each **lazy performance-fee accrual** (triggered on deposit/withdraw/harvest). Each event records the yield realized above the high-water mark, the fee shares minted to `feeRecipient`, and the HWM before/after the advance. Like `vault_share_events`, these are **fully reconstructable on-chain** by replaying ERC-4626 events + the fee-accrual/HWM-advance events — the fee is **provable on-chain**, computed off **realized yield above the HWM**, and **never reduces principal**.
+
+**Table `fee_events`** *(derived from fee-accrual / HWM-advance events)*
+
+| Field | Type | Onchain-reconstructable? | Notes |
+|-------|------|--------------------------|-------|
+| `id` | UUID v7 PK | n/a | |
+| `vault_address` | CITEXT NOT NULL | yes | FK→`vaults.address`. |
+| `fee_recipient` | CITEXT NOT NULL | yes | The non-privileged holder the fee shares were minted to (mirrors `vaults.fee_recipient`). |
+| `block_time` | TIMESTAMPTZ NOT NULL | yes | Accrual block timestamp. |
+| `block_number` | BIGINT NOT NULL | yes | |
+| `trigger_kind` | ENUM `fee_trigger` NOT NULL | yes | `deposit` \| `withdraw` \| `harvest` — the lazy-accrual trigger. |
+| `fee_rate_bps_at_event` | INT NOT NULL | yes | `performance_fee_bps` in effect at accrual (≤ 2000). |
+| `yield_realized_raw` | NUMERIC(78,0) NOT NULL | **yes** (assets gained above HWM since last accrual) | Fee base: realized yield **above the HWM only**; never principal. 0 ⇒ no fee minted. |
+| `fee_shares_minted_raw` | NUMERIC(78,0) NOT NULL DEFAULT 0 | **yes** (share mint to `feeRecipient`) | Shares whose claim equals `feeRate × yield_realized_raw`; 0 in flat/down periods. |
+| `hwm_before_ray` | NUMERIC(78,0) NOT NULL | **yes** | Share-price HWM before this accrual. |
+| `hwm_after_ray` | NUMERIC(78,0) NOT NULL | **yes** | HWM after the advance; `≥ hwm_before_ray` (monotonic non-decreasing). |
+| `tx_hash` | BYTEA NOT NULL | yes | |
+| `log_index` | INT NOT NULL | yes | `(tx_hash, log_index)` UNIQUE (idempotent indexing). |
+
+**Validation rules.**
+- VR-FE1 (N1): `yield_realized_raw` MUST be the assets gained **above `hwm_before_ray` only**; a fee accrual MUST NEVER draw on principal. When share price is at/below the HWM, `yield_realized_raw = 0` and `fee_shares_minted_raw = 0` (no fee in flat or down periods).
+- VR-FE2: `fee_shares_minted_raw` MUST reconcile to `fee_rate_bps_at_event × yield_realized_raw` at the event's share price, and `fee_rate_bps_at_event ≤ 2000` (hard cap); drift raises a `risk_event`.
+- VR-FE3 (N2, withdraw-always / fail-open): fee accrual MUST **fail-open** — if a fee cannot be computed or minted, the accrual is **skipped** and the deposit/withdraw/redeem still proceeds; a redemption path MUST NEVER depend on a fee being collectible, and no `fee_events` row may block, delay, or revert a redemption.
+- VR-FE4: `hwm_after_ray ≥ hwm_before_ray` (the HWM only advances, never retreats); indexing is idempotent on `(tx_hash, log_index)` and reorg-safe.
+- VR-FE5: the full fee history MUST be reconstructable from `fee_events` (+ underlying ERC-4626 events) alone, so the performance fee is **provable on-chain** independent of the indexer.
 
 ---
 
@@ -354,7 +396,7 @@ A user's stake in the vault, denominated in shares representing a proportional c
 | `block_time` | TIMESTAMPTZ NOT NULL | yes | |
 
 **Validation rules.**
-- VR-VP1 (FR-018): shares minted MUST be proportional to assets deposited and redeem MUST return principal + realized yield with **no fee** — verified by reconciling `assets_raw`/`shares_raw` against `share_price_ray_at_event`.
+- VR-VP1 (FR-018): shares minted MUST be proportional to assets deposited and redeem MUST return principal + realized yield with **0% on principal and 0% management/entry/exit** — verified by reconciling `assets_raw`/`shares_raw` against `share_price_ray_at_event`. The only fee is the **performance fee on realized yield above the HWM** (§8a), taken as fee shares minted to `feeRecipient`, never as a deduction from a redeeming user's principal.
 - VR-VP2 (N2/SC-003): the model MUST be able to reconstruct a user's full redeemable balance from `vault_share_events` alone, so withdraw-always remains provable even with the indexer offline (the indexer is an accelerator, not a dependency).
 - VR-VP3: indexing is idempotent on `(tx_hash, log_index)`; reorgs below the confirmation lag roll back affected rows.
 
@@ -679,7 +721,8 @@ Fields below are **fully reconstructable** by replaying Base history (`onchain_e
 | Reconstructable value | Built from |
 |-----------------------|-----------|
 | Smart-account owner, validators, impl | account/factory reads + events (VR-SA1/2) |
-| Vault `totalAssets`, `totalSupply`, share price, 0-fee, non-upgradeable | vault reads + ERC-4626 events + EIP-1967 slot emptiness (VR-V1) |
+| Vault `totalAssets`, `totalSupply`, share price, 0% mgmt/entry/exit/principal, non-upgradeable | vault reads + ERC-4626 events + EIP-1967 slot emptiness (VR-V1) |
+| Performance fee: rate (≤20%), realized yield above HWM, fee shares minted to non-privileged `feeRecipient`, HWM advances | `fee_events` replay + ERC-4626 events + HWM-advance events (VR-FE1–5) → fee provable on-chain, principal never reduced |
 | User vault-share balance & redeemable assets | `vault_share_events` replay (VR-VP2) → withdraw-always provable offline |
 | Aave supply balance & accrued yield | aToken balance/index over time |
 | Position cost basis (average-cost), realized & unrealized PnL | deposit/swap/withdraw events + entry/mark `price_snapshots` |
@@ -696,11 +739,11 @@ Fields below are **fully reconstructable** by replaying Base history (`onchain_e
 
 | Invariant / Principle | Enforced in the data model by |
 |----------------------|-------------------------------|
-| **N1 — No admin withdrawal** | VR-X5 (no SparkPoint recipient), VR-SA1 (no non-owner asset capability), audit of every recipient; no schema field can express a SparkPoint withdrawal recipient. |
-| **N2 — Withdraw-always** | VR-V2, VR-VP2, VR-W2: pause/whitelist/geo never gate withdraw; share balance reconstructable from events with Postgres offline. |
+| **N1 — No admin withdrawal** | VR-X5 (no SparkPoint recipient), VR-SA1 (no non-owner asset capability), VR-V1b/VR-FE1 (fee on realized yield above HWM only — never principal; `feeRecipient` is a non-privileged holder), audit of every recipient; no schema field can express a SparkPoint withdrawal recipient. |
+| **N2 — Withdraw-always** | VR-V2, VR-VP2, VR-W2, VR-FE3 (fee accrual fail-open — never blocks/delays/reverts a redemption): pause/whitelist/geo never gate withdraw; share balance reconstructable from events with Postgres offline. |
 | **N3 — User-owned keys** | VR-SA1/U3 (`owner == user EOA`), no keystore fields anywhere, VR-X1/SK3 store the *event* of signing, never a key. |
 | **N4 — Scoped, revocable automation** | `session_keys` mirrors onchain scope; VR-SK1/2/4 keep onchain authoritative + revoke unilateral. |
-| **N5 — Non-upgradeable + verifiable** | VR-V1 (fee=0, non-upgradeable checks), `permission_manifests` for provable permissions. |
+| **N5 — Non-upgradeable + verifiable** | VR-V1 (0% mgmt/entry/exit, non-upgradeable checks), VR-V1a (performance-fee rate is the only mutable param — timelocked, hard-capped at 20%, never alters custody semantics), `permission_manifests` for provable permissions. |
 | **AI never final word** | `intent_bundles.policy_verdict`/`policy_version`, VR-X2/3, VR-E2: nothing signable without independent policy approval + simulation. |
 | **Provable, not promised** | §18 reconstructability, `price_snapshots` citation requirement (VR-P3), append-only `audit_logs`. |
 

@@ -202,7 +202,7 @@ This section is the **canonical extension** of `04-design-system.md` §3.4. All 
 ### 5.2 APY (the most-regulated number — strict)
 
 - **Format:** one decimal + the word **"net"** + "APY": **"4.2% net APY"**. Never a bare "4.2%".
-- **Breakdown is mandatory** (`00-brief.md` §8, §9.1 below). Every APY is accompanied by, or one tap from, its breakdown: base supply rate, any incentives (stated separately and honestly), minus fees (0-fee at launch, so state "0% fee" explicitly), = net. Pattern: *"4.2% net APY = 4.2% Aave supply rate − 0% SparkPoint fee."*
+- **Breakdown is mandatory** (`00-brief.md` §8, §9.1 below). Every APY is accompanied by, or one tap from, its breakdown: base supply rate, any incentives (stated separately and honestly), minus fees (the **10% profit-only performance fee** on realized yield above the high-water mark — **0% on principal**; state it explicitly), = net. Pattern: *"4.2% net APY = 4.7% Aave supply rate − 10% SparkPoint performance fee (profit-only, high-water mark)."*
 - **Never gross-first.** If a gross figure must appear, it appears *after* and *labeled* as gross; the lead number is always net.
 - **Never projected/extrapolated.** Show current and historical only; no "could earn", no annualized-from-a-good-week (`04-design-system.md` §6.4 honesty rule).
 - **Always estimate-framed:** APY is a rate, not a return. Pair with "rates change" wherever it leads a surface.

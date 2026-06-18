@@ -310,7 +310,7 @@ All six are `Card` compositions (`CardHeader` / `CardContent` / `CardFooter`) wi
 - **Header:** rank badge (e.g., "Best fit" / "#1 vs your goal"); **"AI suggestion — you approve & sign"** badge.
 - **Content:**
   - **One-line thesis:** what & why, plain (07 §8 example): *"Aave's USDC rate rose to 4.3% net APY. Moving your idle USDC in could earn more, at the same low risk."*
-  - **Net APY** readout: **"{X}% net APY"** + a **breakdown disclosure** (07 §5.2: "= 4.3% Aave supply rate − 0% SparkPoint fee"); never bare APY.
+  - **Net APY** readout: **"{X}% net APY"** + a **breakdown disclosure** (07 §5.2: "= 4.7% Aave supply rate − 10% SparkPoint performance fee (profit-only, HWM)"); never bare APY.
   - **Risk chip:** risk-palette tier + numeric `n/5` + label (launch vault = Risk 1 / Lower; `04` §2.5).
   - **"Fit to your goal" line:** ties to mandate (07: "fits your plan").
   - **Projected outcome / estimate** (clearly labeled estimate; *"Estimates, not guarantees."*; never lead with it, never project APY — 07 §5.2/§9.1).
@@ -494,7 +494,7 @@ Reuse exactly; 07 wins on any conflict.
 - **Empty greeting:** "Hi — I'm SparkPoint's AI." / "Tell me your goal, or ask me anything about your wallet. I suggest; you approve and sign." (07 §6.2)
 - **AI-suggestion badge (verbatim, every rec/action card):** "AI suggestion — you approve & sign" (07 §2.1)
 - **Yield caveat (yield cards):** "Estimates, not guarantees." (07 §3.3)
-- **APY:** "{X}% net APY" + breakdown ≤1 tap (e.g., "= 4.3% Aave supply rate − 0% SparkPoint fee") — never bare (07 §5.2)
+- **APY:** "{X}% net APY" + breakdown ≤1 tap (e.g., "= 4.7% Aave supply rate − 10% SparkPoint performance fee (profit-only, HWM)") — never bare (07 §5.2)
 - **Tool-steps:** "Reading your wallet…", "Checking current Aave rates…", "Scanning the Base vault…", "Simulating this move…" (07 §2.6)
 - **Citations:** "Based on {source}" + timestamp + link (07 §2.6)
 - **Buttons:** "Review this move" / "Review deposit" / "Review withdrawal" (primary, → `/confirm`); "Not now" / "Edit" / "Open portfolio" / "How this works" / "See the original advice" (secondary). Never "Accept/Confirm/OK/Do it" on money actions (07 §2.2)

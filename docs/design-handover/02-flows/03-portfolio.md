@@ -158,7 +158,7 @@ If net worth is **down** over the selected range, **do NOT recolor the whole are
 | **Position** | Icon + name + kind chip: idle USDC/ETH (`token_balance`), "Aave v3 · USDC/ETH" (`aave_supply`), "Aave Yield Vault" (`vault_shares`). | plain labels; whitelist only |
 | **Balance / amount** | Token amount (e.g. `1,234.56 USDC`); for vault, **shares + fiat-equiv beneath** (`1,024.5031 spvUSDC` / `≈ $1,031.20`). | `07` §5.1/§5.4 |
 | **Value** | Current USD value, tabular; abbreviate in dense cells, full on hover. | `07` §5.1 |
-| **Net APY** *(yield-bearing rows only)* | `4.2% net APY` + breakdown ≤1 tap (Aave supply − 0% fee). **Never bare APY.** En-dash `—` for non-yield rows (idle). | `07` §5.2; `04` §3.4 |
+| **Net APY** *(yield-bearing rows only)* | `4.2% net APY` + breakdown ≤1 tap (Aave supply − 10% performance fee, profit-only, HWM). **Never bare APY.** En-dash `—` for non-yield rows (idle). | `07` §5.2; `04` §3.4 |
 | **PnL** | `+$312.40 (+2.8%)` with sign + color + triangle + **window**; realized vs unrealized labeled or disclosed. Accrued yield shown for Aave/vault rows. | `07` §5.3; `data-model.md` §6 |
 | **Risk** | Risk chip from §2.5 (`n/5` + label + mini-meter). | `04` §2.5; never color-only |
 | **Actions** | **Add · Withdraw · Ask AI** (inline). | see below |

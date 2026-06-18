@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: A non-custodial, chat-based Personal DeFi Assistant paired with an AI-managed, 0-fee Aave Yield Vault on Base, where the AI recommends and the user signs every move, funds are always withdrawable, and non-custody is provable onchain.
+**Input**: A non-custodial, chat-based Personal DeFi Assistant paired with an AI-managed, 0-management / profit-only performance-fee Aave Yield Vault on Base, where the AI recommends and the user signs every move, funds are always withdrawable, and non-custody is provable onchain. The vault charges 0% management fee and 0% on principal, with a 10% high-water-mark performance fee on realized yield only (configurable on-chain within a hard cap of 20%) — "we only earn when you earn."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -14,7 +14,7 @@ SparkPoint Pivot positions itself as "The First AI-Native Onchain Hedge Fund": t
 
 ### User Story 1 - Deposit into the Aave Yield Vault and withdraw anytime (Priority: P1)
 
-A whitelisted beta user connects their own wallet, deposits USDC into the single conservative 0-fee Aave Yield Vault, watches their balance accrue Aave yield, and withdraws their full balance whenever they choose — including a direct onchain exit even if SparkPoint's frontend and AI agents are completely offline.
+A whitelisted beta user connects their own wallet, deposits USDC into the single conservative 0-management / profit-only performance-fee Aave Yield Vault, watches their balance accrue Aave yield, and withdraws their full balance whenever they choose — including a direct onchain exit even if SparkPoint's frontend and AI agents are completely offline. Before depositing they are shown that the vault charges a 10% performance fee on yield above a high-water mark and 0% on their principal.
 
 **Why this priority**: This is the smallest viable slice that delivers the core product promise — AI-managed yield with verifiable non-custody. The vault produces real yield and proves the central trust claim ("never touches your keys, withdraw anytime") without depending on chat, onboarding, or the recommender. It must work standalone.
 
@@ -23,9 +23,11 @@ A whitelisted beta user connects their own wallet, deposits USDC into the single
 **Acceptance Scenarios**:
 
 1. **Given** a whitelisted user with USDC and an established smart account, **When** they deposit USDC into the Aave Yield Vault and sign the transaction, **Then** vault shares are issued in proportion to the deposit, the funds are routed into Aave v3, and the vault dashboard shows the deposited balance and accruing yield.
-2. **Given** a user holding vault shares, **When** they request a full withdrawal and sign it, **Then** their shares are redeemed for USDC (principal plus realized yield, with no fee deducted) and the funds arrive in their own wallet.
+2. **Given** a user holding vault shares, **When** they request a full withdrawal and sign it, **Then** their shares are redeemed for USDC (their full principal plus realized yield, less only a 10% performance fee on yield earned above the high-water mark and never anything on principal) and the funds arrive in their own wallet.
 3. **Given** SparkPoint's frontend and AI agents are entirely offline and the kill-switch has paused new deployments, **When** the user interacts directly with the vault contract onchain, **Then** they can still redeem their shares and withdraw their funds in full (withdraw-always escape hatch).
 4. **Given** a user inspecting onchain permissions, **When** they review who can move funds out of the vault, **Then** only the user's own account has a path to withdraw to an external address and no SparkPoint-controlled address has any withdrawal path.
+5. **Given** a user about to deposit into the vault, **When** the deposit is prepared, **Then** they are shown a clear pre-deposit disclosure that the vault charges a 10% performance fee on realized yield above a high-water mark, 0% on principal, and 0% management fee, alongside the net-of-everything APY.
+6. **Given** a user who has completed a deposit or withdrawal, **When** they view their receipt, **Then** the receipt discloses the performance fee terms ("SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on your principal") and any fee actually accrued.
 
 ---
 
@@ -116,6 +118,8 @@ A user opts in to automated rebalancing by authorizing a time-boxed session key 
 
 - **Agent / frontend offline**: The user can still redeem vault shares and withdraw from Aave directly onchain; portfolio and recommendations may be unavailable, but custody and exit are not affected.
 - **Kill-switch active**: New deployments and deposits are paused, but withdrawals and redemptions remain fully available; the user is clearly told the system is paused for new activity.
+- **Fee accrual fails during withdrawal**: If performance-fee accrual cannot complete (e.g., transient computation/data issue), it fails open — the fee is skipped for that transaction and the user's redemption proceeds in full and is never blocked, delayed, or reverted.
+- **Flat or down period (share price at/below high-water mark)**: No performance fee is charged; principal is fully redeemable and the high-water mark is not advanced.
 - **Per-user cap reached**: A deposit that would exceed the per-user TVL cap is blocked before signing, with a clear explanation; existing funds and withdrawals are unaffected.
 - **Total protocol / vault deposit cap reached**: New deposits are blocked at the cap with a clear message; withdrawals remain available.
 - **Simulation predicts revert**: The action is blocked from signing and the user is shown the predicted failure reason.
@@ -163,8 +167,15 @@ A user opts in to automated rebalancing by authorizing a time-boxed session key 
 
 #### Vault & Execution
 
-- **FR-017**: System MUST provide a single conservative, 0-fee Aave Yield Vault that accepts USDC deposits, routes them into Aave v3 yield, and allows withdrawal at any time.
-- **FR-018**: System MUST issue vault shares to depositors in proportion to their deposit and redeem shares for principal plus realized yield with no fee deducted.
+- **FR-017**: System MUST provide a single conservative, 0-management Aave Yield Vault that accepts USDC deposits, routes them into Aave v3 yield, and allows withdrawal at any time. The vault MUST charge 0% management fee, 0% entry/exit fee, and 0% on principal, and MUST charge only a profit-only high-water-mark performance fee on realized yield (per FR-047).
+- **FR-018**: System MUST issue vault shares to depositors in proportion to their deposit and redeem shares for their full principal plus realized yield, with the only deduction being the performance fee on yield earned above the high-water mark (FR-047); no management, entry, exit, or principal fee is ever deducted.
+- **FR-047**: System MUST charge a performance fee of 10% (configurable on-chain, default 10%, hard-capped at 20%) assessed ONLY on realized yield above a per-vault high-water mark on share price. The fee MUST NOT be charged on principal and MUST NOT be charged when share price is at or below the high-water mark (no fee in flat or down periods).
+- **FR-048**: System MUST realize the performance fee by minting fee shares to a feeRecipient during lazy fee accrual on deposit, withdraw, or harvest — minting shares whose claim equals feeRate × (assets gained above the high-water mark since last accrual) — and MUST advance the high-water mark only after accrual. Entry fee, exit fee, and management fee MUST remain constant at 0.
+- **FR-049**: System MUST treat the feeRecipient as an ordinary, non-privileged share holder that redeems through the same withdraw/redeem path as any user, with no admin or withdrawal authority over other users' shares and no ability to block, delay, or reorder any user's redemption.
+- **FR-050**: System MUST ensure the performance fee never reduces any user's redeemable principal below their deposited principal; fee shares accrue only against realized gains above the high-water mark.
+- **FR-051**: System MUST make performance-fee accrual fail open: if accrual cannot complete, the fee MUST be skipped and the user's withdrawal/redemption MUST proceed unblocked and never revert; the redemption path MUST never depend on a fee being collectible.
+- **FR-052**: System MUST disclose the performance fee fully before deposit and on transaction receipts, stating the rate, that it applies only to yield above the high-water mark, and that principal is never charged (e.g., "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on your principal"), and MUST present the net-of-everything APY. Fee terms and any accrued fee MUST be provable on-chain.
+- **FR-053**: System MUST make feeRate the only mutable fee parameter, governed by a timelock and multisig and hard-capped at 20%, and MUST ensure changing feeRate can never alter custody, withdraw, or principal semantics. The vault's custody semantics MUST remain non-upgradeable.
 - **FR-019**: System MUST support Aave v3 deposit and withdraw for USDC and ETH initiated from the assistant.
 - **FR-020**: System MUST support Aerodrome swaps initiated from chat.
 - **FR-021**: System MUST present a pre-trade simulation preview (expected output, fees, price impact, max slippage) before any signature is requested for a state-changing action.
@@ -189,7 +200,7 @@ A user opts in to automated rebalancing by authorizing a time-boxed session key 
 - **FR-034** (N2 — Withdraw-always escape hatch): System MUST allow the user to exit directly onchain (redeem vault shares, withdraw from Aave) even when SparkPoint's frontend and agents are entirely offline, and the kill-switch MUST never block withdrawals.
 - **FR-035** (N3 — User-owned keys): System MUST make the user the sole owner/admin signer of their smart account, with per-action user signature as the default execution mode and no agent-generated wallets.
 - **FR-036** (N4 — Scoped, revocable, time-boxed automation): System MUST bound all opt-in automation by the onchain policy module (allowlisted vaults, per-tx and cumulative caps, max slippage, hard expiry) and MUST allow instant, unilateral user revocation.
-- **FR-037** (N5 — Non-upgradeable custody + verifiable non-custody): System MUST make the vault single-purpose and non-upgradeable; any multisig/timelock MUST govern pause only and never fund movement; and the Trust Center MUST surface the exact onchain permissions so non-custody is provable.
+- **FR-037** (N5 — Non-upgradeable custody + verifiable non-custody): System MUST make the vault single-purpose and non-upgradeable in its custody semantics; any multisig/timelock MUST govern only pause and the hard-capped, timelocked feeRate (FR-053) and MUST never move user funds or alter custody, withdraw, or principal semantics; and the Trust Center MUST surface the exact onchain permissions so non-custody is provable.
 - **FR-038**: System MUST provide a Trust Center surface that displays current caps, kill-switch status, whitelisted protocols, and the exact onchain permissions associated with the user's account and the vault.
 
 #### Outcome Logging
@@ -216,8 +227,11 @@ A user opts in to automated rebalancing by authorizing a time-boxed session key 
 - **Portfolio**: The aggregate view of a user's positions across Base assets, including total and per-position PnL and allocation breakdown.
 - **Position**: A single holding (e.g., an Aave deposit, a token balance, a vault stake) with current value, cost basis, and accrued yield where applicable.
 - **Strategy Recommendation**: A ranked suggestion scored against the user's mandate, carrying a plain-language rationale and referencing only whitelisted protocols and in-policy actions.
-- **Vault**: The single conservative, 0-fee, non-upgradeable Aave Yield Vault. Accepts USDC, routes to Aave v3 yield, issues/redeems shares, allows withdrawal anytime, and is governed for pause only.
-- **Vault Position (Shares)**: A user's stake in the vault, denominated in shares that represent a proportional claim on the vault's USDC plus accrued yield, redeemable at any time.
+- **Vault**: The single conservative, 0-management / profit-only performance-fee, non-upgradeable Aave Yield Vault. Accepts USDC, routes to Aave v3 yield, issues/redeems shares, allows withdrawal anytime, charges 0% on principal and a 10% high-water-mark performance fee on realized yield only (hard-capped at 20%), and is governed for pause and the timelocked feeRate only — never for fund movement.
+- **Vault Position (Shares)**: A user's stake in the vault, denominated in shares that represent a proportional claim on the vault's USDC plus accrued yield (net of any performance fee on gains above the high-water mark), redeemable at any time, with principal never reduced by the fee.
+- **Fee Recipient**: An ordinary, non-privileged share holder that receives performance-fee shares minted during accrual. Redeems via the same withdraw/redeem path as any user, holds no admin or withdrawal authority over others' shares, and cannot block, delay, or reorder any user's redemption.
+- **High-Water Mark**: The per-vault peak share price against which the performance fee is assessed. The fee applies only to realized yield above it; it advances only after accrual, and is never charged in flat or down periods (share price at/below the mark).
+- **Fee Accrual**: The lazy, on-deposit/withdraw/harvest event that realizes the performance fee by minting fee shares to the Fee Recipient equal to feeRate × gains above the high-water mark, then advancing the mark. Accrual fails open: if it cannot complete it is skipped and never blocks or reverts a user's redemption.
 - **Session Key / Policy**: A time-boxed, scope-bounded authorization for automation, defined by an onchain policy (allowlisted vaults, per-tx and cumulative caps, max slippage, hard expiry), instantly and unilaterally revocable by the user.
 - **Transaction / Execution**: A state-changing onchain action (deposit, withdraw, swap, rebalance) that carries a pre-trade simulation preview and requires a user signature (or an in-scope session key) to proceed.
 - **Outcome Log Entry**: A record linking an acted-upon recommendation to its resulting position and tracking realized PnL over time.
@@ -243,11 +257,13 @@ A user opts in to automated rebalancing by authorizing a time-boxed session key 
 - **SC-012**: The Trust Center accurately surfaces current caps, kill-switch status, whitelisted protocols, and the exact onchain permissions, making non-custody independently verifiable by a user.
 - **SC-013**: Core vault and assistant functions remain fully usable with SRK absent or disabled in 100% of test cases.
 - **SC-014**: Geo-fenced and non-whitelisted users are prevented from accessing app surfaces or transacting, while existing users retain the onchain withdraw-always escape hatch.
+- **SC-015**: The vault charges a fee only on realized yield above the high-water mark (10%, hard-capped at 20%) and 0 on principal: in 100% of test cases a user redeems at least their full deposited principal, no fee is charged in flat or down periods, and the fee terms are fully disclosed pre-deposit and on receipts with net-of-everything APY, provable on-chain.
+- **SC-016**: Performance-fee accrual fails open in 100% of test cases: a withdrawal/redemption is never blocked, delayed, or reverted by fee accrual, and changing feeRate (timelocked, hard-capped at 20%) never alters custody, withdraw, or principal semantics.
 
 ## Assumptions
 
 - The product launches on Base mainnet as a single-chain MVP.
-- At launch there is exactly one vault: a conservative, 0-fee, non-upgradeable Aave Yield Vault accepting USDC; multi-strategy vaults are deferred.
+- At launch there is exactly one vault: a conservative, 0-management / profit-only performance-fee, non-upgradeable Aave Yield Vault accepting USDC, charging 0% on principal and a 10% high-water-mark performance fee on realized yield (hard-capped at 20%, default 10%); multi-strategy vaults are deferred.
 - The launch operates as a closed beta with a whitelist, per-user caps, and a geo-fenced frontend; broader public access expands post-launch.
 - SRK is non-essential to core function; SRK v2 utility and governance are deferred to a later cycle and the vault works without SRK.
 - Per-action user signing is the default execution mode; scoped session-key automation is strictly opt-in.

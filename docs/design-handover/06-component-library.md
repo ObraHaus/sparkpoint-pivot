@@ -269,7 +269,7 @@
 4. **SimulationBalanceChangeTable** (§23).
 5. **Approvals** — exact-by-default; "Unlimited" flagged amber + adds an ack.
 6. **Bundle** (compound actions) — ordered per-step simulated stepper; one-batched-sig vs enumerated sequential sigs stated up front.
-7. **Cost & outcome** — gas (USD + native) · **"SparkPoint fee: 0%"** explicit · net · projected $ estimate + "Estimates, not guarantees."
+7. **Cost & outcome** — gas (USD + native) · **vault: "SparkPoint performance fee: 10% of yield, profit-only, HWM — 0% on your principal"** (deposit shows $0.00; withdraw itemizes any accrued profit-only fee) explicit · net · projected $ estimate + "Estimates, not guarantees."
 8. **GuardrailChecklist** (§13).
 9. **Control reminder** — "Nothing moves until you sign. You can cancel now with no effect."
 10. **Footer (≤2):** primary **"Review & sign"** → after acks **"Sign deposit/withdrawal/transaction"** (disabled until all acks checked + sim passed; helper "Acknowledge the {n} item(s) above to enable signing.") + secondary **"Open full confirmation"** (chat mirror) / **"Cancel"** / **"Edit"**.
@@ -406,13 +406,13 @@
 
 **Builds on.** Text (`.tnum`) + `Accordion` (desktop) / `Sheet` (mobile) / `HoverCard`/`Popover` (inline) for the breakdown; optional CitationChip on the rate.
 
-**Anatomy.** Figure: **"{X}% net APY"** (one decimal + word "net"), estimate micro-line ("estimate · rates change"); prefer a **range** when volatile ("≈ 4.0–4.4% net APY (30-day range)"). Breakdown (≤1 tap, mandatory): **"4.2% net APY = 4.2% Aave supply rate − 0% SparkPoint fee."** — line items: base supply rate · any incentives stated separately + honestly (none token-subsidized at launch) · **0% fee explicit** · = net.
+**Anatomy.** Figure: **"{X}% net APY"** (one decimal + word "net"), estimate micro-line ("estimate · rates change"); prefer a **range** when volatile ("≈ 4.0–4.4% net APY (30-day range)"). Breakdown (≤1 tap, mandatory): **"4.2% net APY = 4.7% Aave supply rate − 10% SparkPoint performance fee (profit-only, high-water mark)."** — line items: base supply rate · any incentives stated separately + honestly (none token-subsidized at launch) · **the 10% profit-only performance fee explicit (0% on principal)** · = net.
 
 **Variants.** hero (vault detail) · inline (recommendation/action cards, position rows, deposit "est. yield") · range vs single value.
 
 **States.** default · loading (skeleton, **never `0`**) · stale (labeled estimate) · error ("Couldn't load the current rate. Try again.").
 
-**Non-custody/trust role.** Net only, never gross-led; **no projected/extrapolated APY**; 0% fee provable; "Estimates, not guarantees." on any yield-referencing surface. **Benchmark:** Yearn/Beefy/Morpho net-of-fees convention.
+**Non-custody/trust role.** Net only, never gross-led; **no projected/extrapolated APY**; the 10% profit-only performance fee (0% on principal) provable; "Estimates, not guarantees." on any yield-referencing surface. **Benchmark:** Yearn/Beefy/Morpho net-of-fees convention.
 
 **Acceptance.** Always net + word "net" + one decimal + breakdown ≤1 tap + estimate-framed; never bare; never the surface's literal lead; no projected APY; tabular; both breakpoints.
 
@@ -426,16 +426,16 @@
 
 **Anatomy.**
 - **Deposit preview:** "Deposit {X} USDC → receive ≈ {Y} spvUSDC" + share price used + "≈ ${value}" beneath; updates live as amount changes. **Always show shares.**
-- **Withdraw/redemption preview:** "Redeem {Y} spvUSDC → receive ≈ {X} USDC" (or inverse), **incl. accrued yield, "0% fee — no fee deducted"**, share price, "≈ ${value}".
+- **Withdraw/redemption preview:** "Redeem {Y} spvUSDC → receive ≈ {X} USDC" (or inverse), **incl. accrued yield and the "10% profit-only performance fee on yield above your high-water mark — 0% on your principal"**, share price, "≈ ${value}".
 - **Your-position read:** shares held ("1,024.5031 spvUSDC" + "≈ $1,031.20") · share price · underlying value · realized yield · "as of {time}" provenance.
 
 **Variants.** deposit · withdraw (by-amount or by-shares) · your-position sub-panel.
 
 **States.** default · empty/pre-amount ("≈ — spvUSDC until you enter an amount") · loading (skeleton, never `0`) · stale (labeled "as of {time}") · error ("couldn't load value right now" + retry — **withdraw still works**).
 
-**Non-custody/trust role.** Shares always shown (never hidden behind USDC alone); 0-fee stated at redemption; convenience estimate re-simulated authoritatively on `/confirm`; withdraw read survives degraded mode.
+**Non-custody/trust role.** Shares always shown (never hidden behind USDC alone); the profit-only performance fee (10% of yield above the high-water mark, 0% on principal) stated at redemption; convenience estimate re-simulated authoritatively on `/confirm`; withdraw read survives degraded mode.
 
-**Acceptance.** Shares always shown with fiat-equiv beneath; 0% fee at redemption; tabular; live update announced sparingly (`aria-live`, not per-keystroke); both breakpoints.
+**Acceptance.** Shares always shown with fiat-equiv beneath; the profit-only performance fee (10% of yield above the HWM, 0% on principal) stated at redemption; tabular; live update announced sparingly (`aria-live`, not per-keystroke); both breakpoints.
 
 ---
 

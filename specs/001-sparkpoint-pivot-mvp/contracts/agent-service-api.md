@@ -150,7 +150,7 @@ All non-2xx responses share this shape:
   "minOut": null,                        // amountOutMin embedded in swap calldata
   "priceImpactBps": 0,
   "slippageBps": 0,
-  "feesUsd": "0.00",                     // vault is 0-fee; gas shown separately
+  "feesUsd": "0.00",                     // protocol fee charged ON THIS tx: 0 (entry/exit/management = 0; perf fee is profit-only & taken as share dilution, not a tx-time deduction). Gas shown separately
   "gas": { "estimate": "0x...", "gasUsd": "0.02" },
   "capHeadroom": { "perUser": "4900000000", "total": "...", "vault": "..." },
   "asOfBlock": 0,
@@ -230,7 +230,7 @@ Stateful onboarding conversation that produces a **draft** mandate. The mandate 
     "goals": [ { "kind": "grow_savings", "label": "Grow my savings safely" } ],
     "riskProfile": "conservative",
     "riskParams": { "maxSlippageBps": 50, "drawdownTolerance": "low", "horizonMonths": 12 },
-    "summaryText": "Conservative, capital-preservation focus; USDC yield via the 0-fee vault.",
+    "summaryText": "Conservative, capital-preservation focus; USDC yield via the 0-management, profit-only performance-fee vault (10% of yield, 0% on principal).",
     "version": 1
 } }
 ```
@@ -333,13 +333,15 @@ Derived/enriched data only (PnL history, allocation). Custody-critical balances 
       "recId": "rec_01H...",
       "rank": 1,
       "strategyKind": "vault_deposit",
-      "title": "Deposit USDC into the 0-fee Aave Yield Vault",
+      "title": "Deposit USDC into the 0-management, profit-only Aave Yield Vault",
       "protocol": "aave_v3",                  // ∈ aave_v3 | aerodrome (whitelist ONLY; FR-016)
-      "rationale": "Matches your conservative, capital-preservation mandate; net APY 4.21%.",
+      "rationale": "Matches your conservative, capital-preservation mandate; gross Aave APY 4.21%, ~3.79% net of the 10% profit-only performance fee (0% on principal).",
       "proposedAction": { /* ProposedAction §2.x — NOT yet a signable bundle */ },
       "policy": { "status": "approved", "checks": [ /* GuardrailCheck */ ] },
       "citations": [ /* Citation */ ],
-      "projectedApyBps": 421,
+      "grossApyBps": 421,                     // pre-fee Aave supply APY
+      "projectedApyBps": 379,                 // net of the 10% profit-only performance fee (applied to yield only)
+      "performanceFeeBps": 1000,              // current rate; profit-only, HWM, hard-capped at 2000 (20%)
       "asOf": "...", "stale": false
     }
   ]
@@ -434,7 +436,18 @@ These are **read/preview** helpers. They are ERC-4626-accurate (mirror `previewD
   "by": "assets",
   "assets": "100000000",
   "shares": "98765432",                 // previewDeposit(assets) — rounds DOWN, in the vault's favor
-  "netApyBps": 421,                     // 0-fee: pure Aave supply APY, cross-checked vs on-chain rate
+  "grossApyBps": 421,                   // pure Aave supply APY, cross-checked vs on-chain rate (before perf fee)
+  "netApyBps": 379,                     // net-of-EVERYTHING projection = grossApy × (1 - performanceFeeBps/10000) on yield only
+  "performanceFee": {                   // profit-only fee; 0% on principal, 0% management/entry/exit
+    "rateBps": 1000,                    // current on-chain performanceFeeBps; default 1000 (10%)
+    "maxRateBps": 2000,                 // hard cap (20%) — governance can never exceed; timelocked + multisig-bounded
+    "base": "realized_yield_above_hwm", // charged ONLY on yield above the high-water mark; NEVER on principal
+    "managementBps": 0, "entryBps": 0, "exitBps": 0, "principalBps": 0,
+    "highWaterMark": "1.0423",          // current share-price HWM (assets-per-share); fee accrues only above this
+    "active": true,                     // ACTIVE AT LAUNCH (Sept 2026 v1) on the Aave Yield Vault
+    "disclosure": "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on your principal. We only earn when you earn — never on your principal, never by taking custody.",
+    "provableOnchain": true             // performanceFeeBps()/highWaterMark()/feeRecipient() are public-view (N5)
+  },
   "caps": {
     "perUserRemaining": "4900000000", "totalRemaining": "...", "vaultRemaining": "...",
     "maxDeposit": "4900000000",         // ERC-4626 maxDeposit(receiver) = min(...) ; 0 when at cap
@@ -443,23 +456,35 @@ These are **read/preview** helpers. They are ERC-4626-accurate (mirror `previewD
   "asOfBlock": 0, "stale": false
 }
 ```
+- **Notes:** `netApyBps` is the net-of-fee projection the UI shows by default; `grossApyBps` is the pre-fee Aave rate. The performance fee reduces only the **yield** leg (profit-only), so principal projections are unaffected. The fee is fully disclosed pre-deposit (the `disclosure` string is rendered verbatim) and is provable on-chain.
 - **Errors:** `CAP_EXCEEDED` (echoed via `wouldBreach:true` + 200 preferred so UI blocks pre-sign, FR-025/SC-009), `DATA_STALE`, `KILL_SWITCH_PAUSED` (deposit is pausable; surfaced so UI can disable deposit while keeping withdraw open).
 
-#### `POST /vault/quote/withdraw` — withdraw/redeem preview (NEVER cap- or pause-gated)
+#### `POST /vault/quote/withdraw` — withdraw/redeem preview (NEVER cap-, pause-, or fee-gated)
 - **Request:** `{ "by": "shares", "amount": "98765432" }` (`by` ∈ `assets`|`shares`).
 - **Response 200:**
 ```jsonc
 {
   "by": "shares",
   "shares": "98765432",
-  "assets": "100250000",                // previewRedeem(shares) — rounds DOWN, in the vault's favor
-  "accruedYieldUsd": "0.25",
+  "assets": "100250000",                // previewRedeem(shares) — rounds DOWN, in the vault's favor; ALREADY net of fee-share dilution
+  "principalUsd": "100.00",             // deposited principal — NEVER reduced by the performance fee
+  "accruedYieldUsd": "0.25",            // realized yield in this position
+  "performanceFee": {                   // profit-only; applied as fee-SHARE dilution, already reflected in `assets`
+    "rateBps": 1000, "maxRateBps": 2000,
+    "base": "realized_yield_above_hwm", // 0% on principal; 0 when at/below the HWM (flat/down periods)
+    "highWaterMark": "1.0423",          // current share-price HWM
+    "estFeeOnYieldUsd": "0.00",         // est. fee attributable to THIS exit's yield-above-HWM (0 here: at/below HWM)
+    "netYieldUsd": "0.25",              // accruedYield net of the performance fee
+    "disclosure": "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on your principal.",
+    "doesNotGateWithdraw": true         // fee accrual is FAIL-OPEN on-chain — it can NEVER block/delay your exit (N2)
+  },
   "maxWithdraw": "100250000", "maxRedeem": "98765432",
-  "note": "Withdrawals are never blocked by caps or the kill-switch (N2). You can also exit directly on-chain.",
+  "note": "Withdrawals are never blocked by caps, the kill-switch, or fee accrual (N2). The performance fee is profit-only (0% on your principal) and is taken as share dilution, never by holding back your assets. You can also exit directly on-chain.",
   "exitHatchUrl": "/exit",
   "asOfBlock": 0, "stale": false
 }
 ```
+- **Notes:** the returned `assets` is the ERC-4626 `previewRedeem` value, which is **already net** of any fee-share dilution — there is no extra deduction at withdraw time and no fee is ever withheld from the transfer. The fee is profit-only: `principalUsd` is never reduced, and `estFeeOnYieldUsd` is `0` whenever share price is at/below the HWM. On-chain the fee accrual is FAIL-OPEN, so it can never gate the exit.
 - **Errors:** `DATA_STALE` (200 + `stale:true`; quote may be approximate). **MUST NOT** return `KILL_SWITCH_PAUSED` or `CAP_EXCEEDED`. If the service is fully down, the frontend computes this from direct RPC.
 
 ---
@@ -571,17 +596,31 @@ These mirror what the frontend `/trust/permissions` panel reads **directly from 
     "paused": false,                      // PAUSE-ONLY; withdrawals never blocked
     "guardian": "0x<multisig>",           // pause/unpause ONLY — no fund-movement selector
     "pauser": "0x<multisig>",
-    "fees": { "entryBps": 0, "exitBps": 0 }  // 0-fee at bytecode level
+    "fees": {                             // read straight from chain (public-view; N5 provable)
+      "entryBps": 0, "exitBps": 0, "managementBps": 0,  // 0 at bytecode level (pure constants)
+      "performance": {
+        "rateBps": 1000,                  // performanceFeeBps(); default 10%
+        "maxRateBps": 2000,               // MAX_PERFORMANCE_FEE_BPS() — hard cap (20%), timelocked + multisig-bounded
+        "base": "realized_yield_above_hwm",
+        "highWaterMark": "1.0423",        // highWaterMark(); fee accrues only above this
+        "feeRecipient": "0x<recipient>",  // ORDINARY, non-privileged share holder; no power over other users' funds
+        "failOpenOnWithdraw": true        // accrual can NEVER block/delay a withdraw (N2)
+      }
+    }
   },
   "caps": { "perUser": "5000000000", "total": "...", "vaultDeposit": "...", "perUserCeiling": "..." },
   "killSwitch": { "paused": false, "scope": "PAUSE_ONLY", "blocksWithdrawals": false },
   "allowlist": [ { "protocol": "aave_v3", "target": "0x<aavePool>" },
                  { "protocol": "aerodrome", "target": "0x<router>" } ],
   "canDo": [ "Direct strategy within the allowlist (Aave v3, Aerodrome)",
-             "Pause NEW deposits (kill-switch)" ],
+             "Pause NEW deposits (kill-switch)",
+             "Set the performance-fee rate within [0, 20%] via timelock + multisig (profit-only; affects only FUTURE yield-above-HWM)" ],
   "cannotDo": [ "Withdraw your funds to a SparkPoint address (no such code path — N1)",
                 "Block your withdrawal (N2)",
-                "Upgrade or alter the vault (N5)",
+                "Charge a fee on your principal, or any fee in flat/down periods (performance fee is profit-only, above a high-water mark)",
+                "Set the performance fee above the 20% hard cap, or use it to touch principal/custody/withdraw",
+                "Block or delay your withdrawal via fee accrual (accrual is FAIL-OPEN — N2)",
+                "Upgrade or alter the vault's custody semantics (N5)",
                 "Exceed your session-key scope (N4)" ],
   "links": { "vaultBaseScan": "https://basescan.org/address/0x...", "policyVersion": "policy@2026.06.0" }
 }
