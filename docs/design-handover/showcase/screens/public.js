@@ -40,7 +40,7 @@
 .walletlist{display:flex;flex-direction:column;gap:9px;}
 .walletrow{display:flex;align-items:center;gap:13px;padding:14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);cursor:pointer;transition:.15s;color:var(--foreground);}
 .walletrow:hover{border-color:var(--primary);background:var(--card-2);}
-.wl-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;}
+.wl-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;overflow:hidden;}
 .wl-name{flex:1;text-align:left;font-size:14.5px;font-weight:600;}
 .walletrow svg{color:var(--muted-foreground);}
 .connect-reassure{display:flex;gap:9px;align-items:flex-start;margin-top:18px;padding:12px;border-radius:var(--radius);background:var(--spark-subtle);font-size:12.5px;line-height:1.5;color:var(--muted-foreground);}
@@ -69,8 +69,8 @@
       ${pubTop()}
       <div class="pubscroll">
         <section class="hero">
-          <div class="hero-badge">${icon('shieldcheck',14)} Native non-custody · provable on-chain</div>
-          <h1 class="hero-h1">The first AI-native<br>onchain hedge fund.</h1>
+          <div class="hero-badge">${icon('shieldcheck',14)} Fully self-custodial · provable on-chain</div>
+          <h1 class="hero-h1">The AI-native<br>onchain hedge fund.</h1>
           <p class="hero-sub">An AI fund manager that learns your goals, explains every move, and proves every result on-chain — and <b>can't hold, move, or lose your money.</b></p>
           <div class="hero-cta">
             <button class="btn btn-primary btn-lg" onclick="SP.navigate('connect')">${icon('wallet',18)} Connect wallet</button>
@@ -118,10 +118,11 @@
   }});
 
   SP.registerScreen('connect',{render(host){
-    const wallets=[['Coinbase Wallet','#0052FF','M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z'],
-      ['WalletConnect','#3B99FC','M7 9.5c2.8-2.7 7.2-2.7 10 0l.4.4-1.4 1.3-.4-.3a5.3 5.3 0 0 0-7.2 0l-.4.4L6.6 9.9 7 9.5Z'],
-      ['MetaMask','#E2761B','M3 4l7 5-2-5H3Zm18 0h-5l-2 5 7-5Z'],
-      ['Browser wallet','#8A97A8','M3 7h18v10H3z']];
+    const wallets=[
+      ['Coinbase Wallet','<svg width="38" height="38" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#0052FF"/><circle cx="20" cy="20" r="11.5" fill="#fff"/><rect x="16" y="16" width="8" height="8" rx="2" fill="#0052FF"/></svg>'],
+      ['WalletConnect','<svg width="38" height="38" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#3396FF"/><path d="M11.6 17.6a12 12 0 0 1 16.8 0 .8.8 0 0 1 0 1.1l-2 2a.5.5 0 0 1-.7 0l-1-1a8 8 0 0 0-9.4 0l-1 1a.5.5 0 0 1-.7 0l-2-2a.8.8 0 0 1 0-1.1Z" fill="#fff"/><circle cx="14.8" cy="23.4" r="1.4" fill="#fff"/><circle cx="25.2" cy="23.4" r="1.4" fill="#fff"/></svg>'],
+      ['MetaMask','<svg width="38" height="38" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#16202e"/><path d="M12 9l6 4-2-7z" fill="#E2761B"/><path d="M28 9l-6 4 2-7z" fill="#E17726"/><path d="M17.5 13h5l7.5.9-2.2 11.6-3 2.1-2.8-1.5-2.8 1.5-3-2.1L10 13.9 17.5 13z" fill="#E4761B"/><path d="M14.6 26.6l2.7-1.4 2.7 1.3 2.7-1.3 2.7 1.4-.3 2.3-2.4 1.6h-5.4l-2.4-1.6z" fill="#F6E2D2"/></svg>'],
+      ['Browser wallet','<svg width="38" height="38" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#2a3346"/><circle cx="20" cy="20" r="9" fill="none" stroke="#cbd5e1" stroke-width="2"/><path d="M11 20h18M20 11c2.6 2.4 2.6 15.6 0 18M20 11c-2.6 2.4-2.6 15.6 0 18" stroke="#cbd5e1" stroke-width="1.6" fill="none"/></svg>']];
     host.innerHTML=`<div class="pubwrap">${pubTop()}<div class="center-stage">
       <div class="connect-card">
         <div style="text-align:center;margin-bottom:6px">${sparkmark(34)}</div>
@@ -129,7 +130,7 @@
         <p style="text-align:center;font-size:13.5px;color:var(--muted-foreground);margin:0 0 20px;line-height:1.5">You stay in control. We read your wallet to personalize — <b style="color:var(--foreground)">nothing moves without your signature.</b></p>
         <div class="walletlist">
           ${wallets.map((w,i)=>`<button class="walletrow" data-i="${i}">
-            <span class="wl-ico" style="background:${w[1]}1f;color:${w[1]}"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="${w[2]}"/></svg></span>
+            <span class="wl-ico">${w[1]}</span>
             <span class="wl-name">${w[0]}</span>${icon('chevr',16)}</button>`).join('')}
         </div>
         <div class="connect-reassure">${icon('shieldcheck',16)}<span>You own your keys and your account. We never generate a wallet for you or hold your keys.</span></div>

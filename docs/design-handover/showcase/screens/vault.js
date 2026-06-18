@@ -28,7 +28,7 @@
           <div style="display:flex;align-items:flex-end;gap:10px"><div style="font-size:38px;font-weight:600;letter-spacing:-.02em" class="tnum">${v.netApy}%</div><div class="muted" style="font-size:13px;margin-bottom:7px">net APY · estimate</div></div>
           <div class="apybreak" style="margin-top:16px">
             <div class="br"><span class="muted">Aave supply rate</span><span class="tnum">${v.supplyApy}%</span></div>
-            <div class="br"><span class="muted">SparkPoint fee</span><span class="tnum">−${v.fee}%</span></div>
+            <div class="br"><span class="muted">Performance fee · ${v.perfFee}% of yield <span style="font-size:11px">(over high-water mark)</span></span><span class="tnum">−${(v.supplyApy-v.netApy).toFixed(2)}%</span></div>
             <div class="divider" style="margin:4px 0"></div>
             <div class="br" style="font-weight:600"><span>Net APY</span><span class="tnum">${v.netApy}%</span></div>
           </div>
@@ -61,7 +61,7 @@
     const isDep=mode==='deposit';
     host.innerHTML=`<div class="page page-narrow">
       <a class="qlink" style="display:inline-flex;margin-bottom:14px" onclick="SP.navigate('vault')">${icon('chevr',15)} Back to vault</a>
-      <div class="pagehead"><div><h1>${isDep?'Deposit USDC':'Withdraw'}</h1><div class="sub">${isDep?'Into the Aave Yield Vault · 4.3% net APY (estimate)':'Withdraw anytime — even if SparkPoint is offline'}</div></div>${riskChip(1)}</div>
+      <div class="pagehead"><div><h1>${isDep?'Deposit USDC':'Withdraw'}</h1><div class="sub">${isDep?`Into the Aave Yield Vault · ${v.netApy}% net APY (estimate)`:'Withdraw anytime — even if SparkPoint is offline'}</div></div>${riskChip(1)}</div>
       <div class="card card-pad">
         <div class="field" style="margin-bottom:16px"><label>${isDep?'Amount to deposit':'Amount to withdraw'}</label>
           <div class="amtbox" id="amtbox"><div style="display:flex;align-items:center;gap:10px">
@@ -73,7 +73,7 @@
         <div style="background:var(--background);border:1px solid var(--border-soft);border-radius:var(--radius);padding:14px;margin-bottom:8px">
           ${isDep?`
           <div class="preview-row"><span class="muted">You'll receive ≈</span><span class="tnum">2,118.4 spvUSDC</span></div>
-          <div class="preview-row"><span class="muted">Net APY</span><span class="tnum">4.3% <a class="cite" style="cursor:pointer">breakdown</a></span></div>
+          <div class="preview-row"><span class="muted">Net APY</span><span class="tnum">${v.netApy}% <a class="cite" style="cursor:pointer">breakdown</a></span></div>
           <div class="preview-row"><span class="muted">Beta cap after</span><span class="tnum">${money(v.capUsed+2150,0)} / ${money(v.capUser,0)}</span></div>`:`
           <div class="preview-row"><span class="muted">You'll redeem ≈</span><span class="tnum">4,902.1 spvUSDC</span></div>
           <div class="preview-row"><span class="muted">You'll receive</span><span class="tnum">≈ 5,000.00 USDC</span></div>

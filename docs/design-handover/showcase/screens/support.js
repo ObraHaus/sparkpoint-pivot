@@ -36,7 +36,7 @@
     const topics=[['What\'s net APY?','Your estimated yearly return after all costs, if the current rate held.'],
       ['What are vault shares?','Your slice of the vault — count stays fixed, value grows as it earns.'],
       ['What\'s slippage?','How much price can move against you before a trade lands. We cap it.'],
-      ['What\'s non-custodial?','Your funds stay in your control. We can direct strategy, never take it.'],
+      ['What is self-custody?','You stay in full control of your funds at all times. SparkPoint can direct strategy, never take, move, or hold your money.'],
       ['What are guardrails?','Deterministic rules that check every AI suggestion before you sign.'],
       ['What\'s a session key?','A scoped, time-limited permission for hands-off rebalancing — revocable instantly.']];
     host.innerHTML=`<div class="page page-narrow">

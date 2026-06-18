@@ -89,9 +89,9 @@
   function recCard(){
     return `<div class="ccard" data-card="rec">
       <div class="ch"><span class="rank">Best fit · #1 vs your goal</span><span class="badge badge-ai">AI suggestion — you approve &amp; sign</span></div>
-      <div class="cthesis">Aave's USDC rate rose to <b>4.3% net APY</b>. Moving your idle <span class="tnum">2,150 USDC</span> in could earn more, at the same low risk.</div>
+      <div class="cthesis">Aave's USDC rate is <b>4.3%</b>. After our <b>10% performance fee on yield</b> that's <b>3.87% net APY</b> — moving your idle <span class="tnum">2,150 USDC</span> in could earn more, at the same low risk.</div>
       <div class="crow">
-        <div class="capy"><div class="big tnum">4.3% <span class="cite" data-cite>${icon('check',10)} Based on Aave · 2m</span></div><div class="lbl">net APY · = 4.3% Aave supply − 0% fee</div></div>
+        <div class="capy"><div class="big tnum">3.87% <span class="cite" data-cite>${icon('check',10)} Based on Aave · 2m</span></div><div class="lbl">net APY · 4.3% Aave − 10% perf fee on yield</div></div>
         ${riskChip(1)}
       </div>
       <div class="cnote">Fits your plan: lower risk, steady yield. · Estimates, not guarantees.</div>
@@ -133,9 +133,94 @@
     </div>`;
   }
 
+  // ----- inline confirm + sign (stays in chat; no page navigation) -----
+  const CONFIRM={
+    deposit:{ title:'Confirm: Deposit', badge:false,
+      sub:'You\u2019re depositing <b>2,150 USDC</b> into the Aave Yield Vault \u2014 you\u2019ll receive \u2248 2,118.4 spvUSDC.',
+      sim:[['Building the transaction','Built the transaction'],['Simulating against Base state','Simulated against Base state'],['Checking your guardrails','Checked your guardrails']],
+      bc:[['USDC out','\u22122,150.00 USDC','--loss'],['spvUSDC in','+2,118.40 spvUSDC','--gain'],['Network fee (gas)','\u2248 $0.01',''],['Fee on this deposit','0% — none','--gain'],['Performance fee','10% of yield (over HWM)',''],['Net APY on new shares','3.87%','']],
+      guards:['Within your beta cap','Slippage under your max (0.5%)','Allowlisted protocol \u2014 Aave v3 (Base)','Simulation passed \u2014 no risks detected'],
+      ack:'This uses your full idle balance, leaving no USDC buffer in your wallet.',
+      signLabel:'Sign deposit',
+      okTitle:'Deposit confirmed.', okBody:'You now hold 11,952.9 spvUSDC (\u2248 $12,152.82).', chain:null },
+    swap:{ title:'Confirm: Swap', badge:true,
+      sub:'You\u2019re swapping <b>0.1 ETH</b> for \u2248 <b>312.40 USDC</b> on Aerodrome.',
+      sim:[['Building the swap','Built the swap'],['Simulating on Aerodrome','Simulated on Aerodrome'],['Checking your guardrails','Checked your guardrails']],
+      bc:[['ETH out','\u2212 0.1000 ETH \u00b7 \u2212$500.00','--loss'],['USDC in','+ 312.40 USDC','--gain'],['Network fee (gas)','\u2248 $0.05',''],['Min received (0.5% slip)','310.84 USDC',''],['SparkPoint routing fee \u00b7 0.20%','$0.62',''],['Net USDC received','\u2248 311.78 USDC','--gain']],
+      guards:['Route allowlisted \u2014 Aerodrome (Base)','Slippage under your max (0.5%)','Policy approved','Simulation passed \u2014 no risks detected'],
+      ack:null, signLabel:'Sign transaction',
+      okTitle:'Swap confirmed.', okBody:'You received \u2248 311.78 USDC via Aerodrome. Routing fee paid: $0.62 (0.20%).', chain:'deposit' },
+    bridge:{ title:'Confirm: Bridge', badge:false,
+      sub:'You\u2019re bridging <b>500 USDC</b> from <b>Base</b> to <b>Sui</b>.',
+      sim:[['Building the bridge message','Built the bridge message'],['Simulating lock on Base','Simulated lock on Base'],['Checking your guardrails','Checked your guardrails']],
+      bc:[['USDC out \u00b7 Base','\u2212 500.00 USDC','--loss'],['USDC in \u00b7 Sui','+ 500.00 USDC','--gain'],['Bridge fee','\u2248 $0.40',''],['Est. settlement','~3\u20135 min','']],
+      guards:['Canonical bridge route \u2014 allowlisted','Destination is your own Sui wallet','Within your bridge cap','Simulation passed \u2014 no risks detected'],
+      ack:null, signLabel:'Sign bridge',
+      okTitle:'Bridge initiated.', okBody:'500 USDC is on its way from Base to Sui \u2014 usually 3\u20135 minutes. You\u2019ll be notified when it lands in your Sui wallet.', chain:null }
+  };
+  function inlineConfirm(kind){
+    const cfg=CONFIRM[kind];
+    const bcRows=cfg.bc.map(r=>`<div class="bc-row"><span class="muted">${r[0]}</span><span class="tnum"${r[2]?` style="color:var(${r[2]})"`:''}>${r[1]}</span></div>`).join('');
+    const guardRows=cfg.guards.map(g=>`<div class="guard pass"><span class="gi">${icon('check',16)}</span><span class="gt">${g}</span></div>`).join('');
+    const ackHtml=cfg.ack?`<div class="ackbox"><div class="ackcheck" data-ack>${icon('check',13)}</div>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:600">Requires your acknowledgement</div>
+        <div style="font-size:12.5px;color:var(--muted-foreground);margin-top:2px">${cfg.ack}</div>
+        <div style="font-size:12px;color:var(--caution);margin-top:6px;font-weight:600">I understand this is above my usual buffer.</div></div></div>`:'';
+    const t=aiTurn(`<div class="ctext">Here\u2019s the full preview \u2014 review every change and sign right here. <b>Nothing moves until you sign.</b></div>
+      <div class="ccard cf-card" data-confirm style="padding:0;overflow:hidden;max-width:600px">
+        <div class="cf-hd"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="font-size:16px;font-weight:600">${cfg.title}</div>${cfg.badge?'<span class="badge badge-ai">AI suggestion \u2014 you approve &amp; sign</span>':icon('flask',18)}</div>
+          <div style="font-size:13px;color:var(--muted-foreground);margin-top:6px;line-height:1.5">${cfg.sub}</div></div>
+        <div class="cf-sec" data-sim><div class="cf-lbl">Pre-trade simulation</div><div data-simbody></div></div>
+        <div class="cf-sec" data-bc style="display:none"><div class="cf-lbl">Balance changes (simulated)</div>${bcRows}</div>
+        <div class="cf-sec" data-guard style="display:none"><div class="cf-lbl">Guardrail checklist</div>${guardRows}${ackHtml}</div>
+        <div class="cf-sec" data-ctrl style="display:none"><div style="display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--muted-foreground);line-height:1.5">${icon('shieldcheck',16)}<span><b style="color:var(--foreground)">Nothing moves until you sign.</b> You can cancel now with no effect. SparkPoint never holds your funds.</span></div></div>
+        <div class="cf-sec" data-sign style="display:none">
+          <div data-signhelp style="font-size:12px;color:var(--caution);margin-bottom:10px;${cfg.ack?'':'display:none'}">${icon('alert',13)} Acknowledge the item above to enable signing.</div>
+          <div style="display:flex;gap:10px"><button class="btn btn-outline btn-md" data-cancel style="flex:none">Cancel</button>
+            <button class="btn btn-primary btn-md" data-sign-btn style="flex:1" ${cfg.ack?'disabled':''}>${icon('key',16)} ${cfg.signLabel}</button></div>
+        </div>
+      </div>`);
+    const card=t.querySelector('[data-confirm]');
+    const sim=card.querySelector('[data-simbody]'); let i=0;
+    (function go(){
+      if(i>=cfg.sim.length){
+        sim.innerHTML=`<div class="simbar pass">${icon('check',16)} Simulation passed \u2014 no risks detected.</div>`;
+        ['[data-bc]','[data-guard]','[data-ctrl]','[data-sign]'].forEach((s,k)=>{const el=card.querySelector(s);setTimeout(()=>{el.style.display='block';if(!reduce&&typeof gsap!=='undefined')gsap.fromTo(el,{opacity:0,y:8},{opacity:1,y:0,duration:.3});scrollDown();},k*120);});
+        wireInline(card,cfg,kind);
+        return;
+      }
+      const r=document.createElement('div');r.style.cssText='display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted-foreground);padding:4px 0';
+      r.innerHTML=`<span class="ai-dot"></span><span>${cfg.sim[i][0]}\u2026</span>`;sim.appendChild(r);
+      setTimeout(()=>{r.querySelector('.ai-dot').outerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>`;r.querySelector('span:last-child').textContent=cfg.sim[i][1];i++;setTimeout(go,reduce?80:280);},reduce?120:520);
+    })();
+  }
+  function wireInline(card,cfg,kind){
+    const signbtn=card.querySelector('[data-sign-btn]'), help=card.querySelector('[data-signhelp]'), ack=card.querySelector('[data-ack]');
+    if(cfg.ack&&ack){ ack.onclick=()=>{ack.classList.toggle('on');const ok=ack.classList.contains('on');signbtn.disabled=!ok;if(help)help.style.display=ok?'none':'block';}; }
+    card.querySelector('[data-cancel]').onclick=()=>{card.style.opacity='.5';SP.toast('Cancelled \u2014 nothing moved.');};
+    signbtn.onclick=()=>{
+      if(signbtn.disabled){const g=card.querySelector('[data-guard]');g.classList.add('shake');setTimeout(()=>g.classList.remove('shake'),320);return;}
+      signbtn.innerHTML=`<span class="ai-dot" style="background:var(--primary-foreground)"></span> Waiting for your wallet\u2026`;signbtn.disabled=true;
+      setTimeout(()=>{
+        card.innerHTML=`<div style="padding:30px 22px;text-align:center">
+          <div style="width:56px;height:56px;border-radius:50%;background:var(--gain-subtle);display:grid;place-items:center;margin:0 auto 14px"><span style="color:var(--gain)">${icon('check',28,2.5)}</span></div>
+          <div style="font-size:18px;font-weight:600;margin-bottom:7px">${cfg.okTitle}</div>
+          <div style="font-size:13.5px;color:var(--muted-foreground);line-height:1.5;max-width:380px;margin:0 auto 6px">${cfg.okBody}</div>
+          <a class="cite" style="cursor:pointer;display:inline-flex;margin-bottom:16px">View transaction ${icon('ext',11)}</a>
+          <div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap"><button class="btn btn-outline btn-md" onclick="SP.navigate('portfolio')">See it in your portfolio</button>${cfg.chain?`<button class="btn btn-primary btn-md" data-chainbtn>Put USDC to work</button>`:''}</div>
+        </div>`;
+        SP.toast(cfg.okTitle+' \u00b7 View tx \u2197'); scrollDown();
+        const cb=card.querySelector('[data-chainbtn]'); if(cb) cb.onclick=()=>{ const t2=aiTurn(`<div class="ctext">Nice \u2014 your <b>\u2248 311.78 USDC</b> is ready. Here\u2019s the vault deposit, slippage-free at <b>3.87% net APY</b>. Same rule: you sign, nothing moves before that.</div>`); inlineConfirm('deposit'); };
+      },1400);
+    };
+  }
+
   function wireCard(t){
     t.querySelectorAll('[data-why]').forEach(b=>b.onclick=()=>b.parentElement.querySelector('.whybd').classList.toggle('open'));
-    t.querySelectorAll('[data-act="review"]').forEach(b=>b.onclick=()=>navigate('confirm/deposit'));
+    t.querySelectorAll('[data-act="review"]').forEach(b=>b.onclick=()=>inlineConfirm('deposit'));
+    t.querySelectorAll('[data-act="reviewswap"]').forEach(b=>b.onclick=()=>inlineConfirm('swap'));
+    t.querySelectorAll('[data-act="reviewbridge"]').forEach(b=>b.onclick=()=>inlineConfirm('bridge'));
     t.querySelectorAll('[data-act="notnow"]').forEach(b=>b.onclick=()=>{b.closest('.ccard').style.opacity='.5';SP.toast('Dismissed — nothing moved.');});
     t.querySelectorAll('[data-fb]').forEach(b=>b.onclick=()=>{t.querySelectorAll('[data-fb]').forEach(x=>x.classList.remove('on'));b.classList.add('on');});
     t.querySelectorAll('[data-cite]').forEach(b=>b.onclick=()=>SP.openSheet('Source',`<div style="font-size:13px;line-height:1.6"><b>Based on Aave v3 (Base)</b><div class="muted" style="margin-top:6px">USDC supply rate · 4.3% · as of 2 min ago</div><a class="cite" style="margin-top:10px;display:inline-flex">View on Basescan ${icon('ext',10)}</a></div>`));
@@ -143,9 +228,64 @@
   }
 
   // ----- intents -----
+  function bridgeCard(){
+    return `<div class="ccard" data-card="bridge">
+      <div class="ch"><span class="rank">Bridge · Base → Sui</span><span class="badge badge-ai">AI suggestion — you approve &amp; sign</span></div>
+      <div class="cthesis">Move <b>500 USDC</b> from Base to <b>Sui</b> via the canonical bridge. You keep custody the whole way — funds land in your own Sui wallet.</div>
+      <div class="crow">
+        <div class="capy"><div class="big tnum">500</div><div class="lbl">USDC · from Base</div></div>
+        <div class="capy"><div class="big tnum">~3–5m</div><div class="lbl">settlement · fee ≈ $0.40</div></div>
+      </div>
+      <div class="cnote">Non-custodial bridge: you sign a lock on Base, receive on Sui. SparkPoint never holds funds in transit.</div>
+      <div class="cact"><button class="btn btn-primary btn-md" data-act="reviewbridge">Review bridge</button><button class="btn btn-ghost btn-md" data-act="notnow">Not now</button></div>
+    </div>`;
+  }
+  function walletCard(){
+    const rows=[['USDC','2,150.00','$2,150','idle · earning nothing','--caution'],
+      ['ETH','0.42','$2,100','+1.8% (24h)','--gain'],
+      ['cbBTC','0.045','$4,275','−0.6% (24h)','--loss'],
+      ['Aave Vault','9,834.50 spv','$10,034','+0.3% accruing','--gain']];
+    return `<div class="ccard" data-card="wallet">
+      <div class="ch"><span style="font-size:13px;font-weight:600">Your wallet · Base</span><span style="font-size:11px;color:var(--muted-foreground)" class="grow">total ≈ $18,559</span></div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+        ${rows.map(r=>`<tr><td style="padding:7px 0;font-size:13px;font-weight:600">${r[0]}</td>
+          <td style="padding:7px 0;font-size:12.5px;color:var(--muted-foreground);text-align:right" class="tnum">${r[1]}</td>
+          <td style="padding:7px 8px;font-size:13px;text-align:right" class="tnum">${r[2]}</td>
+          <td style="padding:7px 0;font-size:11.5px;text-align:right;color:var(${r[4]})">${r[3]}</td></tr>`).join('')}
+      </table>
+      <div class="cact"><button class="btn btn-primary btn-md" data-chip="Put my USDC to work">Put USDC to work</button><button class="btn btn-ghost btn-md" onclick="SP.navigate('portfolio')">Open portfolio</button></div>
+    </div>`;
+  }
+  function swapCard(){
+    return `<div class="ccard" data-card="swap">
+      <div class="ch"><span class="rank">Swap · ETH → USDC</span><span class="badge badge-ai">AI suggestion — you approve &amp; sign</span></div>
+      <div class="cthesis">Best swap route on Base: <b>ETH → USDC via Aerodrome</b> (highest liquidity). Slippage protection is built into the route.</div>
+      <div class="crow">
+        <div class="capy"><div class="big tnum">0.1 ETH</div><div class="lbl">you swap · you hold 0.42 ETH</div></div>
+        <div class="capy"><div class="big tnum">≈ 312.40</div><div class="lbl">USDC out · max slippage 0.5%</div></div>
+      </div>
+      <div class="cnote">Includes a SparkPoint routing fee of 0.20% (≈ $0.62), shown in full before you sign. USDC you can then deposit into the vault.</div>
+      <div class="cact"><button class="btn btn-primary btn-md" data-act="reviewswap">Review swap</button><button class="btn btn-ghost btn-md" data-act="notnow">Not now</button></div>
+    </div>`;
+  }
   function respond(text){
     const q=text.toLowerCase();
-    if(q.includes('portfolio')||q.includes('how am i')||q.includes('doing')){
+    if(q.includes('bridge')||q.includes('sui')||q.includes('cross-chain')||q.includes('cross chain')||q.includes('other network')||q.includes('move to')){
+      thinking([{a:'Reading balances on Base & Sui',b:'Read balances on Base & Sui'},{a:'Finding the canonical route',b:'Found the canonical route'}],()=>{
+        const t=aiTurn(`<div class="ctext">You can move assets between <b>Base</b> and <b>Sui</b> without giving up custody. Here's a bridge I'd set up — you sign, funds land in your own wallet on the other side.</div>${bridgeCard()}`); wireCard(t); followups(['Why bridge to Sui?','Is bridging safe?','Show my portfolio']);});
+    } else if(q.includes('swap')||q.includes('convert')||(q.includes('eth')&&q.includes('usdc'))){
+      thinking([{a:'Reading your wallet',b:'Read your wallet'},{a:'Finding the best route on Base',b:'Found the best route on Base'},{a:'Checking slippage',b:'Checked slippage'}],()=>{
+        const t=aiTurn(`<div class="ctext">Here's the best route I found — slippage-protected, with the fee shown up front.</div>${swapCard()}`); wireCard(t); followups(['Explain the routing fee','What\'s slippage?','Deposit to vault after']);});
+    } else if(q.includes('deposit')||q.includes('confirm')||q.includes('sign')||q.includes('to work')||q.includes('put usdc')||q.includes('put my usdc')){
+      thinking([{a:'Reading your idle USDC',b:'Read your idle USDC'},{a:'Building the vault deposit',b:'Built the vault deposit'},{a:'Checking your guardrails',b:'Checked your guardrails'}],()=>{
+        aiTurn(`<div class="ctext">Let's put your idle <b>2,150 USDC</b> into the Aave Yield Vault. Review every change and sign right here — you never leave the chat.</div>`); inlineConfirm('deposit'); followups(['What\'s the risk?','Explain net APY','Show my portfolio']);});
+    } else if(q.includes('wallet')||q.includes('balance')||q.includes('hold')||q.includes('what.s in')||q.includes('what do i')){
+      thinking([{a:'Reading your wallet on Base',b:'Read your wallet on Base'},{a:'Pricing your assets',b:'Priced your assets'}],()=>{
+        const t=aiTurn(`<div class="ctext">Here's everything in your wallet right now. Your <span class="soft">idle USDC is the obvious lever</span> — it's earning nothing.</div>${walletCard()}`); wireCard(t); followups(['Put my USDC to work','Swap ETH → USDC','Bridge to Sui']);});
+    } else if(q.includes('aave')||q.includes('supply')||q.includes('lend')){
+      thinking([{a:'Reading your wallet',b:'Read your wallet'},{a:'Checking the Aave v3 rate on Base',b:'Checked the Aave v3 rate on Base'},{a:'Simulating against current state',b:'Simulated against current state'}],()=>{
+        const t=aiTurn(`<div class="ctext">You can supply USDC straight to Aave v3 on Base — the same engine behind the vault, here as a direct position.</div>${recCard()}`); wireCard(t); followups(['Vault vs direct supply?','What\'s the risk?','Review this move']);});
+    } else if(q.includes('portfolio')||q.includes('how am i')||q.includes('doing')){
       thinking([{a:'Reading your wallet',b:'Read your wallet'},{a:'Pricing your positions',b:'Priced your positions'}],()=>{
         const t=aiTurn(`<div class="ctext">Here's your position. You're <span class="soft">on plan</span> — steady and lower-risk.</div>${snapshotCard()}`); wireCard(t); followups(['Where\'s my risk concentrated?','Improve my yield']);});
     } else if(q.includes('yield')||q.includes('apy')||q.includes('earn')||q.includes('recommend')||q.includes('move')){
@@ -156,14 +296,14 @@
     } else if(q.includes('past')||q.includes('outcome')||q.includes('changed')||q.includes('advice')){
       thinking([{a:'Loading your outcome log',b:'Loaded your outcome log'}],()=>{ const t=aiTurn(`<div class="ctext">Here's a recent one — I show losses as plainly as wins.</div>${outcomeCard()}`); wireCard(t); followups(['See all outcomes','Show my portfolio']);});
     } else if(q.includes('safe')||q.includes('custod')||q.includes('keep my funds')){
-      const t=aiTurn(`<div class="ctext">Your funds never touch us. SparkPoint can direct strategy but has <b>no code path</b> to take, move, or hold your money — and you can withdraw anytime, even if we're offline. Tap <b>Non-custodial</b> up top to see exactly what we can and can't do.</div>`);
+      const t=aiTurn(`<div class="ctext">Your funds never touch us. SparkPoint can direct strategy but has <b>no code path</b> to take, move, or hold your money — and you can withdraw anytime, even if we're offline. Tap <b>Fully self-custodial</b> up top to see exactly what we can and can't do.</div>`);
       followups(['Show me the proof','Withdraw anytime']);
     } else {
       thinking([{a:'Thinking',b:'Ready'}],()=>{ aiTurn(`<div class="ctext">I can help you understand your position, find lower-risk yield, explain a concept, or review a move — you approve and sign anything that moves funds. Try one of the suggestions below.</div>`); followups(EMPTY_CHIPS);});
     }
   }
 
-  const EMPTY_CHIPS=['Show my portfolio','Find steady, lower-risk yield','Explain net APY','How did past advice do?','How do you keep my funds safe?'];
+  const EMPTY_CHIPS=['What\'s in my wallet?','Find steady, lower-risk yield','Swap ETH → USDC','Deposit & sign 2,150 USDC','Bridge to Sui','How do you keep my funds safe?'];
   let chipRow;
   function followups(list){ if(!chipRow)return; chipRow.innerHTML=list.map(c=>`<button class="chip" data-c="${c}">${c}</button>`).join('');
     chipRow.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>send(b.dataset.c)); }
@@ -176,8 +316,13 @@
       <aside class="threadrail">
         <button class="newchat">${icon('plus',16)} New chat</button>
         <div class="threaditem active"><div class="tt">Your plan &amp; first deposit</div><div class="ts">just now</div></div>
-        <div class="threaditem"><div class="tt">Is the Aave vault safe?</div><div class="ts">yesterday</div></div>
-        <div class="threaditem"><div class="tt">Explain vault shares</div><div class="ts">2 days ago</div></div>
+        <div class="threaditem" data-seed="Deposit and sign 2,150 USDC into the vault"><div class="tt">Deposit &amp; sign — vault</div><div class="ts">just now</div></div>
+        <div class="threaditem" data-seed="Swap ETH for USDC then deposit"><div class="tt">Confirm + sign a swap</div><div class="ts">1h ago</div></div>
+        <div class="threaditem" data-seed="What's in my wallet?"><div class="tt">What's in my wallet?</div><div class="ts">2h ago</div></div>
+        <div class="threaditem" data-seed="Swap ETH for USDC"><div class="tt">Swap ETH → USDC</div><div class="ts">yesterday</div></div>
+        <div class="threaditem" data-seed="Bridge USDC to Sui"><div class="tt">Bridge USDC to Sui</div><div class="ts">yesterday</div></div>
+        <div class="threaditem" data-seed="Is the Aave vault safe?"><div class="tt">Is the Aave vault safe?</div><div class="ts">2 days ago</div></div>
+        <div class="threaditem" data-seed="Explain vault shares"><div class="tt">Explain vault shares</div><div class="ts">3 days ago</div></div>
       </aside>
       <div class="chatcol">
         <div class="chatscroll" id="chatscroll"><div class="chatstream" id="chatstream"></div></div>
@@ -220,5 +365,9 @@
     ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send(ta.value);}});
     sb.onclick=()=>send(ta.value);
     host.querySelector('.newchat').onclick=()=>{stream.innerHTML='';aiTurn(`<div class="ctext">Hi — I'm SparkPoint's AI. Tell me your goal, or ask me anything about your wallet. I suggest; you approve and sign.</div>`);followups(EMPTY_CHIPS);};
+    host.querySelectorAll('[data-seed]').forEach(el=>el.onclick=()=>{
+      host.querySelectorAll('.threaditem').forEach(x=>x.classList.remove('active')); el.classList.add('active');
+      stream.innerHTML=''; send(el.getAttribute('data-seed'));
+    });
   }});
 })();

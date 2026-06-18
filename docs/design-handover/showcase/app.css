@@ -225,9 +225,9 @@ button{font-family:inherit;}
   #netPill{display:none;}        /* Base network → shown in Connect & Settings */
   #walletPill{display:none;}      /* wallet address → in the avatar menu */
   .rightcluster{gap:6px;}
-  .disclaimer .txt{font-size:11px;}
-  .disclaimer{padding:7px 14px;}
-  .disclaimer .links a[data-nav]{display:none;}  /* keep 'Prove it'; Exit lives in tabs/More */
+  .disclaimer{padding:7px 14px;flex-wrap:wrap;align-items:flex-start;row-gap:7px;}
+  .disclaimer .txt{font-size:11px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45;}
+  .disclaimer .links{margin-left:0;flex-wrap:wrap;width:100%;}
   .page{padding:18px 16px 96px;}
   .main{padding-bottom:0;}
   .pagehead{align-items:flex-start;}

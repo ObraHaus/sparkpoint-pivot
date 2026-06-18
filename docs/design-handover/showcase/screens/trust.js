@@ -25,7 +25,7 @@
 
   SP.registerScreen('trust',{render(host){
     host.innerHTML=`<div class="page page-wide">
-      <div class="pagehead"><div><h1>Trust Center</h1><div class="sub">Your keys. Your funds. Always. — proven, not promised.</div></div>
+      <div class="pagehead"><div><h1>Trust Center</h1><div class="sub">Fully self-custodial — your keys, your funds, always. Proven, not promised.</div></div>
         <button class="btn btn-primary btn-md" onclick="SP.navigate('trust/permissions')">${icon('shieldcheck',16)} Prove it</button></div>
       <div class="trust-grid" style="margin-bottom:18px">
         <div class="card card-pad">

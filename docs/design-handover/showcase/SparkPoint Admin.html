@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SparkPoint Ops — Admin</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  html,body{margin:0;height:100%;}
+  body{background:var(--background);color:var(--foreground);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;overflow:hidden;}
+  .tnum{font-variant-numeric:tabular-nums slashed-zero;}
+  .mono{font-family:var(--font-mono);}
+  *{box-sizing:border-box;}
+  ::-webkit-scrollbar{width:9px;height:9px;}::-webkit-scrollbar-thumb{background:var(--input);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+
+  #ad{height:100%;}
+  .ad{--barh:56px;display:flex;flex-direction:column;height:100%;overflow:hidden;}
+  /* top bar — plain in-flow flex item: NO position/z-index (stacking context) and NO
+     sticky/transform. Those promote it to its own compositing layer, which a post-load
+     repaint inside the Showcase's clipped/scaled iframes drops after ~1s. */
+  /* class renamed .adtop -> .opsbar: the design preview intermittently suppresses
+     the literal .adtop class, hiding the bar in-app though it's fine when downloaded. */
+  .opsbar{flex:0 0 var(--barh);display:flex;align-items:center;gap:14px;height:var(--barh);box-sizing:border-box;padding:0 18px;border-bottom:1px solid var(--border-soft);background:var(--card);}
+  .adbrand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14.5px;}
+  .adbrand .smk{width:21px;height:21px;}
+  .envbadge{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--loss);border:1px solid color-mix(in srgb,var(--loss) 40%,transparent);border-radius:6px;padding:3px 7px;}
+  .fresh{font-size:11.5px;color:var(--muted-foreground);display:flex;align-items:center;gap:6px;}
+  .grow{flex:1;}
+  .obschip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--info);
+    background:var(--info-subtle);border:1px solid color-mix(in srgb,var(--info) 26%,transparent);border-radius:999px;padding:6px 11px;cursor:help;}
+  .roleswitch{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted-foreground);position:relative;}
+  /* custom dropdown (replaces native <select>, which mis-renders inside the scaled Showcase iframe) */
+  .rolebtn{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--foreground);background:var(--background);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap;}
+  .rolebtn:hover{border-color:var(--primary);}
+  .rolebtn .cv{width:13px;height:13px;color:var(--muted-foreground);transition:transform .15s;flex:none;}
+  .rolebtn[aria-expanded="true"] .cv{transform:rotate(180deg);}
+  .rolemenu{position:fixed;min-width:172px;background:var(--popover);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow-lg);z-index:130;display:none;}
+  .rolemenu.open{display:block;}
+  .roleopt{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--foreground);cursor:pointer;white-space:nowrap;}
+  .roleopt:hover{background:var(--muted);}
+  .roleopt.sel{color:var(--primary);font-weight:600;}
+  .roleopt .chk{margin-left:auto;width:14px;height:14px;flex:none;opacity:0;}
+  .roleopt.sel .chk{opacity:1;}
+
+  .adbody{flex:1 1 auto;display:flex;min-height:0;}
+  .adnav{width:200px;flex:none;border-right:1px solid var(--border-soft);padding:12px 9px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;background:var(--card);}
+  .adnav .seclbl{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);padding:12px 10px 5px;}
+  .navitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted-foreground);cursor:pointer;border-left:2px solid transparent;transition:.15s;}
+  .navitem:hover{background:var(--muted);color:var(--foreground);}
+  .navitem.active{background:var(--spark-subtle);color:var(--foreground);border-left-color:var(--primary);}
+  .navitem.active svg{color:var(--primary);}
+  .navitem svg{width:17px;height:17px;flex:none;}
+  .navitem .star{margin-left:auto;color:var(--primary);font-size:11px;}
+
+  .adcontent{flex:1;overflow-y:auto;padding:24px 28px 60px;}
+  .adcontent.max{max-width:1320px;margin:0 auto;width:100%;}
+  .pghead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
+  .pghead h1{font-size:23px;font-weight:600;letter-spacing:-.01em;margin:0;}
+  .pghead .sub{font-size:13px;color:var(--muted-foreground);margin-top:4px;}
+  .ctrls{display:flex;gap:8px;align-items:center;}
+  .seg{display:inline-flex;background:var(--muted);border-radius:8px;padding:3px;gap:2px;}
+  .seg button{border:none;background:transparent;color:var(--muted-foreground);font-family:inherit;font-size:12px;font-weight:600;padding:5px 11px;border-radius:6px;cursor:pointer;}
+  .seg button.on{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.3);}
+  .btn-exp{font-family:inherit;font-size:12.5px;font-weight:600;color:var(--muted-foreground);background:transparent;border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;display:inline-flex;gap:7px;align-items:center;}
+
+  .band{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  @media(max-width:1180px){.band{grid-template-columns:repeat(2,1fr);}}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:15px 16px;}
+  .kpi .k{font-size:11.5px;color:var(--muted-foreground);font-weight:500;display:flex;align-items:center;gap:6px;}
+  .kpi .v{font-size:26px;font-weight:600;letter-spacing:-.01em;margin-top:6px;line-height:1;}
+  .kpi .foot{display:flex;align-items:center;justify-content:space-between;margin-top:9px;}
+  .delta{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;}
+  .delta.up{color:var(--gain);}.delta.down{color:var(--loss);}.delta.flat{color:var(--muted-foreground);}
+  .aimark{width:6px;height:6px;border-radius:50%;background:var(--primary);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .grid2 .span2{grid-column:1/-1;}
+  @media(max-width:1080px){.grid2{grid-template-columns:1fr;}}
+  .chartcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .chartcard .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:10px;}
+  .chartcard .ct{font-size:14px;font-weight:600;}
+  .chartcard .prov{font-size:10.5px;color:var(--muted-foreground);}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 4px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted-foreground);}
+  .legend i{width:11px;height:11px;border-radius:3px;display:block;}
+  .legend i.dash{background:repeating-linear-gradient(90deg,currentColor 0 4px,transparent 4px 7px);border-radius:0;height:3px;width:14px;}
+  .estbadge{font-size:9.5px;font-weight:700;letter-spacing:.03em;color:var(--primary);background:var(--spark-subtle);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent);border-radius:5px;padding:1px 5px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .statusrow{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border-soft);font-size:13px;}
+  .statusrow:last-child{border-bottom:none;}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;border-radius:999px;padding:4px 10px;}
+  .pill.ok{color:var(--gain);background:var(--gain-subtle);}
+  .pill.info{color:var(--info);background:var(--info-subtle);}
+  .pill.amber{color:var(--caution);background:var(--caution-subtle);}
+  .pill .led{width:7px;height:7px;border-radius:50%;background:currentColor;}
+
+  table.adtbl{width:100%;border-collapse:collapse;}
+  table.adtbl th{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground);text-align:left;padding:9px 10px;border-bottom:1px solid var(--border-soft);}
+  table.adtbl td{padding:10px;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+  table.adtbl tr:last-child td{border-bottom:none;}
+  table.adtbl .num{text-align:right;font-variant-numeric:tabular-nums;}
+  table.adtbl tfoot td{font-weight:600;border-top:1px solid var(--border);border-bottom:none;}
+
+  .weeornot{background:var(--card);border:1px solid color-mix(in srgb,var(--primary) 24%,transparent);border-radius:12px;padding:16px 18px;}
+  .infobanner{display:flex;align-items:flex-start;gap:10px;background:var(--info-subtle);border:1px solid color-mix(in srgb,var(--info) 22%,transparent);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--muted-foreground);line-height:1.5;margin-bottom:16px;}
+  .infobanner svg{color:var(--info);flex:none;margin-top:1px;}
+  .trustbadges{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  @media(max-width:1080px){.trustbadges{grid-template-columns:repeat(2,1fr);}}
+  .tb{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px;display:flex;gap:10px;align-items:flex-start;}
+  .tb svg{color:var(--gain);flex:none;margin-top:1px;}
+  .tb .tbt{font-size:12.5px;font-weight:600;}
+  .tb .tbs{font-size:11px;color:var(--muted-foreground);margin-top:2px;line-height:1.4;}
+  text{font-family:var(--font-mono);}
+
+  /* mobile menu toggle (hidden on desktop) */
+  .adburger{display:none;align-items:center;gap:7px;height:34px;padding:0 11px;border-radius:8px;border:1px solid var(--border);background:var(--spark-subtle);color:var(--foreground);cursor:pointer;flex:none;font-family:inherit;font-size:12.5px;font-weight:600;}
+  .navclose{display:none;}
+  .adnav-scrim{display:none;}
+  .addialog-scrim{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;opacity:0;transition:opacity .2s;}
+  .addialog-scrim.show{opacity:1;}
+  .addialog{background:var(--popover);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:440px;width:100%;box-shadow:var(--shadow-lg);}
+
+  @media(max-width:900px){
+    .adburger{display:inline-flex;}
+    .ad{--barh:54px;}
+    .navclose{display:flex;align-items:center;justify-content:flex-end;background:none;border:none;cursor:pointer;padding:4px 12px 10px;margin-bottom:4px;border-bottom:1px solid var(--border-soft);}
+    .opsbar{padding:0 13px;gap:10px;overflow:hidden;min-width:0;}
+    .adbrand{font-size:13.5px;min-width:0;flex-shrink:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+    .roleswitch{font-size:0;gap:0;flex-shrink:1;min-width:0;}
+    .rolebtn{max-width:132px;min-width:0;}
+    .rolebtn .rl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .hide-sm{display:none!important;}
+    .adnav{position:fixed;top:0;left:0;bottom:0;width:230px;z-index:120;transform:translateX(-100%);transition:transform .25s cubic-bezier(.2,0,0,1);box-shadow:var(--shadow-lg);padding-top:14px;}
+    .adnav.open{transform:translateX(0);}
+    .adnav-scrim{display:block;position:fixed;inset:0;z-index:110;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .25s;}
+    .adnav-scrim.show{opacity:1;pointer-events:auto;}
+    .adcontent{padding:18px 14px 60px;}
+    .band{grid-template-columns:repeat(2,1fr)!important;gap:10px;}
+    .grid2{grid-template-columns:1fr!important;}
+    .trustbadges{grid-template-columns:1fr!important;}
+    .pghead h1{font-size:20px;}
+    .pghead{flex-direction:column;align-items:flex-start;}
+    .ctrls{flex-wrap:wrap;}
+    table.adtbl{display:block;overflow-x:auto;white-space:nowrap;}
+  }
+  @media(max-width:480px){
+    .band{grid-template-columns:1fr!important;}
+    .envbadge{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="ad" id="ad"></div>
+
+<script>
+const A = (function(){
+  const P={
+    overview:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4a3 3 0 0 1 0 6m5 10a6 6 0 0 0-5-5.9"/>',
+    usage:'<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+    tvl:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.2"/>',
+    revenue:'<path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v6h-6"/>',
+    system:'<path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z"/>',
+    stake:'<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="9" width="3" height="8"/>',
+    cfg:'<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 2h-5l-.3 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.5L3.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 2.5h5l.3-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5a7 7 0 0 0 .1-1Z"/>',
+    audit:'<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
+    check:'<path d="M5 13l4 4L19 7"/>',
+    ext:'<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+    refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/>',
+    lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    door:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"/>',
+    pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+  };
+  function ic(n,s=17,w=2){return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${P[n]||''}</svg>`;}
+  // stream color contract
+  const STREAM={swap:'#4D83FF',premium:'#38C6F4',perf:'#9B6CEB',mgmt:'#C45FD6',srk:'#F5B62E',treasury:'#8A97A8'};
+  function money(n){return '$'+n.toLocaleString('en-US',{maximumFractionDigits:0});}
+  function abbr(n){return n>=1e6?'$'+(n/1e6).toFixed(2)+'M':n>=1e3?'$'+(n/1e3).toFixed(1)+'K':'$'+n.toFixed(0);}
+  return {P,ic,STREAM,money,abbr};
+})();
+const ic=A.ic, STREAM=A.STREAM, abbr=A.abbr, money=A.money;
+
+/* ---------- chart helpers (hand-built SVG, token-styled) ---------- */
+function axisY(max,W,H,pad){ // returns gridline svg + scale fn
+  const lines=4; let g='';
+  for(let i=0;i<=lines;i++){const y=pad.t+(H-pad.t-pad.b)*(i/lines); const val=max*(1-i/lines);
+    g+=`<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W-pad.r}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-opacity=".5" stroke-width="1"/>`;
+    g+=`<text x="${pad.l-7}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted-foreground)">${abbr(val)}</text>`;}
+  return g;
+}
+function stackedBars(data, keys, max, opts={}){
+  const W=opts.W||560,H=opts.H||220,pad={l:42,r:14,t:12,b:24};
+  const n=data.length, bw=(W-pad.l-pad.r)/n*0.62, gap=(W-pad.l-pad.r)/n;
+  let s=axisY(max,W,H,pad);
+  data.forEach((d,i)=>{
+    const x=pad.l+gap*i+(gap-bw)/2; let yAcc=H-pad.b;
+    keys.forEach(k=>{
+      const v=d[k]||0; if(v<=0)return; const h=(v/max)*(H-pad.t-pad.b);
+      const col=(opts.colors&&opts.colors[k])||STREAM[k]||'var(--muted-foreground)';
+      const proj=k==='mgmt'||k==='srk';
+      s+=`<rect x="${x.toFixed(1)}" y="${(yAcc-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col}" ${proj?'fill-opacity=".35" stroke="'+col+'" stroke-dasharray="3 2"':''} rx="1.5"/>`;
+      yAcc-=h;
+    });
+    s+=`<text x="${(x+bw/2).toFixed(1)}" y="${H-9}" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">${d.x}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${s}</svg>`;
+}
+function linePath(vals,max,W,H,pad){
+  return vals.map((v,i)=>{const x=pad.l+(W-pad.l-pad.r)*(i/(vals.length-1));const y=pad.t+(H-pad.t-pad.b)*(1-v/max);return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);}).join(' ');
+}
+function trajectory(real, fore, max, opts={}){
+  const W=opts.W||560,H=opts.H||220,pad={l:42,r:14,t:12,b:24};
+  let s=axisY(max,W,H,pad);
+  const all=real.concat(fore.slice(1));
+  const todayX=pad.l+(W-pad.l-pad.r)*((real.length-1)/(all.length-1));
+  s+=`<line x1="${todayX.toFixed(1)}" y1="${pad.t}" x2="${todayX.toFixed(1)}" y2="${H-pad.b}" stroke="var(--muted-foreground)" stroke-dasharray="2 3" stroke-opacity=".6"/>`;
+  s+=`<text x="${todayX.toFixed(1)}" y="${pad.t-2}" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">today</text>`;
+  // realized solid
+  const realPts=real.map((v,i)=>[pad.l+(W-pad.l-pad.r)*(i/(all.length-1)),pad.t+(H-pad.t-pad.b)*(1-v/max)]);
+  const forePts=fore.map((v,i)=>[pad.l+(W-pad.l-pad.r)*((real.length-1+i)/(all.length-1)),pad.t+(H-pad.t-pad.b)*(1-v/max)]);
+  s+=`<path d="${realPts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}" fill="none" stroke="${STREAM.swap}" stroke-width="2.4"/>`;
+  s+=`<path d="${forePts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}" fill="none" stroke="${STREAM.swap}" stroke-width="2.4" stroke-dasharray="5 4" stroke-opacity=".7"/>`;
+  s+=`<circle cx="${realPts[realPts.length-1][0].toFixed(1)}" cy="${realPts[realPts.length-1][1].toFixed(1)}" r="3.5" fill="${STREAM.swap}"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${s}</svg>`;
+}
+function dualArea(yieldV, revV, max, opts={}){
+  const W=opts.W||560,H=opts.H||200,pad={l:42,r:14,t:12,b:24};
+  let s=axisY(max,W,H,pad);
+  function area(vals,color,op){const pts=vals.map((v,i)=>[pad.l+(W-pad.l-pad.r)*(i/(vals.length-1)),pad.t+(H-pad.t-pad.b)*(1-v/max)]);
+    const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    return `<path d="${line} L${(W-pad.r).toFixed(1)} ${H-pad.b} L${pad.l} ${H-pad.b} Z" fill="${color}" fill-opacity="${op}"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2"/>`;}
+  s+=area(yieldV,STREAM.premium,.16);
+  s+=area(revV,'var(--muted-foreground)',.12);
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${s}</svg>`;
+}
+function divergeBars(dep, wd, opts={}){
+  const W=opts.W||560,H=opts.H||220,pad={l:42,r:14,t:12,b:28};
+  const max=Math.max(...dep,...wd.map(Math.abs))*1.1;
+  const mid=pad.t+(H-pad.t-pad.b)/2;
+  const n=dep.length,gap=(W-pad.l-pad.r)/n,bw=gap*0.5;
+  let s=`<line x1="${pad.l}" y1="${mid}" x2="${W-pad.r}" y2="${mid}" stroke="var(--border)"/>`;
+  let net=0; const netPts=[];
+  for(let i=0;i<n;i++){
+    const x=pad.l+gap*i+(gap-bw)/2;
+    const dh=(dep[i]/max)*(H-pad.t-pad.b)/2; const wh=(Math.abs(wd[i])/max)*(H-pad.t-pad.b)/2;
+    s+=`<rect x="${x.toFixed(1)}" y="${(mid-dh).toFixed(1)}" width="${bw.toFixed(1)}" height="${dh.toFixed(1)}" fill="var(--gain)" rx="1"/>`;
+    s+=`<rect x="${x.toFixed(1)}" y="${mid.toFixed(1)}" width="${bw.toFixed(1)}" height="${wh.toFixed(1)}" fill="var(--loss)" rx="1"/>`;
+    net+=dep[i]+wd[i]; netPts.push([x+bw/2, net]);
+  }
+  const nmax=Math.max(...netPts.map(p=>Math.abs(p[1])))*1.2||1;
+  const npath=netPts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+(mid-(p[1]/nmax)*(H-pad.t-pad.b)/2).toFixed(1)).join(' ');
+  s+=`<path d="${npath}" fill="none" stroke="${STREAM.swap}" stroke-width="2"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${s}</svg>`;
+}
+function composed(areaV, lineV, amax, lmax, opts={}){
+  const W=opts.W||560,H=opts.H||220,pad={l:42,r:38,t:12,b:24};
+  let s=axisY(amax,W,H,pad);
+  const apts=areaV.map((v,i)=>[pad.l+(W-pad.l-pad.r)*(i/(areaV.length-1)),pad.t+(H-pad.t-pad.b)*(1-v/amax)]);
+  const aline=apts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  s+=`<path d="${aline} L${(W-pad.r).toFixed(1)} ${H-pad.b} L${pad.l} ${H-pad.b} Z" fill="${STREAM.swap}" fill-opacity=".12"/><path d="${aline}" fill="none" stroke="${STREAM.swap}" stroke-width="2"/>`;
+  const lpts=lineV.map((v,i)=>[pad.l+(W-pad.l-pad.r)*(i/(lineV.length-1)),pad.t+(H-pad.t-pad.b)*(1-v/lmax)]);
+  s+=`<path d="${lpts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}" fill="none" stroke="${STREAM.srk}" stroke-width="2.2" stroke-dasharray="0"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${s}</svg>`;
+}
+function sparkline(vals,color,W=120,H=34){
+  const min=Math.min(...vals),max=Math.max(...vals),r=(max-min)||1;
+  const p=vals.map((v,i)=>[(i/(vals.length-1))*W,H-((v-min)/r)*(H-4)-2]);
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')}" fill="none" stroke="${color}" stroke-width="1.8"/></svg>`;
+}
+
+/* ---------- mock data ---------- */
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun'];
+const revByStream=[
+  {x:'Jan',swap:420,premium:1200,perf:0,srk:0},
+  {x:'Feb',swap:680,premium:1850,perf:300,srk:120},
+  {x:'Mar',swap:910,premium:2400,perf:520,srk:240},
+  {x:'Apr',swap:1240,premium:3100,perf:780,srk:360},
+  {x:'May',swap:1680,premium:3950,perf:1100,srk:520},
+  {x:'Jun',swap:2120,premium:4800,perf:1500,srk:720},
+];
+const data={
+  tvlSpark:[7.2,7.6,8.0,8.4,9.1,9.8,10.4,11.2,12.0],
+  usersSpark:[120,180,260,340,420,520,640,760,910],
+  revSpark:[1.6,3.2,5.1,7.4,10.3,13.9],
+  mrrSpark:[1.6,2.5,3.3,4.3,5.6,6.9],
+};
+
+/* ---------- roles & nav ---------- */
+const ROLES={
+  'super':{label:'Super-Admin',nav:['overview','users','usage','tvl','revenue','system','killswitch','stake','cfg','audit'],home:'overview'},
+  'ops':{label:'Ops / Internal',nav:['overview','users','usage','tvl','revenue','system','killswitch','stake','cfg','audit'],home:'overview'},
+  'stake':{label:'Stakeholder',nav:['overview','tvl','revenue','stake'],home:'stake'},
+  'client':{label:'Client',nav:['stake'],home:'stake'},
+};
+const NAVMETA={overview:['Overview','overview'],users:['Users','users'],usage:['Usage','usage'],tvl:['TVL / Vault','tvl'],revenue:['Revenue','revenue'],system:['System','system'],killswitch:['Kill-switch','pause'],stake:['Stakeholder','stake'],cfg:['Config','cfg'],audit:['Audit log','audit']};
+let role='super', screen='overview';
+
+function shell(){
+  const r=ROLES[role];
+  const primary=r.nav.filter(n=>!['cfg','audit'].includes(n));
+  const admin=r.nav.filter(n=>['cfg','audit'].includes(n));
+  const navHTML=primary.map(n=>navItem(n)).join('')
+    + (admin.length?`<div class="seclbl">Admin</div>`+admin.map(n=>navItem(n)).join(''):'');
+  document.getElementById('ad').innerHTML=`
+    <div class="opsbar">
+      <button class="adburger" id="adBurger" aria-label="Open menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Menu</button>
+      <span class="adbrand"><svg class="smk" viewBox="0 0 24 24"><defs><linearGradient id="aspk" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F2683C"/><stop offset=".5" stop-color="#F5B62E"/><stop offset="1" stop-color="#4D83FF"/></linearGradient></defs><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" fill="url(#aspk)"/></svg>SparkPoint Ops</span>
+      <span class="envbadge">PROD</span>
+      <span class="fresh hide-sm">${ic('refresh',13)} data fresh 42s ago</span>
+      <span class="grow"></span>
+      <span class="obschip" title="This panel can watch SparkPoint but cannot move a single unit of user funds. The kill-switch shown here proposes a multisig pause — it can never move user funds.">${ic('lock',13)} <span class="hide-sm">Observe-only · read-only over funds</span></span>
+      <span class="roleswitch">View as
+        <button type="button" class="rolebtn" id="roleBtn" aria-haspopup="listbox" aria-expanded="false"><span class="rl">${ROLES[role].label}</span><svg class="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="rolemenu" id="roleMenu" role="listbox">${Object.entries(ROLES).map(([k,v])=>`<div class="roleopt ${k===role?'sel':''}" role="option" data-role="${k}" aria-selected="${k===role}">${v.label}<svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>`).join('')}</div>
+      </span>
+    </div>
+    <div class="adbody">
+      <div class="adnav-scrim" id="adScrim"></div>
+      <nav class="adnav" id="adNav"><button class="navclose" id="adNavClose"><span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted-foreground)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Close</span></button>${navHTML}</nav>
+      <main class="adcontent max" id="adc"></main>
+    </div>`;
+  const roleBtn=document.getElementById('roleBtn'), roleMenu=document.getElementById('roleMenu');
+  const closeRole=()=>{roleMenu.classList.remove('open');roleBtn.setAttribute('aria-expanded','false');};
+  roleBtn.onclick=e=>{e.stopPropagation();const open=roleMenu.classList.toggle('open');roleBtn.setAttribute('aria-expanded',open?'true':'false');
+    if(open){const r=roleBtn.getBoundingClientRect();roleMenu.style.top=(r.bottom+6)+'px';roleMenu.style.right=Math.max(8,(window.innerWidth-r.right))+'px';}};
+  roleMenu.querySelectorAll('.roleopt').forEach(o=>o.onclick=()=>{role=o.dataset.role;screen=ROLES[role].home;closeRole();shell();});
+  if(window.__roleDocClose) document.removeEventListener('click',window.__roleDocClose);
+  window.__roleDocClose=closeRole; document.addEventListener('click',closeRole);
+  const navEl=document.getElementById('adNav'), scrim=document.getElementById('adScrim');
+  const closeNav=()=>{navEl.classList.remove('open');scrim.classList.remove('show');};
+  document.getElementById('adBurger').onclick=()=>{navEl.classList.toggle('open');scrim.classList.toggle('show');};
+  document.getElementById('adNavClose')?.addEventListener('click',closeNav);
+  scrim.onclick=closeNav;
+  document.querySelectorAll('.navitem').forEach(n=>n.onclick=()=>{screen=n.dataset.s;closeNav();render();});
+  render();
+}
+function navItem(n){const m=NAVMETA[n];return `<div class="navitem ${screen===n?'active':''}" data-s="${n}">${ic(m[1])}${m[0]}${n==='revenue'?'<span class="star">★</span>':''}</div>`;}
+
+function kpi(label,val,spark,sparkColor,delta,deltaCls,ai){
+  return `<div class="kpi"><div class="k">${ai?'<span class="aimark"></span>':''}${label}</div><div class="v tnum">${val}</div>
+    <div class="foot">${sparkline(spark,sparkColor)}<span class="delta ${deltaCls}">${delta}</span></div></div>`;
+}
+
+function render(){
+  const c=document.getElementById('adc'); c.scrollTop=0;
+  ({overview:scOverview,users:scUsers,usage:scUsage,tvl:scTvl,revenue:scRevenue,system:scSystem,killswitch:scKill,stake:scStake,cfg:scCfg,audit:scAudit}[screen]||scOverview)(c);
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.toggle('active',n.dataset.s===screen));
+}
+
+/* ---------- screens ---------- */
+function scOverview(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Overview</h1><div class="sub">How we're doing, right now, at a glance.</div></div>
+    <div class="ctrls"><div class="seg"><button>24h</button><button>7d</button><button class="on">30d</button><button>90d</button><button>All</button></div><button class="btn-exp">${ic('ext',13)} Export</button></div></div>
+  <div class="band">
+    ${kpi('TVL','$12.0M',data.tvlSpark,STREAM.swap,'▲ 7.1%','up')}
+    ${kpi('Active users (WAU)','910',data.usersSpark,STREAM.premium,'▲ 19%','up')}
+    ${kpi('Cumulative revenue','$13.9K',data.revSpark,STREAM.srk,'▲ since launch','up')}
+    ${kpi('MRR-equivalent','$6.9K',data.mrrSpark,STREAM.premium,'▲ 23% MoM','up')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard span2"><div class="ch"><span class="ct">Growth at a glance</span><span class="prov">RPC + materialized · 42s ago</span></div>
+      <div class="legend"><span><i style="background:${STREAM.swap}"></i>TVL</span><span><i style="background:${STREAM.premium}"></i>Active users</span></div>
+      ${composed([7.2,8.0,8.8,9.6,10.6,11.4,12.0],[120,260,420,560,710,820,910],13,1000,{H:230})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Revenue snapshot</span><span class="prov">computed · 03:00</span></div>
+      ${legendStreams(true)}
+      ${stackedBars(revByStream,['swap','premium','perf','srk'],9000,{H:200})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Activity — daily executions</span><span class="prov">indexer · 42s ago</span></div>
+      <div class="legend"><span><i style="background:var(--gain)"></i>Confirmed</span><span><i style="background:var(--loss)"></i>Failed</span></div>
+      ${stackedBars(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>({x:d,ok:[42,55,48,61,70,38,44][i],fail:[2,1,3,2,1,0,2][i]})),['ok','fail'],75,{H:200,colors:{ok:'var(--gain)',fail:'var(--loss)'}})}</div>
+  </div>`;
+}
+function legendStreams(withProj){
+  return `<div class="legend">
+    <span><i style="background:${STREAM.swap}"></i>Swap fee</span>
+    <span><i style="background:${STREAM.premium}"></i>Premium</span>
+    ${withProj?`<span><i style="background:${STREAM.perf}"></i>Perf fee</span>
+    <span style="color:${STREAM.srk}"><i class="dash" style="color:${STREAM.srk}"></i>SRK <span class="estbadge">EST</span></span>`:''}
+  </div>`;
+}
+
+function scRevenue(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Revenue ★</h1><div class="sub">Revenue in action — realized solid, projected dashed. We never lead with a projection.</div></div>
+    <div class="ctrls"><div class="seg"><button>Day</button><button>Week</button><button class="on">Month</button></div><button class="btn-exp">${ic('ext',13)} Export (audited)</button></div></div>
+  <div class="infobanner">${ic('info',16)}<span>Realized revenue is solid; <b style="color:var(--foreground)">projected lanes are illustrative, not forecasts of return</b>. The conservative Aave vault is 0-fee; the 10% performance fee (over high-water mark) is active in v1.</span></div>
+  <div class="band">
+    ${kpi('Cumulative revenue','$13.9K',data.revSpark,STREAM.srk,'▲ all-time','up')}
+    ${kpi('Revenue this period','$9.1K',[3,4,5,6.5,8,9.1],STREAM.premium,'▲ 27% MoM','up')}
+    ${kpi('ARR-equivalent','$82.8K',data.mrrSpark,STREAM.premium,'▲ 23%','up',true)}
+    ${kpi('Blended take-rate','11 bps',[18,16,14,13,12,11],STREAM.swap,'▼ modest by design','flat')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard span2"><div class="ch"><span class="ct">Revenue by stream, over time</span><span class="prov">computed · 03:00</span></div>
+      ${legendStreams(true)}
+      ${stackedBars(revByStream,['swap','premium','perf','srk'],9000,{H:250})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Revenue trajectory & forecast</span><span class="estbadge">forecast = naive run-rate</span></div>
+      <div class="legend"><span><i style="background:${STREAM.swap}"></i>Realized</span><span style="color:${STREAM.swap}"><i class="dash" style="color:${STREAM.swap}"></i>Forecast <span class="estbadge">EST</span></span></div>
+      ${trajectory([1.6,3.2,5.1,7.4,10.3,13.9],[13.9,17.5,21.6,26.2,31.4],33,{H:210})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Cumulative revenue</span><span class="prov">computed</span></div>
+      ${dualAreaCumulative()}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Fee vs TVL — blended take-rate</span><span class="prov">computed</span></div>
+      <div class="legend"><span><i style="background:${STREAM.swap}"></i>TVL</span><span style="color:${STREAM.srk}"><i style="background:${STREAM.srk}"></i>Take-rate (bps)</span></div>
+      ${composed([7.2,8.0,8.8,9.6,10.6,12.0],[18,16,14,13,12,11],13,22,{H:210})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Performance-fee high-water mark</span><span class="pill ok" style="font-size:10px">Active · v1</span></div>
+      ${hwmPanel()}</div>
+  </div>
+  <div class="weeornot" style="margin-bottom:16px"><div class="ch" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span class="ct">We only earn when you earn</span><span class="prov" style="color:var(--muted-foreground)">never on your principal, never by taking custody</span></div>
+    <div class="legend"><span><i style="background:${STREAM.premium}"></i>Cumulative user yield</span><span><i style="background:var(--muted-foreground)"></i>Cumulative protocol revenue</span></div>
+    ${dualArea([20,55,110,190,290,410],[1.6,3.2,5.1,7.4,10.3,13.9],430,{H:200})}</div>
+  <div class="panel"><div class="ch" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span class="ct">Revenue history</span><button class="btn-exp">${ic('ext',13)} CSV (audited)</button></div>
+    <table class="adtbl"><thead><tr><th>Month</th><th class="num">Swap</th><th class="num">Premium</th><th class="num">Perf</th><th class="num">SRK (est)</th><th class="num">Total</th><th class="num">Cumulative</th><th class="num">MoM</th></tr></thead>
+    <tbody>${revRows()}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">$7.0K</td><td class="num">$17.3K</td><td class="num">$4.2K</td><td class="num">$2.0K</td><td class="num">$30.5K</td><td class="num">—</td><td class="num">—</td></tr></tfoot></table></div>`;
+}
+function dualAreaCumulative(){
+  return dualArea([1.6,3.2,5.1,7.4,10.3,13.9],[0,0,0,0,0,0],15,{H:210}).replace('fill-opacity="0.12"','fill-opacity="0"').replace(/<path d="M[^"]*Z" fill="var\(--muted-foreground\)"[^>]*>/,'');
+}
+function hwmPanel(){
+  return `<div style="margin-top:6px">
+    <svg viewBox="0 0 540 150" width="100%" height="150">
+      <line x1="42" y1="58" x2="526" y2="58" stroke="${STREAM.srk}" stroke-dasharray="4 3"/>
+      <text x="46" y="52" font-size="9" fill="var(--muted-foreground)">high-water mark</text>
+      <path d="M42 90 L120 84 L200 70 L280 76 L360 60 L440 50 L526 44" fill="none" stroke="${STREAM.premium}" stroke-width="2.2"/>
+      <circle cx="526" cy="44" r="3.5" fill="${STREAM.premium}"/>
+    </svg>
+    <div style="font-size:12px;color:var(--muted-foreground);margin-top:4px">Above HWM → the 10% fee accrues. Below → no fee, recovering. <b style="color:var(--gain)">We only earn when you earn.</b> Inactive at launch.</div></div>`;
+}
+function revRows(){
+  let cum=0; const rows=revByStream.map((d,i)=>{const tot=d.swap+d.premium+d.perf+d.srk;cum+=tot;const mom=i?(((tot-(revByStream[i-1].swap+revByStream[i-1].premium+revByStream[i-1].perf+revByStream[i-1].srk))/(revByStream[i-1].swap+revByStream[i-1].premium+revByStream[i-1].perf+revByStream[i-1].srk))*100).toFixed(0)+'%':'—';
+    return `<tr><td>${d.x}</td><td class="num">$${d.swap}</td><td class="num">$${d.premium}</td><td class="num">$${d.perf}</td><td class="num" style="color:var(--muted-foreground)">$${d.srk}</td><td class="num">$${tot.toLocaleString()}</td><td class="num">$${cum.toLocaleString()}</td><td class="num" style="color:var(--gain)">${mom!=='—'?'▲ '+mom:'—'}</td></tr>`;});
+  return rows.join('');
+}
+
+function scTvl(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>TVL & vault</h1><div class="sub">The money view — onchain truth. Display-only, never a gate.</div></div>
+    <div class="ctrls"><div class="seg"><button>7d</button><button class="on">30d</button><button>90d</button></div></div></div>
+  <div class="band">
+    ${kpi('Total TVL','$12.0M',data.tvlSpark,STREAM.swap,'▲ 7.1%','up')}
+    ${kpi('Net flow (30d)','+$1.4M',[3,4,2,5,6,4,7],STREAM.premium,'▲ inflow','up')}
+    ${kpi('Cap utilization','48%',[30,34,38,41,44,46,48],STREAM.srk,'headroom','flat')}
+    ${kpi('Trailing APY (net)','4.3%',[4.0,4.1,4.05,4.2,4.15,4.3],STREAM.premium,'realized','flat')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard span2"><div class="ch"><span class="ct">Deposits / withdrawals & net flow</span><span class="prov">RPC + subgraph · 42s ago</span></div>
+      <div class="legend"><span><i style="background:var(--gain)"></i>Deposits</span><span><i style="background:var(--loss)"></i>Withdrawals</span><span><i style="background:${STREAM.swap}"></i>Net (cumulative)</span></div>
+      ${divergeBars([220,310,180,420,380,260,510,440],[-90,-120,-60,-140,-110,-200,-90,-130],{H:240})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">TVL over time</span><span class="prov">materialized</span></div>
+      ${composed([7.2,8.0,8.8,9.6,10.6,11.4,12.0],[7.2,8.0,8.8,9.6,10.6,11.4,12.0],13,13,{H:200}).replace(new RegExp(STREAM.srk,'g'),'transparent')}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Withdraw-always drill & kill-switch</span><span class="pill ok"><span class="led"></span>Healthy</span></div>
+      <div class="statusrow"><span class="muted">Last withdraw-always drill</span><span class="pill ok">${ic('check',12)} Passed · 6h ago</span></div>
+      <div class="statusrow"><span class="muted">Kill-switch (pause-only)</span><span class="pill info">${ic('pause',12)} Inactive</span></div>
+      <div class="statusrow"><span class="muted">Controlled by</span><span class="mono" style="font-size:11px">Safe 0x4d…A1 ${ic('ext',11)}</span></div>
+      <div style="font-size:11.5px;color:var(--muted-foreground);margin-top:10px;line-height:1.5">${ic('info',13)} Pause never blocks withdrawals and is a multisig action outside this panel. Status only — no controls.</div></div>
+  </div>`;
+}
+
+function scSystem(c){
+  const tiles=[['Agent service','ok','Up'],['RPC / Alchemy','ok','Healthy'],['Indexer lag','ok','2 blocks'],['Subgraphs','ok','Fresh'],['Tenderly sim','ok','Available'],['Sentry error rate','ok','0.2%'],['Data freshness','amber','12m'],['Kill-switch','info','Inactive']];
+  c.innerHTML=`
+  <div class="pghead"><div><h1>System & ops health</h1><div class="sub">Is the machine healthy? Health surfaces never expose a fund control.</div></div></div>
+  <div class="band" style="grid-template-columns:repeat(4,1fr)">
+    ${tiles.map(t=>`<div class="kpi"><div class="k">${t[0]}</div><div style="margin-top:10px"><span class="pill ${t[1]}"><span class="led"></span>${t[2]}</span></div></div>`).join('')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard"><div class="ch"><span class="ct">Policy-engine decisions</span><span class="prov">audit_logs · 42s ago</span></div>
+      <div class="legend"><span><i style="background:var(--gain)"></i>Approved</span><span><i style="background:var(--caution)"></i>Blocked (cap/slippage)</span></div>
+      ${stackedBars(['Mon','Tue','Wed','Thu','Fri'].map((d,i)=>({x:d,ok:[88,92,80,96,90][i],block:[6,4,9,3,5][i]})),['ok','block'],105,{H:200}).replace(new RegExp(STREAM.swap,'g'),'var(--gain)').replace(new RegExp(STREAM.premium,'g'),'var(--caution)')}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Simulation latency p50 / p95</span><span class="prov">tenderly</span></div>
+      ${composed([0.4,0.5,0.45,0.6,0.5,0.55],[0.9,1.1,1.0,1.3,1.1,1.2],1.5,1.5,{H:200})}</div>
+    <div class="chartcard span2"><div class="ch"><span class="ct">Kill-switch status</span><span class="pill info"><span class="led"></span>Pause-only · inactive</span></div>
+      <div class="statusrow"><span class="muted">Current state</span><span>Deposits live · withdrawals always open</span></div>
+      <div class="statusrow"><span class="muted">Who can pause</span><span class="mono" style="font-size:11px">Multisig 0x4d…A1 ${ic('ext',11)}</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap">
+        <div style="font-size:11.5px;color:var(--muted-foreground);max-width:430px">${ic('info',13)} Pause never blocks withdrawals (N2) and is governed by the multisig. Initiating a pause here only <b style="color:var(--foreground)">proposes</b> it — execution still requires the multisig threshold.</div>
+        <button class="btn-exp" style="border-color:color-mix(in srgb,var(--caution) 40%,transparent);color:var(--caution)" onclick="A.goKill()">${ic('pause',13)} Open kill-switch control</button></div></div>
+  </div>`;
+}
+
+function scKill(c){
+  const paused = window.__paused||false;
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Emergency kill-switch</h1><div class="sub">Multisig-governed, pause-only. It can halt new execution — it can never touch user funds or block withdrawals.</div></div>
+    <span class="pill ${paused?'amber':'info'}"><span class="led"></span>${paused?'Paused · new deposits halted':'Pause-only · inactive'}</span></div>
+  <div class="infobanner" style="background:var(--caution-subtle);border-color:color-mix(in srgb,var(--caution) 26%,transparent)">${ic('info',16)}<span><b style="color:var(--foreground)">This control is non-custodial.</b> It pauses <b style="color:var(--foreground)">new deposits &amp; agent execution only</b>. Withdrawals (N2: withdraw-always) remain open at all times. Executing a pause requires the on-chain multisig threshold — this panel can only propose &amp; sign.</span></div>
+  <div class="grid2">
+    <div class="panel">
+      <div class="ch" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span class="ct">Pause scope</span><span class="prov">what a pause does</span></div>
+      <div class="statusrow"><span><span class="pill amber" style="font-size:10px">PAUSES</span> New deposits</span><span class="muted" style="font-size:12px">halted on-chain</span></div>
+      <div class="statusrow"><span><span class="pill amber" style="font-size:10px">PAUSES</span> Agent / session-key execution</span><span class="muted" style="font-size:12px">no new actions</span></div>
+      <div class="statusrow"><span><span class="pill amber" style="font-size:10px">PAUSES</span> AI swaps &amp; rebalances</span><span class="muted" style="font-size:12px">blocked</span></div>
+      <div class="statusrow"><span><span class="pill ok" style="font-size:10px">STAYS OPEN</span> User withdrawals</span><span style="color:var(--gain);font-size:12px;font-weight:600">always</span></div>
+      <div class="statusrow"><span><span class="pill ok" style="font-size:10px">STAYS OPEN</span> On-chain self-service exit</span><span style="color:var(--gain);font-size:12px;font-weight:600">always</span></div>
+    </div>
+    <div class="panel">
+      <div class="ch" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span class="ct">Governance</span><span class="prov">2-of-3 multisig</span></div>
+      <div class="statusrow"><span class="muted">Threshold</span><span style="font-weight:600">2 of 3 signers</span></div>
+      <div class="statusrow"><span class="muted">Signer A · Eng lead</span><span class="mono" style="font-size:11px">0x4d…A1</span></div>
+      <div class="statusrow"><span class="muted">Signer B · Security</span><span class="mono" style="font-size:11px">0x91…C7</span></div>
+      <div class="statusrow"><span class="muted">Signer C · Founder</span><span class="mono" style="font-size:11px">0x2f…E3</span></div>
+      <div class="statusrow"><span class="muted">Last drill</span><span class="pill ok"><span class="led"></span>Passed · 6h ago</span></div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:16px;border-color:color-mix(in srgb,var(--${paused?'gain':'caution'}) 30%,transparent)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div><div style="font-size:15px;font-weight:600;margin-bottom:3px">${paused?'Resume normal operation':'Initiate emergency pause'}</div>
+        <div style="font-size:12.5px;color:var(--muted-foreground);max-width:520px;line-height:1.5">${paused?'Proposes lifting the pause. New deposits & execution resume once the multisig threshold confirms.':'Proposes halting new deposits & agent execution. You\'ll sign as one signer; it executes only when 2 of 3 confirm. Withdrawals stay open throughout.'}</div></div>
+      <button class="btn-exp" style="font-size:13.5px;padding:11px 18px;${paused?'border-color:color-mix(in srgb,var(--gain) 45%,transparent);color:var(--gain)':'border-color:color-mix(in srgb,var(--caution) 45%,transparent);color:var(--caution);background:var(--caution-subtle)'}" onclick="A.openKillConfirm()">${ic(paused?'check':'pause',14)} ${paused?'Propose resume':'Initiate pause'}</button>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:16px"><div class="ch" style="margin-bottom:10px"><span class="ct">Kill-switch history</span></div>
+    <table class="adtbl"><thead><tr><th>Time</th><th>Action</th><th>Initiated by</th><th>Signers</th><th>Result</th></tr></thead><tbody>
+    ${[['Jun 14 02:11','Drill (resume)','ops_a','2/3','ok'],['Jun 14 02:04','Drill (pause)','ops_a','2/3','ok'],['May 02 18:30','Resume','founder','3/3','ok'],['May 02 18:22','Emergency pause','security','2/3','ok']].map(r=>`<tr><td class="mono">${r[0]}</td><td>${r[1]}</td><td class="mono">${r[2]}</td><td class="num">${r[3]}</td><td><span class="pill ok">${r[4]}</span></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function scStake(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>SparkPoint — stakeholder overview</h1><div class="sub">Where we are. Aggregate, plain-language, presentation-grade.</div></div>
+    <button class="btn-exp">${ic('ext',13)} Export PDF (audited)</button></div>
+  <div class="band">
+    ${kpi('TVL','$12.0M',data.tvlSpark,STREAM.swap,'▲ 18% this month','up')}
+    ${kpi('Total users','3,240',data.usersSpark,STREAM.premium,'▲ 22%','up')}
+    ${kpi('Cumulative revenue','$13.9K',data.revSpark,STREAM.srk,'▲ since launch','up')}
+    ${kpi('Run-rate (ARR-eq.)','$82.8K',data.mrrSpark,STREAM.premium,'▲ 23%','up')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard span2"><div class="ch"><span class="ct">Growth — money & people</span><span class="prov">90d</span></div>
+      <div class="legend"><span><i style="background:${STREAM.swap}"></i>TVL</span><span><i style="background:${STREAM.premium}"></i>Users</span></div>
+      ${composed([7.2,8.0,8.8,9.6,10.6,11.4,12.0],[120,260,420,560,710,820,910],13,1000,{H:230})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Revenue trajectory</span><span class="estbadge">forecast illustrative</span></div>
+      ${trajectory([1.6,3.2,5.1,7.4,10.3,13.9],[13.9,17.5,21.6,26.2,31.4],33,{H:210})}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Net flows</span><span class="prov">real, sticky money</span></div>
+      ${divergeBars([220,310,180,420,380,260],[-90,-120,-60,-140,-110,-200],{H:210})}</div>
+  </div>
+  <div class="weeornot" style="margin-bottom:16px"><div class="ch" style="margin-bottom:6px"><span class="ct">We only earn when you earn</span></div>
+    <div class="legend"><span><i style="background:${STREAM.premium}"></i>User yield</span><span><i style="background:var(--muted-foreground)"></i>Protocol revenue</span></div>
+    ${dualArea([20,55,110,190,290,410],[1.6,3.2,5.1,7.4,10.3,13.9],430,{H:190})}</div>
+  <div class="trustbadges">
+    <div class="tb">${ic('check',16)}<div><div class="tbt">Non-custodial</div><div class="tbs">Read-only over funds — no key custody</div></div></div>
+    <div class="tb">${ic('check',16)}<div><div class="tbt">Withdraw-always</div><div class="tbs">Last drill passed · 6h ago</div></div></div>
+    <div class="tb">${ic('check',16)}<div><div class="tbt">0-fee conservative vault</div><div class="tbs">0 on principal, 0 on yield</div></div></div>
+    <div class="tb">${ic('check',16)}<div><div class="tbt">Kill-switch</div><div class="tbs">Multisig-governed · status shown</div></div></div>
+  </div>`;
+}
+
+function scUsers(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>User analytics</h1><div class="sub">Pseudonymized by default. Full reveal is step-up + audited.</div></div></div>
+  <div class="band">
+    ${kpi('Total users','3,240',data.usersSpark,STREAM.premium,'▲ 22%','up')}
+    ${kpi('DAU / MAU stickiness','38%',[30,32,34,35,37,38],STREAM.swap,'▲ healthy','up')}
+    ${kpi('Onboarding completion','71%',[60,63,66,68,70,71],STREAM.srk,'▲','up')}
+    ${kpi('Activation (deposited)','44%',[36,38,40,42,43,44],STREAM.premium,'▲','up')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard"><div class="ch"><span class="ct">Onboarding funnel</span><span class="prov">computed</span></div>
+      ${funnel()}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Risk-tier distribution</span><span class="prov">mandates</span></div>
+      ${riskDist()}</div>
+  </div>
+  <div class="panel"><div class="ch" style="margin-bottom:10px"><span class="ct">Top users by TVL</span><span class="prov">pseudonymized · reveal = step-up</span></div>
+    <table class="adtbl"><thead><tr><th>#</th><th>User ref</th><th class="num">TVL</th><th class="num">Deposits</th><th>Last active</th><th class="num">Recs accepted</th></tr></thead><tbody>
+    ${[['1','user_8f2a','$340K','12','2h ago','9'],['2','user_3b71','$210K','8','5h ago','6'],['3','user_d94c','$155K','5','1d ago','4'],['4','user_1e08','$98K','11','3h ago','7']].map(r=>`<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[3]}</td><td>${r[4]}</td><td class="num">${r[5]}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+function funnel(){
+  const steps=[['Prospective',3240],['Wallet connected',2680],['Account ready',2310],['Mandated',1980],['Active',1420]];
+  const max=steps[0][1];
+  return `<div style="margin-top:8px">${steps.map((s,i)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${s[0]}</span><span class="tnum" style="color:var(--muted-foreground)">${s[1].toLocaleString()} · ${(s[1]/max*100).toFixed(0)}%</span></div><div style="height:18px;border-radius:5px;background:var(--muted)"><div style="height:100%;border-radius:5px;width:${s[1]/max*100}%;background:${i===3?'var(--caution)':STREAM.swap}"></div></div></div>`).join('')}</div>`;
+}
+function riskDist(){
+  const tiers=[['Risk 1 · Lower','--risk-1',62],['Risk 2 · Low','--risk-2',26],['Risk 3 · Moderate','--risk-3',9],['Risk 4','--risk-4',3]];
+  return `<div style="margin-top:8px">${tiers.map(t=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${t[0]}</span><span class="tnum">${t[2]}%</span></div><div style="height:18px;border-radius:5px;background:var(--muted)"><div style="height:100%;border-radius:5px;width:${t[2]}%;background:var(${t[1]})"></div></div></div>`).join('')}</div>`;
+}
+function scUsage(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Usage & product</h1><div class="sub">How the AI assistant and product mechanics perform.</div></div></div>
+  <div class="band">
+    ${kpi('Chat volume (30d)','18.4K',[12,14,15,16,17,18],STREAM.premium,'▲','up',true)}
+    ${kpi('Recommendation acceptance','58%',[48,52,54,55,57,58],STREAM.swap,'▲','up',true)}
+    ${kpi('Simulation pass rate','97.2%',[95,96,96,97,97,97],STREAM.srk,'▲','up')}
+    ${kpi('Execution success','98.1%',[96,97,97,98,98,98],STREAM.premium,'▲','up')}
+  </div>
+  <div class="grid2">
+    <div class="chartcard"><div class="ch"><span class="ct">Recommendation funnel</span><span class="prov">computed</span></div>${funnel()}</div>
+    <div class="chartcard"><div class="ch"><span class="ct">Simulation pass / fail</span><span class="prov">tenderly</span></div>
+      <div class="legend"><span><i style="background:var(--gain)"></i>Passed</span><span><i style="background:var(--loss)"></i>Will revert / blocked</span></div>
+      ${stackedBars(['Mon','Tue','Wed','Thu','Fri'].map((d,i)=>({x:d,ok:[120,140,110,160,150][i],fail:[4,3,6,2,4][i]})),['ok','fail'],170,{H:200,colors:{ok:'var(--gain)',fail:'var(--loss)'}})}</div>
+  </div>`;
+}
+function scCfg(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Config</h1><div class="sub">Non-custodial operational config. Controls app access, never funds.</div></div></div>
+  <div class="infobanner">${ic('info',16)}<span>These settings control app access and features. <b style="color:var(--foreground)">They cannot move funds or block withdrawals.</b> Every change is confirmed, audited, and routed through the governed path.</span></div>
+  <div class="panel"><div class="ch" style="margin-bottom:10px"><span class="ct">Feature flags</span></div>
+    ${['Chat assistant','AI swap (Aerodrome)','Premium tier','Session-key automation','Performance fee · 10% over HWM'].map((f,i)=>`<div class="statusrow"><span>${f}</span><span class="pill ${i<5?'ok':'info'}"><span class="led"></span>${i<5?'On':'Preview'}</span></div>`).join('')}</div>`;
+}
+function scAudit(c){
+  c.innerHTML=`
+  <div class="pghead"><div><h1>Admin audit log</h1><div class="sub">Append-only record of every admin action. Viewing this is itself logged.</div></div></div>
+  <div class="panel"><table class="adtbl"><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Subject</th><th>Result</th></tr></thead><tbody>
+  ${[['09:41','admin_a','view_dashboard','revenue','ok'],['09:38','admin_a','stepup_pass','—','ok'],['08:12','admin_b','export_csv','revenue_history','ok'],['07:50','admin_c','view_user_detail','user_8f2a','ok'],['02:14','admin_x','login','—','denied']].map(r=>`<tr><td class="mono">${r[0]}</td><td class="mono">${r[1]}</td><td>${r[2]}</td><td class="mono">${r[3]}</td><td><span class="pill ${r[4]==='ok'?'ok':'amber'}">${r[4]}</span></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+shell();
+
+/* Belt-and-suspenders against the "top bar paints, then a later repaint inside the
+   Showcase's clipped/scaled iframe drops it" compositing glitch. The bar is logically
+   present (correct computed styles) but its region goes stale and stops painting. A
+   momentary, invisible opacity toggle forces that region to recomposite — no transform,
+   no sticky, no layout change, no visible flicker. Fire it across the first few seconds
+   (rAF, fonts.ready, window load, and timed nudges) to cover the ~1s vanish window. */
+function repaintTopbar(){
+  const b=document.querySelector('.opsbar'); if(!b) return;
+  b.style.opacity='0.999';
+  requestAnimationFrame(()=>{ b.style.opacity=''; });
+}
+requestAnimationFrame(repaintTopbar);
+[120,400,900,1600,2600].forEach(t=>setTimeout(repaintTopbar,t));
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(repaintTopbar);
+window.addEventListener('load',repaintTopbar);
+
+window.A={
+  goKill(){screen='killswitch';render();},
+  openKillConfirm(){
+    const paused=window.__paused||false;
+    const ov=document.createElement('div'); ov.className='addialog-scrim show';
+    ov.innerHTML=`<div class="addialog">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span class="pill ${paused?'ok':'amber'}" style="font-size:11px"><span class="led"></span>${paused?'Resume':'Emergency pause'}</span></div>
+      <h3 style="font-size:17px;font-weight:600;margin:6px 0 8px">${paused?'Propose resuming operation?':'Propose an emergency pause?'}</h3>
+      <p style="font-size:13px;color:var(--muted-foreground);line-height:1.55;margin:0 0 14px">${paused?'This proposes lifting the pause. New deposits and agent execution resume once <b style="color:var(--foreground)">2 of 3</b> signers confirm on-chain.':'This proposes halting <b style="color:var(--foreground)">new deposits and agent execution</b>. It needs <b style="color:var(--foreground)">2 of 3</b> multisig signers to take effect. <b style="color:var(--gain)">User withdrawals stay open the entire time.</b>'}</p>
+      <div style="background:var(--background);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:14px">
+        <div class="statusrow" style="padding:7px 0"><span class="muted">Your role</span><span style="font-weight:600">${ROLES[role].label} · signer 1 of 2 needed</span></div>
+        <div class="statusrow" style="padding:7px 0;border-bottom:none"><span class="muted">Affects withdrawals?</span><span style="color:var(--gain);font-weight:600">No — never</span></div></div>
+      <label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--foreground);margin-bottom:16px;cursor:pointer"><input type="checkbox" id="killAck" style="margin-top:2px"/> I understand this ${paused?'resume':'pause'} only takes effect after the multisig threshold is met, and that it cannot move user funds or block withdrawals.</label>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-exp" id="killCancel">Cancel</button>
+        <button class="btn-exp" id="killGo" disabled style="opacity:.5;border-color:color-mix(in srgb,var(--caution) 45%,transparent);color:var(--caution)">${ic('pause',13)} Sign &amp; propose</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const ack=ov.querySelector('#killAck'), go=ov.querySelector('#killGo');
+    ack.onchange=()=>{go.disabled=!ack.checked;go.style.opacity=ack.checked?'1':'.5';};
+    ov.querySelector('#killCancel').onclick=()=>ov.remove();
+    ov.onclick=e=>{if(e.target===ov)ov.remove();};
+    go.onclick=()=>{ go.innerHTML='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor"></span> Awaiting multisig (1/2)…'; go.disabled=true;
+      setTimeout(()=>{ window.__paused=!paused; ov.remove(); screen='killswitch'; render(); },1400); };
+  }
+};
+</script>
+</body>
+</html>

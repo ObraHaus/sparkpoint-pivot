@@ -61,6 +61,7 @@
     <span class="sc-sub">Full app — login → logout · desktop 1440 &amp; mobile 390 · click a flow to drive both</span>
     <div style="flex:1"></div>
     <a class="rchip" href="SparkPoint.html" target="_blank">Open app ↗</a>
+    <a class="rchip" href="SparkPoint Admin.html" target="_blank">Admin ↗</a>
     <a class="rchip" href="flows/Onboarding.html" target="_blank">Onboarding ↗</a>
   </div>
   <div class="sc-routes" id="routes"></div>
@@ -94,14 +95,15 @@
 
 <script>
   const ROUTES=[
-    ['Landing','landing','app'],['Connect','connect','app'],['Onboarding','__onb','onb'],
+    ['Landing','__spark','spark'],['Connect','connect','app'],['Onboarding','__onb','onb'],
     ['Chat','chat','app'],['Portfolio','portfolio','app'],['Position','portfolio/vault','app'],
     ['Strategies','strategies','app'],['Vault','vault','app'],['Deposit','vault/deposit','app'],
     ['Withdraw','vault/withdraw','app'],['Confirm + sign','confirm/deposit','app'],
+    ['AI Swap','confirm/swap','app'],['Bridge Base↔Sui','bridge','app'],['Fees','fees','app'],['Premium','premium','app'],['Pay in SRK','premium/pay','app'],
     ['Trust Center','trust','app'],['Prove-it','trust/permissions','app'],['Withdraw-always','trust/exit','app'],
     ['Automation','automation','app'],['Grant key','automation/grant','app'],
     ['Outcomes','outcomes','app'],['Learn','learn','app'],['SRK','srk','app'],
-    ['Notifications','notifications','app'],['Settings','settings','app']
+    ['Notifications','notifications','app'],['Settings','settings','app'],['Admin panel','__admin','admin']
   ];
   const desktop=document.getElementById('desktop'), mobile=document.getElementById('mobile');
   const durl=document.getElementById('durl'), routesEl=document.getElementById('routes');
@@ -145,9 +147,9 @@
   function go(route,kind){
     active=route;
     routesEl.querySelectorAll('.rchip').forEach(c=>c.classList.toggle('active',c.dataset.r===route));
-    const url = kind==='onb' ? 'flows/Onboarding.html' : 'SparkPoint.html#/'+route;
+    const url = kind==='onb' ? 'flows/Onboarding.html' : kind==='spark' ? 'Spark Core Landing.html' : kind==='admin' ? 'SparkPoint Admin.html?v='+Date.now() : 'SparkPoint.html#/'+route;
     navFrame(desktop,url); navFrame(mobile,url);
-    durl.textContent = 'sparkpoint.app/' + (kind==='onb' ? 'onboarding' : route);
+    durl.textContent = 'sparkpoint.app/' + (kind==='onb' ? 'onboarding' : kind==='spark' ? '' : kind==='admin' ? 'ops' : route);
     setFootbar(kind);
   }
   ROUTES.forEach(([label,route,kind],i)=>{

@@ -16,7 +16,9 @@
 .legrow .lg{flex:1;color:var(--muted-foreground);}
 .legrow .lv{font-variant-numeric:tabular-nums;font-weight:600;}
 .pf-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
-@media(max-width:1023px){.pf-hero{grid-template-columns:1fr;}.pf-grid{grid-template-columns:1fr;}}
+.posstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;}
+.posstats .v{overflow-wrap:anywhere;}
+@media(max-width:1023px){.pf-hero{grid-template-columns:1fr;}.pf-grid{grid-template-columns:1fr;}.posstats{grid-template-columns:1fr;gap:12px;}}
 `;
   const st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
 
@@ -93,7 +95,7 @@
       <a class="qlink" style="display:inline-flex;margin-bottom:14px" onclick="SP.navigate('portfolio')">${icon('chevr',15)} Back to portfolio</a>
       <div class="pagehead"><div><h1>Aave Yield Vault</h1><div class="sub">Your position detail</div></div>${riskChip(1)}</div>
       <div class="card card-pad" style="margin-bottom:16px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+        <div class="posstats">
           <div class="stat"><span class="k">Shares</span><span class="v tnum">9,834.5031</span><span class="muted" style="font-size:11px">spvUSDC</span></div>
           <div class="stat"><span class="k">Value</span><span class="v tnum">${money(data.vault.shareValue)}</span></div>
           <div class="stat"><span class="k">Accrued yield</span><span class="v tnum" style="color:var(--gain)">+${money(data.vault.accrued)}</span></div>

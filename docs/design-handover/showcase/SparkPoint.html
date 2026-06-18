@@ -71,11 +71,20 @@ window.SP = (function(){
   /* ---- mock data ---- */
   const data = {
     wallet:'0x12A4…b9Ef',
+    networks:[
+      {id:'base', name:'Base', live:true, color:'#0052FF', wallet:'0x12A4…b9Ef'},
+      {id:'sui', name:'Sui', live:true, color:'#4DA8FF', wallet:'0x9c3f…7a2d'}
+    ],
+    activeNetwork:'base',
+    bridgeAssets:[
+      {sym:'USDC', base:2150.00, sui:480.00},
+      {sym:'ETH', base:0.42, sui:0}
+    ],
     mandate:{tier:1, name:'Lower risk', goal:'Steady USDC yield', timeline:'1–3 years', experience:'Some'},
     netWorth:12184.42,
     pnl:{abs:312.40, pct:2.83, window:'1M'},
     idleUSDC:2150.00,
-    vault:{ name:'Aave Yield Vault', netApy:4.3, supplyApy:4.3, fee:0, shares:9834.5031, shareValue:10034.42,
+    vault:{ name:'Aave Yield Vault', netApy:3.87, supplyApy:4.3, fee:0, perfFee:10, shares:9834.5031, shareValue:10034.42,
       accrued:34.42, risk:1, capUser:25000, capUsed:10034, tvl:8.42, tvlCap:12 },
     allocation:[ {k:'Aave Yield Vault',v:10034.42,risk:1}, {k:'Idle USDC',v:2150.00,risk:0} ],
     series1M:[11700,11760,11690,11820,11880,11810,11950,12010,11980,12080,12040,12120,12184],
@@ -120,8 +129,9 @@ window.SP = (function(){
   const PUBLIC = ['landing','connect','verify'];
   const PRIMARY = [['chat','Chat','chat'],['portfolio','Portfolio','portfolio'],['vault','Vault','vault'],['strategies','Strategies','strategies']];
   const SECONDARY = [
+    ['bridge','Bridge','refresh'],
     ['trust','Trust Center','shieldcheck'],['automation','Automation','zap'],['outcomes','Outcome Log','activity'],
-    ['learn','Learn','book'],['srk','SRK','coins'],['settings','Settings','settings']
+    ['fees','Fees','coins'],['premium','Premium','zap'],['learn','Learn','book'],['srk','SRK','coins'],['settings','Settings','settings']
   ];
   const screens = {};
   let current='landing';
@@ -144,7 +154,7 @@ window.SP = (function(){
     root.innerHTML = shellHTML(b);
     wireShell();
     const host = document.getElementById('main');
-    const sc = screens[b] || screens[current];
+    const sc = screens[current] || screens[b];
     if(sc){ sc.render(host, {route:current}); }
     else { comingSoon(host, b); }
     // entrance
@@ -170,8 +180,8 @@ window.SP = (function(){
         <nav class="primnav">${nav}</nav>
         <div class="grow"></div>
         <div class="rightcluster">
-          <span class="pill" id="badgeNC" title="What SparkPoint can & can't do"><span class="led"></span>Non-custodial</span>
-          <span class="pill" id="netPill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0052FF"/><path d="M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm-1.7 4.5c0-.94.76-1.7 1.7-1.7.6 0 1.13.31 1.44.78h1.06a2.7 2.7 0 1 0 0 1.84h-1.06a1.7 1.7 0 0 1-3.14-.92Z" fill="#fff"/></svg>Base</span>
+          <span class="pill" id="badgeNC" title="What SparkPoint can & can't do"><span class="led"></span>Fully self-custodial</span>
+          <span class="pill" id="netPill" title="Switch network"><span id="netDot" style="width:11px;height:11px;border-radius:50%;background:#0052FF;flex:none"></span><span id="netName">Base</span>${icon('chevd',12)}</span>
           <span class="pill" id="walletPill"><span class="mono">${data.wallet}</span>${icon('chevd',12)}</span>
           <button class="iconbtn only-desktop" id="cmdkBtn" title="Command (⌘K)">${icon('command',18)}</button>
           <button class="iconbtn" id="bellBtn" title="Notifications">${icon('bell',18)}${unread?`<span class="count">${unread}</span>`:''}</button>
@@ -181,7 +191,7 @@ window.SP = (function(){
       <div class="disclaimer">
         <span class="di">${icon('info',15)}</span>
         <span class="txt"><b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice · capital at risk · SparkPoint can never move your funds.</span>
-        <span class="links"><a id="proveLink">Prove it</a><a data-nav="trust/exit">Exit anytime</a></span>
+        <span class="links"><a id="proveLink">Prove it</a><a data-nav="fees">How we make money</a><a data-nav="trust/exit">Exit anytime</a></span>
       </div>
       <div class="layout">
         <aside class="railnav">${rail}</aside>
@@ -196,6 +206,8 @@ window.SP = (function(){
     document.getElementById('badgeNC')?.addEventListener('click',openProveIt);
     document.getElementById('proveLink')?.addEventListener('click',openProveIt);
     document.getElementById('walletPill')?.addEventListener('click',openWalletMenu);
+    document.getElementById('netPill')?.addEventListener('click',openNetworkMenu);
+    syncNetwork();
     document.getElementById('bellBtn')?.addEventListener('click',openNotifications);
     document.getElementById('avatarBtn')?.addEventListener('click',openAvatarMenu);
     document.getElementById('cmdkBtn')?.addEventListener('click',openCmdk);
@@ -278,6 +290,24 @@ window.SP = (function(){
     m.querySelectorAll('.menu-item').forEach(b=>b.onclick=()=>{dismiss(m,s);items[+b.dataset.i][2]();});
   }
 
+  function syncNetwork(){
+    const n = data.networks.find(x=>x.id===data.activeNetwork)||data.networks[0];
+    const dot=document.getElementById('netDot'), name=document.getElementById('netName'), wp=document.querySelector('#walletPill .mono');
+    if(dot) dot.style.background=n.color;
+    if(name) name.textContent=n.name;
+    if(wp) wp.textContent=n.wallet;
+  }
+  function openNetworkMenu(){
+    const items=data.networks.map(n=>({n}));
+    menuPopover('netPill',
+      `<div style="padding:9px 12px 7px;font-size:11px;color:var(--muted-foreground);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Network</div>`+
+      data.networks.map((n,i)=>`<button class="menu-item" data-i="${i}"><span style="width:12px;height:12px;border-radius:50%;background:${n.color};flex:none"></span>${n.name}${n.id===data.activeNetwork?`<span style="margin-left:auto;color:var(--primary)">${icon('check',15)}</span>`:`<span style="margin-left:auto;font-size:10px;color:var(--gain)">live</span>`}</button>`).join('')+
+      `<div style="padding:8px 12px 4px;border-top:1px solid var(--border-soft);margin-top:4px"><button class="menu-item" data-bridge style="color:var(--primary)">${icon('refresh',16)}Bridge assets between networks</button></div>`,
+      items.map(it=>[null,null,()=>{ data.activeNetwork=it.n.id; syncNetwork(); toast('Switched to '+it.n.name); }]));
+    // wire bridge shortcut inside the popover
+    const bz=document.querySelector('[data-bridge]'); if(bz) bz.onclick=()=>{closeAllOverlays();navigate('bridge');};
+  }
+
   function openNotifications(){
     const body = data.notifications.map(n=>`
       <div class="proveitem" style="${n.unread?'':'opacity:.7'}">
@@ -301,6 +331,7 @@ window.SP = (function(){
   function openCmdk(){
     const acts=[['Withdraw now','door','trust/exit'],['Prove it — permissions','shieldcheck','trust/permissions'],
       ['Go to Chat','chat','chat'],['Open Portfolio','portfolio','portfolio'],['Open Vault','vault','vault'],
+      ['Swap ETH → USDC','activity','confirm/swap'],['Bridge Base ↔ Sui','refresh','bridge'],['Fees / how we make money','coins','fees'],['Premium','zap','premium'],
       ['Strategies','strategies','strategies'],['Trust Center','shieldcheck','trust'],['Revoke automation','zap','automation'],
       ['Outcome Log','activity','outcomes'],['Settings','settings','settings']];
     const {d,close}=openDialog(`<div style="padding:0">
@@ -365,6 +396,9 @@ window.SP = (function(){
 <script src="screens/confirm.js"></script>
 <script src="screens/trust.js"></script>
 <script src="screens/support.js"></script>
+<script src="screens/fees.js"></script>
+<script src="screens/premium.js"></script>
+<script src="screens/bridge.js"></script>
 <script>SP.boot();</script>
 </body>
 </html>

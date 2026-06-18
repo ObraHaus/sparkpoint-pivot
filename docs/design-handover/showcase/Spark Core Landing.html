@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SparkPoint — Spark Core</title>
+<link rel="stylesheet" href="tokens.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<style>
+  html,body{margin:0;}
+  body{background:#04070E;color:var(--foreground);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  .mono{font-family:var(--font-mono);}
+  .tnum{font-variant-numeric:tabular-nums slashed-zero;}
+
+  /* persistent core canvas */
+  #core{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;z-index:0;display:block;}
+  .vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 40%,transparent 40%,rgba(4,7,14,.5) 100%);}
+
+  /* fixed chrome */
+  .nav{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:14px;
+    padding:18px 30px;backdrop-filter:blur(6px);}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;}
+  .brand .smk{width:24px;height:24px;}
+  .nav .grow{flex:1;}
+  .nav-badge{font-size:11.5px;font-weight:600;color:var(--brand-cyan);border:1px solid color-mix(in srgb,var(--brand-cyan) 30%,transparent);
+    background:color-mix(in srgb,var(--brand-cyan) 11%,transparent);border-radius:999px;padding:6px 12px;display:flex;align-items:center;gap:7px;}
+  .nav-badge .led{width:6px;height:6px;border-radius:50%;background:#34CF7A;}
+  .navbtn{font-family:inherit;font-size:13.5px;font-weight:600;border-radius:9px;padding:9px 16px;border:none;cursor:pointer;
+    background:var(--brand-blue);color:#fff;}
+  .navbtn .full{display:inline;} .navbtn .ico{display:none;}
+
+  /* flavor switcher */
+  .flavors{position:fixed;top:72px;right:30px;z-index:20;display:flex;gap:4px;background:rgba(12,18,30,.7);
+    backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:11px;padding:4px;}
+  .flavors .fl{font-family:inherit;font-size:11.5px;font-weight:600;padding:7px 12px;border-radius:8px;border:none;
+    background:transparent;color:var(--muted-foreground);cursor:pointer;transition:.15s;}
+  .flavors .fl.on{background:var(--spark-subtle);color:var(--brand-cyan);}
+  .flavors .fl:hover{color:var(--foreground);}
+  .flhint{position:fixed;top:112px;right:30px;z-index:20;font-size:10.5px;color:var(--muted-foreground);text-align:right;width:220px;opacity:.8;}
+
+  /* progress dots */
+  .dots{position:fixed;top:50%;right:26px;transform:translateY(-50%);z-index:20;display:flex;flex-direction:column;gap:11px;}
+  .dots button{width:9px;height:9px;border-radius:50%;border:none;background:var(--border);cursor:pointer;padding:0;transition:.2s;}
+  .dots button.on{background:var(--brand-cyan);transform:scale(1.35);box-shadow:0 0 0 4px var(--spark-subtle);}
+  @media(max-width:860px){.dots,.flhint{display:none;}.flavors{top:auto;bottom:18px;right:50%;transform:translateX(50%);} }
+  /* slim mobile chrome */
+  @media(max-width:680px){
+    .nav{padding:12px 16px;gap:10px;}
+    .brand{font-size:15px;} .brand .smk{width:21px;height:21px;}
+    .nav-badge{font-size:0;padding:7px;gap:0;border-radius:50%;}
+    .nav-badge .led{width:7px;height:7px;}
+    .navbtn{padding:9px 11px;} .navbtn .full{display:none;} .navbtn .ico{display:inline-flex;}
+    .panel::before{inset:-20px -22px;}
+  }
+
+  /* scroll sections */
+  main{position:relative;z-index:10;}
+  .sec{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:90px 30px;}
+  .secinner{width:100%;max-width:1180px;display:flex;align-items:center;justify-content:space-between;gap:56px;}
+  .sec.right .secinner{flex-direction:row-reverse;}
+  .sec.center{text-align:center;}
+  .sec.center .secinner{justify-content:center;}
+  .panel{max-width:460px;flex:0 1 460px;position:relative;z-index:2;}
+  /* readability scrim so hero text stays legible over the animated core */
+  .panel::before{content:"";position:absolute;inset:-28px -36px;z-index:-1;border-radius:32px;
+    background:radial-gradient(120% 120% at 30% 40%, color-mix(in srgb,var(--background) 78%,transparent) 0%, color-mix(in srgb,var(--background) 55%,transparent) 48%, transparent 78%);
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);pointer-events:none;}
+  .sec.center .panel::before{inset:-30px -48px;background:radial-gradient(120% 120% at 50% 45%, color-mix(in srgb,var(--background) 80%,transparent) 0%, color-mix(in srgb,var(--background) 52%,transparent) 50%, transparent 80%);}
+  .sec.center .panel{max-width:640px;flex:0 1 640px;}
+  .gfx{flex:0 0 384px;width:384px;height:380px;position:relative;
+    opacity:0;transform:translateY(26px) scale(.97);transition:opacity .9s .15s,transform .9s .15s;}
+  .in .gfx{opacity:1;transform:none;}
+  @media(max-width:980px){.gfx{display:none;}.secinner{justify-content:center;}}
+
+  /* ---- chapter graphics ---- */
+  .gcard{position:absolute;background:rgba(12,18,30,.72);border:1px solid var(--border);border-radius:16px;
+    backdrop-filter:blur(10px);box-shadow:0 24px 60px -24px rgba(0,0,0,.7);}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+  .float{animation:floaty 5.5s ease-in-out infinite;}
+  .float.d2{animation-duration:6.8s;animation-delay:-2.4s;}
+  .gc-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--foreground);}
+  .gc-time{margin-left:auto;font-size:10.5px;color:var(--muted-foreground);font-weight:500;}
+  .gdot{width:8px;height:8px;border-radius:50%;background:var(--brand-blue);animation:gpulse 1.7s ease-in-out infinite;flex:none;}
+  @keyframes gpulse{0%,100%{box-shadow:0 0 0 0 rgba(77,131,255,.45);opacity:.7}50%{box-shadow:0 0 0 6px rgba(77,131,255,0);opacity:1}}
+  .gc-text{font-size:12.5px;line-height:1.5;color:var(--muted-foreground);margin-top:9px;}
+  .gc-text b{color:var(--foreground);}
+  .gc-badge{display:inline-block;font-size:10px;font-weight:600;color:var(--brand-blue);background:var(--spark-subtle);
+    border:1px solid color-mix(in srgb,var(--brand-blue) 30%,transparent);border-radius:999px;padding:3px 9px;margin-bottom:11px;}
+  .gc-rec{font-size:13.5px;font-weight:600;margin-bottom:13px;}
+  .gc-rec b{color:var(--brand-cyan);}
+  .gc-apyrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;}
+  .gc-apy{font-size:26px;font-weight:600;line-height:1;letter-spacing:-.01em;}
+  .gc-apylbl{font-size:10.5px;color:var(--muted-foreground);margin-top:5px;}
+  .sparkline{width:128px;height:40px;flex:none;}
+  .sl-area{fill:rgba(56,198,244,.13);stroke:none;}
+  .sl-line,.sig,.ac-line{fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .sl-line{stroke:var(--brand-cyan);stroke-width:2;stroke-dasharray:300;animation:draw 5s ease-in-out infinite alternate;}
+  @keyframes draw{0%{stroke-dashoffset:300}100%{stroke-dashoffset:0}}
+  .gchecklist{display:flex;flex-direction:column;gap:12px;margin:6px 0 15px;}
+  .grow{display:flex;align-items:center;gap:11px;font-size:12.5px;color:var(--foreground);}
+  .gcheck{width:21px;height:21px;border-radius:7px;border:2px solid var(--border);display:grid;place-items:center;flex:none;animation:checkpop 6s infinite;}
+  .gcheck svg{stroke:#06121F;opacity:0;transform:scale(.4);animation:checkmark 6s infinite;}
+  @keyframes checkpop{0%,10%{border-color:var(--border);background:transparent}20%,100%{border-color:var(--gain);background:var(--gain)}}
+  @keyframes checkmark{0%,13%{opacity:0;transform:scale(.4)}23%,100%{opacity:1;transform:scale(1)}}
+  .grow:nth-child(2) .gcheck,.grow:nth-child(2) .gcheck svg{animation-delay:.5s}
+  .grow:nth-child(3) .gcheck,.grow:nth-child(3) .gcheck svg{animation-delay:1s}
+  .grow:nth-child(4) .gcheck,.grow:nth-child(4) .gcheck svg{animation-delay:1.5s}
+  .gpassed{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--gain);
+    background:var(--gain-subtle);border:1px solid color-mix(in srgb,var(--gain) 26%,transparent);border-radius:9px;padding:9px 11px;
+    animation:gfade 6s infinite;}
+  @keyframes gfade{0%,34%{opacity:0;transform:translateY(4px)}44%,100%{opacity:1;transform:none}}
+  .gc-sub{font-size:12px;color:var(--muted-foreground);margin:6px 0 13px;}
+  .sigpad{width:100%;height:62px;background:rgba(7,11,20,.55);border:1px dashed var(--border);border-radius:10px;margin-bottom:14px;}
+  .sig{stroke:var(--brand-cyan);stroke-width:2.4;stroke-dasharray:340;animation:draw 4.5s ease-in-out infinite alternate;}
+  .gc-signbtn{width:100%;font-size:13px;font-weight:600;color:#fff;background:var(--brand-blue);border:none;
+    border-radius:10px;padding:11px;display:flex;align-items:center;justify-content:center;gap:8px;animation:btnpulse 3s ease-in-out infinite;}
+  @keyframes btnpulse{0%,100%{box-shadow:0 0 0 0 rgba(77,131,255,0)}50%{box-shadow:0 0 0 5px rgba(77,131,255,.16)}}
+  .areachart{width:100%;height:92px;margin:12px 0;}
+  .ac-area{fill:rgba(77,131,255,.15);}
+  .ac-line{stroke:var(--brand-blue);stroke-width:2.4;stroke-dasharray:330;animation:draw 5.5s ease-in-out infinite alternate;}
+  .ac-dot{fill:var(--brand-cyan);animation:dotpulse 1.7s ease-in-out infinite;}
+  @keyframes dotpulse{0%,100%{opacity:.5}50%{opacity:1}}
+  .gc-foot{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted-foreground);}
+  .kicker{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--brand-cyan);margin-bottom:16px;
+    opacity:0;transform:translateY(16px);transition:opacity .7s,transform .7s;}
+  .htitle{font-size:clamp(30px,4.4vw,52px);line-height:1.06;font-weight:600;letter-spacing:-.025em;margin:0 0 18px;
+    opacity:0;transform:translateY(22px);transition:opacity .8s .08s,transform .8s .08s;}
+  .hbody{font-size:clamp(15px,1.3vw,17px);line-height:1.6;color:var(--muted-foreground);margin:0 0 22px;
+    opacity:0;transform:translateY(22px);transition:opacity .8s .16s,transform .8s .16s;}
+  .hbody b{color:var(--foreground);font-weight:600;}
+  .hctas,.extra{opacity:0;transform:translateY(22px);transition:opacity .8s .24s,transform .8s .24s;}
+  .in .kicker,.in .htitle,.in .hbody,.in .hctas,.in .extra{opacity:1;transform:none;}
+  .btn{font-family:inherit;font-weight:600;border-radius:11px;border:1px solid transparent;cursor:pointer;font-size:15px;
+    padding:14px 24px;display:inline-flex;align-items:center;gap:9px;}
+  .btn-primary{background:var(--brand-blue);color:#fff;}
+  .btn-primary:hover{background:var(--primary-hover);}
+  .btn-outline{background:rgba(255,255,255,.04);color:var(--foreground);border-color:var(--border);}
+  .hctas{display:flex;gap:12px;flex-wrap:wrap;}
+  .sec.center .hctas{justify-content:center;}
+
+  .aibadge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--brand-blue);
+    background:var(--spark-subtle);border:1px solid color-mix(in srgb,var(--brand-blue) 30%,transparent);border-radius:999px;padding:6px 12px;margin-bottom:16px;}
+
+  /* guardrail exploded labels */
+  .glabels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .glabel{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:500;background:rgba(12,18,30,.6);
+    border:1px solid var(--border);border-radius:10px;padding:11px 13px;backdrop-filter:blur(4px);}
+  .glabel .gi{color:var(--brand-cyan);flex:none;}
+
+  /* vault stat */
+  .vstats{display:flex;gap:26px;flex-wrap:wrap;margin-top:4px;}
+  .vstat .vn{font-size:30px;font-weight:600;letter-spacing:-.01em;}
+  .vstat .vl{font-size:12px;color:var(--muted-foreground);margin-top:3px;}
+
+  /* proof can/cant */
+  .cc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px auto 26px;max-width:560px;text-align:left;}
+  .cc .col{border:1px solid var(--border);border-radius:12px;padding:16px;background:rgba(12,18,30,.5);backdrop-filter:blur(4px);}
+  .cc .col.can{border-color:color-mix(in srgb,var(--gain) 30%,transparent);}
+  .cc .col.cant{border-color:color-mix(in srgb,var(--loss) 30%,transparent);}
+  .cc h4{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;}
+  .cc .can h4{color:var(--gain);}.cc .cant h4{color:var(--loss);}
+  .cc ul{margin:0;padding:0;list-style:none;}
+  .cc li{display:flex;gap:8px;font-size:13px;line-height:1.8;color:var(--foreground);}
+  .cc li svg{flex:none;margin-top:5px;}
+
+  .scrollhint{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted-foreground);
+    display:flex;flex-direction:column;align-items:center;gap:8px;letter-spacing:.08em;text-transform:uppercase;}
+  .scrollhint .mouse{width:22px;height:34px;border:1.5px solid var(--muted-foreground);border-radius:12px;position:relative;}
+  .scrollhint .mouse::after{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:3px;height:6px;border-radius:2px;background:var(--brand-cyan);animation:wheel 1.5s infinite;}
+  @keyframes wheel{0%{opacity:0;top:6px;}40%{opacity:1;}100%{opacity:0;top:16px;}}
+
+  .footnote{text-align:center;font-size:12px;color:var(--muted-foreground);padding:20px;max-width:600px;margin:0 auto;line-height:1.6;}
+
+  /* intro overlay */
+  #intro{position:fixed;inset:0;z-index:50;background:#04070E;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;transition:opacity .8s;}
+  #intro .iword{font-size:clamp(28px,5vw,56px);font-weight:600;letter-spacing:-.02em;opacity:1;}
+  #intro.hide{opacity:0;pointer-events:none;}
+
+  @media(prefers-reduced-motion:reduce){
+    .kicker,.htitle,.hbody,.hctas,.extra,.gfx{opacity:1!important;transform:none!important;transition:none;}
+    .scrollhint .mouse::after{animation:none;}
+    .float,.sl-line,.sig,.ac-line,.gcheck,.gcheck svg,.gpassed,.gdot,.gc-signbtn,.ac-dot{animation:none!important;}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="core"></canvas>
+<div class="vignette"></div>
+
+<!-- intro -->
+<div id="intro"><div class="iword" id="iword">SparkPoint</div></div>
+
+<!-- chrome -->
+<nav class="nav">
+  <span class="brand"><svg class="smk" viewBox="0 0 24 24"><defs><linearGradient id="nv" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F2683C"/><stop offset=".5" stop-color="#F5B62E"/><stop offset="1" stop-color="#4D83FF"/></linearGradient></defs><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" fill="url(#nv)"/></svg>SparkPoint</span>
+  <span class="grow"></span>
+  <span class="nav-badge" title="Fully self-custodial"><span class="led"></span>Fully self-custodial</span>
+  <button class="navbtn"><span class="full">Connect wallet</span><span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12"/><circle cx="17" cy="13" r="1.3"/></svg></span></button>
+</nav>
+
+<div class="flavors" id="flavors">
+  <button class="fl on" data-fl="ember">Ember</button>
+  <button class="fl" data-fl="plasma">Plasma</button>
+  <button class="fl" data-fl="constellation">Constellation</button>
+</div>
+<div class="flhint">Core flavor — three takes on the same living centerpiece. Pick one.</div>
+
+<div class="dots" id="dots"></div>
+
+<main id="main">
+  <!-- 0 HERO -->
+  <section class="sec center" data-sec="0">
+    <div class="secinner"><div class="panel">
+      <div class="kicker">Fully self-custodial · AI-native onchain hedge fund</div>
+      <h1 class="htitle">Meet the spark<br>that watches your capital.</h1>
+      <p class="hbody">Sparky reads your goals, suggests every move, and proves every result on-chain — and <b>can’t hold, move, or lose your money.</b></p>
+      <div class="hctas"><button class="btn btn-primary">Connect wallet</button><button class="btn btn-outline">See how it works</button></div>
+    </div></div>
+    <div class="scrollhint"><div class="mouse"></div>Scroll</div>
+  </section>
+
+  <!-- 1 PROPOSES -->
+  <section class="sec left" data-sec="1">
+    <div class="secinner">
+      <div class="panel">
+        <span class="aibadge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z"/></svg>AI suggestion — you approve &amp; sign</span>
+        <div class="kicker">01 — Sparky proposes</div>
+        <h2 class="htitle">An AI that reads the whole market for you.</h2>
+        <p class="hbody">It watches Aave rates, your wallet, and your plan — then suggests the next move in plain language, with its reasoning and its sources. <b>Always a suggestion, never an order.</b></p>
+      </div>
+      <div class="gfx">
+        <div class="gcard float" style="top:0;left:8px;right:30px;padding:13px 15px;">
+          <div class="gc-head"><span class="gdot"></span>Sparky<span class="gc-time">now</span></div>
+          <div class="gc-text">Aave USDC just moved to <b>4.3%</b>. Want to put your idle USDC to work?</div>
+        </div>
+        <div class="gcard float d2" style="bottom:0;left:30px;right:8px;padding:14px 15px;">
+          <span class="gc-badge">AI suggestion — you approve &amp; sign</span>
+          <div class="gc-rec">Move idle USDC → <b>Aave Vault</b></div>
+          <div class="gc-apyrow">
+            <div><div class="gc-apy tnum">4.3%</div><div class="gc-apylbl">net APY · estimate</div></div>
+            <svg class="sparkline" viewBox="0 0 128 40" preserveAspectRatio="none">
+              <path class="sl-area" d="M0 30 L18 26 L36 28 L54 18 L72 22 L90 12 L108 16 L128 8 L128 40 L0 40 Z"/>
+              <path class="sl-line" d="M0 30 L18 26 L36 28 L54 18 L72 22 L90 12 L108 16 L128 8"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 GUARDRAILS -->
+  <section class="sec right" data-sec="2">
+    <div class="secinner">
+      <div class="panel">
+        <div class="kicker">02 — Guardrails check</div>
+        <h2 class="htitle">Every move is checked before you sign.</h2>
+        <p class="hbody">Deterministic policy runs on-chain on each suggestion. If a move breaks a rule, it never reaches you.</p>
+      </div>
+      <div class="gfx">
+        <div class="gcard" style="inset:8px 6px;padding:18px;">
+          <div class="gc-head" style="margin-bottom:16px"><span class="gdot" style="background:var(--brand-cyan)"></span>Guardrail check</div>
+          <div class="gchecklist">
+            <div class="grow"><span class="gcheck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg></span>Within your cap · $25,000</div>
+            <div class="grow"><span class="gcheck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg></span>Allowlisted protocol · Aave v3</div>
+            <div class="grow"><span class="gcheck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg></span>Slippage under 0.5%</div>
+            <div class="grow"><span class="gcheck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg></span>Simulated on-chain</div>
+          </div>
+          <div class="gpassed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>Simulation passed — no risks</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 SIGN -->
+  <section class="sec left" data-sec="3">
+    <div class="secinner">
+      <div class="panel">
+        <div class="kicker">03 — You sign</div>
+        <h2 class="htitle">Nothing moves without your signature.</h2>
+        <p class="hbody">Sparky can direct strategy, but only you can authorize a transaction. <b>Your keys, your funds — always.</b> Withdraw anytime, even if we’re offline.</p>
+      </div>
+      <div class="gfx">
+        <div class="gcard float" style="inset:20px;padding:18px;">
+          <div class="gc-head"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--brand-cyan)" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-1 1L20 4l-2-2"/></svg>Sign transaction</div>
+          <div class="gc-sub">Deposit 2,150 USDC → Aave Vault</div>
+          <svg class="sigpad" viewBox="0 0 200 62" preserveAspectRatio="none"><path class="sig" d="M14 42 C30 14 40 56 56 34 S86 10 104 38 130 54 150 28 176 16 188 38"/></svg>
+          <button class="gc-signbtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Sign with wallet</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 VAULT -->
+  <section class="sec right" data-sec="4">
+    <div class="secinner">
+      <div class="panel">
+        <div class="kicker">04 — The Aave Yield Vault</div>
+        <h2 class="htitle">Conservative yield, capital-preservation-first.</h2>
+        <p class="hbody">One audited vault on Base. Honest, net-of-fees numbers — never a projection.</p>
+        <div class="vstats extra">
+          <div class="vstat"><div class="vn tnum" style="color:var(--brand-cyan)">4.3%</div><div class="vl">net APY · estimate</div></div>
+          <div class="vstat"><div class="vn">Risk 1<span style="color:var(--muted-foreground);font-size:18px">/5</span></div><div class="vl">Lower · capital-preservation</div></div>
+          <div class="vstat"><div class="vn tnum">0%</div><div class="vl">SparkPoint fee</div></div>
+        </div>
+      </div>
+      <div class="gfx">
+        <div class="gcard float" style="inset:16px;padding:18px;">
+          <div class="gc-head">Aave Yield Vault<span class="gc-time">Base</span></div>
+          <div class="gc-apy tnum" style="margin-top:10px">4.3%<span style="font-size:13px;color:var(--muted-foreground);font-weight:500"> net APY</span></div>
+          <svg class="areachart" viewBox="0 0 240 92" preserveAspectRatio="none">
+            <path class="ac-area" d="M0 72 L30 64 L60 67 L90 50 L120 54 L150 38 L180 42 L210 26 L232 19 L232 92 L0 92 Z"/>
+            <path class="ac-line" d="M0 72 L30 64 L60 67 L90 50 L120 54 L150 38 L180 42 L210 26 L232 19"/>
+            <circle class="ac-dot" cx="232" cy="19" r="4"/>
+          </svg>
+          <div class="gc-foot"><span class="gdot" style="background:var(--gain);animation:none"></span>+$2.04 today · accruing</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 PROOF + CTA -->
+  <section class="sec center" data-sec="5">
+    <div class="secinner"><div class="panel">
+      <div class="kicker">05 — Fully self-custodial</div>
+      <h2 class="htitle">We can’t touch your money.<br>Here’s the proof.</h2>
+      <div class="cc extra">
+        <div class="col can"><h4>SparkPoint can</h4><ul>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>Direct strategy &amp; suggest moves</li>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>Simulate before you sign</li>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>Pause new deposits</li></ul></div>
+        <div class="col cant"><h4>SparkPoint can’t</h4><ul>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--loss)" stroke-width="2.5"><path d="M6 6l12 12M18 6L6 18"/></svg>Move or withhold your funds</li>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--loss)" stroke-width="2.5"><path d="M6 6l12 12M18 6L6 18"/></svg>Withdraw to itself</li>
+          <li><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--loss)" stroke-width="2.5"><path d="M6 6l12 12M18 6L6 18"/></svg>Stop you withdrawing — ever</li></ul></div>
+      </div>
+      <div class="hctas extra" style="justify-content:center"><button class="btn btn-primary">Connect wallet</button><button class="btn btn-outline">Read the thesis</button></div>
+      <div class="footnote" style="margin-top:24px">Mockup for design review · single Aave Yield Vault · Base only · beta-gated. Not financial advice; capital at risk.</div>
+    </div></div>
+  </section>
+</main>
+
+<script>
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SECTIONS = 6;
+const cv = document.getElementById('core'), c = cv.getContext('2d');
+let W=0,H=0,DPR=Math.min(devicePixelRatio||1,2);
+function resize(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;c.setTransform(DPR,0,0,DPR,0,0);}
+resize(); addEventListener('resize',resize);
+
+// ---- palette ----
+const COLS=['#4D83FF','#5EA0FF','#38C6F4','#7FD8F7','#F5B62E','#F2683C'];
+function colFor(i){ // mostly blue/cyan, sparse gold/coral
+  const r=(i*47)%100;
+  if(r<34) return COLS[0]; if(r<55) return COLS[1]; if(r<76) return COLS[2];
+  if(r<88) return COLS[3]; if(r<95) return COLS[4]; return COLS[5];
+}
+
+// ---- particles ----
+const N = innerWidth<860 ? 170 : 320;
+const P=[];
+// star (4-point spark) outline verts
+const starV=[];
+for(let k=0;k<8;k++){const ang=-Math.PI/2+k*Math.PI/4;const rad=(k%2===0)?1:0.34;starV.push([Math.cos(ang)*rad,Math.sin(ang)*rad]);}
+function starPoint(t,seed){
+  const f=t*8, seg=Math.floor(f)%8, lf=f-Math.floor(f);
+  const a=starV[seg], b=starV[(seg+1)%8];
+  const x=a[0]+(b[0]-a[0])*lf, y=a[1]+(b[1]-a[1])*lf;
+  const k=0.5+seed*0.5; return [x*k,y*k];
+}
+const cols=Math.ceil(Math.sqrt(N));
+for(let i=0;i<N;i++){
+  P.push({
+    x:(Math.random()-.5)*W, y:(Math.random()-.5)*H,
+    seed:Math.random(), ang:Math.random()*Math.PI*2,
+    discR:Math.sqrt(Math.random()), ring:i%4,
+    gx:(i%cols)/(cols-1)-.5, gy:(Math.floor(i/cols))/(cols-1)-.5,
+    starT:(i/N), col:colFor(i), size:0.6+Math.random()*1.6,
+    px:0,py:0
+  });
+}
+
+// ---- minimalist animated background ----
+const bgDust=Array.from({length:54},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.2+.3,v:Math.random()*.00018+.00004,a:Math.random()*.22+.06}));
+const BLOOMS=[[0.15,0.20,'#22407a'],[0.85,0.32,'#1a4a5e'],[0.72,0.84,'#34305e']];
+function drawBackground(){
+  // faint drifting corner blooms
+  for(let i=0;i<BLOOMS.length;i++){const b=BLOOMS[i];
+    const bx=W*(b[0]+Math.sin(t*0.2+i*1.7)*0.022), by=H*(b[1]+Math.cos(t*0.16+i*1.3)*0.03);
+    const g=c.createRadialGradient(bx,by,0,bx,by,Math.max(W,H)*0.42);
+    g.addColorStop(0,b[2]);g.addColorStop(1,'rgba(0,0,0,0)');
+    c.globalAlpha=0.09;c.fillStyle=g;c.fillRect(0,0,W,H);}
+  c.globalAlpha=1;
+  // drifting dot grid
+  const gap=50, ox=((t*7)%gap)-mx*16, oy=((t*4)%gap)-my*16;
+  c.fillStyle='rgba(120,150,200,0.05)';
+  for(let x=-gap;x<W+gap;x+=gap){for(let y=-gap;y<H+gap;y+=gap){
+    c.beginPath();c.arc(x+ox,y+oy,1,0,7);c.fill();}}
+  // slow floating dust
+  for(const d of bgDust){
+    if(!reduce){d.y-=d.v;if(d.y<-0.02)d.y=1.02;}
+    c.globalAlpha=d.a;c.fillStyle='#9fc0e8';
+    c.beginPath();c.arc(d.x*W-mx*8,d.y*H,d.r,0,7);c.fill();
+  }
+  c.globalAlpha=1;
+}
+
+// ---- chapter target (normalized -1..1, *S added later) ----
+function target(p, ch, rot){
+  switch(ch){
+    case 0: { const r=p.discR*0.42, a=p.ang+rot; return [Math.cos(a)*r, Math.sin(a)*r]; }      // nucleus
+    case 1: { const r=0.5+p.seed*1.0, a=p.ang+rot*0.4; return [Math.cos(a)*r*1.3, Math.sin(a)*r*0.85]; } // cloud / proposes
+    case 2: { const rr=(p.ring+1)/4, a=p.ang+rot*0.3; return [Math.cos(a)*rr, Math.sin(a)*rr]; }  // rings / guardrails
+    case 3: { return starPoint(p.starT, p.seed); }                                               // spark star / sign
+    case 4: { return [p.gx*1.4, p.gy*1.0]; }                                                      // grid / vault
+    case 5: { const r=0.34*p.discR+0.06, a=p.ang+rot; return [Math.cos(a)*r, Math.sin(a)*r]; }    // reform nucleus
+  }
+}
+const ENERGY=[1,.45,.6,.85,.4,1];
+
+// ---- scroll progress ----
+let prog=0; // 0..SECTIONS-1
+function onScroll(){
+  const total=document.body.scrollHeight-innerHeight;
+  const f=total>0?Math.min(1,Math.max(0,scrollY/total)):0;
+  prog=f*(SECTIONS-1);
+  // dots
+  const cur=Math.round(prog);
+  document.querySelectorAll('#dots button').forEach((d,i)=>d.classList.toggle('on',i===cur));
+}
+addEventListener('scroll',onScroll,{passive:true});
+
+let mx=0,my=0;
+addEventListener('mousemove',e=>{mx=(e.clientX/W-.5);my=(e.clientY/H-.5);});
+
+// ---- render ----
+let t=0;
+function frame(){
+  t+=reduce?0:0.006;
+  const S=Math.min(W,H)*0.36;
+  const cx=W/2+mx*40, cy=H/2+my*30;
+  const ch0=Math.floor(prog), ch1=Math.min(SECTIONS-1,ch0+1), bf=prog-ch0;
+  const rot=t*0.6;
+  const energy=ENERGY[ch0]+(ENERGY[ch1]-ENERGY[ch0])*bf;
+  const flavor=window._flavor||'ember';
+
+  c.clearRect(0,0,W,H);
+
+  drawBackground();
+
+  // center glow
+  const gr=c.createRadialGradient(cx,cy,0,cx,cy,S*2.0);
+  gr.addColorStop(0,`rgba(80,150,255,${0.16*energy})`);
+  gr.addColorStop(.3,`rgba(56,198,244,${0.10*energy})`);
+  gr.addColorStop(.6,`rgba(245,182,46,${0.04*energy})`);
+  gr.addColorStop(1,'rgba(4,7,14,0)');
+  c.fillStyle=gr; c.fillRect(0,0,W,H);
+
+  // bright nucleus core (strong in chapters 0/5)
+  if(energy>0.7){
+    const ng=c.createRadialGradient(cx,cy,0,cx,cy,S*0.3*energy);
+    ng.addColorStop(0,`rgba(225,240,255,${(energy-0.6)*1.4})`);
+    ng.addColorStop(.5,`rgba(125,180,255,${(energy-0.6)})`);
+    ng.addColorStop(1,'rgba(77,131,255,0)');
+    c.fillStyle=ng;c.beginPath();c.arc(cx,cy,S*0.3*energy,0,7);c.fill();
+  }
+
+  // compute positions
+  for(const p of P){
+    const a=target(p,ch0,rot), b=target(p,ch1,rot);
+    const tx=cx+(a[0]+(b[0]-a[0])*bf)*S;
+    const ty=cy+(a[1]+(b[1]-a[1])*bf)*S;
+    const k=reduce?1:0.09;
+    p.x+=(tx-p.x)*k; p.y+=(ty-p.y)*k;
+  }
+
+  if(flavor==='ember'){
+    c.globalCompositeOperation='lighter';
+    for(const p of P){
+      const s=p.size*1.5;
+      const g=c.createRadialGradient(p.x,p.y,0,p.x,p.y,s*4);
+      g.addColorStop(0,p.col);g.addColorStop(1,'rgba(0,0,0,0)');
+      c.globalAlpha=.55;c.fillStyle=g;c.beginPath();c.arc(p.x,p.y,s*4,0,7);c.fill();
+      c.globalAlpha=.9;c.fillStyle=p.col;c.beginPath();c.arc(p.x,p.y,s*0.7,0,7);c.fill();
+    }
+    c.globalCompositeOperation='source-over';c.globalAlpha=1;
+  } else if(flavor==='plasma'){
+    c.globalCompositeOperation='lighter';
+    for(const p of P){
+      const s=p.size*9;
+      const g=c.createRadialGradient(p.x,p.y,0,p.x,p.y,s);
+      g.addColorStop(0,p.col);g.addColorStop(.5,'rgba(60,120,255,0.06)');g.addColorStop(1,'rgba(0,0,0,0)');
+      c.globalAlpha=.32;c.fillStyle=g;c.beginPath();c.arc(p.x,p.y,s,0,7);c.fill();
+    }
+    c.globalCompositeOperation='source-over';c.globalAlpha=1;
+  } else { // constellation
+    // links to next particle if near
+    c.lineWidth=1;
+    for(let i=0;i<N;i++){
+      const p=P[i], q=P[(i+1)%N];
+      const dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);
+      if(d<S*0.5){c.globalAlpha=(1-d/(S*0.5))*0.35;c.strokeStyle=p.col;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q.x,q.y);c.stroke();}
+      const q2=P[(i+7)%N];const d2=Math.hypot(p.x-q2.x,p.y-q2.y);
+      if(d2<S*0.32){c.globalAlpha=(1-d2/(S*0.32))*0.25;c.strokeStyle=p.col;c.beginPath();c.moveTo(p.x,p.y);c.lineTo(q2.x,q2.y);c.stroke();}
+    }
+    c.globalAlpha=1;
+    for(const p of P){c.fillStyle=p.col;c.beginPath();c.arc(p.x,p.y,p.size*1.2,0,7);c.fill();}
+  }
+
+  requestAnimationFrame(frame);
+}
+
+// ---- dots nav ----
+const dotsEl=document.getElementById('dots');
+const LABELS=['Welcome','Proposes','Guardrails','Sign','Vault','Proof'];
+for(let i=0;i<SECTIONS;i++){const b=document.createElement('button');b.title=LABELS[i];if(i===0)b.classList.add('on');
+  b.onclick=()=>{const total=document.body.scrollHeight-innerHeight;scrollTo({top:total*(i/(SECTIONS-1)),behavior:'smooth'});};dotsEl.appendChild(b);}
+
+// ---- section reveals ----
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in');}),{threshold:.35});
+document.querySelectorAll('.sec').forEach(s=>io.observe(s));
+
+// ---- flavor switch ----
+window._flavor='ember';
+document.querySelectorAll('.flavors .fl').forEach(b=>b.onclick=()=>{
+  window._flavor=b.dataset.fl;
+  document.querySelectorAll('.flavors .fl').forEach(x=>x.classList.toggle('on',x===b));
+});
+
+// ---- intro then start ----
+let introGone=false;
+function hideIntro(){ if(introGone)return; introGone=true;
+  document.getElementById('intro').classList.add('hide');
+  document.querySelector('.sec[data-sec="0"]').classList.add('in'); }
+function start(){ onScroll(); frame(); }
+if(reduce){ hideIntro(); document.querySelectorAll('.sec').forEach(s=>s.classList.add('in')); start(); }
+else {
+  start();
+  gsap.fromTo('#iword',{opacity:0,scale:.92,filter:'blur(8px)'},{opacity:1,scale:1,filter:'blur(0px)',duration:1,ease:'power2.out'});
+  setTimeout(hideIntro, 1500);
+  // robust dismissal — never let the splash trap the user if timers are throttled
+  ['wheel','scroll','click','keydown','touchstart','pointerdown'].forEach(ev=>addEventListener(ev,hideIntro,{once:true,passive:true}));
+}
+</script>
+</body>
+</html>
