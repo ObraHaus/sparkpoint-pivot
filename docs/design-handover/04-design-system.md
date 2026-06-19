@@ -118,6 +118,86 @@ Charts get their own **categorical ramp** derived from the risk + neutral system
 
 ---
 
+## Theming — light & dark mode (supported)
+
+> **Status: implemented in the prototype/showcase.** Dark is the default and the design target (§2.1); **light is now a fully supported second theme**, not a token-swap proof-of-concept. Both meet WCAG AA (§10.1). This section is the **authoritative contract** for how theming works; `tokens.css` in the showcase remains the source of truth for the actual values.
+
+### T.1 The token contract (one definition, two themes)
+
+All colors are **CSS variables, never hardcoded hex** in components. They are defined **once** and overridden once:
+
+- **`:root, .dark`** — the canonical (default) **dark** palette. Authoring `:root` and `.dark` together means the dark values are the baseline whether or not a theme class is present.
+- **`.light`** — overrides **only** the variables that differ in light. Components don't change; the surfaces flip because the variables they read flip.
+
+```css
+/* tokens.css (illustrative shape — values per the showcase) */
+:root, .dark {
+  --background: …;  --card: …;  --foreground: …;  --border: …;
+  --primary: …;     --muted: …;  --muted-foreground: …;  /* …etc */
+}
+.light {
+  --background: …;  --card: …;  --foreground: …;  --border: …;
+  --muted: …;       --muted-foreground: …;  /* only what differs */
+}
+```
+
+Components read **semantic tokens only** (`bg-background`, `text-foreground`, `bg-card`, `border-border`, `text-muted-foreground`, `bg-primary`, `ring-ring`, …) — see §2.1. Because nothing in a component names a raw color, **a single class swap on the root re-themes the entire UI**.
+
+**Intentionally theme-independent (do NOT override under `.light`):** the brand/logo and AI-presence colors and the signature **blue→cyan→gold→coral spark gradient** (§2.3); the strict **semantic** hues (gain green, loss red, caution amber, info blue — §2.4); the **risk palette** (violet→magenta, §2.5). These are *identity and meaning*, not surface chrome — a gain is green and the spark is the spark in both themes. (Their *foregrounds*/subtle-bg tints may be tuned per theme for AA, but the hue identity is constant.) Light theming flips **surfaces, neutrals, borders, and text**, not brand/semantic/risk meaning.
+
+### T.2 The active-theme contract (one class on `<html>`)
+
+The active theme is a **single class on the root `<html>` element**: `.dark` or `.light`. Nothing else toggles theming — no per-component variants, no data-attributes the components read. Flip the class, the variables flip, the whole tree re-renders against the new surfaces.
+
+### T.3 Persistence (`sp-theme` in localStorage)
+
+- **Key:** `sp-theme`.
+- **Values:** `"light"` | `"dark"`.
+- **Default:** `"dark"` (when nothing is stored, or the value is missing/invalid).
+- Every theme toggle (§T.5) **writes `sp-theme`**, so all entry points stay in sync and the choice persists across reloads and routes.
+
+### T.4 No FOUC — blocking inline `<head>` script (required)
+
+To avoid a flash of the wrong theme (FOUC), the saved theme must be applied **before first paint**. A **small blocking inline script in `<head>`** reads `sp-theme` and sets the root class synchronously, *before* the body renders:
+
+```html
+<!-- in <head>, before any stylesheet-driven paint — runs synchronously -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('sp-theme');
+      if (t !== 'light' && t !== 'dark') t = 'dark'; // default dark
+      var r = document.documentElement;
+      r.classList.remove('light', 'dark');
+      r.classList.add(t);
+    } catch (e) {
+      document.documentElement.classList.add('dark'); // safe fallback
+    }
+  })();
+</script>
+```
+
+This is a **hard requirement**, not an optimization: without it, dark-default users who chose light (or vice-versa) see a one-frame flash on every load.
+
+### T.5 Toggle placements (three, all writing `sp-theme`)
+
+The product exposes the theme switch in exactly three places — each writes `sp-theme` and therefore stays in sync with the others:
+
+1. **App — user-avatar menu.** In the avatar `DropdownMenu`, positioned **between "Learn" and "Log out"**: a sun/moon icon + label **"Light mode" / "Dark mode"** + a `Switch`.
+2. **Admin — left side-nav (bottom).** Styled like a nav item, pinned to the **bottom** of the admin side-nav.
+3. **Onboarding — header (top-right).** A small **sun/moon icon button** in the onboarding header, top-right.
+
+> **Marketing landing is dark-only by design.** The Spark Core marketing landing is **art-directed for dark** (the gradient + AI-bloom hero reads only on the deep indigo-navy base). It reads `var(--background)` but **pins `.dark`** and shows **no toggle**. Light mode covers the app, admin, and onboarding surfaces; the landing intentionally does not flip.
+
+### T.6 Building it in Next.js
+
+- Use **`next-themes`** with `attribute="class"`, `storageKey="sp-theme"`, `defaultTheme="dark"`, `enableSystem={false}`. (`attribute="class"` makes it write `.light`/`.dark` on `<html>`; `storageKey` makes it persist under `sp-theme`; `enableSystem={false}` keeps dark the deterministic default rather than following the OS.) `next-themes` injects its own blocking pre-paint script, satisfying §T.4. **Equivalent allowed:** a hand-rolled blocking inline `<head>` script (§T.4) + a small client store — as long as the key, values, default, and no-FOUC behavior match this contract.
+- **Port `tokens.css`** `:root`/`.dark`/`.light` blocks into **`app/globals.css`**, and **map the variables into the Tailwind theme** with `darkMode: 'class'`, so utilities like `bg-background` / `text-foreground` / `border-border` resolve to the CSS variables (shadcn's `hsl(var(--…))` convention, §2.1). One wiring, both themes.
+- **Render the toggles** in the three placements above (§T.5) — app avatar menu, admin side-nav bottom, onboarding header — each driven by the same `next-themes` (or client-store) setter so they stay in sync.
+- **No hardcoded hex in components.** Every colored element names a token; theming is the variable layer's job (AC#1, AC#7). Pin the marketing landing to dark explicitly; leave it out of the toggle surfaces.
+
+---
+
 ## 3. Typography
 
 ### 3.1 Families

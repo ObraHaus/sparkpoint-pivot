@@ -6,6 +6,7 @@
 <title>SparkPoint</title>
 <link rel="stylesheet" href="tokens.css" />
 <link rel="stylesheet" href="app.css" />
+<script>try{var _t=localStorage.getItem('sp-theme');if(_t==='light'){document.documentElement.classList.remove('dark');document.documentElement.classList.add('light');}}catch(e){}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 </head>
 <body class="sp">
@@ -58,7 +59,9 @@ window.SP = (function(){
     chevd:'<path d="M6 9l6 6 6-6"/>',
     grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>',
-    sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'
+    sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>'
   };
   function icon(name,size=18,stroke=2){
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${P[name]||''}</svg>`;
@@ -278,8 +281,21 @@ window.SP = (function(){
     const items=[['user','Account',()=>navigate('settings/account')],['settings','Settings',()=>navigate('settings')],
       ['sliders','Mandate',()=>navigate('settings')],['book','Learn',()=>navigate('learn')],
       ['logout','Log out',()=>{toast('Logged out — funds untouched');navigate('landing');}]];
+    const light=themeIsLight();
+    const mid=items.slice(0,4), last=items.slice(4);
+    const themeRow=`<div style="border-top:1px solid var(--border-soft);margin:6px 6px 4px"></div>`+
+      `<button class="menu-item" id="spThemeRow" type="button">${icon(light?'sun':'moon',16)}<span id="spThemeLabel">${light?'Light mode':'Dark mode'}</span><span class="switch ${light?'on':''}" id="spThemeSw" style="margin-left:auto"></span></button>`+
+      `<div style="border-top:1px solid var(--border-soft);margin:4px 6px"></div>`;
     menuPopover('avatarBtn', `<div style="padding:10px 12px;border-bottom:1px solid var(--border-soft)"><div style="font-size:13px;font-weight:600">SparkPoint user</div><div class="mono" style="font-size:11px;color:var(--muted-foreground);margin-top:2px">${data.wallet}</div></div>`+
-      items.map((it,i)=>`<button class="menu-item" data-i="${i}">${icon(it[0],16)}${it[1]}</button>`).join(''), items);
+      mid.map((it,i)=>`<button class="menu-item" data-i="${i}">${icon(it[0],16)}${it[1]}</button>`).join('')+
+      themeRow+
+      last.map((it,i)=>`<button class="menu-item" data-i="${i+4}">${icon(it[0],16)}${it[1]}</button>`).join(''), items);
+    const row=document.getElementById('spThemeRow');
+    if(row) row.onclick=(e)=>{ e.stopPropagation(); const next=toggleTheme(); const isL=next==='light';
+      document.getElementById('spThemeLabel').textContent=isL?'Light mode':'Dark mode';
+      document.getElementById('spThemeSw').classList.toggle('on',isL);
+      const sv=row.querySelector('svg'); if(sv) sv.outerHTML=icon(isL?'sun':'moon',16);
+      toast(isL?'Light mode on':'Dark mode on'); };
   }
   function menuPopover(anchorId, html, items){
     const a=document.getElementById(anchorId); const r=a.getBoundingClientRect();
@@ -368,12 +384,20 @@ window.SP = (function(){
     if(e.key==='Escape') closeAllOverlays();
   });
 
+  /* ---- theme (light/dark), persisted ---- */
+  const THEME_KEY='sp-theme';
+  function themeIsLight(){ return document.documentElement.classList.contains('light'); }
+  function applyTheme(t){ const h=document.documentElement; h.classList.toggle('light', t==='light'); h.classList.toggle('dark', t!=='light'); try{ localStorage.setItem(THEME_KEY,t); }catch(e){} }
+  function initTheme(){ let t='dark'; try{ t=localStorage.getItem(THEME_KEY)||'dark'; }catch(e){} applyTheme(t); }
+  function toggleTheme(){ const next=themeIsLight()?'dark':'light'; applyTheme(next); return next; }
+
   /* boot */
   addEventListener('hashchange',render);
-  function boot(){ if(!location.hash) location.hash='#/landing'; render(); }
+  function boot(){ initTheme(); if(!location.hash) location.hash='#/landing'; render(); }
 
   return { boot, render, navigate, screens, data, icon, sparkmark, riskChip, fmt, money, TIER,
     openSheet, openDialog, openProveIt, toast, reduce, P, PRIMARY, SECONDARY,
+    applyTheme, toggleTheme, themeIsLight,
     registerScreen:(k,o)=>{screens[k]=o;} };
 })();
 </script>

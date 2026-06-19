@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SparkPoint Ops — Admin</title>
 <link rel="stylesheet" href="tokens.css" />
+<script>try{var _t=localStorage.getItem('sp-theme');if(_t==='light'){document.documentElement.classList.remove('dark');document.documentElement.classList.add('light');}}catch(e){}</script>
 <style>
   html,body{margin:0;height:100%;}
   body{background:var(--background);color:var(--foreground);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;overflow:hidden;}
@@ -51,6 +52,14 @@
   .navitem.active svg{color:var(--primary);}
   .navitem svg{width:17px;height:17px;flex:none;}
   .navitem .star{margin-left:auto;color:var(--primary);font-size:11px;}
+  /* theme toggle pinned to bottom of side nav */
+  .navtheme{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted-foreground);cursor:pointer;border:none;background:none;font-family:inherit;text-align:left;border-top:1px solid var(--border-soft);}
+  .navtheme:hover{background:var(--muted);color:var(--foreground);}
+  .navtheme svg{width:17px;height:17px;flex:none;}
+  .adsw{margin-left:auto;width:38px;height:22px;border-radius:999px;background:var(--input);position:relative;flex:none;transition:background .18s;}
+  .adsw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+  .adsw.on{background:var(--primary);}
+  .adsw.on::after{transform:translateX(16px);}
 
   .adcontent{flex:1;overflow-y:auto;padding:24px 28px 60px;}
   .adcontent.max{max-width:1320px;margin:0 auto;width:100%;}
@@ -171,7 +180,9 @@ const A = (function(){
     refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/>',
     lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     door:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9"/>',
-    pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+    pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>'
   };
   function ic(n,s=17,w=2){return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${P[n]||''}</svg>`;}
   // stream color contract
@@ -297,6 +308,12 @@ const ROLES={
 const NAVMETA={overview:['Overview','overview'],users:['Users','users'],usage:['Usage','usage'],tvl:['TVL / Vault','tvl'],revenue:['Revenue','revenue'],system:['System','system'],killswitch:['Kill-switch','pause'],stake:['Stakeholder','stake'],cfg:['Config','cfg'],audit:['Audit log','audit']};
 let role='super', screen='overview';
 
+/* ---- theme (light/dark), persisted; shared key with the main app ---- */
+function themeIsLight(){ return document.documentElement.classList.contains('light'); }
+function applyTheme(t){ const h=document.documentElement; h.classList.toggle('light', t==='light'); h.classList.toggle('dark', t!=='light'); try{ localStorage.setItem('sp-theme',t); }catch(e){} }
+function initTheme(){ let t='dark'; try{ t=localStorage.getItem('sp-theme')||'dark'; }catch(e){} applyTheme(t); }
+function toggleTheme(){ const next=themeIsLight()?'dark':'light'; applyTheme(next); return next; }
+
 function shell(){
   const r=ROLES[role];
   const primary=r.nav.filter(n=>!['cfg','audit'].includes(n));
@@ -318,7 +335,9 @@ function shell(){
     </div>
     <div class="adbody">
       <div class="adnav-scrim" id="adScrim"></div>
-      <nav class="adnav" id="adNav"><button class="navclose" id="adNavClose"><span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted-foreground)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Close</span></button>${navHTML}</nav>
+      <nav class="adnav" id="adNav"><button class="navclose" id="adNavClose"><span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted-foreground)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>Close</span></button>${navHTML}
+        <button class="navtheme" id="adThemeRow" type="button">${ic(themeIsLight()?'sun':'moon',16)}<span id="adThemeLabel">${themeIsLight()?'Light mode':'Dark mode'}</span><span class="adsw ${themeIsLight()?'on':''}" id="adThemeSw"></span></button>
+      </nav>
       <main class="adcontent max" id="adc"></main>
     </div>`;
   const roleBtn=document.getElementById('roleBtn'), roleMenu=document.getElementById('roleMenu');
@@ -334,6 +353,11 @@ function shell(){
   document.getElementById('adNavClose')?.addEventListener('click',closeNav);
   scrim.onclick=closeNav;
   document.querySelectorAll('.navitem').forEach(n=>n.onclick=()=>{screen=n.dataset.s;closeNav();render();});
+  const adThemeRow=document.getElementById('adThemeRow');
+  if(adThemeRow) adThemeRow.onclick=(e)=>{ e.stopPropagation(); const isL=toggleTheme()==='light';
+    document.getElementById('adThemeLabel').textContent=isL?'Light mode':'Dark mode';
+    document.getElementById('adThemeSw').classList.toggle('on',isL);
+    const sv=adThemeRow.querySelector('svg'); if(sv) sv.outerHTML=ic(isL?'sun':'moon',16); };
   render();
 }
 function navItem(n){const m=NAVMETA[n];return `<div class="navitem ${screen===n?'active':''}" data-s="${n}">${ic(m[1])}${m[0]}${n==='revenue'?'<span class="star">★</span>':''}</div>`;}
@@ -607,6 +631,7 @@ function scAudit(c){
   </tbody></table></div>`;
 }
 
+initTheme();
 shell();
 
 /* Belt-and-suspenders against the "top bar paints, then a later repaint inside the

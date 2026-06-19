@@ -19,7 +19,7 @@
 
 | Area | Screens / overlays / states-as-screens |
 |---|---|
-| 0. Global shell & cross-cutting | 1–14 **+ 5a (network switcher)** (15) |
+| 0. Global shell & cross-cutting | 1–14 **+ 5a (network switcher) + 14a (theme toggle)** (16) |
 | 1. Public / marketing | 15–24 **+ 15a (Spark Core landing)** (11) |
 | 2. Connection & gating | 25–30 (6) |
 | 3. Onboarding (Flow 1) | 31–40 (10) |
@@ -36,7 +36,7 @@
 | 13. Subscriptions / Premium AI tier (Flow 10) | 143–153 (11) |
 | 14. Fee Transparency / Revenue Surfaces (Flow 11) | 154–161 (8) |
 | 15. Admin / Stakeholder Panel (separate surface) | 162–174 (13) |
-| **TOTAL** | **183 numbered screens/overlays** (174 base + 9 client-directed multi-network/bridge additions: #5a, #15a, #53a, #93a, #93b–93f) |
+| **TOTAL** | **184 numbered screens/overlays** (174 base + 9 client-directed multi-network/bridge additions: #5a, #15a, #53a, #93a, #93b–93f; + #14a theme-toggle control) |
 
 > **Read the count as "designed artifacts," not "routes."** It includes route screens, the global shell variants, overlays/sheets/panels, and the in-chat structured cards — each of which the designer must produce with its full state set. Routes alone number ~40 (see `01` §1); the rest are overlays, cards, and shell/gating/degraded variants that each demand their own high-fidelity treatment.
 >
@@ -50,8 +50,8 @@
 
 > Source: `01` §2 (shell anatomy), `05` §1–§2 (badge + prove-it), `04` §11. These are **shell-level** artifacts reused across all authenticated routes — design once, fully stated.
 
-1. **Authenticated app shell — desktop** (`(app)/layout.tsx`). Top bar (logo · primary nav Chat/Portfolio/Vault/Strategies · non-custodial badge · wallet chip · ⌘K · bell · avatar) + AI disclaimer strip + collapsible secondary nav rail + route-content region. **States:** default · disclaimer-collapsed (on scroll) · secondary-nav-collapsed. **DT.**
-2. **Authenticated app shell — mobile.** Condensed top bar (logo · badge · wallet chip · bell) + one-line expandable AI disclaimer + bottom tab bar (Chat·Portfolio·Vault·Strategies, Chat center) + "More" drawer. **States:** default · disclaimer-expanded · More-drawer-open (Withdraw/Exit + Prove-it pinned top). **MO.**
+1. **Authenticated app shell — desktop** (`(app)/layout.tsx`). Top bar (logo · primary nav Chat/Portfolio/Vault/Strategies · non-custodial badge · wallet chip · ⌘K · bell · avatar) + AI disclaimer strip + collapsible secondary nav rail + route-content region. The **avatar `DropdownMenu` carries the theme toggle** (sun/moon + "Light mode/Dark mode" + `Switch`, **between "Learn" and "Log out"** — #14a). **States:** default · disclaimer-collapsed (on scroll) · secondary-nav-collapsed · light-theme. **DT.**
+2. **Authenticated app shell — mobile.** Condensed top bar (logo · badge · wallet chip · bell) + one-line expandable AI disclaimer + bottom tab bar (Chat·Portfolio·Vault·Strategies, Chat center) + "More" drawer. The **avatar/account menu carries the same theme toggle** (#14a). **States:** default · disclaimer-expanded · More-drawer-open (Withdraw/Exit + Prove-it pinned top) · light-theme. **MO.**
 3. **"Fully self-custodial" badge** (top-bar element + desktop `HoverCard`; label reads **"Fully self-custodial"** — the canonical user-facing term; "non-custodial" is its technical synonym; asserts non-custody on the **active network**). **States:** default/nominal (green) · degraded (amber) · kill-switch-active/paused (amber + "Paused") · automation-active (green + "Auto" chip) · loading/connection-resolving (muted pulse) · wrong-network (amber). Never red. (`05` §1.3; `01` §2; `docs/DESIGN-UPDATE-HANDOFF.md` terminology.) **DT + MO.**
 4. **"Prove-it" permissions panel** (badge-triggered `Sheet` — desktop right / mobile bottom). Five guarantees as live checkable rows + two-column CAN/CANNOT matrix + pinned [Withdraw/Exit] + [See full Trust Center]. **States:** default (reads succeed) · loading (skeleton rows; exit/revoke never gated) · stale/refresh-needed (amber stamp) · read-error/RPC-down (warning banner, withdraw stays functional). (`05` §2.) **DT + MO.**
 5. **Wallet / connection status menu** (`DropdownMenu` from the wallet chip; address shown **per active network**). Copy address, view on explorer, switch wallet, disconnect, "View exact permissions". **States:** connected · wrong-network ("Switch to Base or Sui") · pending/connecting · disconnected. **DT + MO.**
@@ -64,7 +64,8 @@
 11. **Global recoverable error pattern** (per-route `error.tsx`). What/why/next-step, no blame, no raw tech, **custody reassurance** ("your funds are safe and untouched"), retry, and "withdraw is still available". (`07` §6.1; `01` §1.) **DT + MO.**
 12. **Global 404 / not-found** (`not-found.tsx`, root + public). **State:** default not-found + route-home. **DT + MO.**
 13. **Degraded-mode global banner** (backend/agent/RPC unhealthy). "Some SparkPoint services are degraded — your custody and exit are unaffected." Withdraw/prove-it elevated. (`01` §6; `05` §1.3.) **DT + MO.**
-14. **Theme variants — dark (default) + light.** Both AA; the whole system mocked at least in dark, light variant for token-swap proof. (`04` §2.1, §10.1.) **DT + MO.**
+14. **Theme variants — dark (default) + light (supported).** Both AA; **every screen has a light and a dark variant** (mock the system in dark, then prove the light variant — it is a real supported theme, not just a token-swap proof). The active theme is a single class on the root `<html>` (`.dark`/`.light`); it is **persisted in `localStorage` under `sp-theme`** (`"light"`|`"dark"`, default `"dark"`) and applied before first paint (no FOUC). Brand/spark-gradient, semantic (gain/loss/caution/info), and risk colors stay **theme-independent**; only surfaces/neutrals/borders/text flip. **The Spark Core marketing landing (#15a) is dark-only by design** and shows no toggle. The toggle itself lives in three places — **app user-avatar menu** (#1/#2), **admin side-nav** (#174), **onboarding header** (#31) — each writing `sp-theme` so they stay in sync. (`04` §2.1, §10.1, and `04` → "Theming — light & dark mode".) **DT + MO.**
+14a. **Theme toggle control (app — user-avatar menu).** In the avatar `DropdownMenu`, **between "Learn" and "Log out"**: sun/moon icon + label **"Light mode" / "Dark mode"** + a `Switch`; writes `sp-theme`. Mirrors the onboarding (#31) and admin (#174) toggles and the Appearance setting (#134). **States:** dark-active · light-active · (reduced-motion: instant swap, no transition). **DT + MO.**
 
 ---
 
@@ -101,7 +102,7 @@
 
 > Focused shell (primary nav suppressed; **badge + disclaimer persist**). 6 counted input steps + welcome/complete bookends; persistent honest stepper. All copy → `07`.
 
-31. **Onboarding shell** (`(onboarding)/layout.tsx`): logo · badge · network pill · wallet chip · progress stepper · AI disclaimer · save-&-exit. **States:** default · stepper-collapsed (mobile dots). **DT + MO.**
+31. **Onboarding shell** (`(onboarding)/layout.tsx`): logo · badge · network pill · wallet chip · progress stepper · AI disclaimer · save-&-exit · **theme toggle** (a small sun/moon **icon button, top-right of the header**; writes `sp-theme`, in sync with the app #14a and admin #174 toggles). **States:** default · stepper-collapsed (mobile dots) · light-theme. **DT + MO.**
 32. **Step 0 — Welcome + non-custodial promise** `/onboarding`. **States:** default · loading (account/mandate check) · returning-with-progress (Resume + Start over) · error (couldn't load state). **DT + MO.**
 33. **Step 1 — Connect (reassurance + confirmation)** `/onboarding` (or `/onboarding/connect`). **States:** default-connected (reassurance + Continue) · disconnected (Connect CTA) · wrong-network (Switch to Base) · loading (connecting) · error (connection failed) · whitelist/geo-fail mid-flow (→ `/unavailable`). **DT + MO.**
 34. **Step 2 — Experience segmentation** (New/Some/Pro `ToggleGroup` cards). **States:** default (unselected, Continue disabled) · selected · saving · persistence-error (toast retry). **DT + MO.**
@@ -362,7 +363,7 @@
 171. **A9 — Admin management** `/admin/users` (Super-Admin manages admins/roles). **States:** loading · error · no-permission. **DT** (responsive).
 172. **A10 — Non-custodial config** `/admin/config` (whitelist invites, feature flags — directs, never custodies). **States:** loading · error · no-permission · **confirm-change (audited)**. **DT** (responsive).
 173. **A11 — Admin audit log** `/admin/audit` (forensics; every admin action). **States:** loading · empty · error · **step-up-required** · no-permission. **DT** (responsive).
-174. **Admin shell + responsiveness + non-custody touchpoints** (the admin shell on every screen: secret-path chrome · RBAC-scoped nav · env badge · "read-only over funds" posture made visible; the **read-only/no-custody banner** the surface restates; tablet/phone responsive transforms). **States:** default · RBAC-scoped (nav/sections vary by role) · degraded/partial-source · responsive (tablet · phone). **DT** primary (tablet + phone responsive).
+174. **Admin shell + responsiveness + non-custody touchpoints** (the admin shell on every screen: secret-path chrome · RBAC-scoped nav · env badge · "read-only over funds" posture made visible; the **read-only/no-custody banner** the surface restates; tablet/phone responsive transforms). The **left side-nav carries the theme toggle pinned at its bottom, styled like a nav item** (sun/moon + Light/Dark; writes `sp-theme`, in sync with the app #14a and onboarding #31 toggles — admin honors the same dark-default + light-supported contract, `04` → "Theming"). **States:** default · RBAC-scoped (nav/sections vary by role) · degraded/partial-source · responsive (tablet · phone) · light-theme. **DT** primary (tablet + phone responsive).
 
 ---
 
