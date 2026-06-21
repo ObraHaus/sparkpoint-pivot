@@ -1,0 +1,27 @@
+name: OH Defender Security Scan
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: 'Scanners to run: "all" or a comma list of trivy,semgrep,gitleaks.'
+        required: false
+        default: 'all'
+      trigger:
+        description: 'How the scan was triggered (manual | scheduled).'
+        required: false
+        default: 'manual'
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: [self-hosted, oh-defender]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@develop
+        with:
+          defender-api-url: ${{ secrets.DEFENDER_API_URL }}
+          defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
+          tools: ${{ github.event.inputs.tools || 'all' }}
+          trigger: ${{ github.event_name == 'pull_request' && 'pull_request' || (github.event.inputs.trigger || 'manual') }}
+          default-branch: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
