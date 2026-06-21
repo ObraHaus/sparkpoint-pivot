@@ -1,0 +1,4 @@
+# SparkPoint Pivot — web app. Approve native build scripts pnpm flagged.
+allowBuilds:
+  sharp: true
+  unrs-resolver: true

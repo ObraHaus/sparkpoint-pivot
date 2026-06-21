@@ -11,7 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
-- _Nothing yet — build stage (⑤) not started._
+- **Web app scaffold** (`apps/web`) — the build stage (⑤) has begun. Next.js 16 (App Router) + TypeScript + TailwindCSS v4 + pnpm, on `feat/web-scaffold`:
+  - **Theme system** — design tokens ported to `globals.css` (`.dark`/`.light`), wired via **next-themes** (`attribute="class"`, `storageKey="sp-theme"`, default dark, no flash); light/dark toggle in the user menu.
+  - **App shell** — top bar (brand, primary nav, "Fully self-custodial" badge, network-switcher + wallet-pill stubs, account menu), non-custody disclaimer strip, desktop rail nav + mobile bottom tabs.
+  - **Routes** — skeleton pages for chat, portfolio, strategies, vault, bridge, trust (+ permissions, exit), fees, premium, outcomes, srk, learn, settings; `/` redirects to `/chat`.
+  - **Wallet/data providers** — wagmi v3 + viem (Base + Base Sepolia) + react-query wired (connect UI is a stub for now).
+  - typecheck / lint / build all green.
 
 ## [0.1.0] - 2026-06-18
 

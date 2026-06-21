@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* Tailwind dark: variant keys off the .dark class (next-themes attribute="class") */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===========================================================================
+   SparkPoint Pivot — Design Tokens (ported from the design system / tokens.css)
+   Brand-matched to sparkpoint.io: cobalt-blue spark + gold/coral warm accents
+   on a deep indigo-navy (dark-first). Light palette under .light.
+   Theme contract: sp-theme (localStorage) -> .light/.dark class on <html>.
+   =========================================================================== */
+:root, .dark {
+  --background:#080C17; --card:#101626; --card-2:#151D30; --popover:#182033;
+  --muted:#1B2438; --muted-foreground:#8C98AE; --foreground:#EAEEF7;
+  --border:#283455; --border-soft:#1D2740; --input:#313D5E;
+
+  --primary:#4D83FF; --primary-foreground:#FFFFFF; --primary-hover:#3A72F5;
+  --spark-subtle:rgba(77,131,255,.14); --spark-subtle-2:rgba(77,131,255,.24); --spark-glow:rgba(77,131,255,.30);
+  --ring:#4D83FF;
+
+  --brand-gold:#F5B62E; --brand-coral:#F2683C; --brand-cyan:#38C6F4; --brand-blue:#4D83FF;
+  --brand-gradient:linear-gradient(110deg,#4D83FF 0%,#38C6F4 34%,#F5B62E 72%,#F2683C 100%);
+
+  --gain:#34CF7A; --gain-subtle:rgba(52,207,122,.14);
+  --loss:#FF5C5C; --loss-subtle:rgba(255,92,92,.14);
+  --caution:#FFC53D; --caution-subtle:rgba(255,197,61,.14);
+  --info:#38C6F4; --info-subtle:rgba(56,198,244,.14); --on-solid:#06121F;
+
+  --risk-1:#8B7CF0; --risk-2:#A06FE8; --risk-3:#C45FD6; --risk-4:#D8559F; --risk-5:#E0518F;
+
+  --radius:10px; --radius-sm:8px; --radius-lg:14px;
+  --shadow-md:0 8px 24px -10px rgba(0,0,0,.55); --shadow-lg:0 24px 60px -20px rgba(0,0,0,.65);
+
+  --font-sans:var(--font-geist-sans),"Geist","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:var(--font-geist-mono),"Geist Mono","JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+
+.light {
+  --background:#F6F9FE; --card:#FFFFFF; --card-2:#F1F5FC; --popover:#FFFFFF;
+  --muted:#EDF2FA; --muted-foreground:#586079; --foreground:#101A33;
+  --border:#DCE4F2; --border-soft:#E9EFF8; --input:#CFD9EC;
+  --primary:#2F6BFF; --primary-foreground:#FFFFFF; --primary-hover:#1E59F0;
+  --spark-subtle:rgba(47,107,255,.10); --spark-subtle-2:rgba(47,107,255,.16); --spark-glow:rgba(47,107,255,.18); --ring:#2F6BFF;
+  --brand-gold:#E59A12; --brand-coral:#E2562B; --brand-cyan:#1AA3D6; --brand-blue:#2F6BFF;
+  --gain:#0E8A52; --gain-subtle:rgba(14,138,82,.12); --loss:#D23B2E; --loss-subtle:rgba(210,59,46,.12);
+  --caution:#9A6A00; --caution-subtle:rgba(154,106,0,.12); --info:#1387B5; --info-subtle:rgba(19,135,181,.12); --on-solid:#FFFFFF;
+  --risk-1:#6E5FD6; --risk-2:#8A53CC; --risk-3:#A93FBE; --risk-4:#C53C8C; --risk-5:#C53C76;
+}
+
+/* Map tokens -> Tailwind utilities (bg-background, text-foreground, border-border, …) */
+@theme inline {
+  --color-background:var(--background);
+  --color-card:var(--card);
+  --color-card-2:var(--card-2);
+  --color-popover:var(--popover);
+  --color-muted:var(--muted);
+  --color-muted-foreground:var(--muted-foreground);
+  --color-foreground:var(--foreground);
+  --color-border:var(--border);
+  --color-border-soft:var(--border-soft);
+  --color-input:var(--input);
+  --color-primary:var(--primary);
+  --color-primary-foreground:var(--primary-foreground);
+  --color-ring:var(--ring);
+  --color-gain:var(--gain);
+  --color-loss:var(--loss);
+  --color-caution:var(--caution);
+  --color-info:var(--info);
+  --font-sans:var(--font-sans);
+  --font-mono:var(--font-mono);
+}
+
+/* ---- base ---- */
+*{box-sizing:border-box;}
+html{ -webkit-text-size-adjust:100%; }
+body{
+  background:var(--background); color:var(--foreground);
+  font-family:var(--font-sans);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+*{scrollbar-width:thin;scrollbar-color:var(--input) transparent;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-thumb{background:var(--input);border-radius:999px;border:2px solid transparent;background-clip:padding-box;}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px;}
+
+/* ---- shared utilities (ported from the design system) ---- */
+.tnum{font-variant-numeric:tabular-nums slashed-zero;}
+.mono{font-family:var(--font-mono);}
+.brand-gradient-text{background:var(--brand-gradient);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.t-display{font-size:36px;line-height:40px;font-weight:600;letter-spacing:-.01em;}
+.t-h1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.01em;}
+.t-h2{font-size:22px;line-height:28px;font-weight:600;}
+.t-h3{font-size:18px;line-height:24px;font-weight:600;}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);}
+.badge-ai{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:999px;padding:3px 9px;line-height:1;
+  color:var(--primary);background:var(--spark-subtle);border:1px solid color-mix(in srgb,var(--primary) 32%,transparent);}
+
+@keyframes sp-pulse{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1);}}
+.ai-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 0 var(--spark-glow);animation:sp-pulse 1s ease-in-out infinite;}
+@media (prefers-reduced-motion: reduce){ .ai-dot{animation:none;} }
