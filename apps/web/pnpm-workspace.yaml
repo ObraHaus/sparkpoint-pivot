@@ -2,3 +2,9 @@
 allowBuilds:
   sharp: true
   unrs-resolver: true
+# Security overrides — force patched transitive deps (OH Defender / pnpm audit SCA):
+#   ws <8.21.0  DoS  GHSA-96hv-2xvq-fx4p  (via viem / wagmi)
+#   postcss <8.5.10  XSS  GHSA-qx2v-qp2m-jg93  (via next)
+overrides:
+  ws: '>=8.21.0'
+  postcss: '>=8.5.10'
