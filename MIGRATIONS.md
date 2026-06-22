@@ -2,7 +2,7 @@
 
 Tracks which migrations have been applied to each environment (**Postgres + pgvector**). Migrations record **no** history of their own, so **this file is the source of truth** — update it whenever you apply a migration.
 
-> **Pre-build status.** No migrations exist yet (build stage ⑤ not started). The tables below are **seeded empty** — fill them in when the first migration lands. The migrations directory is TBD (likely `services/agent/migrations/` or `packages/shared/db/migrations/`; finalized at build time).
+> **Status.** No migrations exist yet. The current build is the **`apps/web` UI only** (mock data, no backend/DB), so there is nothing to migrate. The tables below are **seeded empty** — fill them in when the backend lands and the first migration is applied. The migrations directory is TBD (likely `services/agent/migrations/` or `packages/shared/db/migrations/`; finalized at build time).
 
 > **Note.** Production runs on the **client's infra** (TBD; likely sparkpoint.io); dev/staging runs on **OH Coolify** (Postgres+pgvector single instance). Migration level is tracked per environment regardless of host.
 

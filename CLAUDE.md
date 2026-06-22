@@ -13,7 +13,7 @@ Claude Design — ports `docs/design-handover/showcase/` 1:1 into `apps/web`).
 
 ## What this repo is
 
-**SparkPoint Pivot** — "The First AI-Native Onchain Hedge Fund": a non-custodial, chat-based Personal DeFi Assistant + an AI-managed Aave Yield Vault on Base (multi-network: Base at launch, Sui fast-follow). Spec-driven via [Spec Kit](https://github.com/github/spec-kit). The build stage (the Next.js app) has **not started yet** — today the repo holds Spec Kit artifacts, the design handover + live showcase, and the planning docs.
+**SparkPoint Pivot** — "The First AI-Native Onchain Hedge Fund": a non-custodial, chat-based Personal DeFi Assistant + an AI-managed Aave Yield Vault on Base (multi-network: Base at launch, Sui fast-follow). Spec-driven via [Spec Kit](https://github.com/github/spec-kit). The **web app build has begun** (`apps/web`): a faithful 1:1 recreation of the approved Claude Design — every screen, the shell, overlays, the confirm gate, and the admin panel are built with the design's mock data (see `apps/web/README.md` and the parity report in `docs/parity/`). Real wallet connect, the AI agent, on-chain calls, real auth, and the backend/services are the next features. The repo also holds the Spec Kit artifacts, the design handover + live showcase, and the planning docs.
 
 > **Client project — important.** SparkPoint Pivot is a **CLIENT product**. It is **NOT part of the ObraHaus Apps Ecosystem**. It lives in the ObraHaus org GitHub **for now**; ownership may transfer to the client later. Because it is not an OH ecosystem app, several playbook defaults are deliberately diverged (below).
 

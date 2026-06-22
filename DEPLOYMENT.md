@@ -2,7 +2,7 @@
 
 How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); local dev in [DEVELOPMENT.md](./DEVELOPMENT.md); migration history in [MIGRATIONS.md](./MIGRATIONS.md).
 
-> **Pre-build status.** No application code exists yet (build stage ⑤ has not started). **Nothing below is deployed** — environments, URLs, and services are **planned**. Treat every URL/port as a proposal until the build begins and the apps are actually created.
+> **Status.** The **web app (`apps/web`) now exists** — a faithful UI build with mock data — but **is not yet deployed** to a permanent environment (it runs locally / on the preview URL). Deployment to **OH Coolify (dev/staging)** is pending, and the backend/agent/chain services do not exist yet. Treat the environments, URLs, and services below as **planned** until the apps are actually created in Coolify.
 
 > **Client-project note.** SparkPoint Pivot is an **ObraHaus client product**, *not* part of the ObraHaus Apps Ecosystem. It is in the ObraHaus GitHub org for now; ownership may move to the client later. Sanctioned divergences from the playbook: **wallet auth** (Wagmi / WalletConnect / Coinbase Wallet) instead of obrahaus-console SSO; AI called **directly** (Anthropic / OpenAI-compatible API, or a future own gateway) instead of obrahaus-governor; **own brand** (cobalt / gold / coral) instead of the OH Primary design system. The branch flow, PR security gate, and Coolify deploy/verify conventions still apply.
 

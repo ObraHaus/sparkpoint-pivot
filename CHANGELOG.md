@@ -4,7 +4,7 @@ All notable changes to **SparkPoint Pivot** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Status:** pre-build. Only the Spec-Driven-Development planning artifacts and the design handover exist today — **no application code has been written yet** (the build stage, ⑤, has not started). Build window: Jun 1 – Sep 4, 2026.
+> **Status:** the **web app build has begun** (`apps/web`) — a faithful UI recreation of the approved design (every screen, shell, overlays, confirm gate, admin panel) on mock data; backend/agent/chain/auth + deployment are the next features. The Spec-Driven-Development planning artifacts and the design handover remain the source of truth. Build window: Jun 1 – Sep 4, 2026.
 
 > **Note on this project:** SparkPoint Pivot is an **ObraHaus client product**, not part of the ObraHaus Apps Ecosystem. It is hosted in the ObraHaus GitHub org *for now* (ownership may transfer to the client later). It therefore **does not** use obrahaus-console SSO (it uses **wallet auth**), **does not** route AI through obrahaus-governor (it calls **Anthropic / an OpenAI-compatible API directly**), and uses its **own brand** (cobalt / gold / coral), not the OH Primary design system. These are sanctioned client-project divergences — see DEVELOPMENT.md.
 
