@@ -25,7 +25,7 @@ Other scripts: `pnpm build`, `pnpm start`, `pnpm lint`. Typecheck / lint / produ
 - **Admin panel** (`src/app/admin/*`, `src/components/admin/`) — a distinct observe-only shell at `/admin` (no auth yet — a dismissible scaffold banner says so), a "View as" role switcher, the graphical **revenue dashboard**, and overview/users/usage/tvl/system/kill-switch (pause-only · 2-of-3 · never blocks withdrawals)/config/audit.
 - **Theme** — design tokens (`.light`/`.dark`) in `src/app/globals.css`, mapped into Tailwind; wired via **next-themes** (`storageKey="sp-theme"`, **default light**, no flash). The marketing landing is **dark-only** (its palette is route-scoped to `.spark-core-root`, independent of the theme default).
 - **Data** — a single typed `src/lib/mock-data.ts` mirrors the design's `SP.data`; every screen reads from it.
-- **Providers** (`src/components/providers.tsx`) — next-themes + the network/session context + the overlay provider; wagmi v3/viem (Base + Base Sepolia) + react-query are wired but **inert** in this UI build.
+- **Providers** (`src/components/providers.tsx`) — next-themes + the network/session context + the overlay provider; wagmi v3/viem (Base + Base Sepolia, `injected()` connector only) + react-query are wired but **inert** in this UI build (WalletConnect/Coinbase connectors land with the wallet-auth feature).
 
 ## Structure
 
@@ -50,7 +50,7 @@ A Playwright harness in [`../../e2e`](../../e2e) diffs every screen (visual + DO
 
 | Var | Use |
 |---|---|
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Enables the WalletConnect connector (optional in dev) |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Reserved for the upcoming WalletConnect connector (not wired in this UI build) |
 | `NEXT_PUBLIC_BASE_RPC_URL` | Base mainnet RPC (Alchemy); falls back to public RPC |
 | `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` | Base Sepolia RPC; falls back to public RPC |
 

@@ -5,7 +5,7 @@ Local development guide. Deploy: [DEPLOYMENT.md](./DEPLOYMENT.md) · Platform: [
 > **Pre-build status.** Today the repo contains only **Spec-Driven-Development artifacts** (`.specify/`, `specs/001-sparkpoint-pivot-mvp/`, `docs/`) and the design handover — **no application code yet** (build stage ⑤ not started). Everything below describing app code, scripts, monorepo layout, and env vars is **planned / TBD until the build starts**. The Spec Kit workflow (below) is usable now.
 
 > **Client-project divergences (sanctioned).** SparkPoint Pivot is an ObraHaus **client product**, not part of the OH Apps Ecosystem (in the OH org for now; may transfer to the client). Unlike a standard OH app it:
-> - **Auth = wallet auth** (Wagmi v2 + Viem · WalletConnect v2 · Coinbase Wallet SDK), **not** obrahaus-console SSO. The user's wallet is the identity; the smart account is user-owned (constitution N3).
+> - **Auth = wallet auth** (Wagmi v3 + Viem · WalletConnect v2 · Coinbase Wallet SDK), **not** obrahaus-console SSO. The user's wallet is the identity; the smart account is user-owned (constitution N3). *(The current UI build wires only the `injected()` connector; WalletConnect/Coinbase land with the wallet-auth feature.)*
 > - **AI = called directly** (Anthropic API / an OpenAI-compatible API, or the project's own future gateway), **not** obrahaus-governor.
 > - **Brand = own** (cobalt / gold / coral, from the design handover), **not** the OH Primary design system.
 

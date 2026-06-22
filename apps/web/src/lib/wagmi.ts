@@ -1,21 +1,17 @@
 import { http, createConfig, cookieStorage, createStorage } from "wagmi";
 import { base, baseSepolia } from "wagmi/chains";
-import { coinbaseWallet, injected, walletConnect } from "wagmi/connectors";
+import { injected } from "wagmi/connectors";
 
 /**
  * Wagmi config — Base (launch) + Base Sepolia (testnet).
- * Non-custodial wallet auth (the user is the sole signer). WalletConnect is only
- * wired when a project id is present so the scaffold builds without one.
+ * Non-custodial wallet auth (the user is the sole signer). This UI build is wallet-inert
+ * and wires only the dependency-free `injected()` connector (browser wallets). The
+ * WalletConnect + Coinbase Wallet connectors — and their SDKs (`@walletconnect/ethereum-provider`,
+ * `@coinbase/wallet-sdk`) — are added with the real wallet-auth feature, not here.
  */
-const wcProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
-
 export const wagmiConfig = createConfig({
   chains: [base, baseSepolia],
-  connectors: [
-    injected(),
-    coinbaseWallet({ appName: "SparkPoint" }),
-    ...(wcProjectId ? [walletConnect({ projectId: wcProjectId })] : []),
-  ],
+  connectors: [injected()],
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
   transports: {
