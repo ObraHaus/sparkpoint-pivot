@@ -10,13 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added
-- **Web app scaffold** (`apps/web`) — the build stage (⑤) has begun. Next.js 16 (App Router) + TypeScript + TailwindCSS v4 + pnpm, on `feat/web-scaffold`:
-  - **Theme system** — design tokens ported to `globals.css` (`.dark`/`.light`), wired via **next-themes** (`attribute="class"`, `storageKey="sp-theme"`, default dark, no flash); light/dark toggle in the user menu.
-  - **App shell** — top bar (brand, primary nav, "Fully self-custodial" badge, network-switcher + wallet-pill stubs, account menu), non-custody disclaimer strip, desktop rail nav + mobile bottom tabs.
-  - **Routes** — skeleton pages for chat, portfolio, strategies, vault, bridge, trust (+ permissions, exit), fees, premium, outcomes, srk, learn, settings; `/` redirects to `/chat`.
-  - **Wallet/data providers** — wagmi v3 + viem (Base + Base Sepolia) + react-query wired (connect UI is a stub for now).
-  - typecheck / lint / build all green.
+### Changed
+- **Faithful UI rebuild of `apps/web`** (Spec Kit feature `specs/002-web-app-ui/`) — **replaced** the prior diverged scaffold (generic hero + simplified shell + placeholder screens) with a **1:1 recreation of the approved Claude Design** (`docs/design-handover/showcase/`). The earlier scaffold *re-derived* a simplified UI in Tailwind; this rebuild **ports the design's own assets** instead (root cause of the client-flagged mismatch).
+  - **Visual system** — `tokens.css` + `app.css` + each screen's `<style>` ported into the global stylesheet so the design's component classes exist verbatim; light/dark via **next-themes** (`sp-theme`, default dark, no flash); marketing landing dark-only; tabular numerals; brand spark-mark (coral→gold→blue).
+  - **Shell** — TopBar (brand, Chat/Portfolio/Vault/Strategies, "Fully self-custodial" pill, Base/Sui switcher, wallet pill, ⌘K, notifications, avatar+theme), non-custody disclaimer strip, "Trust & control" rail + Withdraw/Exit, mobile bottom tabs + More sheet.
+  - **Overlays** — `OverlayProvider` (portal): Prove-it sheet (Can/Can't + 5 guarantees), wallet menu, Base/Sui network menu, notifications sheet, ⌘K command palette, toasts.
+  - **Screens** — public landing/connect/verify, onboarding (stepped mandate), chat (structured cards + tool-step thinking + inline confirm), portfolio (+ position detail), vault (net-APY breakdown incl. 10% perf fee/HWM + deposit/withdraw), strategies, the shared confirm gate (`confirm/[intent]`: sim → balance changes → guardrails → ack-gated sign → success), Trust Center (+permissions/exit), automation, bridge (Base↔Sui), fees, premium (+pay), outcomes, learn, srk, settings, notifications.
+  - **Admin panel** — distinct observe-only shell at `/admin` (no auth yet, clearly labeled), "View as" role switcher, and overview/users/usage/tvl/**revenue dashboard**/system/**kill-switch** (pause-only · 2-of-3 · never blocks withdrawals)/config/audit.
+  - **Mock data** — single `lib/mock-data.ts` mirroring the design's `SP.data`; wallet/AI/chain/auth remain simulated (later features).
+  - 37 routes; typecheck / lint / production build all green.
+- **Landing rebuilt as the animated "Spark Core"** — replaced the earlier (wrong-source) hero with a faithful port of `Spark Core Landing.html`: a fixed `<canvas>` particle core morphing through 6 scroll chapters, Ember/Plasma/Constellation flavor switcher, intro splash, progress dots, and per-chapter graphic cards (canvas engine ported into a React effect; dark-only; reduced-motion honoured; no GSAP dependency). Synced the two design files that changed in the latest handoff (Spark Core bg `#04070E`; onboarding header is now dark-only — theme toggle removed). Pixel diff vs the showcase: ~0.1%.
+- **Admin scaffold notice is now dismissible** — the "no authentication yet" banner has an × ; once closed, `/admin` matches the showcase 1:1.
+- **Parity harness** (`/e2e`, Playwright) — serves the approved showcase and diffs every screen (visual + DOM-text + interactions), incl. the admin panel, across desktop/mobile + light/dark. Verdict + per-screen report in `docs/parity/`. Confirms the scaffold is a faithful 1:1 recreation of the design.
 
 ## [0.1.0] - 2026-06-18
 

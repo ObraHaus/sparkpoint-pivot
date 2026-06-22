@@ -1,126 +1,133 @@
 "use client";
 
-/**
- * /connect — simulated wallet connect / login screen (SCAFFOLD / DEMO).
- *
- * Faithful to the design's "connect" route intent (docs/design-handover/showcase/
- * screens/public.js) but standalone: its own minimal chrome, no app shell.
- *
- * NOTE: This is a demo scaffold — there is NO real wallet connection or auth yet.
- * Each wallet option simply simulates a first sign-in by navigating to /onboarding.
- */
-
-import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronRight, ShieldCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { SparkMark } from "@/components/spark-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Icon, SparkMark } from "@/lib/icons";
+import { PubTop } from "@/components/screens/PubTop";
+import "@/components/screens/public.css";
 
-/** Wallet options — dummy icons (brand-tinted tiles), no real connectors wired. */
-const WALLETS = [
-  { name: "Coinbase Wallet", tile: "#0052FF", glyph: "CB" },
-  { name: "WalletConnect", tile: "#3396FF", glyph: "WC" },
-  { name: "MetaMask", tile: "#16202E", glyph: "MM" },
-] as const;
+/** Wallet rows — inline brand SVGs reproduced verbatim from the design. */
+const WALLETS: { name: string; svg: ReactNode }[] = [
+  {
+    name: "Coinbase Wallet",
+    svg: (
+      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="#0052FF" />
+        <circle cx="20" cy="20" r="11.5" fill="#fff" />
+        <rect x="16" y="16" width="8" height="8" rx="2" fill="#0052FF" />
+      </svg>
+    ),
+  },
+  {
+    name: "WalletConnect",
+    svg: (
+      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="#3396FF" />
+        <path
+          d="M11.6 17.6a12 12 0 0 1 16.8 0 .8.8 0 0 1 0 1.1l-2 2a.5.5 0 0 1-.7 0l-1-1a8 8 0 0 0-9.4 0l-1 1a.5.5 0 0 1-.7 0l-2-2a.8.8 0 0 1 0-1.1Z"
+          fill="#fff"
+        />
+        <circle cx="14.8" cy="23.4" r="1.4" fill="#fff" />
+        <circle cx="25.2" cy="23.4" r="1.4" fill="#fff" />
+      </svg>
+    ),
+  },
+  {
+    name: "MetaMask",
+    svg: (
+      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="#16202e" />
+        <path d="M12 9l6 4-2-7z" fill="#E2761B" />
+        <path d="M28 9l-6 4 2-7z" fill="#E17726" />
+        <path d="M17.5 13h5l7.5.9-2.2 11.6-3 2.1-2.8-1.5-2.8 1.5-3-2.1L10 13.9 17.5 13z" fill="#E4761B" />
+        <path d="M14.6 26.6l2.7-1.4 2.7 1.3 2.7-1.3 2.7 1.4-.3 2.3-2.4 1.6h-5.4l-2.4-1.6z" fill="#F6E2D2" />
+      </svg>
+    ),
+  },
+  {
+    name: "Browser wallet",
+    svg: (
+      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="#2a3346" />
+        <circle cx="20" cy="20" r="9" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+        <path
+          d="M11 20h18M20 11c2.6 2.4 2.6 15.6 0 18M20 11c-2.6 2.4-2.6 15.6 0 18"
+          stroke="#cbd5e1"
+          strokeWidth="1.6"
+          fill="none"
+        />
+      </svg>
+    ),
+  },
+];
 
 export default function ConnectPage() {
   const router = useRouter();
+  const [connecting, setConnecting] = useState<number | null>(null);
 
-  // DEMO: simulate a first-time sign-in. No real wallet handshake yet.
-  const connect = () => router.push("/onboarding");
+  const onConnect = (i: number) => {
+    if (connecting !== null) return;
+    setConnecting(i);
+    setTimeout(() => router.push("/verify"), 900);
+  };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      {/* Minimal top bar — brand + back + theme toggle */}
-      <header className="flex h-16 flex-none items-center gap-4 border-b border-border-soft px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
-          <SparkMark size={22} />
-          <span>SparkPoint</span>
-        </Link>
-        <div className="flex-1" />
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeft size={15} />
-          Back
-        </Link>
-        <ThemeToggle variant="icon" />
-      </header>
-
-      {/* Centered connect card */}
-      <main className="flex flex-1 items-center justify-center p-6">
-        <div className="card w-full max-w-[420px] p-8 shadow-md">
-          <div className="mb-2 flex justify-center">
+    <div className="pubwrap">
+      <PubTop />
+      <div className="center-stage">
+        <div className="connect-card">
+          <div style={{ textAlign: "center", marginBottom: "6px" }}>
             <SparkMark size={34} />
           </div>
-
-          <h1 className="t-h2 text-center">Connect your wallet</h1>
-          <p className="mx-auto mt-2 max-w-[340px] text-center text-sm leading-relaxed text-muted-foreground">
-            Fully self-custodial &mdash; you keep your keys; SparkPoint never holds
-            your funds.
+          <h2 style={{ textAlign: "center", fontSize: "22px", fontWeight: 600, margin: "0 0 6px" }}>
+            Connect your wallet
+          </h2>
+          <p
+            style={{
+              textAlign: "center",
+              fontSize: "13.5px",
+              color: "var(--muted-foreground)",
+              margin: "0 0 20px",
+              lineHeight: 1.5,
+            }}
+          >
+            You stay in control. We read your wallet to personalize —{" "}
+            <b style={{ color: "var(--foreground)" }}>nothing moves without your signature.</b>
           </p>
-
-          {/* Wallet options (dummy) */}
-          <div className="mt-6 flex flex-col gap-2.5">
-            {WALLETS.map((w) => (
-              <button
-                key={w.name}
-                type="button"
-                onClick={connect}
-                className={cn(
-                  "group flex items-center gap-3.5 rounded-[var(--radius)] border border-border bg-background p-3.5",
-                  "text-left transition hover:border-primary hover:bg-card-2",
+          <div className="walletlist">
+            {WALLETS.map((w, i) => (
+              <button className="walletrow" data-i={i} key={i} onClick={() => onConnect(i)}>
+                {connecting === i ? (
+                  <>
+                    <span className="wl-ico">
+                      <span className="ai-dot"></span>
+                    </span>
+                    <span className="wl-name">Connecting…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="wl-ico">{w.svg}</span>
+                    <span className="wl-name">{w.name}</span>
+                    <Icon name="chevr" size={16} />
+                  </>
                 )}
-              >
-                <span
-                  className="flex size-9 flex-none items-center justify-center rounded-[10px] text-[11px] font-semibold tracking-wide text-white"
-                  style={{ background: w.tile }}
-                  aria-hidden
-                >
-                  {w.glyph}
-                </span>
-                <span className="flex-1 text-sm font-semibold">{w.name}</span>
-                <ChevronRight
-                  size={16}
-                  className="text-muted-foreground transition group-hover:text-foreground"
-                />
               </button>
             ))}
           </div>
-
-          {/* Reassurance */}
-          <div className="mt-5 flex items-start gap-2.5 rounded-[var(--radius)] bg-[var(--spark-subtle)] p-3 text-xs leading-relaxed text-muted-foreground">
-            <ShieldCheck size={16} className="mt-0.5 flex-none text-primary" />
-            <span>
-              You own your keys and your account. We never generate a wallet for you
-              or hold your keys.
+          <div className="connect-reassure">
+            <Icon name="shieldcheck" size={16} />
+            <span>You own your keys and your account. We never generate a wallet for you or hold your keys.</span>
+          </div>
+          <div style={{ textAlign: "center", marginTop: "14px" }}>
+            <span className="pill ghosty" style={{ cursor: "default" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="#0052FF" />
+              </svg>
+              Base network
             </span>
           </div>
-
-          {/* Base network note */}
-          <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <span className="size-2.5 flex-none rounded-full bg-[#0052FF]" aria-hidden />
-            Base network
-          </div>
-
-          {/* Scaffold marker */}
-          <p className="mt-3 text-center text-[11px] text-muted-foreground/70">
-            Demo scaffold &mdash; no real wallet connection yet.
-          </p>
         </div>
-      </main>
-
-      {/* Returning users → straight to the app */}
-      <footer className="flex-none pb-8 text-center">
-        <Link
-          href="/chat"
-          className="text-xs text-muted-foreground transition hover:text-foreground"
-        >
-          Returning? Skip to the app
-        </Link>
-      </footer>
+      </div>
     </div>
   );
 }

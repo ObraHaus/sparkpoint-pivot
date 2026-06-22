@@ -1,441 +1,805 @@
 "use client";
 
 /**
- * /onboarding — stepped onboarding SKELETON (SCAFFOLD / DEMO).
+ * /onboarding — the stepped onboarding flow, ported 1:1 from the design's
+ * docs/design-handover/showcase/flows/Onboarding.html.
  *
- * Faithful to the design's intent (docs/design-handover/showcase/flows/
- * Onboarding.html): a chat-driven flow that turns a goal + risk tolerance into a
- * personal mandate, then previews the first recommendation. This is a clean,
- * navigable skeleton — not a pixel-perfect port, and with NO real auth/wallet.
+ * A chat-driven flow: welcome → connect → experience → goal → timeline →
+ * risk wedge → mandate → first-recommendation preview → done. Each input step
+ * appends an AI turn (and the user's reply bubble) to a conversation stream; a
+ * progress stepper + sticky CTA dock frame it. All markup/copy mirror the design.
  *
- * State is driven by useState: a step index (1..6) plus the user's goal/risk picks.
- * Back/Continue move between steps; the final step navigates into the app.
+ * State lives in useState: a `step` index (0..8) plus the user's answers. There is
+ * no global store — the chosen mandate is local. The final CTA → router.push.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  PiggyBank,
-  Sprout,
-  Shield,
-  TrendingDown,
-  Minus,
-  TrendingUp,
-  Info,
-  Sparkles,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
 
-const TOTAL_STEPS = 6;
+/** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
+const STEP_LABELS = ["Connect", "Experience", "Goal", "Timeline", "Risk", "Your plan"] as const;
+const TIER_NAMES: Record<number, string> = {
+  1: "Lower risk",
+  2: "Low risk",
+  3: "Moderate",
+  4: "Elevated",
+  5: "High risk",
+};
 
-/** Goal chips (step 2). */
-const GOALS = [
-  {
-    id: "grow",
-    label: "Grow savings",
-    gloss: "Build steadily over time",
-    icon: PiggyBank,
-  },
-  {
-    id: "yield",
-    label: "Earn yield",
-    gloss: "Earn predictable USDC yield",
-    icon: Sprout,
-  },
-  {
-    id: "preserve",
-    label: "Preserve capital",
-    gloss: "Protect what you have first",
-    icon: Shield,
-  },
-] as const;
+interface Answers {
+  experience: string | null;
+  goal: string | null;
+  timeline: string | null;
+  riskAns: string | null;
+  riskTier: number;
+}
 
-/** Risk options (step 3). */
-const RISKS = [
-  {
-    id: "lower",
-    label: "Lower",
-    gloss: "Protect what's left",
-    scenario: "If your $1,000 dropped to $800, you'd sell to stop the bleeding.",
-    icon: TrendingDown,
-  },
-  {
-    id: "moderate",
-    label: "Moderate",
-    gloss: "Ride it out",
-    scenario: "If your $1,000 dropped to $800, you'd hold and wait it out.",
-    icon: Minus,
-  },
-  {
-    id: "higher",
-    label: "Higher",
-    gloss: "Lean in on the dip",
-    scenario: "If your $1,000 dropped to $800, you'd buy more while it's low.",
-    icon: TrendingUp,
-  },
-] as const;
-
-type GoalId = (typeof GOALS)[number]["id"];
-type RiskId = (typeof RISKS)[number]["id"];
+/**
+ * Opens the "What SparkPoint can & can't do" prove-it sheet (Trust Center).
+ * In the design prototype this is an alert placeholder wired to both #proveLink
+ * and #badgeNC (Onboarding.html lines 515–516); the real sheet lives in the
+ * shell build.
+ */
+function openProveIt() {
+  alert(
+    'Prove-it panel → opens the "What SparkPoint can & can\'t do" sheet (Trust Center). Wired in the shell build.',
+  );
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [goal, setGoal] = useState<GoalId | null>(null);
-  const [risk, setRisk] = useState<RiskId | null>(null);
+  const [stepIndex, setStepIndex] = useState(0); // 0..8
+  const [answers, setAnswers] = useState<Answers>({
+    experience: null,
+    goal: null,
+    timeline: null,
+    riskAns: null,
+    riskTier: 1,
+  });
+  const [whyOpen, setWhyOpen] = useState(false);
 
-  const back = () => setStep((s) => Math.max(1, s - 1));
-  const next = () => setStep((s) => Math.min(TOTAL_STEPS, s + 1));
+  const go = (n: number) => setStepIndex(n);
+  const set = (patch: Partial<Answers>) => setAnswers((a) => ({ ...a, ...patch }));
 
-  // Continue is gated on the steps that require a choice.
-  const canContinue =
-    (step !== 2 || goal !== null) && (step !== 3 || risk !== null);
-
-  const goalLabel = GOALS.find((g) => g.id === goal)?.label ?? "—";
-  const riskLabel = RISKS.find((r) => r.id === risk)?.label ?? "—";
+  // ---------- stepper ----------
+  const inputActive = Math.min(Math.max(stepIndex, 1), 6); // 1..6
 
   return (
-    <div className="flex flex-col">
-      {/* Stepper indicator */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((n) => (
-            <div
-              key={n}
-              className={cn(
-                "h-1.5 flex-1 rounded-full transition-colors",
-                n <= step ? "bg-primary" : "bg-border",
-              )}
-            />
-          ))}
-        </div>
-        <p className="tnum mt-2 text-xs text-muted-foreground">
-          Step {step} of {TOTAL_STEPS}
-        </p>
-      </div>
-
-      {/* Step body */}
-      <div className="min-h-[320px]">
-        {step === 1 && <StepWelcome />}
-        {step === 2 && <StepGoal goal={goal} onPick={setGoal} />}
-        {step === 3 && <StepRisk risk={risk} onPick={setRisk} />}
-        {step === 4 && <StepMandate goalLabel={goalLabel} riskLabel={riskLabel} />}
-        {step === 5 && <StepRecommendation />}
-        {step === 6 && <StepDone />}
-      </div>
-
-      {/* Footer nav — Back / Continue (or Enter on the last step) */}
-      <div className="mt-8 flex items-center justify-between border-t border-border-soft pt-5">
-        <button
-          type="button"
-          onClick={back}
-          disabled={step === 1}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-2 text-sm font-medium transition",
-            step === 1
-              ? "cursor-not-allowed text-muted-foreground/40"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <ArrowLeft size={15} />
-          Back
-        </button>
-
-        {step < TOTAL_STEPS ? (
-          <button
-            type="button"
-            onClick={next}
-            disabled={!canContinue}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition",
-              canContinue ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
-            )}
-          >
-            Continue
-            <ArrowRight size={15} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => router.push("/chat")}
-            className="inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-          >
-            Enter SparkPoint
-            <ArrowRight size={15} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 1 — Welcome + non-custodial promise ---------------- */
-function StepWelcome() {
-  const promises = [
-    "You own your keys — we never generate or hold a wallet for you.",
-    "Withdraw anytime — even if SparkPoint is completely offline.",
-    "The AI suggests; deterministic guardrails check; you sign.",
-  ];
-  return (
-    <div>
-      <p className="eyebrow">Welcome</p>
-      <h1 className="t-h1 mt-2">
-        An AI fund manager that <span className="brand-gradient-text">can&apos;t hold your money.</span>
-      </h1>
-      <p className="mt-3 max-w-[560px] text-sm leading-relaxed text-muted-foreground">
-        Let&apos;s build your plan. SparkPoint reads your wallet to personalize, suggests
-        moves, and explains every one. You approve and sign each &mdash; and you can
-        leave anytime, even if we&apos;re offline.
-      </p>
-
-      <ul className="mt-6 flex flex-col gap-3">
-        {promises.map((p) => (
-          <li key={p} className="flex items-center gap-3 text-sm text-foreground">
-            <span className="flex size-7 flex-none items-center justify-center rounded-[9px] bg-[var(--spark-subtle)] text-primary">
-              <Check size={15} />
-            </span>
-            {p}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/* ---------------- Step 2 — Your goal ---------------- */
-function StepGoal({
-  goal,
-  onPick,
-}: {
-  goal: GoalId | null;
-  onPick: (id: GoalId) => void;
-}) {
-  return (
-    <div>
-      <p className="eyebrow">Your goal</p>
-      <h2 className="t-h2 mt-2">What&apos;s your main goal right now?</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Pick one &mdash; you can change it anytime in Settings.
-      </p>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        {GOALS.map((g) => {
-          const Icon = g.icon;
-          const selected = goal === g.id;
+    <>
+      {/* stepper */}
+      <div className="stepper" id="stepper">
+        {STEP_LABELS.map((lbl, i) => {
+          const n = i + 1;
+          const done = stepIndex > 6 || n < inputActive;
+          const active = stepIndex >= 1 && stepIndex <= 6 && n === inputActive;
           return (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => onPick(g.id)}
-              aria-pressed={selected}
-              className={cn(
-                "flex min-w-[180px] flex-1 items-start gap-3 rounded-[var(--radius)] border bg-card p-4 text-left transition",
-                selected
-                  ? "border-primary ring-2 ring-[var(--spark-subtle)] bg-card-2"
-                  : "border-border hover:border-primary/55 hover:bg-card-2",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-9 flex-none items-center justify-center rounded-[9px] transition",
-                  selected
-                    ? "bg-[var(--spark-subtle)] text-primary"
-                    : "bg-muted text-muted-foreground",
-                )}
+            <div className="stepwrap" key={lbl}>
+              <div
+                className={"stepdot" + (done ? " done" : "") + (active ? " active" : "")}
+                onClick={done ? () => go(n) : undefined}
               >
-                <Icon size={18} />
-              </span>
-              <span>
-                <span className="block text-sm font-semibold text-foreground">
-                  {g.label}
+                <span className="ring">
+                  {done ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    n
+                  )}
                 </span>
-                <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                  {g.gloss}
-                </span>
-              </span>
-            </button>
+                <span className="lbl">{lbl}</span>
+              </div>
+              {i < STEP_LABELS.length - 1 && (
+                <div className={"stepline" + (done ? " done" : "")}>
+                  <span className="fill" />
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
+      <div
+        className="stepcount tnum"
+        id="stepcount"
+        style={{ visibility: stepIndex >= 1 && stepIndex <= 6 ? "visible" : "hidden" }}
+      >
+        Step {inputActive} of 6
+      </div>
+
+      {/* disclaimer */}
+      <div className="disc">
+        <svg className="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8h.01M11 12h1v4h1" />
+        </svg>
+        <div>
+          <b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice. Capital at risk.
+          SparkPoint can never move or withhold your funds.{" "}
+          <a id="proveLink" onClick={openProveIt}>
+            See what we can &amp; can&apos;t do
+          </a>{" "}
+          · <a>Exit anytime</a>
+        </div>
+      </div>
+
+      {/* conversation */}
+      <div className="stage" id="stage">
+        <div className="stream" id="stream">
+          {renderStream(stepIndex, answers, set, whyOpen, setWhyOpen)}
+        </div>
+      </div>
+
+      {/* sticky dock */}
+      <div className="dock">
+        <div className="dockinner" id="dock">
+          {renderDock(stepIndex, answers, go, router.push)}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- shared AI avatar mark ---------------- */
+function SparkAvatar() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+      <path
+        d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z"
+        fill="var(--primary)"
+      />
+    </svg>
+  );
+}
+
+function AiTurn({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="turn ai">
+      <div className="avatar">
+        <SparkAvatar />
+      </div>
+      <div className="content">
+        <div className="ai-name">SparkPoint AI</div>
+        {children}
+      </div>
     </div>
   );
 }
 
-/* ---------------- Step 3 — Risk tolerance ---------------- */
-function StepRisk({
-  risk,
-  onPick,
+function UserTurn({ text }: { text: string }) {
+  return (
+    <div className="turn user">
+      <div className="bubble-user">{text}</div>
+    </div>
+  );
+}
+
+/* ---------------- option markup helpers ---------------- */
+function OptCard({
+  title,
+  gloss,
+  path,
+  selected,
+  onClick,
 }: {
-  risk: RiskId | null;
-  onPick: (id: RiskId) => void;
+  title: string;
+  gloss: string;
+  path: string;
+  selected: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div>
-      <p className="eyebrow">Risk tolerance</p>
-      <h2 className="t-h2 mt-2">Your $1,000 drops to $800 in a week. What do you do?</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        No right answer &mdash; this tells me how to set your risk, not test you.
-      </p>
-
-      <div className="mt-6 flex flex-col gap-3">
-        {RISKS.map((r) => {
-          const Icon = r.icon;
-          const selected = risk === r.id;
-          return (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => onPick(r.id)}
-              aria-pressed={selected}
-              className={cn(
-                "flex w-full items-start gap-3 rounded-[var(--radius)] border bg-card p-4 text-left transition",
-                selected
-                  ? "border-primary ring-2 ring-[var(--spark-subtle)] bg-card-2"
-                  : "border-border hover:border-primary/55 hover:bg-card-2",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-9 flex-none items-center justify-center rounded-[9px] transition",
-                  selected
-                    ? "bg-[var(--spark-subtle)] text-primary"
-                    : "bg-muted text-muted-foreground",
-                )}
-              >
-                <Icon size={18} />
-              </span>
-              <span>
-                <span className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">
-                    {r.label}
-                  </span>
-                  <span className="text-xs text-muted-foreground">&middot; {r.gloss}</span>
-                </span>
-                <span className="mt-1 block text-xs leading-snug text-muted-foreground">
-                  {r.scenario}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 4 — Your mandate (summary) ---------------- */
-function StepMandate({
-  goalLabel,
-  riskLabel,
-}: {
-  goalLabel: string;
-  riskLabel: string;
-}) {
-  return (
-    <div>
-      <p className="eyebrow">Your mandate</p>
-      <h2 className="t-h2 mt-2">Here&apos;s your plan</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Capital-preservation-first. You can adjust it anytime.
-      </p>
-
-      <div className="card mt-6 p-5">
-        <dl className="flex flex-col divide-y divide-border-soft">
-          <div className="flex items-center justify-between py-3 first:pt-0">
-            <dt className="text-sm text-muted-foreground">Goal</dt>
-            <dd className="text-sm font-semibold text-foreground">{goalLabel}</dd>
-          </div>
-          <div className="flex items-center justify-between py-3">
-            <dt className="text-sm text-muted-foreground">Risk tolerance</dt>
-            <dd className="text-sm font-semibold text-foreground">{riskLabel}</dd>
-          </div>
-          <div className="flex items-center justify-between py-3 last:pb-0">
-            <dt className="text-sm text-muted-foreground">Custody</dt>
-            <dd className="text-sm font-semibold text-gain">Self-custodial</dd>
-          </div>
-        </dl>
-
-        <div className="mt-4 flex items-start gap-2.5 rounded-[var(--radius)] bg-[var(--info-subtle)] p-3 text-xs leading-relaxed text-muted-foreground">
-          <Info size={15} className="mt-0.5 flex-none text-[var(--info)]" />
-          <span>
-            The AI will only suggest moves that fit this mandate.{" "}
-            <span className="font-semibold text-foreground">
-              You approve and sign each one.
-            </span>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 5 — First recommendation ---------------- */
-function StepRecommendation() {
-  return (
-    <div>
-      <p className="eyebrow">First recommendation</p>
-      <h2 className="t-h2 mt-2">The first move I&apos;d suggest</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Tied to your goal &mdash; you approve and sign before anything happens.
-      </p>
-
-      <div className="card mt-6 p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground">
-            Best fit &middot; #1 vs your goal
-          </span>
-          <span className="badge-ai bg-[var(--spark-subtle)] text-primary">
-            <Sparkles size={11} />
-            AI suggestion &mdash; you approve &amp; sign
-          </span>
-        </div>
-
-        <p className="mt-3 text-sm leading-relaxed text-foreground">
-          Move your idle USDC into the{" "}
-          <span className="font-semibold">Aave Yield Vault</span>. It fits your plan
-          &mdash; lower risk, capital-preservation-first, steady yield.
-        </p>
-
-        <div className="mt-4 flex flex-wrap items-end gap-8">
-          <div className="flex flex-col gap-0.5">
-            <span className="tnum text-[28px] font-semibold leading-none text-foreground">
-              3.87%
-            </span>
-            <span className="text-[11.5px] text-muted-foreground">net APY</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-foreground">
-              Fee only on profit
-            </span>
-            <span className="text-[11.5px] text-muted-foreground">
-              0% on principal &middot; high-water mark
-            </span>
-          </div>
-        </div>
-
-        <p className="mt-4 text-[11.5px] text-muted-foreground">
-          Estimates, not guarantees. Not financial advice &mdash; capital at risk.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 6 — Done ---------------- */
-function StepDone() {
-  return (
-    <div className="flex flex-col items-center text-center">
-      <span className="flex size-16 items-center justify-center rounded-full bg-[var(--gain-subtle)]">
-        <Check size={30} className="text-gain" />
+    <button className={"opt" + (selected ? " sel" : "")} onClick={onClick} type="button">
+      <span className="oico">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d={path} />
+        </svg>
       </span>
-      <h2 className="t-h1 mt-4">Your plan is set.</h2>
-      <p className="mt-3 max-w-[420px] text-sm leading-relaxed text-muted-foreground">
-        Lower risk, steady USDC yield. The AI will suggest; you approve and sign.
-        Change any of this anytime in Settings.
-      </p>
-    </div>
+      <span>
+        <span className="otitle">{title}</span>
+        <span className="ogloss">{gloss}</span>
+      </span>
+    </button>
   );
+}
+
+function GoalCard({
+  title,
+  gloss,
+  hint,
+  path,
+  riskvar,
+  selected,
+  onClick,
+}: {
+  title: string;
+  gloss: string;
+  hint: string;
+  path: string;
+  riskvar: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className={"opt" + (selected ? " sel" : "")} onClick={onClick} type="button">
+      <span className="oico">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d={path} />
+        </svg>
+      </span>
+      <span>
+        <span className="otitle">{title}</span>
+        <span className="ogloss">{gloss}</span>
+        <span className="rhint">
+          <span className="riskmeter">
+            <i style={{ background: `var(${riskvar})` }} />
+          </span>
+          Risk {hint}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function Tchip({
+  tt,
+  ts,
+  selected,
+  onClick,
+}: {
+  tt: string;
+  ts: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className={"tchip" + (selected ? " sel" : "")} onClick={onClick} type="button">
+      <div className="tt">{tt}</div>
+      <div className="ts">{ts}</div>
+    </button>
+  );
+}
+
+function RiskOpt({
+  title,
+  gloss,
+  selected,
+  onClick,
+}: {
+  title: string;
+  gloss: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className={"opt" + (selected ? " sel" : "")} onClick={onClick} type="button">
+      <span className="oico">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="9" />
+        </svg>
+      </span>
+      <span>
+        <span className="otitle">{title}</span>
+        <span className="ogloss">{gloss}</span>
+      </span>
+    </button>
+  );
+}
+
+/* ---------------- conversation stream ---------------- */
+function renderStream(
+  stepIndex: number,
+  answers: Answers,
+  set: (patch: Partial<Answers>) => void,
+  whyOpen: boolean,
+  setWhyOpen: (v: boolean) => void,
+): React.ReactNode {
+  switch (stepIndex) {
+    case 0:
+      return (
+        <AiTurn>
+          <div className="ai-text">
+            An AI fund manager that <span className="soft">can&apos;t hold your money.</span> Let&apos;s build your
+            plan.
+          </div>
+          <div className="ai-sub">
+            I read your wallet to personalize, suggest moves, and explain every one. You approve and sign each — and
+            you can leave anytime, even if we&apos;re offline.
+          </div>
+          <div className="promises">
+            <div className="promise">
+              <span className="pico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-1 1L20 4l-2-2" />
+                </svg>
+              </span>
+              You own your keys — we never generate or hold a wallet for you.
+            </div>
+            <div className="promise">
+              <span className="pico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9" />
+                </svg>
+              </span>
+              Withdraw anytime — even if SparkPoint is completely offline.
+            </div>
+            <div className="promise">
+              <span className="pico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z" />
+                </svg>
+              </span>
+              The AI suggests; deterministic guardrails check; you sign.
+            </div>
+          </div>
+        </AiTurn>
+      );
+
+    case 1:
+      return (
+        <>
+          <UserTurn text="Get started" />
+          <AiTurn>
+            <div className="ai-text">
+              You&apos;re connected —{" "}
+              <span className="mono" style={{ color: "var(--foreground)" }}>
+                0x12…ab
+              </span>{" "}
+              on Base.
+            </div>
+            <div className="tip">
+              <span className="tico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2l8 4v6c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-4Z" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg>
+              </span>
+              <div>
+                <div className="ttl">You own your keys and your account.</div>
+                <div className="tbd">
+                  We never generate a wallet for you or hold your keys. We read your wallet to personalize your plan —
+                  nothing moves without your signature.
+                </div>
+              </div>
+            </div>
+          </AiTurn>
+        </>
+      );
+
+    case 2:
+      return (
+        <AiTurn>
+          <div className="ai-text">How familiar are you with DeFi or crypto investing?</div>
+          <div className="ai-sub">This just tunes how much detail I show. You can change it anytime.</div>
+          <div className="opts row" id="optExp">
+            <OptCard
+              title="New"
+              gloss="I'm just getting started"
+              path="M12 20v-6m0 0V8m0 6h6m-6 0H6"
+              selected={answers.experience === "New"}
+              onClick={() => set({ experience: "New" })}
+            />
+            <OptCard
+              title="Some"
+              gloss="I've used a few apps"
+              path="M3 12h4l3 8 4-16 3 8h4"
+              selected={answers.experience === "Some"}
+              onClick={() => set({ experience: "Some" })}
+            />
+            <OptCard
+              title="Pro"
+              gloss="I read contracts"
+              path="M8 6l-6 6 6 6m8-12l6 6-6 6"
+              selected={answers.experience === "Pro"}
+              onClick={() => set({ experience: "Pro" })}
+            />
+          </div>
+        </AiTurn>
+      );
+
+    case 3:
+      return (
+        <AiTurn>
+          <div className="ai-text">What&apos;s your main goal right now?</div>
+          <div className="opts grid2" id="optGoal">
+            <GoalCard
+              title="Grow my savings"
+              gloss="Build steadily over time"
+              hint="1–2 · Lower"
+              path="M3 17l6-6 4 4 8-8"
+              riskvar="--risk-2"
+              selected={answers.goal === "Grow my savings"}
+              onClick={() => set({ goal: "Grow my savings" })}
+            />
+            <GoalCard
+              title="Steady yield"
+              gloss="Earn predictable USDC yield"
+              hint="1 · Lower"
+              path="M4 12h16M4 12l3-3M4 12l3 3"
+              riskvar="--risk-1"
+              selected={answers.goal === "Steady yield"}
+              onClick={() => set({ goal: "Steady yield" })}
+            />
+            <GoalCard
+              title="Aggressive growth"
+              gloss="Chase higher returns, more risk"
+              hint="4–5 · Higher"
+              path="M13 2L3 14h7l-1 8 10-12h-7l1-8Z"
+              riskvar="--risk-5"
+              selected={answers.goal === "Aggressive growth"}
+              onClick={() => set({ goal: "Aggressive growth" })}
+            />
+            <GoalCard
+              title="Reach a target"
+              gloss="Hit a specific amount"
+              hint="varies"
+              path="M12 2v4m0 12v4m10-10h-4M6 12H2"
+              riskvar="--risk-3"
+              selected={answers.goal === "Reach a target"}
+              onClick={() => set({ goal: "Reach a target" })}
+            />
+          </div>
+        </AiTurn>
+      );
+
+    case 4:
+      return (
+        <AiTurn>
+          <div className="ai-text">When might you need this money?</div>
+          <div className="ai-sub">Longer horizons can usually take more ups and downs.</div>
+          <div className="tchips" id="optTime">
+            <Tchip
+              tt="< 1 year"
+              ts="Short term"
+              selected={answers.timeline === "< 1 year"}
+              onClick={() => set({ timeline: "< 1 year" })}
+            />
+            <Tchip
+              tt="1–3 years"
+              ts="Medium term"
+              selected={answers.timeline === "1–3 years"}
+              onClick={() => set({ timeline: "1–3 years" })}
+            />
+            <Tchip
+              tt="3+ years"
+              ts="Long term"
+              selected={answers.timeline === "3+ years"}
+              onClick={() => set({ timeline: "3+ years" })}
+            />
+          </div>
+        </AiTurn>
+      );
+
+    case 5:
+      return (
+        <AiTurn>
+          <div className="ai-text">Your $1,000 drops to $800 in a week. What do you do?</div>
+          <div className="ai-sub">No right answer — this tells me how to set your risk, not test you.</div>
+          <div className="opts col" id="optRisk">
+            <RiskOpt
+              title="Sell to stop the bleeding"
+              gloss="Protect what's left"
+              selected={answers.riskAns === "Sell to stop the bleeding"}
+              onClick={() => set({ riskAns: "Sell to stop the bleeding", riskTier: 1 })}
+            />
+            <RiskOpt
+              title="Hold and wait"
+              gloss="Ride it out"
+              selected={answers.riskAns === "Hold and wait"}
+              onClick={() => set({ riskAns: "Hold and wait", riskTier: 2 })}
+            />
+            <RiskOpt
+              title="Buy more while it's low"
+              gloss="Lean in on the dip"
+              selected={answers.riskAns === "Buy more while it's low"}
+              onClick={() => set({ riskAns: "Buy more while it's low", riskTier: 4 })}
+            />
+          </div>
+          <div className="tip">
+            <span className="tico">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8h.01M11 12h1v4h1" />
+              </svg>
+            </span>
+            <div>
+              <div className="ttl">What&apos;s volatility?</div>
+              <div className="tbd">
+                How much a value swings up and down over time. Higher volatility can mean bigger gains — and bigger
+                drops.
+              </div>
+            </div>
+          </div>
+        </AiTurn>
+      );
+
+    case 6: {
+      const t = answers.riskTier || 1;
+      const rv = `var(--risk-${t})`;
+      const goal = answers.goal || "steady USDC yield";
+      return (
+        <AiTurn>
+          <div className="ai-text">
+            Here&apos;s your plan — capital-preservation-first. You can adjust it anytime.
+          </div>
+          <div className="mandate" id="mandate">
+            <div className="mhead">
+              <span className="mtitle">Your mandate</span>
+              <span
+                className="riskbadge"
+                id="rbadge"
+                style={{
+                  background: `var(--risk-${t}-subtle)`,
+                  borderColor: `color-mix(in srgb,${rv} 30%,transparent)`,
+                }}
+              >
+                <span className="riskmeter" id="rmeter">
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <i key={i} style={{ background: i < t ? rv : "var(--border)" }} />
+                  ))}
+                </span>
+                <span className="rname" id="rname" style={{ color: rv }}>
+                  {TIER_NAMES[t]} · {t}/5
+                </span>
+              </span>
+            </div>
+            <div className="mpara" id="mpara">
+              Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, capital preservation first, target{" "}
+              {goal.toLowerCase().includes("yield") ? "steady USDC yield" : "goal-aligned yield"}. The AI will only
+              suggest moves that fit this. <b>You approve and sign each one.</b>
+            </div>
+            <div className="mslider">
+              <div className="slabel">
+                <span>Adjust your risk</span>
+                <span id="sval">
+                  {TIER_NAMES[t]} ({t}/5)
+                </span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value={t}
+                onChange={(e) => set({ riskTier: +e.target.value })}
+                className="srange"
+                id="rslider"
+              />
+            </div>
+            <div className={"mwarn" + (t > 2 ? " show" : "")} id="mwarn">
+              <span className="wico">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                </svg>
+              </span>
+              <div>
+                Only the Lower-risk Aave vault is live today. Higher-risk strategies will rank here as more vaults open
+                — this is information, not a block.
+              </div>
+            </div>
+            <div className="whythis">
+              <button
+                className="whytrig"
+                id="whytrig"
+                type="button"
+                onClick={() => setWhyOpen(!whyOpen)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01" />
+                </svg>
+                Why this profile?
+              </button>
+              <div className={"whybody" + (whyOpen ? " open" : "")} id="whybody">
+                You chose to {answers.riskAns ? answers.riskAns.toLowerCase() : "hold through a drop"} after a 20% drop,
+                with a {answers.timeline || "medium"} horizon. That maps to a {TIER_NAMES[t].toLowerCase()} profile —
+                steady, capital-preservation-first.
+              </div>
+            </div>
+          </div>
+        </AiTurn>
+      );
+    }
+
+    case 7:
+      return (
+        <>
+          <UserTurn text="Set my plan" />
+          <AiTurn>
+            <div className="ai-text">Your plan&apos;s set. Here&apos;s the first move I&apos;d suggest — tied to your goal.</div>
+            <div className="reccard" id="reccard">
+              <div className="rechead">
+                <span className="rankbadge">Best fit · #1 vs your goal</span>
+                <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+              </div>
+              <div className="recthesis">
+                Move your idle USDC into the <b>Aave Yield Vault</b>. It fits your plan — lower risk,
+                capital-preservation-first, steady yield.
+              </div>
+              <div className="recrow">
+                <div className="recapy">
+                  <span className="big tnum">
+                    4.3%
+                    <span className="cite" id="apycite">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 12l2 2 4-4" />
+                        <circle cx="12" cy="12" r="9" />
+                      </svg>
+                      Based on Aave · 2m
+                    </span>
+                  </span>
+                  <span className="lbl">
+                    net APY · <span className="estnote">estimate · see breakdown</span>
+                  </span>
+                </div>
+                <div>
+                  <div style={{ fontSize: "11.5px", color: "var(--muted-foreground)", marginBottom: "6px" }}>
+                    Risk tier
+                  </div>
+                  <span
+                    className="riskbadge"
+                    style={{
+                      background: "var(--risk-1-subtle)",
+                      borderColor: "color-mix(in srgb,var(--risk-1) 30%,transparent)",
+                    }}
+                  >
+                    <span className="riskmeter">
+                      <i style={{ background: "var(--risk-1)" }} />
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="rname" style={{ color: "var(--risk-1)" }}>
+                      Lower · 1/5
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "14px" }}>
+                Estimates, not guarantees. · 4.3% Aave supply rate − 0% SparkPoint fee
+              </div>
+              <div className="recact">
+                <button className="btn btn-primary btn-md" type="button">
+                  Review this move
+                </button>
+                <button className="btn btn-ghost btn-md" type="button">
+                  Not now
+                </button>
+              </div>
+            </div>
+          </AiTurn>
+        </>
+      );
+
+    case 8:
+      return (
+        <div className="turn" style={{ opacity: 1, justifyContent: "center" }}>
+          <div className="complete">
+            <div className="checkwrap" id="cwrap">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" strokeWidth="2.5" id="cmark">
+                <path d="M5 13l4 4L19 7" strokeDasharray="26" strokeDashoffset="0" />
+              </svg>
+            </div>
+            <div className="t-h1">Your plan is set.</div>
+            <div className="t-base" style={{ color: "var(--muted-foreground)", maxWidth: "420px" }}>
+              Lower risk (1/5), steady USDC yield. The AI will suggest; you approve and sign. Change any of this anytime
+              in Settings.
+            </div>
+          </div>
+        </div>
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* ---------------- sticky dock (per-step CTAs) ---------------- */
+function renderDock(
+  stepIndex: number,
+  answers: Answers,
+  go: (n: number) => void,
+  push: (href: string) => void,
+): React.ReactNode {
+  switch (stepIndex) {
+    case 0:
+      return (
+        <>
+          <span className="hint">Takes about 3 minutes.</span>
+          <button className="btn btn-outline btn-lg" type="button">
+            How this works
+          </button>
+          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(1)}>
+            Get started
+          </button>
+        </>
+      );
+
+    case 1:
+      return (
+        <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(2)}>
+          Continue
+        </button>
+      );
+
+    case 2:
+      return answers.experience ? (
+        <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(3)}>
+          Continue
+        </button>
+      ) : (
+        <span className="hint">Pick one to continue</span>
+      );
+
+    case 3:
+      return answers.goal ? (
+        <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(4)}>
+          Continue
+        </button>
+      ) : (
+        <span className="hint">Pick one to continue</span>
+      );
+
+    case 4:
+      return answers.timeline ? (
+        <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(5)}>
+          Continue
+        </button>
+      ) : (
+        <span className="hint">Pick one to continue</span>
+      );
+
+    case 5:
+      return answers.riskAns ? (
+        <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(6)}>
+          See my plan
+        </button>
+      ) : (
+        <span className="hint">Choose what feels honest</span>
+      );
+
+    case 6:
+      return (
+        <>
+          <span className="hint">You can change this anytime in Settings.</span>
+          <button
+            className="btn btn-outline btn-lg"
+            type="button"
+            onClick={() => document.getElementById("rslider")?.focus()}
+          >
+            Adjust
+          </button>
+          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(7)}>
+            Set my plan
+          </button>
+        </>
+      );
+
+    case 7:
+      return (
+        <>
+          <button className="btn btn-ghost btn-lg" type="button">
+            Not now
+          </button>
+          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(8)}>
+            Continue to chat
+          </button>
+        </>
+      );
+
+    case 8:
+      return (
+        <>
+          <button className="btn btn-outline btn-lg" type="button">
+            View my plan
+          </button>
+          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => push("/chat")}>
+            Go to chat
+          </button>
+        </>
+      );
+
+    default:
+      return null;
+  }
 }
