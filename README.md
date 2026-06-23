@@ -23,18 +23,22 @@ This repository is the home for the SparkPoint Pivot **source code and docs**. I
 sparkpoint-pivot/
 ├── .specify/                     # Spec Kit: templates, scripts, memory/constitution.md
 ├── .claude/skills/               # Spec Kit slash-command skills (/speckit-*)
+├── apps/web/                     # ⑤ the Next.js web app — faithful UI build (see apps/web/README.md)
+├── e2e/                          # Playwright parity harness (scaffold vs the approved showcase)
 ├── specs/
-│   └── 001-sparkpoint-pivot-mvp/ # The launch feature (spec → plan → tasks)
-│       ├── spec.md               # WHAT & WHY (product spec)
-│       ├── plan.md               # HOW (architectural / implementation plan)
-│       ├── research.md           # Phase 0 — decisions & rationale
-│       ├── data-model.md         # Phase 1 — entities & relationships
-│       ├── contracts/            # Phase 1 — API + smart-contract interfaces
-│       ├── quickstart.md         # Phase 1 — end-to-end validation
-│       └── tasks.md              # Dependency-ordered, story-grouped tasks
+│   ├── 001-sparkpoint-pivot-mvp/ # The launch feature (spec → plan → tasks)
+│   │   ├── spec.md               # WHAT & WHY (product spec)
+│   │   ├── plan.md               # HOW (architectural / implementation plan)
+│   │   ├── research.md           # Phase 0 — decisions & rationale
+│   │   ├── data-model.md         # Phase 1 — entities & relationships
+│   │   ├── contracts/            # Phase 1 — API + smart-contract interfaces
+│   │   ├── quickstart.md         # Phase 1 — end-to-end validation
+│   │   └── tasks.md              # Dependency-ordered, story-grouped tasks
+│   └── 002-web-app-ui/           # The faithful UI build feature (spec → plan → tasks)
 └── docs/
     ├── high-level-plan/          # Foundational plan (input to everything)
-    └── design-handover/          # Brief for Claude Design (web-app flows & UI)
+    ├── design-handover/          # Brief for Claude Design (web-app flows & UI) + the showcase
+    └── parity/                   # Scaffold-vs-showcase parity verdict + report
 ```
 
 ## Spec Kit workflow (`/speckit-*` skills)
@@ -60,7 +64,7 @@ sparkpoint-pivot/
 
 ## Tech stack (authoritative)
 
-Frontend **Next.js (App Router) · TailwindCSS · shadcn/ui** · Wagmi v2 + Viem · WalletConnect v2 · Coinbase Wallet SDK
+Frontend **Next.js (App Router) · TailwindCSS · shadcn/ui** · Wagmi v3 + Viem · WalletConnect v2 · Coinbase Wallet SDK
 Agents **OpenClaw / Hermes** (self-hosted, Docker) reasoning on **Claude (Anthropic API)** behind a deterministic policy layer
 Onchain (Base) **Custom ERC-4337** (SparkPointAccount, AccountFactory, SessionKeyValidator, PolicyModule) + **SparkPointVault (ERC-4626)** · Aave v3 · Aerodrome · Foundry
 Data **Dune API · DeFiLlama API · hosted Aave/Aerodrome subgraphs · Postgres + pgvector**

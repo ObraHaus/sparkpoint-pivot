@@ -1,0 +1,18 @@
+/* trust.css — Trust Center, prove-it permissions, withdraw-always exit, automation.
+   The `const css` block from docs/design-handover/showcase/screens/trust.js, verbatim. */
+.guarantee{display:flex;gap:13px;padding:16px 0;border-bottom:1px solid var(--border-soft);}
+.guarantee:last-child{border-bottom:none;}
+.guarantee .gico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;background:var(--gain-subtle);color:var(--gain);}
+.statusrow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--border-soft);}
+.statusrow:last-child{border-bottom:none;}
+.permtable td{font-family:var(--font-mono);font-size:12px;}
+.exit-step{display:flex;gap:13px;padding:14px 0;border-bottom:1px solid var(--border-soft);}
+.exit-step .num{width:26px;height:26px;border-radius:50%;background:var(--muted);display:grid;place-items:center;font-size:12px;font-weight:600;flex:none;}
+.trust-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:1023px){.trust-grid{grid-template-columns:1fr;}}
+
+/* .qlink is a shared cross-screen class (global in the showcase via chat.js); the trust
+   sub-pages use it for the "Back to Trust Center" link, so it's mirrored here. */
+.qlink{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted-foreground);}
+.qlink:hover{background:var(--muted);color:var(--foreground);}
+.qlink svg{width:16px;height:16px;}

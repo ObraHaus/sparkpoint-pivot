@@ -2,7 +2,7 @@
 
 Platform reference for SparkPoint Pivot on self-hosted **Coolify** (`https://coolifyadmin.aldrickb.xyz`). Release process in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-> **PLANNED — not yet deployed (build stage ⑤ not started).** No application code exists, so **no Coolify apps have been created**. The inventory, UUIDs, domains, and ports below are a **proposal** to be confirmed when the build begins. UUIDs are unknown until the apps exist.
+> **PLANNED — not yet deployed.** The **web app (`apps/web`) now exists**, but **no Coolify apps have been created** yet. The inventory, UUIDs, domains, and ports below are a **proposal** to be confirmed when the web app is first deployed to Coolify; UUIDs are unknown until the apps exist.
 
 > **Scope note.** Coolify hosts **dev/staging only** for this client project. Production runs later on the **client's own infra/domain** (likely sparkpoint.io), TBD — see DEPLOYMENT.md. This project does **not** use obrahaus-console SSO or obrahaus-governor (sanctioned client divergences).
 

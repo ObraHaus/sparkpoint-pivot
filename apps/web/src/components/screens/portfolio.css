@@ -1,0 +1,18 @@
+/* portfolio.css — Portfolio Overview + position detail.
+   The `const css` block from docs/design-handover/showcase/screens/portfolio.js, verbatim. */
+.pf-hero{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:18px;}
+.pf-net{font-size:38px;font-weight:600;letter-spacing:-.02em;line-height:1;}
+.pf-spark-area{position:relative;height:160px;margin-top:16px;}
+.pf-range{display:flex;gap:2px;}
+.riskpanel .rp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border-soft);font-size:13px;}
+.riskpanel .rp-row:last-child{border-bottom:none;}
+.donut{width:130px;height:130px;border-radius:50%;flex:none;}
+.legend{display:flex;flex-direction:column;gap:9px;}
+.legrow{display:flex;align-items:center;gap:9px;font-size:13px;}
+.legrow .sw{width:11px;height:11px;border-radius:3px;flex:none;}
+.legrow .lg{flex:1;color:var(--muted-foreground);}
+.legrow .lv{font-variant-numeric:tabular-nums;font-weight:600;}
+.pf-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.posstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;}
+.posstats .v{overflow-wrap:anywhere;}
+@media(max-width:1023px){.pf-hero{grid-template-columns:1fr;}.pf-grid{grid-template-columns:1fr;}.posstats{grid-template-columns:1fr;gap:12px;}}

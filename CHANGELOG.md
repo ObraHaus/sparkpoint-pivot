@@ -4,14 +4,25 @@ All notable changes to **SparkPoint Pivot** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Status:** pre-build. Only the Spec-Driven-Development planning artifacts and the design handover exist today — **no application code has been written yet** (the build stage, ⑤, has not started). Build window: Jun 1 – Sep 4, 2026.
+> **Status:** the **web app build has begun** (`apps/web`) — a faithful UI recreation of the approved design (every screen, shell, overlays, confirm gate, admin panel) on mock data; backend/agent/chain/auth + deployment are the next features. The Spec-Driven-Development planning artifacts and the design handover remain the source of truth. Build window: Jun 1 – Sep 4, 2026.
 
 > **Note on this project:** SparkPoint Pivot is an **ObraHaus client product**, not part of the ObraHaus Apps Ecosystem. It is hosted in the ObraHaus GitHub org *for now* (ownership may transfer to the client later). It therefore **does not** use obrahaus-console SSO (it uses **wallet auth**), **does not** route AI through obrahaus-governor (it calls **Anthropic / an OpenAI-compatible API directly**), and uses its **own brand** (cobalt / gold / coral), not the OH Primary design system. These are sanctioned client-project divergences — see DEVELOPMENT.md.
 
 ## [Unreleased]
 
-### Added
-- _Nothing yet — build stage (⑤) not started._
+### Changed
+- **Faithful UI rebuild of `apps/web`** (Spec Kit feature `specs/002-web-app-ui/`) — **replaced** the prior diverged scaffold (generic hero + simplified shell + placeholder screens) with a **1:1 recreation of the approved Claude Design** (`docs/design-handover/showcase/`). The earlier scaffold *re-derived* a simplified UI in Tailwind; this rebuild **ports the design's own assets** instead (root cause of the client-flagged mismatch).
+  - **Visual system** — `tokens.css` + `app.css` + each screen's `<style>` ported into the global stylesheet so the design's component classes exist verbatim; light/dark via **next-themes** (`sp-theme`, no flash; default theme set below); marketing landing dark-only; tabular numerals; brand spark-mark (coral→gold→blue).
+  - **Shell** — TopBar (brand, Chat/Portfolio/Vault/Strategies, "Fully self-custodial" pill, Base/Sui switcher, wallet pill, ⌘K, notifications, avatar+theme), non-custody disclaimer strip, "Trust & control" rail + Withdraw/Exit, mobile bottom tabs + More sheet.
+  - **Overlays** — `OverlayProvider` (portal): Prove-it sheet (Can/Can't + 5 guarantees), wallet menu, Base/Sui network menu, notifications sheet, ⌘K command palette, toasts.
+  - **Screens** — public landing/connect/verify, onboarding (stepped mandate), chat (structured cards + tool-step thinking + inline confirm), portfolio (+ position detail), vault (net-APY breakdown incl. 10% perf fee/HWM + deposit/withdraw), strategies, the shared confirm gate (`confirm/[intent]`: sim → balance changes → guardrails → ack-gated sign → success), Trust Center (+permissions/exit), automation, bridge (Base↔Sui), fees, premium (+pay), outcomes, learn, srk, settings, notifications.
+  - **Admin panel** — distinct observe-only shell at `/admin` (no auth yet, clearly labeled), "View as" role switcher, and overview/users/usage/tvl/**revenue dashboard**/system/**kill-switch** (pause-only · 2-of-3 · never blocks withdrawals)/config/audit.
+  - **Mock data** — single `lib/mock-data.ts` mirroring the design's `SP.data`; wallet/AI/chain/auth remain simulated (later features).
+  - 37 routes; typecheck / lint / production build all green.
+- **Landing rebuilt as the animated "Spark Core"** — replaced the earlier (wrong-source) hero with a faithful port of `Spark Core Landing.html`: a fixed `<canvas>` particle core morphing through 6 scroll chapters, Ember/Plasma/Constellation flavor switcher, intro splash, progress dots, and per-chapter graphic cards (canvas engine ported into a React effect; dark-only; reduced-motion honoured; no GSAP dependency). Synced the two design files that changed in the latest handoff (Spark Core bg `#04070E`; onboarding header is now dark-only — theme toggle removed). Pixel diff vs the showcase: ~0.1%.
+- **Admin scaffold notice is now dismissible** — the "no authentication yet" banner has an × ; once closed, `/admin` matches the showcase 1:1.
+- **Parity harness** (`/e2e`, Playwright) — serves the approved showcase and diffs every screen (visual + DOM-text + interactions), incl. the admin panel, across desktop/mobile + light/dark. Verdict + per-screen report in `docs/parity/`. Confirms the scaffold is a faithful 1:1 recreation of the design.
+- **Light is now the default theme** for the app and admin panel (`defaultTheme="light"`); the marketing landing remains dark-only (its dark palette is route-scoped to `.spark-core-root`, independent of the theme default). Light/dark toggle + `sp-theme` persistence unchanged. (Investigated a reported "broken light mode" on app pages — verified via the parity harness, a 22-route luminance scan, computed styles, and the runtime toggle that light mode renders correctly across all app screens + overlays, matching the design within 1–5%.)
 
 ## [0.1.0] - 2026-06-18
 

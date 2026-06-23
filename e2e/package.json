@@ -1,0 +1,22 @@
+{
+  "name": "sparkpoint-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright parity harness: compares the SparkPoint scaffold (apps/web) against the approved showcase design, screen by screen (visual + DOM text + interactions), including the admin panel.",
+  "type": "module",
+  "scripts": {
+    "serve:showcase": "node serve-showcase.mjs",
+    "test": "playwright test",
+    "test:visual": "playwright test tests/visual.spec.ts",
+    "test:text": "playwright test tests/text-parity.spec.ts",
+    "test:interactions": "playwright test tests/interactions.spec.ts",
+    "test:admin": "playwright test tests/admin.spec.ts",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
+  }
+}
