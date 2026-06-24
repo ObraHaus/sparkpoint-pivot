@@ -117,6 +117,7 @@ body:has(.new-era-root) {
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 9px 18px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -989,6 +990,11 @@ body:has(.new-era-root.light) {
 .new-era-root.rm .ne-dots {
   display: none;
 }
+/* in the stacked layout the nav scrolls with the page (no fixed overlap with
+   the footer / white close) */
+.new-era-root.rm .ne-nav {
+  position: relative;
+}
 .new-era-root.rm .panel.left .wrap,
 .new-era-root.rm .panel.right .wrap {
   flex-direction: column;
@@ -1032,6 +1038,19 @@ body:has(.new-era-root.light) {
 }
 
 /* ---------- responsive ---------- */
+/* globals.css sets `html,body{overflow-x:hidden}` <1023px, which coerces
+   overflow-y to `auto` and turns <body> into a 100vh scroll container — that
+   breaks the landing's window-scroll-driven animation. Use overflow-x:clip for
+   the landing so horizontal overflow is still contained but the page scrolls
+   on the window as usual. */
+@media (max-width: 1023px) {
+  html:has(.new-era-root),
+  body:has(.new-era-root) {
+    overflow-x: clip;
+    overflow-y: visible;
+    height: auto;
+  }
+}
 @media (max-width: 980px) {
   /* drop the floating cards; center the text */
   .new-era-root .panel .gfx {
@@ -1056,15 +1075,14 @@ body:has(.new-era-root.light) {
     padding: 14px 16px;
     gap: 10px;
   }
-  .new-era-root .ne-badge-led {
-    font-size: 0;
-    padding: 7px;
-    gap: 0;
-    border-radius: 50%;
+  /* mobile: drop the redundant nav "Connect wallet" (CTAs live in the hero +
+     footer) and show the trust badge in full */
+  .new-era-root .ne-navbtn {
+    display: none;
   }
-  .new-era-root .ne-badge-led .led {
-    width: 7px;
-    height: 7px;
+  .new-era-root .ne-badge-led {
+    font-size: 11.5px;
+    padding: 6px 12px;
   }
   .new-era-root .checks {
     grid-template-columns: 1fr;

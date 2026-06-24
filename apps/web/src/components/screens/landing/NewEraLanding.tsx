@@ -639,9 +639,12 @@ export default function NewEraLanding() {
         u.uGalaxyCol.value = w.galaxy;
         u.uShimmer.value = 1 - burst * 0.8;
 
-        // camera distance + tilt per pose
+        // camera distance + tilt per pose. On portrait screens the horizontal
+        // FOV is the constraint, so pull the camera back to fit the wide poses.
+        const aspect = innerWidth / innerHeight;
+        const fit = aspect < 1 ? Math.min(1.9, 0.85 / aspect) : 1;
         const tz =
-          30 * w.ring + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather;
+          (30 * w.ring + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather) * fit;
         const trx = w.galaxy * 0.95 + w.wave * 0.42 + w.star * 0.05;
         // nudge the galaxy left so its glowing core sits just right of the
         // guardrails card (left) and clear of the right-aligned copy
