@@ -1,52 +1,31 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Icon, SparkMark } from "@/lib/icons";
 import { PubTop } from "@/components/screens/PubTop";
 import "@/components/screens/public.css";
 
-/** Wallet rows — inline brand SVGs reproduced verbatim from the design. */
-const WALLETS: { name: string; svg: ReactNode }[] = [
+/** Wallet rows — real brand logos (public/wallets) on a 38px tile. */
+const WALLETS: { name: string; icon: ReactNode; tileStyle?: CSSProperties }[] = [
   {
     name: "Coinbase Wallet",
-    svg: (
-      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
-        <rect width="40" height="40" rx="10" fill="#0052FF" />
-        <circle cx="20" cy="20" r="11.5" fill="#fff" />
-        <rect x="16" y="16" width="8" height="8" rx="2" fill="#0052FF" />
-      </svg>
-    ),
+    icon: <Image src="/wallets/coinbase.webp" alt="" width={38} height={38} style={{ objectFit: "cover" }} />,
+    tileStyle: { background: "#0052FF" },
   },
   {
     name: "WalletConnect",
-    svg: (
-      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
-        <rect width="40" height="40" rx="10" fill="#3396FF" />
-        <path
-          d="M11.6 17.6a12 12 0 0 1 16.8 0 .8.8 0 0 1 0 1.1l-2 2a.5.5 0 0 1-.7 0l-1-1a8 8 0 0 0-9.4 0l-1 1a.5.5 0 0 1-.7 0l-2-2a.8.8 0 0 1 0-1.1Z"
-          fill="#fff"
-        />
-        <circle cx="14.8" cy="23.4" r="1.4" fill="#fff" />
-        <circle cx="25.2" cy="23.4" r="1.4" fill="#fff" />
-      </svg>
-    ),
+    icon: <Image src="/wallets/walletconnect.png" alt="" width={38} height={38} style={{ objectFit: "cover" }} />,
   },
   {
     name: "MetaMask",
-    svg: (
-      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
-        <rect width="40" height="40" rx="10" fill="#16202e" />
-        <path d="M12 9l6 4-2-7z" fill="#E2761B" />
-        <path d="M28 9l-6 4 2-7z" fill="#E17726" />
-        <path d="M17.5 13h5l7.5.9-2.2 11.6-3 2.1-2.8-1.5-2.8 1.5-3-2.1L10 13.9 17.5 13z" fill="#E4761B" />
-        <path d="M14.6 26.6l2.7-1.4 2.7 1.3 2.7-1.3 2.7 1.4-.3 2.3-2.4 1.6h-5.4l-2.4-1.6z" fill="#F6E2D2" />
-      </svg>
-    ),
+    icon: <Image src="/wallets/metamask.png" alt="" width={38} height={38} style={{ objectFit: "contain" }} />,
+    tileStyle: { background: "#ffffff" },
   },
   {
     name: "Browser wallet",
-    svg: (
+    icon: (
       <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
         <rect width="40" height="40" rx="10" fill="#2a3346" />
         <circle cx="20" cy="20" r="9" fill="none" stroke="#cbd5e1" strokeWidth="2" />
@@ -106,7 +85,7 @@ export default function ConnectPage() {
                   </>
                 ) : (
                   <>
-                    <span className="wl-ico">{w.svg}</span>
+                    <span className="wl-ico" style={w.tileStyle}>{w.icon}</span>
                     <span className="wl-name">{w.name}</span>
                     <Icon name="chevr" size={16} />
                   </>

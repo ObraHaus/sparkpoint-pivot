@@ -409,6 +409,7 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
       <MenuItem icon="settings" label="Settings" onClick={() => go("settings")} />
       <MenuItem icon="sliders" label="Mandate" onClick={() => go("settings")} />
       <MenuItem icon="book" label="Learn" onClick={() => go("learn")} />
+      <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "6px 6px 4px" }} />
       <button
         className="menu-item"

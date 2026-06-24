@@ -1,6 +1,6 @@
-import "@/components/screens/landing/spark-core.css";
-import SparkCoreLanding from "@/components/screens/landing/SparkCoreLanding";
+import "@/components/screens/landing/new-era.css";
+import NewEraLanding from "@/components/screens/landing/NewEraLanding";
 
 export default function LandingPage() {
-  return <SparkCoreLanding />;
+  return <NewEraLanding />;
 }

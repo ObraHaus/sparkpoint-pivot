@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { SparkMark } from "@/lib/icons";
+import { ThemeToggle } from "@/components/screens/ThemeToggle";
 
-/** Shared public top bar — brand + nav links + Connect wallet (matches `pubTop()`). */
+/** Shared public top bar — brand + theme toggle + nav links + Connect wallet. */
 export function PubTop() {
   const router = useRouter();
   return (
@@ -13,6 +14,7 @@ export function PubTop() {
         SparkPoint
       </div>
       <div className="grow"></div>
+      <ThemeToggle />
       <a className="publink" onClick={() => router.push("/")}>
         How it works
       </a>
