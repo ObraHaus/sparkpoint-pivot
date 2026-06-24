@@ -97,36 +97,30 @@ export default function NewEraLanding() {
     if (reduced) root.classList.add("rm");
 
     let cleanup = () => {};
-
-    // ---- async-load three so the heavy lib never blocks SSR/first paint ----
     let cancelled = false;
-    (async () => {
-      const THREE = await import("three");
-      const { EffectComposer } = await import(
-        "three/examples/jsm/postprocessing/EffectComposer.js"
-      );
-      const { RenderPass } = await import(
-        "three/examples/jsm/postprocessing/RenderPass.js"
-      );
-      const { UnrealBloomPass } = await import(
-        "three/examples/jsm/postprocessing/UnrealBloomPass.js"
-      );
-      if (cancelled) return;
 
-      let renderer: import("three").WebGLRenderer;
+    // ---- async-load three; ANY failure (chunk blocked, WebGL unavailable,
+    //      addon import error) falls back to the stacked, legible `.rm` layout
+    //      so the page can never render as a black screen ----
+    (async () => {
       try {
-        renderer = new THREE.WebGLRenderer({
+        const THREE = await import("three");
+        const { EffectComposer } = await import("three/examples/jsm/postprocessing/EffectComposer.js");
+        const { RenderPass } = await import("three/examples/jsm/postprocessing/RenderPass.js");
+        const { UnrealBloomPass } = await import("three/examples/jsm/postprocessing/UnrealBloomPass.js");
+        if (cancelled) return;
+
+        const renderer = new THREE.WebGLRenderer({
           canvas,
           antialias: false,
           alpha: false,
           powerPreference: "high-performance",
         });
-      } catch {
-        root.classList.add("rm"); // graceful fallback to stacked scroll
-        return;
+        cleanup = init(THREE, renderer, EffectComposer, RenderPass, UnrealBloomPass);
+      } catch (err) {
+        console.error("[NewEraLanding] 3D init failed — falling back to stacked layout:", err);
+        root.classList.add("rm");
       }
-
-      cleanup = init(THREE, renderer, EffectComposer, RenderPass, UnrealBloomPass);
     })();
 
     function init(
