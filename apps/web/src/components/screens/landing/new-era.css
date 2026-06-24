@@ -157,23 +157,18 @@ body:has(.new-era-root) {
   max-width: 560px;
   position: relative;
 }
-/* readability scrim so panel text stays legible over the animated field */
-.new-era-root .panel .col::before,
-.new-era-root .panel.hero .wrap::before {
-  content: "";
-  position: absolute;
-  inset: -30px -44px;
-  z-index: -1;
-  border-radius: 36px;
-  background: radial-gradient(
-    120% 120% at 30% 45%,
-    color-mix(in srgb, var(--bg) 80%, transparent) 0%,
-    color-mix(in srgb, var(--bg) 52%, transparent) 48%,
-    transparent 80%
-  );
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
-  pointer-events: none;
+/* No scrim box — a soft dark halo on the glyphs themselves keeps text legible
+   over bright bloom while preserving full immersion of the particle field. */
+.new-era-root .panel .head {
+  text-shadow: 0 2px 30px rgba(2, 5, 12, 0.72), 0 1px 6px rgba(2, 5, 12, 0.6);
+}
+.new-era-root .panel .sub,
+.new-era-root .panel .kicker,
+.new-era-root .panel .badge,
+.new-era-root .panel .checks li,
+.new-era-root .panel .stats .sn,
+.new-era-root .panel .stats .sl {
+  text-shadow: 0 1px 18px rgba(2, 5, 12, 0.7), 0 1px 4px rgba(2, 5, 12, 0.55);
 }
 
 /* HERO */
@@ -212,22 +207,6 @@ body:has(.new-era-root) {
   position: relative;
   max-width: 420px;
   justify-self: end;
-}
-.new-era-root .panel.split .left-col::before,
-.new-era-root .panel.split .right-col::before {
-  content: "";
-  position: absolute;
-  inset: -26px -36px;
-  z-index: -1;
-  border-radius: 32px;
-  background: radial-gradient(
-    120% 120% at 40% 45%,
-    color-mix(in srgb, var(--bg) 78%, transparent) 0%,
-    color-mix(in srgb, var(--bg) 48%, transparent) 50%,
-    transparent 82%
-  );
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
 }
 .new-era-root .panel.split .head {
   font-size: clamp(36px, 5.4vw, 84px);
@@ -672,10 +651,6 @@ body:has(.new-era-root) {
   }
   .new-era-root footer.close .cc {
     grid-template-columns: 1fr;
-  }
-  .new-era-root .panel .col::before,
-  .new-era-root .panel.hero .wrap::before {
-    inset: -20px -22px;
   }
 }
 
