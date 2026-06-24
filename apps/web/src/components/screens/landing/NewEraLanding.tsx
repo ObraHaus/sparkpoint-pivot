@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -80,10 +80,80 @@ const Cross = ({ stroke }: { stroke: string }) => (
   </svg>
 );
 
+const MoonIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+  </svg>
+);
+
+const SunIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+  </svg>
+);
+
+type Theme = "light" | "dark";
+
 export default function NewEraLanding() {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const splashRef = useRef<HTMLDivElement | null>(null);
+
+  // Landing theme — default LIGHT (client request); dark is the "full" experience.
+  // SSR returns the default so the markup matches; the client initializer reads
+  // the saved choice, and the splash overlay masks any first-paint swap.
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "light";
+    return localStorage.getItem("sp-landing-theme") === "dark" ? "dark" : "light";
+  });
+  const themeRef = useRef<Theme>(theme);
+  const [showNudge, setShowNudge] = useState(false);
+  // 3D handles, populated once the scene is built, so the toggle can retheme live.
+  const sceneRef = useRef<{
+    THREE: typeof import("three");
+    renderer: import("three").WebGLRenderer;
+    material: import("three").ShaderMaterial;
+    dnaLines: import("three").LineSegments;
+    bloom: { strength: number };
+    darkBloom: number;
+  } | null>(null);
+
+  function configureSceneTheme(t: Theme) {
+    const s = sceneRef.current;
+    if (!s) return;
+    const light = t === "light";
+    s.renderer.setClearColor(light ? 0xeef1f7 : 0x010104, 1);
+    s.material.blending = light ? s.THREE.NormalBlending : s.THREE.AdditiveBlending;
+    s.material.needsUpdate = true;
+    s.material.uniforms.uLight.value = light ? 1 : 0;
+    (s.dnaLines.material as import("three").LineBasicMaterial).blending = light
+      ? s.THREE.NormalBlending
+      : s.THREE.AdditiveBlending;
+    s.bloom.strength = light ? 0.0 : s.darkBloom;
+  }
+
+  function applyTheme(t: Theme) {
+    themeRef.current = t;
+    setTheme(t);
+    try {
+      localStorage.setItem("sp-landing-theme", t);
+    } catch {
+      /* ignore */
+    }
+    configureSceneTheme(t);
+  }
+
+  function dismissNudge(switchToDark: boolean) {
+    setShowNudge(false);
+    try {
+      localStorage.setItem("sp-landing-nudge", "done");
+    } catch {
+      /* ignore */
+    }
+    if (switchToDark) applyTheme("dark");
+  }
 
   function goConnect() {
     router.push("/connect");
@@ -312,6 +382,7 @@ export default function NewEraLanding() {
           uWaveCol: { value: 0 },
           uGalaxyCol: { value: 0 },
           uShimmer: { value: 1 },
+          uLight: { value: 0 }, // 0 = dark (additive glow), 1 = light (ink)
         },
         vertexShader: `
           attribute vec3 aStar; attribute vec3 aGalaxy; attribute vec3 aHelix;
@@ -366,12 +437,16 @@ export default function NewEraLanding() {
         `,
         fragmentShader: `
           precision mediump float;
+          uniform float uLight;
           varying vec3 vCol; varying float vI;
           void main(){
             float d = length(gl_PointCoord-0.5);
             float a = smoothstep(0.5,0.04,d);
             if(a<=0.001) discard;
-            gl_FragColor = vec4(vCol*vI, a);
+            // dark: additive glow (vCol*vI). light: darker, more opaque ink dots.
+            vec3 col = mix(vCol*vI, vCol*0.5, uLight);
+            float alpha = min(a * (1.0 + uLight*0.8), 1.0);
+            gl_FragColor = vec4(col, alpha);
           }
         `,
       });
@@ -394,6 +469,17 @@ export default function NewEraLanding() {
         0.0,
       );
       composer.addPass(bloom);
+
+      // expose handles + apply the initial theme (ink-on-light vs additive-dark)
+      sceneRef.current = {
+        THREE,
+        renderer,
+        material,
+        dnaLines,
+        bloom,
+        darkBloom: isMobile ? 0.7 : 0.95,
+      };
+      configureSceneTheme(themeRef.current);
 
       function onResize() {
         camera.aspect = innerWidth / innerHeight;
@@ -589,6 +675,7 @@ export default function NewEraLanding() {
         composer.dispose();
         renderer.dispose();
         renderer.forceContextLoss();
+        sceneRef.current = null;
       };
     }
 
@@ -659,8 +746,44 @@ export default function NewEraLanding() {
     };
   }, []); // mount once
 
+  // Splash fade-out + dark-mode nudge timer.
+  useEffect(() => {
+    const splash = splashRef.current;
+    const hideSplash = () => splash?.classList.add("gone");
+    const splashTimer = setTimeout(hideSplash, 1100);
+    // never let the splash trap the user if timers are throttled
+    const onFirst = () => hideSplash();
+    ["wheel", "scroll", "pointerdown", "keydown"].forEach((ev) =>
+      addEventListener(ev, onFirst, { once: true, passive: true }),
+    );
+
+    let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+    let nudgeDone = true;
+    try {
+      nudgeDone = localStorage.getItem("sp-landing-nudge") === "done";
+    } catch {
+      /* ignore */
+    }
+    if (!nudgeDone) {
+      nudgeTimer = setTimeout(() => {
+        if (themeRef.current === "light") setShowNudge(true); // only nudge light-mode visitors
+      }, 3600);
+    }
+
+    return () => {
+      clearTimeout(splashTimer);
+      if (nudgeTimer) clearTimeout(nudgeTimer);
+      ["wheel", "scroll", "pointerdown", "keydown"].forEach((ev) => removeEventListener(ev, onFirst));
+    };
+  }, []);
+
   return (
-    <div className="new-era-root" ref={rootRef}>
+    <div className={`new-era-root${theme === "light" ? " light" : ""}`} ref={rootRef} suppressHydrationWarning>
+      {/* first-load splash — fades out once mounted */}
+      <div id="ne-splash" ref={splashRef}>
+        <span className="ne-splash-word">SparkPoint</span>
+      </div>
+
       <canvas id="scene" ref={canvasRef}></canvas>
       <div className="vignette"></div>
 
@@ -671,6 +794,14 @@ export default function NewEraLanding() {
           SparkPoint
         </span>
         <span className="ne-grow"></span>
+        <button
+          className="ne-themebtn"
+          onClick={() => applyTheme(theme === "light" ? "dark" : "light")}
+          aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        >
+          {theme === "light" ? <MoonIcon /> : <SunIcon />}
+        </button>
         <span className="ne-badge-led" title="Fully self-custodial">
           <span className="led"></span>Fully self-custodial
         </span>
@@ -993,6 +1124,24 @@ export default function NewEraLanding() {
           <div className="fcopy">© 2026 SparkPoint — AI-native onchain hedge fund.</div>
         </div>
       </footer>
+
+      {/* dark-mode nudge (light mode only, remembered) */}
+      {showNudge && theme === "light" && (
+        <div className="ne-toast" role="status">
+          <button className="ne-toast-x" type="button" aria-label="Dismiss" onClick={() => dismissNudge(false)}>
+            ×
+          </button>
+          <div className="ne-toast-title">
+            <SparkMark size={14} />
+            Try dark mode
+          </div>
+          <div className="ne-toast-body">Experience the page the way we designed it.</div>
+          <button className="ne-toast-btn" type="button" onClick={() => dismissNudge(true)}>
+            Switch to dark
+            <ArrowOut />
+          </button>
+        </div>
+      )}
 
       <div id="scroller"></div>
     </div>

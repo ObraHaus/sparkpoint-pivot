@@ -129,6 +129,120 @@ body:has(.new-era-root) {
   border-color: rgba(255, 255, 255, 0.5);
   background: #141416;
 }
+/* theme toggle (left of the self-custodial badge) */
+.new-era-root .ne-themebtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.new-era-root .ne-themebtn:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* first-load splash */
+.new-era-root #ne-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.8s ease;
+}
+.new-era-root #ne-splash.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+.new-era-root .ne-splash-word {
+  font-size: clamp(30px, 5vw, 60px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+/* dark-mode nudge toast (bottom-right) */
+.new-era-root .ne-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 30;
+  width: min(310px, calc(100vw - 36px));
+  padding: 15px 16px 16px;
+  border-radius: 16px;
+  background: rgba(12, 18, 30, 0.86);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+  color: #f4f4f6; /* dark glass card — fixed light text in both themes */
+  animation: ne-toast-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes ne-toast-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.new-era-root .ne-toast-x {
+  position: absolute;
+  top: 9px;
+  right: 11px;
+  border: none;
+  background: transparent;
+  color: #9aa6bd;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.new-era-root .ne-toast-x:hover {
+  color: #f4f4f6;
+}
+.new-era-root .ne-toast-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.new-era-root .ne-toast-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #9aa6bd;
+  margin: 6px 0 13px;
+}
+.new-era-root .ne-toast-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #0a0a0c;
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.new-era-root .ne-toast-btn:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: #141416;
+}
 
 /* ---- crossfade panels ---- */
 .new-era-root .panels {
@@ -733,6 +847,108 @@ body:has(.new-era-root) {
 .new-era-root footer.close .fcopy {
   font-size: 13px;
   color: #8a8a90;
+}
+
+/* =====================================================================
+   LIGHT MODE — "ink on light". Default theme; the 3D engine switches to
+   normal blending + darker particles + bloom off (see NewEraLanding.tsx).
+   Here we flip the chrome tokens and adjust the few hardcoded darks.
+   ===================================================================== */
+body:has(.new-era-root.light) {
+  background: #eef1f7;
+}
+.new-era-root.light {
+  --bg: #eef1f7;
+  --fg: #14161d;
+  --muted: #353c4a; /* dark slate — readable body text on light */
+  --tail: #4f5666; /* readable headline accent on light */
+  --line: rgba(0, 0, 0, 0.12);
+  --pill: #15151a; /* dark primary pill reads well on light */
+  --foreground: #14161d;
+  --muted-foreground: #586074;
+  --border: rgba(0, 0, 0, 0.12);
+  --spark-subtle: rgba(77, 131, 255, 0.12);
+}
+.new-era-root.light .vignette {
+  background: radial-gradient(120% 90% at 50% 46%, transparent 42%, rgba(238, 241, 247, 0.55) 78%, rgba(238, 241, 247, 0.94) 100%);
+}
+.new-era-root.light .ne-themebtn {
+  background: rgba(0, 0, 0, 0.03);
+}
+.new-era-root.light .ne-themebtn:hover {
+  border-color: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.06);
+}
+/* eyebrow kicker — deepen so it reads on light */
+.new-era-root.light .kicker {
+  color: #0b7fae;
+}
+/* dark glyph halos → soft white halos so dark text reads over the ink dots */
+.new-era-root.light .panel .head,
+.new-era-root.light .panel .sub,
+.new-era-root.light .panel .kicker,
+.new-era-root.light .panel .badge,
+.new-era-root.light .panel .checks li,
+.new-era-root.light .panel .stats .sn,
+.new-era-root.light .panel .stats .sl,
+.new-era-root.light #guardrails .head,
+.new-era-root.light #guardrails .sub,
+.new-era-root.light #guardrails .kicker,
+.new-era-root.light #vault .head,
+.new-era-root.light #vault .sub,
+.new-era-root.light #vault .kicker,
+.new-era-root.light #vault .stats .sn,
+.new-era-root.light #vault .stats .sl {
+  text-shadow: 0 1px 14px rgba(238, 241, 247, 0.95), 0 0 6px rgba(238, 241, 247, 0.9);
+}
+.new-era-root.light #vault .stats .sl {
+  color: var(--muted);
+}
+/* stat numbers default to near-white (for dark) — make them dark on light.
+   "4.3%" keeps its inline cyan accent (inline style wins). */
+.new-era-root.light .stats .sn {
+  color: var(--fg);
+}
+/* badges → light pills */
+.new-era-root.light .badge {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #2a2e38;
+}
+.new-era-root.light .badge.accent {
+  color: var(--brand-blue);
+  background: rgba(77, 131, 255, 0.1);
+  border-color: rgba(77, 131, 255, 0.28);
+}
+/* ghost button on light */
+.new-era-root.light .btn.ghost {
+  color: var(--fg);
+  border-color: rgba(0, 0, 0, 0.16);
+  background: rgba(0, 0, 0, 0.02);
+}
+.new-era-root.light .btn.ghost:hover {
+  border-color: rgba(0, 0, 0, 0.34);
+  background: rgba(0, 0, 0, 0.04);
+}
+/* graphic cards → light glass */
+.new-era-root.light .gcard {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 24px 60px -26px rgba(20, 30, 60, 0.25);
+}
+.new-era-root.light .gc-rec b {
+  color: #0b7fae;
+}
+.new-era-root.light .sigpad {
+  background: rgba(10, 20, 40, 0.04);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+/* scroll hint on light */
+.new-era-root.light .scrollhint {
+  color: rgba(0, 0, 0, 0.45);
+}
+.new-era-root.light .scrollhint .bar {
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
 }
 
 /* ---------- reduced-motion / no-webgl: normal stacked scroll ---------- */
