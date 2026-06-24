@@ -10,6 +10,8 @@
 /* ---- focused shell ---- */
 .shell-top{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border-soft);}
 .grow{flex:1;}
+.ob-themebtn{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted-foreground);cursor:pointer;transition:.15s;flex:none;}
+.ob-themebtn:hover{color:var(--foreground);border-color:var(--primary);background:var(--card-2);}
 .save-exit{font-size:12.5px;}
 
 /* ---- progress stepper ---- */

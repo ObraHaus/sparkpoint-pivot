@@ -11,6 +11,7 @@
 
 import { useRouter } from "next/navigation";
 import { SparkMark } from "@/lib/icons";
+import { ThemeToggle } from "@/components/screens/ThemeToggle";
 import "@/components/screens/onboarding.css";
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
           SparkPoint
         </span>
         <span className="grow" />
+        <ThemeToggle className="ob-themebtn" />
         <span
           className="pill"
           id="badgeNC"
