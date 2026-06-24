@@ -2,6 +2,8 @@
 .pubtop{display:flex;align-items:center;gap:16px;padding:0 26px;height:64px;flex:none;border-bottom:1px solid var(--border-soft);}
 .publink{font-size:13.5px;color:var(--muted-foreground);cursor:pointer;font-weight:500;}
 .publink:hover{color:var(--foreground);}
+.pub-themebtn{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted-foreground);cursor:pointer;transition:.15s;flex:none;}
+.pub-themebtn:hover{color:var(--foreground);border-color:var(--primary);background:var(--card-2);}
 .pubscroll{overflow-y:auto;flex:1;}
 .hero{max-width:980px;margin:0 auto;padding:64px 26px 40px;text-align:center;}
 .hero-badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--primary);
