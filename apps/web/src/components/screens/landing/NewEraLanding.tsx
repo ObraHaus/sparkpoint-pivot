@@ -34,6 +34,16 @@ const RAMP: Array<[number, [number, number, number]]> = [
   [1.0, [0.369, 0.784, 1.0]],
 ];
 
+// Scroll-progress dots: [label, target scroll fraction] per section.
+const DOT_SECTIONS: Array<[string, number]> = [
+  ["Welcome", 0.04],
+  ["Proposes", 0.22],
+  ["Guardrails", 0.41],
+  ["Sign", 0.59],
+  ["Vault", 0.76],
+  ["Proof", 0.99],
+];
+
 // --- small presentational SVGs (module scope so they keep stable identity) ---
 const SparkMark = ({ size = 24 }: { size?: number }) => (
   <svg className="ne-smk" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
@@ -466,6 +476,8 @@ export default function NewEraLanding() {
       const footer = $("footer.close");
       const hint = $(".scrollhint");
       const navEl = $(".ne-nav");
+      const dotsEl = $(".ne-dots");
+      const dotButtons = Array.from(root!.querySelectorAll(".ne-dots button")) as HTMLElement[];
 
       function setPanel(el: HTMLElement | null, o: number, dy: number) {
         if (!el) return;
@@ -484,6 +496,7 @@ export default function NewEraLanding() {
         curRX = 0,
         curX = 0,
         smP = 0,
+        lastSec = -1,
         raf = 0;
 
       function loop(tms: number) {
@@ -509,9 +522,9 @@ export default function NewEraLanding() {
         const tz =
           30 * w.ring + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather;
         const trx = w.galaxy * 0.95 + w.wave * 0.42 + w.star * 0.05;
-        // slide the galaxy left of the right-aligned guardrails text so its
-        // bright core no longer sits behind the copy
-        const tposx = -6.5 * w.galaxy;
+        // nudge the galaxy left so its glowing core sits just right of the
+        // guardrails card (left) and clear of the right-aligned copy
+        const tposx = -3 * w.galaxy;
         curZ += (tz - curZ) * 0.06;
         curRX += (trx - curRX) * 0.06;
         curX += (tposx - curX) * 0.06;
@@ -544,7 +557,20 @@ export default function NewEraLanding() {
           }
           if (hint) hint.style.opacity = (1 - ss(0.02, 0.1, smP)).toFixed(2);
           if (navEl) navEl.style.opacity = (1 - ss(0.93, 0.985, smP)).toFixed(2);
+          if (dotsEl) {
+            const o = 1 - ss(0.9, 0.97, smP); // fade dots out as the white close arrives
+            dotsEl.style.opacity = o.toFixed(2);
+            dotsEl.style.pointerEvents = o > 0.5 ? "auto" : "none";
+          }
           canvas!.style.opacity = (1 - white * 0.9).toFixed(2);
+        }
+
+        // active scroll-progress dot (which of the 6 sections is in view)
+        const secIdx =
+          smP < 0.135 ? 0 : smP < 0.31 ? 1 : smP < 0.5 ? 2 : smP < 0.665 ? 3 : smP < 0.84 ? 4 : 5;
+        if (secIdx !== lastSec) {
+          lastSec = secIdx;
+          dotButtons.forEach((b, i) => b.classList.toggle("on", i === secIdx));
         }
 
         composer.render();
@@ -653,6 +679,19 @@ export default function NewEraLanding() {
         </button>
       </nav>
 
+      {/* scroll-progress dots */}
+      <div className="ne-dots" role="navigation" aria-label="Sections">
+        {DOT_SECTIONS.map(([label, frac], i) => (
+          <button
+            key={label}
+            type="button"
+            className={i === 0 ? "on" : ""}
+            aria-label={label}
+            onClick={() => scrollToFraction(frac)}
+          />
+        ))}
+      </div>
+
       {/* crossfade panels */}
       <div className="panels">
         {/* 0 — HERO (corona ring) */}
@@ -698,6 +737,32 @@ export default function NewEraLanding() {
                 its reasoning and its sources. <b>Always a suggestion, never an order.</b>
               </p>
             </div>
+            <div className="gfx">
+              <div className="gcard float" style={{ top: 0, left: "8px", right: "30px", padding: "13px 15px" }}>
+                <div className="gc-head">
+                  <span className="gdot"></span>Sparky<span className="gc-time">now</span>
+                </div>
+                <div className="gc-text">
+                  Aave USDC just moved to <b>4.3%</b>. Want to put your idle USDC to work?
+                </div>
+              </div>
+              <div className="gcard float d2" style={{ bottom: 0, left: "30px", right: "8px", padding: "14px 15px" }}>
+                <span className="gc-badge">AI suggestion — you approve &amp; sign</span>
+                <div className="gc-rec">
+                  Move idle USDC → <b>Aave Vault</b>
+                </div>
+                <div className="gc-apyrow">
+                  <div>
+                    <div className="gc-apy tnum">4.3%</div>
+                    <div className="gc-apylbl">net APY · estimate</div>
+                  </div>
+                  <svg className="sparkline" viewBox="0 0 128 40" preserveAspectRatio="none">
+                    <path className="sl-area" d="M0 30 L18 26 L36 28 L54 18 L72 22 L90 12 L108 16 L128 8 L128 40 L0 40 Z" />
+                    <path className="sl-line" d="M0 30 L18 26 L36 28 L54 18 L72 22 L90 12 L108 16 L128 8" />
+                  </svg>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -710,24 +775,53 @@ export default function NewEraLanding() {
               <p className="sub wide">
                 Deterministic policy runs on-chain on each suggestion. If a move breaks a rule, it never reaches you.
               </p>
-              <ul className="checks">
-                <li>
-                  <Check stroke="var(--brand-cyan)" />
-                  Within your cap · $25,000
-                </li>
-                <li>
-                  <Check stroke="var(--brand-cyan)" />
-                  Allowlisted protocol · Aave v3
-                </li>
-                <li>
-                  <Check stroke="var(--brand-cyan)" />
-                  Slippage under 0.5%
-                </li>
-                <li>
-                  <Check stroke="var(--brand-cyan)" />
-                  Simulated on-chain
-                </li>
-              </ul>
+            </div>
+            <div className="gfx">
+              <div className="gcard" style={{ inset: "8px 6px", padding: "18px" }}>
+                <div className="gc-head" style={{ marginBottom: "16px" }}>
+                  <span className="gdot" style={{ background: "var(--brand-cyan)" }}></span>Guardrail check
+                </div>
+                <div className="gchecklist">
+                  <div className="grow">
+                    <span className="gcheck">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="3.5">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    Within your cap · $25,000
+                  </div>
+                  <div className="grow">
+                    <span className="gcheck">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="3.5">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    Allowlisted protocol · Aave v3
+                  </div>
+                  <div className="grow">
+                    <span className="gcheck">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="3.5">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    Slippage under 0.5%
+                  </div>
+                  <div className="grow">
+                    <span className="gcheck">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="3.5">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    Simulated on-chain
+                  </div>
+                </div>
+                <div className="gpassed">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                  Simulation passed — no risks
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -744,19 +838,41 @@ export default function NewEraLanding() {
                 Withdraw anytime, even if we&rsquo;re offline.
               </p>
             </div>
+            <div className="gfx">
+              <div className="gcard float" style={{ inset: "20px", padding: "18px" }}>
+                <div className="gc-head">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--brand-cyan)" strokeWidth="2">
+                    <path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-1 1L20 4l-2-2" />
+                  </svg>
+                  Sign transaction
+                </div>
+                <div className="gc-sub">Deposit 2,150 USDC → Aave Vault</div>
+                <svg className="sigpad" viewBox="0 0 200 62" preserveAspectRatio="none">
+                  <path
+                    className="sig"
+                    d="M14 40 C 20 15 28 13 30 28 C 31 39 25 43 24 33 C 23 22 33 21 39 33 C 43 41 48 41 50 30 C 52 20 57 20 58 31 C 59 42 65 43 70 30 C 76 14 86 14 86 32 C 86 47 92 46 98 33 C 104 22 110 24 113 35 C 116 45 123 45 128 31 C 133 18 142 20 144 33 C 145 43 151 45 158 33 C 168 16 182 22 190 28 C 198 33 176 50 112 50 C 64 50 40 48 34 43"
+                  />
+                </svg>
+                <button className="gc-signbtn" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="4" y="11" width="16" height="10" rx="2" />
+                    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                  </svg>
+                  Sign with wallet
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* 4 — VAULT (wave / terrain) */}
-        <section className="panel split" id="vault">
+        <section className="panel right" id="vault">
           <div className="wrap">
-            <div className="left-col">
+            <div className="col">
               <span className="kicker">04 — The Aave Yield Vault</span>
               <h1 className="head">
                 Conservative yield, <span className="tail">capital-preservation-first.</span>
               </h1>
-            </div>
-            <div className="right-col">
               <p className="sub">One audited vault on Base. Honest, net-of-fees numbers — never a projection.</p>
               <ul className="stats">
                 <li>
@@ -776,6 +892,29 @@ export default function NewEraLanding() {
                   <span className="sl">SparkPoint fee</span>
                 </li>
               </ul>
+            </div>
+            <div className="gfx">
+              <div className="gcard float" style={{ inset: "16px", padding: "18px" }}>
+                <div className="gc-head">
+                  Aave Yield Vault<span className="gc-time">Base</span>
+                </div>
+                <div className="gc-apy tnum" style={{ marginTop: "10px" }}>
+                  4.3%
+                  <span style={{ fontSize: "13px", color: "var(--muted-foreground)", fontWeight: 500 }}> net APY</span>
+                </div>
+                <svg className="areachart" viewBox="0 0 240 92" preserveAspectRatio="none">
+                  <path
+                    className="ac-area"
+                    d="M0 72 L30 64 L60 67 L90 50 L120 54 L150 38 L180 42 L210 26 L232 19 L232 92 L0 92 Z"
+                  />
+                  <path className="ac-line" d="M0 72 L30 64 L60 67 L90 50 L120 54 L150 38 L180 42 L210 26 L232 19" />
+                  <circle className="ac-dot" cx="232" cy="19" r="4" />
+                </svg>
+                <div className="gc-foot">
+                  <span className="gdot" style={{ background: "var(--gain)", animation: "none" }}></span>+$2.04 today ·
+                  accruing
+                </div>
+              </div>
             </div>
           </div>
         </section>
