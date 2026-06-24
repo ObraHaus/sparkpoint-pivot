@@ -12,6 +12,9 @@
 .grow{flex:1;}
 .ob-themebtn{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted-foreground);cursor:pointer;transition:.15s;flex:none;}
 .ob-themebtn:hover{color:var(--foreground);border-color:var(--primary);background:var(--card-2);}
+.ob-badges{display:flex;align-items:center;gap:12px;}
+/* "Base network" suffix + the longer wallet only appear in the mobile rotator */
+.ob-extra,.ob-wallet-full{display:none;}
 .save-exit{font-size:12.5px;}
 
 /* ---- progress stepper ---- */
@@ -73,9 +76,11 @@
 .opt.sel{border-color:var(--primary);box-shadow:0 0 0 3px var(--spark-subtle);background:var(--card-2);}
 .opt .oico{width:34px;height:34px;border-radius:9px;background:var(--muted);display:grid;place-items:center;
   color:var(--muted-foreground);flex:none;}
+/* text column fills the button width so the gloss uses the available space */
+.opt > span:last-child{flex:1;min-width:0;}
 .opt.sel .oico{background:var(--spark-subtle);color:var(--primary);}
-.opt .otitle{font-size:14.5px;font-weight:600;color:var(--foreground);}
-.opt .ogloss{font-size:12.5px;color:var(--muted-foreground);margin-top:2px;line-height:1.4;}
+.opt .otitle{display:block;font-size:14.5px;font-weight:600;color:var(--foreground);}
+.opt .ogloss{display:block;font-size:12.5px;color:var(--muted-foreground);margin-top:2px;line-height:1.4;}
 .opt .rhint{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;font-weight:500;
   color:var(--muted-foreground);}
 
@@ -158,17 +163,44 @@ input[type=range].srange::-moz-range-thumb{width:18px;height:18px;border-radius:
 .dock .hint{font-size:12px;color:var(--muted-foreground);margin-right:auto;}
 
 @media (max-width:640px){
-  .shell-top{padding:12px 14px;gap:8px;}
-  .shell-top .pill-base,.shell-top .pill-wallet{display:none;} /* collapse to fit 390px; badge stays */
-  .save-exit{padding:6px 9px;}
-  .stepper{padding:14px 14px 6px;}
-  .stepcount{padding:0 14px;}
+  .shell-top{padding:12px 16px;gap:7px;}
+  /* keep the network + wallet context, just squeeze them: brand → mark only,
+     trust pill → dot, Base pill → icon only, wallet address stays */
+  .shell-top .brand{font-size:0;gap:0;}
+  /* rotate Fully self-custodial / Base network / wallet through one slot, on a
+     loop — all three are stretched to the same (widest) width so the pill stays
+     put and only the contents change */
+  .ob-badges{position:relative;display:block;width:178px;height:30px;flex:none;}
+  .ob-badges > *{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:100%;display:flex;justify-content:center;white-space:nowrap;
+    opacity:0;animation:ob-badge-cycle 9s ease-in-out infinite;}
+  .ob-badges > *:nth-child(2){animation-delay:3s;}
+  .ob-badges > *:nth-child(3){animation-delay:6s;}
+  /* fill the extra width with fuller labels */
+  .ob-extra{display:inline;}
+  .ob-wallet-short{display:none;}
+  .ob-wallet-full{display:inline;}
+  .opts.row .opt{flex:none;width:100%;}
+  .save-exit{padding:6px 9px;white-space:nowrap;}
+  .stepper{padding:14px 16px 6px;}
+  .stepcount{padding:0 16px;}
   .disc{margin-top:10px;}
-  .stage{padding:8px 14px 130px;}
+  .stage{padding:8px 16px 130px;}
   .stepper .lbl{display:none;}
   .stage{padding-bottom:130px;}
   .opts.grid2{grid-template-columns:1fr;}
   .recrow{gap:14px;}
   .dock{padding:14px;}
   .dockinner{flex-wrap:wrap;}
+}
+@keyframes ob-badge-cycle{
+  0%{opacity:0;transform:translate(-50%,calc(-50% + 6px));}
+  4%{opacity:1;transform:translate(-50%,-50%);}
+  29%{opacity:1;transform:translate(-50%,-50%);}
+  34%{opacity:0;transform:translate(-50%,calc(-50% - 6px));}
+  100%{opacity:0;transform:translate(-50%,calc(-50% - 6px));}
+}
+@media (max-width:640px) and (prefers-reduced-motion:reduce){
+  .ob-badges > *{animation:none;}
+  .ob-badges > *:first-child{opacity:1;}
 }
