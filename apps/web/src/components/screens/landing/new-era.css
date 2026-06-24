@@ -6,7 +6,7 @@
    accents (cyan / gain / loss) layered on top.
    =========================================================================== */
 .new-era-root {
-  --bg: #04070e;
+  --bg: #010104;
   --fg: #f4f4f6;
   --muted: #9aa6bd;
   --tail: #7c7c84;
@@ -33,7 +33,7 @@
 
 /* keep the page background dark while this landing is mounted */
 body:has(.new-era-root) {
-  background: #04070e;
+  background: #010104;
 }
 
 /* ---- fixed 3D layer ---- */
@@ -51,7 +51,7 @@ body:has(.new-era-root) {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 46%, rgba(0, 0, 0, 0) 38%, rgba(4, 7, 14, 0.55) 78%, rgba(4, 7, 14, 0.92) 100%);
+  background: radial-gradient(120% 90% at 50% 46%, rgba(0, 0, 0, 0) 30%, rgba(1, 1, 4, 0.72) 68%, rgba(1, 1, 4, 0.99) 100%);
 }
 
 /* scroll driver — tall empty column gives us scroll range */
@@ -169,6 +169,38 @@ body:has(.new-era-root) {
 .new-era-root .panel .stats .sn,
 .new-era-root .panel .stats .sl {
   text-shadow: 0 1px 18px rgba(2, 5, 12, 0.7), 0 1px 4px rgba(2, 5, 12, 0.55);
+}
+/* Guardrails sits over the bright galaxy core — denser halo (galaxy is also
+   slid left of this right-aligned panel in the engine) so copy stays crisp. */
+.new-era-root #guardrails .head {
+  text-shadow: 0 2px 34px rgba(2, 4, 10, 0.94), 0 0 16px rgba(2, 4, 10, 0.88), 0 1px 5px rgba(2, 4, 10, 0.85);
+}
+.new-era-root #guardrails .sub,
+.new-era-root #guardrails .kicker,
+.new-era-root #guardrails .checks li {
+  text-shadow: 0 0 4px rgba(2, 4, 10, 0.95), 0 1px 10px rgba(2, 4, 10, 0.92), 0 0 22px rgba(2, 4, 10, 0.9),
+    0 0 36px rgba(2, 4, 10, 0.8);
+}
+.new-era-root #guardrails .checks {
+  border-top-color: rgba(255, 255, 255, 0.18);
+}
+/* Vault sits over the bright wave/terrain — same denser halo treatment. */
+.new-era-root #vault .head {
+  text-shadow: 0 2px 34px rgba(2, 4, 10, 0.94), 0 0 16px rgba(2, 4, 10, 0.88), 0 1px 5px rgba(2, 4, 10, 0.85);
+}
+.new-era-root #vault .sub,
+.new-era-root #vault .kicker,
+.new-era-root #vault .stats .sn,
+.new-era-root #vault .stats .sl {
+  text-shadow: 0 0 4px rgba(2, 4, 10, 0.95), 0 1px 10px rgba(2, 4, 10, 0.92), 0 0 22px rgba(2, 4, 10, 0.9),
+    0 0 36px rgba(2, 4, 10, 0.8);
+}
+.new-era-root #vault .stats {
+  border-top-color: rgba(255, 255, 255, 0.18);
+}
+/* brighten the small stat labels so they read over the bright wave */
+.new-era-root #vault .stats .sl {
+  color: #c6ccd8;
 }
 
 /* HERO */

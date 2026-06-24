@@ -132,7 +132,7 @@ export default function NewEraLanding() {
     ) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(innerWidth, innerHeight);
-      renderer.setClearColor(0x04070e, 1);
+      renderer.setClearColor(0x010104, 1);
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 400);
@@ -482,6 +482,7 @@ export default function NewEraLanding() {
 
       let curZ = 30,
         curRX = 0,
+        curX = 0,
         smP = 0,
         raf = 0;
 
@@ -508,10 +509,15 @@ export default function NewEraLanding() {
         const tz =
           30 * w.ring + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather;
         const trx = w.galaxy * 0.95 + w.wave * 0.42 + w.star * 0.05;
+        // slide the galaxy left of the right-aligned guardrails text so its
+        // bright core no longer sits behind the copy
+        const tposx = -6.5 * w.galaxy;
         curZ += (tz - curZ) * 0.06;
         curRX += (trx - curRX) * 0.06;
+        curX += (tposx - curX) * 0.06;
         camera.position.z = curZ;
         group.rotation.x = curRX;
+        group.position.x = curX;
 
         if (!reduced) {
           group.rotation.y += 0.0026 * w.helix + 0.0012 * w.galaxy;
@@ -734,7 +740,8 @@ export default function NewEraLanding() {
               <h1 className="head">Nothing moves without your signature.</h1>
               <p className="sub wide">
                 Sparky can direct strategy, but only you can authorize a transaction.{" "}
-                <b>Your keys, your funds — always.</b> Withdraw anytime, even if we&rsquo;re offline.
+                <b>Your keys, your funds — always.</b>{" "}
+                Withdraw anytime, even if we&rsquo;re offline.
               </p>
             </div>
           </div>
