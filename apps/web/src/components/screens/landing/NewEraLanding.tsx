@@ -110,6 +110,10 @@ export default function NewEraLanding() {
   });
   const themeRef = useRef<Theme>(theme);
   const [showNudge, setShowNudge] = useState(false);
+  // reduced-motion: render the calm static fallback by default, but let the
+  // visitor opt into the full animation (motionOverrideRef flips the engine live).
+  const [showMotion, setShowMotion] = useState(false);
+  const motionOverrideRef = useRef(false);
   // 3D handles, populated once the scene is built, so the toggle can retheme live.
   const sceneRef = useRef<{
     THREE: typeof import("three");
@@ -155,6 +159,27 @@ export default function NewEraLanding() {
     if (switchToDark) applyTheme("dark");
   }
 
+  // reduced-motion opt-in: enable the full animation for this visitor.
+  function playFullMotion() {
+    motionOverrideRef.current = true;
+    rootRef.current?.classList.remove("rm");
+    setShowMotion(false);
+    try {
+      localStorage.setItem("sp-landing-motion", "play");
+    } catch {
+      /* ignore */
+    }
+    window.scrollTo(0, 0);
+  }
+  function dismissMotion() {
+    setShowMotion(false);
+    try {
+      localStorage.setItem("sp-landing-motion", "dismissed");
+    } catch {
+      /* ignore */
+    }
+  }
+
   function goConnect() {
     router.push("/connect");
   }
@@ -173,8 +198,18 @@ export default function NewEraLanding() {
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isMobile = window.innerWidth < 780;
 
-    // reduced-motion: stack every panel statically and let CSS own visibility.
-    if (reduced) root.classList.add("rm");
+    // reduced-motion: respect it by default (static stacked layout), unless the
+    // visitor previously opted into the full animation.
+    let motionPref: string | null = null;
+    try {
+      motionPref = localStorage.getItem("sp-landing-motion");
+    } catch {
+      /* ignore */
+    }
+    if (reduced && motionPref === "play") motionOverrideRef.current = true;
+    if (reduced && !motionOverrideRef.current) root.classList.add("rm");
+    // animate when motion isn't reduced, or the visitor opted in (live flag)
+    const isAnimating = () => !reduced || motionOverrideRef.current;
 
     let cleanup = () => {};
     let cancelled = false;
@@ -573,7 +608,7 @@ export default function NewEraLanding() {
       }
 
       function getProgress() {
-        if (reduced) return 0.045;
+        if (!isAnimating()) return 0.045;
         const max = document.documentElement.scrollHeight - innerHeight;
         return max > 0 ? Math.min(1, Math.max(0, scrollY / max)) : 0;
       }
@@ -618,7 +653,7 @@ export default function NewEraLanding() {
         group.rotation.x = curRX;
         group.position.x = curX;
 
-        if (!reduced) {
+        if (isAnimating()) {
           group.rotation.y += 0.0026 * w.helix + 0.0012 * w.galaxy;
           group.rotation.y *= 1 - 0.08 * w.ring - 0.04 * w.wave - 0.04 * w.gather;
           group.rotation.z = 0;
@@ -627,8 +662,8 @@ export default function NewEraLanding() {
         }
         dnaLines.material.opacity = w.helix * 0.5;
 
-        // crossfade overlays — skipped in reduced-motion (CSS owns the stacked layout)
-        if (!reduced) {
+        // crossfade overlays — skipped when not animating (CSS owns the stacked layout)
+        if (isAnimating()) {
           setPanel(panels.hero, fade(smP, -0.1, 0.0, 0.07, 0.13), (0.1 - Math.min(smP, 0.13)) * -80);
           setPanel(panels.proposes, fade(smP, 0.17, 0.2, 0.26, 0.3), (0.23 - clamp(smP, 0.17, 0.3)) * 120);
           setPanel(panels.guardrails, fade(smP, 0.36, 0.39, 0.45, 0.48), (0.42 - clamp(smP, 0.36, 0.48)) * 120);
@@ -770,9 +805,23 @@ export default function NewEraLanding() {
       }, 3600);
     }
 
+    // reduced-motion popup: offer the full animation (unless already chosen)
+    let motionTimer: ReturnType<typeof setTimeout> | undefined;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let motionPref: string | null = null;
+    try {
+      motionPref = localStorage.getItem("sp-landing-motion");
+    } catch {
+      /* ignore */
+    }
+    if (reduced && motionPref !== "play" && motionPref !== "dismissed") {
+      motionTimer = setTimeout(() => setShowMotion(true), 2600);
+    }
+
     return () => {
       clearTimeout(splashTimer);
       if (nudgeTimer) clearTimeout(nudgeTimer);
+      if (motionTimer) clearTimeout(motionTimer);
       ["wheel", "scroll", "pointerdown", "keydown"].forEach((ev) => removeEventListener(ev, onFirst));
     };
   }, []);
@@ -1125,23 +1174,46 @@ export default function NewEraLanding() {
         </div>
       </footer>
 
-      {/* dark-mode nudge (light mode only, remembered) */}
-      {showNudge && theme === "light" && (
-        <div className="ne-toast" role="status">
-          <button className="ne-toast-x" type="button" aria-label="Dismiss" onClick={() => dismissNudge(false)}>
-            ×
-          </button>
-          <div className="ne-toast-title">
-            <SparkMark size={14} />
-            Try dark mode
+      {/* bottom-right toasts — stacked so they never overlap */}
+      <div className="ne-toasts">
+        {/* reduced-motion: offer the full animation */}
+        {showMotion && (
+          <div className="ne-toast" role="status">
+            <button className="ne-toast-x" type="button" aria-label="Dismiss" onClick={dismissMotion}>
+              ×
+            </button>
+            <div className="ne-toast-title">
+              <SparkMark size={14} />
+              Reduced motion is on
+            </div>
+            <div className="ne-toast-body">
+              This page is animated. For the best experience, turn off reduced motion in your device settings — or play
+              it here.
+            </div>
+            <button className="ne-toast-btn" type="button" onClick={playFullMotion}>
+              Play animation
+              <ArrowOut />
+            </button>
           </div>
-          <div className="ne-toast-body">Experience the page the way we designed it.</div>
-          <button className="ne-toast-btn" type="button" onClick={() => dismissNudge(true)}>
-            Switch to dark
-            <ArrowOut />
-          </button>
-        </div>
-      )}
+        )}
+        {/* dark-mode nudge (light mode only, remembered) */}
+        {showNudge && theme === "light" && (
+          <div className="ne-toast" role="status">
+            <button className="ne-toast-x" type="button" aria-label="Dismiss" onClick={() => dismissNudge(false)}>
+              ×
+            </button>
+            <div className="ne-toast-title">
+              <SparkMark size={14} />
+              Try dark mode
+            </div>
+            <div className="ne-toast-body">Experience the page the way we designed it.</div>
+            <button className="ne-toast-btn" type="button" onClick={() => dismissNudge(true)}>
+              Switch to dark
+              <ArrowOut />
+            </button>
+          </div>
+        )}
+      </div>
 
       <div id="scroller"></div>
     </div>
