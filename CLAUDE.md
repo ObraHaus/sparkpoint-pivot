@@ -1,8 +1,9 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/002-web-app-ui/plan.md` (the faithful UI rebuild of the approved
-Claude Design — ports `docs/design-handover/showcase/` 1:1 into `apps/web`).
+`specs/003-landing-only-gate/plan.md` (the construction gate that publicly
+serves only the marketing landing while the rest of `apps/web` — the faithful
+UI build from `specs/002-web-app-ui/` — stays gated until launch).
 <!-- SPECKIT END -->
 
 ---
