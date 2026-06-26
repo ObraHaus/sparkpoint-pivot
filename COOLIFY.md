@@ -12,9 +12,11 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 
 | App | Branch | Env | Coolify app UUID | Host port | Server |
 |---|---|---|---|---|---|
-| `sparkpoint-web-primary` | `main` | **prod · public landing (active)** | _TBD_ | `31101` | coolify-master |
-| `sparkpoint-web-secondary` | `main` | **prod · public landing (active)** | _TBD_ | `31101` | coolify-build |
-| `sparkpoint-web-lb` (nginx) | `main` | **prod · public landing (active)** | _TBD_ | `31101` → upstream | coolify-master |
+| `sparkpoint-web-primary` | `main` | **prod · public landing (active)** | `uk0w8kkckkkok480g8808o00` | `31101` | coolify-master |
+| `sparkpoint-web-secondary` | `main` | **prod · public landing (active)** | `h8cggk088co8k4400sgwcsww` | `31101` | coolify-build |
+| `sparkpoint-web-lb` (nginx) | `main` | **prod · public landing (active)** | _TBD (operator)_ | `31101` → upstream | coolify-master |
+
+> **Deployed 2026-06-26 (feature 003, gated `SITE_LOCKED=true`).** Both web replicas are created + deployed in the **production** environment. **Primary** is live + gate-verified at the staging URL `https://sparkpoint-landing.obrahaus-develop.aldrickb.xyz` (`/`→200, all other routes→307 `/coming-soon`). **Secondary** runs on coolify-build (logs: `next start` ✓ Ready; badge shows `running:unhealthy` — the known coolify-build false-negative) and is reached via host port `31101` for the LB, not its own domain (master-proxied domains don't route to coolify-build apps). **Remaining (operator):** create the `sparkpoint-web-lb` nginx resource + point the **real public domain** (e.g. `sparkpoint.aldrickb.xyz`) at it via Cloudflare DNS + nginx — see `specs/003-landing-only-gate/deploy-runbook.md`.
 | `sparkpoint-web-primary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-master |
 | `sparkpoint-web-secondary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-build |
 | `sparkpoint-agent-primary` | `main` | prod (reserved*) | _TBD_ | `31102` | coolify-master |

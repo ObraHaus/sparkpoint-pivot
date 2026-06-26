@@ -37,6 +37,19 @@ upstream sparkpoint_web {
 | Server — secondary | **coolify-build** = `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36`) |
 | Git source | ObraHaus GitHub App, **`source_id: 3`** (same source as `obrahaus/fileforge-docs`; github_app_uuid confirmed in the dashboard dropdown at create) |
 
+## Status (executed 2026-06-26)
+
+| Step | State |
+|---|---|
+| `sparkpoint-web-primary` (coolify-master) created · gated · deployed | ✅ uuid `uk0w8kkckkkok480g8808o00` — **live + gate verified** at `https://sparkpoint-landing.obrahaus-develop.aldrickb.xyz` |
+| `sparkpoint-web-secondary` (coolify-build) created · gated · deployed | ✅ uuid `h8cggk088co8k4400sgwcsww` — running (`next start` ✓ Ready; badge `running:unhealthy` = coolify-build false-negative); reached via host port `31101` for the LB |
+| Env on both (`SITE_LOCKED=true`, `NEXT_PUBLIC_SITE_LOCKED=true`, `NIXPACKS_NODE_VERSION=22`) | ✅ build-time (`is_buildtime: true`) |
+| **nginx LB + real public domain** (steps 3–4 below) | ⏳ **operator** — needs Cloudflare DNS + nginx |
+
+The gated landing is **already publicly reachable** at the primary's staging URL above. The steps below finish the HA topology (LB) and swap in the real public domain.
+
+> **Note for future me:** the env API on this Coolify rejects `is_build_time` (422); the accepted shape is `{key,value}` and Coolify defaults new vars to `is_buildtime:true` + `is_runtime:true`. coolify-build apps are **not** reachable by their own FQDN (the Cloudflare wildcard + nginx point at coolify-master); reach/verify them via host port `31101` on `192.168.31.36`, or through the LB.
+
 ## Prerequisites
 
 - [ ] **[operator]** RWD Coolify token (`COOLIFY_API_TOKEN_RWD`) for the mutating calls, OR operator runs the dashboard steps.
