@@ -1,138 +1,119 @@
 # Deploy Runbook — gated public landing (feature 003)
 
-One-time stand-up of the **landing-only public deployment** off `main`, in the **full primary + secondary + nginx LB** topology (playbook §5). The code is already on `main` (gate included); this runbook creates and configures the Coolify resources. Living references: [COOLIFY.md](../../COOLIFY.md), [DEPLOYMENT.md](../../DEPLOYMENT.md).
+Stand-up of the **landing-only public deployment** off `main`, in the **primary + secondary + nginx LB** topology (playbook §5). The code is on `main` (gate included). Living references: [COOLIFY.md](../../COOLIFY.md), [DEPLOYMENT.md](../../DEPLOYMENT.md).
 
-> **Review gate:** nothing here is executed until you approve. Coolify **mutations** need the RWD token (the standing token is read-only); **DNS + nginx** are operator-owned. Steps are tagged **[me]** (I can run via the Coolify API once you approve + provide the RWD token) or **[operator]** (aldrickb).
+> ## ✅ DEPLOYED & VERIFIED — 2026-06-26
+> **Public URL:** **https://h8cggk088co8k4400sgwcsww.aldrickb.app** — gated (`/` → 200 landing; every other route → 307 `/coming-soon`; RSC/`.rsc`/prefetch → 307 `noindex`, no flight leak; LB distributing across both replicas). Un-gate at launch = flip `SITE_LOCKED=false` on both replicas (see end).
 
-## Topology + FINAL ports
+## As-built topology
 
-Per COOLIFY.md inventory — web prod block `31101` is now **active** for this landing.
+| Resource | Kind | Server | uuid | Host:container / domain | Gate |
+|---|---|---|---|---|---|
+| `sparkpoint-web-primary` | application | coolify-master (`192.168.31.240`) | `uk0w8kkckkkok480g8808o00` | `31101:3000` · **no domain** | `SITE_LOCKED=true` |
+| `sparkpoint-web-secondary` | application | coolify-build (`192.168.31.36`) | `h8cggk088co8k4400sgwcsww` | `31101:3000` · **no domain** | `SITE_LOCKED=true` |
+| `sparkpoint-web-lb` | service (nginx) | coolify-master | `ncwkswsw0kgc48skgsw08488` | **`http://h8cggk088co8k4400sgwcsww.aldrickb.app`** → `ip_hash` upstream of both `:31101` | — |
 
-| Resource | Server | Host : container | Branch | Gate |
-|---|---|---|---|---|
-| `sparkpoint-web-primary` | coolify-master (`192.168.31.240`) | `31101` : `3000` | `main` | `SITE_LOCKED=true` |
-| `sparkpoint-web-secondary` | coolify-build (`192.168.31.36`) | `31101` : `3000` | `main` | `SITE_LOCKED=true` |
-| `sparkpoint-web-lb` (nginx docker-compose) | coolify-master | public domain → `ip_hash` upstream of both | — | — |
+Both replicas run the **same gated build** on different servers, sharing host port `31101`; the nginx LB owns the public domain and round-robins (`ip_hash`) to both. The replicas have **no domain of their own** — they are reached only via the host port through the LB.
 
-The primary and secondary run the **same gated build** on different servers, sharing host port `31101`; the nginx LB fronts them and owns the public domain.
-
-```nginx
-# sparkpoint-web-lb upstream (ip_hash sticky)
-upstream sparkpoint_web {
-  ip_hash;
-  server 192.168.31.240:31101;   # primary  (coolify-master)
-  server 192.168.31.36:31101;    # secondary (coolify-build)
-}
-# server { listen 80; server_name <fqdn>; location / { proxy_pass http://sparkpoint_web; ... } }
-```
-
-## Live Coolify IDs (read-only, fetched 2026-06-26)
+## Live Coolify IDs
 
 | Thing | Value |
 |---|---|
-| Project | **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg` (apps list currently empty) |
-| Environment (use this) | **`production`** = `yocok40s0ckc0cw40so0g040` |
-| Other envs | `develop` = `t48o0ocs80os08g4cscg0o8k` · `preview` = `pg8ok8gk44gs8c4kcgw0s84g` |
-| Server — primary | **coolify-master** = `hgwkwgoswg8o88cg8ko8ocgk` (`localhost`/`host.docker.internal`; LAN `192.168.31.240`) |
-| Server — secondary | **coolify-build** = `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36`) |
-| Git source | ObraHaus GitHub App, **`source_id: 3`** (same source as `obrahaus/fileforge-docs`; github_app_uuid confirmed in the dashboard dropdown at create) |
+| Project | **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg` |
+| Environment | **`production`** = `yocok40s0ckc0cw40so0g040` (others: `develop` `t48o0ocs80os08g4cscg0o8k`, `preview` `pg8ok8gk44gs8c4kcgw0s84g`) |
+| Server — coolify-master | `hgwkwgoswg8o88cg8ko8ocgk` (`localhost`/`host.docker.internal`; LAN `192.168.31.240`; server_id 0) |
+| Server — coolify-build | `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36`; server_id 1) |
+| Git source | ObraHaus GitHub App `qkk0coc0ckok4oc044c8g00w` (`source_id: 3`) → `ObraHaus/sparkpoint-pivot` |
+| Auto-domain wildcard | `*.aldrickb.app` is the Coolify-generated domain wildcard on coolify-master |
 
-## Status (executed 2026-06-26)
+## Procedure (what was done — reusable)
 
-| Step | State |
-|---|---|
-| `sparkpoint-web-primary` (coolify-master) created · gated · deployed | ✅ uuid `uk0w8kkckkkok480g8808o00` — **live + gate verified** at `https://sparkpoint-landing.obrahaus-develop.aldrickb.xyz` |
-| `sparkpoint-web-secondary` (coolify-build) created · gated · deployed | ✅ uuid `h8cggk088co8k4400sgwcsww` — running (`next start` ✓ Ready; badge `running:unhealthy` = coolify-build false-negative); reached via host port `31101` for the LB |
-| Env on both (`SITE_LOCKED=true`, `NEXT_PUBLIC_SITE_LOCKED=true`, `NIXPACKS_NODE_VERSION=22`) | ✅ build-time (`is_buildtime: true`) |
-| **nginx LB + real public domain** (steps 3–4 below) | ⏳ **operator** — needs Cloudflare DNS + nginx |
-
-The gated landing is **already publicly reachable** at the primary's staging URL above. The steps below finish the HA topology (LB) and swap in the real public domain.
-
-> **Note for future me:** the env API on this Coolify rejects `is_build_time` (422); the accepted shape is `{key,value}` and Coolify defaults new vars to `is_buildtime:true` + `is_runtime:true`. coolify-build apps are **not** reachable by their own FQDN (the Cloudflare wildcard + nginx point at coolify-master); reach/verify them via host port `31101` on `192.168.31.36`, or through the LB.
-
-## Prerequisites
-
-- [ ] **[operator]** RWD Coolify token (`COOLIFY_API_TOKEN_RWD`) for the mutating calls, OR operator runs the dashboard steps.
-- [ ] **[operator]** Confirm host port `31101` is free on **both** coolify-master and coolify-build.
-- [ ] Public FQDN chosen (default proposed: `http://sparkpoint.aldrickb.xyz`).
-- [ ] Friday no-deploy exception already approved by the operator for this landing.
-
-## Steps
-
-### 1. Create the two app resources — **[me]** (API) / **[operator]** (dashboard)
-
-Create **two** applications in project **SparkPoint Pivot Project** → environment **`production`** (`yocok40s0ckc0cw40so0g040`) — `sparkpoint-web-primary` on **coolify-master**, `sparkpoint-web-secondary` on **coolify-build**. Identical config except name + server:
-
-| Field | Value |
-|---|---|
-| Project | `ewwsgws4gs0ko88ocgg00ksg` (SparkPoint Pivot Project) |
-| Environment | **`production`** (`yocok40s0ckc0cw40so0g040`) |
-| Server | primary → `hgwkwgoswg8o88cg8ko8ocgk` (coolify-master) · secondary → `koww4w8ok84g48s0o0ow4g8s` (coolify-build) |
-| Source | ObraHaus GitHub App (`source_id: 3`) → `ObraHaus/sparkpoint-pivot`, branch **`main`** |
-| Build pack | **Nixpacks**, **Base directory `/apps/web`** |
-| Commands | install `pnpm install --frozen-lockfile` · build `pnpm build` · start `pnpm start` |
-| Ports | exposes **`3000`** (container); host **`31101`** |
-| Auto-deploy on push to `main` | on |
-
-**Dashboard [operator]:** `+ New` → in **SparkPoint Pivot Project / Production** → Private Repository (GitHub App **ObraHaus**) → `ObraHaus/sparkpoint-pivot` → branch `main` → Nixpacks → Base Directory `/apps/web` → Port `3000` → pick the server. Repeat for the second server.
-
-**API [me, needs RWD token]:** create against the **production** environment (confirm the GitHub-App-source field shape with the RWD token before firing — `obrahaus/fileforge-docs` uses `source_id: 3` with `github_app_uuid: null`):
+### 1. Create the two app resources (API)
+Two `private-github-app` applications in **production**, identical except name + server:
 ```bash
-curl -X POST "$BASE/api/v1/applications/private-github-app" \
-  -H "Authorization: Bearer $RWD" -H "Content-Type: application/json" -d '{
-    "project_uuid": "ewwsgws4gs0ko88ocgg00ksg",
-    "environment_name": "production",
-    "server_uuid": "hgwkwgoswg8o88cg8ko8ocgk",
-    "github_app_uuid": "<ObraHaus GitHub App — source_id 3; fetch at execution>",
-    "git_repository": "ObraHaus/sparkpoint-pivot",
-    "git_branch": "main",
-    "build_pack": "nixpacks",
-    "base_directory": "/apps/web",
-    "ports_exposes": "3000",
-    "name": "sparkpoint-web-primary",
-    "instant_deploy": false
-  }'
-# secondary: same body with name=sparkpoint-web-secondary, server_uuid=koww4w8ok84g48s0o0ow4g8s
+curl -X POST "$BASE/api/v1/applications/private-github-app" -H "Authorization: Bearer $RWD" -H "Content-Type: application/json" -d '{
+  "project_uuid":"ewwsgws4gs0ko88ocgg00ksg", "environment_name":"production",
+  "server_uuid":"hgwkwgoswg8o88cg8ko8ocgk",  "github_app_uuid":"qkk0coc0ckok4oc044c8g00w",
+  "git_repository":"ObraHaus/sparkpoint-pivot", "git_branch":"main",
+  "build_pack":"nixpacks", "base_directory":"/apps/web", "ports_exposes":"3000",
+  "name":"sparkpoint-web-primary", "instant_deploy":false }'
+# secondary: name=sparkpoint-web-secondary, server_uuid=koww4w8ok84g48s0o0ow4g8s
+```
+Then PATCH each: `{"ports_mappings":"31101:3000","install_command":"pnpm install --frozen-lockfile"}`.
+
+### 2. Env on BOTH apps (build-time)
+Field is **`is_buildtime`**, but the create API rejects it — POST `{key,value}` only; Coolify defaults new vars to `is_buildtime:true` + `is_runtime:true` (which is what we need):
+```bash
+for KV in SITE_LOCKED=true NEXT_PUBLIC_SITE_LOCKED=true NIXPACKS_NODE_VERSION=22; do
+  curl -X POST "$BASE/api/v1/applications/$APP/envs" -H "Authorization: Bearer $RWD" \
+    -H "Content-Type: application/json" -d "{\"key\":\"${KV%%=*}\",\"value\":\"${KV#*=}\"}"; done
 ```
 
-### 2. Environment variables on BOTH apps (BUILD env) — **[me]**/**[operator]**
-The gate is read by Edge middleware **at build time**, so set on **primary AND secondary** (a mismatch = one replica serves the full app):
+### 3. Deploy each app, verify
+`GET $BASE/api/v1/deploy?uuid=$APP` → poll `GET $BASE/api/v1/deployments/<deployment_uuid>` until `status:finished`.
+
+### 4. Create the nginx LB (service, API)
+`docker_compose_raw` must be **base64**. The Coolify inline `content:` bind-mount **silently fails** when created via the API (Docker mounts an empty dir over the conf → nginx exits) — so write the nginx config via `command` instead:
+```yaml
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_NGINX_80
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat > /etc/nginx/conf.d/default.conf <<'EOF'
+        upstream sparkpoint_web { ip_hash; server 192.168.31.240:31101; server 192.168.31.36:31101; }
+        server { listen 80; location / {
+          proxy_pass http://sparkpoint_web; proxy_http_version 1.1;
+          proxy_set_header Host $$host; proxy_set_header X-Real-IP $$remote_addr;
+          proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $$scheme;
+        } }
+        EOF
+        exec nginx -g 'daemon off;'
 ```
-SITE_LOCKED=true
-NEXT_PUBLIC_SITE_LOCKED=true
-NIXPACKS_NODE_VERSION=22
-# COOLIFY_URL auto-derived from each app's FQDN
+```bash
+B64=$(base64 -w0 < lb-compose.yml)
+curl -X POST "$BASE/api/v1/services" -H "Authorization: Bearer $RWD" -H "Content-Type: application/json" \
+  -d "$(jq -n --arg c "$B64" '{name:"sparkpoint-web-lb",project_uuid:"ewwsgws4gs0ko88ocgg00ksg",environment_name:"production",server_uuid:"hgwkwgoswg8o88cg8ko8ocgk",docker_compose_raw:$c,instant_deploy:true}')"
 ```
 
-### 3. Domains — **[operator]**
-- Each app needs an **`http://`** FQDN or Nixpacks fails to build (`COOLIFY_URL: null`). Give the replicas internal-ish FQDNs (e.g. `http://sparkpoint-web-1.obrahaus-develop.aldrickb.xyz`, `…-web-2…`); the **public** domain lives on the **LB**.
-- **[operator]** Add the public subdomain + the two replica subdomains to **Cloudflare DNS** and the **nginx reverse proxy**. `http://` scheme only — `https://` causes an infinite 302 loop (TLS terminates upstream).
+### 5. Set the LB domain + clear replica domains — **DASHBOARD ONLY**
+The Coolify API on this version (`4.0.0-beta.434`) **cannot set a custom domain on a compose service** (it auto-generates `nginx-<service-uuid>.aldrickb.app` and ignores `SERVICE_FQDN_*` overrides + the baked-in compose value), and it **rejects an empty app domain** (422). So in the UI:
+1. **LB → nginx → Domains** = `http://h8cggk088co8k4400sgwcsww.aldrickb.app` → redeploy.
+2. Remove that domain from **`sparkpoint-web-secondary`** first (it held it as its default `<uuid>.aldrickb.app`).
+3. Remove the staging domain from **`sparkpoint-web-primary`**.
 
-### 4. Create the nginx LB resource — **[me]**/**[operator]**
-- Add `sparkpoint-web-lb` as an nginx docker-compose resource on coolify-master with the `ip_hash` upstream above. Assign the **public** `http://` FQDN to it. (Sticky `ip_hash` isn't strictly needed for a static landing, but it matches the topology and is harmless.)
-
-### 5. Deploy + verify — **[me]**
-- Deploy primary and secondary; confirm each via the deployment record (`status: finished` — **not** the status badge): `GET /api/v1/deployments/<uuid>` (read token in `/home/hello/project/.claude/.env`).
-- Verify **each replica directly**, then the LB:
-  ```
-  for h in 192.168.31.240:31101 192.168.31.36:31101 <public-fqdn>; do
-    curl -s -o /dev/null -w "%{http_code}        $h /\n"            http://$h/
-    curl -s -o /dev/null -w "%{http_code} %{redirect_url}  $h /admin\n" http://$h/admin
-  done
-  ```
-  Expect `/` → 200 and `/admin` → 307 `…/coming-soon` on **all three**. Then load the public URL in a browser: Three.js landing renders; Connect CTA → `/coming-soon`.
+### 6. Verify (final)
+```bash
+D=https://h8cggk088co8k4400sgwcsww.aldrickb.app
+curl -s -o /dev/null -w "%{http_code}  /\n" $D/                 # 200 (landing)
+for p in /admin /chat /confirm/x /vault /onboarding /nope; do
+  curl -s -o /dev/null -w "%{http_code} %{redirect_url}  $p\n" $D$p; done   # all 307 -> /coming-soon
+curl -s -H 'RSC: 1' -D - -o /dev/null $D/admin | grep -i 'x-robots'         # noindex, no flight
+```
 
 ## Operational notes (for future me)
 
-- **Gate on BOTH replicas, at BUILD time.** The #1 footgun: `SITE_LOCKED` set on primary but not secondary (or set as runtime-only) → that replica serves the full app and `ip_hash` sends ~half of visitors there. Always set it on both, in the **build** env, and verify each replica directly (step 5), not just the LB.
-- **Un-gate at launch = both replicas.** Set `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on **primary and secondary**, redeploy both. Roll the LB last.
-- **`http://` only** everywhere (apps + LB). `https://` → infinite redirect loop.
-- **No domain = no build** (Nixpacks `COOLIFY_URL: null`) — the replicas need their own FQDNs even though traffic arrives via the LB.
-- **pnpm lockfile trap** ([[sparkpoint-pnpm-version-trap]]): Coolify builds with **pnpm 9** (`--frozen-lockfile`); never regenerate `apps/web/pnpm-lock.yaml` with pnpm 11 or the frozen install breaks. This feature added **no deps**, so the lockfile is unchanged — frozen install is safe.
-- **Base dir is `apps/web`** (self-contained Next app with its own lockfile; no root workspace).
-- **Deployment record, not the badge** — apps on coolify-build can show `unhealthy` while serving fine; trust `status: finished`.
-- **Rollback:** redeploy the previous good deployment in Coolify, or `git revert` on `main` (auto-redeploys). Roll both replicas.
+- **Gate on BOTH replicas, at BUILD time.** `SITE_LOCKED` on primary but not secondary → `ip_hash` sends ~half of visitors to a fully-open app. Verify each replica directly (host port `31101`), not just the LB.
+- **Custom service domain = dashboard only.** The API auto-generates `nginx-<uuid>.aldrickb.app` for compose services and offers no override (tried: `SERVICE_FQDN_NGINX` env, baking it into the compose, delete+recreate, service PATCH `domains`, inner-app PATCH — all ignored/rejected). Set it in the UI's Domains field.
+- **Inline `content:` bind-mount fails via API.** Write the nginx config with `command` (heredoc → `nginx -g 'daemon off;'`); escape nginx vars as `$$host` etc. for compose.
+- **`docker_compose_raw` must be base64**; env API field is **`is_buildtime`** (not `is_build_time`).
+- **coolify-build apps aren't reachable by their own FQDN** (the wildcard + nginx point at coolify-master) — reach/verify them via host port `31101` on `192.168.31.36` or through the LB.
+- **`running:unhealthy` badge is a false-negative** on coolify-build and on the LB service (no healthcheck) — trust the actual HTTP response / `status:finished`.
+- **⚠️ Replicas now have NO domain.** A future Nixpacks rebuild can fail with `COOLIFY_URL: null`. If a redeploy breaks, give each replica an **internal** FQDN (e.g. `http://web1.internal`) or set `COOLIFY_URL` explicitly — the public domain stays on the LB only.
+- **`http://` scheme** for the in-Coolify domain (TLS terminates upstream; `https://` → redirect loop). External clients use `https://`.
+- **pnpm lockfile trap** ([[sparkpoint-pnpm-version-trap]]): Coolify builds with **pnpm 9** `--frozen-lockfile`; never regenerate `apps/web/pnpm-lock.yaml` with pnpm 11. This feature added no deps — safe.
+- **Deployment record, not the badge** — `GET /api/v1/deployments/<uuid>` → `status:finished`.
 
-## What I will NOT do without explicit per-call approval
-- Any Coolify-mutating API call (create app / LB, set env, trigger deploy) — I'll show each call first.
-- Anything touching Cloudflare DNS or nginx (operator-owned).
+## Launch (un-gate) — when the app is ready
+1. Set `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on **primary AND secondary**, redeploy both.
+2. Verify the full app loads through the LB domain; roll the LB last.
+3. No code change / revert — the gate stays dormant in the codebase.
+
+## Rollback
+- Redeploy the previous good deployment in Coolify, or `git revert` on `main` (auto-redeploys). Roll both replicas.
