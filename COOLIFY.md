@@ -27,7 +27,8 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 \* **Prod (`311xx`).** The **web** prod port (`31101`) is now **ACTIVE** — it hosts the gated public landing off `main` (feature 003; `SITE_LOCKED=true`) on OH Coolify. The **agent** (`31102`) and **Postgres** (`31103`) prod ports remain **reserved**: those services run later on the **client's infra**, not OH Coolify; the block is reserved so ports don't collide if a prod-on-Coolify stage is needed.
 
 - **Load balancers** (web + agent only): one nginx docker-compose resource per load-balanced app+env, fronting the primary+secondary pair on the shared host port (`ip_hash` sticky; include the Supabase-style large-header buffer block only if needed). Postgres is single-instance, no LB.
-- **Servers:** `coolify-master` (the Coolify host; `localhost` / `server_id 0`; LAN IP `192.168.31.240`) and `coolify-build` (`192.168.31.36` / `server_id 1`).
+- **Servers (live UUIDs):** `coolify-master` = `hgwkwgoswg8o88cg8ko8ocgk` (the Coolify host; `localhost` / `host.docker.internal` / `server_id 0`; LAN IP `192.168.31.240`) and `coolify-build` = `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36` / `server_id 1`).
+- **Project & environments (live):** **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg`; environments **`production`** = `yocok40s0ckc0cw40so0g040`, **`develop`** = `t48o0ocs80os08g4cscg0o8k`, `preview` = `pg8ok8gk44gs8c4kcgw0s84g`. Gated public-landing apps (off `main`) go in **production**; the develop apps in **develop**. Git source: ObraHaus GitHub App (`source_id: 3`, same as fileforge). Apps list currently **empty** (none created yet).
 - **Primary + secondary share a host port** (they run on different servers, so no collision); the nginx upstream targets both servers on that port.
 
 ### Port table — FINAL (scheme `3 <group> <env> <app>`; group `3`=sparkpoint, env `1`=prod/`2`=develop)

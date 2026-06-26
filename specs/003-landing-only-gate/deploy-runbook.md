@@ -26,6 +26,17 @@ upstream sparkpoint_web {
 # server { listen 80; server_name <fqdn>; location / { proxy_pass http://sparkpoint_web; ... } }
 ```
 
+## Live Coolify IDs (read-only, fetched 2026-06-26)
+
+| Thing | Value |
+|---|---|
+| Project | **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg` (apps list currently empty) |
+| Environment (use this) | **`production`** = `yocok40s0ckc0cw40so0g040` |
+| Other envs | `develop` = `t48o0ocs80os08g4cscg0o8k` · `preview` = `pg8ok8gk44gs8c4kcgw0s84g` |
+| Server — primary | **coolify-master** = `hgwkwgoswg8o88cg8ko8ocgk` (`localhost`/`host.docker.internal`; LAN `192.168.31.240`) |
+| Server — secondary | **coolify-build** = `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36`) |
+| Git source | ObraHaus GitHub App, **`source_id: 3`** (same source as `obrahaus/fileforge-docs`; github_app_uuid confirmed in the dashboard dropdown at create) |
+
 ## Prerequisites
 
 - [ ] **[operator]** RWD Coolify token (`COOLIFY_API_TOKEN_RWD`) for the mutating calls, OR operator runs the dashboard steps.
@@ -36,10 +47,40 @@ upstream sparkpoint_web {
 ## Steps
 
 ### 1. Create the two app resources — **[me]** (API) / **[operator]** (dashboard)
-For **each** of `sparkpoint-web-primary` (coolify-master) and `sparkpoint-web-secondary` (coolify-build), in project **"sparkpoint"**:
-- Source: GitHub `ObraHaus/sparkpoint-pivot`, branch **`main`**. Build pack **Nixpacks**. **Base directory `apps/web`**.
-- Install `pnpm install --frozen-lockfile` · Build `pnpm build` · Start `pnpm start`.
-- Host port **`31101`** → container **`3000`**. Auto-deploy on push to `main`: **on**.
+
+Create **two** applications in project **SparkPoint Pivot Project** → environment **`production`** (`yocok40s0ckc0cw40so0g040`) — `sparkpoint-web-primary` on **coolify-master**, `sparkpoint-web-secondary` on **coolify-build**. Identical config except name + server:
+
+| Field | Value |
+|---|---|
+| Project | `ewwsgws4gs0ko88ocgg00ksg` (SparkPoint Pivot Project) |
+| Environment | **`production`** (`yocok40s0ckc0cw40so0g040`) |
+| Server | primary → `hgwkwgoswg8o88cg8ko8ocgk` (coolify-master) · secondary → `koww4w8ok84g48s0o0ow4g8s` (coolify-build) |
+| Source | ObraHaus GitHub App (`source_id: 3`) → `ObraHaus/sparkpoint-pivot`, branch **`main`** |
+| Build pack | **Nixpacks**, **Base directory `/apps/web`** |
+| Commands | install `pnpm install --frozen-lockfile` · build `pnpm build` · start `pnpm start` |
+| Ports | exposes **`3000`** (container); host **`31101`** |
+| Auto-deploy on push to `main` | on |
+
+**Dashboard [operator]:** `+ New` → in **SparkPoint Pivot Project / Production** → Private Repository (GitHub App **ObraHaus**) → `ObraHaus/sparkpoint-pivot` → branch `main` → Nixpacks → Base Directory `/apps/web` → Port `3000` → pick the server. Repeat for the second server.
+
+**API [me, needs RWD token]:** create against the **production** environment (confirm the GitHub-App-source field shape with the RWD token before firing — `obrahaus/fileforge-docs` uses `source_id: 3` with `github_app_uuid: null`):
+```bash
+curl -X POST "$BASE/api/v1/applications/private-github-app" \
+  -H "Authorization: Bearer $RWD" -H "Content-Type: application/json" -d '{
+    "project_uuid": "ewwsgws4gs0ko88ocgg00ksg",
+    "environment_name": "production",
+    "server_uuid": "hgwkwgoswg8o88cg8ko8ocgk",
+    "github_app_uuid": "<ObraHaus GitHub App — source_id 3; fetch at execution>",
+    "git_repository": "ObraHaus/sparkpoint-pivot",
+    "git_branch": "main",
+    "build_pack": "nixpacks",
+    "base_directory": "/apps/web",
+    "ports_exposes": "3000",
+    "name": "sparkpoint-web-primary",
+    "instant_deploy": false
+  }'
+# secondary: same body with name=sparkpoint-web-secondary, server_uuid=koww4w8ok84g48s0o0ow4g8s
+```
 
 ### 2. Environment variables on BOTH apps (BUILD env) — **[me]**/**[operator]**
 The gate is read by Edge middleware **at build time**, so set on **primary AND secondary** (a mismatch = one replica serves the full app):
