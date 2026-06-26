@@ -180,6 +180,9 @@ export default function NewEraLanding() {
     }
   }
 
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [subscribed, setSubscribed] = useState(false);
+
   function goConnect() {
     // While the construction gate is on, /connect is gated — send the CTA to
     // the public Coming soon page instead of dead-ending. Cosmetic mirror of
@@ -1163,6 +1166,42 @@ export default function NewEraLanding() {
               </ul>
             </div>
           </div>
+          <form
+            className="fsub"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newsletterEmail) setSubscribed(true);
+            }}
+          >
+            <label className="fsub-label" htmlFor="ne-news">
+              Get launch updates
+            </label>
+            {subscribed ? (
+              <p className="fsub-done" role="status">
+                Thanks — you&rsquo;re on the list. We&rsquo;ll email you at launch.
+              </p>
+            ) : (
+              <div className="fsub-row">
+                <input
+                  id="ne-news"
+                  className="fsub-input"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@email.com"
+                  aria-label="Email address"
+                  value={newsletterEmail}
+                  onChange={(e) => setNewsletterEmail(e.target.value)}
+                />
+                <button className="fbtn primary" type="submit">
+                  Subscribe
+                  <span className="arrow">
+                    <ArrowOut />
+                  </span>
+                </button>
+              </div>
+            )}
+          </form>
           <div className="fbtns">
             <button className="fbtn primary" onClick={goConnect}>
               Connect wallet
@@ -1177,7 +1216,7 @@ export default function NewEraLanding() {
         </div>
         <div className="fbot">
           <div className="fine">
-            Mockup for design review · single Aave Yield Vault · Base only · beta-gated. Not financial advice; capital at
+            Single Aave Yield Vault · Base only · beta-gated. Not financial advice; capital at
             risk.
           </div>
           <div className="fcopy">© 2026 SparkPoint — AI-native onchain hedge fund.</div>
