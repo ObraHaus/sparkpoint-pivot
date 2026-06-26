@@ -181,6 +181,13 @@ export default function NewEraLanding() {
   }
 
   function goConnect() {
+    // While the construction gate is on, /connect is gated — send the CTA to
+    // the public Coming soon page instead of dead-ending. Cosmetic mirror of
+    // the server-side gate; SITE_LOCKED (middleware) is the real enforcement.
+    if (process.env.NEXT_PUBLIC_SITE_LOCKED === "true") {
+      router.push("/coming-soon");
+      return;
+    }
     router.push("/connect");
   }
 

@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Landing-only construction gate** (Spec Kit feature `specs/003-landing-only-gate/`) — a per-deployment switch that publicly serves **only** the marketing landing (`/`) while every other route (the entry flow, all app screens, all `/admin/*`) redirects to a branded, `noindex` **Coming soon** page, so the landing can go public while the rest stays under construction.
+  - **Mechanism** — a single Next.js `apps/web/middleware.ts` (the app's first) enforces a server-side, default-deny **allow-list** (`/`, `/_next/static`, `/_next/image`, favicon, robots/sitemap; everything else → `307 /coming-soon`). Keyed on `pathname`, so RSC / `.rsc` / segment-prefetch payloads to gated routes are gated too (verified: no flight-body leak); redirect-not-rewrite to stay RSC-safe.
+  - **Toggle** — env-driven and **fail-closed**: `SITE_LOCKED` anything-but-`"false"` (incl. unset) locks the site; `develop` runs `SITE_LOCKED=false` (full app for team/client preview), the public `main` deploy runs `SITE_LOCKED=true`. Same artifact, config-only difference; launch = set it `false` and redeploy (no code revert). `NEXT_PUBLIC_SITE_LOCKED` mirrors it so the landing's Connect CTA points at `/coming-soon` instead of dead-ending.
+  - **New files** — `middleware.ts`, `src/app/coming-soon/page.tsx`, `src/app/robots.ts`; the only existing-code edit is the landing CTA guard. No screen content changed. Typecheck / lint / production build green; gate matrix (locked, open, fail-closed) verified via `next start`.
+
 ### Changed
 - **Faithful UI rebuild of `apps/web`** (Spec Kit feature `specs/002-web-app-ui/`) — **replaced** the prior diverged scaffold (generic hero + simplified shell + placeholder screens) with a **1:1 recreation of the approved Claude Design** (`docs/design-handover/showcase/`). The earlier scaffold *re-derived* a simplified UI in Tailwind; this rebuild **ports the design's own assets** instead (root cause of the client-flagged mismatch).
   - **Visual system** — `tokens.css` + `app.css` + each screen's `<style>` ported into the global stylesheet so the design's component classes exist verbatim; light/dark via **next-themes** (`sp-theme`, no flash; default theme set below); marketing landing dark-only; tabular numerals; brand spark-mark (coral→gold→blue).
