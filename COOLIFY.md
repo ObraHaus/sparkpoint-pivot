@@ -8,12 +8,13 @@ Platform reference for SparkPoint Pivot on self-hosted **Coolify** (`https://coo
 
 ## Application inventory
 
-Proposed Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2 = fileforge, **3 = sparkpoint**). Topology per playbook §5: web app & agent service = primary + secondary behind a load balancer; Postgres = single instance, no LB.
+Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2 = fileforge, **3 = sparkpoint**). Topology per playbook §5: web app & agent service = **primary + secondary behind an nginx load balancer**; Postgres = single instance, no LB. **Ports below are FINAL** (the `3<group><env><app>` scheme is locked in); UUIDs remain _TBD_ until each app is created.
 
 | App | Branch | Env | Coolify app UUID | Host port | Server |
 |---|---|---|---|---|---|
-| `sparkpoint-web-primary` | `main` | prod (reserved*) | _TBD_ | `31101` | coolify-master |
-| `sparkpoint-web-secondary` | `main` | prod (reserved*) | _TBD_ | `31101` | coolify-build |
+| `sparkpoint-web-primary` | `main` | **prod · public landing (active)** | _TBD_ | `31101` | coolify-master |
+| `sparkpoint-web-secondary` | `main` | **prod · public landing (active)** | _TBD_ | `31101` | coolify-build |
+| `sparkpoint-web-lb` (nginx) | `main` | **prod · public landing (active)** | _TBD_ | `31101` → upstream | coolify-master |
 | `sparkpoint-web-primary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-master |
 | `sparkpoint-web-secondary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-build |
 | `sparkpoint-agent-primary` | `main` | prod (reserved*) | _TBD_ | `31102` | coolify-master |
@@ -23,13 +24,13 @@ Proposed Coolify project **3 "sparkpoint"** (new app group — group 1 = core ob
 | `sparkpoint-postgres` (pgvector) | — | prod (reserved*) | _TBD_ | `31103` | coolify-build |
 | `sparkpoint-postgres-develop` (pgvector) | — | develop | _TBD_ | `31203` | coolify-build |
 
-\* **Prod (`311xx`) is reserved only.** Production for this client project is intended to run on the **client's infra**, not OH Coolify; the `311xx` block is reserved so it doesn't collide if a prod-on-Coolify stage is ever needed.
+\* **Prod (`311xx`).** The **web** prod port (`31101`) is now **ACTIVE** — it hosts the gated public landing off `main` (feature 003; `SITE_LOCKED=true`) on OH Coolify. The **agent** (`31102`) and **Postgres** (`31103`) prod ports remain **reserved**: those services run later on the **client's infra**, not OH Coolify; the block is reserved so ports don't collide if a prod-on-Coolify stage is needed.
 
 - **Load balancers** (web + agent only): one nginx docker-compose resource per load-balanced app+env, fronting the primary+secondary pair on the shared host port (`ip_hash` sticky; include the Supabase-style large-header buffer block only if needed). Postgres is single-instance, no LB.
 - **Servers:** `coolify-master` (the Coolify host; `localhost` / `server_id 0`; LAN IP `192.168.31.240`) and `coolify-build` (`192.168.31.36` / `server_id 1`).
 - **Primary + secondary share a host port** (they run on different servers, so no collision); the nginx upstream targets both servers on that port.
 
-### Proposed port table (scheme `3 <group> <env> <app>`; group `3`=sparkpoint, env `1`=prod/`2`=develop)
+### Port table — FINAL (scheme `3 <group> <env> <app>`; group `3`=sparkpoint, env `1`=prod/`2`=develop)
 
 | App | env | host : container | host-port? |
 |---|---|---|---|
@@ -37,8 +38,8 @@ Proposed Coolify project **3 "sparkpoint"** (new app group — group 1 = core ob
 | sparkpoint-agent | prod / develop | `31102` / `31202` : `8080` | yes — behind nginx LB (web→agent internal calls + LAN) |
 | sparkpoint-postgres (pgvector) | prod / develop | `31103` / `31203` : `5432` | yes — published for app→DB access (internal URL doesn't resolve) |
 
-- Container ports are **proposals** — `web` 3000 (Next.js default); `agent` 8080 (confirm OpenClaw/Hermes' actual listen port at build time); `postgres` 5432.
-- **Reserve a unique host port per app+env** and update this table before publishing. Only the primary/secondary of one app+env may share a port.
+- Container ports — `web` **3000** (FINAL; Next.js `next start`); `agent` 8080 (confirm OpenClaw/Hermes' actual listen port at build time); `postgres` 5432.
+- **Host ports are FINAL** per the table; only the primary/secondary of one app+env may share a port (they sit on different servers). The web LB fronts the `31101` pair (see the runbook in `specs/003-landing-only-gate/deploy-runbook.md`).
 - **Reaching the DB / agent:** the internal container-name/uuid URL does **not** resolve across resources on this setup. Publish the host port, mark the DB **Proxy → "Make it publicly available"** + set the public port, restart it, then connect via the **coolify-master LAN IP `192.168.31.240`** + that port (e.g. `postgres://user:pass@192.168.31.240:31203/sparkpoint`). Same for web→agent: call `http://192.168.31.240:31202` or route via the agent's public domain.
 
 ## Domains (planned, `http://` scheme)

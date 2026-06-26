@@ -1,64 +1,84 @@
 # Deploy Runbook — gated public landing (feature 003)
 
-One-time stand-up of the **landing-only public deployment** off `main`. The code is already on `main` (gate included); this runbook only creates and configures the Coolify app. Living references: [COOLIFY.md](../../COOLIFY.md), [DEPLOYMENT.md](../../DEPLOYMENT.md).
+One-time stand-up of the **landing-only public deployment** off `main`, in the **full primary + secondary + nginx LB** topology (playbook §5). The code is already on `main` (gate included); this runbook creates and configures the Coolify resources. Living references: [COOLIFY.md](../../COOLIFY.md), [DEPLOYMENT.md](../../DEPLOYMENT.md).
 
 > **Review gate:** nothing here is executed until you approve. Coolify **mutations** need the RWD token (the standing token is read-only); **DNS + nginx** are operator-owned. Steps are tagged **[me]** (I can run via the Coolify API once you approve + provide the RWD token) or **[operator]** (aldrickb).
 
-## Decision: minimal first cut (recommended)
+## Topology + FINAL ports
 
-COOLIFY.md's inventory plans a primary+secondary pair behind an nginx LB. For a **static-ish landing**, that's overkill today. Recommend **one app now**, add the LB/secondary later if/when the full app launches (YAGNI / Principle VII).
+Per COOLIFY.md inventory — web prod block `31101` is now **active** for this landing.
 
-| App | Branch | Build base | Container port | Host port | Server | Gate |
-|---|---|---|---|---|---|---|
-| `sparkpoint-web` (public) | `main` | `apps/web` | 3000 | `31101` (from COOLIFY.md reserved block) | coolify-master | `SITE_LOCKED=true` |
+| Resource | Server | Host : container | Branch | Gate |
+|---|---|---|---|---|
+| `sparkpoint-web-primary` | coolify-master (`192.168.31.240`) | `31101` : `3000` | `main` | `SITE_LOCKED=true` |
+| `sparkpoint-web-secondary` | coolify-build (`192.168.31.36`) | `31101` : `3000` | `main` | `SITE_LOCKED=true` |
+| `sparkpoint-web-lb` (nginx docker-compose) | coolify-master | public domain → `ip_hash` upstream of both | — | — |
 
-(Keep `sparkpoint-web-*-develop` off `develop` with `SITE_LOCKED=false` for team preview — create whenever convenient; not required for this landing.)
+The primary and secondary run the **same gated build** on different servers, sharing host port `31101`; the nginx LB fronts them and owns the public domain.
+
+```nginx
+# sparkpoint-web-lb upstream (ip_hash sticky)
+upstream sparkpoint_web {
+  ip_hash;
+  server 192.168.31.240:31101;   # primary  (coolify-master)
+  server 192.168.31.36:31101;    # secondary (coolify-build)
+}
+# server { listen 80; server_name <fqdn>; location / { proxy_pass http://sparkpoint_web; ... } }
+```
 
 ## Prerequisites
 
-- [ ] **[operator]** RWD Coolify token available (`COOLIFY_API_TOKEN_RWD`) for the mutating calls, OR operator runs the dashboard steps.
-- [ ] **[operator]** Confirm host port `31101` is free on coolify-master (per COOLIFY.md port scheme).
-- [ ] Today is **not a no-deploy day** — operator already approved this Friday exception.
+- [ ] **[operator]** RWD Coolify token (`COOLIFY_API_TOKEN_RWD`) for the mutating calls, OR operator runs the dashboard steps.
+- [ ] **[operator]** Confirm host port `31101` is free on **both** coolify-master and coolify-build.
+- [ ] Public FQDN chosen (default proposed: `http://sparkpoint.aldrickb.xyz`).
+- [ ] Friday no-deploy exception already approved by the operator for this landing.
 
 ## Steps
 
-### 1. Create the app — **[me]** (API) or **[operator]** (dashboard)
-- Project **"sparkpoint"** (group 3). Source: GitHub `ObraHaus/sparkpoint-pivot`, branch **`main`**.
-- Build pack: **Nixpacks**. **Base directory: `apps/web`** (self-contained Next app with its own `pnpm-lock.yaml`).
-- Install: `pnpm install --frozen-lockfile` · Build: `pnpm build` (`next build`) · Start: `pnpm start` (`next start`).
-- Auto-deploy on push to `main`: **on**.
+### 1. Create the two app resources — **[me]** (API) / **[operator]** (dashboard)
+For **each** of `sparkpoint-web-primary` (coolify-master) and `sparkpoint-web-secondary` (coolify-build), in project **"sparkpoint"**:
+- Source: GitHub `ObraHaus/sparkpoint-pivot`, branch **`main`**. Build pack **Nixpacks**. **Base directory `apps/web`**.
+- Install `pnpm install --frozen-lockfile` · Build `pnpm build` · Start `pnpm start`.
+- Host port **`31101`** → container **`3000`**. Auto-deploy on push to `main`: **on**.
 
-### 2. Environment variables (set BEFORE first build) — **[me]**/**[operator]**
-The gate is read by Edge middleware **at build time**, so these must be present in the **build** env:
+### 2. Environment variables on BOTH apps (BUILD env) — **[me]**/**[operator]**
+The gate is read by Edge middleware **at build time**, so set on **primary AND secondary** (a mismatch = one replica serves the full app):
 ```
 SITE_LOCKED=true
 NEXT_PUBLIC_SITE_LOCKED=true
-NIXPACKS_NODE_VERSION=22        # match DEVELOPMENT.md
-# COOLIFY_URL is auto-derived from the assigned FQDN
+NIXPACKS_NODE_VERSION=22
+# COOLIFY_URL auto-derived from each app's FQDN
 ```
-(No `ANTHROPIC_*` / `DATABASE_URL` / RPC keys needed yet — the landing is static mock UI.)
 
-### 3. Domain — **[operator]**
-- Assign an **`http://`** FQDN (TLS terminates upstream; `https://` causes a redirect loop — see COOLIFY.md). Proposed: `http://sparkpoint.aldrickb.xyz` (or the client-facing subdomain you prefer).
-- **[operator]** Add the subdomain to **Cloudflare DNS** and the **nginx reverse proxy**. ⚠️ A Nixpacks app with no domain fails to build (`COOLIFY_URL: null`).
+### 3. Domains — **[operator]**
+- Each app needs an **`http://`** FQDN or Nixpacks fails to build (`COOLIFY_URL: null`). Give the replicas internal-ish FQDNs (e.g. `http://sparkpoint-web-1.obrahaus-develop.aldrickb.xyz`, `…-web-2…`); the **public** domain lives on the **LB**.
+- **[operator]** Add the public subdomain + the two replica subdomains to **Cloudflare DNS** and the **nginx reverse proxy**. `http://` scheme only — `https://` causes an infinite 302 loop (TLS terminates upstream).
 
-### 4. Deploy — **[me]** (trigger) / **[operator]**
-- Trigger the deploy (push already happened; a manual deploy may be needed for first build).
+### 4. Create the nginx LB resource — **[me]**/**[operator]**
+- Add `sparkpoint-web-lb` as an nginx docker-compose resource on coolify-master with the `ip_hash` upstream above. Assign the **public** `http://` FQDN to it. (Sticky `ip_hash` isn't strictly needed for a static landing, but it matches the topology and is harmless.)
 
-### 5. Verify — **[me]**
-- Deployment record (not the status badge): `GET /api/v1/deployments/<uuid>` → `status: finished` (read token in `/home/hello/project/.claude/.env`).
-- Public gate smoke against the live URL:
+### 5. Deploy + verify — **[me]**
+- Deploy primary and secondary; confirm each via the deployment record (`status: finished` — **not** the status badge): `GET /api/v1/deployments/<uuid>` (read token in `/home/hello/project/.claude/.env`).
+- Verify **each replica directly**, then the LB:
   ```
-  curl -s -o /dev/null -w "%{http_code}  /\n"      http://<fqdn>/            # 200, landing
-  curl -s -o /dev/null -w "%{http_code} %{redirect_url}  /admin\n" http://<fqdn>/admin   # 307 -> /coming-soon
-  curl -s -o /dev/null -w "%{http_code}  /coming-soon\n" http://<fqdn>/coming-soon       # 200
+  for h in 192.168.31.240:31101 192.168.31.36:31101 <public-fqdn>; do
+    curl -s -o /dev/null -w "%{http_code}        $h /\n"            http://$h/
+    curl -s -o /dev/null -w "%{http_code} %{redirect_url}  $h /admin\n" http://$h/admin
+  done
   ```
-  Then load `/` in a browser: the Three.js landing renders; the Connect CTA goes to `/coming-soon`, not a dead route.
+  Expect `/` → 200 and `/admin` → 307 `…/coming-soon` on **all three**. Then load the public URL in a browser: Three.js landing renders; Connect CTA → `/coming-soon`.
 
-## Rollback / un-gate
-- **Un-gate at launch:** set `SITE_LOCKED=false` **and** `NEXT_PUBLIC_SITE_LOCKED=false`, redeploy. No code change.
-- **Rollback:** redeploy the previous good deployment in Coolify, or `git revert` on `main` (Coolify redeploys on push).
+## Operational notes (for future me)
+
+- **Gate on BOTH replicas, at BUILD time.** The #1 footgun: `SITE_LOCKED` set on primary but not secondary (or set as runtime-only) → that replica serves the full app and `ip_hash` sends ~half of visitors there. Always set it on both, in the **build** env, and verify each replica directly (step 5), not just the LB.
+- **Un-gate at launch = both replicas.** Set `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on **primary and secondary**, redeploy both. Roll the LB last.
+- **`http://` only** everywhere (apps + LB). `https://` → infinite redirect loop.
+- **No domain = no build** (Nixpacks `COOLIFY_URL: null`) — the replicas need their own FQDNs even though traffic arrives via the LB.
+- **pnpm lockfile trap** ([[sparkpoint-pnpm-version-trap]]): Coolify builds with **pnpm 9** (`--frozen-lockfile`); never regenerate `apps/web/pnpm-lock.yaml` with pnpm 11 or the frozen install breaks. This feature added **no deps**, so the lockfile is unchanged — frozen install is safe.
+- **Base dir is `apps/web`** (self-contained Next app with its own lockfile; no root workspace).
+- **Deployment record, not the badge** — apps on coolify-build can show `unhealthy` while serving fine; trust `status: finished`.
+- **Rollback:** redeploy the previous good deployment in Coolify, or `git revert` on `main` (auto-redeploys). Roll both replicas.
 
 ## What I will NOT do without explicit per-call approval
-- Any Coolify-mutating API call (create app, set env, trigger deploy) — I'll show each call first.
+- Any Coolify-mutating API call (create app / LB, set env, trigger deploy) — I'll show each call first.
 - Anything touching Cloudflare DNS or nginx (operator-owned).
