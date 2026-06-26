@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -6,10 +6,42 @@ import { Providers } from "@/components/providers";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://sparkpoint.io";
+const TAGLINE =
+  "A fully self-custodial, chat-based AI DeFi assistant + AI-managed Aave Yield Vault on Base. The protocol can never hold, move, or lose your money.";
+
 export const metadata: Metadata = {
-  title: "SparkPoint — AI-Native Onchain Hedge Fund",
-  description:
-    "A fully self-custodial, chat-based AI DeFi assistant + AI-managed Aave Yield Vault on Base. The protocol can never hold, move, or lose your money.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "SparkPoint — AI-Native Onchain Hedge Fund",
+    template: "%s — SparkPoint",
+  },
+  description: TAGLINE,
+  applicationName: "SparkPoint",
+  keywords: ["DeFi", "Aave", "Base", "AI", "self-custodial", "yield vault", "onchain hedge fund"],
+  authors: [{ name: "SparkPoint" }],
+  creator: "SparkPoint",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "SparkPoint",
+    title: "SparkPoint — AI-Native Onchain Hedge Fund",
+    description: TAGLINE,
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SparkPoint — AI-Native Onchain Hedge Fund",
+    description: TAGLINE,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#080C17" },
+    { media: "(prefers-color-scheme: light)", color: "#F6F9FE" },
+  ],
+  colorScheme: "dark light",
 };
 
 export default function RootLayout({
