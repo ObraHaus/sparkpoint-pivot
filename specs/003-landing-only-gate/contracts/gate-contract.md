@@ -24,7 +24,7 @@ Both must be set in each deployment's **build** environment (Next inlines them f
 
 Requests are matched on `request.nextUrl.pathname`.
 
-- **Exact:** `/`, `/coming-soon`, `/favicon.ico`, `/robots.txt`, `/sitemap.xml`
+- **Exact:** `/`, `/coming-soon`, `/favicon.ico`, `/robots.txt`, `/sitemap.xml`, and the App Router metadata asset routes `/manifest.webmanifest`, `/icon.svg`, `/apple-icon`, `/opengraph-image`, `/twitter-image` (favicon/OG/manifest must load on the gated landing)
 - **Prefix:** `/_next/static`, `/_next/image`
 
 Everything not in the allow-list is **gated**.

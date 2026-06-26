@@ -21,6 +21,13 @@ const ALLOW_EXACT = new Set([
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml",
+  // App Router metadata asset routes — must stay public so the branded favicon,
+  // social/OG image, and PWA manifest load on the gated landing.
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/apple-icon",
+  "/opengraph-image",
+  "/twitter-image",
 ]);
 const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
 
