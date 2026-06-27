@@ -1,9 +1,9 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/003-landing-only-gate/plan.md` (the construction gate that publicly
-serves only the marketing landing while the rest of `apps/web` — the faithful
-UI build from `specs/002-web-app-ui/` — stays gated until launch).
+`specs/004-mailjet-subscribe/plan.md` (wires the landing's newsletter form to
+Mailjet via a thin `/api/subscribe` proxy to the public subscription widget —
+no API keys; builds on the gated landing from `specs/003-landing-only-gate/`).
 <!-- SPECKIT END -->
 
 ---
