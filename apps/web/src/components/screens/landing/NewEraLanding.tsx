@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -181,7 +181,35 @@ export default function NewEraLanding() {
   }
 
   const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [subscribed, setSubscribed] = useState(false);
+  const [subStatus, setSubStatus] = useState<
+    "idle" | "submitting" | "success" | "error"
+  >("idle");
+  const [subError, setSubError] = useState("");
+
+  // Subscribe to the newsletter via our /api/subscribe proxy → Mailjet widget.
+  async function onSubscribe(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const email = newsletterEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSubError("Please enter a valid email address.");
+      setSubStatus("error");
+      return;
+    }
+    setSubStatus("submitting");
+    setSubError("");
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error("provider");
+      setSubStatus("success");
+    } catch {
+      setSubError("Something went wrong — please try again.");
+      setSubStatus("error");
+    }
+  }
 
   function goConnect() {
     // While the construction gate is on, /connect is gated — send the CTA to
@@ -1166,40 +1194,51 @@ export default function NewEraLanding() {
               </ul>
             </div>
           </div>
-          <form
-            className="fsub"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (newsletterEmail) setSubscribed(true);
-            }}
-          >
+          <form className="fsub" onSubmit={onSubscribe} noValidate>
             <label className="fsub-label" htmlFor="ne-news">
               Get launch updates
             </label>
-            {subscribed ? (
+            {subStatus === "success" ? (
               <p className="fsub-done" role="status">
-                Thanks — you&rsquo;re on the list. We&rsquo;ll email you at launch.
+                Thanks — check your inbox to confirm your subscription.
               </p>
             ) : (
-              <div className="fsub-row">
-                <input
-                  id="ne-news"
-                  className="fsub-input"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder="you@email.com"
-                  aria-label="Email address"
-                  value={newsletterEmail}
-                  onChange={(e) => setNewsletterEmail(e.target.value)}
-                />
-                <button className="fbtn primary" type="submit">
-                  Subscribe
-                  <span className="arrow">
-                    <ArrowOut />
-                  </span>
-                </button>
-              </div>
+              <>
+                <div className="fsub-row">
+                  <input
+                    id="ne-news"
+                    className="fsub-input"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@email.com"
+                    aria-label="Email address"
+                    value={newsletterEmail}
+                    disabled={subStatus === "submitting"}
+                    onChange={(e) => {
+                      setNewsletterEmail(e.target.value);
+                      if (subStatus === "error") setSubStatus("idle");
+                    }}
+                  />
+                  <button
+                    className="fbtn primary"
+                    type="submit"
+                    disabled={subStatus === "submitting"}
+                  >
+                    {subStatus === "submitting" ? "Subscribing…" : "Subscribe"}
+                    <span className="arrow">
+                      <ArrowOut />
+                    </span>
+                  </button>
+                </div>
+                {subStatus === "error" && (
+                  <p className="fsub-error" role="alert">
+                    {subError}
+                  </p>
+                )}
+                <p className="fsub-consent">
+                  We&rsquo;ll only email launch updates. Unsubscribe anytime.
+                </p>
+              </>
             )}
           </form>
           <div className="fbtns">

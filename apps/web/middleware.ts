@@ -28,6 +28,8 @@ const ALLOW_EXACT = new Set([
   "/apple-icon",
   "/opengraph-image",
   "/twitter-image",
+  // Newsletter subscribe proxy — the landing's form must work while gated.
+  "/api/subscribe",
 ]);
 const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
 
