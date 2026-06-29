@@ -29,7 +29,7 @@ export default function Page() {
       <div className="pagehead">
         <div>
           <h1>Withdraw / Exit</h1>
-          <div className="sub">Withdraw anytime — even if SparkPoint is offline.</div>
+          <div className="sub">Withdraw anytime — even if Sparky is offline.</div>
         </div>
       </div>
       <div className="card card-pad" style={{ marginBottom: 16 }}>
@@ -87,7 +87,7 @@ export default function Page() {
           <div>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>Sign with your wallet</div>
             <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 3 }}>
-              No SparkPoint involvement required.
+              No Sparky involvement required.
             </div>
           </div>
         </div>

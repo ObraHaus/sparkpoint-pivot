@@ -35,14 +35,14 @@ interface Answers {
 }
 
 /**
- * Opens the "What SparkPoint can & can't do" prove-it sheet (Trust Center).
+ * Opens the "What Sparky can & can't do" prove-it sheet (Trust Center).
  * In the design prototype this is an alert placeholder wired to both #proveLink
  * and #badgeNC (Onboarding.html lines 515–516); the real sheet lives in the
  * shell build.
  */
 function openProveIt() {
   alert(
-    'Prove-it panel → opens the "What SparkPoint can & can\'t do" sheet (Trust Center). Wired in the shell build.',
+    'Prove-it panel → opens the "What Sparky can & can\'t do" sheet (Trust Center). Wired in the shell build.',
   );
 }
 
@@ -114,7 +114,7 @@ export default function OnboardingPage() {
         </svg>
         <div>
           <b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice. Capital at risk.
-          SparkPoint can never move or withhold your funds.{" "}
+          Sparky can never move or withhold your funds.{" "}
           <a id="proveLink" onClick={openProveIt}>
             See what we can &amp; can&apos;t do
           </a>{" "}
@@ -158,7 +158,7 @@ function AiTurn({ children }: { children: React.ReactNode }) {
         <SparkAvatar />
       </div>
       <div className="content">
-        <div className="ai-name">SparkPoint AI</div>
+        <div className="ai-name">Sparky AI</div>
         {children}
       </div>
     </div>
@@ -320,7 +320,7 @@ function renderStream(
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14l5-5-5-5m5 5H9" />
                 </svg>
               </span>
-              Withdraw anytime — even if SparkPoint is completely offline.
+              Withdraw anytime — even if Sparky is completely offline.
             </div>
             <div className="promise">
               <span className="pico">
@@ -656,7 +656,7 @@ function renderStream(
                 </div>
               </div>
               <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "14px" }}>
-                Estimates, not guarantees. · 4.3% Aave supply rate − 0% SparkPoint fee
+                Estimates, not guarantees. · 4.3% Aave supply rate − 0% Sparky fee
               </div>
               <div className="recact">
                 <button className="btn btn-primary btn-md" type="button">

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * AdminShell — the SparkPoint Ops / stakeholder panel shell.
+ * AdminShell — the Sparky Ops / stakeholder panel shell.
  * Distinct from the main app shell. Faithful 1:1 port of the `shell()` chrome in
  * docs/design-handover/showcase/SparkPoint Admin.html: the ops top bar, a
  * persistent "Observe-only · read-only over funds" indicator, a "View as" role
@@ -167,7 +167,7 @@ function Shell({ children }: { children: ReactNode }) {
         </button>
         <span className="adbrand">
           <SparkMark size={21} className="smk" />
-          SparkPoint Ops
+          Sparky Ops
         </span>
         <span className="envbadge">PROD</span>
         <span className="fresh hide-sm">
@@ -176,7 +176,7 @@ function Shell({ children }: { children: ReactNode }) {
         <span className="grow" />
         <span
           className="obschip"
-          title="This panel can watch SparkPoint but cannot move a single unit of user funds. The kill-switch shown here proposes a multisig pause — it can never move user funds."
+          title="This panel can watch Sparky but cannot move a single unit of user funds. The kill-switch shown here proposes a multisig pause — it can never move user funds."
         >
           <Icon name="lock" size={13} /> <span className="hide-sm">Observe-only · read-only over funds</span>
         </span>

@@ -1,9 +1,9 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/004-mailjet-subscribe/plan.md` (wires the landing's newsletter form to
-Mailjet via a thin `/api/subscribe` proxy to the public subscription widget —
-no API keys; builds on the gated landing from `specs/003-landing-only-gate/`).
+`specs/005-sparky-rebrand/plan.md` (rebrands the app face SparkPoint → "Sparky"
+with a new shared logo + refreshed favicon/metadata; builds on the gated landing
+`specs/003-landing-only-gate/` and Mailjet subscribe `specs/004-mailjet-subscribe/`).
 <!-- SPECKIT END -->
 
 ---

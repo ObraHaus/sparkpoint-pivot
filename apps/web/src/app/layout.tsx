@@ -13,25 +13,25 @@ const TAGLINE =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "SparkPoint — AI-Native Onchain Hedge Fund",
-    template: "%s — SparkPoint",
+    default: "Sparky — AI-Native Onchain Hedge Fund",
+    template: "%s — Sparky",
   },
   description: TAGLINE,
-  applicationName: "SparkPoint",
+  applicationName: "Sparky",
   keywords: ["DeFi", "Aave", "Base", "AI", "self-custodial", "yield vault", "onchain hedge fund"],
-  authors: [{ name: "SparkPoint" }],
-  creator: "SparkPoint",
+  authors: [{ name: "Sparky" }],
+  creator: "Sparky",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    siteName: "SparkPoint",
-    title: "SparkPoint — AI-Native Onchain Hedge Fund",
+    siteName: "Sparky",
+    title: "Sparky — AI-Native Onchain Hedge Fund",
     description: TAGLINE,
     url: "/",
   },
   twitter: {
     card: "summary_large_image",
-    title: "SparkPoint — AI-Native Onchain Hedge Fund",
+    title: "Sparky — AI-Native Onchain Hedge Fund",
     description: TAGLINE,
   },
 };

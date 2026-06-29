@@ -93,7 +93,7 @@ function coldThread(): Turn[] {
       kind: "ai",
       text: (
         <>
-          Hi — I&apos;m SparkPoint&apos;s AI. Tell me your goal, or ask me anything about your wallet. I suggest; you
+          Hi — I&apos;m Sparky&apos;s AI. Tell me your goal, or ask me anything about your wallet. I suggest; you
           approve and sign.
         </>
       ),
@@ -304,7 +304,7 @@ export default function ChatPage() {
       } else if (q.includes("safe") || q.includes("custod") || q.includes("keep my funds")) {
         pushAi(
           <>
-            Your funds never touch us. SparkPoint can direct strategy but has <b>no code path</b> to take, move, or
+            Your funds never touch us. Sparky can direct strategy but has <b>no code path</b> to take, move, or
             hold your money — and you can withdraw anytime, even if we&apos;re offline. Tap{" "}
             <b>Fully self-custodial</b> up top to see exactly what we can and can&apos;t do.
           </>,
@@ -473,7 +473,7 @@ export default function ChatPage() {
             </button>
           </div>
           <div className="cdisc">
-            AI suggests — you approve &amp; sign. Not financial advice · capital at risk · SparkPoint can&apos;t move
+            AI suggests — you approve &amp; sign. Not financial advice · capital at risk · Sparky can&apos;t move
             your funds.
           </div>
         </div>
@@ -565,7 +565,7 @@ function AiFrame({ children }: { children: React.ReactNode }) {
         <SparkMark size={16} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="cname">SparkPoint AI</div>
+        <div className="cname">Sparky AI</div>
         {children}
       </div>
     </div>

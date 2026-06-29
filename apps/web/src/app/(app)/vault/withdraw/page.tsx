@@ -1,6 +1,6 @@
 /**
  * /vault/withdraw — withdraw from the Aave Yield Vault (the "withdraw-always" framing:
- * "Withdraw anytime — even if SparkPoint is offline"), with a live shares preview.
+ * "Withdraw anytime — even if Sparky is offline"), with a live shares preview.
  * Faithful port of the design's `vault/withdraw` screen (screens/vault.js, `amountScreen`).
  */
 

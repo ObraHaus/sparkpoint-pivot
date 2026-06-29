@@ -11,7 +11,7 @@ export function PubTop() {
     <div className="pubtop">
       <div className="brand" style={{ cursor: "pointer" }} onClick={() => router.push("/")}>
         <SparkMark size={23} />
-        SparkPoint
+        Sparky
       </div>
       <div className="grow"></div>
       <ThemeToggle />

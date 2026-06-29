@@ -16,12 +16,12 @@ export function TopBar({ active }: { active: string }) {
     <div className="topbar">
       <Link href="/chat" className="brand" style={{ cursor: "pointer" }}>
         <SparkMark size={23} />
-        SparkPoint
+        Sparky
       </Link>
       <PrimaryNav active={active} />
       <div className="grow" />
       <div className="rightcluster">
-        <span className="pill" title="What SparkPoint can & can't do" onClick={ov.openProveIt}>
+        <span className="pill" title="What Sparky can & can't do" onClick={ov.openProveIt}>
           <span className="led" />
           Fully self-custodial
         </span>

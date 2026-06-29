@@ -101,7 +101,7 @@ const CONFIRM: Record<InlineKind, InlineConfig> = {
       ["USDC in", "+ 312.40 USDC", "--gain"],
       ["Network fee (gas)", "≈ $0.05", ""],
       ["Min received (0.5% slip)", "310.84 USDC", ""],
-      ["SparkPoint routing fee · 0.20%", "$0.62", ""],
+      ["Sparky routing fee · 0.20%", "$0.62", ""],
       ["Net USDC received", "≈ 311.78 USDC", "--gain"],
     ],
     guards: [
@@ -362,7 +362,7 @@ export function InlineConfirm({
               <Icon name="shieldcheck" size={16} />
               <span>
                 <b style={{ color: "var(--foreground)" }}>Nothing moves until you sign.</b> You can cancel now with no
-                effect. SparkPoint never holds your funds.
+                effect. Sparky never holds your funds.
               </span>
             </div>
           </div>

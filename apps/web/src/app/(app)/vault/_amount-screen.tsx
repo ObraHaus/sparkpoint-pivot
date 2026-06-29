@@ -56,7 +56,7 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
         <div>
           <h1>{isDep ? "Deposit USDC" : "Withdraw"}</h1>
           <div className="sub">
-            {isDep ? `Into the Aave Yield Vault · ${v.netApy}% net APY (estimate)` : "Withdraw anytime — even if SparkPoint is offline"}
+            {isDep ? `Into the Aave Yield Vault · ${v.netApy}% net APY (estimate)` : "Withdraw anytime — even if Sparky is offline"}
           </div>
         </div>
         <RiskChip tier={1} />
