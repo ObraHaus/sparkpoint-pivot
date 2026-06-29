@@ -1,11 +1,9 @@
-"use client";
-
-import { useId } from "react";
+import logo from "@/assets/brand/sparky-logo.png";
 
 /**
- * Sparky brand logo — two overlapping rounded lozenges (orange + blue) with a
- * yellow intersection (the exact overlap, via a clip). Transparent background,
- * so it sits cleanly on dark and light. Shared mark for the whole app.
+ * Sparky brand logo — the real two-lozenge "S" mark (orange/blue + yellow
+ * overlap), transparent background. Served from /_next/static (build asset),
+ * so it loads on the gated landing without a gate allow-list entry.
  */
 export function SparkLogo({
   size = 24,
@@ -14,25 +12,15 @@ export function SparkLogo({
   size?: number;
   className?: string;
 }) {
-  const id = useId();
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={logo.src}
       width={size}
       height={size}
-      viewBox="0 0 100 100"
+      alt="Sparky"
       className={className}
-      role="img"
-      aria-label="Sparky"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <clipPath id={id} clipPathUnits="userSpaceOnUse">
-        <rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)" />
-      </clipPath>
-      <rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F47B3F" />
-      <rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)" fill="#4577E6" />
-      <g clipPath={`url(#${id})`}>
-        <rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F2C400" />
-      </g>
-    </svg>
+      style={{ objectFit: "contain" }}
+    />
   );
 }
