@@ -22,7 +22,7 @@ const GUARANTEES: [IconName, string, string][] = [
     "No admin withdrawal",
     "We have no code path to send your funds anywhere but back to you — not us, not anyone.",
   ],
-  ["door", "Withdraw-always", "Exit directly on-chain, even if SparkPoint's app and AI are completely offline."],
+  ["door", "Withdraw-always", "Exit directly on-chain, even if Sparky's app and AI are completely offline."],
   [
     "key",
     "You own your keys",
@@ -149,7 +149,7 @@ export default function Page() {
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Exit anytime</div>
           <div style={{ fontSize: 12.5, color: "var(--muted-foreground)" }}>
-            The self-service exit works even if SparkPoint is entirely offline.
+            The self-service exit works even if Sparky is entirely offline.
           </div>
         </div>
         <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("trust/exit"))}>

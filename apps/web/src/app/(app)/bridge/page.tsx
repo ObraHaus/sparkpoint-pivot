@@ -3,7 +3,7 @@
 /**
  * /bridge — Cross-network Bridge (Base ↔ Sui). Fully self-custodial: you sign the
  * lock/burn, the canonical bridge verifies, and you receive in your own wallet on the
- * destination network — SparkPoint never holds funds in transit.
+ * destination network — Sparky never holds funds in transit.
  *
  * Faithful 1:1 port of the design's `bridge` screen
  * (docs/design-handover/showcase/screens/bridge.js). Markup, classes, copy, the
@@ -58,7 +58,7 @@ export default function Page() {
           <div>
             <h1>Bridge</h1>
             <div className="sub">
-              Move assets between networks. Non-custodial — you sign; SparkPoint never holds your funds in transit.
+              Move assets between networks. Non-custodial — you sign; Sparky never holds your funds in transit.
             </div>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function Page() {
           <div className="route-step">
             <span className="rn">3</span>
             <div>
-              You <b>receive</b> the asset on {t.name}, in your own wallet. SparkPoint never custodies it in transit.
+              You <b>receive</b> the asset on {t.name}, in your own wallet. Sparky never custodies it in transit.
             </div>
           </div>
         </div>

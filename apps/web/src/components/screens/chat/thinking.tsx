@@ -67,7 +67,7 @@ export function ThinkingTurn({
         <SparkMark size={16} />
       </div>
       <div style={{ flex: 1 }}>
-        <div className="cname">SparkPoint AI</div>
+        <div className="cname">Sparky AI</div>
         <div className="think">
           {steps.map((s, k) => {
             if (k > done) return null;

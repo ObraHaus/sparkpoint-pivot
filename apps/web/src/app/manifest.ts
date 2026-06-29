@@ -4,8 +4,8 @@ import type { MetadataRoute } from "next";
 // #080C17; icons reference the App Router icon conventions (icon.svg + apple-icon).
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SparkPoint — AI-Native Onchain Hedge Fund",
-    short_name: "SparkPoint",
+    name: "Sparky — AI-Native Onchain Hedge Fund",
+    short_name: "Sparky",
     description:
       "A fully self-custodial, chat-based AI DeFi assistant + AI-managed Aave Yield Vault on Base.",
     start_url: "/",

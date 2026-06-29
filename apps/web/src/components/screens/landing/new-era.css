@@ -2,7 +2,7 @@
    New Era Landing — co-located stylesheet.
    DARK-ONLY and self-contained: the dark token values are scoped onto
    .new-era-root so the landing renders dark regardless of the app theme.
-   Visual language ported from the "New Era" three.js study; SparkPoint brand
+   Visual language ported from the "New Era" three.js study; Sparky brand
    accents (cyan / gain / loss) layered on top.
    =========================================================================== */
 .new-era-root {

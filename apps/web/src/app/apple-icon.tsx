@@ -1,11 +1,11 @@
 import { ImageResponse } from "next/og";
 
-// Generic iOS home-screen icon — SparkPoint spark on the brand near-black field.
+// Generic iOS home-screen icon — the Sparky logo on the brand near-black field.
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-const SPARK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="s" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#FF5A36"/><stop offset=".5" stop-color="#FF8A4C"/><stop offset="1" stop-color="#4D83FF"/></linearGradient></defs><path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" fill="url(#s)"/></svg>`;
-const SPARK_URL = `data:image/svg+xml,${encodeURIComponent(SPARK)}`;
+const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><clipPath id="c" clipPathUnits="userSpaceOnUse"><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)"/></clipPath><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F47B3F"/><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)" fill="#4577E6"/><g clip-path="url(#c)"><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F2C400"/></g></svg>`;
+const LOGO_URL = `data:image/svg+xml,${encodeURIComponent(LOGO)}`;
 
 export default function AppleIcon() {
   return new ImageResponse(
@@ -20,7 +20,7 @@ export default function AppleIcon() {
           background: "#080C17",
         }}
       >
-        <img src={SPARK_URL} width={120} height={120} alt="" />
+        <img src={LOGO_URL} width={132} height={132} alt="" />
       </div>
     ),
     { ...size },

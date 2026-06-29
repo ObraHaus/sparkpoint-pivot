@@ -69,7 +69,7 @@ export default function VerifyPage() {
           <p id="vsub" style={{ fontSize: "13.5px", color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
             {done
               ? "Let's build your plan — it takes about 3 minutes."
-              : "SparkPoint is in beta — confirming your wallet is whitelisted on Base."}
+              : "Sparky is in beta — confirming your wallet is whitelisted on Base."}
           </p>
           <div
             id="vsteps"

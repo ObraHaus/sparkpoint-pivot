@@ -12,7 +12,7 @@ export function DisclaimerStrip() {
         <Icon name="info" size={15} />
       </span>
       <span className="txt">
-        <b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice · capital at risk · SparkPoint can never
+        <b>The AI proposes. Guardrails check it. You sign it.</b> Not financial advice · capital at risk · Sparky can never
         move your funds.
       </span>
       <span className="links">

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Admin → SparkPoint — stakeholder overview (scStake). "Where we are. Aggregate,
+ * Admin → Sparky — stakeholder overview (scStake). "Where we are. Aggregate,
  * plain-language, presentation-grade." The home screen for the Stakeholder and
  * Client "View as" roles. Faithful 1:1 port of the Stakeholder screen in
  * SparkPoint Admin.html.
@@ -16,7 +16,7 @@ export default function Page() {
     <>
       <div className="pghead">
         <div>
-          <h1>SparkPoint — stakeholder overview</h1>
+          <h1>Sparky — stakeholder overview</h1>
           <div className="sub">Where we are. Aggregate, plain-language, presentation-grade.</div>
         </div>
         <button className="btn-exp">

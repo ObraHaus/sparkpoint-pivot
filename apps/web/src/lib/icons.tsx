@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { SparkLogo } from "@/components/ui/SparkLogo";
 
 /**
  * Icon set — the design's exact lucide-style path data (from `SP.P` in
@@ -82,19 +82,7 @@ export function Icon({
   );
 }
 
-/** Brand spark-mark — coral→gold→blue gradient (matches the design's `SP.sparkmark`). */
+/** Brand logo — the shared Sparky mark (two-lozenge "S"). */
 export function SparkMark({ size = 22, className = "smark" }: { size?: number; className?: string }) {
-  const id = useId();
-  return (
-    <svg className={className} viewBox="0 0 24 24" width={size} height={size} fill={`url(#${id})`} aria-hidden="true">
-      <defs>
-        <linearGradient id={id} x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#F2683C" />
-          <stop offset=".5" stopColor="#F5B62E" />
-          <stop offset="1" stopColor="#4D83FF" />
-        </linearGradient>
-      </defs>
-      <path d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z" />
-    </svg>
-  );
+  return <SparkLogo size={size} className={className} />;
 }
