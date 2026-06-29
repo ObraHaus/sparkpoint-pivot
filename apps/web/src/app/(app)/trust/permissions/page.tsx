@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /trust/permissions — "What SparkPoint can & can't do": the exact on-chain
+ * /trust/permissions — "What Sparky can & can't do": the exact on-chain
  * permissions, read live from the contracts via Base RPC.
  *
  * Faithful 1:1 port of the design's `trust/permissions` screen
@@ -31,7 +31,7 @@ export default function Page() {
       </a>
       <div className="pagehead">
         <div>
-          <h1>What SparkPoint can &amp; can&apos;t do</h1>
+          <h1>What Sparky can &amp; can&apos;t do</h1>
           <div className="sub">Read live from the contracts via Base RPC — works even if our backend is down.</div>
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function Page() {
         </table>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 14, lineHeight: 1.5 }}>
           The <span className="mono">admin.withdraw()</span> row is the trust payload: there is no function by which
-          SparkPoint can move your funds.
+          Sparky can move your funds.
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>

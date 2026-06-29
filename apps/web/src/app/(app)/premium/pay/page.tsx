@@ -56,7 +56,7 @@ export default function Page() {
           </span>
         </div>
         <div className="payrow">
-          <span className="muted">SparkPoint fee</span>
+          <span className="muted">Sparky fee</span>
           <span>n/a — subscription payment, not a vault fee</span>
         </div>
       </div>

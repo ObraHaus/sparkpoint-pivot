@@ -5,7 +5,7 @@ import Link from "next/link";
 // the construction gate is on (feature 003-landing-only-gate). Plain server
 // component: no client providers, no Three.js, pulls no gated chunks.
 export const metadata: Metadata = {
-  title: "SparkPoint — Coming soon",
+  title: "Sparky — Coming soon",
   robots: { index: false, follow: false },
 };
 
@@ -52,7 +52,7 @@ export default function ComingSoonPage() {
             margin: "0 0 0.75rem",
           }}
         >
-          SparkPoint is under construction
+          Sparky is under construction
         </h1>
         <p style={{ margin: "0 0 1.75rem", lineHeight: 1.6, color: "#9aa6bd" }}>
           We&rsquo;re putting the finishing touches on the app. The full

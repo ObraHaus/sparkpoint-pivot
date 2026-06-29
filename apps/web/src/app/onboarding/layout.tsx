@@ -23,7 +23,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
       <div className="shell-top">
         <span className="brand">
           <SparkMark />
-          SparkPoint
+          Sparky
         </span>
         <span className="grow" />
         <ThemeToggle className="ob-themebtn" />
@@ -32,10 +32,10 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
           <span
             className="pill"
             id="badgeNC"
-            title="What SparkPoint can &amp; can't do"
+            title="What Sparky can &amp; can't do"
             onClick={() =>
               alert(
-                'Prove-it panel → opens the "What SparkPoint can & can\'t do" sheet (Trust Center). Wired in the shell build.',
+                'Prove-it panel → opens the "What Sparky can & can\'t do" sheet (Trust Center). Wired in the shell build.',
               )
             }
           >

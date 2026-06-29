@@ -122,7 +122,7 @@ function configFor(intent: ConfirmIntent): IntentConfig {
         ctrl: (
           <span>
             <b style={{ color: "var(--foreground)" }}>Nothing moves until you sign.</b> You can cancel now with no
-            effect. SparkPoint never holds your funds.
+            effect. Sparky never holds your funds.
           </span>
         ),
         cancelRoute: "vault",
@@ -172,7 +172,7 @@ function configFor(intent: ConfirmIntent): IntentConfig {
         ctrl: (
           <span>
             <b style={{ color: "var(--foreground)" }}>Nothing moves until you sign.</b> You can cancel now with no
-            effect. SparkPoint never holds your funds.
+            effect. Sparky never holds your funds.
           </span>
         ),
         cancelRoute: "vault",
@@ -229,10 +229,10 @@ function configFor(intent: ConfirmIntent): IntentConfig {
             <div className="cf-lbl">Cost &amp; outcome</div>
             <div className="feeline">
               <span className="ffi">
-                SparkPoint routing fee · 0.20%{" "}
+                Sparky routing fee · 0.20%{" "}
                 <span
                   className="ii"
-                  title="A usage fee for routing this swap. It's taken inside this swap — SparkPoint never holds your funds. It never applies to the vault or your deposits."
+                  title="A usage fee for routing this swap. It's taken inside this swap — Sparky never holds your funds. It never applies to the vault or your deposits."
                 >
                   i
                 </span>
@@ -302,7 +302,7 @@ function configFor(intent: ConfirmIntent): IntentConfig {
         ctrl: (
           <span>
             <b style={{ color: "var(--foreground)" }}>Nothing moves until you sign.</b> You can cancel now with no
-            effect. SparkPoint never holds your funds.
+            effect. Sparky never holds your funds.
           </span>
         ),
         cancelRoute: "chat",
@@ -360,10 +360,10 @@ function configFor(intent: ConfirmIntent): IntentConfig {
           ["SRK out", "− 500 SRK · −$12.00", "--loss"],
           ["Steps", "approve + pay", ""],
           ["Network fee (gas)", "≈ $0.02", ""],
-          ["SparkPoint fee", <span key="srk">n/a — subscription payment, not a vault fee</span>, ""],
+          ["Sparky fee", <span key="srk">n/a — subscription payment, not a vault fee</span>, ""],
         ],
         guards: [
-          "Allowlisted — SparkPoint subscription contract",
+          "Allowlisted — Sparky subscription contract",
           "Exact amount — 500 SRK, no unlimited approval",
           "Simulation passed — no risks detected",
         ],
@@ -431,7 +431,7 @@ function configFor(intent: ConfirmIntent): IntentConfig {
         ctrl: (
           <span>
             <b style={{ color: "var(--foreground)" }}>You stay in custody the whole way.</b> Funds leave Base only by
-            your signature and land in your own Sui wallet. SparkPoint never holds them in transit.
+            your signature and land in your own Sui wallet. Sparky never holds them in transit.
           </span>
         ),
         cancelRoute: "bridge",

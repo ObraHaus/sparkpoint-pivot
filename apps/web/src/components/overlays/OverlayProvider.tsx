@@ -130,7 +130,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
                   <Sheet
                     show={visible}
                     onClose={close}
-                    title={current.kind === "proveit" ? "What SparkPoint can & can't do" : "Notifications"}
+                    title={current.kind === "proveit" ? "What Sparky can & can't do" : "Notifications"}
                     footer={
                       current.kind === "proveit" ? (
                         <button className="btn btn-primary btn-md" style={{ width: "100%" }} onClick={() => go("trust/permissions")}>
@@ -238,7 +238,7 @@ function ProveItBody({ go }: { go: (r: string) => void }) {
   const sk = data.sessionKey;
   const rows: [string, string, string, string, string?, string?][] = [
     ["shieldcheck", "--gain", "No admin withdrawal", "We have no code path to send your funds anywhere but back to you — not us, not anyone."],
-    ["door", "--gain", "Withdraw anytime", "Exit directly on-chain, even if SparkPoint's app and AI are completely offline.", "Withdraw now", "trust/exit"],
+    ["door", "--gain", "Withdraw anytime", "Exit directly on-chain, even if Sparky's app and AI are completely offline.", "Withdraw now", "trust/exit"],
     ["key", "--gain", "You own your keys", "You own your keys and your account. We never generate a wallet for you or hold your keys."],
     ["zap", "--caution", "Scoped, revocable automation", sk ? "1 active session key — scoped, capped, time-limited." : "No automation granted. Any you grant is instantly revocable by you.", sk ? "Manage" : "Set up", "automation"],
     ["pause", "--gain", "Non-upgradeable, pause-only", "The vault is single-purpose and non-upgradeable. Any pause control governs pausing only — never your funds."],
@@ -400,7 +400,7 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
   return (
     <>
       <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-soft)" }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>SparkPoint user</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Sparky user</div>
         <div className="mono" style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 2 }}>
           {wallet}
         </div>

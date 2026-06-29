@@ -283,7 +283,7 @@ export function SwapCard({ actions }: { actions: CardActions }) {
         </div>
       </div>
       <div className="cnote">
-        Includes a SparkPoint routing fee of 0.20% (≈ $0.62), shown in full before you sign. USDC you can then deposit
+        Includes a Sparky routing fee of 0.20% (≈ $0.62), shown in full before you sign. USDC you can then deposit
         into the vault.
       </div>
       <div className="cact">
@@ -321,7 +321,7 @@ export function BridgeCard({ actions }: { actions: CardActions }) {
         </div>
       </div>
       <div className="cnote">
-        Non-custodial bridge: you sign a lock on Base, receive on Sui. SparkPoint never holds funds in transit.
+        Non-custodial bridge: you sign a lock on Base, receive on Sui. Sparky never holds funds in transit.
       </div>
       <div className="cact">
         <button className="btn btn-primary btn-md" onClick={() => actions.review("bridge")}>

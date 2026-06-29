@@ -21,7 +21,7 @@ const SAFE: [string, string][] = [
   ["Per-tx + cumulative caps", "Bounded spend per action and in total."],
   ["Max slippage", "Trades stop if prices move against you."],
   ["Hard expiry", "Auto-expires; you set the window."],
-  ["Instant revoke", "Cancel unilaterally on-chain — no SparkPoint cooperation needed."],
+  ["Instant revoke", "Cancel unilaterally on-chain — no Sparky cooperation needed."],
 ];
 
 export default function Page() {

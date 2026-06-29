@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { SparkLogo } from "@/components/ui/SparkLogo";
 
 /**
- * New Era Landing — SparkPoint's landing rebuilt on a single Three.js particle
+ * New Era Landing — Sparky's landing rebuilt on a single Three.js particle
  * field that morphs through six scroll-driven poses, with UnrealBloom post.
  *
  * Source of the visual language: the "New Era" open-design study (three.js).
- * The SparkPoint copy is unchanged from the prior Spark Core landing; only the
+ * The Sparky copy is unchanged from the prior Spark Core landing; only the
  * 3D engine, the pose choreography, and the crossfade layout are new.
  *
  *   pose 0  Ring (corona)   → HERO
@@ -46,19 +47,7 @@ const DOT_SECTIONS: Array<[string, number]> = [
 
 // --- small presentational SVGs (module scope so they keep stable identity) ---
 const SparkMark = ({ size = 24 }: { size?: number }) => (
-  <svg className="ne-smk" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-    <defs>
-      <linearGradient id="neSpark" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stopColor="#FF5A36" />
-        <stop offset=".5" stopColor="#FF8A4C" />
-        <stop offset="1" stopColor="#4D83FF" />
-      </linearGradient>
-    </defs>
-    <path
-      d="M12 1c.6 5.4 2.6 7.4 8 8-5.4.6-7.4 2.6-8 8-.6-5.4-2.6-7.4-8-8 5.4-.6 7.4-2.6 8-8Z"
-      fill="url(#neSpark)"
-    />
-  </svg>
+  <SparkLogo size={size} className="ne-smk" />
 );
 
 const ArrowOut = () => (
@@ -871,7 +860,7 @@ export default function NewEraLanding() {
     <div className={`new-era-root${theme === "light" ? " light" : ""}`} ref={rootRef} suppressHydrationWarning>
       {/* first-load splash — fades out once mounted */}
       <div id="ne-splash" ref={splashRef}>
-        <span className="ne-splash-word">SparkPoint</span>
+        <span className="ne-splash-word">Sparky</span>
       </div>
 
       <canvas id="scene" ref={canvasRef}></canvas>
@@ -881,7 +870,7 @@ export default function NewEraLanding() {
       <nav className="ne-nav">
         <span className="ne-brand">
           <SparkMark />
-          SparkPoint
+          Sparky
         </span>
         <span className="ne-grow"></span>
         <button
@@ -1110,7 +1099,7 @@ export default function NewEraLanding() {
                 </li>
                 <li>
                   <span className="sn">0%</span>
-                  <span className="sl">SparkPoint fee</span>
+                  <span className="sl">Sparky fee</span>
                 </li>
               </ul>
             </div>
@@ -1152,7 +1141,7 @@ export default function NewEraLanding() {
         <div className="ftop">
           <div className="fbrand">
             <SparkMark size={22} />
-            SparkPoint
+            Sparky
           </div>
           <span className="kicker dark">05 — Fully self-custodial</span>
           <h2>
@@ -1160,7 +1149,7 @@ export default function NewEraLanding() {
           </h2>
           <div className="cc">
             <div className="col can">
-              <h4>SparkPoint can</h4>
+              <h4>Sparky can</h4>
               <ul>
                 <li>
                   <Check stroke="var(--gain)" />
@@ -1177,7 +1166,7 @@ export default function NewEraLanding() {
               </ul>
             </div>
             <div className="col cant">
-              <h4>SparkPoint can&rsquo;t</h4>
+              <h4>Sparky can&rsquo;t</h4>
               <ul>
                 <li>
                   <Cross stroke="var(--loss)" />
@@ -1258,7 +1247,7 @@ export default function NewEraLanding() {
             Single Aave Yield Vault · Base only · beta-gated. Not financial advice; capital at
             risk.
           </div>
-          <div className="fcopy">© 2026 SparkPoint — AI-native onchain hedge fund.</div>
+          <div className="fcopy">© 2026 Sparky — AI-native onchain hedge fund.</div>
         </div>
       </footer>
 
