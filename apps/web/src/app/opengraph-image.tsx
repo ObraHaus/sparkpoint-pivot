@@ -1,12 +1,16 @@
 import { ImageResponse } from "next/og";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // Generic social-share image (auto-wired to og:image + twitter:image by Next).
+export const runtime = "nodejs";
 export const alt = "Sparky — AI-Native Onchain Hedge Fund";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><clipPath id="c" clipPathUnits="userSpaceOnUse"><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)"/></clipPath><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F47B3F"/><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(57 60) skewX(-20)" fill="#4577E6"/><g clip-path="url(#c)"><rect x="-30" y="-17" width="60" height="34" rx="14" transform="translate(43 40) skewX(-20)" fill="#F2C400"/></g></svg>`;
-const LOGO_URL = `data:image/svg+xml,${encodeURIComponent(LOGO)}`;
+const LOGO =
+  "data:image/png;base64," +
+  readFileSync(join(process.cwd(), "src/assets/brand/sparky-logo.png")).toString("base64");
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -24,7 +28,7 @@ export default function OpengraphImage() {
           color: "#EAEEF7",
         }}
       >
-        <img src={LOGO_URL} width={132} height={132} alt="" />
+        <img src={LOGO} width={150} height={150} alt="" />
         <div
           style={{
             display: "flex",

@@ -24,7 +24,7 @@ const ALLOW_EXACT = new Set([
   // App Router metadata asset routes — must stay public so the branded favicon,
   // social/OG image, and PWA manifest load on the gated landing.
   "/manifest.webmanifest",
-  "/icon.svg",
+  "/icon.png",
   "/apple-icon",
   "/opengraph-image",
   "/twitter-image",
