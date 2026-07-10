@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 // Newsletter subscribe form for the Coming soon CTA funnel. Ported from the
@@ -43,9 +44,17 @@ export function SubscribeForm() {
 
   if (status === "success") {
     return (
-      <p className="cs-sub-done" role="status">
-        Thanks — check your inbox to confirm your subscription.
-      </p>
+      <div className="cs-done">
+        <p className="cs-sub-done" role="status">
+          Thanks — check your inbox to confirm your subscription.
+        </p>
+        {/* Post-subscribe, offer a way back to the landing. prefetch={false} so
+            the lean coming-soon route doesn't pull the heavy Three.js landing
+            chunk until the user clicks; `/` is gate-allow-listed. */}
+        <Link className="cs-home-btn" href="/" prefetch={false}>
+          Back to home
+        </Link>
+      </div>
     );
   }
 
