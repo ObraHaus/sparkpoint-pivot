@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-10
+
+### Added
+- **"Back to home" on the coming-soon success state** — after a successful newsletter subscribe, the coming-soon page shows a subtle **"Back to home"** ghost pill linking to `/` (the landing) so the user isn't dead-ended on the thank-you screen. Success state only (the pre-subscribe funnel stays single-CTA); uses `next/link` with `prefetch={false}` to keep the lean route from pulling the Three.js landing chunk until clicked. Typecheck / lint / production build green; Playwright-verified.
+
 ## [0.2.1] - 2026-07-10
 
 ### Removed
@@ -75,7 +80,8 @@ Initial planning baseline. Spec-Driven-Development artifacts and design handover
 ### Infrastructure
 - No services deployed. Dev/staging will run on **OH Coolify** (Proxmox homelab); client **production** will run later on the client's own infra/domain (likely sparkpoint.io), TBD. See DEPLOYMENT.md / COOLIFY.md (everything marked *planned — not yet deployed*).
 
-[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ObraHaus/sparkpoint-pivot/releases/tag/v0.1.0
