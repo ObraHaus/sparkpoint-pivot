@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-10
+
+### Removed
+- **"Read the thesis" CTA** — dropped the ghost "Read the thesis" button from the landing's `05 — Fully self-custodial` footer, leaving **"Connect wallet"** as the single CTA there (both pointed at the same `goConnect` target). Typecheck / lint / production build green; verified via Playwright that the button is gone and Connect wallet is retained.
+
+## [0.2.0] - 2026-07-10
+
 ### Added
 - **Sparky rebrand** (Spec Kit feature `specs/005-sparky-rebrand/`) — the app face is rebranded **SparkPoint → "Sparky"** ("Sparky AI" in prose) with a new shared **logo** (a two-lozenge "S" mark — orange/blue with a yellow overlap), taken from the supplied brand icon and cut to a transparent PNG (white background removed), used as the shared `SparkLogo`. The mark replaces the old spark **everywhere** — in-app brand mark (top bar / footer / intro splash), favicon (`icon.svg`), `apple-icon`, OpenGraph image, and PWA manifest — and the name is updated across the landing, shell, chat ("Sparky AI"), confirm flows, admin, and all metadata/manifest. "SparkPoint" is retained only as the legal/entity name in docs, the constitution, the repo, and internal code/file references.
 - **Mailjet newsletter subscribe** (Spec Kit feature `specs/004-mailjet-subscribe/`) — the landing's "Get launch updates" form now actually subscribes the visitor to the SparkPoint **Mailjet** list with double opt-in. A thin `/api/subscribe` route proxies the email **server-side** to Mailjet's **public** subscription-widget endpoint (no API keys, no browser CORS), returning a real success/error; the form shows idle / submitting / success ("check your inbox") / error states with consent microcopy, and the construction gate allow-lists `/api/subscribe`.
@@ -68,5 +75,7 @@ Initial planning baseline. Spec-Driven-Development artifacts and design handover
 ### Infrastructure
 - No services deployed. Dev/staging will run on **OH Coolify** (Proxmox homelab); client **production** will run later on the client's own infra/domain (likely sparkpoint.io), TBD. See DEPLOYMENT.md / COOLIFY.md (everything marked *planned — not yet deployed*).
 
-[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ObraHaus/sparkpoint-pivot/releases/tag/v0.1.0
