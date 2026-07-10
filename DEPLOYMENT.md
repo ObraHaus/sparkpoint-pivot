@@ -16,7 +16,7 @@ How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); lo
 | **Local** | http://localhost:3000 | working branch | Coder workspace | local Postgres+pgvector / Coolify develop DB | wallet session (unset cookie domain) |
 
 - **Current phase:** the **interim public landing runs on OH Coolify** off `main` (gated `SITE_LOCKED=true`, at `https://h8cggk088co8k4400sgwcsww.aldrickb.app`) — this is the construction-gate launch, not the final home. The **final production target is the client's own infra/domain** (likely `sparkpoint.io`) and remains **TBD** until the build progresses and the client handoff is scoped. Dev/staging uses OH Coolify per the playbook topology.
-- ⚠️ **Develop gate gap (2026-07-10):** the develop app currently has **no `SITE_LOCKED` set** → fail-closed = landing-only, *not* the intended full-app preview. Set `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on `sparkpoint-web` (develop) + redeploy to restore it (see [COOLIFY.md](./COOLIFY.md)).
+- **Develop is intentionally gated too (2026-07-10):** the develop app has **no `SITE_LOCKED` set** → fail-closed = landing-only, *by design* while in development — the full app isn't exposed on any environment yet. Flip `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on `sparkpoint-web` (develop) + redeploy when a shared full-app preview is wanted (see [COOLIFY.md](./COOLIFY.md)).
 - All app domains in Coolify use the **`http://` scheme** (TLS is terminated upstream — see COOLIFY.md). New subdomains must exist in Cloudflare DNS + the nginx reverse proxy.
 
 ## Planned services
