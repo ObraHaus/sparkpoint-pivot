@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-10
+
+### Removed
+- **"Read the thesis" CTA** — dropped the ghost "Read the thesis" button from the landing's `05 — Fully self-custodial` footer, leaving **"Connect wallet"** as the single CTA there (both pointed at the same `goConnect` target). Typecheck / lint / production build green; verified via Playwright that the button is gone and Connect wallet is retained.
+
 ## [0.2.0] - 2026-07-10
 
 ### Added
@@ -70,6 +75,7 @@ Initial planning baseline. Spec-Driven-Development artifacts and design handover
 ### Infrastructure
 - No services deployed. Dev/staging will run on **OH Coolify** (Proxmox homelab); client **production** will run later on the client's own infra/domain (likely sparkpoint.io), TBD. See DEPLOYMENT.md / COOLIFY.md (everything marked *planned — not yet deployed*).
 
-[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ObraHaus/sparkpoint-pivot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ObraHaus/sparkpoint-pivot/releases/tag/v0.1.0
