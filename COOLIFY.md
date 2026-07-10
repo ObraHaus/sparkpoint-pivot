@@ -2,7 +2,7 @@
 
 Platform reference for SparkPoint Pivot on self-hosted **Coolify** (`https://coolifyadmin.aldrickb.xyz`). Release process in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-> **PLANNED — not yet deployed.** The **web app (`apps/web`) now exists**, but **no Coolify apps have been created** yet. The inventory, UUIDs, domains, and ports below are a **proposal** to be confirmed when the web app is first deployed to Coolify; UUIDs are unknown until the apps exist.
+> **DEPLOYED (web) — recorded 2026-07-10.** The **web app (`apps/web`) is LIVE on OH Coolify** in two environments: **develop** (`sparkpoint-web` — a *single* instance, no LB) and **prod / public landing** (`sparkpoint-web-primary` + `-secondary` behind the nginx LB `sparkpoint-web-lb`, off `main`, `SITE_LOCKED=true`). Real UUIDs + domains are recorded below (verified against the Coolify API). The **agent** and **Postgres** services are still **planned** (not created).
 
 > **Scope note.** Coolify hosts **dev/staging only** for this client project. Production runs later on the **client's own infra/domain** (likely sparkpoint.io), TBD — see DEPLOYMENT.md. This project does **not** use obrahaus-console SSO or obrahaus-governor (sanctioned client divergences).
 
@@ -17,8 +17,7 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 | `sparkpoint-web-lb` (nginx service) | `main` | **prod · public landing (active)** | `ncwkswsw0kgc48skgsw08488` | `http://h8cggk088co8k4400sgwcsww.aldrickb.app` → `31101` (ip_hash) | coolify-master |
 
 > **✅ LIVE 2026-06-26 (feature 003, gated `SITE_LOCKED=true`).** Public landing: **https://h8cggk088co8k4400sgwcsww.aldrickb.app** — verified `/`→200 (landing renders), every other route→307 `/coming-soon` (incl. RSC/`.rsc`/prefetch, `noindex`, no flight leak), LB distributing across both replicas. Topology: primary (coolify-master) + secondary (coolify-build), same gated build, host port `31101`; nginx **service** LB (`ip_hash` upstream of `192.168.31.240:31101` + `192.168.31.36:31101`) owns the domain. Both replicas now have **no domain** (public domain lives only on the LB). Full as-built record + the dashboard-only domain steps + gotchas: `specs/003-landing-only-gate/deploy-runbook.md`. ⚠️ Replicas have no FQDN → a future Nixpacks rebuild can fail (`COOLIFY_URL: null`); give each an internal FQDN or set `COOLIFY_URL` if a redeploy breaks. Un-gate at launch = `SITE_LOCKED=false` on both replicas + redeploy.
-| `sparkpoint-web-primary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-master |
-| `sparkpoint-web-secondary-develop` | `develop` | develop | _TBD_ | `31201` | coolify-build |
+| `sparkpoint-web` (**single instance — no secondary, no LB**) | `develop` | **develop · active** | `i4cw0ogsookkkocsw808gwc4` | — (served via FQDN; no host port) | coolify-master |
 | `sparkpoint-agent-primary` | `main` | prod (reserved*) | _TBD_ | `31102` | coolify-master |
 | `sparkpoint-agent-secondary` | `main` | prod (reserved*) | _TBD_ | `31102` | coolify-build |
 | `sparkpoint-agent-primary-develop` | `develop` | develop | _TBD_ | `31202` | coolify-master |
@@ -30,7 +29,9 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 
 - **Load balancers** (web + agent only): one nginx docker-compose resource per load-balanced app+env, fronting the primary+secondary pair on the shared host port (`ip_hash` sticky; include the Supabase-style large-header buffer block only if needed). Postgres is single-instance, no LB.
 - **Servers (live UUIDs):** `coolify-master` = `hgwkwgoswg8o88cg8ko8ocgk` (the Coolify host; `localhost` / `host.docker.internal` / `server_id 0`; LAN IP `192.168.31.240`) and `coolify-build` = `koww4w8ok84g48s0o0ow4g8s` (`192.168.31.36` / `server_id 1`).
-- **Project & environments (live):** **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg`; environments **`production`** = `yocok40s0ckc0cw40so0g040`, **`develop`** = `t48o0ocs80os08g4cscg0o8k`, `preview` = `pg8ok8gk44gs8c4kcgw0s84g`. Gated public-landing apps (off `main`) go in **production**; the develop apps in **develop**. Git source: ObraHaus GitHub App (`source_id: 3`, same as fileforge). Apps list currently **empty** (none created yet).
+- **Project & environments (live):** **SparkPoint Pivot Project** = `ewwsgws4gs0ko88ocgg00ksg`; environments **`production`** = `yocok40s0ckc0cw40so0g040`, **`develop`** = `t48o0ocs80os08g4cscg0o8k`, `preview` = `pg8ok8gk44gs8c4kcgw0s84g`. Gated public-landing apps (off `main`) go in **production**; the develop apps in **develop**. Git source: ObraHaus GitHub App (`source_id: 3`, same as fileforge). **Web apps are live** — prod `sparkpoint-web-primary` (`uk0w8kkckkkok480g8808o00`) + `sparkpoint-web-secondary` (`h8cggk088co8k4400sgwcsww`) + LB `sparkpoint-web-lb` (`ncwkswsw0kgc48skgsw08488`) off `main`; develop `sparkpoint-web` (`i4cw0ogsookkkocsw808gwc4`) off `develop`. Agent + Postgres not yet created.
+
+> **⚠️ Develop topology + gate diverge from the plan (recorded 2026-07-10).** Develop is a **single `sparkpoint-web` instance** (not the planned primary+secondary+LB pair) on the **Coolify auto-domain `http://i4cw0ogsookkkocsw808gwc4.aldrickb.app`** — the planned `sparkpoint.obrahaus-develop.aldrickb.xyz` was **never bound** (it 404s). It has **no host port** (Coolify's proxy serves its FQDN directly), `NIXPACKS_NODE_VERSION=22`. **Gate gap:** the develop app has **no `SITE_LOCKED` / `NEXT_PUBLIC_SITE_LOCKED` env set** → the gate is **fail-closed**, so develop is currently **landing-only**, contradicting the intended full-app preview (`SITE_LOCKED=false`, see the gate table below). **Action:** set both to `false` on `sparkpoint-web` (develop) + redeploy if the team wants the full-app preview back.
 - **Primary + secondary share a host port** (they run on different servers, so no collision); the nginx upstream targets both servers on that port.
 
 ### Port table — FINAL (scheme `3 <group> <env> <app>`; group `3`=sparkpoint, env `1`=prod/`2`=develop)
@@ -49,8 +50,9 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 
 Set each app's domain with the **`http://` scheme, NOT `https://`** (TLS terminates upstream at Cloudflare → nginx/openresty; `https://` causes an infinite 302 redirect loop). New subdomains must also exist in **Cloudflare DNS** (`*.obrahaus-develop.aldrickb.xyz` wildcard) and the **nginx reverse proxy**.
 
-- Web (develop): `http://sparkpoint.obrahaus-develop.aldrickb.xyz`
-- Agent (develop): `http://sparkpoint-agent.obrahaus-develop.aldrickb.xyz`
+- Web (develop) — **ACTUAL:** `http://i4cw0ogsookkkocsw808gwc4.aldrickb.app` (Coolify auto-generated `.aldrickb.app` domain). The originally-planned `http://sparkpoint.obrahaus-develop.aldrickb.xyz` was **never bound** — it returns 404; don't reference it.
+- Web (prod · public landing) — **LIVE:** `https://h8cggk088co8k4400sgwcsww.aldrickb.app` (owned by the LB service `sparkpoint-web-lb`; TLS via Cloudflare, `http://` on the Coolify side).
+- Agent (develop, planned): `http://sparkpoint-agent.obrahaus-develop.aldrickb.xyz`
 - ⚠️ A Nixpacks app with **no domain fails to build** (`COOLIFY_URL: null`). The agent service must be assigned an `http://` FQDN even if mostly reached over LAN; if it's ever headless, give it an internal-only FQDN (e.g. `http://sparkpoint-agent.internal`) + a tiny `/healthz` server.
 
 ## Build
@@ -75,6 +77,8 @@ The web app ships a per-deployment **construction gate** (feature `003-landing-o
 | `sparkpoint-web-*` (`main`, public) | `true` | `true` | **landing only** |
 
 Launch = set both to `false` on the public app and redeploy (no code change). Both keys must match per app or the landing's Connect CTA can dead-end (cosmetic only; the server gate still holds).
+
+> **⚠️ As-deployed 2026-07-10:** prod (`sparkpoint-web-primary`/`-secondary`) correctly has `SITE_LOCKED=true` + `NEXT_PUBLIC_SITE_LOCKED=true`. **Develop (`sparkpoint-web`) has neither set** → fail-closed = **locked** (landing-only), *not* the intended full-app preview. Set both to `false` on the develop app + redeploy to restore full-app preview.
 
 ## Verify a deploy — use the deployment record, NOT the status badge
 

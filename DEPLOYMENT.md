@@ -2,7 +2,7 @@
 
 How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); local dev in [DEVELOPMENT.md](./DEVELOPMENT.md); migration history in [MIGRATIONS.md](./MIGRATIONS.md).
 
-> **Status.** The **web app (`apps/web`) now exists** — a faithful UI build with mock data — but **is not yet deployed** to a permanent environment (it runs locally / on the preview URL). Deployment to **OH Coolify (dev/staging)** is pending, and the backend/agent/chain services do not exist yet. Treat the environments, URLs, and services below as **planned** until the apps are actually created in Coolify.
+> **Status (updated 2026-07-10).** The **web app (`apps/web`) is DEPLOYED on OH Coolify** in two environments — **develop** (`sparkpoint-web`, live at `http://i4cw0ogsookkkocsw808gwc4.aldrickb.app`) and a **prod / public landing** off `main` (`SITE_LOCKED=true`, landing-only, live at `https://h8cggk088co8k4400sgwcsww.aldrickb.app`). The web URLs below are **live**; the backend/agent/chain/DB services do not exist yet (their rows remain planned). Full app inventory + UUIDs in [COOLIFY.md](./COOLIFY.md).
 
 > **Client-project note.** SparkPoint Pivot is an **ObraHaus client product**, *not* part of the ObraHaus Apps Ecosystem. It is in the ObraHaus GitHub org for now; ownership may move to the client later. Sanctioned divergences from the playbook: **wallet auth** (Wagmi / WalletConnect / Coinbase Wallet) instead of obrahaus-console SSO; AI called **directly** (Anthropic / OpenAI-compatible API, or a future own gateway) instead of obrahaus-governor; **own brand** (cobalt / gold / coral) instead of the OH Primary design system. The branch flow, PR security gate, and Coolify deploy/verify conventions still apply.
 
@@ -10,11 +10,13 @@ How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); lo
 
 | Environment | Public URL | Git branch | Hosting | DB | Auth cookie / session |
 |---|---|---|---|---|---|
-| **Production** | _client infra — TBD (likely https://sparkpoint.io)_ | `main` | **Client's own infra/domain** (TBD; planned later) | Postgres + pgvector (client-managed, TBD) | wallet session (SIWE-style); no shared cookie |
-| **Develop / staging** | _planned — http://sparkpoint.obrahaus-develop.aldrickb.xyz_ | `develop` | **OH Coolify** (Proxmox homelab) | Postgres + pgvector on Coolify (single instance) | wallet session |
+| **Prod · public landing (live now)** | **https://h8cggk088co8k4400sgwcsww.aldrickb.app** | `main` | **OH Coolify** — `sparkpoint-web-primary`/`-secondary` + LB `sparkpoint-web-lb`; `SITE_LOCKED=true` (landing-only) | — (no DB yet) | wallet session |
+| **Production (final, later)** | _client infra — TBD (likely https://sparkpoint.io)_ | `main` | **Client's own infra/domain** (TBD; planned later) | Postgres + pgvector (client-managed, TBD) | wallet session (SIWE-style); no shared cookie |
+| **Develop / staging (live)** | **http://i4cw0ogsookkkocsw808gwc4.aldrickb.app** | `develop` | **OH Coolify** — `sparkpoint-web` (single instance) | Postgres + pgvector on Coolify (planned) | wallet session |
 | **Local** | http://localhost:3000 | working branch | Coder workspace | local Postgres+pgvector / Coolify develop DB | wallet session (unset cookie domain) |
 
-- **Production is on the client's infra, not OH Coolify.** Dev/staging uses OH Coolify per the playbook topology; the production target is the client's own infra/domain (likely `sparkpoint.io`) and is **TBD** until the build progresses and the client handoff is scoped.
+- **Current phase:** the **interim public landing runs on OH Coolify** off `main` (gated `SITE_LOCKED=true`, at `https://h8cggk088co8k4400sgwcsww.aldrickb.app`) — this is the construction-gate launch, not the final home. The **final production target is the client's own infra/domain** (likely `sparkpoint.io`) and remains **TBD** until the build progresses and the client handoff is scoped. Dev/staging uses OH Coolify per the playbook topology.
+- ⚠️ **Develop gate gap (2026-07-10):** the develop app currently has **no `SITE_LOCKED` set** → fail-closed = landing-only, *not* the intended full-app preview. Set `SITE_LOCKED=false` + `NEXT_PUBLIC_SITE_LOCKED=false` on `sparkpoint-web` (develop) + redeploy to restore it (see [COOLIFY.md](./COOLIFY.md)).
 - All app domains in Coolify use the **`http://` scheme** (TLS is terminated upstream — see COOLIFY.md). New subdomains must exist in Cloudflare DNS + the nginx reverse proxy.
 
 ## Planned services
