@@ -1,0 +1,141 @@
+/* ===========================================================================
+   Coming soon — CTA funnel (feature: coming-soon-cta).
+   Dark, self-contained surface (the pre-launch pages are dark-only, matching
+   the New Era landing). The subscribe block is ported from the landing's
+   "05 — Fully self-custodial" form and restyled light-on-dark.
+   =========================================================================== */
+.cs-main {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: radial-gradient(120% 120% at 50% 0%, #0a1326 0%, #04070e 60%);
+  color: #e7ecf5;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  text-align: center;
+}
+.cs-card {
+  width: 100%;
+  max-width: 460px;
+}
+.cs-logo {
+  display: inline-block;
+  margin-bottom: 1.5rem;
+}
+.cs-title {
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0 0 0.75rem;
+}
+.cs-lede {
+  margin: 0 0 1.75rem;
+  line-height: 1.6;
+  color: #9aa6bd;
+}
+
+/* ---- subscribe block (ported from landing .fsub, dark variant) ---- */
+.cs-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cs-sub-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7f8ba3;
+}
+.cs-sub-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cs-sub-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 13px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: inherit;
+  font-size: 15px;
+  color: #e7ecf5;
+  transition: border-color 0.2s ease;
+}
+.cs-sub-input::placeholder {
+  color: #6b7688;
+}
+.cs-sub-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.cs-sub-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 13px 14px 13px 22px;
+  border-radius: 999px;
+  border: 1px solid #e7ecf5;
+  background: #e7ecf5;
+  color: #04070e;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.2s ease, opacity 0.2s ease;
+}
+.cs-btn:hover {
+  background: #ffffff;
+}
+.cs-btn:active {
+  transform: translateY(1px);
+}
+.cs-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.cs-arrow {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(4, 7, 14, 0.35);
+  display: grid;
+  place-items: center;
+}
+.cs-sub-done {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e7ecf5;
+  margin: 0;
+}
+.cs-sub-consent {
+  font-size: 12px;
+  color: #6b7688;
+  margin: 2px 0 0;
+}
+.cs-sub-error {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ff8f8f;
+  margin: 2px 0 0;
+}
+
+/* Narrow screens: stack input + button onto full-width rows. Keep the row in
+   `row` direction (with wrap) and grow each child to 100% — switching to
+   `column` would make the input's flex-basis apply to its height. */
+@media (max-width: 460px) {
+  .cs-sub-input {
+    flex: 1 1 100%;
+  }
+  .cs-btn {
+    flex: 1 1 100%;
+  }
+}
