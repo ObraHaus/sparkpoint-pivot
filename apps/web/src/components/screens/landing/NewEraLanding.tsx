@@ -1237,9 +1237,6 @@ export default function NewEraLanding() {
                 <ArrowOut />
               </span>
             </button>
-            <button className="fbtn ghost" onClick={goConnect}>
-              Read the thesis
-            </button>
           </div>
         </div>
         <div className="fbot">
