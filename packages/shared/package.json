@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./policy": "./src/policy/index.ts",
     "./addresses": "./src/addresses/index.ts",
-    "./schemas": "./src/schemas/index.ts"
+    "./schemas": "./src/schemas/index.ts",
+    "./abis": "./src/abis/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

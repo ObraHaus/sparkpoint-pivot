@@ -26,6 +26,16 @@ jobs:
         run: |
           forge build
           forge test -vvv
+      - name: exported ABIs up-to-date (T015 — no drift vs build)
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          # Re-run the export pipeline against the fresh build; the checked-in
+          # ABIs (packages/shared/src/abis) must byte-match, or a contract changed
+          # without re-exporting. Deterministic (jq -S), so this is a clean gate.
+          bash contracts/script/export-abis.sh
+          if ! git diff --exit-code -- packages/shared/src/abis; then
+            echo "::error::exported ABIs are stale — run \`bash contracts/script/export-abis.sh\` and commit"; exit 1
+          fi
       - name: N1-N5 non-custody invariant suite (REQUIRED — gating)
         if: steps.guard.outputs.run == 'true'
         working-directory: contracts

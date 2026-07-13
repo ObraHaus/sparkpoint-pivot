@@ -22,3 +22,8 @@ export * from "./addresses/index.js";
 
 // Zod wire schemas (T012) — the fail-closed mirror of agent-service-api.md §2.
 export * from "./schemas/index.js";
+
+// Exported contract ABIs (T015) — emitted from the Foundry build by
+// contracts/script/export-abis.sh; the single source of truth consumed by the
+// frontend chain seam and the deploy scripts (addresses live in addresses/).
+export * from "./abis/index.js";
