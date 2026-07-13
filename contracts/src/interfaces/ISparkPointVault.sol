@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
 /// @title SparkPointVault
 /// @notice Single-purpose, 0-management / profit-only performance-fee Aave Yield Vault.
@@ -35,7 +35,6 @@ interface ISparkPointVault is IERC4626 {
     /// withdraw(assets, receiver, owner) / redeem(shares, receiver, owner)  — NEVER pausable (N2)
     /// maxDeposit(receiver) => min(perUserRemaining, totalRemaining, vaultRemaining); 0 at cap (caps via ERC-4626)
     /// maxMint / maxWithdraw / maxRedeem accordingly
-
     /// ── Events ──
     /// Inherited ERC-4626: Deposit(caller, owner, assets, shares); Withdraw(caller, receiver, owner, assets, shares)
     event DepositsPaused(address indexed guardian);
@@ -43,7 +42,12 @@ interface ISparkPointVault is IERC4626 {
     event AaveSupplied(uint256 assets);
     event AaveWithdrawn(uint256 assets, address indexed receiver);
     /// @notice Fee shares minted to feeRecipient for realized yield above the HWM (§6.1). Profit-only.
-    event PerformanceFeeAccrued(address indexed feeRecipient, uint256 feeShares, uint256 yieldAssets, uint256 newHighWaterMark);
+    event PerformanceFeeAccrued(
+        address indexed feeRecipient,
+        uint256 feeShares,
+        uint256 yieldAssets,
+        uint256 newHighWaterMark
+    );
     /// @notice feeRate changed by timelocked, hard-capped (≤2000 bps), multisig-bounded governance.
     event FeeRateUpdated(uint16 oldRateBps, uint16 newRateBps);
     /// @notice HWM (share price, 1e18-scaled) advanced after a fee accrual on new highs.
@@ -52,16 +56,16 @@ interface ISparkPointVault is IERC4626 {
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
 
     /// ── Custody-relevant views (public for Trust Center provability, N5) ──
-    function paused() external view returns (bool);     // PAUSE-ONLY status; withdrawals unaffected
+    function paused() external view returns (bool); // PAUSE-ONLY status; withdrawals unaffected
     function guardian() external view returns (address); // multisig — pause/unpause ONLY, no fund path
-    function pauser() external view returns (address);   // the ops multisig; role scope = PAUSE-ONLY (cannot move funds or block withdrawals)
+    function pauser() external view returns (address); // the ops multisig; role scope = PAUSE-ONLY (cannot move funds or block withdrawals)
     function depositCap() external view returns (uint256);
     function capRegistry() external view returns (address);
     function aavePool() external view returns (address);
     function aUSDC() external view returns (address);
     /// @notice Entry/exit fee BPS — overridden to a compile-time constant 0; not settable (0 at bytecode level).
-    function entryFeeBasisPoints() external pure returns (uint256);  // == 0 (pure constant)
-    function exitFeeBasisPoints() external pure returns (uint256);   // == 0 (pure constant)
+    function entryFeeBasisPoints() external pure returns (uint256); // == 0 (pure constant)
+    function exitFeeBasisPoints() external pure returns (uint256); // == 0 (pure constant)
     /// @notice Management fee BPS — overridden to a compile-time constant 0; not settable (no time-based fee).
     function managementFeeBasisPoints() external pure returns (uint256); // == 0 (pure constant)
 
@@ -95,12 +99,12 @@ interface ISparkPointVault is IERC4626 {
     /// ── Governance (timelocked, multisig-bounded; NEVER a fund/custody/withdraw path — N1, N5) ──
     /// @notice Set the performance-fee rate. Timelocked + multisig; reverts if newRateBps > MAX (20%).
     ///         Cannot alter custody/withdraw/principal semantics; only the forward fee on FUTURE yield.
-    function setPerformanceFeeBps(uint16 newRateBps) external;       // timelock + onlyGovernance; ≤ MAX
+    function setPerformanceFeeBps(uint16 newRateBps) external; // timelock + onlyGovernance; ≤ MAX
     /// @notice Set the fee-share recipient (timelocked + multisig). The new recipient is still an
     ///         ordinary, non-privileged share holder with no power over other users' funds.
-    function setFeeRecipient(address newRecipient) external;          // timelock + onlyGovernance
+    function setFeeRecipient(address newRecipient) external; // timelock + onlyGovernance
 
     /// ── Pause: PAUSE-ONLY kill-switch (N5). Multisig/guardian ONLY. Touches deposit/mint ONLY. ──
-    function pauseDeposits() external;   // guardian-only; blocks NEW deposits, never withdrawals
+    function pauseDeposits() external; // guardian-only; blocks NEW deposits, never withdrawals
     function unpauseDeposits() external; // guardian-only
 }

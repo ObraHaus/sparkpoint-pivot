@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
+import { PackedUserOperation } from "@account-abstraction/interfaces/PackedUserOperation.sol";
 
 /// @title SessionKeyValidator
 /// @notice Validates UserOps signed by a session key, delegating scope checks to PolicyModule.
@@ -20,7 +20,8 @@ interface ISessionKeyValidator {
     ///   6. Force recipient/`to` == account (NEVER external/SparkPoint) — else revert (N1).
     /// @return validationData packed (validUntil/validAfter); SIG_VALIDATION_FAILED on bad/revoked key.
     function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash)
-        external returns (uint256 validationData);
+        external
+        returns (uint256 validationData);
 
     /// @notice Whether `sessionKey` is currently usable on `account` (live storage read).
     function isActive(address account, address sessionKey) external view returns (bool);

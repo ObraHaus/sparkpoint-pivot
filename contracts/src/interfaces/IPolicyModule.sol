@@ -19,21 +19,27 @@ interface IPolicyModule {
     /// @param revoked         set true by revokeSessionKey
     struct Policy {
         address sessionKey;
-        uint48  validAfter;
-        uint48  validUntil;
+        uint48 validAfter;
+        uint48 validUntil;
         uint128 perTxCap;
         uint128 cumulativeCap;
         uint128 spent;
-        uint16  maxSlippageBps;
-        bool    revoked;
+        uint16 maxSlippageBps;
+        bool revoked;
         // allowlist: target => selector => allowed  (seeded at authorization, see SparkPointAccount)
     }
 
-    struct Call { address target; uint256 value; bytes data; }
+    struct Call {
+        address target;
+        uint256 value;
+        bytes data;
+    }
 
     event PolicySeeded(address indexed account, address indexed sessionKey, uint48 validUntil);
     event PolicyRevoked(address indexed account, address indexed sessionKey);
-    event Spent(address indexed account, address indexed sessionKey, uint256 notional, uint256 newSpent);
+    event Spent(
+        address indexed account, address indexed sessionKey, uint256 notional, uint256 newSpent
+    );
 
     /// @notice Is (target, selector) a whitelisted protocol entrypoint? Address+selector level (G5),
     ///         NOT name level — only specific Aave v3 Pool / Aerodrome Router / vault selectors pass.
@@ -44,7 +50,9 @@ interface IPolicyModule {
     ///                 within [validAfter, validUntil], not revoked, slippage floor honored, recipient==account.
     /// @return reason  bytes32 reason code when !ok (surfaced off-chain).
     function checkAction(address account, Call calldata call, uint256 valueUSD)
-        external view returns (bool ok, bytes32 reason);
+        external
+        view
+        returns (bool ok, bytes32 reason);
 
     /// @notice Read a session policy (for SessionKeyValidator + Trust Center provability).
     function policyOf(address account, address sessionKey) external view returns (Policy memory);

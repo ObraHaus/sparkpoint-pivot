@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {PackedUserOperation} from "@account-abstraction/interfaces/PackedUserOperation.sol";
-import {IPolicyModule} from "./IPolicyModule.sol";
+import { PackedUserOperation } from "@account-abstraction/interfaces/PackedUserOperation.sol";
+import { IPolicyModule } from "./IPolicyModule.sol";
 
 /// @title SparkPointAccount
 /// @notice The user's ERC-4337 smart account. Holds funds, validates UserOps, executes calls.
@@ -19,7 +19,9 @@ interface ISparkPointAccount {
     event SessionKeyAuthorized(address indexed sessionKey, uint48 validUntil);
     event SessionKeyRevoked(address indexed sessionKey);
     /// @notice Provable intent tag for off-chain PnL attribution (Data layer). Emitted on execute.
-    event IntentLog(bytes32 indexed intentId, address indexed target, bytes4 indexed selector, uint256 value);
+    event IntentLog(
+        bytes32 indexed intentId, address indexed target, bytes4 indexed selector, uint256 value
+    );
     event Executed(address indexed target, uint256 value, bytes4 selector);
 
     /// @notice The canonical EntryPoint (v0.7) this account trusts. Immutable; wrong pin caught in tests.
@@ -34,8 +36,11 @@ interface ISparkPointAccount {
     ///      read in validation (PolicyModule state is account-associated, §5/§6). Returns packed
     ///      validationData (authorizer | validUntil | validAfter).
     /// @return validationData 0 = owner OK; SIG_VALIDATION_FAILED on bad sig; packed expiry for session keys.
-    function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash, uint256 missingAccountFunds)
-        external returns (uint256 validationData);
+    function validateUserOp(
+        PackedUserOperation calldata userOp,
+        bytes32 userOpHash,
+        uint256 missingAccountFunds
+    ) external returns (uint256 validationData);
 
     /// @notice Execute a single call. INVARIANT N1: gated by _requireFromEntryPointOrOwner(); for
     ///         session-key-originated UserOps the call has already passed PolicyModule scope. `target`
@@ -43,7 +48,11 @@ interface ISparkPointAccount {
     function execute(address target, uint256 value, bytes calldata data) external;
 
     /// @notice Execute a batch (e.g. approve + deposit). Same N1 gating as execute().
-    function executeBatch(address[] calldata targets, uint256[] calldata values, bytes[] calldata datas) external;
+    function executeBatch(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata datas
+    ) external;
 
     /// @notice Authorize an opt-in session key with an on-chain Policy. Owner-only (N4).
     /// @dev Seeds PolicyModule with EXACTLY {vault deposit/withdraw, Aave supply/withdraw,
