@@ -10,6 +10,7 @@ dependencies = [
   "httpx>=0.27",
   "anthropic>=0.40",
   "asyncpg>=0.30",
+  "eth-abi>=5.2.0",
 ]
 
 [dependency-groups]
@@ -44,6 +45,15 @@ packages = ["sparkpoint_agent"]
 [[tool.mypy.overrides]]
 module = ["asyncpg.*"]
 ignore_missing_imports = true
+
+# eth-abi ships py.typed but re-exports encode/decode via module-level assignment
+# (not __all__), which strict --no-implicit-reexport rejects on the documented
+# ``import eth_abi; eth_abi.encode`` API. Allow its implicit re-exports without
+# weakening strictness for our own code (the chain reader still binds eth-abi
+# results to typed ints/strs/bools).
+[[tool.mypy.overrides]]
+module = ["eth_abi", "eth_abi.*"]
+implicit_reexport = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

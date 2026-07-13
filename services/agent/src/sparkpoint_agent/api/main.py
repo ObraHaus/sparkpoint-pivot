@@ -18,6 +18,7 @@ import os
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
+from ..chain import VaultUnavailable
 from ..policy import POLICY_VERSION
 from .errors import (
     ApiError,
@@ -27,6 +28,8 @@ from .errors import (
 )
 from .idempotency import IdempotencyStore
 from .middleware import RequestContextMiddleware
+from .vault import router as vault_router
+from .vault import vault_unavailable_handler
 
 app = FastAPI(title="SparkPoint Hermes Agent", version="0.0.0")
 
@@ -38,7 +41,13 @@ app.add_middleware(RequestContextMiddleware, store=idempotency_store)
 # Every non-2xx response is the canonical §1.5 envelope (§1.6 codes).
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
+# A fail-closed chain outage (vault undeployed / RPC unreachable) → clean §1.5 envelope
+# (SIMULATION_UNAVAILABLE / UPSTREAM_UNAVAILABLE), never a fabricated quote (§3.7).
+app.add_exception_handler(VaultUnavailable, vault_unavailable_handler)
 app.add_exception_handler(Exception, internal_error_handler)
+
+# §3.7 vault deposit/withdraw quote endpoints (READ/PREVIEW only; withdraw never gated, N2).
+app.include_router(vault_router)
 
 
 @app.get("/healthz")
