@@ -19,7 +19,7 @@ jobs:
     runs-on: [self-hosted, oh-defender]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: ObraHaus/obrahaus-defender/ci/scan-action@b60a55c914d9f1646f503d034d27c71289d8e6d9 # develop
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@6cc83a57532e3492b0a16b13f714df2e37a3a8ad # develop
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}
           defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
