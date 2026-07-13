@@ -12,3 +12,13 @@
  * pipeline on any drift between them.
  */
 export const SHARED_PACKAGE = "@sparkpoint/shared" as const;
+
+// Policy foundation (T009 enums + T010 constants). addresses/ and schemas/ are
+// re-exported by their owning tasks and via the package `exports` subpaths.
+export * from "./policy/index.js";
+
+// Address registry (T011): per-chain AddressBook + TargetRef resolution (R14).
+export * from "./addresses/index.js";
+
+// Zod wire schemas (T012) — the fail-closed mirror of agent-service-api.md §2.
+export * from "./schemas/index.js";
