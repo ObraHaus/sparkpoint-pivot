@@ -13,12 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv python install 3.12
-      - name: install
-        run: uv pip install --system fastapi "uvicorn[standard]" pydantic httpx anthropic ruff mypy pytest pytest-asyncio
+      - name: venv + deps (uv-managed; system python is externally-managed)
+        run: |
+          uv venv --python 3.12
+          uv pip install fastapi "uvicorn[standard]" pydantic httpx anthropic ruff mypy pytest pytest-asyncio
       - name: ruff
-        run: ruff check src
+        run: .venv/bin/ruff check src
       - name: mypy
-        run: mypy || echo "mypy findings (non-blocking until W3)"
+        run: .venv/bin/mypy src/sparkpoint_agent || echo "mypy findings (non-blocking until W3)"
       - name: pytest
-        run: pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }
+        run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

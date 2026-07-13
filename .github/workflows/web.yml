@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: ensure next-env.d.ts (Next auto-generates it; gitignored, absent on fresh checkout)
+        run: printf '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n' > apps/web/next-env.d.ts
       - name: typecheck
         run: pnpm --filter @sparkpoint/web exec tsc --noEmit
       - name: lint
