@@ -1,9 +1,10 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/005-sparky-rebrand/plan.md` (rebrands the app face SparkPoint → "Sparky"
-with a new shared logo + refreshed favicon/metadata; builds on the gated landing
-`specs/003-landing-only-gate/` and Mailjet subscribe `specs/004-mailjet-subscribe/`).
+`specs/001-sparkpoint-pivot-mvp/plan.md` — the Phase-2 Core Build MVP: the
+non-custodial Aave ERC-4626 vault + custom ERC-4337 account + fail-closed policy
+engine + chat DeFi assistant. Execution plan: rev 3.3 (artifact 31e5f3f5).
+Live wave/gate state: `docs/orchestration/{wave-state.json,GATES.md}`.
 <!-- SPECKIT END -->
 
 ---

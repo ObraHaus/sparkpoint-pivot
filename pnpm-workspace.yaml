@@ -1,0 +1,5 @@
+# JS/TS workspace members. contracts/ (Foundry) and services/agent (Python/uv)
+# are NOT pnpm packages — they are built by their own toolchains + CI.
+packages:
+  - "apps/*"
+  - "packages/*"
