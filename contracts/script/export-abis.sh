@@ -57,6 +57,14 @@ for entry in "${CONTRACTS[@]}"; do
   echo "  exported ${camel}Abi -> packages/shared/src/abis/$camel.ts"
 done
 
+# Vendored JSON artifact for the Python agent (services/agent chain/vault_reader.py):
+# it needs the vault's `abi` AND `methodIdentifiers` (selectors, to stay keccak-free),
+# so emit the compiled artifact's two fields as a committed, forge-build-free ABI the
+# agent loads via SPARKPOINT_VAULT_ABI_PATH — no `contracts/out` at agent runtime/CI.
+vault_artifact="$OUT/SparkPointVault.sol/SparkPointVault.json"
+jq -S '{abi: .abi, methodIdentifiers: .methodIdentifiers}' "$vault_artifact" > "$DEST/SparkPointVault.abi.json"
+echo "  exported SparkPointVault.abi.json (abi + methodIdentifiers) -> packages/shared/src/abis/"
+
 # Barrel.
 index="$DEST/index.ts"
 {
