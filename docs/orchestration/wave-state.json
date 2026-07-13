@@ -4,7 +4,7 @@
   "spec": "specs/001-sparkpoint-pivot-mvp",
   "milestone": "2026-07-24",
   "updated": "2026-07-13",
-  "current_wave": "W4",
+  "current_wave": "W5c",
   "gates": {
     "A": { "status": "APPROVED", "at": "2026-07-13", "note": "git patch approved; Obsidian into Phase 2 (T121-T126); scope = full working MVP; hosting resolved (16c/cap14)" },
     "B": { "status": "WAITING", "note": "MVP STOP-AND-VALIDATE: US1 §09 GO checklist green + withdraw-always drill (redeem offline+paused, Aave-reserve USDC) on Base Sepolia" },
@@ -15,10 +15,10 @@
     { "id": "W1",  "title": "Skeletons + CI (green-by-skip)",                      "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
     { "id": "W2",  "title": "Shared SoT + interfaces (chainId-keyed), FROZEN",      "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "frozen": true },
     { "id": "W3",  "title": "Foundational (policy engine, agent, Simulator, T124 embedder)", "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
-    { "id": "W4",  "title": "Seam consumers -> FOUNDATION READY",                  "status": "in_progress", "started": "2026-07-13" },
-    { "id": "W5a", "title": "Tests FIRST, must FAIL (RED)",                        "status": "pending" },
-    { "id": "W5b", "title": "Contracts GREEN + policy/sim + refuter swarm + bundler spike", "status": "pending" },
-    { "id": "W5c", "title": "Endpoints + /exit + STOP-AND-VALIDATE",              "status": "pending", "gate": "B" },
+    { "id": "W4",  "title": "Seam consumers -> FOUNDATION READY",                  "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "commit": "fcbec2f", "note": "viem clients + swappable custom-AA adapter + typed agent client/cards + display-only policy mirror + env + geo-fence; apps/web green (tsc/lint/build 45 routes); web CI green" },
+    { "id": "W5a", "title": "Tests FIRST, must FAIL (RED)",                        "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "note": "45-test N1/N2/N5 + perf-fee + caps invariant/fuzz/fork suite authored, verified RED (23 fail vs stubs)" },
+    { "id": "W5b", "title": "Contracts GREEN + policy/sim + refuter swarm + bundler spike", "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "commit": "e04ceb7", "note": "SparkPointVault (ERC-4626 + profit-only HWM perf fee, withdraw-always, non-upgradeable) + CapRegistry + KillSwitch; 76 tests green incl. live Base-fork e2e; N1/N2/N5 refuter swarm (9/9/13 attacks) ALL NOT REFUTED; contracts CI green. Deviations recorded in commit: off-chain feeRate timelock (guardian=Timelock/multisig at deploy), totalAssets excl. idle, AaveV3Adapter stub deferred to W6" },
+    { "id": "W5c", "title": "Endpoints + /exit + STOP-AND-VALIDATE",              "status": "in_progress", "started": "2026-07-13", "gate": "B", "note": "T015 ABI export → vault quote/portfolio endpoints + fee indexer + PUBLIC /exit + beta whitelist gate + NonCustody badge; then GATE B (human)" },
     { "id": "W6",  "title": "US2 + full US3-US5 + Obsidian ingestion (T122/T123/T125)", "status": "pending" },
     { "id": "MILESTONE", "title": "Jul 24 (Fri) testnet MVP",                     "status": "pending" },
     { "id": "P3",  "title": "Phase 3: US6, Trust Center, bridge, hardening",       "status": "pending" }
