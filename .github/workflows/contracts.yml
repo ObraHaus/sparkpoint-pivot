@@ -1,0 +1,41 @@
+name: contracts
+on:
+  push:
+    branches: [develop, "feature/**"]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+  pull_request:
+    branches: [develop]
+    paths: ["contracts/**", ".github/workflows/contracts.yml"]
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - id: guard
+        name: green-by-skip until contracts exist
+        run: |
+          if ls contracts/src/*.sol >/dev/null 2>&1; then echo "run=true" >> "$GITHUB_OUTPUT";
+          else echo "no .sol yet — green-by-skip"; echo "run=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: foundry-rs/foundry-toolchain@v1
+        if: steps.guard.outputs.run == 'true'
+        with: { version: stable }
+      - name: build + test + fuzz
+        if: steps.guard.outputs.run == 'true'
+        working-directory: contracts
+        run: |
+          forge build
+          forge test -vvv
+      - name: N1-N5 non-custody invariant suite (REQUIRED — gating)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: contracts
+        run: |
+          if ls test/invariant/*.t.sol >/dev/null 2>&1; then
+            forge test --match-path "test/invariant/*" -vvv
+          else
+            echo "invariant suite not written yet — green-by-skip (must exist + pass by W5b)"
+          fi
+      - name: slither (advisory)
+        if: steps.guard.outputs.run == 'true'
+        continue-on-error: true
+        run: pipx run slither-analyzer contracts || true

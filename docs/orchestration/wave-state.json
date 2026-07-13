@@ -4,15 +4,15 @@
   "spec": "specs/001-sparkpoint-pivot-mvp",
   "milestone": "2026-07-24",
   "updated": "2026-07-13",
-  "current_wave": "W0",
+  "current_wave": "W1",
   "gates": {
     "A": { "status": "APPROVED", "at": "2026-07-13", "note": "git patch approved; Obsidian into Phase 2 (T121-T126); scope = full working MVP; hosting resolved (16c/cap14)" },
     "B": { "status": "WAITING", "note": "MVP STOP-AND-VALIDATE: US1 §09 GO checklist green + withdraw-always drill (redeem offline+paused, Aave-reserve USDC) on Base Sepolia" },
     "C": { "status": "WAITING", "note": "MAINNET (Phase 3+, out of Phase 2): T103 recorded internal audit + hardening sign-off. Never autonomous." }
   },
   "waves": [
-    { "id": "W0",  "title": "Workspace + safety artifacts",                       "status": "in_progress", "started": "2026-07-13" },
-    { "id": "W1",  "title": "Skeletons + CI (green-by-skip)",                      "status": "pending" },
+    { "id": "W0",  "title": "Workspace + safety artifacts",                       "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
+    { "id": "W1",  "title": "Skeletons + CI (green-by-skip)",                      "status": "in_progress", "started": "2026-07-13" },
     { "id": "W2",  "title": "Shared SoT + interfaces (chainId-keyed), freeze",     "status": "pending" },
     { "id": "W3",  "title": "Foundational (policy engine, agent, Simulator, T124 embedder)", "status": "pending" },
     { "id": "W4",  "title": "Seam consumers -> FOUNDATION READY",                  "status": "pending" },

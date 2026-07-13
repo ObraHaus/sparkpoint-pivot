@@ -1,0 +1,40 @@
+[project]
+name = "sparkpoint-agent"
+version = "0.0.0"
+description = "SparkPoint Hermes agent service — deterministic Coordinator DAG, fail-closed LLM-free policy engine, self-hosted Anvil-fork Simulator. Holds no user keys; emits only unsigned, simulated, policy-approved IntentBundles."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "httpx>=0.27",
+  "anthropic>=0.40",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3", "pytest-asyncio>=0.24"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sparkpoint_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["sparkpoint_agent"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"

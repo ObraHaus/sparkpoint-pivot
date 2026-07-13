@@ -1,0 +1,22 @@
+name: web
+on:
+  push:
+    branches: [develop, "feature/**"]
+    paths: ["apps/web/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/web.yml"]
+  pull_request:
+    branches: [develop]
+    paths: ["apps/web/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/web.yml"]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.15.9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: typecheck
+        run: pnpm --filter @sparkpoint/web exec tsc --noEmit
+      - name: lint
+        run: pnpm --filter @sparkpoint/web lint

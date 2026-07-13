@@ -1,0 +1,29 @@
+name: knowledge-boundary
+# T126 — the Obsidian non-custody CI boundary. Green-by-skip in W1; ENFORCING in W6.
+# Obsidian knowledge is advisory context only: it must never import (or be imported by)
+# the deterministic policy path, and knowledge_search must stay out of the build/sim registries.
+on:
+  push:
+    branches: [develop, "feature/**"]
+  pull_request:
+    branches: [develop]
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: knowledge/ ↛ policy/ (and policy/ knowledge-free)
+        run: |
+          set -e
+          AG=services/agent/src/sparkpoint_agent
+          if [ -d "$AG/knowledge" ]; then
+            if grep -rEn "(^|[^a-z])(from|import)[^#]*\bpolicy\b" "$AG/knowledge"; then
+              echo "::error::knowledge/ imports policy/ — Obsidian must never feed evaluate()"; exit 1
+            fi
+            if [ -d "$AG/policy" ] && grep -rEn "knowledge|obsidian|knowledge_search|embeddings" "$AG/policy"; then
+              echo "::error::policy/ references knowledge — the policy decision path must be LLM/knowledge-free"; exit 1
+            fi
+            echo "knowledge<->policy boundary clean"
+          else
+            echo "no knowledge/ yet — green-by-skip (enforces from W6)"
+          fi

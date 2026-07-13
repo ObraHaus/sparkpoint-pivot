@@ -1,0 +1,24 @@
+name: agent
+on:
+  push:
+    branches: [develop, "feature/**"]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+  pull_request:
+    branches: [develop]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/agent } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv python install 3.12
+      - name: install
+        run: uv pip install --system fastapi "uvicorn[standard]" pydantic httpx anthropic ruff mypy pytest pytest-asyncio
+      - name: ruff
+        run: ruff check src
+      - name: mypy
+        run: mypy || echo "mypy findings (non-blocking until W3)"
+      - name: pytest
+        run: pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

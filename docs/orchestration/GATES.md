@@ -14,3 +14,4 @@ Per-wave headless sessions + the watchdog read `wave-state.json`; this file is t
 
 ## Log
 - **2026-07-13 — W0 opened.** Safety layer landed: deny-hook tested 22/22 + git-autonomy permissions applied (deny-hooks-first). Toolchain (foundry/slither) installed. Speckit repointed to `specs/001-sparkpoint-pivot-mvp`. Branch: `feature/w0-foundation`.
+- **2026-07-13 — W1 skeletons landed.** contracts (Foundry OZ5/AA0.7/Solady, cancun/0.8.24), services/agent (FastAPI /healthz), packages/shared (SoT seam), green-by-skip CI (N1-N5 required, T098, T126, deploy-testnet gated), .env.example. All build; apps/web green.
