@@ -12,18 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: knowledge/ ↛ policy/ (and policy/ knowledge-free)
+      - name: knowledge/ ↛ policy/ (and policy/ decision path pure) — real imports only
         run: |
           set -e
           AG=services/agent/src/sparkpoint_agent
-          if [ -d "$AG/knowledge" ]; then
-            if grep -rEn "(^|[^a-z])(from|import)[^#]*\bpolicy\b" "$AG/knowledge"; then
-              echo "::error::knowledge/ imports policy/ — Obsidian must never feed evaluate()"; exit 1
-            fi
-            if [ -d "$AG/policy" ] && grep -rEn "knowledge|obsidian|knowledge_search|embeddings" "$AG/policy"; then
-              echo "::error::policy/ references knowledge — the policy decision path must be LLM/knowledge-free"; exit 1
-            fi
-            echo "knowledge<->policy boundary clean"
-          else
-            echo "no knowledge/ yet — green-by-skip (enforces from W6)"
+          # Match ACTUAL python import statements (line starts with import/from), not
+          # prose containing "import"/"policy" (e.g. a docstring "imported by policy").
+          imp='^[[:space:]]*(import[[:space:]]|from[[:space:]])'
+          fail=0
+          if [ -d "$AG/knowledge" ] && grep -rEn "$imp" "$AG/knowledge" | grep -E '\bpolicy\b'; then
+            echo "::error::knowledge/ imports policy/ — Obsidian is advisory context; it must never feed evaluate()"; fail=1
           fi
+          # The deterministic decision path must be pure: policy/ imports no knowledge/llm/memory.
+          if [ -d "$AG/policy" ] && grep -rEn "$imp" "$AG/policy" | grep -E '\b(knowledge|obsidian|embeddings|llm|memory)\b'; then
+            echo "::error::policy/ imports knowledge/llm/memory — the deterministic decision path must be LLM/knowledge-free"; fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "knowledge<->policy boundary clean (statement-anchored)"; else exit 1; fi
