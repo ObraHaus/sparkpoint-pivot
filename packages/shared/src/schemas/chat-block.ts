@@ -10,12 +10,12 @@
 
 import { z } from "zod";
 
-import { Protocol } from "../policy/enums.js";
-import { ProposedActionSchema } from "./action.js";
-import { CitationSchema } from "./citation.js";
-import { GuardrailCheckSchema } from "./guardrail.js";
-import { PolicyStatusSchema } from "./policy-verdict.js";
-import { UsdStringSchema } from "./primitives.js";
+import { Protocol } from "../policy/enums";
+import { ProposedActionSchema } from "./action";
+import { CitationSchema } from "./citation";
+import { GuardrailCheckSchema } from "./guardrail";
+import { PolicyStatusSchema } from "./policy-verdict";
+import { UsdStringSchema } from "./primitives";
 
 /**
  * §2.7 — the policy stamp on a recommendation/action block. `checks` accompanies

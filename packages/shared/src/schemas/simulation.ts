@@ -17,7 +17,7 @@ import {
   IsoDateTimeSchema,
   UintAmountSchema,
   UsdStringSchema,
-} from "./primitives.js";
+} from "./primitives";
 
 /**
  * §2.3 (rev 3.2 — self-hosted Simulator, no vendor): the engine that produced this preview.

@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 
-import { CHAIN_ID, POLICY_VERSION } from "../policy/constants.js";
+import { CHAIN_ID, POLICY_VERSION } from "../policy/constants";
 
 /** A 0x-prefixed, 20-byte EVM address (checksum-agnostic; value NOT normalized). */
 export const HexAddressSchema = z.custom<`0x${string}`>(

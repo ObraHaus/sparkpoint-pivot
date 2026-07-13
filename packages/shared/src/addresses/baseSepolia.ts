@@ -19,8 +19,8 @@
  *   - `wrappedTokenGateway` left `undefined` (native-ETH path deferred; TODO_VERIFY).
  */
 
-import { CHAIN_ID } from "../policy/index.js";
-import type { AddressBook } from "./types.js";
+import { CHAIN_ID } from "../policy/index";
+import type { AddressBook } from "./types";
 
 export const baseSepolia: AddressBook = {
   chainId: CHAIN_ID.baseSepolia,

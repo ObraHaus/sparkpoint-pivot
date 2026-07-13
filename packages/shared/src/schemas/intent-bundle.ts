@@ -12,10 +12,10 @@
 
 import { z } from "zod";
 
-import { ActionTypeSchema } from "./action.js";
-import { CitationSchema } from "./citation.js";
-import { GuardrailCheckSchema } from "./guardrail.js";
-import { PolicyVerdictSchema } from "./policy-verdict.js";
+import { ActionTypeSchema } from "./action";
+import { CitationSchema } from "./citation";
+import { GuardrailCheckSchema } from "./guardrail";
+import { PolicyVerdictSchema } from "./policy-verdict";
 import {
   ChainIdSchema,
   HexAddressSchema,
@@ -24,8 +24,8 @@ import {
   IsoDateTimeSchema,
   PolicyVersionSchema,
   UintAmountSchema,
-} from "./primitives.js";
-import { SimulationResultSchema } from "./simulation.js";
+} from "./primitives";
+import { SimulationResultSchema } from "./simulation";
 
 /** §2.1 — `userop` (ERC-4337) | `eoa_call` (direct). */
 export const OpTypeSchema = z.enum(["userop", "eoa_call"]);

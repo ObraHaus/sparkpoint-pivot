@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 
-import { IsoDateTimeSchema } from "./primitives.js";
+import { IsoDateTimeSchema } from "./primitives";
 
 export const CitationSchema = z
   .object({

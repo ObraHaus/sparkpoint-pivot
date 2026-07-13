@@ -13,8 +13,8 @@
 
 import { z } from "zod";
 
-import { ActionType } from "../policy/enums.js";
-import { HexAddressSchema, UintAmountSchema } from "./primitives.js";
+import { ActionType } from "../policy/enums";
+import { HexAddressSchema, UintAmountSchema } from "./primitives";
 
 /** agent-service-api.md §2.2 — reuses the foundation `ActionType` string enum. */
 export const ActionTypeSchema = z.nativeEnum(ActionType);

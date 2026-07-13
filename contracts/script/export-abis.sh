@@ -66,7 +66,7 @@ index="$DEST/index.ts"
   echo " * consumer). Addresses live in ../addresses (R14); this barrel is ABIs only."
   echo " */"
   for n in "${names[@]}"; do
-    echo "export { ${n}Abi } from \"./$n.js\";"
+    echo "export { ${n}Abi } from \"./$n\";"
   done
 } > "$index"
 echo "  wrote barrel -> packages/shared/src/abis/index.ts"

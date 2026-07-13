@@ -9,11 +9,11 @@
  * Barrel re-exporting the primitives + the seven named schemas and their
  * inferred types.
  */
-export * from "./primitives.js";
-export * from "./action.js";
-export * from "./citation.js";
-export * from "./guardrail.js";
-export * from "./simulation.js";
-export * from "./policy-verdict.js";
-export * from "./intent-bundle.js";
-export * from "./chat-block.js";
+export * from "./primitives";
+export * from "./action";
+export * from "./citation";
+export * from "./guardrail";
+export * from "./simulation";
+export * from "./policy-verdict";
+export * from "./intent-bundle";
+export * from "./chat-block";

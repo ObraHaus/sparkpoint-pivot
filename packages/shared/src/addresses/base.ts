@@ -13,8 +13,8 @@
  * the deploy/arm scripts — left `undefined` here (fail-closed).
  */
 
-import { CHAIN_ID } from "../policy/index.js";
-import type { AddressBook } from "./types.js";
+import { CHAIN_ID } from "../policy/index";
+import type { AddressBook } from "./types";
 
 export const base: AddressBook = {
   chainId: CHAIN_ID.base,

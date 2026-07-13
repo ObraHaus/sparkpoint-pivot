@@ -7,10 +7,10 @@
 
 import { z } from "zod";
 
-import { ReasonCode } from "../policy/enums.js";
-import { ProposedActionSchema } from "./action.js";
-import { PolicyVersionSchema } from "./primitives.js";
-import { SimulationResultSchema } from "./simulation.js";
+import { ReasonCode } from "../policy/enums";
+import { ProposedActionSchema } from "./action";
+import { PolicyVersionSchema } from "./primitives";
+import { SimulationResultSchema } from "./simulation";
 
 /** §2.4 / §1.5 — one structured reason (foundation `ReasonCode` + message). */
 export const ReasonSchema = z

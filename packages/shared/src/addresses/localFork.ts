@@ -8,9 +8,9 @@
  * whose `getPolicyConstants(31337)` returns the Base-mainnet allowlist.
  */
 
-import { CHAIN_ID } from "../policy/index.js";
-import { base } from "./base.js";
-import type { AddressBook } from "./types.js";
+import { CHAIN_ID } from "../policy/index";
+import { base } from "./base";
+import type { AddressBook } from "./types";
 
 export const localFork: AddressBook = {
   ...base,

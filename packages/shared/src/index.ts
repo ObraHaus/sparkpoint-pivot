@@ -15,15 +15,15 @@ export const SHARED_PACKAGE = "@sparkpoint/shared" as const;
 
 // Policy foundation (T009 enums + T010 constants). addresses/ and schemas/ are
 // re-exported by their owning tasks and via the package `exports` subpaths.
-export * from "./policy/index.js";
+export * from "./policy/index";
 
 // Address registry (T011): per-chain AddressBook + TargetRef resolution (R14).
-export * from "./addresses/index.js";
+export * from "./addresses/index";
 
 // Zod wire schemas (T012) — the fail-closed mirror of agent-service-api.md §2.
-export * from "./schemas/index.js";
+export * from "./schemas/index";
 
 // Exported contract ABIs (T015) — emitted from the Foundry build by
 // contracts/script/export-abis.sh; the single source of truth consumed by the
 // frontend chain seam and the deploy scripts (addresses live in addresses/).
-export * from "./abis/index.js";
+export * from "./abis/index";

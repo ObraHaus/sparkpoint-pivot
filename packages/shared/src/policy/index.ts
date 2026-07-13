@@ -7,5 +7,5 @@
  * Consumed by the on-chain deploy scripts, the off-chain policy layer, and the
  * client policy mirror. T098 fails CI on any drift between them.
  */
-export * from "./enums.js";
-export * from "./constants.js";
+export * from "./enums";
+export * from "./constants";

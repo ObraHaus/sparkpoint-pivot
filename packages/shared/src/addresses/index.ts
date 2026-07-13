@@ -7,17 +7,17 @@
  * live in exactly one place and cannot drift (the property T098 guards).
  */
 
-import { CHAIN_ID, type TargetRef } from "../policy/index.js";
-import { base } from "./base.js";
-import { baseSepolia } from "./baseSepolia.js";
-import { localFork } from "./localFork.js";
-import { type Address, type AddressBook, TARGET_REF_FIELD } from "./types.js";
+import { CHAIN_ID, type TargetRef } from "../policy/index";
+import { base } from "./base";
+import { baseSepolia } from "./baseSepolia";
+import { localFork } from "./localFork";
+import { type Address, type AddressBook, TARGET_REF_FIELD } from "./types";
 
-export type { Address, AddressBook, Network } from "./types.js";
-export { TARGET_REF_FIELD } from "./types.js";
-export { base } from "./base.js";
-export { baseSepolia } from "./baseSepolia.js";
-export { localFork } from "./localFork.js";
+export type { Address, AddressBook, Network } from "./types";
+export { TARGET_REF_FIELD } from "./types";
+export { base } from "./base";
+export { baseSepolia } from "./baseSepolia";
+export { localFork } from "./localFork";
 
 /**
  * Per-chain address books (R14). `31337` (localFork) mirrors `8453` (Base

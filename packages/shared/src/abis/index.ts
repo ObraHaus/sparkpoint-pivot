@@ -3,7 +3,7 @@
  * Exported contract ABIs (single source of truth for the frontend + any TS
  * consumer). Addresses live in ../addresses (R14); this barrel is ABIs only.
  */
-export { sparkPointVaultAbi } from "./sparkPointVault.js";
-export { capRegistryAbi } from "./capRegistry.js";
-export { killSwitchAbi } from "./killSwitch.js";
-export { aaveV3AdapterAbi } from "./aaveV3Adapter.js";
+export { sparkPointVaultAbi } from "./sparkPointVault";
+export { capRegistryAbi } from "./capRegistry";
+export { killSwitchAbi } from "./killSwitch";
+export { aaveV3AdapterAbi } from "./aaveV3Adapter";

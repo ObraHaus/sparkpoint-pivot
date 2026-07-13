@@ -23,7 +23,7 @@
  * of the deploy-time-determined vault address.
  */
 
-import { ActionType, Asset, Direction, Protocol } from "./enums.js";
+import { ActionType, Asset, Direction, Protocol } from "./enums";
 
 /** policy-schema.md §1 — pinned, monotonic, logged with every verdict/outcome (N5). */
 export const POLICY_VERSION = "policy@2026.06.0" as const;
