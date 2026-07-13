@@ -13,6 +13,17 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Honor the `_`-prefix "intentionally unused" convention — interface-shaped
+  // stubs (e.g. the account adapter's not-yet-deployed methods) keep their named
+  // params for the contract without tripping no-unused-vars.
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
