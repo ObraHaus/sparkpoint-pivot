@@ -19,15 +19,19 @@ OUT="$HERE/out"
 DEST="$HERE/../packages/shared/src/abis"
 
 # Contracts to export: only SparkPoint-OWNED, currently-implemented contracts.
-# (The ERC-4337 account/factory/validator/policy ABIs are added when W6 implements
-# them; third-party ABIs — Aave Pool, Aerodrome, ERC-20/4626 — are sourced from
-# viem/their own packages at the call site, never re-declared here.)
+# (The ERC-4337 account/factory/validator/policy ABIs are added by W6-US2; third-party
+# ABIs — Aave Pool, Aerodrome, ERC-20/4626 — are sourced from viem/their own packages at
+# the call site, never re-declared here.)
 #   "<SolFile>:<Contract>:<exportCamelName>"
 CONTRACTS=(
   "SparkPointVault:SparkPointVault:sparkPointVault"
   "CapRegistry:CapRegistry:capRegistry"
   "KillSwitch:KillSwitch:killSwitch"
   "AaveV3Adapter:AaveV3Adapter:aaveV3Adapter"
+  "SparkPointAccount:SparkPointAccount:sparkPointAccount"
+  "AccountFactory:AccountFactory:accountFactory"
+  "SessionKeyValidator:SessionKeyValidator:sessionKeyValidator"
+  "PolicyModule:PolicyModule:policyModule"
 )
 
 if [ ! -d "$OUT" ]; then

@@ -8,10 +8,9 @@
  *     the shared registry (R14, T098 guards drift).
  *  2. Re-export the REAL contract ABIs emitted by the T015 export pipeline
  *     (contracts/script/export-abis.sh → @sparkpoint/shared/abis). The vault +
- *     governance contracts are implemented (W5-US1), so their ABIs are the
- *     generated artifacts. The ERC-4337 account/factory/validator/policy contracts
- *     are not implemented until W6, so those remain typed `[] as const satisfies
- *     Abi` placeholders (replaced when W6 re-runs the export).
+ *     governance contracts (W5-US1) and the ERC-4337 account/factory/validator/policy
+ *     contracts (W6-US2) are all implemented, so every ABI here is a generated
+ *     artifact — no hand-maintained or placeholder ABIs remain.
  *
  * Third-party ABIs (Aave v3 Pool, Aerodrome Router, ERC-20/ERC-4626 reads) are
  * intentionally NOT declared here: they are not T015 outputs and will be sourced
@@ -21,8 +20,6 @@
  * consuming packages/shared) & T015 (ABI export); smart-contracts.md §1 (contract
  * inventory); addresses/index.ts (R14 registry).
  */
-
-import type { Abi } from "viem";
 
 // ── Address registry helpers (re-exported from the SoT — never re-implemented) ──
 export { getAddresses, resolveTargetRef, addresses, ADDRESS_CHAIN_IDS } from "@sparkpoint/shared/addresses";
@@ -41,22 +38,20 @@ export { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 export { capRegistryAbi } from "@sparkpoint/shared/abis";
 /** `KillSwitch`/`Guardian` — PAUSE-ONLY controller (N5). */
 export { killSwitchAbi } from "@sparkpoint/shared/abis";
-/** `AaveV3Adapter` — stateless allowlist adapter (recipient forced); stub until W6. */
+/** `AaveV3Adapter` — stateless allowlist adapter (recipient forced). */
 export { aaveV3AdapterAbi } from "@sparkpoint/shared/abis";
 
 /* ────────────────────────────────────────────────────────────────────────────
- * PLACEHOLDERS — ERC-4337 contracts not implemented until W6. `[] as const
- * satisfies Abi` keeps viem's inference intact; replaced when W6 re-runs export.
+ * REAL ABIs — ERC-4337 account stack (W6-US2), from the T015 export pipeline.
+ * These are the generated artifacts; the account/session ABIs are what the
+ * client encodes execute/validateUserOp/authorizeSessionKey calldata against.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/** `SparkPointAccount` — ERC-4337 UUPS account (execute/validateUserOp). TODO(W6). */
-export const sparkPointAccountAbi = [] as const satisfies Abi;
-
-/** `AccountFactory` — CREATE2 account factory bound to the owner EOA (N3). TODO(W6). */
-export const accountFactoryAbi = [] as const satisfies Abi;
-
-/** `SessionKeyValidator` — ERC-4337 validator module (N4). TODO(W6). */
-export const sessionKeyValidatorAbi = [] as const satisfies Abi;
-
-/** `PolicyModule` — on-chain allowlist/caps registry (N4, G2, G5). TODO(W6). */
-export const policyModuleAbi = [] as const satisfies Abi;
+/** `SparkPointAccount` — ERC-4337 UUPS account (execute/validateUserOp; N1/N3/N4). */
+export { sparkPointAccountAbi } from "@sparkpoint/shared/abis";
+/** `AccountFactory` — CREATE2 account factory bound to the owner EOA (N3). */
+export { accountFactoryAbi } from "@sparkpoint/shared/abis";
+/** `SessionKeyValidator` — ERC-4337 validator module (N4). */
+export { sessionKeyValidatorAbi } from "@sparkpoint/shared/abis";
+/** `PolicyModule` — on-chain allowlist/caps registry (N4, G2, G5). */
+export { policyModuleAbi } from "@sparkpoint/shared/abis";

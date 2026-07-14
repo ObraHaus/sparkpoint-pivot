@@ -7,3 +7,7 @@ export { sparkPointVaultAbi } from "./sparkPointVault";
 export { capRegistryAbi } from "./capRegistry";
 export { killSwitchAbi } from "./killSwitch";
 export { aaveV3AdapterAbi } from "./aaveV3Adapter";
+export { sparkPointAccountAbi } from "./sparkPointAccount";
+export { accountFactoryAbi } from "./accountFactory";
+export { sessionKeyValidatorAbi } from "./sessionKeyValidator";
+export { policyModuleAbi } from "./policyModule";
