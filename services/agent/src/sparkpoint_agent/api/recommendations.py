@@ -1,0 +1,467 @@
+"""The §3.4 recommendation endpoints — ranked strategies vs. the mandate (READ only).
+
+agent-service-api.md §3.4 — ``GET /recommendations`` returns strategies ranked against the
+user's risk mandate, and ``GET /recommendations/{recId}`` returns the "why this?" detail +
+a comparison against neighboring ranks. Both are ADVISORY: each recommendation carries a
+:class:`~sparkpoint_agent.policy.PolicyVerdict` STAMP and a ``proposedAction`` that is NOT
+yet a signable bundle (materializing one is the single ``/build-tx`` chokepoint, §3.5); the
+service returns no signature.
+
+Only-cleared, whitelist-only surface (FR-016 / SC-006 — the crux)
+----------------------------------------------------------------
+The renderer shows nothing the policy layer has not cleared. This endpoint delegates to the
+deterministic :meth:`CoordinatorDag.run_recommendations`, which enforces two independent
+fail-closed layers before anything reaches the wire:
+
+1. **Structural whitelist.** The candidate SET is CODE (the recommender's fixed yield set);
+   the LLM only ranks + narrates it. An off-whitelist ``actionType`` the model emits is
+   ignored, and an undeployed target resolves to ``None`` and is dropped — a non-whitelisted
+   protocol is structurally unrepresentable.
+2. **Deterministic policy gate.** EVERY candidate is stamped by ``policy.evaluate`` (via the
+   guardrail); ``run_recommendations`` surfaces ONLY ``signable`` (approved) candidates. An
+   over-cap / stale / mandate-exceeding proposal is stamped ``rejected`` and never surfaces.
+
+So a recommendation on the wire is, by construction, both whitelisted AND policy-approved.
+
+Statelessness + degradation
+---------------------------
+Recommendations are computed statelessly (no rec store yet): the ``recId`` is a deterministic
+function of the strategy kind, so ``GET /recommendations/{recId}`` is a recompute-and-match
+(and the id round-trips to ``/build-tx`` as ``proposedAction.recommendationId``). ``NOT_FOUND``
+maps a missing mandate to an onboarding prompt (§3.4); ``REFUSAL`` maps a model refusal. A
+chain outage while reading the gate's cap headroom marks the data ``stale`` — which fails the
+gate's freshness step closed, so nothing unverified is surfaced.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+
+from ..agents.literacy import Literacy
+from ..agents.planner import Planner
+from ..agents.recommender import Recommender
+from ..chain import VaultReader, VaultUnavailable
+from ..config import AgentConfig
+from ..coordinator import (
+    ChainContext,
+    CoordinatorDag,
+    MandateProvider,
+    MandateView,
+    MarketData,
+    PortfolioView,
+    RecommendationBlock,
+    RecommendationsResult,
+)
+from ..db.mandates import MandateStore
+from ..llm import AsyncClaudeClient
+from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
+from .errors import ApiError, ErrorCode, ErrorReason
+from .mandate import get_mandate_store
+from .security import AccountContext
+from .vault import get_account, get_vault_reader
+
+router = APIRouter(tags=["recommendations"])
+
+# The deploy-time vault address resolves the ``sparkpoint_vault`` TargetRef so the vault
+# deposit candidate is representable; without it, that candidate is dropped (fail-closed)
+# and only the bare Aave supply (a statically-known target) can surface.
+_VAULT_TARGET_REF = "sparkpoint_vault"
+
+# A generous ceiling for the detail recompute — there are only a couple of yield
+# strategies, so this never truncates while finding a rec by id.
+_DETAIL_LIMIT = 25
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Response models (camelCase field names = the exact §3.4 wire shape).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class RecommendationItem(BaseModel):
+    """§3.4 recommendation — advisory, whitelist-only, policy-stamped (NOT yet signable)."""
+
+    recId: str
+    rank: int
+    strategyKind: str
+    title: str
+    protocol: str  # ∈ aave_v3 | aerodrome (whitelist ONLY; FR-016)
+    rationale: str
+    proposedAction: dict[str, Any]
+    policy: dict[str, Any]  # { status: "approved", checks: [...] } — from the LLM-free verdict
+    citations: list[dict[str, Any]]
+    grossApyBps: int | None = None
+    projectedApyBps: int | None = None
+    performanceFeeBps: int = GOVERNANCE.performance_fee.default_bps
+    asOf: str
+    stale: bool
+
+
+class RecommendationsResponse(BaseModel):
+    """§3.4 ``GET /recommendations`` 200 body.
+
+    ``stale`` is the top-level freshness signal (§3.4 ``DATA_STALE`` prefers 200+stale over
+    an error): when the gate's fresh reads degraded, nothing clears and ``stale`` is true.
+    """
+
+    policyVersion: str
+    mandateVersion: int
+    stale: bool
+    recommendations: list[RecommendationItem]
+
+
+class ComparisonItem(BaseModel):
+    """A neighboring-rank strategy the detail endpoint compares against (§3.4)."""
+
+    recId: str
+    rank: int
+    strategyKind: str
+    title: str
+    protocol: str
+    grossApyBps: int | None = None
+    projectedApyBps: int | None = None
+
+
+class RecommendationDetailResponse(BaseModel):
+    """§3.4 ``GET /recommendations/{recId}`` 200 body — "why this?" + compare."""
+
+    policyVersion: str
+    mandateVersion: int
+    recommendation: RecommendationItem
+    whyThis: str
+    citations: list[dict[str, Any]]
+    comparison: list[ComparisonItem]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Injected providers (production wiring; overridden with fakes/mocks in tests).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# data-model.md §5 ``risk_tier`` ("moderate") ↔ policy ``RiskProfile`` ("balanced"): the
+# mandate persistence uses the data-model spelling, the policy layer the policy-schema one.
+_RISK_TIER_TO_PROFILE: dict[str, RiskProfile] = {
+    "conservative": RiskProfile.CONSERVATIVE,
+    "moderate": RiskProfile.BALANCED,
+    "growth": RiskProfile.GROWTH,
+}
+
+
+def _network_id(chain_id: int) -> str:  # noqa: ARG001 — both Base chains map to one mirror id
+    """The ``networks`` mirror id for a chain (Base mainnet + Base Sepolia → ``base``)."""
+    return "base"
+
+
+@dataclass
+class _StoreMandateProvider:
+    """Adapts the §3.1 :class:`MandateStore` to the DAG's :class:`MandateProvider`.
+
+    Reads the user's active (confirmed, highest-version) mandate — the SAME persistence the
+    §3.1 ``/mandate`` endpoints write — and maps it to the risk ceiling the recommender ranks
+    against + the gate's mandate step enforces. No mandate (or no owner) ⇒ ``None`` so
+    ``GET /recommendations`` prompts onboarding (``NOT_FOUND``, §3.4). The mandate only
+    NARROWS what policy already permits (VR-M5); it never widens the allowlist.
+    """
+
+    store: MandateStore
+
+    async def active(self, chain: ChainContext) -> MandateView | None:
+        if chain.owner is None:
+            return None
+        record = await self.store.get_active(
+            owner_eoa=chain.owner, network_id=_network_id(chain.chain_id)
+        )
+        if record is None:
+            return None
+        return MandateView(
+            version=record.version,
+            risk_profile=_RISK_TIER_TO_PROFILE.get(record.risk_tier, RiskProfile.CONSERVATIVE),
+            max_slippage_bps=record.max_slippage_bps,
+        )
+
+
+class _StaticPortfolio:
+    """A trivial portfolio provider for the recommend gather stage.
+
+    The gather stage's portfolio only supplies a notional suggested amount + a staleness
+    flag; the authoritative cap headroom is read separately (into the ``ChainContext``). We
+    leave ``idle_usdc`` unset (→ the recommender's small notional default, which the user
+    overrides at ``/build-tx``) and echo the staleness observed while reading the gate inputs.
+    """
+
+    def __init__(self, *, stale: bool) -> None:
+        self._stale = stale
+
+    async def read(self, chain: ChainContext) -> PortfolioView:
+        return PortfolioView(stale=self._stale)
+
+
+def get_agent_config() -> AgentConfig:
+    """Process config (chiefly the deploy-time vault address). Overridden in tests."""
+    return AgentConfig.from_env()
+
+
+def get_llm_client() -> AsyncClaudeClient:
+    """The async Claude client for the advisory agents. Overridden with a fake in tests.
+
+    The model shapes prose + ranking ONLY; the candidate set and the policy verdict are
+    never the model's (non-custody). Built per request (mirrors the per-request reader).
+    """
+    return AsyncClaudeClient.from_env()
+
+
+def get_mandate_provider(
+    store: Annotated[MandateStore, Depends(get_mandate_store)],
+) -> MandateProvider:
+    """The active-mandate reader, over the shared §3.1 store. Overridden in tests."""
+    return _StoreMandateProvider(store)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate-input reads + DAG assembly.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def _read_gate_inputs(
+    reader: VaultReader, account: AccountContext
+) -> tuple[CapHeadroom, int, bool]:
+    """Read the fresh cap headroom + fee rate the policy gate needs, fail-closed to stale.
+
+    Per-user / total / vault headroom is ``cap - current`` in raw USDC base units (the CAPS
+    step checks ``amount <= headroom``). A :class:`VaultUnavailable` degrades to
+    ``stale=True`` (which the gate's freshness step rejects on for inflows) — never a
+    fabricated headroom that could let an unverified strategy surface.
+    """
+    try:
+        shares = await reader.balance_of(account.account)
+        user_assets = await reader.convert_to_assets(shares) if shares else 0
+        total_assets = await reader.total_assets()
+        fee_bps = await reader.performance_fee_bps()
+    except VaultUnavailable:
+        # Full caps are moot here — data_stale=True makes the gate reject inflows anyway.
+        full = CapHeadroom(
+            per_user=CAPS.per_user_tvl.amount,
+            total=CAPS.total_protocol.amount,
+            vault=CAPS.vault_deposit.amount,
+        )
+        return full, GOVERNANCE.performance_fee.default_bps, True
+
+    caps = CapHeadroom(
+        per_user=max(0, CAPS.per_user_tvl.amount - user_assets),
+        total=max(0, CAPS.total_protocol.amount - total_assets),
+        vault=max(0, CAPS.vault_deposit.amount - total_assets),
+    )
+    return caps, fee_bps, False
+
+
+def _build_chain_context(
+    account: AccountContext, config: AgentConfig, caps: CapHeadroom, fee_bps: int, stale: bool
+) -> ChainContext:
+    """Assemble the per-request ``ChainContext`` the gate reads (headers scope reads only, §1.2)."""
+    resolved_targets: dict[str, str] = {}
+    if config.vault_address:
+        resolved_targets[_VAULT_TARGET_REF] = config.vault_address
+    return ChainContext(
+        chain_id=account.chain_id,
+        user_account=account.account,
+        owner=account.owner,
+        resolved_targets=resolved_targets,
+        caps=caps,
+        data_stale=stale,
+        # No live Aave APY feed is wired → gross/projected are null (never fabricated); the
+        # profit-only fee rate is read from chain (or its governed default when degraded).
+        market=MarketData(
+            gross_apy_bps=None, projected_apy_bps=None, performance_fee_bps=fee_bps
+        ),
+    )
+
+
+def _build_dag(
+    llm: AsyncClaudeClient, mandate_provider: MandateProvider, *, stale: bool
+) -> CoordinatorDag:
+    """Build the advisory DAG. The gate defaults to the deterministic ``policy.evaluate``."""
+    return CoordinatorDag(
+        planner=Planner(llm=llm),
+        recommender=Recommender(llm=llm),
+        literacy=Literacy(llm=llm),
+        portfolio_provider=_StaticPortfolio(stale=stale),
+        mandate_provider=mandate_provider,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Block → §3.4 wire mapping (stateless, strategy-keyed recId).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _rec_id(strategy_kind: str) -> str:
+    """A deterministic, strategy-keyed rec id so the detail lookup is a stateless recompute."""
+    return f"rec_{strategy_kind}"
+
+
+def _to_item(block: RecommendationBlock, chain: ChainContext, *, stale: bool) -> RecommendationItem:
+    """Map a policy-cleared :class:`RecommendationBlock` to the §3.4 wire item.
+
+    The APY/fee figures are the request-level READ market data on the ``ChainContext``
+    (null + best-effort here — no live feed), never the model's. The ``recId`` is
+    strategy-keyed and pinned into ``proposedAction.recommendationId`` so it round-trips.
+    """
+    strategy_kind = str(block.proposed_action["type"])
+    rec_id = _rec_id(strategy_kind)
+    proposed_action = {**block.proposed_action, "recommendationId": rec_id}
+    market = chain.market
+    return RecommendationItem(
+        recId=rec_id,
+        rank=block.rank,
+        strategyKind=strategy_kind,
+        title=block.title,
+        protocol=block.protocol.value,
+        rationale=block.rationale,
+        proposedAction=proposed_action,
+        policy=block.policy.to_wire(),
+        citations=[c.to_wire() for c in block.citations],
+        grossApyBps=market.gross_apy_bps,
+        projectedApyBps=market.projected_apy_bps,
+        performanceFeeBps=market.performance_fee_bps,
+        asOf=_now_iso(),
+        stale=stale,
+    )
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+async def _compute(
+    account: AccountContext,
+    reader: VaultReader,
+    config: AgentConfig,
+    llm: AsyncClaudeClient,
+    mandate_provider: MandateProvider,
+    *,
+    limit: int,
+) -> tuple[RecommendationsResult, list[RecommendationItem]]:
+    """Run the deterministic recommend DAG and map its cleared blocks to §3.4 items."""
+    caps, fee_bps, stale = await _read_gate_inputs(reader, account)
+    chain = _build_chain_context(account, config, caps, fee_bps, stale)
+    dag = _build_dag(llm, mandate_provider, stale=stale)
+    result = await dag.run_recommendations(chain, limit=limit)
+    items = [_to_item(block, chain, stale=result.stale) for block in result.recommendations]
+    return result, items
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/recommendations", response_model=RecommendationsResponse)
+async def get_recommendations(
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+    llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
+    mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+    limit: Annotated[int, Query(ge=1, le=25)] = 5,
+    refresh: Annotated[bool, Query()] = False,  # noqa: ARG001 — stateless; always recomputes
+) -> RecommendationsResponse:
+    """Ranked strategies vs. the mandate — whitelist + policy-cleared ONLY (§3.4, FR-016).
+
+    Delegates to the deterministic ``run_recommendations`` (structural whitelist + the
+    LLM-free policy gate), so every surfaced recommendation is both whitelisted and
+    policy-approved. No mandate → ``NOT_FOUND`` (prompt onboarding); a model refusal →
+    ``REFUSAL``. A cleared-but-empty result (nothing passes the gate) is a valid ``200``
+    with no recommendations (FR-016 — the renderer shows nothing uncleared).
+    """
+    result, items = await _compute(
+        account, reader, config, llm, mandate_provider, limit=limit
+    )
+    _raise_if_unavailable(result)
+    return RecommendationsResponse(
+        policyVersion=result.policy_version,
+        mandateVersion=_mandate_version(result),
+        stale=result.stale,
+        recommendations=items,
+    )
+
+
+@router.get("/recommendations/{rec_id}", response_model=RecommendationDetailResponse)
+async def get_recommendation_detail(
+    rec_id: str,
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+    llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
+    mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+) -> RecommendationDetailResponse:
+    """"Why this?" detail + a comparison against neighboring ranks (§3.4).
+
+    Recompute-and-match: the strategy-keyed ``recId`` round-trips, so recomputing the cleared
+    set and matching by id needs no rec store. An unknown id — or one that no longer clears
+    the gate — is ``NOT_FOUND``. Only whitelisted + policy-cleared strategies are ever
+    matchable (FR-016).
+    """
+    result, items = await _compute(
+        account, reader, config, llm, mandate_provider, limit=_DETAIL_LIMIT
+    )
+    _raise_if_unavailable(result)
+
+    match = next((item for item in items if item.recId == rec_id), None)
+    if match is None:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            f"No recommendation {rec_id!r} (it may no longer clear your guardrails).",
+            reasons=[ErrorReason("NOT_FOUND", "unknown or no-longer-cleared recId")],
+        )
+    comparison = [
+        ComparisonItem(
+            recId=item.recId,
+            rank=item.rank,
+            strategyKind=item.strategyKind,
+            title=item.title,
+            protocol=item.protocol,
+            grossApyBps=item.grossApyBps,
+            projectedApyBps=item.projectedApyBps,
+        )
+        for item in items
+        if item.recId != rec_id
+    ]
+    return RecommendationDetailResponse(
+        policyVersion=result.policy_version,
+        mandateVersion=_mandate_version(result),
+        recommendation=match,
+        whyThis=match.rationale,
+        citations=match.citations,
+        comparison=comparison,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared error mapping.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _raise_if_unavailable(result: RecommendationsResult) -> None:
+    """Map the §3.4 no-mandate / refusal outcomes to the canonical envelope."""
+    if result.mandate_version is None:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "Complete onboarding to set a risk mandate before requesting recommendations.",
+            reasons=[ErrorReason("NOT_FOUND", "no active mandate")],
+        )
+    if result.refused:
+        raise ApiError(
+            ErrorCode.REFUSAL,
+            "I couldn't produce a safe recommendation for that.",
+            reasons=[ErrorReason("REFUSAL", "recommender declined")],
+        )
+
+
+def _mandate_version(result: RecommendationsResult) -> int:
+    """The active mandate version (guaranteed present past :func:`_raise_if_unavailable`)."""
+    assert result.mandate_version is not None  # noqa: S101 — guarded by _raise_if_unavailable
+    return result.mandate_version

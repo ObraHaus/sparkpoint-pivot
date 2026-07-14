@@ -1,0 +1,22 @@
+name: policy-parity
+# T098 — no-drift gate. On-chain PolicyModule/CapRegistry/allowlist + feeRate/cap/feeRecipient
+# reads MUST equal the packages/shared constants MUST equal the UI-disclosed fee, PER CHAIN.
+# Green-by-skip until contracts deploy to Sepolia; ENFORCING from W5c.
+on:
+  push:
+    branches: [develop, "feature/**"]
+  pull_request:
+    branches: [develop]
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: on-chain == shared == UI fee (per chain)
+        run: |
+          if [ -f contracts/deployments/base-sepolia/addresses.json ] && [ -d packages/shared/src/policy ]; then
+            echo "TODO(W5c): iterate the chainId-keyed map and assert parity per chain."
+            # Real parity assertion lands with the deploy (T098 enforce). A mismatch MUST fail.
+          else
+            echo "not deployed yet — green-by-skip (enforces from W5c)"
+          fi

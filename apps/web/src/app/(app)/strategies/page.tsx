@@ -16,11 +16,30 @@ import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
+import { useRecommendationsView, type RecView } from "@/lib/agent/useAgent";
 import "@/components/screens/strategies.css";
+
+/** Mock strategies mapped into the shared RecView shape (offline fallback). */
+const MOCK_RECS: RecView[] = data.recs.map((r, i) => ({
+  id: r.id,
+  rankLabel: r.rank,
+  title: r.title,
+  thesis: r.thesis,
+  apy: r.apy,
+  risk: r.risk,
+  fit: r.fit,
+  // Offline parity: the mock's actionable branch is exactly `apy > 0`.
+  signable: r.apy > 0,
+  best: i === 0,
+}));
 
 export default function Page() {
   const router = useRouter();
   const [open, setOpen] = useState<Record<number, boolean>>({});
+
+  // Live GET /recommendations (§3.4) ranked vs. the mandate; mock fallback offline.
+  // Each card is signable ONLY when policy-approved (RecView.signable ⟺ isSignable).
+  const recs = useRecommendationsView() ?? MOCK_RECS;
 
   return (
     <div className="page page-narrow">
@@ -49,20 +68,20 @@ export default function Page() {
           Only the lower-risk Aave vault is live today. Higher-risk strategies will rank here as more vaults open.
         </span>
       </div>
-      {data.recs.map((r, i) => (
-        <div className={"strat " + (i === 0 ? "best" : "")} key={r.id}>
+      {recs.map((r, i) => (
+        <div className={"strat " + (r.best ? "best" : "")} key={r.id}>
           <div className="sh">
             <span
               style={{
                 fontSize: 11,
                 fontWeight: 600,
-                background: i === 0 ? "var(--spark-subtle)" : "var(--muted)",
-                color: i === 0 ? "var(--primary)" : "var(--foreground)",
+                background: r.best ? "var(--spark-subtle)" : "var(--muted)",
+                color: r.best ? "var(--primary)" : "var(--foreground)",
                 borderRadius: 999,
                 padding: "3px 10px",
               }}
             >
-              {r.rank}
+              {r.rankLabel}
             </span>
             <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
           </div>
@@ -91,7 +110,7 @@ export default function Page() {
             Estimates, not guarantees.
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
-            {r.apy > 0 ? (
+            {r.signable ? (
               <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("confirm/deposit"))}>
                 Review this move
               </button>
@@ -106,7 +125,7 @@ export default function Page() {
           </div>
           <div className={"whybd" + (open[i] ? " open" : "")}>
             Ranked against your mandate (lower risk, capital-preservation-first, steady yield).{" "}
-            {i === 0
+            {r.best
               ? "Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your beta cap and slippage guardrails."
               : "A conservative posture — less earning, more flexibility. Honest tradeoff, shown so you can choose."}
           </div>

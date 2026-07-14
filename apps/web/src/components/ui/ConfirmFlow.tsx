@@ -20,9 +20,32 @@ import { money } from "@/lib/utils";
 import { data } from "@/lib/mock-data";
 import { toHref } from "@/lib/nav";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
+import { useExecuteVaultTx, type VaultExec } from "@/lib/chain/useExecuteVaultTx";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import "@/components/screens/confirm.css";
 
 export type ConfirmIntent = "deposit" | "withdraw" | "swap" | "premium" | "bridge";
+
+/**
+ * OPTIONAL real-execution config for the deposit|withdraw intents ONLY. When present,
+ * ConfirmFlow performs REAL on-chain txs (via useExecuteVaultTx) instead of the mock
+ * simulate→sign→success, and shows the LIVE balance deltas + a real tx-hash link — all
+ * inside the SAME confirm.css UI. When ABSENT (chat/premium/bridge/swap), ConfirmFlow
+ * behaves EXACTLY as before: the mock flow, byte-for-byte. The display fields override
+ * the per-intent copy with live numbers; anything omitted falls back to `configFor`.
+ */
+export interface OnchainConfirm {
+  /** The resolved deposit/withdraw intent the user will sign. */
+  readonly exec: VaultExec;
+  /** Live header sub (amounts). Falls back to the intent's static sub. */
+  readonly sub?: React.ReactNode;
+  /** Live "Balance changes (simulated)" rows. Falls back to the intent's static rows. */
+  readonly bc?: [label: React.ReactNode, value: React.ReactNode, color: string][];
+  /** Live guardrail rows (e.g. the live beta cap). Falls back to the intent's static guards. */
+  readonly guards?: React.ReactNode[];
+  /** Live success-receipt body. Falls back to the intent's static body. */
+  readonly okBody?: React.ReactNode;
+}
 
 type Phase = "sim" | "ready" | "signing" | "done";
 type Mount = "route" | "inline";
@@ -464,6 +487,7 @@ export function ConfirmFlow({
   intent,
   mount = "route",
   onChain,
+  onchain,
 }: {
   intent: ConfirmIntent;
   mount?: Mount;
@@ -471,11 +495,26 @@ export function ConfirmFlow({
    * append a fresh inline deposit confirm in the thread (the design's data-chainbtn). When
    * omitted, the route receipt's "Review deposit" card navigates to /confirm/deposit. */
   onChain?: () => void;
+  /** OPTIONAL real-execution path for deposit|withdraw (see {@link OnchainConfirm}). When
+   * absent, ConfirmFlow runs the mock flow exactly as today. NOTE: intentionally distinct
+   * from `onChain` above (the inline swap→deposit chain callback). */
+  onchain?: OnchainConfirm;
 }) {
   const router = useRouter();
   const { toast } = useOverlay();
   const cfg = configFor(intent);
   const inline = mount === "inline";
+
+  // OPTIONAL real-execution controller (deposit|withdraw). INERT when `onchain` is absent:
+  // the wagmi hooks mount but fire nothing, so every non-onchain caller is byte-for-byte
+  // unchanged. When present, `onSign` starts it and the completion effect shows the receipt.
+  const exec = useExecuteVaultTx(onchain?.exec);
+  // Live display overrides, present only on the onchain path (else the static intent copy).
+  const sub = onchain?.sub ?? cfg.sub;
+  const bc = onchain?.bc ?? cfg.bc;
+  const guards = onchain?.guards ?? cfg.guards;
+  const okBody = onchain?.okBody ?? cfg.okBody;
+  const txUrl = onchain ? explorerTxUrl(onchain.exec.chainId, exec.txHash) : undefined;
 
   const [phase, setPhase] = useState<Phase>("sim");
   // index of the current/finished simulation step (-1 = none done yet).
@@ -485,6 +524,14 @@ export function ConfirmFlow({
   const [shake, setShake] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const timers = useRef<number[]>([]);
+  // Fire-once toast guards for the onchain success / failure receipts.
+  const doneToasted = useRef(false);
+  const failToasted = useRef(false);
+
+  // Onchain execution is DERIVED (no extra phase state): `busy` = a tx is in flight, and the
+  // receipt shows on `exec.isDone`. This leaves the mock path's `phase` machine untouched.
+  const busy = onchain ? exec.isBusy : phase === "signing";
+  const showDone = onchain ? exec.isDone : phase === "done";
 
   const go = (route: string) => router.push(toHref(route));
   const onBack = () => (cfg.backRoute === "history" ? router.back() : go(cfg.backRoute));
@@ -516,6 +563,26 @@ export function ConfirmFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Onchain: the render derives the receipt from `exec` (above), so these effects only
+  // TOAST — once each on success / failure. No setState here → the mock path is unaffected.
+  useEffect(() => {
+    if (onchain && exec.isDone && !doneToasted.current) {
+      doneToasted.current = true;
+      toast(cfg.toast);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onchain, exec.isDone]);
+  useEffect(() => {
+    if (!onchain) return;
+    if (exec.error && !failToasted.current) {
+      failToasted.current = true;
+      toast("Transaction cancelled — nothing moved.");
+    } else if (!exec.error) {
+      failToasted.current = false; // reset so a retry can toast again
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onchain, exec.error]);
+
   const signDisabled = cfg.ack ? !acked : false;
 
   function onSign() {
@@ -524,6 +591,14 @@ export function ConfirmFlow({
       window.setTimeout(() => setShake(false), 320);
       return;
     }
+    // Onchain path (deposit|withdraw): kick off the REAL approve/deposit or redeem. The
+    // render derives `busy`/`showDone` from `exec` — no `phase` change needed. A rejection
+    // flips `exec.isBusy` back to false, re-enabling Sign (nothing moved).
+    if (onchain) {
+      exec.start();
+      return;
+    }
+    // Mock path (chat/premium/bridge/swap) — unchanged.
     setPhase("signing");
     window.setTimeout(() => {
       setPhase("done");
@@ -532,7 +607,7 @@ export function ConfirmFlow({
   }
 
   // ---- success receipt ----
-  if (phase === "done") {
+  if (showDone) {
     const receipt = (
       <div style={{ padding: inline ? "30px 22px" : "40px 24px", textAlign: "center" }}>
         <div
@@ -561,9 +636,13 @@ export function ConfirmFlow({
             margin: "0 auto 6px",
           }}
         >
-          {cfg.okBody}
+          {okBody}
         </div>
-        <a className="cite" style={{ cursor: "pointer", display: "inline-flex", marginBottom: inline ? 16 : 20 }}>
+        <a
+          className="cite"
+          {...(txUrl ? { href: txUrl, target: "_blank", rel: "noopener noreferrer" } : {})}
+          style={{ cursor: "pointer", display: "inline-flex", marginBottom: inline ? 16 : 20 }}
+        >
           {cfg.okCite}
         </a>
         {inline ? (
@@ -608,7 +687,7 @@ export function ConfirmFlow({
           )}
         </div>
         <div style={{ fontSize: inline ? 13 : 13.5, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
-          {cfg.sub}
+          {sub}
         </div>
       </div>
 
@@ -640,7 +719,7 @@ export function ConfirmFlow({
         <>
           <div className="cf-sec cf-reveal" style={{ animationDelay: "0ms" }}>
             <div className="cf-lbl">Balance changes (simulated)</div>
-            {cfg.bc.map((r, k) => (
+            {bc.map((r, k) => (
               <div className="bc-row" key={k}>
                 <span className="muted">{r[0]}</span>
                 <span className="tnum" style={r[2] ? { color: `var(${r[2]})` } : undefined}>
@@ -661,7 +740,7 @@ export function ConfirmFlow({
             style={{ animationDelay: cfg.cost ? "220ms" : "120ms" }}
           >
             <div className="cf-lbl">Guardrail checklist</div>
-            {cfg.guards.map((g, k) => guardRow(g, k))}
+            {guards.map((g, k) => guardRow(g, k))}
             {cfg.ack && (
               <div className="ackbox">
                 <div
@@ -719,13 +798,13 @@ export function ConfirmFlow({
               <button
                 className={"btn btn-primary " + (inline ? "btn-md" : "btn-lg")}
                 style={{ flex: 1, ...(cancelled ? { opacity: 0.5 } : null) }}
-                disabled={phase === "signing" || signDisabled}
+                disabled={busy || signDisabled}
                 onClick={onSign}
               >
-                {phase === "signing" ? (
+                {busy ? (
                   <>
-                    <span className="ai-dot" style={{ background: "var(--primary-foreground)" }} /> Waiting for your
-                    wallet…
+                    <span className="ai-dot" style={{ background: "var(--primary-foreground)" }} />{" "}
+                    {onchain ? exec.label : "Waiting for your wallet…"}
                   </>
                 ) : (
                   <>

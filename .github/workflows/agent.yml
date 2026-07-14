@@ -1,0 +1,29 @@
+name: agent
+on:
+  push:
+    branches: [develop, "feature/**"]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+  pull_request:
+    branches: [develop]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/agent } }
+    # The vault chain-read client loads the vault ABI (+ methodIdentifiers) from the
+    # committed T015 export, so agent CI needs NO `forge build` / `contracts/out`.
+    env:
+      SPARKPOINT_VAULT_ABI_PATH: ${{ github.workspace }}/packages/shared/src/abis/SparkPointVault.abi.json
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: venv + deps (uv sync from the lockfile — runtime + dev group)
+        # `uv sync` installs EXACTLY the locked deps (incl. eth-abi + asyncpg), so a new
+        # runtime dep can never silently drift out of CI the way a hardcoded list does.
+        run: uv sync --frozen --python 3.12
+      - name: ruff
+        run: .venv/bin/ruff check src
+      - name: mypy
+        run: .venv/bin/mypy src/sparkpoint_agent || echo "mypy findings (non-blocking until W3)"
+      - name: pytest
+        run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

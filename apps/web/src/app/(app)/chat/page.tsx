@@ -22,6 +22,7 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
 import { InlineConfirm } from "@/components/screens/chat/inline-confirm";
+import { LiveBlocks } from "@/components/screens/chat/live-blocks";
 import {
   RecCard,
   SnapshotCard,
@@ -33,6 +34,9 @@ import {
   CiteBody,
   type CardActions,
 } from "@/components/screens/chat/cards";
+import { useAgentClient } from "@/lib/agent/useAgent";
+import { parseCard, type ChatCard } from "@/lib/agent/cards";
+import { AgentApiError } from "@/lib/agent/client";
 import "@/components/screens/chat.css";
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
@@ -43,7 +47,9 @@ type Turn =
   | { id: number; kind: "user"; text: string }
   | { id: number; kind: "ai"; text: React.ReactNode; card?: CardKind }
   | { id: number; kind: "thinking"; steps: ThinkStep[]; then: () => void }
-  | { id: number; kind: "inline"; intent: InlineKind };
+  | { id: number; kind: "inline"; intent: InlineKind }
+  // A LIVE `/chat` turn: streamed, fail-closed ChatBlocks from the agent service.
+  | { id: number; kind: "live"; cards: ChatCard[]; streaming: boolean; error?: string };
 
 const EMPTY_CHIPS = [
   "What's in my wallet?",
@@ -105,6 +111,11 @@ export default function ChatPage() {
   const router = useRouter();
   const { toast } = useOverlay();
   const go = useCallback((route: string) => router.push(toHref(route)), [router]);
+
+  // Live agent seam. `online` ⇒ base URL configured AND wallet connected; otherwise
+  // every send falls back to the mock keyword router (graceful "assistant offline").
+  const { client: agentClient, online } = useAgentClient();
+  const convRef = useRef<string | undefined>(undefined);
 
   const [turns, setTurns] = useState<Turn[]>(primedThread);
   const [chips, setChips] = useState<string[]>(PRIMED_CHIPS);
@@ -325,17 +336,56 @@ export default function ChatPage() {
     [pushAi, pushInline, think],
   );
 
-  // ----- send (user turn + respond) -----
+  // ----- live send: stream ChatBlocks from POST /chat, rendered fail-closed -----
+  const sendLive = useCallback(
+    async (text: string) => {
+      if (!agentClient) {
+        respond(text);
+        return;
+      }
+      const turnId = nextId();
+      setTurns((t) => [...t, { id: turnId, kind: "live", cards: [], streaming: true }]);
+      const patch = (fn: (turn: Extract<Turn, { kind: "live" }>) => Extract<Turn, { kind: "live" }>) =>
+        setTurns((t) => t.map((x) => (x.id === turnId && x.kind === "live" ? fn(x) : x)));
+      try {
+        const gen = agentClient.streamChat({
+          message: text,
+          conversationId: convRef.current,
+          context: { surface: "chat" },
+          clientTime: new Date().toISOString(),
+        });
+        for (;;) {
+          const res = await gen.next();
+          if (res.done) {
+            if (res.value?.conversationId) convRef.current = res.value.conversationId;
+            break;
+          }
+          // Each SSE block is validated fail-closed (invalid → inert, never actionable).
+          const card = parseCard(res.value);
+          patch((x) => ({ ...x, cards: [...x.cards, card] }));
+        }
+        patch((x) => ({ ...x, streaming: false }));
+      } catch (e) {
+        const message =
+          e instanceof AgentApiError ? e.message : "The assistant is unavailable right now. Nothing moved.";
+        patch((x) => ({ ...x, streaming: false, error: message }));
+      }
+    },
+    [agentClient, respond],
+  );
+
+  // ----- send (user turn + live stream, or the mock keyword router offline) -----
   const send = useCallback(
     (text: string) => {
       if (!text || !text.trim()) return;
       const t = text.trim();
       setTurns((prev) => [...prev, { id: nextId(), kind: "user", text: t }]);
-      respond(t);
+      if (online) void sendLive(t);
+      else respond(t);
       setDraft("");
       if (taRef.current) taRef.current.style.height = "auto";
     },
-    [respond],
+    [respond, online, sendLive],
   );
 
   // card-action wiring shared by every card
@@ -379,6 +429,7 @@ export default function ChatPage() {
             onClick={() => {
               setActiveThread(i);
               if (th.seed) {
+                convRef.current = undefined;
                 setTurns([]);
                 send(th.seed);
               }
@@ -426,6 +477,19 @@ export default function ChatPage() {
                             }
                           : undefined
                       }
+                    />
+                  </AiFrame>
+                );
+              }
+              if (turn.kind === "live") {
+                return (
+                  <AiFrame key={turn.id}>
+                    <LiveBlocks
+                      cards={turn.cards}
+                      streaming={turn.streaming}
+                      error={turn.error}
+                      onReview={pushInline}
+                      onCite={openCite}
                     />
                   </AiFrame>
                 );
@@ -552,6 +616,7 @@ export default function ChatPage() {
   // "New chat" — reset thread to the cold-start greeting (chat.js newchat handler).
   function startNewChat() {
     setActiveThread(0);
+    convRef.current = undefined;
     setTurns(coldThread());
     setChips(EMPTY_CHIPS);
   }

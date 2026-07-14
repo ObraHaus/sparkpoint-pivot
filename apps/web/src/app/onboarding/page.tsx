@@ -13,8 +13,9 @@
  * no global store — the chosen mandate is local. The final CTA → router.push.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useOnboarding, type MandateDraft } from "@/lib/agent/useAgent";
 
 /** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
 const STEP_LABELS = ["Connect", "Experience", "Goal", "Timeline", "Risk", "Your plan"] as const;
@@ -32,6 +33,50 @@ interface Answers {
   timeline: string | null;
   riskAns: string | null;
   riskTier: number;
+}
+
+/**
+ * Map the locally-collected onboarding answers into the confirmed-mandate body
+ * (§3.1 `mandate_draft`) + the `selections` the /onboarding/turn step machine takes.
+ * The mandate is advisory config — persisting it never authorizes moving funds.
+ */
+function buildMandateDraft(a: Answers): { mandate: MandateDraft; selections: Record<string, unknown> } {
+  const tier = a.riskTier || 1;
+  const riskProfile = tier <= 2 ? "conservative" : tier <= 3 ? "moderate" : "aggressive";
+  const goalKind = a.goal?.toLowerCase().includes("yield")
+    ? "steady_yield"
+    : a.goal?.toLowerCase().includes("grow")
+      ? "grow_savings"
+      : a.goal?.toLowerCase().includes("aggressive")
+        ? "aggressive_growth"
+        : "reach_target";
+  const horizonMonths = a.timeline?.includes("< 1")
+    ? 6
+    : a.timeline?.includes("3+")
+      ? 48
+      : a.timeline?.includes("1")
+        ? 24
+        : 12;
+  return {
+    mandate: {
+      goals: [{ kind: goalKind, label: a.goal ?? "Steady USDC yield" }],
+      riskProfile,
+      riskParams: {
+        maxSlippageBps: 50,
+        drawdownTolerance: tier <= 2 ? "low" : tier <= 3 ? "medium" : "high",
+        horizonMonths,
+      },
+      summaryText: `${TIER_NAMES[tier]} (${tier}/5), capital-preservation-first.`,
+      version: 1,
+    },
+    selections: {
+      experience: a.experience,
+      goal: a.goal,
+      timeline: a.timeline,
+      scenario: a.riskAns,
+      riskTier: tier,
+    },
+  };
 }
 
 /**
@@ -60,6 +105,18 @@ export default function OnboardingPage() {
 
   const go = (n: number) => setStepIndex(n);
   const set = (patch: Partial<Answers>) => setAnswers((a) => ({ ...a, ...patch }));
+
+  // Confirm the plan → drive POST /onboarding/turn (review) then POST /mandate.
+  // Best-effort + non-blocking: offline (no base URL / wallet) it no-ops, and any
+  // failure never blocks the flow (the local step machine stays the source of UI).
+  const onboarding = useOnboarding();
+  const confirmPlan = useCallback(() => {
+    if (!onboarding.online) return;
+    const { mandate, selections } = buildMandateDraft(answers);
+    void onboarding
+      .runReview(mandate, selections)
+      .then((serverDraft) => onboarding.confirmMandate(serverDraft ?? mandate));
+  }, [onboarding, answers]);
 
   // ---------- stepper ----------
   const inputActive = Math.min(Math.max(stepIndex, 1), 6); // 1..6
@@ -132,7 +189,7 @@ export default function OnboardingPage() {
       {/* sticky dock */}
       <div className="dock">
         <div className="dockinner" id="dock">
-          {renderDock(stepIndex, answers, go, router.push)}
+          {renderDock(stepIndex, answers, go, router.push, confirmPlan)}
         </div>
       </div>
     </>
@@ -700,6 +757,7 @@ function renderDock(
   answers: Answers,
   go: (n: number) => void,
   push: (href: string) => void,
+  confirmPlan: () => void,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -769,7 +827,15 @@ function renderDock(
           >
             Adjust
           </button>
-          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(7)}>
+          <button
+            className="btn btn-primary btn-lg"
+            id="pcta"
+            type="button"
+            onClick={() => {
+              confirmPlan();
+              go(7);
+            }}
+          >
             Set my plan
           </button>
         </>

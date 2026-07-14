@@ -1,0 +1,133 @@
+"""The deterministic Coordinator + fixed per-flow DAGs + the manual execution loop.
+
+research.md §6: a deterministic Python Coordinator (NOT an LLM router) invokes the
+five agents in a fixed per-flow order. Read flows may use the SDK auto tool-runner;
+the state-changing path uses the MANUAL agentic loop so the guardrail
+(``policy.evaluate``) is interposed between a proposed action and a signable artifact.
+"""
+
+from __future__ import annotations
+
+from ..wire import Citation
+from .agentic_loop import (
+    Builder,
+    ContextAssembler,
+    ExecutionOutcome,
+    PolicyGate,
+    Simulator,
+    UnsignedArtifact,
+    UnsignedStep,
+    execute,
+)
+from .chat_blocks import (
+    ActionBlock,
+    ChatBlock,
+    ChatPolicyStamp,
+    CitationBlock,
+    ErrorBlock,
+    GuardrailCheck,
+    OutcomeBlock,
+    PortfolioSnapshotBlock,
+    PositionLite,
+    RecommendationBlock,
+    TextBlock,
+    TipBlock,
+    ToolStepBlock,
+    guardrail_check,
+    policy_stamp,
+    proposed_action_wire,
+    recommendation_protocol,
+    token_address,
+)
+from .coordinator import AgentRunner, Coordinator, FlowState
+from .dag import (
+    ChainContext,
+    ContextFactory,
+    CoordinatorDag,
+    Gathered,
+    MandateProvider,
+    MandateView,
+    MarketData,
+    PortfolioProvider,
+    PortfolioView,
+    RecommendationsResult,
+    StampedCandidate,
+    advisory_context,
+)
+from .flows import (
+    BUILDER_FOR_ACTION,
+    READ_FLOWS,
+    Flow,
+    FlowKind,
+    Step,
+    execution_flow_for,
+)
+from .onboarding import (
+    InMemoryOnboardingStore,
+    MandateDraft,
+    MandateDraftBlock,
+    OnboardingMachine,
+    OnboardingStep,
+    OnboardingStore,
+    build_mandate_draft,
+    new_session_id,
+)
+
+__all__ = [
+    "BUILDER_FOR_ACTION",
+    "READ_FLOWS",
+    "ActionBlock",
+    "AgentRunner",
+    "Builder",
+    "ChainContext",
+    "ChatBlock",
+    "ChatPolicyStamp",
+    "Citation",
+    "CitationBlock",
+    "ContextAssembler",
+    "ContextFactory",
+    "Coordinator",
+    "CoordinatorDag",
+    "ErrorBlock",
+    "ExecutionOutcome",
+    "Flow",
+    "FlowKind",
+    "FlowState",
+    "Gathered",
+    "GuardrailCheck",
+    "InMemoryOnboardingStore",
+    "MandateDraft",
+    "MandateDraftBlock",
+    "MandateProvider",
+    "MandateView",
+    "MarketData",
+    "OnboardingMachine",
+    "OnboardingStep",
+    "OnboardingStore",
+    "OutcomeBlock",
+    "PolicyGate",
+    "PortfolioProvider",
+    "PortfolioSnapshotBlock",
+    "PortfolioView",
+    "PositionLite",
+    "RecommendationBlock",
+    "RecommendationsResult",
+    "Simulator",
+    "StampedCandidate",
+    "Step",
+    "TextBlock",
+    "TipBlock",
+    "ToolStepBlock",
+    "UnsignedArtifact",
+    "UnsignedStep",
+    "advisory_context",
+    "build_mandate_draft",
+    "execute",
+    "execution_flow_for",
+    "guardrail_check",
+    "new_session_id",
+    "policy_stamp",
+    "proposed_action_wire",
+    "recommendation_protocol",
+    "token_address",
+]

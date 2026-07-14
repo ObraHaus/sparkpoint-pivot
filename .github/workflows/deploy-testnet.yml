@@ -1,0 +1,27 @@
+name: deploy-testnet
+# T103 (testnet half). Human-dispatched. GATES on the N1-N5 invariant suite +
+# AssertNonCustody being green on HEAD before any broadcast, and chainId == 84532.
+# Mainnet is a separate path (Gate C): requires the recorded internal audit + hardening
+# sign-off and is NEVER autonomous. The PreToolUse guard hard-blocks mainnet broadcast.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'type "deploy-sepolia" to confirm'
+        required: true
+jobs:
+  deploy:
+    if: ${{ github.event.inputs.confirm == 'deploy-sepolia' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+      - name: precondition — N1-N5 + AssertNonCustody green (T103 gates testnet too)
+        working-directory: contracts
+        run: |
+          forge build
+          forge test --match-path "test/invariant/*" -vvv
+      - name: deploy to Base Sepolia (84532)
+        run: echo "W5c wires DeployCore + Verify + AssertNonCustody here; chainId asserted == 84532."

@@ -16,6 +16,7 @@ import { data } from "@/lib/mock-data";
 import { money } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
+import { usePortfolioView } from "@/lib/agent/useAgent";
 import "@/components/screens/portfolio.css";
 
 /** Build the line + area path for the net-worth chart (mirrors the design's `areaPath`). */
@@ -39,7 +40,15 @@ export default function Page() {
   const router = useRouter();
   const [range, setRange] = useState("1M");
 
-  const { line, area, last } = areaPath(data.series1M, 560, 150);
+  // Live GET /portfolio (§3.3), with graceful fallback to mock per-field. Custody-
+  // critical balances stay on direct RPC; this enriched read may be stale/offline.
+  const live = usePortfolioView();
+  const netWorth = live?.netWorth ?? data.netWorth;
+  const pnlAbs = live?.pnl?.abs ?? data.pnl.abs;
+  const pnlPct = live?.pnl?.pct ?? data.pnl.pct;
+  const series = live?.series ?? data.series1M;
+
+  const { line, area, last } = areaPath(series, 560, 150);
   const total = data.allocation.reduce((s, x) => s + x.v, 0);
   const a0pct = (data.allocation[0].v / total) * 100,
     a1pct = 100 - a0pct;
@@ -74,9 +83,9 @@ export default function Page() {
               ))}
             </div>
           </div>
-          <div className="pf-net tnum">{money(data.netWorth)}</div>
+          <div className="pf-net tnum">{money(netWorth)}</div>
           <div className="delta up" style={{ marginTop: 8 }}>
-            <Icon name="up" size={15} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
+            <Icon name="up" size={15} />+{money(pnlAbs)} (+{pnlPct}%, {data.pnl.window})
           </div>
           <div className="pf-spark-area">
             <svg width="100%" height="150" viewBox="0 0 560 150" preserveAspectRatio="none">
