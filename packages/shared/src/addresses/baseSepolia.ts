@@ -44,11 +44,15 @@ export const baseSepolia: AddressBook = {
   weth: "0x4200000000000000000000000000000000000006", // OP-stack WETH predeploy (same on Base Sepolia)
 
   // ── SparkPoint contracts — filled by deploy (undefined ⇒ fail-closed) ──
+  // US1 core deployed to Base Sepolia 2026-07-14 via script/DeploySepolia.s.sol
+  // (guardian/governance = the OZ TimelockController 0x0A21…d720, minDelay 60s testnet;
+  // custody wiring verified on-chain: HWM 1e18, perfFee 1000/cap 2000, mgmt/entry/exit 0).
+  // ERC-4337 account/factory/validator/policy land with W6 (still undefined ⇒ fail-closed).
   sparkPointAccountImpl: undefined,
   accountFactory: undefined,
   sessionKeyValidator: undefined,
   policyModule: undefined,
-  vault: undefined,
-  capRegistry: undefined,
-  killSwitch: undefined,
+  vault: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
+  capRegistry: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
+  killSwitch: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
 };
