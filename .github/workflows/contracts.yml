@@ -10,14 +10,14 @@ jobs:
   forge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { submodules: recursive }
       - id: guard
         name: green-by-skip until contracts exist
         run: |
           if ls contracts/src/*.sol >/dev/null 2>&1; then echo "run=true" >> "$GITHUB_OUTPUT";
           else echo "no .sol yet — green-by-skip"; echo "run=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
         if: steps.guard.outputs.run == 'true'
         with: { version: stable }
       - name: build + test + fuzz

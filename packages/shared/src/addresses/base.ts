@@ -27,7 +27,7 @@ export const base: AddressBook = {
   aavePool: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
   aUsdc: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB", // aBasUSDC — underlying == USDC (verified)
   reserveUsdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // == usdc on Base mainnet
-  wrappedTokenGateway: "0x8be473dCfA93132658821E67CbEB684ec8Ea2E74", // getWETHAddress() == WETH (verified)
+  wrappedTokenGateway: "0x8be473dCfA93132658821E67CbEB684ec8Ea2E74", // getWETHAddress() == WETH (verified) // gitleaks:allow (public on-chain address, not a secret)
 
   // ── Aerodrome ──
   aerodromeRouter: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",

@@ -92,12 +92,12 @@ def test_is_valid_key() -> None:
 
 async def test_idempotency_store_replays_first_write() -> None:
     store = IdempotencyStore()
-    key = "123e4567-e89b-12d3-a456-426614174000"
-    assert await store.get(key) is None
-    await store.put(key, StoredResponse(200, "application/json", b'{"ok":true}'))
-    first = await store.get(key)
+    idem_key = "123e4567-e89b-12d3-a456-426614174000"  # example UUID, not a secret
+    assert await store.get(idem_key) is None
+    await store.put(idem_key, StoredResponse(200, "application/json", b'{"ok":true}'))
+    first = await store.get(idem_key)
     assert first is not None and first.body == b'{"ok":true}'
     # First write wins — a later put for the same key does not clobber the original.
-    await store.put(key, StoredResponse(200, "application/json", b'{"ok":false}'))
-    again = await store.get(key)
+    await store.put(idem_key, StoredResponse(200, "application/json", b'{"ok":false}'))
+    again = await store.get(idem_key)
     assert again is not None and again.body == b'{"ok":true}'

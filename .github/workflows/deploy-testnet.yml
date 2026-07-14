@@ -14,9 +14,9 @@ jobs:
     if: ${{ github.event.inputs.confirm == 'deploy-sepolia' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { submodules: recursive }
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
         with: { version: stable }
       - name: precondition — N1-N5 + AssertNonCustody green (T103 gates testnet too)
         working-directory: contracts
