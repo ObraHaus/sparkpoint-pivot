@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from ..knowledge import CitationRetriever  # T125 — recommender MAY import knowledge (advisory)
 from ..llm import AsyncClaudeClient, Effort
 from ..policy import (
     Action,
@@ -235,10 +236,17 @@ def _parse_ranking(payload: object) -> dict[ActionType, _Rank]:
 
 @dataclass
 class Recommender:
-    """The ``propose`` stage runner. HIGH effort; produces advisory candidates only."""
+    """The ``propose`` stage runner. HIGH effort; produces advisory candidates only.
+
+    ``knowledge`` (T125) is an OPTIONAL advisory retriever: when wired, the recommender
+    attaches Obsidian-tier :class:`Citation`s to each candidate's provenance. It is
+    fail-closed and non-authoritative — knowledge enriches the rationale but NEVER makes a
+    block signable (that is the deterministic policy layer's ``approved`` status alone).
+    """
 
     llm: AsyncClaudeClient
     effort: Effort = EFFORT
+    knowledge: CitationRetriever | None = None
 
     async def propose(self, intent: Intent, ctx: ProposalContext) -> RecommendationResult:
         """Produce ranked, whitelist-only :class:`Candidate`s for ``intent`` — fail-closed.
@@ -250,7 +258,11 @@ class Recommender:
         """
         if intent.kind is IntentKind.BUILD_ACTION:
             explicit = self._build_explicit(intent, ctx)
-            return RecommendationResult((explicit,) if explicit is not None else ())
+            built_explicit: tuple[Candidate, ...] = (
+                (explicit,) if explicit is not None else ()
+            )
+            built_explicit = await self._attach_knowledge(built_explicit, intent, ctx)
+            return RecommendationResult(built_explicit)
 
         built = self._build_yield_candidates(intent, ctx)
         if not built:
@@ -266,7 +278,44 @@ class Recommender:
             return RecommendationResult((), refused=True)
         ranking = result.value if result.ok else None
         candidates = self._assemble(built, ranking, ctx)
+        candidates = await self._attach_knowledge(candidates, intent, ctx)
         return RecommendationResult(candidates, degraded=ranking is None)
+
+    # -- advisory knowledge citations (T125) ----------------------------------
+
+    async def _attach_knowledge(
+        self,
+        candidates: tuple[Candidate, ...],
+        intent: Intent,
+        ctx: ProposalContext,
+    ) -> tuple[Candidate, ...]:
+        """Merge Obsidian-tier citations into each candidate (advisory, fail-closed)."""
+        if self.knowledge is None or not candidates:
+            return candidates
+        extra = await self.knowledge.retrieve_citations(self._knowledge_query(intent, ctx))
+        if not extra:
+            return candidates
+        return tuple(self._merge_citations(c, extra) for c in candidates)
+
+    @staticmethod
+    def _merge_citations(
+        candidate: Candidate, extra: tuple[Citation, ...]
+    ) -> Candidate:
+        seen = {(c.provider, c.field, c.value) for c in candidate.citations}
+        merged = list(candidate.citations)
+        for citation in extra:
+            key = (citation.provider, citation.field, citation.value)
+            if key not in seen:
+                seen.add(key)
+                merged.append(citation)
+        return replace(candidate, citations=tuple(merged))
+
+    def _knowledge_query(self, intent: Intent, ctx: ProposalContext) -> str:
+        parts: list[str] = []
+        if intent.topic:
+            parts.append(intent.topic)
+        parts.append(f"{ctx.risk_profile.value} risk USDC yield vault Aave")
+        return " ".join(parts)
 
     # -- explicit (directly-commanded) action ---------------------------------
 

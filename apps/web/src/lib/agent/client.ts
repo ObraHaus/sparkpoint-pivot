@@ -365,10 +365,22 @@ export interface AgentClient {
    */
   request<T = unknown>(path: string, options?: AgentRequestOptions): Promise<T>;
   /**
+   * Generic SSE helper for any streamed ChatBlock endpoint (e.g. `/chat`,
+   * `/onboarding/turn` — §3.1/§3.2). Yields the raw `data` string of each block
+   * frame (validate fail-closed via `cards.ts`); the generator's RETURN value is
+   * the terminal `done` summary. Throws `AgentApiError` on a pre-stream non-2xx.
+   * Like `streamChat`, it only PROPOSES — `assertNoSignature` fail-closes the body.
+   */
+  stream(
+    path: string,
+    body: unknown,
+    options?: AgentStreamOptions,
+  ): AsyncGenerator<string, ChatStreamDone | undefined, void>;
+  /**
    * SSE helper for `POST /chat` (§3.2). Yields the raw `data` string of each
    * ChatBlock frame (for `cards.ts` to validate fail-closed); the generator's
    * RETURN value is the terminal `done` summary. Throws `AgentApiError` on a
-   * pre-stream non-2xx.
+   * pre-stream non-2xx. Thin wrapper over `stream("/chat", …)`.
    */
   streamChat(
     request: ChatTurnRequest,
@@ -413,21 +425,22 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
     return (text ? JSON.parse(text) : undefined) as T;
   }
 
-  async function* streamChat(
-    chatRequest: ChatTurnRequest,
+  async function* stream(
+    path: string,
+    body: unknown,
     options: AgentStreamOptions = {},
   ): AsyncGenerator<string, ChatStreamDone | undefined, void> {
     const identity = await resolveIdentity(options.identity);
-    assertNoSignature(chatRequest);
+    assertNoSignature(body);
 
-    const res = await fetch(joinPath(resolveBaseUrl(config.baseUrl), "/chat"), {
+    const res = await fetch(joinPath(resolveBaseUrl(config.baseUrl), path), {
       method: "POST",
       headers: buildHeaders(identity, {
         accept: "sse",
         hasBody: true,
         idempotencyKey: options.idempotencyKey,
       }),
-      body: JSON.stringify(chatRequest),
+      body: JSON.stringify(body),
       signal: options.signal,
     });
 
@@ -436,7 +449,7 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
       throw new AgentApiError({
         code: "INTERNAL",
         httpStatus: res.status,
-        message: "Agent /chat stream returned no body.",
+        message: `Agent ${path} stream returned no body.`,
         retryable: true,
       });
     }
@@ -465,5 +478,12 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
     return undefined;
   }
 
-  return { request, streamChat };
+  async function* streamChat(
+    chatRequest: ChatTurnRequest,
+    options: AgentStreamOptions = {},
+  ): AsyncGenerator<string, ChatStreamDone | undefined, void> {
+    return yield* stream("/chat", chatRequest, options);
+  }
+
+  return { request, stream, streamChat };
 }
