@@ -8,11 +8,23 @@ A derived index/accelerator only -- never on the withdrawal path, holds no keys
 from __future__ import annotations
 
 from .config import DATABASE_URL_ENV, DatabaseConfig
+from .mandates import (
+    MandateRecord,
+    MandateStore,
+    MandateWrite,
+    PgMandateStore,
+    row_to_record,
+)
 from .pool import Database, get_database
 
 __all__ = [
     "DATABASE_URL_ENV",
     "Database",
     "DatabaseConfig",
+    "MandateRecord",
+    "MandateStore",
+    "MandateWrite",
+    "PgMandateStore",
     "get_database",
+    "row_to_record",
 ]

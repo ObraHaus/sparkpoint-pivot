@@ -1,0 +1,394 @@
+"""Recommender — rank whitelist-only strategies vs. the mandate + write the rationale.
+
+Grounding: agent-service-api.md §3.4 (ranked recommendations), plan.md Coordinator DAG
+stage ``propose``; research.md §6 (the recommender is the judgment-heavy agent, effort
+HIGH). Boundary echoes ``agents.strategy_recommender.SPEC`` (READ-only; holds no
+build/sim tool) — this module is that spec's runtime.
+
+Non-custody design (the crux of "a rogue LLM cannot move funds"):
+  - The candidate SET is CODE, not the model. :func:`build_action` only ever produces an
+    :class:`~sparkpoint_agent.policy.Action` for an allowlisted ``(action_type, asset)``
+    resolved from ``policy.get_policy_constants`` — an off-whitelist protocol is
+    unrepresentable, and an undeployed target (``resolve_target_ref -> None``) is dropped.
+  - The ``recipient`` is ALWAYS pinned to the user's own account in code (N1) — the model
+    has no field that can redirect funds.
+  - The model supplies ONLY prose (title/rationale) + rank ordering. Any actionType it
+    returns that is not in the code-built set is ignored.
+  - Amounts flow from the user's intent (or a notional default), never fabricated by the
+    ranker. Whatever amount/params reach the Action are still independently checked by
+    ``policy.evaluate`` in the DAG's gate — an over-cap / over-slippage proposal is
+    stamped ``rejected`` and is non-signable.
+
+Fail-closed: a model refusal returns no candidates (``refused=True``); unparseable
+ranking degrades to a deterministic code ordering with template rationales built from the
+INJECTED market data (never a fabricated APY).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+
+from ..llm import AsyncClaudeClient, Effort
+from ..policy import (
+    Action,
+    ActionType,
+    Asset,
+    RiskProfile,
+    get_policy_constants,
+    resolve_target_ref,
+)
+from ..wire import Citation
+from .planner import Intent, IntentKind
+
+# research.md §6 — the recommender is judgment-heavy.
+EFFORT: Effort = "high"
+
+# A notional suggested amount when the user named none (they set the real amount at
+# /build-tx). 100 USDC (6dp) — small, well within caps, positive (a zero amount fails the
+# policy schema step). Kept low so a placeholder can never itself breach a cap.
+DEFAULT_SUGGEST_AMOUNT = 100_000_000
+
+_ASSET_DECIMALS: dict[Asset, int] = {Asset.USDC: 6, Asset.ETH: 18}
+
+# The code-fixed yield candidate set for a RECOMMEND turn (whitelist only; FR-016). The
+# vault is the flagship; a bare Aave supply is the raw alternative. Swaps are proposed
+# only on an explicit build command (they need a live price simulation to be signable).
+_YIELD_STRATEGIES: tuple[tuple[ActionType, Asset], ...] = (
+    (ActionType.VAULT_DEPOSIT, Asset.USDC),
+    (ActionType.AAVE_SUPPLY, Asset.USDC),
+)
+
+_DEFAULT_TITLE: dict[ActionType, str] = {
+    ActionType.VAULT_DEPOSIT: "Deposit USDC into the profit-only Aave Yield Vault",
+    ActionType.AAVE_SUPPLY: "Supply USDC directly to Aave v3",
+    ActionType.AERODROME_SWAP: "Swap on Aerodrome",
+}
+
+RANK_SYSTEM = (
+    "You are SparkPoint's strategy recommender. You are given a fixed, pre-vetted set of "
+    "whitelisted strategies and the user's risk mandate. RANK them best-first for this "
+    "user and write a one-sentence plain-language rationale + a short title for each. You "
+    "may NOT invent new strategies, protocols, amounts, or APY figures — use only what is "
+    "provided. Respond with a SINGLE JSON object and nothing else:\n"
+    '  {"recommendations": [ {"actionType": "<one of the given>", "rank": <int>=1>, '
+    '"title": "<short>", "rationale": "<one sentence>"} ]}\n'
+    "Output JSON only."
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Candidate + proposal context.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ProposalContext:
+    """The deterministic inputs the recommender proposes against (assembled by the DAG).
+
+    Market figures (``gross_apy_bps`` / ``projected_apy_bps`` / ``performance_fee_bps``)
+    and ``citations`` are READ data supplied by the caller — never invented by the model.
+    ``resolved_targets`` carries the deploy-time vault address so the allowlist resolves.
+    """
+
+    chain_id: int
+    user_account: str
+    resolved_targets: dict[str, str] = field(default_factory=dict)
+    risk_profile: RiskProfile = RiskProfile.CONSERVATIVE
+    default_max_slippage_bps: int = 50
+    gross_apy_bps: int | None = None
+    projected_apy_bps: int | None = None
+    performance_fee_bps: int = 1000
+    citations: tuple[Citation, ...] = ()
+    suggested_amount: int | None = None
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """A proposed, whitelist-only strategy: the policy Action + advisory metadata.
+
+    ``action`` is the canonical policy-layer action the DAG hands to ``policy.evaluate``.
+    ``explicit`` marks a directly-commanded action (rendered as an ``action`` block) vs. a
+    ranked suggestion (rendered as a ``recommendation`` block).
+    """
+
+    action: Action
+    action_type: ActionType
+    rank: int = 1
+    title: str = ""
+    rationale: str = ""
+    citations: tuple[Citation, ...] = ()
+    gross_apy_bps: int | None = None
+    projected_apy_bps: int | None = None
+    performance_fee_bps: int | None = None
+    explicit: bool = False
+
+
+@dataclass(frozen=True)
+class RecommendationResult:
+    """The recommender's output. ``refused`` ⇒ surface a REFUSAL; ``degraded`` ⇒ the
+    deterministic fallback ranking was used (model output was unusable)."""
+
+    candidates: tuple[Candidate, ...]
+    refused: bool = False
+    degraded: bool = False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Whitelist-bound action builder — the code that pins protocol/target/recipient.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_action(
+    *,
+    chain_id: int,
+    action_type: ActionType,
+    asset: Asset,
+    amount: int,
+    user_account: str,
+    resolved_targets: dict[str, str],
+    risk_profile: RiskProfile,
+    max_slippage_bps: int | None = None,
+) -> Action | None:
+    """Build the canonical policy :class:`Action` for an allowlisted strategy, or ``None``.
+
+    ``None`` when the ``(action_type, asset)`` pair is not on the resolved allowlist or its
+    target is undeployed on this chain (fail-closed — an unrepresentable candidate is never
+    surfaced). ``recipient`` is pinned to ``user_account`` (N1); ``selector`` / ``target`` /
+    ``route_factory`` come straight from the policy constants the gate will re-check.
+    """
+    constants = get_policy_constants(chain_id)
+    matched = None
+    for candidate in constants.allowlist:
+        if candidate.action is action_type and asset in candidate.assets:
+            matched = candidate
+            break
+    if matched is None:
+        return None
+    target = resolve_target_ref(chain_id, matched.target_ref, resolved_targets)
+    if target is None:
+        return None
+    route_factory: str | None = None
+    if matched.route_factory_must_be is not None:
+        route_factory = resolve_target_ref(
+            chain_id, matched.route_factory_must_be, resolved_targets
+        )
+    slippage = max_slippage_bps if matched.slippage_bound else None
+    return Action(
+        action_type=action_type,
+        target=target,
+        selector=matched.selector,
+        asset=asset,
+        amount=amount,
+        decimals=_ASSET_DECIMALS[asset],
+        recipient=user_account,  # pinned in code — the model can never redirect funds (N1)
+        risk_class=risk_profile,
+        max_slippage_bps=slippage,
+        route_factory=route_factory,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM ranking parse (fail-closed).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _Rank:
+    rank: int
+    title: str
+    rationale: str
+
+
+def _parse_ranking(payload: object) -> dict[ActionType, _Rank]:
+    """Validate the ranker's JSON into ``{action_type: _Rank}`` (raises if unusable)."""
+    if not isinstance(payload, dict):
+        raise TypeError("ranking payload must be a JSON object")
+    items = payload.get("recommendations")
+    if not isinstance(items, list):
+        raise TypeError("recommendations must be a list")
+    out: dict[ActionType, _Rank] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            action_type = ActionType(str(item.get("actionType")))
+        except ValueError:
+            continue  # off-whitelist actionType from the model — ignored (non-custody)
+        rank = item.get("rank")
+        title = item.get("title")
+        rationale = item.get("rationale")
+        if not isinstance(rank, int) or isinstance(rank, bool) or rank < 1:
+            continue
+        if not isinstance(title, str) or not isinstance(rationale, str):
+            continue
+        out.setdefault(action_type, _Rank(rank=rank, title=title.strip(),
+                                          rationale=rationale.strip()))
+    if not out:
+        raise ValueError("no usable ranking entries")
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Recommender
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Recommender:
+    """The ``propose`` stage runner. HIGH effort; produces advisory candidates only."""
+
+    llm: AsyncClaudeClient
+    effort: Effort = EFFORT
+
+    async def propose(self, intent: Intent, ctx: ProposalContext) -> RecommendationResult:
+        """Produce ranked, whitelist-only :class:`Candidate`s for ``intent`` — fail-closed.
+
+        A BUILD_ACTION turn yields the single commanded action (no ranking LLM call). A
+        RECOMMEND turn builds the code-fixed yield set, then asks the model to rank + narrate
+        it; a refusal returns no candidates, malformed output degrades to a deterministic
+        ranking. The candidates are NOT yet policy-gated — the DAG stamps each one.
+        """
+        if intent.kind is IntentKind.BUILD_ACTION:
+            explicit = self._build_explicit(intent, ctx)
+            return RecommendationResult((explicit,) if explicit is not None else ())
+
+        built = self._build_yield_candidates(intent, ctx)
+        if not built:
+            return RecommendationResult(())
+
+        result = await self.llm.structured(
+            system=RANK_SYSTEM,
+            messages=[{"role": "user", "content": self._rank_prompt(built, ctx)}],
+            parse=_parse_ranking,
+            effort=self.effort,
+        )
+        if result.refused:
+            return RecommendationResult((), refused=True)
+        ranking = result.value if result.ok else None
+        candidates = self._assemble(built, ranking, ctx)
+        return RecommendationResult(candidates, degraded=ranking is None)
+
+    # -- explicit (directly-commanded) action ---------------------------------
+
+    def _build_explicit(self, intent: Intent, ctx: ProposalContext) -> Candidate | None:
+        """Build the single action the user commanded, or ``None`` if under-specified.
+
+        Returns ``None`` when action/asset/amount are not all present — the DAG then asks a
+        clarifying question rather than acting on a fabricated amount (non-custody).
+        """
+        if intent.action_type is None or intent.asset is None or intent.amount is None:
+            return None
+        slippage = (
+            intent.max_slippage_bps
+            if intent.max_slippage_bps is not None
+            else ctx.default_max_slippage_bps
+        )
+        action = build_action(
+            chain_id=ctx.chain_id,
+            action_type=intent.action_type,
+            asset=intent.asset,
+            amount=intent.amount,
+            user_account=ctx.user_account,
+            resolved_targets=ctx.resolved_targets,
+            risk_profile=ctx.risk_profile,
+            max_slippage_bps=slippage,
+        )
+        if action is None:
+            return None
+        return Candidate(
+            action=action,
+            action_type=intent.action_type,
+            explicit=True,
+            gross_apy_bps=ctx.gross_apy_bps,
+            projected_apy_bps=ctx.projected_apy_bps,
+            performance_fee_bps=ctx.performance_fee_bps,
+            citations=ctx.citations,
+        )
+
+    # -- ranked recommendations -----------------------------------------------
+
+    def _build_yield_candidates(
+        self, intent: Intent, ctx: ProposalContext
+    ) -> list[tuple[ActionType, Action]]:
+        amount = intent.amount or ctx.suggested_amount or DEFAULT_SUGGEST_AMOUNT
+        built: list[tuple[ActionType, Action]] = []
+        for action_type, asset in _YIELD_STRATEGIES:
+            action = build_action(
+                chain_id=ctx.chain_id,
+                action_type=action_type,
+                asset=asset,
+                amount=amount,
+                user_account=ctx.user_account,
+                resolved_targets=ctx.resolved_targets,
+                risk_profile=ctx.risk_profile,
+                max_slippage_bps=ctx.default_max_slippage_bps,
+            )
+            if action is not None:
+                built.append((action_type, action))
+        return built
+
+    def _assemble(
+        self,
+        built: list[tuple[ActionType, Action]],
+        ranking: dict[ActionType, _Rank] | None,
+        ctx: ProposalContext,
+    ) -> tuple[Candidate, ...]:
+        candidates: list[Candidate] = []
+        for index, (action_type, action) in enumerate(built):
+            rank_info = ranking.get(action_type) if ranking is not None else None
+            if rank_info is not None:
+                rank, title, rationale = rank_info.rank, rank_info.title, rank_info.rationale
+            else:
+                rank = index + 1
+                title = _DEFAULT_TITLE.get(action_type, action_type.value)
+                rationale = self._template_rationale(action_type, ctx)
+            candidates.append(
+                Candidate(
+                    action=action,
+                    action_type=action_type,
+                    rank=rank,
+                    title=title or _DEFAULT_TITLE.get(action_type, action_type.value),
+                    rationale=rationale or self._template_rationale(action_type, ctx),
+                    citations=ctx.citations,
+                    gross_apy_bps=ctx.gross_apy_bps,
+                    projected_apy_bps=ctx.projected_apy_bps,
+                    performance_fee_bps=ctx.performance_fee_bps,
+                )
+            )
+        # Sort best-first, then re-normalize to dense positive ranks (§2.7 rank ≥ 1).
+        candidates.sort(key=lambda c: (c.rank, c.action_type.value))
+        return tuple(replace(c, rank=i + 1) for i, c in enumerate(candidates))
+
+    def _template_rationale(self, action_type: ActionType, ctx: ProposalContext) -> str:
+        """A safe, non-fabricated fallback rationale built only from injected data."""
+        profile = ctx.risk_profile.value
+        if ctx.gross_apy_bps is not None:
+            gross = f"{ctx.gross_apy_bps / 100:.2f}% gross APY"
+            if action_type is ActionType.VAULT_DEPOSIT and ctx.projected_apy_bps is not None:
+                net = f"~{ctx.projected_apy_bps / 100:.2f}% net of the profit-only fee"
+                return (
+                    f"Matches your {profile}, capital-preservation mandate; {gross}, {net} "
+                    "(0% on principal)."
+                )
+            return f"Matches your {profile} mandate; USDC yield at {gross}."
+        return (
+            f"Matches your {profile} mandate; USDC yield via the 0-management, profit-only "
+            "vault."
+        )
+
+    def _rank_prompt(
+        self, built: list[tuple[ActionType, Action]], ctx: ProposalContext
+    ) -> str:
+        lines = [
+            f"risk_profile={ctx.risk_profile.value}",
+            f"grossApyBps={ctx.gross_apy_bps}",
+            f"projectedApyBps={ctx.projected_apy_bps}",
+            f"performanceFeeBps={ctx.performance_fee_bps}",
+            "strategies:",
+        ]
+        for action_type, action in built:
+            lines.append(
+                f"  - actionType={action_type.value} asset={action.asset.value} "
+                f"amount={action.amount}"
+            )
+        return "\n".join(lines)

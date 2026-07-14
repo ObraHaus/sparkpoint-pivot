@@ -25,6 +25,14 @@ from .claude import (
     ToolExecution,
     resolve_effort,
 )
+from .client import (
+    AnthropicTransport,
+    AsyncClaudeClient,
+    MessageTransport,
+    StructuredResult,
+    extract_json,
+    normalize_message,
+)
 
 __all__ = [
     "AGENT_EFFORT",
@@ -32,6 +40,8 @@ __all__ = [
     "MODEL",
     "OAUTH_BETA_HEADER",
     "AgentRole",
+    "AnthropicTransport",
+    "AsyncClaudeClient",
     "AuthMode",
     "ClaudeAuthError",
     "ClaudeClient",
@@ -39,7 +49,11 @@ __all__ = [
     "ClaudeUnsupportedError",
     "Effort",
     "LlmResult",
+    "MessageTransport",
+    "StructuredResult",
     "ToolCall",
     "ToolExecution",
+    "extract_json",
+    "normalize_message",
     "resolve_effort",
 ]

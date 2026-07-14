@@ -20,6 +20,7 @@ from fastapi.exceptions import RequestValidationError
 
 from ..chain import VaultUnavailable
 from ..policy import POLICY_VERSION
+from .chat import router as chat_router
 from .errors import (
     ApiError,
     api_error_handler,
@@ -27,7 +28,10 @@ from .errors import (
     validation_error_handler,
 )
 from .idempotency import IdempotencyStore
+from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
+from .portfolio import router as portfolio_router
+from .recommendations import router as recommendations_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
@@ -48,6 +52,17 @@ app.add_exception_handler(Exception, internal_error_handler)
 
 # §3.7 vault deposit/withdraw quote endpoints (READ/PREVIEW only; withdraw never gated, N2).
 app.include_router(vault_router)
+# §3.2 chat surface — SSE stream of policy-stamped ChatBlocks; NEVER returns a signable bundle.
+app.include_router(chat_router)
+# §3.1 onboarding + mandate — chat onboarding (SSE, terminal mandate_draft) + versioned
+# mandate CRUD. Advisory only; NEVER returns a signable bundle (FR-002/004).
+app.include_router(mandate_router)
+# §3.3 portfolio — enriched/derived, stale-markable reads (custody balances reconciled by
+# the frontend via direct RPC, SC-011); degrades to 200+stale, never traps a deposit/exit.
+app.include_router(portfolio_router)
+# §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
+# surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
+app.include_router(recommendations_router)
 
 
 @app.get("/healthz")

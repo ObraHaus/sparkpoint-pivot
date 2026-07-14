@@ -1,0 +1,100 @@
+"""Literacy — emit a non-signable, context-keyed TipCard (FR-007).
+
+Grounding: spec.md FR-007 (financial-literacy tips); agent-service-api.md §2.7 (the
+``tip`` ChatBlock). The literacy agent teaches a concept keyed by the planner's intent
+topic (e.g. ``what_is_apy``). A :class:`TipCard` carries NO action and NO policy stamp —
+it is structurally non-signable (the ``tip`` block has no ``proposedAction`` field), so
+this agent can never surface something the user could sign.
+
+Fail-closed: the model writes the body, but a refusal or an empty generation falls back
+to a pre-written, safe default explanation — the user always gets a correct tip, never a
+fabricated or empty one. Effort LOW (research.md §6 tiering; explanation is mechanical).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ..llm import AsyncClaudeClient, Effort
+
+EFFORT: Effort = "low"
+
+FALLBACK_TOPIC = "general"
+
+# Pre-written, safe fallbacks used when the model refuses or returns nothing. Keyed by the
+# planner's snake_case topic. These never promise a return or give buy/sell advice.
+DEFAULT_TIPS: dict[str, str] = {
+    "what_is_apy": (
+        "APY (annual percentage yield) is the yearly return on your deposit including "
+        "compounding. It is an estimate based on current rates, not a guarantee — the "
+        "real rate moves with the market."
+    ),
+    "what_is_a_vault": (
+        "A vault is a smart contract that pools deposits and puts them to work in a "
+        "strategy (here, lending USDC on Aave). You hold shares that represent your "
+        "portion; you can withdraw your share on-chain at any time."
+    ),
+    "what_is_slippage": (
+        "Slippage is the difference between the price you expect on a swap and the price "
+        "you actually get, caused by the market moving as your trade executes. A max-"
+        "slippage setting cancels the trade if it would move more than you allow."
+    ),
+    "what_is_a_performance_fee": (
+        "SparkPoint's performance fee is charged only on profit above your high-water "
+        "mark — 10% of yield, 0% on your principal, and nothing at all in flat or down "
+        "periods. It is taken as share dilution and never blocks your withdrawal."
+    ),
+    "what_is_non_custodial": (
+        "Non-custodial means you always control your funds: SparkPoint holds no keys and "
+        "cannot move your money. Every action is calldata your own wallet signs, and you "
+        "can exit directly on-chain even if the app is offline."
+    ),
+    FALLBACK_TOPIC: (
+        "SparkPoint is a non-custodial assistant: it can suggest and simulate strategies, "
+        "but only you can sign a transaction, and you keep control of your funds at all "
+        "times."
+    ),
+}
+
+SYSTEM = (
+    "You are SparkPoint's financial-literacy tutor. Explain the given DeFi concept in two "
+    "or three plain sentences a beginner can follow. Define any jargon you use. Do NOT give "
+    "buy/sell/allocation advice, do NOT promise or predict a specific return, and do NOT "
+    "invent numbers. Output plain text only (no headings, no markdown)."
+)
+
+
+@dataclass(frozen=True)
+class TipCard:
+    """A literacy tip (FR-007). Non-signable by construction — no action, no policy stamp."""
+
+    topic: str
+    body: str
+
+
+@dataclass
+class Literacy:
+    """The literacy stage runner — one prose LLM turn, fail-closed to a safe default."""
+
+    llm: AsyncClaudeClient
+    effort: Effort = EFFORT
+
+    async def tip(self, topic: str | None, *, context_hint: str | None = None) -> TipCard:
+        """Explain ``topic`` as a non-signable :class:`TipCard`, fail-closed.
+
+        A refusal or empty generation returns the pre-written default for the topic (or the
+        general fallback), so the surfaced tip is always safe and non-empty.
+        """
+        key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
+        user_content = f"concept={key}"
+        if context_hint:
+            user_content = f"{user_content}\ncontext={context_hint}"
+        result = await self.llm.complete(
+            system=SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+            effort=self.effort,
+        )
+        body = result.text.strip()
+        if result.refused or not body:
+            body = DEFAULT_TIPS.get(key, DEFAULT_TIPS[FALLBACK_TOPIC])
+        return TipCard(topic=key, body=body)
