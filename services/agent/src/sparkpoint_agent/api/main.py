@@ -13,6 +13,7 @@ reads/derivations only — never authority to move funds (agent-service-api.md �
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -42,6 +43,14 @@ from .vault import vault_unavailable_handler
 
 logger = logging.getLogger("sparkpoint_agent.api")
 
+# Startup must NEVER block on the DB: asyncpg.create_pool can hang for its full connect
+# timeout (~tens of seconds) if the DB is unreachable at boot, which stalls uvicorn startup
+# past the orchestrator's readiness deadline and gets the container killed. Bounding the
+# connect keeps the process coming up fast; a slow/unreachable DB just degrades to
+# postgres=false (fail-open for serving — the data layer is never on the withdraw/exit path).
+_DB_CONNECT_TIMEOUT_S = 10.0
+_DB_DISCONNECT_TIMEOUT_S = 5.0
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -50,25 +59,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Without this, the DB-backed reads (mandate / recommendations / onboarding persistence)
     hit an unconnected pool and 500 — the pool is created lazily but never ``connect()``-ed.
 
-    FAIL-OPEN for serving (never for custody): if the DB is unreachable at boot we log a
-    warning (NEVER the DSN) and still start, so /healthz + the fail-closed advisory paths keep
-    serving and /readyz honestly reports ``postgres=false``. The data layer is a derived
-    accelerator only — never on the withdraw/exit path (N2), so a DB outage cannot trap funds.
+    FAIL-OPEN for serving (never for custody): a connect that errors OR times out is logged
+    (NEVER the DSN) and the app still starts, so /healthz + the fail-closed advisory paths keep
+    serving and /readyz honestly reports ``postgres=false``. The startup connect is bounded
+    (``_DB_CONNECT_TIMEOUT_S``) so a DB blip can't hang boot and get the container killed. The
+    data layer is a derived accelerator only — never on the withdraw/exit path (N2), so a DB
+    outage cannot trap funds.
     """
     db = None
     try:
         db = get_database()
-        await db.connect()
+        await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
     except Exception:
-        # Never interpolate the exception/DSN — a connect error can carry the credential.
-        logger.warning("db_pool_connect_failed; DB-backed reads will degrade (fail-closed)")
+        # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
+        # (a connect error can carry the credential). Startup proceeds regardless.
+        logger.warning("db_pool_connect_unavailable; DB-backed reads will degrade (fail-closed)")
     try:
         yield
     finally:
         if db is not None:
             try:
-                await db.disconnect()
+                await asyncio.wait_for(db.disconnect(), timeout=_DB_DISCONNECT_TIMEOUT_S)
             except Exception:
                 logger.warning("db_pool_disconnect_error")
 

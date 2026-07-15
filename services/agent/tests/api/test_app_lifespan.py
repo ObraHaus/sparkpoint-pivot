@@ -15,6 +15,8 @@ never-trap-funds posture: a DB outage degrades intelligence, never custody — N
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -72,3 +74,24 @@ def test_readyz_postgres_false_when_db_unreachable(monkeypatch: pytest.MonkeyPat
         assert body["checks"]["postgres"] is False
         # The app is still up + serving (liveness unaffected by the DB outage).
         assert client.get("/healthz").json()["status"] == "ok"
+
+
+class _HangingDB(_FakeDB):
+    """A DB whose connect never resolves — models an unreachable host where asyncpg's
+    create_pool blocks until its own (long) timeout. Startup must NOT wait on it."""
+
+    async def connect(self) -> None:
+        await asyncio.sleep(3600)  # would hang boot without the bounded wait_for
+
+
+def test_startup_does_not_block_on_a_hanging_db_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for the exited:unhealthy deploy: a hanging connect must not stall startup past
+    # the orchestrator's readiness deadline. With the connect bounded, the app comes up promptly
+    # and reports postgres=false — never a killed container.
+    monkeypatch.setattr(main, "_DB_CONNECT_TIMEOUT_S", 0.05)
+    fake = _HangingDB()
+    monkeypatch.setattr(main, "get_database", lambda: fake)
+
+    with TestClient(main.app) as client:  # must enter promptly despite the 1h-hanging connect
+        assert client.get("/healthz").json()["status"] == "ok"
+        assert client.get("/readyz").json()["checks"]["postgres"] is False
