@@ -95,7 +95,7 @@ def test_is_valid_key() -> None:
 
 async def test_idempotency_store_replays_first_write() -> None:
     store = IdempotencyStore()
-    idem_key = "123e4567-e89b-12d3-a456-426614174000"  # gitleaks:allow (example UUID fixture, not a secret)
+    idem_key = "123e4567-e89b-12d3-a456-426614174000"  # gitleaks:allow (example UUID)
     assert await store.get(idem_key) is None
     await store.put(idem_key, StoredResponse(200, "application/json", b'{"ok":true}'))
     first = await store.get(idem_key)
