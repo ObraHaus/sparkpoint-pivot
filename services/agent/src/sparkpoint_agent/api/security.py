@@ -119,9 +119,11 @@ def parse_account_headers(
             if chain_id not in API_SUPPORTED_CHAIN_IDS:
                 _bad(f"X-Chain-Id {chain_id} unsupported (want {list(API_SUPPORTED_CHAIN_IDS)}).")
 
-    if x_account and x_owner and _ADDRESS_RE.match(x_account) and _ADDRESS_RE.match(x_owner):
-        if x_account.lower() == x_owner.lower():
-            _bad("X-Account must differ from X-Owner (account != owner EOA).")
+    # NOTE: account == owner is ACCEPTED (EOA-direct mode). Until the ERC-4337 AccountFactory
+    # is deployed + the frontend derives each user's counterfactual SparkPointAccount (W6), the
+    # connected EOA legitimately IS both the identity anchor and the owner. When AA accounts go
+    # live, the account will be the CREATE2-derived address (≠ owner) — no gate change needed
+    # then, since a differing account also passes here.
 
     if reasons:
         raise ApiError(
