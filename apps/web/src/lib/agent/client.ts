@@ -168,9 +168,6 @@ export class AgentApiError extends Error {
 
 /* ── URL + header + non-custody helpers ────────────────────────────────────── */
 
-/** Default versioned base path (§1.1); appended only when not already present. */
-const DEFAULT_API_PREFIX = "/api/v1";
-
 function resolveBaseUrl(configBase?: string): string {
   const raw = configBase ?? process.env.NEXT_PUBLIC_AGENT_BASE_URL;
   if (!raw) {
@@ -178,9 +175,11 @@ function resolveBaseUrl(configBase?: string): string {
       "AgentClient: NEXT_PUBLIC_AGENT_BASE_URL is not configured (and no baseUrl override was given).",
     );
   }
-  const trimmed = raw.replace(/\/+$/, "");
-  // Respect an explicit `/api/vN` segment; otherwise append the default (§1.1).
-  return /\/api\/v\d+$/.test(trimmed) ? trimmed : `${trimmed}${DEFAULT_API_PREFIX}`;
+  // Use the configured base URL VERBATIM (minus a trailing slash) + the endpoint path.
+  // The versioned prefix (§1.1 `/api/v1`) — if the deployment uses one — is part of
+  // NEXT_PUBLIC_AGENT_BASE_URL, so the base is the single source of truth and the client
+  // never guesses a prefix the service may not mount (the develop agent serves at root).
+  return raw.replace(/\/+$/, "");
 }
 
 function joinPath(base: string, path: string): string {
