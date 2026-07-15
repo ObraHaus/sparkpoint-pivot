@@ -3,13 +3,16 @@
 /**
  * useAgent — the React seam that binds the mock screens to the live Hermes agent
  * service (T070/T075/T081/T082). It resolves a per-user {@link AgentIdentity} from
- * wagmi, constructs a memoized {@link AgentClient} from `NEXT_PUBLIC_AGENT_BASE_URL`
- * (via `env.agentBaseUrl`), and exposes react-query reads + streaming drivers for
- * the four surfaces.
+ * wagmi and constructs a memoized {@link AgentClient} that targets the same-origin
+ * BFF (`/api/agent`) by default — the server-side route handler injects the bearer
+ * and forwards to the agent, so NO token/agent-URL lives in the client bundle. It
+ * exposes react-query reads + streaming drivers for the four surfaces.
  *
- * GRACEFUL OFFLINE (non-custody law): when `NEXT_PUBLIC_AGENT_BASE_URL` is unset OR
- * no wallet is connected, every hook reports `online === false` and returns `null`
- * data. Callers then keep rendering the existing mock UI — NEVER a crash, never a
+ * GRACEFUL OFFLINE (non-custody law): when no wallet is connected, every hook
+ * reports `online === false` and returns `null` data. The BFF is same-origin and
+ * always reachable, so "online" no longer needs a configured base URL; if the
+ * agent itself is down the BFF returns a §1.5 error envelope that surfaces as an
+ * error card. Callers keep rendering the existing mock UI — NEVER a crash, never a
  * blocked withdraw/exit path. The agent is advisory: these hooks only READ and
  * PROPOSE; the client itself fail-closes any signature (N1/N3), and nothing here
  * makes a block signable — that stays `cards.isSignable` (policy.status="approved").
@@ -39,32 +42,33 @@ export function useAgentIdentity(): AgentIdentity | null {
   const { address, chainId } = useAccount();
   return useMemo<AgentIdentity | null>(() => {
     if (!address) return null;
-    // The web-tier service bearer (§1.2). For the develop/staging demo it is a public
-    // NEXT_PUBLIC token gating the advisory (keyless) agent — NOT a custody credential;
-    // production fronts the agent with a same-origin BFF so no token reaches the browser.
-    const bearerToken = env.agentToken;
-    return { account: address, owner: address, chainId: chainId ?? DEFAULT_CHAIN_ID, bearerToken };
+    // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the
+    // service token server-side, so the browser never holds a credential (§1.2).
+    return { account: address, owner: address, chainId: chainId ?? DEFAULT_CHAIN_ID };
   }, [address, chainId]);
 }
 
 export interface AgentConnection {
-  /** The memoized client, or `null` when the agent is not configured/connected. */
+  /** The memoized client, or `null` when no wallet identity is resolved yet. */
   client: AgentClient | null;
-  /** `true` iff a base URL is configured AND a wallet identity is resolved. */
+  /** `true` iff a wallet identity is resolved (the BFF is always same-origin reachable). */
   online: boolean;
   identity: AgentIdentity | null;
 }
 
 /**
- * Resolve the agent client for the current identity + configured base URL. Returns
- * `client: null` (and `online: false`) whenever the agent isn't wired yet — the
- * signal every surface uses to fall back to its mock rendering.
+ * Resolve the agent client for the current identity. The client targets the
+ * same-origin BFF (`/api/agent`) by default; `env.agentBaseUrl` is an OPTIONAL
+ * direct-to-agent override (normally unset). Returns `client: null` (and
+ * `online: false`) until a wallet is connected — the signal every surface uses to
+ * fall back to its mock rendering. An agent that is down does NOT read as offline
+ * here: the call still fires and the BFF's error envelope surfaces as an error card.
  */
 export function useAgentClient(): AgentConnection {
   const identity = useAgentIdentity();
   const baseUrl = env.agentBaseUrl;
   const client = useMemo<AgentClient | null>(() => {
-    if (!baseUrl || !identity) return null;
+    if (!identity) return null;
     return createAgentClient({ baseUrl, identity });
   }, [baseUrl, identity]);
   return { client, online: client !== null, identity };

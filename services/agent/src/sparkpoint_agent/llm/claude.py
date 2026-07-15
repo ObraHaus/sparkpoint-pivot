@@ -51,6 +51,13 @@ MODEL = "claude-opus-4-8"
 CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 OAUTH_BETA_HEADER = "oauth-2025-04-20"
 
+# Credential env vars, in PREFERENCE order (work order (0)): a freshly-rotated Claude-Code
+# OAuth token wins over the legacy one, and OAuth wins over a plain API key. Read via
+# ``os.getenv`` only; the VALUE is never logged (redacted in every error/repr).
+NEW_OAUTH_TOKEN_ENV = "NEW_ANTHROPIC_OAUTH_TOKEN"  # noqa: S105 — env var NAME, not a secret
+OAUTH_TOKEN_ENV = "ANTHROPIC_OAUTH_TOKEN"  # noqa: S105 — env var NAME, not a secret
+API_KEY_ENV = "ANTHROPIC_API_KEY"
+
 # Stream above this many output tokens to avoid SDK HTTP timeouts (claude-api skill).
 DEFAULT_MAX_TOKENS = 16000
 STREAM_THRESHOLD = 16000
@@ -116,6 +123,31 @@ class ClaudeUnsupportedError(ClaudeError):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Credential resolution (shared by the sync + async clients)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def credential_from_env() -> tuple[AuthMode, str]:
+    """Resolve the credential from the environment in PREFERENCE order (work order (0)).
+
+    ``NEW_ANTHROPIC_OAUTH_TOKEN`` (freshly rotated) → ``ANTHROPIC_OAUTH_TOKEN`` (legacy) →
+    ``ANTHROPIC_API_KEY``. Returns the auth MODE + the secret value; the value is handed
+    straight to the SDK client and is NEVER logged. Fail-closed: no credential raises
+    :class:`ClaudeAuthError` rather than building a silent unauthenticated client.
+    """
+    oauth_token = os.getenv(NEW_OAUTH_TOKEN_ENV) or os.getenv(OAUTH_TOKEN_ENV)
+    if oauth_token:
+        return AuthMode.OAUTH, oauth_token
+    api_key = os.getenv(API_KEY_ENV)
+    if api_key:
+        return AuthMode.API_KEY, api_key
+    raise ClaudeAuthError(
+        "no credential: set NEW_ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_OAUTH_TOKEN "
+        "(Claude-Code OAuth), or ANTHROPIC_API_KEY"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Result / tool types
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -144,12 +176,51 @@ class ToolExecution:
 
 
 @dataclass(frozen=True)
+class Usage:
+    """Token accounting from a Claude response — the prompt-cache observability seam.
+
+    ``cache_read_input_tokens`` is the count served from the cached stable prefix; a WARM
+    call should report ``> 0`` (work order (c)). A silent cache invalidation (the stable
+    prefix drifting, or ``cache_control`` being dropped) shows up here as this counter
+    falling to ``0`` — the integration check asserts on exactly this.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
+def extract_usage(msg: Any) -> Usage | None:
+    """Read the SDK ``Message.usage`` into a typed :class:`Usage` (``None`` when absent).
+
+    Duck-typed and defensive (the SDK's usage fields are version-fluid and the cache fields
+    may be omitted on some responses) — a missing counter reads as ``0``, never an error.
+    """
+    raw = getattr(msg, "usage", None)
+    if raw is None:
+        return None
+
+    def _count(name: str) -> int:
+        value = getattr(raw, name, 0)
+        return value if isinstance(value, int) else 0
+
+    return Usage(
+        input_tokens=_count("input_tokens"),
+        output_tokens=_count("output_tokens"),
+        cache_read_input_tokens=_count("cache_read_input_tokens"),
+        cache_creation_input_tokens=_count("cache_creation_input_tokens"),
+    )
+
+
+@dataclass(frozen=True)
 class LlmResult:
     """The normalized outcome of a Claude turn / loop.
 
     ``refused`` — the model declined (``stop_reason == "refusal"``); ``text`` is
     empty and the caller MUST NOT fabricate a recommendation. ``halted`` — a
-    manual-loop ``executor`` denied a proposed tool call (non-custody gate).
+    manual-loop ``executor`` denied a proposed tool call (non-custody gate). ``usage``
+    carries token accounting (incl. ``cache_read_input_tokens``) when the SDK reports it.
     """
 
     text: str
@@ -158,6 +229,7 @@ class LlmResult:
     refusal_category: str | None = None
     halted: bool = False
     tool_calls: tuple[ToolCall, ...] = ()
+    usage: Usage | None = None
     raw: Any = None
 
 
@@ -199,20 +271,16 @@ class ClaudeClient:
 
     @classmethod
     def from_env(cls, *, model: str = MODEL) -> ClaudeClient:
-        """Prefer the Claude-Code OAuth token; fall back to a plain API key.
+        """Resolve the credential in preference order (work order (0)), fail-closed.
 
-        :raises ClaudeAuthError: when neither ``ANTHROPIC_OAUTH_TOKEN`` nor
-            ``ANTHROPIC_API_KEY`` is set (fail-closed — no silent unauthenticated client).
+        ``NEW_ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_API_KEY``.
+
+        :raises ClaudeAuthError: when none is set (no silent unauthenticated client).
         """
-        oauth_token = os.getenv("ANTHROPIC_OAUTH_TOKEN")
-        if oauth_token:
-            return cls.for_oauth(oauth_token, model=model)
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            return cls.for_api_key(api_key, model=model)
-        raise ClaudeAuthError(
-            "no credential: set ANTHROPIC_OAUTH_TOKEN (Claude-Code OAuth) or ANTHROPIC_API_KEY"
-        )
+        mode, value = credential_from_env()
+        if mode is AuthMode.OAUTH:
+            return cls.for_oauth(value, model=model)
+        return cls.for_api_key(value, model=model)
 
     @property
     def is_oauth(self) -> bool:
@@ -303,6 +371,7 @@ class ClaudeClient:
             text="".join(text_parts),
             stop_reason=stop_reason,
             tool_calls=tuple(tool_calls),
+            usage=extract_usage(msg),
             raw=msg,
         )
 

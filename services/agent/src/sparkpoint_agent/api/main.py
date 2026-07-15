@@ -103,7 +103,11 @@ def readyz() -> dict[str, object]:
     checks = {
         "sim_fork": bool(os.getenv("SIM_FORK_RPC_URL")),
         "base_rpc": bool(os.getenv("BASE_SEPOLIA_RPC_URL") or os.getenv("ALCHEMY_ACCESS_KEY")),
-        "anthropic": bool(os.getenv("ANTHROPIC_OAUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY")),
+        "anthropic": bool(
+            os.getenv("NEW_ANTHROPIC_OAUTH_TOKEN")
+            or os.getenv("ANTHROPIC_OAUTH_TOKEN")
+            or os.getenv("ANTHROPIC_API_KEY")
+        ),
         "postgres": bool(os.getenv("DATABASE_URL")),
     }
     return {

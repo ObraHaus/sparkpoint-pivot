@@ -18,12 +18,34 @@
 import { Icon } from "@/lib/icons";
 import { RiskChip } from "@/components/ui/risk-chip";
 import type { ChatCard } from "@/lib/agent/cards";
+import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
+import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
-/** Map a proposed-action type to the chat screen's inline-confirm kind. */
-function inlineKindFor(type: string): "deposit" | "swap" | "bridge" {
-  const t = type.toLowerCase();
-  if (t.includes("swap")) return "swap";
-  return "deposit";
+/**
+ * Map a live block's `proposedAction` to the chat inline-confirm intent, carrying the
+ * LIVE amount so a vault action drives the REAL execution path (never a mock amount).
+ * Vault deposit/withdraw/redeem resolve to the real vault gate; anything else is a
+ * non-signable "ships at launch" placeholder.
+ */
+function inlineIntentFor(action: ProposedAction): InlineIntent {
+  const amount = (() => {
+    try {
+      return BigInt(action.amount);
+    } catch {
+      return 0n;
+    }
+  })();
+  switch (action.type) {
+    case "vault_deposit":
+      return { kind: "deposit", assets: amount };
+    case "vault_withdraw":
+      return { kind: "withdraw", assets: amount };
+    case "vault_redeem":
+      return { kind: "withdraw", shares: amount };
+    default:
+      // aerodrome_swap and any non-vault action are not on-chain-live yet.
+      return { kind: "swap" };
+  }
 }
 
 const REJECTED_FALLBACK =
@@ -73,8 +95,8 @@ export interface LiveBlocksProps {
   streaming: boolean;
   /** Set when the stream failed pre-/mid-flight — rendered as an inert notice. */
   error?: string;
-  /** Open the chat's inline confirm for a signable proposed action. */
-  onReview: (kind: "deposit" | "swap" | "bridge") => void;
+  /** Open the chat's inline confirm for a signable proposed action (with its live amount). */
+  onReview: (intent: InlineIntent) => void;
   /** Open the citation source sheet. */
   onCite: () => void;
 }
@@ -104,7 +126,7 @@ function LiveBlock({
   onCite,
 }: {
   card: ChatCard;
-  onReview: (kind: "deposit" | "swap" | "bridge") => void;
+  onReview: (intent: InlineIntent) => void;
   onCite: () => void;
 }) {
   // Fail-closed: an unvalidated / malformed block renders inert, never actionable.
@@ -145,7 +167,7 @@ function LiveBlock({
             <div className="cact">
               <button
                 className="btn btn-primary btn-md"
-                onClick={() => onReview(inlineKindFor(block.proposedAction.type))}
+                onClick={() => onReview(inlineIntentFor(block.proposedAction))}
               >
                 Review this move
               </button>
@@ -170,7 +192,7 @@ function LiveBlock({
               <div className="cact">
                 <button
                   className="btn btn-primary btn-md"
-                  onClick={() => onReview(inlineKindFor(block.proposedAction.type))}
+                  onClick={() => onReview(inlineIntentFor(block.proposedAction))}
                 >
                   Review this move
                 </button>

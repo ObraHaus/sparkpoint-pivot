@@ -34,12 +34,6 @@ export interface AgentIdentity {
   owner: `0x${string}`;
   /** `X-Chain-Id` — 8453 (Base) | 84532 (Base Sepolia). */
   chainId: number;
-  /**
-   * `Authorization: Bearer <token>` — the service-to-service web-tier token.
-   * Optional: the browser never holds custody authority, so many call sites run
-   * without it (e.g. behind a same-origin proxy). Sent only when present.
-   */
-  bearerToken?: string;
 }
 
 /** A lazily-resolved identity so call sites can bind to wallet/session state. */
@@ -48,7 +42,11 @@ export type AgentIdentityInput =
   | (() => AgentIdentity | Promise<AgentIdentity>);
 
 export interface AgentClientConfig {
-  /** Overrides `NEXT_PUBLIC_AGENT_BASE_URL`. Resolved lazily, per request. */
+  /**
+   * Overrides the default same-origin BFF base (`/api/agent`). Resolved lazily,
+   * per request. Normally omitted: the browser hits the web app's own origin and
+   * the server-side BFF injects the bearer + forwards to the agent.
+   */
   baseUrl?: string;
   /** Default identity; may be overridden per call. */
   identity?: AgentIdentityInput;
@@ -168,17 +166,17 @@ export class AgentApiError extends Error {
 
 /* ── URL + header + non-custody helpers ────────────────────────────────────── */
 
+/** The same-origin BFF mount. A relative base ⇒ the browser hits its own origin. */
+const DEFAULT_BASE_URL = "/api/agent";
+
 function resolveBaseUrl(configBase?: string): string {
-  const raw = configBase ?? process.env.NEXT_PUBLIC_AGENT_BASE_URL;
-  if (!raw) {
-    throw new Error(
-      "AgentClient: NEXT_PUBLIC_AGENT_BASE_URL is not configured (and no baseUrl override was given).",
-    );
-  }
-  // Use the configured base URL VERBATIM (minus a trailing slash) + the endpoint path.
-  // The versioned prefix (§1.1 `/api/v1`) — if the deployment uses one — is part of
-  // NEXT_PUBLIC_AGENT_BASE_URL, so the base is the single source of truth and the client
-  // never guesses a prefix the service may not mount (the develop agent serves at root).
+  // Default to the same-origin BFF (`/api/agent`): the browser calls the web app's
+  // own origin and the server-side route handler adds the bearer + forwards to the
+  // agent, so NO agent URL or token ever reaches the client bundle. An explicit
+  // `NEXT_PUBLIC_AGENT_BASE_URL` (or a `baseUrl` config) is an OPTIONAL override —
+  // e.g. pointing a preview build straight at a deployed agent. Used VERBATIM (minus
+  // a trailing slash); any versioned prefix (§1.1 `/api/v1`) belongs to that value.
+  const raw = configBase ?? process.env.NEXT_PUBLIC_AGENT_BASE_URL ?? DEFAULT_BASE_URL;
   return raw.replace(/\/+$/, "");
 }
 
@@ -187,17 +185,17 @@ function joinPath(base: string, path: string): string {
 }
 
 /**
- * Build the §1.2 request headers. `Authorization` is set only when a bearer
- * token is present; `Content-Type` only when there is a body.
+ * Build the §1.2 request headers. NO `Authorization` is set here: the browser
+ * holds no service bearer — the same-origin BFF injects it server-side. Only the
+ * identity/idempotency headers cross the wire; `Content-Type` only when there is a
+ * body. (For an optional direct-to-agent override the BFF is bypassed, and the
+ * agent is keyless/advisory, so the absent bearer stays non-custodial regardless.)
  */
 function buildHeaders(
   identity: AgentIdentity,
   opts: { accept: "json" | "sse"; hasBody: boolean; idempotencyKey?: string },
 ): Headers {
   const headers = new Headers();
-  if (identity.bearerToken) {
-    headers.set("Authorization", `Bearer ${identity.bearerToken}`);
-  }
   headers.set("X-Account", identity.account);
   headers.set("X-Owner", identity.owner);
   headers.set("X-Chain-Id", String(identity.chainId));

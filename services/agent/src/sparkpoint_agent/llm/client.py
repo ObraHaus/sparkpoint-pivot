@@ -29,7 +29,6 @@ logged — this module emits no logs and keeps the token inside the SDK object
 from __future__ import annotations
 
 import json
-import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -41,12 +40,14 @@ from .claude import (
     OAUTH_BETA_HEADER,
     AgentRole,
     AuthMode,
-    ClaudeAuthError,
     Effort,
     LlmResult,
     ToolCall,
+    credential_from_env,
+    extract_usage,
     resolve_effort,
 )
+from .resilience import Limiter, RetryPolicy, call_with_resilience
 
 # Async agents produce small structured/prose outputs, so the async path uses a
 # single non-streaming ``create`` (the large-output streaming path stays in the sync
@@ -99,22 +100,27 @@ class AnthropicTransport:
 
     @classmethod
     def for_oauth(cls, oauth_token: str) -> AnthropicTransport:
-        """Claude-Code OAuth: Bearer token + the ``oauth-2025-04-20`` beta header."""
+        """Claude-Code OAuth: Bearer token + the ``oauth-2025-04-20`` beta header.
+
+        ``max_retries=0`` hands 429/529 handling entirely to :mod:`.resilience` — the SDK's
+        own silent retry would otherwise double-back-off and hide the events we must log.
+        """
         from anthropic import AsyncAnthropic
 
         return cls(
             client=AsyncAnthropic(
                 auth_token=oauth_token,
                 default_headers={"anthropic-beta": OAUTH_BETA_HEADER},
+                max_retries=0,
             )
         )
 
     @classmethod
     def for_api_key(cls, api_key: str) -> AnthropicTransport:
-        """Plain ``ANTHROPIC_API_KEY`` (Phase-3)."""
+        """Plain ``ANTHROPIC_API_KEY`` (Phase-3). ``max_retries=0`` — resilience owns retry."""
         from anthropic import AsyncAnthropic
 
-        return cls(client=AsyncAnthropic(api_key=api_key))
+        return cls(client=AsyncAnthropic(api_key=api_key, max_retries=0))
 
     async def create(
         self,
@@ -158,7 +164,12 @@ def normalize_message(msg: Any) -> LlmResult:
         details = getattr(msg, "stop_details", None)
         category = getattr(details, "category", None) if details is not None else None
         return LlmResult(
-            text="", stop_reason=stop_reason, refused=True, refusal_category=category, raw=msg
+            text="",
+            stop_reason=stop_reason,
+            refused=True,
+            refusal_category=category,
+            usage=extract_usage(msg),
+            raw=msg,
         )
 
     text_parts: list[str] = []
@@ -181,6 +192,7 @@ def normalize_message(msg: Any) -> LlmResult:
         text="".join(text_parts),
         stop_reason=stop_reason,
         tool_calls=tuple(tool_calls),
+        usage=extract_usage(msg),
         raw=msg,
     )
 
@@ -289,6 +301,10 @@ class AsyncClaudeClient:
     transport: MessageTransport = field(repr=False)
     auth_mode: AuthMode
     model: str = MODEL
+    # 429/529 resilience knobs. ``limiter=None`` uses the process-global limiter (work
+    # order (b)); an injected :class:`Limiter` is for tests only.
+    retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
+    limiter: Limiter | None = None
 
     # -- construction ---------------------------------------------------------
 
@@ -304,20 +320,16 @@ class AsyncClaudeClient:
 
     @classmethod
     def from_env(cls, *, model: str = MODEL) -> AsyncClaudeClient:
-        """Prefer the Claude-Code OAuth token; fall back to a plain API key (fail-closed).
+        """Resolve the credential in preference order (work order (0)), fail-closed.
 
-        :raises ClaudeAuthError: when neither ``ANTHROPIC_OAUTH_TOKEN`` nor
-            ``ANTHROPIC_API_KEY`` is set (no silent unauthenticated client).
+        ``NEW_ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_API_KEY``.
+
+        :raises ClaudeAuthError: when none is set (no silent unauthenticated client).
         """
-        oauth_token = os.getenv("ANTHROPIC_OAUTH_TOKEN")
-        if oauth_token:
-            return cls.for_oauth(oauth_token, model=model)
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            return cls.for_api_key(api_key, model=model)
-        raise ClaudeAuthError(
-            "no credential: set ANTHROPIC_OAUTH_TOKEN (Claude-Code OAuth) or ANTHROPIC_API_KEY"
-        )
+        mode, value = credential_from_env()
+        if mode is AuthMode.OAUTH:
+            return cls.for_oauth(value, model=model)
+        return cls.for_api_key(value, model=model)
 
     @property
     def is_oauth(self) -> bool:
@@ -360,15 +372,28 @@ class AsyncClaudeClient:
         The advisory agents never execute tools through this client (the state-changing
         path uses the sync manual loop with the policy gate interposed); ``tools`` is
         accepted for read-only tool hints only.
+
+        The single non-streaming ``create`` is wrapped in :func:`call_with_resilience`:
+        429/529 are retried (jittered backoff, honoring ``Retry-After``) under the global
+        concurrency limiter, then fail closed. Because ``create`` returns a whole ``Message``
+        atomically, a retry always happens BEFORE any token/block reaches the SSE surface —
+        it can never restart a half-emitted stream (work order (a)).
         """
         eff = resolve_effort(role, effort)
-        msg = await self.transport.create(
-            model=self.model,
-            system=self._system_blocks(system),
-            messages=[dict(m) for m in messages],
-            max_tokens=max_tokens,
-            tools=tools,
-            extra_body=self._extra_body(eff, thinking),
+        system_blocks = self._system_blocks(system)
+        request_messages = [dict(m) for m in messages]
+        extra_body = self._extra_body(eff, thinking)
+        msg = await call_with_resilience(
+            lambda: self.transport.create(
+                model=self.model,
+                system=system_blocks,
+                messages=request_messages,
+                max_tokens=max_tokens,
+                tools=tools,
+                extra_body=extra_body,
+            ),
+            policy=self.retry_policy,
+            limiter=self.limiter,
         )
         return normalize_message(msg)
 
