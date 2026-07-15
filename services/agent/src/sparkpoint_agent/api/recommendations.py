@@ -58,7 +58,7 @@ from ..coordinator import (
     RecommendationsResult,
 )
 from ..db.mandates import MandateStore
-from ..llm import AsyncClaudeClient
+from ..llm import AsyncClaudeClient, ClaudeError, LlmBusyError, status_code
 from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
 from .errors import ApiError, ErrorCode, ErrorReason
 from .mandate import get_mandate_store
@@ -75,6 +75,16 @@ _VAULT_TARGET_REF = "sparkpoint_vault"
 # A generous ceiling for the detail recompute — there are only a couple of yield
 # strategies, so this never truncates while finding a rec by id.
 _DETAIL_LIMIT = 25
+
+# HTTP statuses on a raised provider error that mean "the model is temporarily unavailable"
+# (rate-limited or upstream 5xx) rather than a bug here — mapped to UPSTREAM_UNAVAILABLE (503).
+_LLM_UNAVAILABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504, 529})
+
+# The single, non-leaking message for a transient model outage on the recommend path.
+_UPSTREAM_DOWN_MESSAGE = (
+    "The assistant is temporarily unavailable, so fresh recommendations can't be produced "
+    "right now. Nothing was changed — please try again shortly."
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -345,11 +355,30 @@ async def _compute(
     *,
     limit: int,
 ) -> tuple[RecommendationsResult, list[RecommendationItem]]:
-    """Run the deterministic recommend DAG and map its cleared blocks to §3.4 items."""
+    """Run the deterministic recommend DAG and map its cleared blocks to §3.4 items.
+
+    A model outage (rate-limit exhaustion / 5xx / limiter saturation) is a TRANSIENT
+    upstream condition, so it surfaces as ``UPSTREAM_UNAVAILABLE`` (503, retryable) — the
+    same mapping ``/chat`` and ``get_coordinator_dag`` use — never a 500 ``INTERNAL`` that
+    implies a bug in this service. Fail-closed: no fabricated ranking is ever returned; the
+    caller simply retries when the assistant recovers (the frontend degrades to its inert
+    strategy view meanwhile). Genuine (non-upstream) errors propagate unchanged → 500.
+    """
     caps, fee_bps, stale = await _read_gate_inputs(reader, account)
     chain = _build_chain_context(account, config, caps, fee_bps, stale)
     dag = _build_dag(llm, mandate_provider, stale=stale)
-    result = await dag.run_recommendations(chain, limit=limit)
+    try:
+        result = await dag.run_recommendations(chain, limit=limit)
+    except (ClaudeError, LlmBusyError) as exc:
+        # Domain LLM failures (auth / limiter saturation / unsupported) → temporarily down.
+        raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, _UPSTREAM_DOWN_MESSAGE) from exc
+    except Exception as exc:
+        # After the resilience layer exhausts its retries it re-raises the raw provider error
+        # (e.g. a 429 RateLimitError); classify it by HTTP status so a transient upstream
+        # outage reads as 503, while a real internal bug (no upstream status) still 500s.
+        if status_code(exc) in _LLM_UNAVAILABLE_STATUS:
+            raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, _UPSTREAM_DOWN_MESSAGE) from exc
+        raise
     items = [_to_item(block, chain, stale=result.stale) for block in result.recommendations]
     return result, items
 

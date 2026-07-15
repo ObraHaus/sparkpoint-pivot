@@ -32,7 +32,7 @@ from sparkpoint_agent.api.vault import get_vault_reader
 from sparkpoint_agent.chain import VaultReader
 from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.coordinator import ChainContext, MandateView
-from sparkpoint_agent.llm import AsyncClaudeClient, AuthMode
+from sparkpoint_agent.llm import AsyncClaudeClient, AuthMode, LlmBusyError
 from sparkpoint_agent.policy import CAPS
 
 _WAD = 10**18
@@ -111,6 +111,34 @@ def _llm(text: str, *, stop_reason: str = "end_turn") -> AsyncClaudeClient:
     return AsyncClaudeClient(
         transport=FakeTransport(text, stop_reason=stop_reason), auth_mode=AuthMode.API_KEY
     )
+
+
+class _UpstreamStatusError(Exception):
+    """A provider-shaped error carrying an HTTP ``status_code`` (what the SDK raises).
+
+    Uses 503 (an upstream 5xx) so it is NON-retryable in the resilience layer and propagates
+    immediately — no real backoff sleeps in the test — while still exercising the
+    ``status_code ∈ unavailable-set`` → 503 mapping (a live 429 maps identically).
+    """
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"simulated upstream {status}")
+        self.status_code = status
+
+
+class _RaisingTransport:
+    """A :class:`MessageTransport` whose ``create`` always raises — simulates a model outage
+    surfacing through the resilience layer to the endpoint (no network)."""
+
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    async def create(self, **_: Any) -> _Message:
+        raise self._exc
+
+
+def _raising_llm(exc: BaseException) -> AsyncClaudeClient:
+    return AsyncClaudeClient(transport=_RaisingTransport(exc), auth_mode=AuthMode.API_KEY)
 
 
 class FakeMandateProvider:
@@ -271,3 +299,43 @@ class _ExplodingTransport:
 
     async def call(self, method: str, params: Any) -> str:
         raise AssertionError(f"no RPC should be issued for an undeployed vault; got {method!r}")
+
+
+# ── fail-closed on a transient model outage (soak regression) ─────────────────────────
+# The soak found /recommendations 500ing under shared-quota 429s: the recommender's LLM call
+# exhausted the resilience retries and re-raised the raw provider error, which fell through
+# to the generic INTERNAL/500 handler. A transient upstream outage must read as 503
+# UPSTREAM_UNAVAILABLE (retryable), while a genuine internal bug must still 500.
+
+
+def test_llm_upstream_outage_maps_to_503(client: TestClient) -> None:
+    # A provider error carrying an HTTP status (rate-limit / 5xx) → 503, not 500.
+    _wire(llm=_raising_llm(_UpstreamStatusError(503)))
+    resp = client.get("/recommendations", headers=GOOD_HEADERS)
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+    assert body["error"]["retryable"] is True
+    # Fail-closed: no fabricated ranking leaked into the envelope.
+    assert "recommendations" not in body
+
+
+def test_llm_busy_maps_to_503(client: TestClient) -> None:
+    # Limiter saturation (a domain LlmBusyError) is likewise a transient outage → 503.
+    _wire(llm=_raising_llm(LlmBusyError("queue saturated")))
+    resp = client.get("/recommendations", headers=GOOD_HEADERS)
+    assert resp.status_code == 503
+    assert resp.json()["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+
+
+def test_genuine_internal_error_still_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-upstream error (no HTTP status) is a real bug — it must NOT be masked as 503.
+    monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
+    _wire(llm=_raising_llm(ValueError("boom")))
+    # raise_server_exceptions=False → the app's internal_error_handler returns the 500
+    # envelope (mirrors production) instead of the test client re-raising for debugging.
+    local = TestClient(app, raise_server_exceptions=False)
+    resp = local.get("/recommendations", headers=GOOD_HEADERS)
+    assert resp.status_code == 500
+    assert resp.json()["error"]["code"] == "INTERNAL"
+    app.dependency_overrides.clear()
