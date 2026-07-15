@@ -85,6 +85,18 @@ def authenticate(authorization: str | None) -> None:
         raise ApiError(ErrorCode.UNAUTHENTICATED, "Invalid web-tier bearer token.")
 
 
+def has_valid_s2s(authorization: str | None) -> bool:
+    """Soft, non-raising variant of :func:`authenticate` — True iff a valid web-tier bearer
+    is presented. Used to gate *detail* on otherwise-public probes (e.g. /readyz returns a
+    bare boolean to anonymous callers but the full dependency breakdown to the web tier).
+    Constant-time compare; an unconfigured expected token yields False (fail-closed)."""
+    expected = _configured_s2s_token()
+    if not expected or not authorization or not authorization.startswith("Bearer "):
+        return False
+    presented = authorization[len("Bearer ") :].strip()
+    return secrets.compare_digest(presented, expected)
+
+
 def parse_account_headers(
     x_account: str | None,
     x_owner: str | None,
