@@ -23,7 +23,10 @@ jobs:
         run: uv sync --frozen --python 3.12
       - name: ruff
         run: .venv/bin/ruff check src
-      - name: mypy
-        run: .venv/bin/mypy src/sparkpoint_agent || echo "mypy findings (non-blocking until W3)"
+      - name: mypy (BLOCKING — strict, ITEM 4)
+        # No `|| echo ...` escape: a strict-mypy failure MUST fail CI. tool.mypy stays
+        # `strict = true` (pyproject.toml); the only overrides are the documented
+        # missing-stub / implicit-reexport shims for asyncpg + eth-abi, not a strictness weaken.
+        run: .venv/bin/mypy src/sparkpoint_agent
       - name: pytest
         run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

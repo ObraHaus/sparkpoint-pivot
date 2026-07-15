@@ -651,10 +651,26 @@ class BundlerGasEstimator:
             raise ValueError("bundler path requires user_op + entry_point")
         block_number = _from_hex(await self._rpc.call("eth_blockNumber", []))
         as_of = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
-        gas = await self._rpc.call(
-            "eth_estimateUserOperationGas", [request.user_op.fields, request.entry_point]
-        )
-        # Sum the returned userop gas legs into a single estimate.
+
+        # eth_estimateUserOperationGas runs EntryPoint.simulateHandleOp: a UserOp that would REVERT
+        # (or fail EntryPoint validation) makes the bundler answer with a JSON-RPC error (AA23/AA33,
+        # or an execution-revert Error(string) payload) instead of a gas object. Surface that as
+        # willRevert=True with the decoded reason — NEVER a hardcoded willRevert=False, which would
+        # let a reverting op masquerade as a clean, zero-cost success and defeat the whole point of
+        # pre-trade simulation. A transport failure (backend down) is a DIFFERENT mode: _rpc.call
+        # raises SimulatorUnavailableError and we fail closed (it never reaches this except).
+        will_revert = False
+        revert_reason: str | None = None
+        gas: Any = None
+        try:
+            gas = await self._rpc.call(
+                "eth_estimateUserOperationGas", [request.user_op.fields, request.entry_point]
+            )
+        except JsonRpcError as exc:
+            will_revert = True
+            revert_reason = _decode_revert_reason(exc.data) or exc.rpc_message
+
+        # Sum the returned userop gas legs into a single estimate (0 when the op will revert).
         total = 0
         if isinstance(gas, dict):
             for key in ("preVerificationGas", "verificationGasLimit", "callGasLimit"):
@@ -663,8 +679,8 @@ class BundlerGasEstimator:
                     total += _from_hex(raw)
         return SimulationResult(
             provider=self.provider,
-            willRevert=False,
-            revertReason=None,
+            willRevert=will_revert,
+            revertReason=revert_reason,
             balanceDeltas=[],
             sharesOut=None,
             assetsOut=None,

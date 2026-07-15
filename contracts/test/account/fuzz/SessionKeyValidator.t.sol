@@ -63,6 +63,60 @@ contract SessionKeyValidatorFuzzTest is AccountTestBase {
         assertFalse(_validatorAccepts(op), "op past validUntil must fail validation");
     }
 
+    /// @dev §7 slippage floor (step 5): a swap with `amountOutMin == 0` is REJECTED — a zero floor is
+    ///      an unbounded-loss / sandwich window. Recipient is pinned to the account so the ONLY thing
+    ///      that can reject the op is the slippage check. RED against a validator that skips step 5.
+    function testFuzz_swapZeroAmountOutMin_rejected(uint256 amountIn) public {
+        amountIn = bound(amountIn, 1, SESSION_PER_TX);
+        bytes memory cd = _execCd(address(router), 0, _aeroSwapCd(amountIn, 0, address(account)));
+        PackedUserOperation memory op = _sessionOp(cd);
+        assertFalse(
+            _validatorAccepts(op), "swap with amountOutMin == 0 must fail the slippage floor"
+        );
+    }
+
+    /// @dev §7 slippage floor (step 5): any `amountOutMin` strictly BELOW the floor is REJECTED. floor =
+    ///      amountIn * (10_000 - maxSlippageBps) / 10_000 (SessionKeyValidator.sol:95). Fuzz amountOutMin
+    ///      across the whole [0, floor) band; recipient pinned so only the slippage check can reject.
+    function testFuzz_swapBelowSlippageFloor_rejected(uint256 amountIn, uint256 amountOutMin)
+        public
+    {
+        amountIn = bound(amountIn, 2, SESSION_PER_TX); // >= 2 so the floor is >= 1 and [0, floor) is non-empty
+        uint256 floor = (amountIn * (10_000 - SESSION_MAX_SLIPPAGE_BPS)) / 10_000;
+        vm.assume(floor > 0);
+        amountOutMin = bound(amountOutMin, 0, floor - 1);
+
+        bytes memory cd =
+            _execCd(address(router), 0, _aeroSwapCd(amountIn, amountOutMin, address(account)));
+        PackedUserOperation memory op = _sessionOp(cd);
+        assertFalse(
+            _validatorAccepts(op), "amountOutMin below the slippage floor must fail validation"
+        );
+    }
+
+    /// @dev POSITIVE control (fresh key each run so cumulative never exhausts): a swap AT/above the
+    ///      floor with the recipient pinned to the account VALIDATES — proving the two negatives above
+    ///      fail specifically on the slippage floor, not on a blanket swap reject.
+    function testFuzz_swapAtSlippageFloor_accepted(uint256 amountIn, uint256 keySeed) public {
+        amountIn = bound(amountIn, 1, SESSION_PER_TX);
+        uint256 floor = (amountIn * (10_000 - SESSION_MAX_SLIPPAGE_BPS)) / 10_000;
+        vm.assume(floor > 0); // amountIn == 1 floors to 0, where amountOutMin == 0 is (correctly) rejected
+
+        uint256 pk = bound(keySeed, 1, type(uint128).max);
+        address k = vm.addr(pk);
+        IPolicyModule.Policy memory p = _defaultPolicy();
+        p.sessionKey = k;
+        vm.prank(owner);
+        account.authorizeSessionKey(p);
+
+        bytes memory cd =
+            _execCd(address(router), 0, _aeroSwapCd(amountIn, floor, address(account)));
+        PackedUserOperation memory op = _sessionOpWith(pk, cd);
+        assertTrue(
+            _validatorAccepts(op), "swap AT the slippage floor with recipient pinned must validate"
+        );
+    }
+
     /// @dev POSITIVE: a fully in-scope op (fresh key each run so cumulative never exhausts) validates.
     function testFuzz_inScopeDeposit_accepted(uint256 amount, uint256 keySeed) public {
         amount = bound(amount, 1, SESSION_PER_TX);
