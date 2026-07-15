@@ -17,6 +17,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 
 from ..chain import VaultUnavailable
 from ..policy import POLICY_VERSION
@@ -41,6 +42,27 @@ app = FastAPI(title="SparkPoint Hermes Agent", version="0.0.0")
 # swaps this for a Postgres/Redis-backed store so replays span workers/restarts.
 idempotency_store = IdempotencyStore()
 app.add_middleware(RequestContextMiddleware, store=idempotency_store)
+
+# CORS — the browser (web tier) calls this service cross-origin (§1.2 headers + the
+# /chat SSE fetch). Allowed origins are an explicit allowlist (never `*`), overridable
+# via CORS_ALLOW_ORIGINS (csv). No credentials are used (the web tier passes bearer/scoping
+# headers explicitly, not cookies), so this never widens auth. Added AFTER the context
+# middleware so it is the OUTERMOST layer and also decorates error responses.
+_CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://i4cw0ogsookkkocsw808gwc3.aldrickb.app,http://localhost:3000,https://sparkpoint.io",
+    ).split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Every non-2xx response is the canonical §1.5 envelope (§1.6 codes).
 app.add_exception_handler(ApiError, api_error_handler)
