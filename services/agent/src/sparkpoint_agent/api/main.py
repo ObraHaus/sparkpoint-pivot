@@ -13,13 +13,17 @@ reads/derivations only — never authority to move funds (agent-service-api.md �
 
 from __future__ import annotations
 
+import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..chain import VaultUnavailable
+from ..db import get_database
 from ..policy import POLICY_VERSION
 from .chat import router as chat_router
 from .errors import (
@@ -36,7 +40,40 @@ from .recommendations import router as recommendations_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
-app = FastAPI(title="SparkPoint Hermes Agent", version="0.0.0")
+logger = logging.getLogger("sparkpoint_agent.api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Own the process-wide asyncpg pool lifecycle (connect on startup / close on shutdown).
+
+    Without this, the DB-backed reads (mandate / recommendations / onboarding persistence)
+    hit an unconnected pool and 500 — the pool is created lazily but never ``connect()``-ed.
+
+    FAIL-OPEN for serving (never for custody): if the DB is unreachable at boot we log a
+    warning (NEVER the DSN) and still start, so /healthz + the fail-closed advisory paths keep
+    serving and /readyz honestly reports ``postgres=false``. The data layer is a derived
+    accelerator only — never on the withdraw/exit path (N2), so a DB outage cannot trap funds.
+    """
+    db = None
+    try:
+        db = get_database()
+        await db.connect()
+        logger.info("db_pool_connected")
+    except Exception:
+        # Never interpolate the exception/DSN — a connect error can carry the credential.
+        logger.warning("db_pool_connect_failed; DB-backed reads will degrade (fail-closed)")
+    try:
+        yield
+    finally:
+        if db is not None:
+            try:
+                await db.disconnect()
+            except Exception:
+                logger.warning("db_pool_disconnect_error")
+
+
+app = FastAPI(title="SparkPoint Hermes Agent", version="0.0.0", lifespan=lifespan)
 
 # One process-local idempotency store shared by every request (§1.3). Production
 # swaps this for a Postgres/Redis-backed store so replays span workers/restarts.
@@ -94,12 +131,20 @@ def healthz() -> dict[str, str]:
 
 
 @app.get("/readyz")
-def readyz() -> dict[str, object]:
+async def readyz() -> dict[str, object]:
     """Readiness — which dependencies are configured/reachable.
 
-    Later waves replace these presence checks with real reachability probes
-    (Postgres / Base RPC / the Anvil sim-fork / Anthropic).
+    ``postgres`` is a REAL round-trip (``SELECT 1`` over the connected pool), so a
+    configured-but-unreachable DB (or an unconnected pool) reports ``false`` honestly rather
+    than the old env-presence-only check that masked the pool-not-connected bug. The other
+    checks remain presence probes (deeper RPC/model reachability lands in later waves).
     """
+    postgres_ok = False
+    try:
+        postgres_ok = bool(await get_database().healthcheck())
+    except Exception:
+        # Unconnected pool / unreachable DB / missing DSN → honestly not ready.
+        postgres_ok = False
     checks = {
         "sim_fork": bool(os.getenv("SIM_FORK_RPC_URL")),
         "base_rpc": bool(os.getenv("BASE_SEPOLIA_RPC_URL") or os.getenv("ALCHEMY_ACCESS_KEY")),
@@ -108,7 +153,7 @@ def readyz() -> dict[str, object]:
             or os.getenv("ANTHROPIC_OAUTH_TOKEN")
             or os.getenv("ANTHROPIC_API_KEY")
         ),
-        "postgres": bool(os.getenv("DATABASE_URL")),
+        "postgres": postgres_ok,
     }
     return {
         "ready": all(checks.values()),
