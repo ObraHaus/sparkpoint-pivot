@@ -18,8 +18,9 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -38,6 +39,7 @@ from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
+from .security import has_valid_s2s
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
@@ -85,7 +87,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning("db_pool_disconnect_error")
 
 
-app = FastAPI(title="SparkPoint Hermes Agent", version="0.0.0", lifespan=lifespan)
+# The agent is deployed behind a PUBLIC FQDN (Coolify/Traefik routes by domain), so the
+# interactive API docs + the OpenAPI schema are DISABLED by default — they would hand an
+# anonymous caller the full route/param map of a service whose functional routes are all
+# behind the fail-closed S2S bearer. Set AGENT_ENABLE_DOCS=true only for a trusted/private
+# deployment. (The browser never calls this service directly; it goes through the web BFF.)
+_DOCS_ENABLED = os.getenv("AGENT_ENABLE_DOCS", "").lower() in {"1", "true", "yes"}
+
+app = FastAPI(
+    title="SparkPoint Hermes Agent",
+    version="0.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 
 # One process-local idempotency store shared by every request (§1.3). Production
 # swaps this for a Postgres/Redis-backed store so replays span workers/restarts.
@@ -97,11 +113,17 @@ app.add_middleware(RequestContextMiddleware, store=idempotency_store)
 # via CORS_ALLOW_ORIGINS (csv). No credentials are used (the web tier passes bearer/scoping
 # headers explicitly, not cookies), so this never widens auth. Added AFTER the context
 # middleware so it is the OUTERMOST layer and also decorates error responses.
+# NOTE: with the same-origin BFF the browser never calls this service cross-origin, so CORS is
+# defense-in-depth only. The committed default lists the REAL web origins (http+https of the
+# current develop slug) + localhost + the marketing domain; deployments override via
+# CORS_ALLOW_ORIGINS. (Prior default pointed at a stale/typo'd slug — corrected.)
 _CORS_ORIGINS = [
     o.strip()
     for o in os.getenv(
         "CORS_ALLOW_ORIGINS",
-        "http://i4cw0ogsookkkocsw808gwc3.aldrickb.app,http://localhost:3000,https://sparkpoint.io",
+        "https://71zxh8ed1ejf8132l46joodp17.aldrickb.app,"
+        "http://71zxh8ed1ejf8132l46joodp17.aldrickb.app,"
+        "http://localhost:3000,https://sparkpoint.io",
     ).split(",")
     if o.strip()
 ]
@@ -143,13 +165,16 @@ def healthz() -> dict[str, str]:
 
 
 @app.get("/readyz")
-async def readyz() -> dict[str, object]:
-    """Readiness — which dependencies are configured/reachable.
+async def readyz(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    """Readiness. PUBLIC callers get only a bare ``{"ready": bool}``; the per-dependency
+    breakdown + policy version are returned ONLY to the web tier (valid S2S bearer).
 
-    ``postgres`` is a REAL round-trip (``SELECT 1`` over the connected pool), so a
-    configured-but-unreachable DB (or an unconnected pool) reports ``false`` honestly rather
-    than the old env-presence-only check that masked the pool-not-connected bug. The other
-    checks remain presence probes (deeper RPC/model reachability lands in later waves).
+    This endpoint is unauthenticated on purpose (infra/uptime probes need it), so it must not
+    leak the internal dependency topology (which of Postgres/RPC/model/sim is down, the policy
+    version) to anonymous callers on the public FQDN. ``postgres`` is a REAL ``SELECT 1``
+    round-trip, so a configured-but-unreachable DB reports ``false`` honestly.
     """
     postgres_ok = False
     try:
@@ -167,8 +192,12 @@ async def readyz() -> dict[str, object]:
         ),
         "postgres": postgres_ok,
     }
+    ready = all(checks.values())
+    if not has_valid_s2s(authorization):
+        # Anonymous: boolean only — no dependency detail, no policy version.
+        return {"ready": ready}
     return {
-        "ready": all(checks.values()),
+        "ready": ready,
         "checks": checks,
         # Default to the mirrored constant so the reported version is always accurate.
         "policy_version": os.getenv("POLICY_VERSION", POLICY_VERSION),

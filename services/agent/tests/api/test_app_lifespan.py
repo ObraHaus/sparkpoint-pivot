@@ -22,6 +22,11 @@ from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api import main
 
+# /readyz returns the per-dependency detail ONLY to a valid web-tier bearer; anonymous callers
+# get a bare {"ready": bool}. Tests that assert on `checks` must present this token.
+_S2S = "test-s2s-token"
+_AUTH = {"Authorization": f"Bearer {_S2S}"}
+
 
 class _FakeDB:
     """A stand-in ``Database`` recording connect/disconnect + a scriptable healthcheck."""
@@ -50,13 +55,14 @@ class _FakeDB:
 def test_lifespan_connects_pool_and_readyz_reports_postgres_true(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("AGENT_S2S_TOKEN", _S2S)
     fake = _FakeDB(healthy=True)
     monkeypatch.setattr(main, "get_database", lambda: fake)
 
     # Entering the context manager runs the lifespan startup (connect).
     with TestClient(main.app) as client:
         assert fake.connected is True, "lifespan must connect the pool on startup"
-        body = client.get("/readyz").json()
+        body = client.get("/readyz", headers=_AUTH).json()
         assert body["checks"]["postgres"] is True, "readyz must reflect a live DB round-trip"
 
     # Leaving the context runs shutdown (disconnect).
@@ -66,11 +72,12 @@ def test_lifespan_connects_pool_and_readyz_reports_postgres_true(
 def test_readyz_postgres_false_when_db_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
     # Boot with a DB that fails to connect: the app must still start (fail-open for serving),
     # and readyz must honestly report postgres=false rather than masking with env-presence.
+    monkeypatch.setenv("AGENT_S2S_TOKEN", _S2S)
     fake = _FakeDB(connect_fails=True)
     monkeypatch.setattr(main, "get_database", lambda: fake)
 
     with TestClient(main.app) as client:
-        body = client.get("/readyz").json()
+        body = client.get("/readyz", headers=_AUTH).json()
         assert body["checks"]["postgres"] is False
         # The app is still up + serving (liveness unaffected by the DB outage).
         assert client.get("/healthz").json()["status"] == "ok"
@@ -88,10 +95,35 @@ def test_startup_does_not_block_on_a_hanging_db_connect(monkeypatch: pytest.Monk
     # Regression for the exited:unhealthy deploy: a hanging connect must not stall startup past
     # the orchestrator's readiness deadline. With the connect bounded, the app comes up promptly
     # and reports postgres=false — never a killed container.
+    monkeypatch.setenv("AGENT_S2S_TOKEN", _S2S)
     monkeypatch.setattr(main, "_DB_CONNECT_TIMEOUT_S", 0.05)
     fake = _HangingDB()
     monkeypatch.setattr(main, "get_database", lambda: fake)
 
     with TestClient(main.app) as client:  # must enter promptly despite the 1h-hanging connect
         assert client.get("/healthz").json()["status"] == "ok"
-        assert client.get("/readyz").json()["checks"]["postgres"] is False
+        assert client.get("/readyz", headers=_AUTH).json()["checks"]["postgres"] is False
+
+
+def test_readyz_anonymous_is_boolean_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Public callers (no/invalid bearer) get ONLY {"ready": bool} — no dependency topology,
+    # no policy version leaked on the public FQDN.
+    monkeypatch.setenv("AGENT_S2S_TOKEN", _S2S)
+    monkeypatch.setattr(main, "get_database", lambda: _FakeDB(healthy=True))
+    with TestClient(main.app) as client:
+        anon = client.get("/readyz").json()
+        assert set(anon.keys()) == {"ready"}
+        assert isinstance(anon["ready"], bool)
+        bad = client.get("/readyz", headers={"Authorization": "Bearer wrong"}).json()
+        assert set(bad.keys()) == {"ready"}
+        # A valid bearer unlocks the full breakdown.
+        full = client.get("/readyz", headers=_AUTH).json()
+        assert "checks" in full and "policy_version" in full
+
+
+def test_docs_and_openapi_disabled_by_default() -> None:
+    # No AGENT_ENABLE_DOCS ⇒ /docs, /redoc, /openapi.json must NOT be served on the public FQDN.
+    with TestClient(main.app) as client:
+        assert client.get("/docs").status_code == 404
+        assert client.get("/redoc").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
