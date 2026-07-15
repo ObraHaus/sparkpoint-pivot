@@ -58,11 +58,14 @@ def test_missing_account_headers_rejected(client: TestClient) -> None:
     assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
 
 
-def test_account_equal_to_owner_rejected(client: TestClient) -> None:
+def test_account_equal_to_owner_accepted(client: TestClient) -> None:
+    # EOA-direct mode (pre-AA-account, W6): the connected EOA is legitimately BOTH the
+    # identity anchor and the owner until the AccountFactory is deployed + the frontend
+    # derives each user's counterfactual SparkPointAccount. account == owner passes the
+    # gate → 404 (no route mounted at this path), NOT a 400 header rejection.
     headers = dict(GOOD_HEADERS, **{"X-Owner": GOOD_HEADERS["X-Account"]})
     resp = client.get("/api/v1/anything", headers=headers)
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+    assert resp.status_code == 404
 
 
 def test_unsupported_chain_rejected(client: TestClient) -> None:
