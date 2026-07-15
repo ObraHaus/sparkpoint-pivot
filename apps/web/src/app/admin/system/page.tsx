@@ -17,7 +17,7 @@ const tiles: Tile[] = [
   ["RPC / Alchemy", "ok", "Healthy"],
   ["Indexer lag", "ok", "2 blocks"],
   ["Subgraphs", "ok", "Fresh"],
-  ["Tenderly sim", "ok", "Available"],
+  ["Simulator (Anvil fork)", "ok", "Available"],
   ["Sentry error rate", "ok", "0.2%"],
   ["Data freshness", "amber", "12m"],
   ["Kill-switch", "info", "Inactive"],
@@ -77,7 +77,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Simulation latency p50 / p95</span>
-            <span className="prov">tenderly</span>
+            <span className="prov">sim-fork</span>
           </div>
           <Composed areaV={[0.4, 0.5, 0.45, 0.6, 0.5, 0.55]} lineV={[0.9, 1.1, 1.0, 1.3, 1.1, 1.2]} amax={1.5} lmax={1.5} opts={{ H: 200 }} />
         </div>

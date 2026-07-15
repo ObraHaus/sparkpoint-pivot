@@ -23,8 +23,11 @@ contract Vault4626FuzzTest is VaultTestBase {
         assertGe(out + 2, amount, "round-trip must return principal minus at most rounding dust");
     }
 
-    /// @dev The vault's asset accounting MUST equal the aUSDC-backed claim (+ idle USDC), so Aave
-    ///      yield is reflected automatically. RED against the stub (totalAssets omits the aUSDC leg).
+    /// @dev The vault's asset accounting MUST equal the aUSDC-backed claim ONLY — it EXCLUDES idle USDC
+    ///      (§6 anti-donation hardening; SparkPointVault.totalAssets == _aUSDC.balanceOf(this)). Aave
+    ///      yield is still reflected automatically because interest rebases the aUSDC balance. RED
+    ///      against a stub that omits the aUSDC leg (pps never moves). The excludes-idle behaviour is
+    ///      itself pinned by testFuzz_totalAssets_excludesRawUsdcDonation below.
     function testFuzz_yieldAccrues_totalAssetsTracksAave(uint256 amount, uint256 yieldAmt) public {
         amount = bound(amount, 1e6, 500_000e6);
         yieldAmt = bound(yieldAmt, 1e6, 500_000e6);
@@ -32,9 +35,52 @@ contract Vault4626FuzzTest is VaultTestBase {
         _deposit(alice, amount);
         _simulateYield(yieldAmt);
 
-        uint256 backed = aUSDC.balanceOf(address(vault)) + usdc.balanceOf(address(vault));
+        // Every deposited USDC is supplied to Aave immediately, so idle USDC is 0 in normal operation.
+        assertEq(usdc.balanceOf(address(vault)), 0, "no idle USDC (deposits swept to Aave)");
         assertEq(
-            vault.totalAssets(), backed, "totalAssets must equal aUSDC claim + idle USDC (sec 6)"
+            vault.totalAssets(),
+            aUSDC.balanceOf(address(vault)),
+            "totalAssets must equal the aUSDC claim ONLY (excludes idle USDC, sec 6)"
+        );
+    }
+
+    /// @dev §6/§7 hardening PIN: totalAssets() is the aUSDC claim ONLY and EXCLUDES idle USDC, so a
+    ///      raw-USDC DONATION (usdc.transfer straight to the vault, never routed through deposit()/
+    ///      Aave) moves NEITHER totalAssets() NOR the share price. This is an intentional custody
+    ///      hardening — it neutralises donation/inflation attacks on top of the OZ virtual-offset. RED
+    ///      the instant totalAssets ever re-includes idle USDC (a donation would then inflate the pps
+    ///      and let a griefer tax a subsequent depositor via rounding).
+    function testFuzz_totalAssets_excludesRawUsdcDonation(uint256 amount, uint256 donation) public {
+        amount = bound(amount, 1e6, 500_000e6);
+        donation = bound(donation, 1, 500_000e6);
+
+        _deposit(alice, amount);
+
+        uint256 taBefore = vault.totalAssets();
+        uint256 ppsBefore = vault.convertToAssets(WAD);
+        uint256 aliceBefore = vault.convertToAssets(vault.balanceOf(alice));
+
+        // Raw-USDC donation straight to the vault — NOT a deposit(), so it is never supplied to Aave
+        // and never mints shares; it lands as idle USDC that totalAssets() must ignore.
+        usdc.mint(address(vault), donation);
+
+        assertEq(
+            vault.totalAssets(),
+            taBefore,
+            "raw-USDC donation must NOT change totalAssets (excludes idle)"
+        );
+        assertEq(
+            vault.totalAssets(),
+            aUSDC.balanceOf(address(vault)),
+            "totalAssets must remain the aUSDC claim ONLY after a donation"
+        );
+        assertEq(
+            vault.convertToAssets(WAD), ppsBefore, "raw-USDC donation must NOT move the share price"
+        );
+        assertEq(
+            vault.convertToAssets(vault.balanceOf(alice)),
+            aliceBefore,
+            "a holder's redeemable assets must be unchanged by a raw-USDC donation"
         );
     }
 

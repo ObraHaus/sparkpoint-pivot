@@ -21,7 +21,7 @@ import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
-import { InlineConfirm } from "@/components/screens/chat/inline-confirm";
+import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
 import {
   RecCard,
@@ -40,14 +40,13 @@ import { AgentApiError } from "@/lib/agent/client";
 import "@/components/screens/chat.css";
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
-type InlineKind = "deposit" | "swap" | "bridge";
 
 /** A single rendered turn in the thread. */
 type Turn =
   | { id: number; kind: "user"; text: string }
   | { id: number; kind: "ai"; text: React.ReactNode; card?: CardKind }
   | { id: number; kind: "thinking"; steps: ThinkStep[]; then: () => void }
-  | { id: number; kind: "inline"; intent: InlineKind }
+  | { id: number; kind: "inline"; intent: InlineIntent }
   // A LIVE `/chat` turn: streamed, fail-closed ChatBlocks from the agent service.
   | { id: number; kind: "live"; cards: ChatCard[]; streaming: boolean; error?: string };
 
@@ -155,7 +154,7 @@ export default function ChatPage() {
   const pushAi = useCallback((text: React.ReactNode, card?: CardKind) => {
     setTurns((t) => [...t, { id: nextId(), kind: "ai", text, card }]);
   }, []);
-  const pushInline = useCallback((intent: InlineKind) => {
+  const pushInline = useCallback((intent: InlineIntent) => {
     setTurns((t) => [...t, { id: nextId(), kind: "inline", intent }]);
   }, []);
   const think = useCallback((steps: ThinkStep[], then: () => void) => {
@@ -223,7 +222,7 @@ export default function ChatPage() {
                 here — you never leave the chat.
               </>,
             );
-            pushInline("deposit");
+            pushInline({ kind: "deposit" });
             setChips(["What's the risk?", "Explain net APY", "Show my portfolio"]);
           },
         );
@@ -390,7 +389,7 @@ export default function ChatPage() {
 
   // card-action wiring shared by every card
   const cardActions: CardActions = {
-    review: (kind) => pushInline(kind),
+    review: pushInline,
     dismiss: () => toast("Dismissed — nothing moved."),
     send,
     cite: openCite,
@@ -462,22 +461,7 @@ export default function ChatPage() {
                       Here&apos;s the full preview — review every change and sign right here.{" "}
                       <b>Nothing moves until you sign.</b>
                     </div>
-                    <InlineConfirm
-                      kind={turn.intent}
-                      onChain={
-                        turn.intent === "swap"
-                          ? () => {
-                              pushAi(
-                                <>
-                                  Nice — your <b>≈ 311.78 USDC</b> is ready. Here&apos;s the vault deposit,
-                                  slippage-free at <b>3.87% net APY</b>. Same rule: you sign, nothing moves before that.
-                                </>,
-                              );
-                              pushInline("deposit");
-                            }
-                          : undefined
-                      }
-                    />
+                    <InlineConfirm intent={turn.intent} />
                   </AiFrame>
                 );
               }

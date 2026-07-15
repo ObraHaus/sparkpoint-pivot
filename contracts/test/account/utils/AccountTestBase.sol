@@ -230,6 +230,22 @@ abstract contract AccountTestBase is Test {
         return abi.encodeWithSelector(SEL_AAVE_SUPPLY, asset, amount, onBehalfOf, uint16(0));
     }
 
+    /// @notice Aerodrome swapExactTokensForTokens(amountIn, amountOutMin, routes, to, deadline) inner
+    ///         calldata. `amountIn` is the notional, `amountOutMin` the on-chain slippage floor, and
+    ///         `to` the recipient the §4 step-6 pin forces to the account. An empty `routes` array keeps
+    ///         the ABI head words the validator reads (word0=amountIn, word1=amountOutMin, word3=to)
+    ///         in the exact positions PolicyModule/SessionKeyValidator decode.
+    function _aeroSwapCd(uint256 amountIn, uint256 amountOutMin, address to)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        MockProtocol.Route[] memory routes = new MockProtocol.Route[](0);
+        return abi.encodeWithSelector(
+            SEL_AERO_SWAP, amountIn, amountOutMin, routes, to, type(uint256).max
+        );
+    }
+
     // ── Validation-decision helper ──
 
     /// @notice Drive validation exactly as the EntryPoint does and report whether the op is ACCEPTED

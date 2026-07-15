@@ -242,7 +242,31 @@ def test_extract_json_returns_none_on_garbage() -> None:
 
 
 def test_from_env_without_credentials_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEW_ANTHROPIC_OAUTH_TOKEN", raising=False)
     monkeypatch.delenv("ANTHROPIC_OAUTH_TOKEN", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(ClaudeAuthError):
         AsyncClaudeClient.from_env()
+
+
+def test_from_env_prefers_new_oauth_over_legacy_and_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Work order (0): NEW_ANTHROPIC_OAUTH_TOKEN wins over the legacy OAuth token and the key.
+    monkeypatch.setenv("NEW_ANTHROPIC_OAUTH_TOKEN", "new-oauth")
+    monkeypatch.setenv("ANTHROPIC_OAUTH_TOKEN", "legacy-oauth")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "plain-key")
+    client = AsyncClaudeClient.from_env()
+    assert client.auth_mode is AuthMode.OAUTH
+    # The token value must never leak through the client/transport repr.
+    assert "new-oauth" not in repr(client)
+    assert "new-oauth" not in repr(client.transport)
+
+
+def test_from_env_falls_back_to_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEW_ANTHROPIC_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_OAUTH_TOKEN", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "plain-key")
+    client = AsyncClaudeClient.from_env()
+    assert client.auth_mode is AuthMode.API_KEY
+    assert "plain-key" not in repr(client)

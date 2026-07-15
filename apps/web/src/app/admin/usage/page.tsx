@@ -36,7 +36,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Simulation pass / fail</span>
-            <span className="prov">tenderly</span>
+            <span className="prov">sim-fork</span>
           </div>
           <div className="legend">
             <span>
