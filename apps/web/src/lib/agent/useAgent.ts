@@ -39,7 +39,11 @@ export function useAgentIdentity(): AgentIdentity | null {
   const { address, chainId } = useAccount();
   return useMemo<AgentIdentity | null>(() => {
     if (!address) return null;
-    return { account: address, owner: address, chainId: chainId ?? DEFAULT_CHAIN_ID };
+    // The web-tier service bearer (§1.2). For the develop/staging demo it is a public
+    // NEXT_PUBLIC token gating the advisory (keyless) agent — NOT a custody credential;
+    // production fronts the agent with a same-origin BFF so no token reaches the browser.
+    const bearerToken = env.agentToken;
+    return { account: address, owner: address, chainId: chainId ?? DEFAULT_CHAIN_ID, bearerToken };
   }, [address, chainId]);
 }
 
