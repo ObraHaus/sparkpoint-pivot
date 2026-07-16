@@ -16,7 +16,9 @@ export type RoleKey = "super" | "ops" | "stake" | "client";
 export type NavKey =
   | "overview"
   | "users"
+  | "allowlist"
   | "usage"
+  | "gateway"
   | "tvl"
   | "revenue"
   | "system"
@@ -35,12 +37,12 @@ export interface RoleDef {
 export const ROLES: Record<RoleKey, RoleDef> = {
   super: {
     label: "Super-Admin",
-    nav: ["overview", "users", "usage", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   ops: {
     label: "Ops / Internal",
-    nav: ["overview", "users", "usage", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   stake: {
@@ -61,7 +63,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
 export const NAVMETA: Record<NavKey, [string, string]> = {
   overview: ["Overview", "grid"],
   users: ["Users", "user"],
+  allowlist: ["Allowlist", "shieldcheck"],
   usage: ["Usage", "activity"],
+  gateway: ["LLM gateway", "zap"],
   tvl: ["TVL / Vault", "vault"],
   revenue: ["Revenue", "portfolio"],
   system: ["System", "shield"],
@@ -75,7 +79,9 @@ export const NAVMETA: Record<NavKey, [string, string]> = {
 export const NAV_HREF: Record<NavKey, string> = {
   overview: "/admin",
   users: "/admin/users",
+  allowlist: "/admin/allowlist",
   usage: "/admin/usage",
+  gateway: "/admin/gateway",
   tvl: "/admin/tvl",
   revenue: "/admin/revenue",
   system: "/admin/system",

@@ -10,17 +10,35 @@
  * This panel is READ-ONLY in this build: it does not (and must not) fake a multisig signature.
  * Executing a pause/resume is performed off-app against the on-chain guardian; the illustrative
  * governance + history below are labelled as such (no fabricated signatures or audit records).
+ *
+ * Phase B: the pause STATE + the guardian are now LIVE on-chain reads (the vault's `paused()` /
+ * `guardian()`), so the status pill reflects the real chain — never a hardcoded default.
  */
 
+import { useReadContracts } from "wagmi";
+import type { Address } from "viem";
+import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 
-/** The live guardian of the deployed Base-Sepolia vault (OZ TimelockController). */
-const GUARDIAN_TIMELOCK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
+/** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
+const VAULT_CHAIN = 84532;
+/** Fallback guardian (used only until the live read resolves). */
+const GUARDIAN_FALLBACK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
 
 export default function Page() {
-  // Read-only surface: no fake sign, no local pause toggle. Pause state would be read from
-  // the chain once this panel is wired to the guardian; today it presents the honest default.
-  const paused = false;
+  const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;
+  const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
+  const reads = useReadContracts({
+    query: { enabled: !!vault, refetchInterval: 30_000 },
+    contracts: [
+      { ...vaultC, functionName: "paused" }, // 0
+      { ...vaultC, functionName: "guardian" }, // 1
+    ],
+  });
+  // LIVE pause state — undefined while the read is in flight (shown as "…"), never a fake default.
+  const paused = reads.data?.[0]?.result as boolean | undefined;
+  const guardian = (reads.data?.[1]?.result as string | undefined) ?? GUARDIAN_FALLBACK;
 
   return (
     <>
@@ -31,7 +49,7 @@ export default function Page() {
         </div>
         <span className={`pill ${paused ? "amber" : "info"}`}>
           <span className="led" />
-          {paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+          {paused === undefined ? "Reading chain…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
         </span>
       </div>
       <div
@@ -93,11 +111,11 @@ export default function Page() {
             <a
               className="mono"
               style={{ fontSize: 11, color: "var(--primary)" }}
-              href={`https://sepolia.basescan.org/address/${GUARDIAN_TIMELOCK}`}
+              href={`https://sepolia.basescan.org/address/${guardian}`}
               target="_blank"
               rel="noreferrer"
             >
-              {GUARDIAN_TIMELOCK.slice(0, 6)}…{GUARDIAN_TIMELOCK.slice(-4)} <Icon name="ext" size={11} />
+              {guardian.slice(0, 6)}…{guardian.slice(-4)} <Icon name="ext" size={11} />
             </a>
           </div>
           <div className="statusrow">
