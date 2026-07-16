@@ -1,10 +1,10 @@
 {
-  "plan": "SparkPoint Phase 2 \u2014 Execution Plan (rev 3.3)",
+  "plan": "SparkPoint Phase 2 — Execution Plan (rev 3.3)",
   "artifact": "https://claude.ai/code/artifact/31e5f3f5-d23b-4fc1-a0f7-648743524eb9",
   "spec": "specs/001-sparkpoint-pivot-mvp",
   "milestone": "2026-07-24",
   "updated": "2026-07-16",
-  "current_wave": "PhaseA-done-PhaseB-next",
+  "current_wave": "PhaseB+B.1-complete; PhaseC/D-in-progress",
   "gates": {
     "A": {
       "status": "APPROVED",
@@ -80,14 +80,15 @@
     {
       "id": "W5c",
       "title": "Endpoints + /exit + STOP-AND-VALIDATE",
-      "status": "in_progress",
+      "status": "completed",
       "started": "2026-07-13",
       "gate": "B",
-      "note": "DONE: T015 ABI export (bb3b19e) + PUBLIC /exit escape hatch (5df74a9) + keyless backend vault quote endpoints + fee indexer (7e4b369) + Gate-B deploy to Base Sepolia + withdraw-always drill PASSED (cc6a4f7). REMAINING (frontend tail): NonCustody badge + caps display + beta whitelist gate + vault dashboard deposit/withdraw wiring against the LIVE vault."
+      "note": "DONE: T015 ABI export (bb3b19e) + PUBLIC /exit escape hatch (5df74a9) + keyless backend vault quote endpoints + fee indexer (7e4b369) + Gate-B deploy to Base Sepolia + withdraw-always drill PASSED (cc6a4f7). REMAINING (frontend tail): NonCustody badge + caps display + beta whitelist gate + vault dashboard deposit/withdraw wiring against the LIVE vault. RECONCILED 2026-07-16: all W5c items (T015 ABI, PUBLIC /exit, keyless vault-quote endpoints, fee indexer, Gate-B deploy) are live and were validated + built upon by P1.5/P2/Phase-A/B/B.1 — marking completed.",
+      "completed": "2026-07-16"
     },
     {
       "id": "W5c-fe",
-      "title": "Frontend tail \u2014 live vault UI wired (T046/T047/T049)",
+      "title": "Frontend tail — live vault UI wired (T046/T047/T049)",
       "status": "completed",
       "completed": "2026-07-14",
       "commit": "7e9f41e",
@@ -99,17 +100,17 @@
       "status": "completed",
       "started": "2026-07-14",
       "completed": "2026-07-14",
-      "note": "US2 custom ERC-4337 account (74cc403; refuter caught+fixed a validUntil==0 session-drain; 162 tests + live fork round-trip through the deployed vault). US3-US5 assistant backend (b4ff656; Coordinator DAG + chat/portfolio/recommendations/mandate/onboarding; 223 tests; advisory + policy-gated + LLM-free boundary). Frontend assistant wiring + Obsidian ingestion CODE T121-126 (ae2ac84; + migration 0004 embedding-dim fix). NOTE: Obsidian is SCAFFOLDED here (ingestion pipeline + schema), NOT wired end-to-end \u2014 real prod corpus ingestion + citations on rec cards is P2 (item 9), not 'completed' here. All CI green."
+      "note": "US2 custom ERC-4337 account (74cc403; refuter caught+fixed a validUntil==0 session-drain; 162 tests + live fork round-trip through the deployed vault). US3-US5 assistant backend (b4ff656; Coordinator DAG + chat/portfolio/recommendations/mandate/onboarding; 223 tests; advisory + policy-gated + LLM-free boundary). Frontend assistant wiring + Obsidian ingestion CODE T121-126 (ae2ac84; + migration 0004 embedding-dim fix). NOTE: Obsidian is SCAFFOLDED here (ingestion pipeline + schema), NOT wired end-to-end — real prod corpus ingestion + citations on rec cards is P2 (item 9), not 'completed' here. All CI green."
     },
     {
       "id": "MILESTONE",
       "title": "Jul 24 (Fri) testnet MVP",
       "status": "build_complete",
-      "note": "All Phase-2 build waves (W0-W6) landed + CI-green on feature/w0-foundation, 10 days early. US1 vault LIVE on Base Sepolia + non-custody proven on-chain. REMAINING to the milestone (integration/ops, not build): (1) deploy the agent service + web to OH Coolify dev/staging (playbook \u00a75) with NEXT_PUBLIC_AGENT_BASE_URL + apply migrations 0002/0003/0004; (2) full-stack e2e (Playwright) UI->agent->live vault; (3) PR feature/w0-foundation -> develop (human-gated per playbook). Gate C (mainnet + Safe-in-front-of-Timelock hardening) = Phase 3."
+      "note": "All Phase-2 build waves (W0-W6) landed + CI-green on feature/w0-foundation, 10 days early. US1 vault LIVE on Base Sepolia + non-custody proven on-chain. REMAINING to the milestone (integration/ops, not build): (1) deploy the agent service + web to OH Coolify dev/staging (playbook §5) with NEXT_PUBLIC_AGENT_BASE_URL + apply migrations 0002/0003/0004; (2) full-stack e2e (Playwright) UI->agent->live vault; (3) PR feature/w0-foundation -> develop (human-gated per playbook). Gate C (mainnet + Safe-in-front-of-Timelock hardening) = Phase 3."
     },
     {
       "id": "P0",
-      "title": "Operator work order P0 \u2014 trust surfaces + BFF + 429-resilience",
+      "title": "Operator work order P0 — trust surfaces + BFF + 429-resilience",
       "status": "completed",
       "completed": "2026-07-15",
       "commit": "509c278",
@@ -117,7 +118,7 @@
     },
     {
       "id": "P1",
-      "title": "Operator work order P1 \u2014 verification shell",
+      "title": "Operator work order P1 — verification shell",
       "status": "completed",
       "completed": "2026-07-15",
       "commit": "86152a4",
@@ -139,11 +140,11 @@
     },
     {
       "id": "P2",
-      "title": "Obsidian real wiring (item 9) \u2014 prod corpus ingestion + citations",
+      "title": "Obsidian real wiring (item 9) — prod corpus ingestion + citations",
       "status": "completed",
       "completed": "2026-07-16",
       "commit": "80b12c2",
-      "note": "OQ-5 embedding-provider Gate RESOLVED (operator's self-hosted OpenAI-compatible OpenWebUI, qwen3-embedding:8b; 4096-dim MRL-truncated to the pinned 1024 + renormalized; key server-side only, never logged). OpenAIEmbeddingBackend + openai_embedder factory; ingestion runner (python -m sparkpoint_agent.knowledge.ingest_cli) ran against the deployed spark-postgres \u2192 6 sources / 25 chunks; default_citation_retriever wired into BOTH DAG builders (chat + recommendations), None-when-unconfigured so CI stays green; corpus +3 accurate notes (aerodrome-slipstream, erc4626-vaults, usdc-yield-strategies); knowledge_search embeds off the event loop. Verified: semantic retrieval is RELEVANT (Aave query\u2192Aave/vault notes, concentrated-liquidity query\u2192Aerodrome). Frontend already renders the 'N sources' chip; attaching to a LIVE rec card needs an LLM ranking turn (shared-quota 429). Agent gates green (mypy 62 / pytest 297)."
+      "note": "OQ-5 embedding-provider Gate RESOLVED (operator's self-hosted OpenAI-compatible OpenWebUI, qwen3-embedding:8b; 4096-dim MRL-truncated to the pinned 1024 + renormalized; key server-side only, never logged). OpenAIEmbeddingBackend + openai_embedder factory; ingestion runner (python -m sparkpoint_agent.knowledge.ingest_cli) ran against the deployed spark-postgres → 6 sources / 25 chunks; default_citation_retriever wired into BOTH DAG builders (chat + recommendations), None-when-unconfigured so CI stays green; corpus +3 accurate notes (aerodrome-slipstream, erc4626-vaults, usdc-yield-strategies); knowledge_search embeds off the event loop. Verified: semantic retrieval is RELEVANT (Aave query→Aave/vault notes, concentrated-liquidity query→Aerodrome). Frontend already renders the 'N sources' chip; attaching to a LIVE rec card needs an LLM ranking turn (shared-quota 429). Agent gates green (mypy 62 / pytest 297)."
     },
     {
       "id": "PHASE-A",

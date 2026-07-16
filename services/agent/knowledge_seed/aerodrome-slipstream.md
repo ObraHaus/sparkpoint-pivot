@@ -24,9 +24,17 @@ active-management burden than a passive supply.
 
 ## Where the yield comes from
 
-LPs earn (1) swap fees from trades that route through their range and (2) `AERO`
-emissions when the pool has an active gauge. Both are variable: emissions depend
-on gauge votes and the `AERO` price, and fees depend on volume staying in-range.
+Aerodrome runs a **ve(3,3)** model, so an LP does **not** earn swap fees and
+emissions at the same time — it is a choice:
+
+- **Unstaked** (LP position held, not deposited in the gauge): earns the **swap
+  fees** from trades routing through the range, but **no** `AERO` emissions.
+- **Staked** in the pool's gauge: earns **`AERO` emissions**, but **forfeits the
+  swap fees to `veAERO` voters** (lockers who direct emissions to gauges).
+
+So a staked LP trades fee income for (typically higher) emissions — you don't
+collect both. Both are variable: emissions depend on gauge votes and the `AERO`
+price; fees depend on volume staying in-range.
 
 ## Risk framing
 

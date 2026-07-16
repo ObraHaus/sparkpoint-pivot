@@ -55,7 +55,7 @@ async def test_upsert_binds_insert_on_conflict_shape() -> None:
     assert "$5::vector" in query and "$7::jsonb" in query
     # Params in declared order: id, source_kind, source_id, content, vector, model, metadata.
     assert args[0] == row.id
-    assert args[1] == "literacy_tip"
+    assert args[1] == "knowledge"
     assert args[2] == row.source_id
     assert args[3] == row.content
     assert args[4] == to_vector_literal(row.embedding) == "[0.1,0.2,0.3]"
@@ -74,7 +74,7 @@ async def test_prune_binds_delete_by_source_keeping_ids() -> None:
     assert "DELETE FROM memory_chunks" in query
     assert "id <> ALL($3::uuid[])" in query
     assert args[0] == sid
-    assert args[1] == "literacy_tip"
+    assert args[1] == "knowledge"
     assert args[2] == keep
 
 
@@ -90,7 +90,7 @@ async def test_search_binds_cosine_topk_and_maps_hits() -> None:
     assert "embedding <=> $1::vector" in query
     assert "1 - (embedding <=> $1::vector) AS score" in query
     assert args[0] == "[0.1,0.2,0.3]"
-    assert args[1] == "literacy_tip"
+    assert args[1] == "knowledge"
     assert args[2] == 5
     # JSONB metadata parsed whether asyncpg returned text or a dict.
     assert hits[0].metadata == {"source": "a"}

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from sparkpoint_agent.knowledge import (
     KNOWLEDGE_SOURCE_KIND,
     Embedder,
@@ -20,6 +22,7 @@ from sparkpoint_agent.knowledge import (
     parse_note,
     source_uuid,
 )
+from sparkpoint_agent.knowledge.ingestion import PiiDetectedError, scan_for_pii
 
 # The ``store`` (InMemoryChunkStore) and ``embedder`` (stub) come from conftest fixtures;
 # typed loosely here because the test dir is not an importable package.
@@ -136,3 +139,31 @@ async def test_ingest_empty_note_writes_nothing(
     result = await ingest_note("", source="empty", store=store, embedder=embedder)
     assert result.written == 0
     assert store.rows == {}
+
+
+# ── PII denylist + provenance stamp (T123) ────────────────────────────────────
+
+
+def test_scan_for_pii_flags_secrets_but_not_contract_addresses() -> None:
+    assert scan_for_pii("reach me at alice@example.com") == ["email"]
+    assert scan_for_pii("leaked key 0x" + "a" * 64) == ["private_key_hex"]
+    assert "pem_private_key" in scan_for_pii("-----BEGIN EC PRIVATE KEY-----\nMII...")
+    # A 20-byte (40-hex) contract address is LEGITIMATE corpus content — must NOT trip.
+    assert scan_for_pii("Aave pool at 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5") == []
+
+
+async def test_ingest_refuses_pii_and_writes_nothing(store: Any, embedder: Embedder) -> None:
+    poisoned = "# Note\n\nprivate key 0x" + "b" * 64 + "\n"
+    with pytest.raises(PiiDetectedError):
+        await ingest_note(poisoned, source="bad", store=store, embedder=embedder)
+    assert len(store.rows) == 0  # nothing embedded or written
+
+
+async def test_ingest_stamps_git_sha_and_timestamp(store: Any, embedder: Embedder) -> None:
+    await ingest_note(
+        NOTE, source="aave-v3-supply", store=store, embedder=embedder, source_ref="abc1234"
+    )
+    row = next(iter(store.rows.values()))
+    assert row.metadata["git_sha"] == "abc1234"
+    assert row.metadata["ingested_at"].endswith("+00:00")  # UTC iso
+    assert row.metadata["source"] == "aave-v3-supply"  # original provenance preserved

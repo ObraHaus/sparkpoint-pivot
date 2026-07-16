@@ -18,15 +18,54 @@ NON-CUSTODY / boundary (T126): imports the stdlib + the shared ``embeddings`` em
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from .embeddings import Embedder
 from .store import ChunkRow, ChunkStore
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T123 — pre-ingest PII/secret denylist + provenance stamp
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PiiDetectedError(ValueError):
+    """A note contains PII/secret-shaped content and must NOT enter the shared corpus (fail-closed).
+
+    The message names the KIND(s) found, never the matched value, so it can be logged safely.
+    """
+
+
+# Content that must never be ingested. NOTE: 20-byte (40-hex) addresses are LEGITIMATE in notes
+# (contract addresses) and are deliberately NOT matched — only unambiguously secret/PII shapes.
+_PII_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("email", re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")),
+    ("private_key_hex", re.compile(r"\b0x[0-9a-fA-F]{64}\b")),
+    ("pem_private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+)
+
+
+def scan_for_pii(text: str) -> list[str]:
+    """Return the sorted KINDS of PII/secret found in ``text`` (never the values). Empty ⇒ clean."""
+    return sorted({kind for kind, pat in _PII_PATTERNS if pat.search(text)})
+
+
+def _provenance(source_ref: str | None) -> dict[str, str]:
+    """The git commit + ingest timestamp stamped onto every chunk (T123 provenance). ``source_ref``
+    (the git sha) falls back to ``SPARKPOINT_GIT_SHA``/``GIT_SHA`` env, else ``"unknown"``."""
+    sha = (
+        source_ref
+        or os.environ.get("SPARKPOINT_GIT_SHA")
+        or os.environ.get("GIT_SHA")
+        or "unknown"
+    )
+    return {"git_sha": sha, "ingested_at": datetime.now(UTC).isoformat()}
 
 # Namespace for the tier's deterministic ids — stable across processes/runs.
 _KNOWLEDGE_NS = uuid5(NAMESPACE_URL, "sparkpoint://knowledge")
@@ -274,12 +313,21 @@ async def ingest_note(
     source: str,
     store: ChunkStore,
     embedder: Embedder,
+    source_ref: str | None = None,
 ) -> IngestResult:
     """Parse → chunk → embed → upsert one note; idempotent for a fixed ``source``.
 
     The same ``(source, text)`` always yields the same row ids, so re-running updates
-    in place; a shortened note has its now-orphaned chunks pruned.
+    in place; a shortened note has its now-orphaned chunks pruned. FAIL-CLOSED on PII: a note
+    with secret/PII-shaped content is refused (never embedded). Every chunk is stamped with the
+    git sha (``source_ref``) + ingest timestamp for provenance (T123).
     """
+    found = scan_for_pii(text)
+    if found:
+        raise PiiDetectedError(
+            f"note {source!r} contains PII/secret-shaped content "
+            f"({', '.join(found)}); refusing to ingest"
+        )
     note = parse_note(text, source=source)
     chunks = chunk_note(note)
     sid = source_uuid(source)
@@ -287,6 +335,7 @@ async def ingest_note(
         pruned = await store.prune_source(sid, [])
         return IngestResult(source=source, written=0, pruned=pruned)
 
+    provenance = _provenance(source_ref)
     embeddings = embedder.embed([c.text for c in chunks])
     rows = [
         ChunkRow(
@@ -295,7 +344,7 @@ async def ingest_note(
             content=chunk.text,
             embedding=emb.vector,
             embedding_model=emb.model_version,
-            metadata=chunk.metadata(),
+            metadata={**chunk.metadata(), **provenance},
         )
         for chunk, emb in zip(chunks, embeddings, strict=True)
     ]

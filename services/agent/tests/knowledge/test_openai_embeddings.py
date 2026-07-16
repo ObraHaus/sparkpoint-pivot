@@ -130,3 +130,16 @@ def test_openai_embedder_builds_when_configured() -> None:
     assert emb is not None
     assert emb.dimension == EMBEDDING_DIM
     assert emb.model_version == EMBEDDING_MODEL_VERSION
+
+
+def test_openai_embedder_rejects_a_foreign_model() -> None:
+    # A foreign (non-pinned) model must be REJECTED at composition — not silently stamped with the
+    # qwen3 pin, which would write vectors into an incompatible space. Guards the pin's meaning.
+    with pytest.raises(ValueError, match="re-embed event"):
+        openai_embedder(
+            env={
+                "EMBEDDING_OPENAI_API_URL": "http://embed.example/api/v1",
+                "EMBEDDING_OPENAI_API_KEY": _SECRET,
+                "EMBEDDING_OPENAI_MODEL": "text-embedding-3-large",  # not the pinned model
+            }
+        )

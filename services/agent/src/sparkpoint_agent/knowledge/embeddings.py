@@ -62,6 +62,13 @@ EMBEDDING_MODEL_VERSION = "qwen3-embedding-8b-mrl1024@2026.07.0"
 # §17). Changing this is a re-embed event.
 EMBEDDING_DIM = 1024
 
+# The EXACT provider model the pin above represents. The env's EMBEDDING_OPENAI_MODEL must equal
+# this, else composition is REJECTED — otherwise any OpenAI-compatible endpoint (a foreign model
+# that merely returns ≥1024 dims) would be silently stamped with the qwen3 pin and write vectors
+# into an incompatible space. Switching models = change BOTH this and EMBEDDING_MODEL_VERSION and
+# re-embed the corpus (a version boundary, by design).
+EMBEDDING_EXPECTED_MODEL = "qwen3-embedding:8b"
+
 
 class EmbeddingDimensionError(ValueError):
     """A backend returned a vector whose dimension ≠ the pinned ``EMBEDDING_DIM``.
@@ -364,6 +371,15 @@ def openai_embedder(env: Mapping[str, str] | None = None) -> Embedder | None:
     model = (src.get(EMBEDDING_MODEL_ENV) or "").strip()
     if not (url and key and model):
         return None
+    # NON-TAUTOLOGICAL pin check: the configured model must be the exact model the pin represents.
+    # (`assert_backend_matches_pin` alone can't catch this — the backend reports the pin regardless
+    # of its model — so a foreign ≥1024-dim endpoint would otherwise be stamped qwen3 silently.)
+    if model != EMBEDDING_EXPECTED_MODEL:
+        raise ValueError(
+            f"EMBEDDING_OPENAI_MODEL {model!r} != pinned {EMBEDDING_EXPECTED_MODEL!r} "
+            f"(space {EMBEDDING_MODEL_VERSION!r}); a model change is a re-embed event, "
+            f"refusing to write into a mismatched vector space"
+        )
     backend = OpenAIEmbeddingBackend(api_url=url, api_key=key, model=model)
     assert_backend_matches_pin(backend)
     return Embedder(backend)

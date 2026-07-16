@@ -36,6 +36,27 @@ function areaPath(vals: number[], W: number, H: number, pad = 6) {
 
 const RANGES = ["1D", "1W", "1M", "1Y", "All"];
 
+/** An honest, always-on "Sample data" badge for the portfolio sections that are NOT yet wired to a
+ * live source (allocation, positions, risk panel). Unlike the net-worth "Preview data" badge (shown
+ * only when disconnected), these are mock regardless of connection, so the label is unconditional. */
+function MockBadge() {
+  return (
+    <span
+      className="pill"
+      title="Sample data — this section isn't wired to your live position yet."
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        color: "var(--caution)",
+        borderColor: "color-mix(in srgb,var(--caution) 40%,transparent)",
+        background: "var(--caution-subtle)",
+      }}
+    >
+      Sample data
+    </span>
+  );
+}
+
 export default function Page() {
   const router = useRouter();
   const [range, setRange] = useState("1M");
@@ -125,7 +146,10 @@ export default function Page() {
         </div>
         <div className="card card-pad riskpanel">
           <div className="card-hd">
-            <span className="lbl">Risk panel</span>
+            <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Risk panel
+              <MockBadge />
+            </span>
             <RiskChip tier={1} />
           </div>
           <div className="rp-row">
@@ -158,7 +182,10 @@ export default function Page() {
       <div className="pf-grid">
         <div className="card card-pad">
           <div className="card-hd">
-            <span className="t">Allocation by risk tier</span>
+            <span className="t" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Allocation by risk tier
+              <MockBadge />
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
             <div className="donut" style={{ background: donut, position: "relative" }}>
@@ -204,7 +231,10 @@ export default function Page() {
         </div>
         <div className="card card-pad">
           <div className="card-hd">
-            <span className="t">Positions</span>
+            <span className="t" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Positions
+              <MockBadge />
+            </span>
             <span className="lbl">net of fees</span>
           </div>
           <table className="tbl">

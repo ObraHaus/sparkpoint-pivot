@@ -28,7 +28,22 @@ export default async function Page({ params }: { params: Promise<{ positionId: s
       <div className="pagehead">
         <div>
           <h1>Aave Yield Vault</h1>
-          <div className="sub">Your position detail</div>
+          <div className="sub">
+            Position detail ·{" "}
+            <span
+              className="pill"
+              title="Sample data — this position detail isn't wired to your live on-chain balances yet."
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "var(--caution)",
+                borderColor: "color-mix(in srgb,var(--caution) 40%,transparent)",
+                background: "var(--caution-subtle)",
+              }}
+            >
+              Sample data
+            </span>
+          </div>
         </div>
         <RiskChip tier={1} />
       </div>

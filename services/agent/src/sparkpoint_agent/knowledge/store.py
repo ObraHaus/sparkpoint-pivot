@@ -21,12 +21,10 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-# The ``memory_source`` enum (migration 0001) has no dedicated "obsidian" member;
-# advisory educational notes map to ``literacy_tip`` — the enum value whose intent
-# ("advisory tip context") matches the Obsidian tier. Real provenance (note slug,
-# section, tags, wikilinks) rides in the ``metadata`` JSONB, so no enum/migration
-# change is required.
-KNOWLEDGE_SOURCE_KIND = "literacy_tip"
+# The dedicated ``memory_source`` member for the Obsidian knowledge corpus. Migration 0006 adds
+# ``'knowledge'`` and 0007 backfills the prior ``'literacy_tip'`` shim rows to it (T123). Real
+# provenance (note slug, section, tags, wikilinks, git sha) rides in the ``metadata`` JSONB.
+KNOWLEDGE_SOURCE_KIND = "knowledge"
 
 
 @dataclass(frozen=True)
@@ -123,6 +121,7 @@ SELECT content,
        1 - (embedding <=> $1::vector) AS score
 FROM memory_chunks
 WHERE source_kind = $2::memory_source
+  AND user_id IS NULL
 ORDER BY embedding <=> $1::vector
 LIMIT $3
 """.strip()
