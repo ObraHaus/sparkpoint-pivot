@@ -14,10 +14,15 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { useNetwork } from "@/lib/network";
 import { toHref } from "@/lib/nav";
+
+/** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
+const _DEPLOYED = getAddresses(84532);
+const _shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 type MenuKind = "wallet" | "network" | "avatar";
 type SheetKind = "proveit" | "notifications";
@@ -298,7 +303,7 @@ function ProveItBody({ go }: { go: (r: string) => void }) {
         className="mono"
         style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-soft)" }}
       >
-        Vault 0x9f…2C1 · Policy 0x3a…77B · <Icon name="ext" size={11} /> View all permissions
+        Vault {_shortAddr(_DEPLOYED.vault)} · Caps {_shortAddr(_DEPLOYED.capRegistry)} · <Icon name="ext" size={11} /> View all permissions
       </div>
     </>
   );
