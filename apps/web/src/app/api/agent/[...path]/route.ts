@@ -32,6 +32,9 @@
 
 // This route proxies live, per-request identity + streams — it must never be
 // statically cached or prerendered.
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -39,12 +42,15 @@ export const dynamic = "force-dynamic";
 const AGENT_INTERNAL_URL = process.env.AGENT_INTERNAL_URL;
 const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
 
-/** Request headers we relay to the agent (identity/idempotency + content negotiation). */
+/**
+ * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
+ * from the client — identity is derived server-side from the verified SIWE session (see `proxy`),
+ * so a browser can no longer assert an arbitrary owner. Only network selection + content
+ * negotiation + idempotency cross from the client.
+ */
 const FORWARD_REQUEST_HEADERS = [
   "content-type",
   "accept",
-  "x-account",
-  "x-owner",
   "x-chain-id",
   "idempotency-key",
 ] as const;
@@ -69,13 +75,26 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const search = new URL(req.url).search;
   const target = `${base}/${path.join("/")}${search}`;
 
-  // Allowlist inbound headers, then inject the S2S bearer. We never forward an
-  // inbound Authorization/Cookie — this tier is the sole authority injector.
+  // Identity comes from the VERIFIED session cookie, never from client headers. No valid session
+  // ⇒ refuse (the app pages that call this are already session-gated by the middleware; this is the
+  // server-side enforcement of that). /exit + /trust never reach here — they read chain state via
+  // direct RPC — so this can never sit on the withdraw path (N2).
+  const jar = await cookies();
+  const claims = await verifySession(jar.get(SESSION_COOKIE)?.value);
+  if (!claims) {
+    return envelope("UNAUTHENTICATED", 401, "Sign in with your wallet to use the assistant.", false);
+  }
+
+  // Allowlist inbound headers, then set the derived identity + inject the S2S bearer. We never
+  // forward an inbound Authorization/Cookie — this tier is the sole authority injector.
   const headers = new Headers();
   for (const name of FORWARD_REQUEST_HEADERS) {
     const value = req.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
+  // account == owner (EOA-direct mode; the agent accepts this until AA accounts land).
+  headers.set("x-owner", claims.address);
+  headers.set("x-account", claims.address);
   if (AGENT_S2S_TOKEN) headers.set("authorization", `Bearer ${AGENT_S2S_TOKEN}`);
 
   // Body: the browser sends small JSON bodies (e.g. a /chat turn); read + relay

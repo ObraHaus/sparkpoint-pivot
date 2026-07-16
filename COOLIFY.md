@@ -120,3 +120,12 @@ Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standi
 > | `sparkpoint-litellm-db-develop` (postgres) | `t4w8wokwgk4ooosk0cwckg8g` | internal (`postgres:16-alpine`) | DEDICATED, isolated DB for LiteLLM keys+budgets — NOT spark-postgres, NOT the agent DB. |
 >
 > **Secrets (gateway env, server-side only, never committed):** `OPENROUTER_API_KEY` (ONLY the gateway holds it), `LITELLM_MASTER_KEY`, `DATABASE_URL` (→ the dedicated postgres), `DISABLE_ADMIN_UI=True`. **Agent env:** `LITELLM_BASE_URL` (→ gateway FQDN), `LITELLM_API_KEY` (a per-service **virtual key**: rpm 20 / tpm 40k / $5-a-day budget, alias `hermes-agent`), `LITELLM_MODEL=sparkpoint-chat`; `NEW_ANTHROPIC_OAUTH_TOKEN` remains as the env-selected fallback. readyz now probes the gateway's `/health/liveliness` (cached ~60s) as the `llm` check. Anonymous surface verified blocked: `/`, `/docs`, `/redoc`, `/openapi.json`, `/ui/*` → 404; `/health/liveliness` → 200; `/chat/completions` → 401 without the key.
+
+> **AUTH / ACCESS CONTROL (Phase B) — recorded 2026-07-16.** SIWE wallet auth + a DB-backed beta/admin allowlist. New env:
+> | Var | App(s) | Notes |
+> |---|---|---|
+> | `SESSION_SECRET` | **web** | Secret — signs the httpOnly SIWE session cookie (Web-Crypto HMAC). FAIL-CLOSED: unset ⇒ no session mints/verifies ⇒ the (app) shell + `/admin` are unreachable (only landing/connect/verify/exit/trust). Build **and** runtime (the edge middleware verifies). `openssl rand -hex 32`. |
+> | `BETA_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into the (app) shell. The **agent** seeds `wallet_allowlist` from it on boot; the web copy is kept in parity. |
+> | `ADMIN_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into `/admin` + admin APIs (admin implies beta). Same seed/parity model. |
+>
+> **⚠️ Sync standard.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` MUST be identical on the agent + web apps. **Never edit them by hand on one app** — always write both in one shot with `scripts/sync-allowlist-env.sh "<beta_csv>" "<admin_csv>"` (needs `COOLIFY_API_TOKEN_RWD`), then redeploy both so the agent re-seeds. After boot, day-to-day membership is managed live in the **admin panel** (`/admin/allowlist`, audit-logged); the env is bootstrap + disaster-recovery only. ACCESS gate only — never gates `/exit`, `/trust`, or withdraw (N2). Migrations: `0005_allowlists` (see MIGRATIONS.md).

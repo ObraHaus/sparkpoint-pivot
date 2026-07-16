@@ -79,11 +79,14 @@ class Literacy:
     llm: AsyncClaudeClient
     effort: Effort = EFFORT
 
-    async def tip(self, topic: str | None, *, context_hint: str | None = None) -> TipCard:
+    async def tip(
+        self, topic: str | None, *, context_hint: str | None = None, user: str | None = None
+    ) -> TipCard:
         """Explain ``topic`` as a non-signable :class:`TipCard`, fail-closed.
 
         A refusal or empty generation returns the pre-written default for the topic (or the
-        general fallback), so the surfaced tip is always safe and non-empty.
+        general fallback), so the surfaced tip is always safe and non-empty. ``user`` is the
+        verified wallet (LiteLLM per-user budget/attribution key) — identity only, never authority.
         """
         key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
         user_content = f"concept={key}"
@@ -93,6 +96,7 @@ class Literacy:
             system=SYSTEM,
             messages=[{"role": "user", "content": user_content}],
             effort=self.effort,
+            user=user,
         )
         body = result.text.strip()
         if result.refused or not body:

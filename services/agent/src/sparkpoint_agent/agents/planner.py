@@ -163,12 +163,16 @@ class Planner:
     llm: AsyncClaudeClient
     effort: Effort = EFFORT
 
-    async def classify(self, message: str, *, surface: str = "chat") -> Intent:
+    async def classify(
+        self, message: str, *, surface: str = "chat", user: str | None = None
+    ) -> Intent:
         """Classify ``message`` into an :class:`Intent`, fail-closed.
 
         A refusal returns ``Intent(kind=OTHER, refused=True)``; unparseable output returns
         ``Intent(kind=OTHER)``. Either way the caller can never build an action from the
-        turn — only a valid, whitelisted classification yields actionable params.
+        turn — only a valid, whitelisted classification yields actionable params. ``user`` is
+        the verified wallet (LiteLLM per-user budget/attribution key) — identity only, never
+        authority.
         """
         user_content = f"surface={surface}\nmessage={message}"
         result = await self.llm.structured(
@@ -176,6 +180,7 @@ class Planner:
             messages=[{"role": "user", "content": user_content}],
             parse=_parse_intent,
             effort=self.effort,
+            user=user,
         )
         if result.refused:
             return Intent(kind=IntentKind.OTHER, refused=True)

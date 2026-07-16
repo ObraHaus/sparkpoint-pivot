@@ -36,7 +36,7 @@ function tilesFrom(state: "loading" | "ok" | "error", d: ReadyzDetail | null): T
   });
   const t = (label: string, tile: Tile): Tile => ({ ...tile, label });
   if (state === "loading") {
-    return ["Agent service", "Base RPC", "Simulator (Anvil fork)", "Database", "Model (Anthropic)"].map((label) => ({
+    return ["Agent service", "Base RPC", "Simulator (Anvil fork)", "Database", "LLM gateway (LiteLLM)"].map((label) => ({
       label,
       tone: "info" as Tone,
       value: "checking…",
@@ -47,7 +47,7 @@ function tilesFrom(state: "loading" | "ok" | "error", d: ReadyzDetail | null): T
     t("Base RPC", yn(reachable && c.base_rpc, "Healthy", "Down")),
     t("Simulator (Anvil fork)", yn(reachable && c.sim_fork, "Available", "Down")),
     t("Database", yn(reachable && c.postgres, "Connected", "Down")),
-    t("LLM gateway", yn(reachable && c.llm, "Live", "Down")),
+    t("LLM gateway (LiteLLM)", yn(reachable && c.llm, "Live", "Down")),
   ];
 }
 

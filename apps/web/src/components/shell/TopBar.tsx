@@ -8,9 +8,10 @@ import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
 
 export function TopBar({ active }: { active: string }) {
-  const { network, wallet } = useNetwork();
+  const { network, wallet, isConnected, onSupportedChain, switchToBase } = useNetwork();
   const ov = useOverlay();
   const unread = data.notifications.filter((n) => n.unread).length;
+  const wrongNetwork = isConnected && !onSupportedChain;
 
   return (
     <div className="topbar">
@@ -25,9 +26,13 @@ export function TopBar({ active }: { active: string }) {
           <span className="led" />
           Fully self-custodial
         </span>
-        <span className="pill netPill" title="Switch network" onClick={ov.openNetworkMenu}>
+        <span
+          className="pill netPill"
+          title={wrongNetwork ? "Switch to a supported network" : "Switch network"}
+          onClick={wrongNetwork ? switchToBase : ov.openNetworkMenu}
+        >
           <span style={{ width: 11, height: 11, borderRadius: "50%", background: network.color, flex: "none" }} />
-          <span>{network.name}</span>
+          <span>{wrongNetwork ? "Switch to Base" : network.name}</span>
           <Icon name="chevd" size={12} />
         </span>
         <span className="pill walletPill" onClick={ov.openWalletMenu}>

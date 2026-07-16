@@ -28,7 +28,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..chain import VaultUnavailable
 from ..db import get_database
+from ..db.allowlist import AllowlistStore, parse_allowlist_env
 from ..policy import POLICY_VERSION
+from .admin_llm import router as admin_llm_router
+from .allowlist import router as allowlist_router
 from .chat import router as chat_router
 from .errors import (
     ApiError,
@@ -91,6 +94,25 @@ _DB_CONNECT_TIMEOUT_S = 10.0
 _DB_DISCONNECT_TIMEOUT_S = 5.0
 
 
+async def _seed_allowlists(db: object) -> None:
+    """Idempotently seed the beta/admin allowlists from ``BETA_ALLOWLIST`` / ``ADMIN_ALLOWLIST``
+    (comma-separated) on boot (Phase B, item #9).
+
+    Best-effort: a seed failure (e.g. the 0005 migration not yet applied) is logged and swallowed
+    so it never blocks startup — the tables are the access gate, never the withdraw/exit path.
+    """
+    try:
+        beta = parse_allowlist_env(os.getenv("BETA_ALLOWLIST"))
+        admin = parse_allowlist_env(os.getenv("ADMIN_ALLOWLIST"))
+        if not beta and not admin:
+            return
+        added = await AllowlistStore(db).seed(beta=beta, admin=admin)  # type: ignore[arg-type]
+        logger.info("allowlist_seeded added=%d", added)
+    except Exception:
+        # Never interpolate env values; a seed failure must not crash boot.
+        logger.warning("allowlist_seed_skipped (table missing or DB error)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own the process-wide asyncpg pool lifecycle (connect on startup / close on shutdown).
@@ -110,6 +132,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
+        await _seed_allowlists(db)
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -193,6 +216,11 @@ app.include_router(portfolio_router)
 # §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
 # surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
 app.include_router(recommendations_router)
+# §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
+# management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
+app.include_router(allowlist_router)
+# §B admin LLM-gateway view (/admin/llm/status) — admin-gated, read-only gateway telemetry.
+app.include_router(admin_llm_router)
 
 
 @app.get("/healthz")

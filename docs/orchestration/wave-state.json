@@ -153,6 +153,20 @@
       "note": "/trust live reads + Spearbit/fake-addr deleted (a171824); LiteLLM gateway app + dedicated isolated Postgres + OpenRouter alias sparkpoint-chat with free fallback (e45a936/1ab4c2b); agent async LLM client pivoted to the gateway (OpenAICompatTransport, resilience kept, CC-prefix dropped, Anthropic-OAuth env fallback) + readyz real gateway liveness probe (587692d). VERIFIED LIVE: 20/20 real chat completions + recs with 6 real Obsidian citations (docs/verification/phase-a-llm-gateway.md). Checkpoint before Phase B."
     },
     {
+      "id": "PHASE-A1",
+      "title": "Phase A.1 hardening (pre-Phase-B punch list)",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "/trust subpages de-faked (exit + permissions now live reads + honest 'no US6 grants yet', 918a7ba); LiteLLM anonymous surface blocked via same-container guard proxy (/, /docs, /redoc, /openapi.json, /ui/* -> 404) + image digest-pinned; kept OpenRouter :free per operator ('still development phase'); soak script + per-turn results committed (20/20 real); mypy 63->62 corrected (CI count authoritative); known-limitations ops doc added. Final d9acd53 -> develop 66a399e."
+    },
+    {
+      "id": "PHASE-B",
+      "title": "SIWE auth + beta/admin gates + real shell + functional admin panel",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "B1 DB-backed allowlist (migration 0005 wallet_allowlist+allowlist_audit, AllowlistStore, seed-on-boot, admin-gated CRUD, non-admin=404; 5e33ae0). B2 SIWE (viem verifySiweMessage, nonce cookie, Web-Crypto HMAC session cookie -> edge+node; /verify wired; 4fb1b88). B3 BFF derives X-Owner/X-Account from the verified session (client headers dropped). B4 gates in the LIVE root middleware: (app) needs beta, /admin needs admin -> invisible 404 (rewrite /gate-404) + admin-layout notFound() defense-in-depth; NEVER gates landing/connect/verify/exit/trust. B5 user=owner threaded into planner/recommender/literacy (per-user LiteLLM budgets real; e53de66). B6 real shell: lib/network.tsx = live wagmi (real addr/disconnect/copy/Basescan/chain-switch), fake toasts + Sui live:true removed, useBeta<-session, offline chat labeled Demo (7ea6774). B7 admin panel: /admin/allowlist CRUD + /admin/gateway (LiteLLM status via virtual key) + killswitch live paused()/guardian() + LiteLLM tile (e987305, c3af865). Agent 323 green (mypy 66 files / pytest), web tsc+lint+build clean. Env: SESSION_SECRET (web), BETA/ADMIN_ALLOWLIST (both apps, sync via scripts/sync-allowlist-env.sh). Checkpoint after deploy+verify."
+    },
+    {
       "id": "P3",
       "title": "Phase 3: US6, Trust Center, bridge, hardening",
       "status": "pending"
