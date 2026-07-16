@@ -1,53 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * /verify — the REAL access check between /connect and onboarding.
+ *
+ * No fabricated pass: every row reflects live state — the connected wallet (wagmi
+ * useAccount), whether it's on a Base network, and the actual beta/whitelist result
+ * (useBeta → the default-permissive testnet gate, or the configured allowlist on
+ * mainnet). If nobody is connected there is nothing to verify, so it routes back to
+ * /connect. If the wallet is genuinely not eligible, it says so honestly instead of
+ * waving everyone through.
+ */
+
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { Icon } from "@/lib/icons";
+import { useBeta } from "@/lib/auth/whitelist";
 import { PubTop } from "@/components/screens/PubTop";
 import "@/components/screens/public.css";
 
-const STEPS: [string, string][] = [
-  ["Wallet connected", "0x12A4…b9Ef"],
-  ["On Base network", "confirmed"],
-  ["Whitelist (beta)", "passed"],
-];
+const BASE_CHAINS = new Set<number>([8453, 84532]);
+const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 export default function VerifyPage() {
   const router = useRouter();
-  // How many steps are visible, and how many of those have resolved to a check.
-  const [visible, setVisible] = useState(0);
-  const [resolved, setResolved] = useState(0);
-  const done = resolved >= STEPS.length;
+  const { address, chainId, isConnected } = useAccount();
+  const beta = useBeta();
 
+  const onBase = chainId !== undefined && BASE_CHAINS.has(chainId);
+  const betaOk = isConnected && beta.canTransact;
+  const done = isConnected && onBase && betaOk;
+  const blocked = isConnected && onBase && !betaOk;
+
+  const steps: { label: string; ok: boolean; value?: string }[] = [
+    { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
+    {
+      label: "On Base network",
+      ok: onBase,
+      value: onBase ? (chainId === 84532 ? "Base Sepolia" : "Base") : isConnected ? "wrong network" : undefined,
+    },
+    {
+      label: "Whitelist (beta)",
+      ok: betaOk,
+      value: betaOk ? (beta.isTestnet ? "testnet — open" : "eligible") : blocked ? "not eligible" : undefined,
+    },
+  ];
+
+  // Nothing to verify without a connected wallet — return to the real connect step.
   useEffect(() => {
-    let cancelled = false;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    function go(i: number) {
-      if (i >= STEPS.length) return;
-      // Append the row (showing the spinning dot).
-      setVisible(i + 1);
-      timers.push(
-        setTimeout(() => {
-          if (cancelled) return;
-          // Resolve this row to a green check + value.
-          setResolved(i + 1);
-          timers.push(
-            setTimeout(() => {
-              if (cancelled) return;
-              go(i + 1);
-            }, 460),
-          );
-        }, 620),
-      );
+    if (!isConnected) {
+      const t = setTimeout(() => router.push("/connect"), 1200);
+      return () => clearTimeout(t);
     }
+  }, [isConnected, router]);
 
-    go(0);
-    return () => {
-      cancelled = true;
-      timers.forEach(clearTimeout);
-    };
-  }, []);
+  const title = !isConnected
+    ? "Connect a wallet first"
+    : done
+      ? "You're in."
+      : blocked
+        ? "This wallet isn't in the beta yet"
+        : "Checking your access…";
+  const subtitle = !isConnected
+    ? "Taking you back to connect your wallet…"
+    : done
+      ? "Let's build your plan — it takes about 3 minutes."
+      : blocked
+        ? "Your wallet can still withdraw anytime via /exit, but new deposits aren't open for it yet."
+        : !onBase
+          ? "Switch your wallet to Base (or Base Sepolia) to continue."
+          : "Confirming your wallet's beta eligibility on Base.";
 
   return (
     <div className="pubwrap">
@@ -59,25 +81,26 @@ export default function VerifyPage() {
               <span style={{ color: "var(--gain)" }}>
                 <Icon name="check" size={30} stroke={2.5} />
               </span>
+            ) : blocked || (isConnected && !onBase) ? (
+              <span style={{ color: "var(--caution)" }}>
+                <Icon name="info" size={28} />
+              </span>
             ) : (
               <span className="ai-dot"></span>
             )}
           </div>
           <h2 id="vtitle" style={{ fontSize: "20px", fontWeight: 600, margin: "18px 0 6px" }}>
-            {done ? "You're in." : "Checking your access…"}
+            {title}
           </h2>
           <p id="vsub" style={{ fontSize: "13.5px", color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
-            {done
-              ? "Let's build your plan — it takes about 3 minutes."
-              : "Sparky is in beta — confirming your wallet is whitelisted on Base."}
+            {subtitle}
           </p>
           <div
             id="vsteps"
             style={{ margin: "20px 0 4px", textAlign: "left", maxWidth: "280px", marginInline: "auto" }}
           >
-            {STEPS.slice(0, visible).map(([label, value], i) => {
-              const isResolved = i < resolved;
-              return (
+            {isConnected &&
+              steps.map(({ label, ok, value }, i) => (
                 <div
                   key={i}
                   style={{
@@ -89,15 +112,17 @@ export default function VerifyPage() {
                     color: "var(--muted-foreground)",
                   }}
                 >
-                  {isResolved ? (
+                  {ok ? (
                     <span style={{ color: "var(--gain)" }}>
                       <Icon name="check" size={15} stroke={2.5} />
                     </span>
                   ) : (
-                    <span className="ai-dot"></span>
+                    <span style={{ color: "var(--caution)" }}>
+                      <Icon name="info" size={14} />
+                    </span>
                   )}
                   <span style={{ flex: 1 }}>
-                    {isResolved ? (
+                    {value ? (
                       <>
                         {label} · <span className="mono" style={{ color: "var(--foreground)" }}>{value}</span>
                       </>
@@ -106,8 +131,7 @@ export default function VerifyPage() {
                     )}
                   </span>
                 </div>
-              );
-            })}
+              ))}
           </div>
           <div id="vcta">
             {done && (
@@ -125,6 +149,15 @@ export default function VerifyPage() {
                   </a>
                 </div>
               </>
+            )}
+            {blocked && (
+              <a
+                className="btn btn-ghost btn-sm"
+                onClick={() => router.push("/exit")}
+                style={{ marginTop: "16px", display: "inline-flex", cursor: "pointer" }}
+              >
+                Withdraw via /exit →
+              </a>
             )}
           </div>
         </div>

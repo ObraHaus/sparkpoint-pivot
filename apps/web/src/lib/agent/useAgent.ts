@@ -25,7 +25,6 @@ import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 
-import { env } from "@/lib/env";
 import { createAgentClient, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
@@ -58,19 +57,19 @@ export interface AgentConnection {
 
 /**
  * Resolve the agent client for the current identity. The client targets the
- * same-origin BFF (`/api/agent`) by default; `env.agentBaseUrl` is an OPTIONAL
- * direct-to-agent override (normally unset). Returns `client: null` (and
+ * same-origin BFF (`/api/agent`) — there is no client-side base-URL override. Returns
+ * `client: null` (and
  * `online: false`) until a wallet is connected — the signal every surface uses to
  * fall back to its mock rendering. An agent that is down does NOT read as offline
  * here: the call still fires and the BFF's error envelope surfaces as an error card.
  */
 export function useAgentClient(): AgentConnection {
   const identity = useAgentIdentity();
-  const baseUrl = env.agentBaseUrl;
   const client = useMemo<AgentClient | null>(() => {
     if (!identity) return null;
-    return createAgentClient({ baseUrl, identity });
-  }, [baseUrl, identity]);
+    // Always the same-origin BFF (`/api/agent`) — no client-side base-URL override exists.
+    return createAgentClient({ identity });
+  }, [identity]);
   return { client, online: client !== null, identity };
 }
 

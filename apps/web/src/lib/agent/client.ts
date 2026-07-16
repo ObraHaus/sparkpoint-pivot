@@ -170,13 +170,13 @@ export class AgentApiError extends Error {
 const DEFAULT_BASE_URL = "/api/agent";
 
 function resolveBaseUrl(configBase?: string): string {
-  // Default to the same-origin BFF (`/api/agent`): the browser calls the web app's
-  // own origin and the server-side route handler adds the bearer + forwards to the
-  // agent, so NO agent URL or token ever reaches the client bundle. An explicit
-  // `NEXT_PUBLIC_AGENT_BASE_URL` (or a `baseUrl` config) is an OPTIONAL override —
-  // e.g. pointing a preview build straight at a deployed agent. Used VERBATIM (minus
-  // a trailing slash); any versioned prefix (§1.1 `/api/v1`) belongs to that value.
-  const raw = configBase ?? process.env.NEXT_PUBLIC_AGENT_BASE_URL ?? DEFAULT_BASE_URL;
+  // The browser ALWAYS calls the same-origin BFF (`/api/agent`): the server-side route
+  // handler adds the bearer + forwards to the agent, so NO agent URL or token ever reaches
+  // the client bundle. There is deliberately NO `NEXT_PUBLIC_AGENT_BASE_URL` override — it
+  // would let a deploy redirect user-scoped calls (with wallet-address headers) straight at
+  // the agent, bypassing the BFF. `configBase` remains only as an explicit programmatic
+  // override for tests; production never sets it.
+  const raw = configBase ?? DEFAULT_BASE_URL;
   return raw.replace(/\/+$/, "");
 }
 
