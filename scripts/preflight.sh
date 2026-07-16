@@ -14,7 +14,11 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 
 echo "== toolchain =="
 for t in forge anvil cast slither node pnpm uv jq; do have "$t" && ok "$t on PATH" || no "$t missing"; done
-if have docker; then docker info >/dev/null 2>&1 && ok "docker without sudo" || no "docker needs sudo/group (W3/W4)"; else no "docker missing (W3/W4)"; fi
+if have docker; then
+  if docker info >/dev/null 2>&1; then ok "docker usable without sudo"
+  elif id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker; then no "in 'docker' group but daemon unreachable — start dockerd / re-login for the group to take effect (W3/W4)"
+  else no "docker needs the group: 'sudo usermod -aG docker \$USER' then re-login (W3/W4)"; fi
+else no "docker missing (W3/W4)"; fi
 
 echo "== env vars (no vendor Tenderly) =="
 for v in ANTHROPIC_OAUTH_TOKEN ALCHEMY_ACCESS_KEY REOWN_WALLET_CONNECT_PROJECT_ID DUNE_API_KEY BASESCAN_ETHERSCAN_API_KEY DEPLOYER_ADDRESS DEPLOYER_PRIVATE_KEY TEST_USER_ADDRESS BASE_MAINNET_ARCHIVE_RPC_URL SIM_FORK_RPC_URL; do
@@ -36,8 +40,11 @@ for a in "$EP" "$POOL" "$USDC" "$AUSDC"; do
   [ -n "$code" ] && [ "$code" != "0x" ] && ok "code @ ${a:0:10}…" || no "no code @ ${a:0:10}…"
 done
 if [ -n "${DEPLOYER_ADDRESS:-}" ]; then
+  # Minimum deployer balance to clear the gate — parameterizable (a testnet deploy + the
+  # withdraw-always drill costs well under 0.02 ETH on Base Sepolia). Override for a bigger buffer.
+  MIN_ETH="${PREFLIGHT_MIN_DEPLOYER_ETH:-0.02}"
   bal=$(cast balance "$DEPLOYER_ADDRESS" --rpc-url "$SEP" 2>/dev/null || echo 0)
-  if python3 -c "import sys;sys.exit(0 if int('${bal:-0}')>=5*10**16 else 1)" 2>/dev/null; then ok "deployer > 0.05 ETH"; else no "deployer NOT funded (faucet Base Sepolia ETH — human, pre-W5c)"; fi
+  if python3 -c "import sys;sys.exit(0 if int('${bal:-0}')>=int(float('${MIN_ETH}')*10**18) else 1)" 2>/dev/null; then ok "deployer >= ${MIN_ETH} ETH"; else no "deployer < ${MIN_ETH} ETH (faucet Base Sepolia ETH — human)"; fi
   eoa="${TEST_USER_ADDRESS:-$DEPLOYER_ADDRESS}"
   ud=$(cast call "$USDC" "balanceOf(address)(uint256)" "$eoa" --rpc-url "$SEP" 2>/dev/null | awk '{print $1}')
   { [ -n "$ud" ] && [ "$ud" != "0" ]; } && ok "Aave-reserve USDC balance > 0" || no "test EOA has no Aave-reserve USDC (TestnetERC20.mint — pre-W5c)"
