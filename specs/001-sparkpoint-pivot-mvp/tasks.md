@@ -10,6 +10,8 @@ description: "Task list for SparkPoint Pivot — AI-Native Onchain Hedge Fund (L
 
 **Tests**: Tests are OPTIONAL per Spec Kit. This feature is safety-critical, so contract/integration tests for the smart contracts and the five non-custody invariants (N1–N5) and the simulation-before-sign gate are INCLUDED and are gating; frontend tests are kept light.
 
+> **AS-BUILT STATUS (2026-07-16) — the ledger is authoritative, not these checkboxes.** The Phase-2 build is **complete and deployed to develop**: waves W0–W6, operator work orders P0–P2, and **Phase A** (LLM gateway) / **Phase B** (SIWE auth + beta/admin gates + real shell + admin panel) / **Phase B.1** (auth hardening) / **Phase C** (embedder pin, knowledge T123 gaps, ve(3,3) fix, portfolio labels) all landed and CI-green. US1 (vault) is LIVE on Base Sepolia with non-custody proven on-chain; US2 (ERC-4337 account) built; US3–US5 (assistant) live behind the policy gate; US6 (session-key automation) is **Phase 3, undeployed**. **The authoritative, maintained state is `docs/orchestration/{wave-state.json,GATES.md}`** — the per-task checkboxes below are the ORIGINAL plan and are not individually ticked. The **Phase-2 Obsidian knowledge tier (T121–T126)** was added after this list was first written; it is captured in the block at the end of this file.
+
 **Organization**: Tasks are grouped by user story (US1–US6, in priority order) to enable independent implementation and testing of each story. Phase 1 (Setup) and Phase 2 (Foundational) are shared and blocking. The final phase is Polish & cross-cutting.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -334,7 +336,7 @@ description: "Task list for SparkPoint Pivot — AI-Native Onchain Hedge Fund (L
 
 ## Phase 9a: Multi-Network (Base → Sui) + Bridge + In-Chat Inline Confirm (client-directed scope amendment)
 
-**Purpose**: Realize the client-directed **multi-network** amendment (plan §Multi-network architecture note; constitution v1.2.0) at the **product / UX / non-custody level on the existing Base EVM stack**, plus the in-chat inline confirm surface. **Phase order: Base at launch (live), Sui as the designated fast-follow network**; networks beyond Base + Sui are out of scope. The Sui (non-EVM / Move) account/vault stack and the concrete bridge mechanism/provider contracts are a **separate follow-on** (see the FOLLOW-ON epic below) and are NOT broken into detailed tasks here.
+**Purpose**: Realize the client-directed **multi-network** amendment (plan §Multi-network architecture note; constitution v1.3.0) at the **product / UX / non-custody level on the existing Base EVM stack**, plus the in-chat inline confirm surface. **Phase order: Base at launch (live), Sui as the designated fast-follow network**; networks beyond Base + Sui are out of scope. The Sui (non-EVM / Move) account/vault stack and the concrete bridge mechanism/provider contracts are a **separate follow-on** (see the FOLLOW-ON epic below) and are NOT broken into detailed tasks here.
 
 **Non-custody discipline (must hold)**: the bridge stays **fully self-custodial** — user signs a lock/burn on the **source** network, receives funds in **their own wallet** on the **destination** network, SparkPoint **never** custodies in transit; **withdraw-always (N2) holds on every network**; bridge actions run the **same** simulation + guardrail checklist + you-sign gate as swaps/deposits, with per-network **and** per-bridge caps wired to policy limits. The in-chat confirm is a **UX-surface change only** — the trust gate and the sign-disabled-until-acknowledged invariant are preserved 1:1.
 
@@ -513,3 +515,17 @@ Quick reference to the tasks that implement/verify the five non-custody invarian
 - Every state-changing flow funnels through the single `ExecutionDrawer` signing chokepoint; no card is signable without a `policy: { status: 'approved' }` stamp.
 - The public `/exit` and `/trust` routes never import the agent client — withdraw-always and provability survive total backend loss (N2/N5).
 - Commit after each task or logical group; stop at any checkpoint to validate a story independently; never weaken a non-custody invariant for convenience.
+
+---
+
+## Phase 2 — Obsidian knowledge tier (T121–T126) — ADDED post-plan, DONE
+
+The advisory RAG tier (retrieval-only; never on the custody path, N2). All landed on develop;
+see `docs/orchestration/GATES.md` (P2 + Phase C) for the authoritative record.
+
+- **T121** — Seed corpus + retrieval relevance. Obsidian seed notes under `services/agent/knowledge_seed/`; committed real qwen3-1024 vectors + a replayable relevance test (`tests/knowledge/test_knowledge_relevance.py`). ✅
+- **T122** — Ingestion pipeline: parse Obsidian markdown → chunk (per-section) → embed → idempotent upsert into `memory_chunks` (`knowledge/ingestion.py`, `store.py`). ✅
+- **T123** — Provenance + safety: each chunk stamped with `git_sha` + `ingested_at`; a **pre-ingest PII/secret denylist** (fail-closed); the search SQL scoped `user_id IS NULL`; and a proper **`knowledge` `memory_source` enum** (migrations 0006/0007) replacing the `literacy_tip` shim. ✅ (Phase C)
+- **T124** — Shared embedder: a version-pinned space (`qwen3-embedding:8b`, MRL-truncated to 1024-dim + renormalized). The provider (`EMBEDDING_OPENAI_MODEL`) is validated against the pin — a foreign model is **rejected**, not silently stamped. ✅ (Phase C)
+- **T125** — Retriever wired into BOTH DAG builders (chat + recommendations); `None` when unconfigured so CI stays green and citations are never fabricated. ✅
+- **T126** — Boundary: the knowledge tier imports the stdlib + the `store` seam + the `embeddings` embedder ONLY (never `policy`/`agents`/`coordinator`); enforced by `test_knowledge_boundary.py`. ✅

@@ -34,7 +34,7 @@ Approved by the operator (aldrickb) on **2026-06-19**. These are intentional —
 ## ObraHaus conventions this repo DOES adopt
 
 - **Branch flow (§3):** `feature/*` → **`develop`** → **`main`** (production). Batched, deliberate, **never-Friday** prod deploys (PH/Asia-Manila).
-- **Spec-driven (§9):** Spec Kit lifecycle (constitution → specify → clarify → plan → tasks → analyze → implement). Constitution at `.specify/memory/constitution.md` (currently **v1.2.0**).
+- **Spec-driven (§9):** Spec Kit lifecycle (constitution → specify → clarify → plan → tasks → analyze → implement). Constitution at `.specify/memory/constitution.md` (currently **v1.3.0**).
 - **Security gate (§9):** **OH Defender** PR scan (`.github/workflows/oh-defender.yml`). ⚠️ **Onboarding required:** the repo must be onboarded in the Defender console to provision the `DEFENDER_API_URL` / `DEFENDER_API_KEY` Actions secrets (operator action). Until wired, the scan won't run.
 - **Living docs (§7):** `CHANGELOG.md`, `DEPLOYMENT.md`, `COOLIFY.md`, `DEVELOPMENT.md`, `MIGRATIONS.md` — keep updated in the same change that alters behavior.
 - **Dev/staging hosting (§5):** OH Coolify (Nixpacks, `pnpm --frozen-lockfile`, `http://` domains, deployment-record verification). See `COOLIFY.md`.
