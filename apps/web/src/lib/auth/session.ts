@@ -121,8 +121,14 @@ export async function signSession(input: {
  * `null` for any tampering, malformation, missing secret, or expiry. Constant-time signature
  * check via `crypto.subtle.verify`.
  */
-export async function verifySession(token: string | undefined | null): Promise<SessionClaims | null> {
-  const secret = getSecret();
+export async function verifySession(
+  token: string | undefined | null,
+  secretOverride?: string | null,
+): Promise<SessionClaims | null> {
+  // `secretOverride` lets the EDGE middleware pass a value it referenced directly (so Next inlines
+  // it into the edge bundle at build) — the imported-module `process.env` read below is NOT reliably
+  // inlined for edge, so middleware must hand the secret in. Node route callers omit it.
+  const secret = secretOverride ?? getSecret();
   if (!secret || !token) return null;
   const dot = token.indexOf(".");
   if (dot <= 0) return null;

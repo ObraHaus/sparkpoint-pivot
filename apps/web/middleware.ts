@@ -11,6 +11,12 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 // ─────────────────────────────────────────────────────────────────────────────
 const LOCKED = (process.env.SITE_LOCKED ?? "").toLowerCase() !== "false";
 
+// Referenced DIRECTLY here so Next inlines the value into the edge middleware bundle at build time
+// (an imported-module `process.env` read is not reliably inlined for the edge runtime, which does
+// not expose arbitrary runtime env). Passed into verifySession below. Same value the node routes
+// sign with, so signatures verify identically on both sides.
+const MW_SESSION_SECRET = process.env.SESSION_SECRET || process.env.AUTH_SECRET || undefined;
+
 const ALLOW_EXACT = new Set([
   "/",
   "/coming-soon",
@@ -92,7 +98,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   if (ESCAPE_HATCH.some((base) => under(pathname, base))) return NextResponse.next();
   if (PUBLIC_EXACT.has(pathname)) return NextResponse.next();
 
-  const claims = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+  const claims = await verifySession(req.cookies.get(SESSION_COOKIE)?.value, MW_SESSION_SECRET);
 
   // Admin surface — invisible to non-admins (404, never 403 or a revealing redirect).
   if (under(pathname, "/admin")) {
