@@ -68,6 +68,7 @@ class _FakeTransport:
         max_tokens: int,
         tools: Any,
         extra_body: Any,
+        user: str | None = None,
     ) -> Any:
         self.calls.append(
             {
