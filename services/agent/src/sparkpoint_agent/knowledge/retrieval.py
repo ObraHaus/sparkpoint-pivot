@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from ..wire import Citation
-from .embeddings import Embedder
+from .embeddings import Embedder, openai_embedder
 from .search import knowledge_search
-from .store import ChunkStore
+from .store import ChunkStore, PgChunkStore
 
 # Default number of advisory citations attached to a recommendation.
 DEFAULT_K = 3
@@ -61,3 +61,22 @@ class KnowledgeRetriever:
             # Advisory retrieval must never break the recommender (non-custody).
             return ()
         return tuple(citations)
+
+
+def default_citation_retriever() -> KnowledgeRetriever | None:
+    """The production Obsidian retriever, or ``None`` when no real embedder is configured.
+
+    Composes the pgvector-backed :class:`PgChunkStore` over the shared asyncpg pool with the
+    real :func:`openai_embedder`. When ``EMBEDDING_OPENAI_*`` is unset (e.g. CI/tests) this
+    returns ``None`` so the recommender simply attaches no corpus citations — never a fabricated
+    or stub-ranked one. Boundary-safe (T126): imports only ``knowledge`` + the ``db`` data layer,
+    never ``policy``/``agents``/``coordinator``.
+    """
+    embedder = openai_embedder()
+    if embedder is None:
+        return None
+    # Local import keeps the knowledge→db edge lazy (no module-load coupling) and the boundary
+    # one-directional (db never imports knowledge).
+    from ..db import get_database
+
+    return KnowledgeRetriever(store=PgChunkStore(get_database()), embedder=embedder)

@@ -39,20 +39,23 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Sequence
+import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+import httpx
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The pinned space (single source of truth). research.md §7.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # The version-pinned embedding model id stamped onto every row of BOTH tiers.
-# TODO_VERIFY: the concrete hosted-embedding provider is a deferred Gate decision
-# (research.md §7 open question). This id is the pinned placeholder — bumping it
-# is a re-embed event (see module docstring). Keep the ``@`` a hard version
-# boundary so a distance query can refuse to cross it.
-EMBEDDING_MODEL_VERSION = "sparkpoint-embed-1024@2026.06.0"
+# The provider Gate decision (research.md §7) is RESOLVED: the operator's self-hosted,
+# OpenAI-compatible OpenWebUI endpoint serving `qwen3-embedding:8b`, truncated (MRL) to the
+# pinned 1024-dim. The id encodes model + effective dim so a distance query refuses to cross
+# a version boundary; bumping it remains a re-embed event (see module docstring).
+EMBEDDING_MODEL_VERSION = "qwen3-embedding-8b-mrl1024@2026.07.0"
 
 # The vector dimension of the pinned space. MUST equal the pgvector
 # ``vector(N)`` column width in the memory_embeddings migration (data-model.md
@@ -243,3 +246,124 @@ class _DeterministicStubBackend:
 def stub_embedder(dimension: int = EMBEDDING_DIM) -> Embedder:
     """An ``Embedder`` over the deterministic offline stub. DEV/TESTS ONLY."""
     return Embedder(_DeterministicStubBackend(dimension))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Production backend — the operator's OpenAI-compatible OpenWebUI endpoint.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The env the knowledge tier (NOT the keyless config.py) reads for the provider.
+EMBEDDING_API_URL_ENV = "EMBEDDING_OPENAI_API_URL"
+EMBEDDING_API_KEY_ENV = "EMBEDDING_OPENAI_API_KEY"  # noqa: S105 — env NAME, not a secret value
+EMBEDDING_MODEL_ENV = "EMBEDDING_OPENAI_MODEL"
+
+
+class EmbeddingBackendError(RuntimeError):
+    """The embedding provider failed or returned a malformed response (fail-closed).
+
+    Its message NEVER contains the request URL, headers, or the API key — only a coarse,
+    non-leaking cause — so a logged/propagated error can never expose the credential.
+    """
+
+
+def _l2_normalize(vec: list[float]) -> list[float]:
+    norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+    return [v / norm for v in vec]
+
+
+class OpenAIEmbeddingBackend:
+    """An OpenAI-compatible :class:`EmbeddingBackend` (the operator's self-hosted OpenWebUI).
+
+    POSTs ``{model, input}`` to ``<api_url>/embeddings`` with a Bearer key and reads the OpenAI
+    ``data[].embedding`` shape (ordered by ``index``). The chosen model (``qwen3-embedding:8b``)
+    is MRL-trained and returns 4096-dim vectors even when a ``dimensions`` hint is sent, so each
+    vector is TRUNCATED to the pinned :data:`EMBEDDING_DIM` (a valid Matryoshka sub-embedding)
+    and L2-renormalized — matching the pgvector column width with no re-migration.
+
+    SECRET: the API key is held in-instance and set ONLY on the outgoing ``Authorization``
+    header; it is NEVER logged, embedded in an exception message, or shown in this repr.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_url: str,
+        api_key: str,
+        model: str,
+        dimension: int = EMBEDDING_DIM,
+        model_version: str = EMBEDDING_MODEL_VERSION,
+        timeout: float = 60.0,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._url = api_url.rstrip("/") + "/embeddings"
+        self._key = api_key  # secret — never logged
+        self._model = model
+        self._dimension = dimension
+        self._model_version = model_version
+        self._timeout = timeout
+        self._client = client  # injectable for tests (a MockTransport client)
+
+    def __repr__(self) -> str:  # never leak the key via repr
+        return f"OpenAIEmbeddingBackend(model={self._model!r}, dim={self._dimension})"
+
+    @property
+    def model_version(self) -> str:
+        return self._model_version
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        payload = {"model": self._model, "input": list(texts)}
+        headers = {
+            "Authorization": f"Bearer {self._key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            if self._client is not None:
+                resp = self._client.post(self._url, json=payload, headers=headers)
+            else:
+                resp = httpx.post(self._url, json=payload, headers=headers, timeout=self._timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPError as exc:
+            # `from None` + bare class name: the httpx repr can carry the request URL — never
+            # chain it, so nothing that could hint at the endpoint/credential leaks.
+            raise EmbeddingBackendError(
+                f"embedding request failed: {type(exc).__name__}"
+            ) from None
+
+        items = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise EmbeddingBackendError("embedding response malformed (missing or short data[])")
+        ordered = sorted(items, key=lambda it: it.get("index", 0))
+        out: list[list[float]] = []
+        for it in ordered:
+            vec = it.get("embedding")
+            if not isinstance(vec, list) or len(vec) < self._dimension:
+                raise EmbeddingBackendError(
+                    "embedding vector missing or shorter than the pinned dimension"
+                )
+            # MRL truncation to the pinned width + renormalize (valid for qwen3-embedding).
+            out.append(_l2_normalize([float(x) for x in vec[: self._dimension]]))
+        return out
+
+
+def openai_embedder(env: Mapping[str, str] | None = None) -> Embedder | None:
+    """Build the production :class:`Embedder` from ``EMBEDDING_OPENAI_*``, or ``None`` if unset.
+
+    Returns ``None`` when the provider isn't configured (e.g. CI/tests) so callers wire the
+    knowledge retriever ONLY when a real backend exists — otherwise citations are simply
+    absent (fail-open, never fabricated). When configured, the backend is checked against the
+    pinned space (:func:`assert_backend_matches_pin`) so a misconfigured model/dim fails fast.
+    """
+    src = env if env is not None else os.environ
+    url = (src.get(EMBEDDING_API_URL_ENV) or "").strip()
+    key = (src.get(EMBEDDING_API_KEY_ENV) or "").strip()
+    model = (src.get(EMBEDDING_MODEL_ENV) or "").strip()
+    if not (url and key and model):
+        return None
+    backend = OpenAIEmbeddingBackend(api_url=url, api_key=key, model=model)
+    assert_backend_matches_pin(backend)
+    return Embedder(backend)

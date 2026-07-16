@@ -12,6 +12,7 @@ A citation is advisory context — it never gates a signature.
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from ..wire import Citation
@@ -64,6 +65,8 @@ async def knowledge_search(
     """
     if k <= 0 or not query.strip():
         return []
-    query_vector = embedder.embed_one(query).vector
+    # The backend embed is a synchronous network call (the OpenAI-compatible provider); run it
+    # off the event loop so a retrieval never blocks request serving. Advisory + fail-closed.
+    query_vector = (await asyncio.to_thread(embedder.embed_one, query)).vector
     hits = await store.search(query_vector, k)
     return [hit_to_citation(hit) for hit in hits]
