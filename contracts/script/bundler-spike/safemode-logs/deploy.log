@@ -1,0 +1,22 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  SPIKE_POLICY=0x6379Ebd23F2E8f3037F966798d354A55caE306e2
+  SPIKE_VALIDATOR=0xD318bad326bF9d02C0C184661ad1795b74CED670
+  SPIKE_FACTORY=0x719AFf1973373cA4695f000431fcE498942e146f
+  SPIKE_ACCOUNT=0xDcec0E6f2253cB1bceC3D05Bf08C27166D0ce1B0
+  SPIKE_VAULT=0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
+  SPIKE_SESSION_KEY_OUT=0x90F79bf6EB2c4f870365E785982E1f101E93b906
+
+SKIPPING ON CHAIN SIMULATION.
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+
+Transactions saved to: /home/hello/project/sparkpoint-pivot/contracts/broadcast/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
+
+Sensitive values saved to: /home/hello/project/sparkpoint-pivot/contracts/cache/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
+

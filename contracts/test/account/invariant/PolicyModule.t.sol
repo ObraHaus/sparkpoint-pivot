@@ -127,4 +127,53 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         (bool ok,) = policy.checkAction(address(account), call, 100e6);
         assertTrue(ok, "checkAction must accept a fully in-scope call");
     }
+
+    // ── §7 slippage floor on the checkAction mirror (REASON_SLIPPAGE = "SLIPPAGE_FLOOR") ──
+    // checkAction mirrors SessionKeyValidator step 5 for the off-chain policy layer + Trust Center,
+    // so it MUST reject an under-protected swap with the same reason. Recipient is pinned to the
+    // account throughout so the ONLY gate that can fire is the slippage floor (recipient is checked
+    // AFTER slippage, so a slippage failure surfaces first).
+
+    bytes32 internal constant _SLIPPAGE = bytes32("SLIPPAGE_FLOOR");
+
+    /// @dev A swap with `amountOutMin == 0` (no floor) is rejected specifically for slippage.
+    function test_checkAction_swapZeroAmountOutMin_rejectsSlippage() public view {
+        uint256 amountIn = 100e6;
+        IPolicyModule.Call memory call = IPolicyModule.Call({
+            target: address(router), value: 0, data: _aeroSwapCd(amountIn, 0, address(account))
+        });
+        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        assertFalse(ok, "swap with amountOutMin == 0 must be rejected");
+        assertEq(reason, _SLIPPAGE, "reason must be the slippage floor, not another gate");
+    }
+
+    /// @dev Any `amountOutMin` strictly BELOW the floor is rejected for slippage. floor =
+    ///      amountIn * (10_000 - maxSlippageBps) / 10_000; recipient pinned so only slippage can fail.
+    function testFuzz_checkAction_swapBelowFloor_rejectsSlippage(uint256 amountIn, uint256 amountOutMin)
+        public
+        view
+    {
+        amountIn = bound(amountIn, 1e6, SESSION_PER_TX);
+        uint256 floor = (amountIn * (10_000 - SESSION_MAX_SLIPPAGE_BPS)) / 10_000;
+        amountOutMin = bound(amountOutMin, 0, floor - 1);
+        IPolicyModule.Call memory call = IPolicyModule.Call({
+            target: address(router), value: 0, data: _aeroSwapCd(amountIn, amountOutMin, address(account))
+        });
+        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        assertFalse(ok, "amountOutMin below the slippage floor must be rejected");
+        assertEq(reason, _SLIPPAGE, "reason must be the slippage floor");
+    }
+
+    /// @dev A swap AT the floor with the recipient pinned to the account passes — proving the earlier
+    ///      rejections fired on slippage specifically, not a blanket swap reject.
+    function testFuzz_checkAction_swapAtFloor_accepted(uint256 amountIn) public view {
+        amountIn = bound(amountIn, 1e6, SESSION_PER_TX);
+        uint256 floor = (amountIn * (10_000 - SESSION_MAX_SLIPPAGE_BPS)) / 10_000;
+        IPolicyModule.Call memory call = IPolicyModule.Call({
+            target: address(router), value: 0, data: _aeroSwapCd(amountIn, floor, address(account))
+        });
+        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        assertTrue(ok, "swap AT the slippage floor with recipient pinned must pass");
+        assertEq(reason, bytes32(0), "an accepted action reports OK (bytes32(0))");
+    }
 }
