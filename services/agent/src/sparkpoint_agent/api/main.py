@@ -16,10 +16,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
+import httpx
 from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +46,41 @@ from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
 logger = logging.getLogger("sparkpoint_agent.api")
+
+# readyz LLM check — a REAL gateway liveness probe (not key-presence), cached so /readyz stays
+# cheap. When the LiteLLM gateway is configured this GETs its /health/liveliness (a genuine
+# reachability check of the exact path the assistant uses); otherwise it falls back to
+# Anthropic-credential presence. Closes the "green while chat is down" gap: a down/unreachable
+# gateway now flips the check to false.
+_LLM_PROBE_TTL_S = 60.0
+_LLM_PROBE_TIMEOUT_S = 2.5
+_llm_probe: dict[str, float | bool] = {"ts": -1e9, "ok": False}
+
+
+async def _llm_ready() -> bool:
+    base = os.getenv("LITELLM_BASE_URL")
+    if not base:
+        # Anthropic fallback path: credential presence is the best signal available.
+        return bool(
+            os.getenv("NEW_ANTHROPIC_OAUTH_TOKEN")
+            or os.getenv("ANTHROPIC_OAUTH_TOKEN")
+            or os.getenv("ANTHROPIC_API_KEY")
+        )
+    now = time.monotonic()
+    if now - float(_llm_probe["ts"]) < _LLM_PROBE_TTL_S:
+        return bool(_llm_probe["ok"])
+    root = base.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3].rstrip("/")
+    ok = False
+    try:
+        async with httpx.AsyncClient(timeout=_LLM_PROBE_TIMEOUT_S) as c:
+            resp = await c.get(f"{root}/health/liveliness")
+            ok = resp.status_code == 200
+    except Exception:
+        ok = False
+    _llm_probe.update(ts=now, ok=ok)
+    return ok
 
 # Startup must NEVER block on the DB: asyncpg.create_pool can hang for its full connect
 # timeout (~tens of seconds) if the DB is unreachable at boot, which stalls uvicorn startup
@@ -185,11 +222,8 @@ async def readyz(
     checks = {
         "sim_fork": bool(os.getenv("SIM_FORK_RPC_URL")),
         "base_rpc": bool(os.getenv("BASE_SEPOLIA_RPC_URL") or os.getenv("ALCHEMY_ACCESS_KEY")),
-        "anthropic": bool(
-            os.getenv("NEW_ANTHROPIC_OAUTH_TOKEN")
-            or os.getenv("ANTHROPIC_OAUTH_TOKEN")
-            or os.getenv("ANTHROPIC_API_KEY")
-        ),
+        # Real LLM-gateway liveness (cached ~60s), not mere key-presence.
+        "llm": await _llm_ready(),
         "postgres": postgres_ok,
     }
     ready = all(checks.values())

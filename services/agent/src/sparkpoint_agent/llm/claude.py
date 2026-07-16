@@ -71,8 +71,33 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 class AuthMode(StrEnum):
     """Which credential the client authenticates with."""
 
-    OAUTH = "oauth"  # Claude-Code OAuth (Bearer + oauth beta header)
+    GATEWAY = "gateway"  # OpenAI-compatible LiteLLM gateway → OpenRouter (DEFAULT when configured)
+    OAUTH = "oauth"  # Claude-Code OAuth (Bearer + oauth beta header) — non-default fallback
     API_KEY = "api_key"  # plain ANTHROPIC_API_KEY (Phase-3)
+
+
+# The OpenAI-compatible LiteLLM gateway (Phase A). When set, this is the DEFAULT LLM path — the
+# gateway holds the OpenRouter key; Hermes calls it with a VIRTUAL key. The Anthropic-OAuth path
+# below stays in code as an env-selected fallback (used only when the gateway isn't configured).
+LITELLM_BASE_URL_ENV = "LITELLM_BASE_URL"
+LITELLM_API_KEY_ENV = "LITELLM_API_KEY"  # noqa: S105 — env var NAME, not a secret
+LITELLM_MODEL_ENV = "LITELLM_MODEL"
+DEFAULT_GATEWAY_MODEL = "sparkpoint-chat"
+
+
+def gateway_from_env() -> tuple[str, str, str] | None:
+    """Resolve the gateway (base_url, virtual_key, model_alias), or ``None`` if not configured.
+
+    Requires ``LITELLM_BASE_URL`` + ``LITELLM_API_KEY`` (the virtual key); the model alias
+    defaults to ``sparkpoint-chat``. The virtual key is handed straight to the transport and is
+    NEVER logged. ``None`` means fall back to the Anthropic-OAuth path (``credential_from_env``).
+    """
+    base_url = (os.getenv(LITELLM_BASE_URL_ENV) or "").strip()
+    api_key = (os.getenv(LITELLM_API_KEY_ENV) or "").strip()
+    if not (base_url and api_key):
+        return None
+    model = (os.getenv(LITELLM_MODEL_ENV) or "").strip() or DEFAULT_GATEWAY_MODEL
+    return base_url, api_key, model
 
 
 class AgentRole(StrEnum):

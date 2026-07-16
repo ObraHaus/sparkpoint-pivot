@@ -23,7 +23,7 @@ type Tile = { label: string; tone: Tone; value: string };
 
 interface ReadyzDetail {
   ready?: boolean;
-  checks?: { sim_fork?: boolean; base_rpc?: boolean; anthropic?: boolean; postgres?: boolean };
+  checks?: { sim_fork?: boolean; base_rpc?: boolean; llm?: boolean; postgres?: boolean };
 }
 
 function tilesFrom(state: "loading" | "ok" | "error", d: ReadyzDetail | null): Tile[] {
@@ -47,7 +47,7 @@ function tilesFrom(state: "loading" | "ok" | "error", d: ReadyzDetail | null): T
     t("Base RPC", yn(reachable && c.base_rpc, "Healthy", "Down")),
     t("Simulator (Anvil fork)", yn(reachable && c.sim_fork, "Available", "Down")),
     t("Database", yn(reachable && c.postgres, "Connected", "Down")),
-    t("Model (Anthropic)", yn(reachable && c.anthropic, "Configured", "Not set")),
+    t("LLM gateway", yn(reachable && c.llm, "Live", "Down")),
   ];
 }
 

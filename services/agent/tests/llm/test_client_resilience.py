@@ -77,6 +77,7 @@ class _ScriptedTransport:
         max_tokens: int,
         tools: Any,
         extra_body: Any,
+        user: str | None = None,
     ) -> Any:
         self.calls.append({"system": system, "messages": messages})
         item = self.queue.pop(0)

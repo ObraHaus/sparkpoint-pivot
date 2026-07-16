@@ -34,17 +34,21 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+import httpx
+
 from .claude import (
     CLAUDE_CODE_SYSTEM_PREFIX,
     MODEL,
     OAUTH_BETA_HEADER,
     AgentRole,
     AuthMode,
+    ClaudeError,
     Effort,
     LlmResult,
     ToolCall,
     credential_from_env,
     extract_usage,
+    gateway_from_env,
     resolve_effort,
 )
 from .resilience import Limiter, RetryPolicy, call_with_resilience
@@ -84,6 +88,7 @@ class MessageTransport(Protocol):
         max_tokens: int,
         tools: Sequence[Mapping[str, Any]] | None,
         extra_body: Mapping[str, Any],
+        user: str | None = None,
     ) -> Any: ...
 
 
@@ -131,6 +136,7 @@ class AnthropicTransport:
         max_tokens: int,
         tools: Sequence[Mapping[str, Any]] | None,
         extra_body: Mapping[str, Any],
+        user: str | None = None,  # noqa: ARG002 — Anthropic messages.create has no `user` field
     ) -> Any:
         from anthropic import NOT_GIVEN
 
@@ -143,6 +149,135 @@ class AnthropicTransport:
             messages=messages,
             tools=tools_arg,
             extra_body=dict(extra_body),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenAI-compatible gateway transport (LiteLLM → OpenRouter) — the DEFAULT path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class GatewayError(ClaudeError):
+    """A non-2xx from the LiteLLM gateway. Carries ``status_code`` so the resilience layer
+    retries 429/529 and the API layer maps it to UPSTREAM_UNAVAILABLE. The message NEVER
+    contains the URL, headers, or the virtual key — only the status + a coarse cause."""
+
+    def __init__(self, status_code: int, detail: str = "") -> None:
+        super().__init__(f"gateway http {status_code}{f': {detail}' if detail else ''}")
+        self.status_code = status_code
+
+
+@dataclass
+class _OAIUsage:
+    """Duck-typed usage shim so :func:`extract_usage` reads OpenAI token counts unchanged."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
+@dataclass
+class _OAITextBlock:
+    text: str
+    type: str = "text"
+
+
+@dataclass
+class _OAIMessage:
+    """An Anthropic-``Message``-shaped adapter over an OpenAI chat completion, so the existing
+    :func:`normalize_message` (content blocks / stop_reason / usage) works with no branching."""
+
+    content: list[_OAITextBlock]
+    stop_reason: str | None
+    usage: _OAIUsage
+    stop_details: Any = None
+
+
+def _oai_messages(
+    system: list[dict[str, Any]], messages: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Anthropic system-blocks + messages → OpenAI chat messages (system role + user/assistant)."""
+    sys_text = "\n\n".join(str(b.get("text", "")) for b in system if b.get("text"))
+    out: list[dict[str, str]] = []
+    if sys_text:
+        out.append({"role": "system", "content": sys_text})
+    for m in messages:
+        role = str(m.get("role", "user"))
+        content = m.get("content", "")
+        if isinstance(content, list):  # Anthropic block list → concatenate text blocks
+            content = "".join(
+                str(b.get("text", ""))
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+        out.append({"role": role, "content": str(content)})
+    return out
+
+
+_FINISH_TO_STOP = {"stop": "end_turn", "length": "max_tokens", "content_filter": "refusal"}
+
+
+@dataclass
+class OpenAICompatTransport:
+    """Production transport for the LiteLLM gateway (OpenAI ``/chat/completions``).
+
+    Sends the OpenAI chat shape with the virtual key + the stable alias (``sparkpoint-chat``),
+    passes the ``user`` field (the server-verified wallet, Phase B) for per-user budgets, and
+    adapts the reply back to an Anthropic-``Message`` shape. NO Claude-Code system prefix and NO
+    Anthropic ``thinking``/``effort`` params are sent on this path. The virtual key is set only on
+    the outgoing Authorization header — never logged or placed in an exception (``GatewayError``).
+    """
+
+    base_url: str
+    api_key: str = field(repr=False)  # virtual key — secret
+    model: str = "sparkpoint-chat"
+    timeout: float = 120.0
+    client: httpx.AsyncClient | None = field(default=None, repr=False)  # injectable for tests
+
+    async def create(
+        self,
+        *,
+        model: str,
+        system: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        max_tokens: int,
+        tools: Sequence[Mapping[str, Any]] | None,  # noqa: ARG002 — advisory path sends no tools
+        extra_body: Mapping[str, Any],  # noqa: ARG002 — Anthropic thinking/effort dropped here
+        user: str | None = None,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": _oai_messages(system, messages),
+            "max_tokens": max_tokens,
+        }
+        if user:
+            payload["user"] = user
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        url = self.base_url.rstrip("/") + "/chat/completions"
+        try:
+            if self.client is not None:
+                resp = await self.client.post(url, json=payload, headers=headers)
+            else:
+                async with httpx.AsyncClient(timeout=self.timeout) as c:
+                    resp = await c.post(url, json=payload, headers=headers)
+        except httpx.HTTPError:
+            # Network/timeout: treat as a retryable upstream blip (529-class), key never leaked.
+            raise GatewayError(529, "network") from None
+        if resp.status_code >= 400:
+            # Never surface the body verbatim (could echo the request) — status only.
+            raise GatewayError(resp.status_code)
+        data = resp.json()
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        usage = data.get("usage") or {}
+        return _OAIMessage(
+            content=[_OAITextBlock(text=str(msg.get("content") or ""))],
+            stop_reason=_FINISH_TO_STOP.get(str(choice.get("finish_reason") or ""), "end_turn"),
+            usage=_OAIUsage(
+                input_tokens=int(usage.get("prompt_tokens") or 0),
+                output_tokens=int(usage.get("completion_tokens") or 0),
+            ),
         )
 
 
@@ -319,13 +454,29 @@ class AsyncClaudeClient:
                    model=model)
 
     @classmethod
+    def for_gateway(
+        cls, base_url: str, api_key: str, *, model: str = "sparkpoint-chat"
+    ) -> AsyncClaudeClient:
+        """The OpenAI-compatible LiteLLM gateway path (DEFAULT). ``model`` is the gateway alias."""
+        return cls(
+            transport=OpenAICompatTransport(base_url=base_url, api_key=api_key, model=model),
+            auth_mode=AuthMode.GATEWAY,
+            model=model,
+        )
+
+    @classmethod
     def from_env(cls, *, model: str = MODEL) -> AsyncClaudeClient:
-        """Resolve the credential in preference order (work order (0)), fail-closed.
+        """Resolve the LLM path, fail-closed. DEFAULT = the LiteLLM gateway when configured
+        (``LITELLM_BASE_URL`` + ``LITELLM_API_KEY``); otherwise fall back to the Anthropic path
+        in preference order ``NEW_ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_OAUTH_TOKEN`` →
+        ``ANTHROPIC_API_KEY``.
 
-        ``NEW_ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_OAUTH_TOKEN`` → ``ANTHROPIC_API_KEY``.
-
-        :raises ClaudeAuthError: when none is set (no silent unauthenticated client).
+        :raises ClaudeAuthError: when neither the gateway nor an Anthropic credential is set.
         """
+        gw = gateway_from_env()
+        if gw is not None:
+            base_url, api_key, alias = gw
+            return cls.for_gateway(base_url, api_key, model=alias)
         mode, value = credential_from_env()
         if mode is AuthMode.OAUTH:
             return cls.for_oauth(value, model=model)
@@ -366,6 +517,7 @@ class AsyncClaudeClient:
         thinking: bool = True,
         tools: Sequence[Mapping[str, Any]] | None = None,
         max_tokens: int = DEFAULT_PROSE_MAX_TOKENS,
+        user: str | None = None,
     ) -> LlmResult:
         """One async Claude turn, refusal-safe and CoT-stripped.
 
@@ -391,6 +543,7 @@ class AsyncClaudeClient:
                 max_tokens=max_tokens,
                 tools=tools,
                 extra_body=extra_body,
+                user=user,
             ),
             policy=self.retry_policy,
             limiter=self.limiter,
@@ -409,6 +562,7 @@ class AsyncClaudeClient:
         effort: Effort | None = None,
         thinking: bool = True,
         max_tokens: int = DEFAULT_STRUCTURED_MAX_TOKENS,
+        user: str | None = None,
     ) -> StructuredResult[T]:
         """Ask the model for JSON and validate it with ``parse`` — fail-closed.
 
@@ -424,6 +578,7 @@ class AsyncClaudeClient:
             effort=effort,
             thinking=thinking,
             max_tokens=max_tokens,
+            user=user,
         )
         if result.refused:
             return StructuredResult(ok=False, refused=True, error="model refused", raw_text="")
