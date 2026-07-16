@@ -30,6 +30,7 @@ from ..chain import VaultUnavailable
 from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
 from ..policy import POLICY_VERSION
+from .admin_llm import router as admin_llm_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
 from .errors import (
@@ -218,6 +219,8 @@ app.include_router(recommendations_router)
 # §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
 # management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
 app.include_router(allowlist_router)
+# §B admin LLM-gateway view (/admin/llm/status) — admin-gated, read-only gateway telemetry.
+app.include_router(admin_llm_router)
 
 
 @app.get("/healthz")
