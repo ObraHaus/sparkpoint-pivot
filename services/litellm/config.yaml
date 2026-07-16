@@ -1,31 +1,46 @@
 # LiteLLM proxy config — SparkPoint develop gateway (Phase A).
 #
-# Maps the stable alias `sparkpoint-chat` to an OpenRouter model. ONLY this gateway ever
-# holds the OpenRouter key; Hermes calls the gateway with a LiteLLM virtual key. Secrets are
-# resolved from the process env via `os.environ/…` and are NEVER written into this file.
+# Maps the stable alias `sparkpoint-chat` to OpenRouter models. ONLY this gateway ever holds
+# the OpenRouter key; Hermes calls the gateway with a LiteLLM virtual key. Secrets resolve from
+# the process env via `os.environ/…` and are NEVER written into this file.
 #
-# The DATABASE_URL env (when set) is auto-detected by LiteLLM for its own key/spend tables in
-# an ISOLATED `litellm` database (never the agent's DB). Without it, the gateway still proxies
-# and enforces the master key + per-model rpm/tpm, but dynamic virtual keys / per-user budgets
-# require the DB.
+# RELIABILITY: OpenRouter's `:free` tier is aggressively rate-limited per upstream provider —
+# the operator's primary (gemma-4-31b:free, Google AI Studio) returned 429 on every probe. So
+# the alias is a GROUP: the operator's model is the primary (set via OPENROUTER_MODEL), plus a
+# verified-available same-family free fallback; the router retries the other deployment on a 429
+# and cools the throttled one down. Swap either to a paid model / BYOK key for hard reliability.
+#
+# The DATABASE_URL env (a dedicated, isolated Postgres — never the agent's DB) is auto-detected
+# by LiteLLM for virtual keys + per-user budgets.
 
 model_list:
   - model_name: sparkpoint-chat
     litellm_params:
-      # mirrors OPENROUTER_MODEL (google/gemma-4-31b-it:free) — model id is not a secret.
+      # operator's primary — mirrors OPENROUTER_MODEL (google/gemma-4-31b-it:free). Not a secret.
       model: openrouter/google/gemma-4-31b-it:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
-      # Coarse gateway-side ceilings (the client-side fail-closed resilience layer stays in Hermes).
       rpm: 60
-      tpm: 120000
+  - model_name: sparkpoint-chat
+    litellm_params:
+      # verified-available free fallback (probed live) so the alias serves when the primary 429s.
+      model: openrouter/google/gemma-4-26b-a4b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      rpm: 60
 
 litellm_settings:
   drop_params: true          # tolerate provider-specific param differences
   set_verbose: false         # never verbose-log request bodies (could carry prompt content)
   request_timeout: 120
+  num_retries: 3             # retry across the group on a transient upstream failure
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+  allowed_fails: 1
+  cooldown_time: 30          # park a 429'd deployment for 30s, serve from the other
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY   # admin/root key; server-side only, never shipped to a client
   # Per-user budgets/limits keyed by the LiteLLM `user` field (the server-verified wallet, Phase B).
-  # (Enforcement requires the DB; see DATABASE_URL note above.)
