@@ -58,11 +58,11 @@ export function isRequestSecure(req: Request): boolean {
 
 const encoder = new TextEncoder();
 
-/** Copy into a fresh ArrayBuffer — a `BufferSource` the Web Crypto typings accept across TS libs. */
-function asBufferSource(bytes: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return buffer;
+/** Pass the typed array itself (an ArrayBufferView is a valid `BufferSource`) — cast only to satisfy
+ * TS's ArrayBufferLike generic. Some Web Crypto runtimes (Next's edge) reject a bare ArrayBuffer;
+ * an ArrayBufferView is the most portable input. */
+function asBufferSource(bytes: Uint8Array): BufferSource {
+  return bytes as unknown as BufferSource;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -111,7 +111,7 @@ export async function signSession(input: {
   const payload = bytesToBase64Url(encoder.encode(JSON.stringify(claims)));
   const key = await importKey(secret);
   const sig = new Uint8Array(
-    await crypto.subtle.sign("HMAC", key, asBufferSource(encoder.encode(payload))),
+    await crypto.subtle.sign({ name: "HMAC" }, key, asBufferSource(encoder.encode(payload))),
   );
   return `${payload}.${bytesToBase64Url(sig)}`;
 }
@@ -137,7 +137,7 @@ export async function debugVerify(
   try {
     const key = await importKey(secret);
     const recomputed = bytesToBase64Url(
-      new Uint8Array(await crypto.subtle.sign("HMAC", key, asBufferSource(encoder.encode(payload)))),
+      new Uint8Array(await crypto.subtle.sign({ name: "HMAC" }, key, asBufferSource(encoder.encode(payload)))),
     );
     let exp = -1;
     try {
@@ -176,7 +176,7 @@ export async function verifySession(
     // crypto.subtle.verify, which returned false in the edge runtime for a signature the node route
     // accepts (sign is consistent across runtimes; verify was not). Same result, edge-safe.
     const expected = bytesToBase64Url(
-      new Uint8Array(await crypto.subtle.sign("HMAC", key, asBufferSource(encoder.encode(payload)))),
+      new Uint8Array(await crypto.subtle.sign({ name: "HMAC" }, key, asBufferSource(encoder.encode(payload)))),
     );
     if (!timingSafeStrEqual(sig, expected)) return null;
     const claims = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as SessionClaims;
