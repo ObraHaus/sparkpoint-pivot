@@ -1,0 +1,160 @@
+name: deploy-testnet
+# ITEM 5 / T103 (testnet half) — REAL steps, SIMULATION ONLY, NEVER broadcasting.
+#
+# This is the deploy VERIFICATION shell, not a deployer. It: builds; runs the in-EVM
+# N1-N5 non-custody invariant suite; emits a non-submitting source-Verify payload;
+# simulates the testnet deploy (DeploySepolia, NO --broadcast) on a Base Sepolia fork;
+# and gates on AssertNonCustody (N1/N2/N5) BOTH as a precondition dry-run and again
+# post-simulation. A real testnet broadcast + Basescan verify is a separate, human,
+# out-of-band action (Gate-B) — it is intentionally NOT possible from this workflow.
+#
+# NON-BROADCAST posture (matches the guard-dangerous.sh PreToolUse hook that hard-denies
+# any mainnet broadcast / cast-send / force-push):
+#   * There is NO `push:` trigger — nothing here ever runs automatically on a push.
+#   * No step ever passes `--broadcast`; forge stays in simulation and writes only a
+#     `.../dry-run/...` artifact. A guard step fails the job if a non-dry-run broadcast
+#     artifact ever appears.
+#   * A runtime guard asserts the resolved chainId is Base Sepolia (84532) and hard-fails
+#     on Base mainnet (8453) or anything else — a mainnet RPC can never be simulated here.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'type "simulate-sepolia" to run the non-broadcasting testnet simulation'
+        required: true
+  pull_request:
+    branches: [develop]
+    paths:
+      - contracts/**
+      - .github/workflows/deploy-testnet.yml
+
+concurrency:
+  group: deploy-testnet-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    # workflow_dispatch requires the typed confirm; PRs to develop always dry-run. Never on push.
+    if: ${{ github.event_name == 'pull_request' || github.event.inputs.confirm == 'simulate-sepolia' }}
+    runs-on: ubuntu-latest
+    env:
+      # The ONLY RPC this job may use. On fork PRs (no secrets) it is empty and the
+      # RPC-backed steps self-skip — exactly like the fork tests — while the secret-free
+      # N1-N5 gate below still runs. Base Sepolia only; a mainnet RPC is rejected at runtime.
+      SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
+      EXPECTED_CHAIN_ID: '84532' # Base Sepolia — the only allowed target
+      MAINNET_CHAIN_ID: '8453' # Base mainnet — hard-denied here (Gate-C / guard hook)
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: build (ITEM 5 — a real build, not a green-by-skip echo)
+        working-directory: contracts
+        run: forge build
+
+      # ── N1-N5 gate that needs NO secrets: the in-EVM invariant suite (mock USDC/Aave,
+      #    an `attacker` that hammers every exit/admin/governance selector). Runs on every
+      #    PR incl. forks, so custody is gated even when the testnet RPC is unavailable. ──
+      - name: N1-N5 non-custody invariant suite (REQUIRED — gates the job)
+        working-directory: contracts
+        run: forge test --match-path "test/invariant/*" -vvv
+
+      # ── Verify (non-broadcasting): emit the EXACT Basescan standard-json-input a real
+      #    source verification would submit, WITHOUT contacting any network or key. Proves
+      #    the deployed bytecode is reproducibly verifiable; submits nothing. ──
+      - name: Verify — source-verification dry-run (emits standard-json-input, submits nothing)
+        working-directory: contracts
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('deployments/84532/addresses.json'))['SparkPointVault'])")
+          forge verify-contract "$V" src/vault/SparkPointVault.sol:SparkPointVault \
+            --show-standard-json-input > /tmp/spv.verify.json
+          python3 -c "import json,os;json.load(open('/tmp/spv.verify.json'));print('standard-json-input OK,', os.path.getsize('/tmp/spv.verify.json'),'bytes')"
+
+      # ── Everything below needs the testnet RPC. On fork PRs (no secrets) these self-skip. ──
+      - name: mainnet guard — target MUST be Base Sepolia (84532), NEVER mainnet (8453)
+        if: env.SEPOLIA_RPC_URL != ''
+        working-directory: contracts
+        run: |
+          CID=$(cast chain-id --rpc-url "$SEPOLIA_RPC_URL")
+          echo "resolved chainId=$CID"
+          if [ "$CID" = "$MAINNET_CHAIN_ID" ]; then
+            echo "::error::RPC points at Base MAINNET ($MAINNET_CHAIN_ID) — hard-denied (Gate-C / guard hook)"; exit 1
+          fi
+          if [ "$CID" != "$EXPECTED_CHAIN_ID" ]; then
+            echo "::error::RPC chainId $CID != Base Sepolia ($EXPECTED_CHAIN_ID)"; exit 1
+          fi
+
+      # Resolve the LIVE vault + its custody immutables read-only, BEFORE the deploy sim
+      # (the sim rewrites deployments/84532/addresses.json in the ephemeral checkout, so we
+      # capture the real address up-front and pass it explicitly to the post-sim Verify gate).
+      - name: resolve live vault + custody immutables (drift-proof, read-only)
+        if: env.SEPOLIA_RPC_URL != ''
+        id: live
+        working-directory: contracts
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('deployments/84532/addresses.json'))['SparkPointVault'])")
+          echo "vault=$V" >> "$GITHUB_OUTPUT"
+          echo "usdc=$(cast call "$V" 'asset()(address)'   --rpc-url "$SEPOLIA_RPC_URL")" >> "$GITHUB_OUTPUT"
+          echo "pool=$(cast call "$V" 'aavePool()(address)' --rpc-url "$SEPOLIA_RPC_URL")" >> "$GITHUB_OUTPUT"
+          echo "ausdc=$(cast call "$V" 'aUSDC()(address)'   --rpc-url "$SEPOLIA_RPC_URL")" >> "$GITHUB_OUTPUT"
+
+      # ── PRECONDITION AssertNonCustody dry-run: read-only against the LIVE target vault
+      #    BEFORE any deploy sim. The script is `view`; it reverts (non-zero exit → job fails)
+      #    on ANY N1/N2/N5 violation (fees != 0, perf-fee over cap, feeRecipient unset,
+      #    guardian != pauser, EIP-1967 slots set, custody immutables unset). ──
+      - name: AssertNonCustody — precondition dry-run vs live vault (gates on N1/N2/N5)
+        if: env.SEPOLIA_RPC_URL != ''
+        working-directory: contracts
+        env:
+          VAULT_ADDRESS: ${{ steps.live.outputs.vault }}
+        run: forge script script/AssertNonCustody.s.sol:AssertNonCustody --rpc-url "$SEPOLIA_RPC_URL"
+
+      # ── DeploySepolia SIMULATION on a Base Sepolia fork. NO --broadcast → forge prints
+      #    "SIMULATION COMPLETE" and writes only a dry-run artifact; nothing is sent on-chain.
+      #    Token addrs come from the live vault's own immutables (no drift, no hardcoding). ──
+      - name: DeploySepolia — SIMULATION on a Base Sepolia fork (NO --broadcast)
+        if: env.SEPOLIA_RPC_URL != ''
+        working-directory: contracts
+        env:
+          USDC: ${{ steps.live.outputs.usdc }}
+          AAVE_POOL: ${{ steps.live.outputs.pool }}
+          AUSDC: ${{ steps.live.outputs.ausdc }}
+          TIMELOCK_MIN_DELAY: '60'
+        # bash pipefail is on by default in Actions, so a forge failure still fails the step.
+        run: forge script script/DeploySepolia.s.sol:DeploySepolia --fork-url "$SEPOLIA_RPC_URL" 2>&1 | tee /tmp/deploy-sim.log
+
+      - name: assert NON-broadcast — forge stayed in simulation, sent nothing on-chain
+        if: env.SEPOLIA_RPC_URL != ''
+        working-directory: contracts
+        run: |
+          # Authoritative, artifact-independent: forge prints "SIMULATION COMPLETE" for a dry run
+          # and "ONCHAIN EXECUTION COMPLETE" only when it actually broadcasts.
+          grep -q "SIMULATION COMPLETE" /tmp/deploy-sim.log \
+            || { echo "::error::forge did not report SIMULATION COMPLETE — it did not run in simulation mode"; exit 1; }
+          if grep -qi "ONCHAIN EXECUTION" /tmp/deploy-sim.log; then
+            echo "::error::forge performed an ONCHAIN broadcast — this job must NEVER broadcast"; exit 1
+          fi
+          # This run's dry-run record must carry null tx hashes (nothing was ever sent).
+          python3 - <<'PY'
+          import json
+          d = json.load(open("broadcast/DeploySepolia.s.sol/84532/dry-run/run-latest.json"))
+          hashes = [t.get("hash") for t in d.get("transactions", [])]
+          assert hashes and all(h is None for h in hashes), f"non-null tx hash in dry-run artifact: {hashes}"
+          print(f"OK — simulation only: {len(hashes)} txs, all hashes null, nothing broadcast")
+          PY
+          git checkout -- deployments/84532/addresses.json 2>/dev/null || true # un-dirty the sim rewrite
+
+      # ── VERIFY gate: AssertNonCustody again as the final N1/N2/N5 check around the deploy
+      #    sim, using the live vault address captured pre-sim. Read-only, no --broadcast;
+      #    non-zero exit fails the job. ──
+      - name: AssertNonCustody — post-sim VERIFY gate (fails job on any N1/N2/N5 violation)
+        if: env.SEPOLIA_RPC_URL != ''
+        working-directory: contracts
+        env:
+          VAULT_ADDRESS: ${{ steps.live.outputs.vault }}
+        run: forge script script/AssertNonCustody.s.sol:AssertNonCustody --rpc-url "$SEPOLIA_RPC_URL"

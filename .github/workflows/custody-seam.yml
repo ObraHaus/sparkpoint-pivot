@@ -1,0 +1,33 @@
+name: custody-seam
+# ITEM 6 — the custody dependency seam. The frontend (apps/web/src) and the shared
+# package (packages/shared/src) must NEVER import from the agent (services/agent, or its
+# python package sparkpoint_agent). The agent hosts non-deterministic, custody-adjacent
+# decision code; a UI/shared import of it would pull that code toward the browser bundle and
+# blur the non-custodial seam. Statement-anchored grep (real import / dynamic import() /
+# require() / export-from statements, not prose or comments), mirroring knowledge-boundary.yml.
+on:
+  push:
+    branches: [develop, "feature/**"]
+  pull_request:
+    branches: [develop]
+jobs:
+  seam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: apps/web/src + packages/shared/src ↛ services/agent (real imports only)
+        run: |
+          set -e
+          # Match ACTUAL module-import statements, not a comment/string that merely names the
+          # path: ES `import ... from`, side-effect `import '...'`, dynamic `import(...)`,
+          # CJS `require(...)`, and `export ... from ...` re-exports.
+          stmt='(^[[:space:]]*import[[:space:]]|(^|[^[:alnum:]_])import\(|^[[:space:]]*export[[:space:]].*[[:space:]]from[[:space:]]|(^|[^[:alnum:]_])require\()'
+          # Forbidden dependency: the agent service directory or its python package name.
+          tgt='(services/agent|sparkpoint_agent)'
+          fail=0
+          for dir in apps/web/src packages/shared/src; do
+            if [ -d "$dir" ] && grep -rEn "$stmt" "$dir" 2>/dev/null | grep -E "$tgt"; then
+              echo "::error::$dir imports from the agent (services/agent | sparkpoint_agent) — the frontend/shared must never depend on the agent (custody seam)"; fail=1
+            fi
+          done
+          if [ "$fail" = 0 ]; then echo "custody seam clean — web/shared ↛ agent (statement-anchored)"; else exit 1; fi

@@ -1,0 +1,30 @@
+name: knowledge-boundary
+# T126 — the Obsidian non-custody CI boundary. Green-by-skip in W1; ENFORCING in W6.
+# Obsidian knowledge is advisory context only: it must never import (or be imported by)
+# the deterministic policy path, and knowledge_search must stay out of the build/sim registries.
+on:
+  push:
+    branches: [develop, "feature/**"]
+  pull_request:
+    branches: [develop]
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: knowledge/ ↛ policy/ (and policy/ decision path pure) — real imports only
+        run: |
+          set -e
+          AG=services/agent/src/sparkpoint_agent
+          # Match ACTUAL python import statements (line starts with import/from), not
+          # prose containing "import"/"policy" (e.g. a docstring "imported by policy").
+          imp='^[[:space:]]*(import[[:space:]]|from[[:space:]])'
+          fail=0
+          if [ -d "$AG/knowledge" ] && grep -rEn "$imp" "$AG/knowledge" | grep -E '\bpolicy\b'; then
+            echo "::error::knowledge/ imports policy/ — Obsidian is advisory context; it must never feed evaluate()"; fail=1
+          fi
+          # The deterministic decision path must be pure: policy/ imports no knowledge/llm/memory.
+          if [ -d "$AG/policy" ] && grep -rEn "$imp" "$AG/policy" | grep -E '\b(knowledge|obsidian|embeddings|llm|memory)\b'; then
+            echo "::error::policy/ imports knowledge/llm/memory — the deterministic decision path must be LLM/knowledge-free"; fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "knowledge<->policy boundary clean (statement-anchored)"; else exit 1; fi

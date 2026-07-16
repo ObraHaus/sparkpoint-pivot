@@ -1,0 +1,60 @@
+name: policy-parity
+# ITEM 3 / T098 — no-drift gate with REAL on-chain assertions.
+#
+# The LIVE Base-Sepolia (84532) vault + CapRegistry reads MUST equal
+# packages/shared getPolicyConstants(chainId) AND the services/agent Python
+# policy constants, PER chainId (fee + immutable fee cap, the three caps, asset()).
+# Any drift FAILS the job (non-zero exit + ::error::). The job green-by-skips ONLY
+# when contracts/deployments/<chainId>/addresses.json is ABSENT (not deployed) —
+# it never silently passes on a real mismatch, and a missing BASE_SEPOLIA_RPC_URL
+# secret falls back to the public RPC rather than skipping.
+#
+# All logic lives in the committed, locally-runnable helper
+# contracts/script/policy-parity-check.sh (cast reads + TS/Python compare), so the
+# gate is testable outside CI: `bash contracts/script/policy-parity-check.sh 84532`.
+on:
+  push:
+    branches: [develop, "feature/**"]
+  pull_request:
+    branches: [develop]
+concurrency:
+  group: policy-parity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    # Base Sepolia is the deployed chain today. Add chains here as they deploy;
+    # the helper is chainId-parameterized and reads deployments/<chainId>/addresses.json.
+    env:
+      CHAIN_ID: "84532"
+      BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with: { version: 9.15.9 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: green-by-skip when not deployed on chainId ${{ env.CHAIN_ID }}
+        id: guard
+        run: |
+          if [ -f "contracts/deployments/${CHAIN_ID}/addresses.json" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::policy-parity: contracts/deployments/${CHAIN_ID}/addresses.json absent — not deployed; green-by-skip (enforces once deployed)."
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build the shared package: the .mjs dumper imports its tsc-built dist to read
+      # getPolicyConstants(chainId) — the TS source of truth for the parity assertion.
+      - name: install deps + build @sparkpoint/shared
+        if: steps.guard.outputs.deployed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @sparkpoint/shared build
+
+      - name: on-chain == shared(TS) == agent(Python) — per chainId, FAIL on drift
+        if: steps.guard.outputs.deployed == 'true'
+        run: bash contracts/script/policy-parity-check.sh "${CHAIN_ID}"
