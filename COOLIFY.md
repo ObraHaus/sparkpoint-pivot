@@ -2,7 +2,14 @@
 
 Platform reference for SparkPoint Pivot on self-hosted **Coolify** (`https://coolifyadmin.aldrickb.xyz`). Release process in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-> **DEPLOYED (web) — recorded 2026-07-10.** The **web app (`apps/web`) is LIVE on OH Coolify** in two environments: **develop** (`sparkpoint-web` — a *single* instance, no LB) and **prod / public landing** (`sparkpoint-web-primary` + `-secondary` behind the nginx LB `sparkpoint-web-lb`, off `main`, `SITE_LOCKED=true`). Real UUIDs + domains are recorded below (verified against the Coolify API). The **agent** and **Postgres** services are still **planned** (not created).
+> **DEPLOYED (web + agent) — recorded 2026-07-16 (P0/P1/P1.5).** Both the **web app AND the Hermes agent** are LIVE on OH Coolify `develop` (Coolify project **"SparkPoint Pivot" > develop**, environment_id 37, shared `coolify` network):
+> | App | UUID | FQDN | Notes |
+> |---|---|---|---|
+> | `sparkpoint-web` (develop) | `i4cw0ogsookkkocsw808gwc4` | `https://71zxh8ed1ejf8132l46joodp17.aldrickb.app` (+ `.obrahaus-develop.aldrickb.xyz`) | full app, `SITE_LOCKED=false`; BFF at `/api/agent/*` (server-side S2S bearer) |
+> | `sparkpoint-agent-develop` | `fw8s4ko4080wgk8okso8go48` | `8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app` (port 8000) | hardened public FQDN: docs/openapi off, anon `/readyz`=boolean, all routes behind S2S bearer; reached only by the web BFF |
+> | `spark-postgres` | (existing) | private LAN | migrations 0002/0003/0004 applied; agent connects the pool at startup, honest `/readyz` |
+>
+> Web env: `AGENT_INTERNAL_URL` (→ agent FQDN) + `AGENT_S2S_TOKEN` are **server-side only** (no `NEXT_PUBLIC_*`); `NEXT_PUBLIC_AGENT_BASE_URL` deleted (BFF-only). Agent env: `NEW_ANTHROPIC_OAUTH_TOKEN` (legacy `ANTHROPIC_OAUTH_TOKEN` removed), `AGENT_S2S_TOKEN`, `CORS_ALLOW_ORIGINS`, `DATABASE_URL`, `SIM_FORK_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `SPARKPOINT_VAULT_ADDRESS`. The prod/public-landing (`main`) inventory below is unchanged. NOTE: Coolify stores each env var as a build-time + runtime pair — set values via the same key on both, or use bulk update.
 
 > **Scope note.** Coolify hosts **dev/staging only** for this client project. Production runs later on the **client's own infra/domain** (likely sparkpoint.io), TBD — see DEPLOYMENT.md. This project does **not** use obrahaus-console SSO or obrahaus-governor (sanctioned client divergences).
 
