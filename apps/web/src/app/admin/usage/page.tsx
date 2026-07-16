@@ -1,14 +1,25 @@
 "use client";
 
 /**
- * Admin → Usage & product (scUsage). "How the AI assistant and product mechanics
- * perform." Faithful 1:1 port of the Usage screen in SparkPoint Admin.html.
- * Pure telemetry — no controls.
+ * Admin → Usage & product (scUsage).
+ *
+ * The product/usage KPIs (chat volume, recommendation acceptance, simulation pass rate,
+ * execution success) have NO real telemetry source yet — there is no metrics/analytics
+ * endpoint, and /readyz only reports dependency readiness, not product metrics. Rather
+ * than present fabricated numbers as real, this surface honestly reports that usage
+ * telemetry is not yet instrumented. It will be wired from the agent's audit-log /
+ * metrics aggregation once that exists.
  */
 
-import { STREAM, StackedBars } from "@/components/admin/charts";
-import { Kpi } from "@/components/admin/data";
-import { Funnel } from "@/components/admin/funnels";
+import { Icon } from "@/lib/icons";
+
+const PLANNED = [
+  "Chat volume & active wallets",
+  "Recommendation acceptance rate",
+  "Simulation pass / fail rate",
+  "Execution success rate",
+  "Onboarding → deposit funnel",
+];
 
 export default function Page() {
   return (
@@ -18,47 +29,36 @@ export default function Page() {
           <h1>Usage &amp; product</h1>
           <div className="sub">How the AI assistant and product mechanics perform.</div>
         </div>
+        <span className="pill info">
+          <span className="led" />
+          Not yet instrumented
+        </span>
       </div>
-      <div className="band">
-        <Kpi label="Chat volume (30d)" val="18.4K" spark={[12, 14, 15, 16, 17, 18]} sparkColor={STREAM.premium} delta="▲" deltaCls="up" ai />
-        <Kpi label="Recommendation acceptance" val="58%" spark={[48, 52, 54, 55, 57, 58]} sparkColor={STREAM.swap} delta="▲" deltaCls="up" ai />
-        <Kpi label="Simulation pass rate" val="97.2%" spark={[95, 96, 96, 97, 97, 97]} sparkColor={STREAM.srk} delta="▲" deltaCls="up" />
-        <Kpi label="Execution success" val="98.1%" spark={[96, 97, 97, 98, 98, 98]} sparkColor={STREAM.premium} delta="▲" deltaCls="up" />
+      <div
+        className="infobanner"
+        style={{ background: "var(--info-subtle, var(--surface-2))", borderColor: "var(--border-soft)" }}
+      >
+        <Icon name="info" size={16} />
+        <span>
+          Usage telemetry isn&rsquo;t wired yet. There is no metrics source behind these KPIs, so nothing
+          is shown here rather than fabricated numbers. Once the agent&rsquo;s audit-log / metrics aggregation
+          is available, these will be driven from real data.
+        </span>
       </div>
-      <div className="grid2">
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Recommendation funnel</span>
-            <span className="prov">computed</span>
-          </div>
-          <Funnel />
+      <div className="panel" style={{ marginTop: 16 }}>
+        <div className="ch" style={{ marginBottom: 10 }}>
+          <span className="ct">Planned metrics</span>
+          <span className="prov">pending instrumentation</span>
         </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Simulation pass / fail</span>
-            <span className="prov">sim-fork</span>
-          </div>
-          <div className="legend">
-            <span>
-              <i style={{ background: "var(--gain)" }} />
-              Passed
-            </span>
-            <span>
-              <i style={{ background: "var(--loss)" }} />
-              Will revert / blocked
+        {PLANNED.map((m) => (
+          <div className="statusrow" key={m}>
+            <span>{m}</span>
+            <span className="pill info" style={{ fontSize: 10 }}>
+              <span className="led" />
+              pending
             </span>
           </div>
-          <StackedBars
-            data={["Mon", "Tue", "Wed", "Thu", "Fri"].map((d, i) => ({
-              x: d,
-              ok: [120, 140, 110, 160, 150][i],
-              fail: [4, 3, 6, 2, 4][i],
-            }))}
-            keys={["ok", "fail"]}
-            max={170}
-            opts={{ H: 200, colors: { ok: "var(--gain)", fail: "var(--loss)" } }}
-          />
-        </div>
+        ))}
       </div>
     </>
   );

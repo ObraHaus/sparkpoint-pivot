@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useAccount, useConnect } from "wagmi";
 import { Icon, SparkMark } from "@/lib/icons";
 import { PubTop } from "@/components/screens/PubTop";
 import "@/components/screens/public.css";
@@ -42,13 +43,24 @@ const WALLETS: { name: string; icon: ReactNode; tileStyle?: CSSProperties }[] = 
 
 export default function ConnectPage() {
   const router = useRouter();
-  const [connecting, setConnecting] = useState<number | null>(null);
+  // REAL wagmi connect (the injected/browser-wallet connector is the only one wired in
+  // this build; WalletConnect/Coinbase SDKs are deferred). No wallet is ever faked — the
+  // page advances to /verify ONLY after an actual connection is established.
+  const { isConnected } = useAccount();
+  const { connect, connectors, isPending, error } = useConnect();
+  const injected = connectors.find((c) => c.type === "injected") ?? connectors[0];
+  const [pendingIdx, setPendingIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isConnected) router.push("/verify");
+  }, [isConnected, router]);
 
   const onConnect = (i: number) => {
-    if (connecting !== null) return;
-    setConnecting(i);
-    setTimeout(() => router.push("/verify"), 900);
+    if (isPending || !injected) return;
+    setPendingIdx(i);
+    connect({ connector: injected });
   };
+  const connecting = isPending ? pendingIdx : null;
 
   return (
     <div className="pubwrap">
@@ -93,6 +105,16 @@ export default function ConnectPage() {
               </button>
             ))}
           </div>
+          {!injected && (
+            <p style={{ textAlign: "center", fontSize: "12.5px", color: "var(--muted-foreground)", margin: "10px 0 0", lineHeight: 1.5 }}>
+              No browser wallet detected. Install MetaMask (or another browser wallet) to connect.
+            </p>
+          )}
+          {error && (
+            <p style={{ textAlign: "center", fontSize: "12.5px", color: "var(--loss, #ff6b6b)", margin: "10px 0 0", lineHeight: 1.5 }}>
+              {error.message}
+            </p>
+          )}
           <div className="connect-reassure">
             <Icon name="shieldcheck" size={16} />
             <span>You own your keys and your account. We never generate a wallet for you or hold your keys.</span>

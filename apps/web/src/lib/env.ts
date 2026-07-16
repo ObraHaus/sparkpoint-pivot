@@ -32,11 +32,10 @@ const RAW = {
   NEXT_PUBLIC_BASE_RPC_URL: process.env.NEXT_PUBLIC_BASE_RPC_URL,
   NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL: process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
-  // OPTIONAL direct-to-agent override. Normally UNSET: the browser calls the
-  // same-origin BFF (`/api/agent`), which injects the service bearer server-side —
-  // so no agent token EVER reaches the client bundle. There is deliberately no
-  // client-side agent bearer read here anymore (the BFF owns the credential).
-  NEXT_PUBLIC_AGENT_BASE_URL: process.env.NEXT_PUBLIC_AGENT_BASE_URL,
+  // NOTE: there is deliberately NO client-side agent base-URL override. The browser ALWAYS
+  // calls the same-origin BFF (`/api/agent`), which injects the service bearer server-side —
+  // a `NEXT_PUBLIC_AGENT_BASE_URL` would let a deploy redirect user-scoped calls straight to
+  // the agent (leaking wallet-address headers + bypassing the BFF), so it was removed.
 } as const;
 
 /** Names that would signal a secret leaking into the client bundle. */
@@ -75,11 +74,6 @@ const EnvSchema = z.object({
   baseSepoliaRpcUrl: z.string().url().default(BASE_SEPOLIA_RPC_FALLBACK).catch(BASE_SEPOLIA_RPC_FALLBACK),
   /** WalletConnect project id. `undefined` ⇒ WalletConnect not configured (feature off). */
   walletConnectProjectId: z.string().min(1).optional().catch(undefined),
-  /**
-   * OPTIONAL direct-to-agent base URL override. `undefined` (the norm) ⇒ the client
-   * uses the same-origin BFF (`/api/agent`), which injects the bearer server-side.
-   */
-  agentBaseUrl: z.string().url().optional().catch(undefined),
 });
 
 /** The validated public config shape. */
@@ -94,6 +88,5 @@ export const env: Env = Object.freeze(
     baseRpcUrl: RAW.NEXT_PUBLIC_BASE_RPC_URL,
     baseSepoliaRpcUrl: RAW.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
     walletConnectProjectId: RAW.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
-    agentBaseUrl: RAW.NEXT_PUBLIC_AGENT_BASE_URL,
   }),
 );

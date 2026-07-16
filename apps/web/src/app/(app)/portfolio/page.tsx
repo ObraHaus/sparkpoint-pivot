@@ -47,6 +47,10 @@ export default function Page() {
   const pnlAbs = live?.pnl?.abs ?? data.pnl.abs;
   const pnlPct = live?.pnl?.pct ?? data.pnl.pct;
   const series = live?.series ?? data.series1M;
+  // TRUTH LABEL: when the agent isn't providing live figures (no wallet / offline), these
+  // hero numbers — and the positions/allocation below — are illustrative mock data, not the
+  // wallet's real position. Surface that honestly rather than presenting mock PnL as real.
+  const isPreview = live?.netWorth === undefined;
 
   const { line, area, last } = areaPath(series, 560, 150);
   const total = data.allocation.reduce((s, x) => s + x.v, 0);
@@ -74,7 +78,24 @@ export default function Page() {
       <div className="pf-hero">
         <div className="card card-pad">
           <div className="card-hd">
-            <span className="lbl">Net worth</span>
+            <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Net worth
+              {isPreview && (
+                <span
+                  className="pill"
+                  title="Illustrative figures — connect your wallet for your real position (live balances read on-chain)."
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "var(--caution)",
+                    borderColor: "color-mix(in srgb,var(--caution) 40%,transparent)",
+                    background: "var(--caution-subtle)",
+                  }}
+                >
+                  Preview data
+                </span>
+              )}
+            </span>
             <div className="seg pf-range">
               {RANGES.map((r) => (
                 <button key={r} className={r === range ? "active" : ""} onClick={() => setRange(r)}>
