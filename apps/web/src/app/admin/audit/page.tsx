@@ -1,53 +1,97 @@
 "use client";
 
 /**
- * Admin → Admin audit log (scAudit). "Append-only record of every admin action.
- * Viewing this is itself logged." Faithful 1:1 port of the Audit screen in
- * SparkPoint Admin.html. Read-only forensics — no fund-moving controls.
+ * Admin → Audit log (Phase B.1: REAL data, no fabrication).
+ *
+ * Wired to the agent's append-only allowlist audit (`/admin/allowlist/audit` via the BFF) — the
+ * only admin-action audit that actually exists today (every beta/admin add/remove/seed). A broader
+ * admin-action audit (logins, exports, config changes) is not yet instrumented and is honestly NOT
+ * shown as if it were. Empty state is shown honestly when there are no changes.
  */
 
-const ROWS: [string, string, string, string, string][] = [
-  ["09:41", "admin_a", "view_dashboard", "revenue", "ok"],
-  ["09:38", "admin_a", "stepup_pass", "—", "ok"],
-  ["08:12", "admin_b", "export_csv", "revenue_history", "ok"],
-  ["07:50", "admin_c", "view_user_detail", "user_8f2a", "ok"],
-  ["02:14", "admin_x", "login", "—", "denied"],
-];
+import { useCallback, useEffect, useState } from "react";
+
+interface AuditEntry {
+  action: string;
+  address: string;
+  role: string;
+  actor: string | null;
+  at: string;
+}
 
 export default function Page() {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agent/admin/allowlist/audit?limit=100", {
+        headers: { "x-chain-id": "84532" },
+        cache: "no-store",
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      setEntries(((await r.json()) as { entries?: AuditEntry[] }).entries ?? []);
+      setState("ok");
+    } catch {
+      setState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [refresh]);
+
   return (
     <>
       <div className="pghead">
         <div>
-          <h1>Admin audit log</h1>
-          <div className="sub">Append-only record of every admin action. Viewing this is itself logged.</div>
+          <h1>Audit log</h1>
+          <div className="sub">
+            Append-only record of allowlist changes (add / remove / seed of beta &amp; admin wallets).
+            Broader admin-action auditing is not yet instrumented.
+          </div>
         </div>
+        <span className={`pill ${state === "ok" ? "ok" : state === "loading" ? "info" : "amber"}`}>
+          <span className="led" />
+          {state === "loading" ? "Loading…" : state === "error" ? "Unavailable" : `${entries.length} entries`}
+        </span>
       </div>
       <div className="panel">
-        <table className="adtbl">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Admin</th>
-              <th>Action</th>
-              <th>Subject</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ROWS.map((r) => (
-              <tr key={r[0]}>
-                <td className="mono">{r[0]}</td>
-                <td className="mono">{r[1]}</td>
-                <td>{r[2]}</td>
-                <td className="mono">{r[3]}</td>
-                <td>
-                  <span className={`pill ${r[4] === "ok" ? "ok" : "amber"}`}>{r[4]}</span>
-                </td>
+        {entries.length === 0 ? (
+          <div className="muted" style={{ padding: "14px 4px", fontSize: 13 }}>
+            {state === "loading"
+              ? "Loading…"
+              : state === "error"
+                ? "Couldn’t load the audit log."
+                : "No allowlist changes recorded yet."}
+          </div>
+        ) : (
+          <table className="adtbl">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Role</th>
+                <th>Wallet</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={i}>
+                  <td className="mono">{new Date(e.at).toLocaleString()}</td>
+                  <td className="mono">{e.actor ?? "—"}</td>
+                  <td>
+                    <span className={`pill ${e.action === "remove" ? "amber" : "ok"}`}>{e.action}</span>
+                  </td>
+                  <td>{e.role}</td>
+                  <td className="mono" style={{ wordBreak: "break-all" }}>{e.address}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

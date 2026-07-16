@@ -44,6 +44,7 @@ export function useSiweLogin(): {
         if (!nonceRes.ok) throw new Error("could not start sign-in");
         const { nonce } = (await nonceRes.json()) as { nonce: string };
 
+        const now = new Date();
         const message = createSiweMessage({
           domain: window.location.host,
           address,
@@ -52,7 +53,9 @@ export function useSiweLogin(): {
           version: "1",
           chainId,
           nonce,
-          issuedAt: new Date(),
+          issuedAt: now,
+          // Bound lifetime — the server requires an expirationTime and rejects an expired message.
+          expirationTime: new Date(now.getTime() + 10 * 60 * 1000),
         });
 
         const signature = await signMessageAsync({ message });

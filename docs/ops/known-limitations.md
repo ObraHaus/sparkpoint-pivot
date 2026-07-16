@@ -31,11 +31,26 @@ a silent gap. Update in the same change that resolves one.
   httpOnly cookie; there is no per-session store, so a specific session can't be revoked before
   expiry short of rotating `SESSION_SECRET` (which logs everyone out). Allowlist changes take effect
   on the wallet's **next login** (roles are baked into the cookie at login). Acceptable for the
-  access gate — it never gates custody (/exit, /trust, withdraw stay open, N2).
-- **Allowlist env is duplicated on two apps.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` live on both the
-  agent (which seeds the DB) and the web app (parity only — the web reads session claims, not the
-  env). They must be kept identical via `scripts/sync-allowlist-env.sh`; a hand-edit on one app can
-  drift. Only the agent's copy actually affects access.
+  access gate — it never gates custody (/exit, /trust, withdraw stay open, N2). *(Phase-3: add a
+  server-side session/jti store or short TTL + refresh for true revocation.)*
+- **Allowlist env seed is ADDITIVE-ONLY.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` seed the DB on agent
+  boot by *adding* missing rows — removing a wallet from the env and redeploying does **NOT** revoke
+  it (the row persists). The **DB / admin panel is the authority**: remove a wallet via `/admin/allowlist`
+  (audit-logged) or a DB delete; the env is bootstrap + disaster-recovery only.
+- **The web copy of `BETA_ALLOWLIST`/`ADMIN_ALLOWLIST` is vestigial (dead).** Only the **agent** reads
+  them (to seed the DB); the web derives access purely from the session claims. `sync-allowlist-env.sh`
+  now writes them to the **agent only** — any lingering copy on the web app is inert and can be deleted.
+- **The agent trusts `X-Owner` with format-validation only.** The agent authenticates the *web tier*
+  via the S2S bearer, then trusts the `X-Owner`/`X-Account` headers the BFF sets (20-byte-address
+  format check only — no on-chain owner proof). A **leak of `AGENT_S2S_TOKEN` = full admin impersonation**
+  (an attacker could set `X-Owner` to an admin wallet and hit `/admin/*`). Mitigations today: the token
+  is server-side only (never `NEXT_PUBLIC`, never logged) and the agent is reached only via the BFF.
+  **Phase-3 hardening:** bind the S2S call to a signed session assertion (or mTLS / per-request MAC over
+  the derived identity) so a bare token can't assert an arbitrary owner.
+- **Beta gate now covers the API, not just pages (B.1).** The BFF (`/api/agent/*`) requires an
+  allowlisted (beta) session for the assistant + all write/derivation endpoints (403 otherwise); only
+  read-only liveness probes (`readyz`/`healthz`) are exempt. Previously a signed-in but non-beta wallet
+  could POST `/api/agent/chat`.
 - **Admin LLM-gateway view is best-effort + read-only.** `/admin/gateway` reads the LiteLLM proxy
   with the agent's virtual key; fields the gateway version doesn't expose show as "—"/null, and the
   page cannot mutate gateway config (no master key is placed on the agent). Spend/limits reflect the

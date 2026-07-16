@@ -18,6 +18,9 @@ export default function Page() {
           <h1>TVL &amp; vault</h1>
           <div className="sub">The money view — onchain truth. Display-only, never a gate.</div>
         </div>
+        <span className="pill info" title="Illustrative sample data — not yet instrumented">
+          <span className="led" /> Sample data
+        </span>
         <div className="ctrls">
           <div className="seg">
             <button>7d</button>
@@ -79,8 +82,8 @@ export default function Page() {
           </div>
           <div className="statusrow">
             <span className="muted">Last withdraw-always drill</span>
-            <span className="pill ok">
-              <Icon name="check" size={12} /> Passed · 6h ago
+            <span className="pill info">
+              <Icon name="info" size={12} /> Not yet run in this env
             </span>
           </div>
           <div className="statusrow">
@@ -90,10 +93,16 @@ export default function Page() {
             </span>
           </div>
           <div className="statusrow">
-            <span className="muted">Controlled by</span>
-            <span className="mono" style={{ fontSize: 11 }}>
-              Safe 0x4d…A1 <Icon name="ext" size={11} />
-            </span>
+            <span className="muted">Guardian (live)</span>
+            <a
+              className="mono"
+              style={{ fontSize: 11, color: "var(--primary)" }}
+              href="https://sepolia.basescan.org/address/0x0A21A9B4c2cd2d6a68EC828188826B673572d720"
+              target="_blank"
+              rel="noreferrer"
+            >
+              0x0A21…d720 <Icon name="ext" size={11} />
+            </a>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
             <Icon name="info" size={13} /> Pause never blocks withdrawals and is a multisig action outside this panel. Status only — no controls.

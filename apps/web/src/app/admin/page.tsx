@@ -17,6 +17,9 @@ export default function Page() {
           <h1>Overview</h1>
           <div className="sub">How we&apos;re doing, right now, at a glance.</div>
         </div>
+        <span className="pill info" title="Illustrative sample data — not yet instrumented">
+          <span className="led" /> Sample data
+        </span>
         <div className="ctrls">
           <div className="seg">
             <button>24h</button>

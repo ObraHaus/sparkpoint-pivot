@@ -19,6 +19,9 @@ export default function Page() {
           <h1>Sparky — stakeholder overview</h1>
           <div className="sub">Where we are. Aggregate, plain-language, presentation-grade.</div>
         </div>
+        <span className="pill info" title="Illustrative sample data — not yet instrumented">
+          <span className="led" /> Sample data
+        </span>
         <button className="btn-exp">
           <Icon name="ext" size={13} /> Export PDF (audited)
         </button>
@@ -63,7 +66,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Net flows</span>
-            <span className="prov">real, sticky money</span>
+            <span className="prov">sample data</span>
           </div>
           <DivergeBars dep={[220, 310, 180, 420, 380, 260]} wd={[-90, -120, -60, -140, -110, -200]} opts={{ H: 210 }} />
         </div>
@@ -96,7 +99,7 @@ export default function Page() {
           <Icon name="check" size={16} />
           <div>
             <div className="tbt">Withdraw-always</div>
-            <div className="tbs">Last drill passed · 6h ago</div>
+            <div className="tbs">On-chain self-service exit — always open</div>
           </div>
         </div>
         <div className="tb">

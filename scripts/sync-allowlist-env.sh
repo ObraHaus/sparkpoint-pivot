@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # sync-allowlist-env.sh — the ONE way to set BETA_ALLOWLIST / ADMIN_ALLOWLIST (Phase B).
 #
-# These two vars must be IDENTICAL on the agent AND the web app (the operator's standard). Only the
-# agent actually consumes them (it seeds the DB-backed allowlist on boot); the web copy is kept in
-# lock-step for parity/visibility. This script is the single source of truth: it writes the SAME
-# values to BOTH apps in one run, so the two can never drift as long as changes go through here.
+# Only the AGENT consumes these (it seeds the DB-backed allowlist on boot); the web derives access
+# purely from the session claims, so a web copy is vestigial/dead. This script therefore writes to
+# the AGENT ONLY (the earlier "sync to both" was dropped in B.1 — the web copy is inert; delete any
+# lingering one). NOTE: the seed is ADDITIVE — removing a wallet here + redeploy does NOT revoke it;
+# use the admin panel (/admin/allowlist) or a DB delete for removal. This env is bootstrap only.
 #
 # Usage:
 #   COOLIFY_API_TOKEN_RWD=… \
@@ -21,8 +22,7 @@ BASE="${COOLIFY_BASE:-https://coolifyadmin.aldrickb.xyz}"
 BETA_CSV="${1:?usage: sync-allowlist-env.sh <beta_csv> <admin_csv>}"
 ADMIN_CSV="${2:?usage: sync-allowlist-env.sh <beta_csv> <admin_csv>}"
 
-# develop app UUIDs (see COOLIFY.md inventory).
-WEB_UUID="${WEB_UUID:-i4cw0ogsookkkocsw808gwc4}"
+# develop agent app UUID (see COOLIFY.md inventory). The agent is the ONLY consumer.
 AGENT_UUID="${AGENT_UUID:-fw8s4ko4080wgk8okso8go48}"
 
 set_var() { # <app_uuid> <key> <value>
@@ -35,11 +35,11 @@ set_var() { # <app_uuid> <key> <value>
     -o /dev/null -w "  %{http_code} $key -> ${uuid}\n"
 }
 
-echo "Syncing allowlists to BOTH apps (agent seeds the DB; web kept in parity):"
+echo "Setting allowlists on the AGENT (the only consumer; seeds the DB on boot):"
 echo "  BETA_ALLOWLIST  = $BETA_CSV"
 echo "  ADMIN_ALLOWLIST = $ADMIN_CSV"
-for uuid in "$AGENT_UUID" "$WEB_UUID"; do
+for uuid in "$AGENT_UUID"; do
   set_var "$uuid" "BETA_ALLOWLIST"  "$BETA_CSV"
   set_var "$uuid" "ADMIN_ALLOWLIST" "$ADMIN_CSV"
 done
-echo "Done. Now redeploy BOTH apps (the agent re-seeds spark-postgres on boot)."
+echo "Done. Now redeploy the AGENT (it re-seeds spark-postgres on boot). Removal is NOT via env — use the admin panel or a DB delete."

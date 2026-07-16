@@ -17,6 +17,9 @@ export default function Page() {
           <h1>Config</h1>
           <div className="sub">Non-custodial operational config. Controls app access, never funds.</div>
         </div>
+        <span className="pill info" title="Illustrative preview — flag states are not wired to a live source">
+          <span className="led" /> Preview
+        </span>
       </div>
       <div className="infobanner">
         <Icon name="info" size={16} />

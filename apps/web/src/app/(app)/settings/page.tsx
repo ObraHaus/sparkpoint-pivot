@@ -17,7 +17,6 @@ import { Icon } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
-import { useOverlay } from "@/components/overlays/OverlayProvider";
 import "@/components/screens/support.css";
 
 type Tab = "account" | "mandate" | "notifications" | "appearance" | "security";
@@ -46,9 +45,8 @@ function Switch({ defaultOn = false }: { defaultOn?: boolean }) {
 
 export default function Page() {
   const router = useRouter();
-  const { toast } = useOverlay();
   const { resolvedTheme, setTheme } = useTheme();
-  const { wallet } = useNetwork();
+  const { wallet, disconnectWallet } = useNetwork();
   const [tab, setTab] = useState<Tab>("account");
   const [density, setDensity] = useState<"Comfortable" | "Compact">("Comfortable");
 
@@ -62,8 +60,8 @@ export default function Page() {
         </div>
         <button
           className="btn btn-ghost btn-md"
-          onClick={() => {
-            toast("Logged out — funds untouched");
+          onClick={async () => {
+            await disconnectWallet();
             router.push(toHref("landing"));
           }}
         >
@@ -110,8 +108,8 @@ export default function Page() {
               </div>
               <button
                 className="btn btn-outline btn-md"
-                onClick={() => {
-                  toast("Disconnected — funds untouched");
+                onClick={async () => {
+                  await disconnectWallet();
                   router.push(toHref("landing"));
                 }}
               >

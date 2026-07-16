@@ -25,6 +25,9 @@ export default function Page() {
           <h1>User analytics</h1>
           <div className="sub">Pseudonymized by default. Full reveal is step-up + audited.</div>
         </div>
+        <span className="pill info" title="Illustrative sample data — not yet instrumented">
+          <span className="led" /> Sample data
+        </span>
       </div>
       <div className="band">
         <Kpi label="Total users" val="3,240" spark={data.usersSpark} sparkColor={STREAM.premium} delta="▲ 22%" deltaCls="up" />

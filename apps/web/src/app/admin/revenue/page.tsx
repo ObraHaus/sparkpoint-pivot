@@ -53,6 +53,9 @@ export default function Page() {
           <h1>Revenue ★</h1>
           <div className="sub">Revenue in action — realized solid, projected dashed. We never lead with a projection.</div>
         </div>
+        <span className="pill info" title="Illustrative sample data — not yet instrumented">
+          <span className="led" /> Sample data
+        </span>
         <div className="ctrls">
           <div className="seg">
             <button>Day</button>

@@ -3,10 +3,15 @@
  *
  * Body: `{ message, signature }` (EIP-4361). We:
  *   1. read the server-issued nonce cookie (must exist + match the message's nonce);
- *   2. verify the signature against the message via viem `verifySiweMessage` (EOA offline recovery,
+ *   2. bind the DOMAIN + chain to the deployment (from trusted server config, never the message body)
+ *      and require an expirationTime — so a signature phished on another domain / for another chain /
+ *      without an expiry can't be replayed here;
+ *   3. verify the signature against the message via viem `verifySiweMessage` (EOA offline recovery,
  *      or on-chain ERC-6492/1271 for smart accounts) — the recovered signer must equal the address;
- *   3. resolve the wallet's allowlist roles from the agent (server-only S2S);
- *   4. mint an httpOnly session cookie carrying {address, beta, admin} and clear the nonce.
+ *   4. resolve the wallet's allowlist roles from the agent (server-only S2S);
+ *   5. mint an httpOnly session cookie carrying {address, beta, admin}.
+ * The single-use nonce cookie is CLEARED on EVERY outcome (success or failure) so a nonce can never
+ * be retried after any verify attempt.
  *
  * NON-CUSTODY: proving control of a wallet authorizes NOTHING on-chain — the session is an access
  * token only. It never gates /exit, /trust, or withdraw (N2).
@@ -34,11 +39,31 @@ const RPC_URL: Record<number, string | undefined> = {
   [baseSepolia.id]: process.env.BASE_SEPOLIA_RPC_URL ?? process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
 };
 
-function bad(error: string, status = 400): NextResponse {
-  return NextResponse.json({ ok: false, error }, { status });
+/** Domain(s) this deployment will accept in a SIWE message — from a TRUSTED server env, never the
+ * message body. Falls back to the proxy-set request host if unset (still not the message body). */
+function allowedDomains(req: Request): string[] {
+  const pinned = (process.env.SIWE_DOMAIN ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (pinned.length) return pinned;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+  return host ? [host] : [];
+}
+
+/** Chain(s) this deployment accepts. Pin with `SIWE_CHAIN_ID` (e.g. 84532 on develop); else both Base. */
+function allowedChainIds(): number[] {
+  const pinned = Number(process.env.SIWE_CHAIN_ID);
+  return Number.isInteger(pinned) && pinned > 0 ? [pinned] : [base.id, baseSepolia.id];
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
+  const secure = isRequestSecure(req);
+  // Every response clears the single-use nonce (success OR failure) so it can't be retried.
+  const clearNonce = (res: NextResponse): NextResponse => {
+    res.cookies.set(NONCE_COOKIE, "", { httpOnly: true, secure, sameSite: "lax", path: "/", maxAge: 0 });
+    return res;
+  };
+  const bad = (error: string, status = 400): NextResponse =>
+    clearNonce(NextResponse.json({ ok: false, error }, { status }));
+
   const body = (await req.json().catch(() => null)) as
     | { message?: unknown; signature?: unknown }
     | null;
@@ -56,7 +81,18 @@ export async function POST(req: Request): Promise<NextResponse> {
   const address = parsed.address;
   const chainId = parsed.chainId;
   if (!address || !isAddress(address) || !chainId) return bad("bad_message");
-  if (chainId !== base.id && chainId !== baseSepolia.id) return bad("unsupported_chain");
+
+  // Chain pinned to the deployment's network.
+  if (!allowedChainIds().includes(chainId)) return bad("unsupported_chain");
+
+  // Domain bound to the deployment (trusted config), never trusting the message's own claim blindly.
+  const domains = allowedDomains(req);
+  if (!parsed.domain || (domains.length > 0 && !domains.includes(parsed.domain))) {
+    return bad("bad_domain");
+  }
+
+  // Require an expiration (viem's verify checks it against `time`; we also require it be present).
+  if (!parsed.expirationTime) return bad("expiration_required");
 
   const chain = chainId === base.id ? base : baseSepolia;
   const client = createPublicClient({ chain, transport: http(RPC_URL[chainId]) });
@@ -68,6 +104,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       signature: signature as Hex,
       nonce,
       address,
+      domain: parsed.domain, // already allowlisted above; verify also re-checks the field
+      time: new Date(), // rejects an expired (or not-yet-valid) message
     });
   } catch {
     valid = false;
@@ -86,7 +124,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
   if (!token) return bad("session_unconfigured", 500);
 
-  const secure = isRequestSecure(req);
   const res = NextResponse.json({
     ok: true,
     address: address.toLowerCase(),
@@ -100,13 +137,5 @@ export async function POST(req: Request): Promise<NextResponse> {
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   });
-  // Single-use nonce — clear it.
-  res.cookies.set(NONCE_COOKIE, "", {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-  return res;
+  return clearNonce(res);
 }

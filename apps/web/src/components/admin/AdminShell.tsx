@@ -169,10 +169,7 @@ function Shell({ children }: { children: ReactNode }) {
           <SparkMark size={21} className="smk" />
           Sparky Ops
         </span>
-        <span className="envbadge">PROD</span>
-        <span className="fresh hide-sm">
-          <Icon name="refresh" size={13} /> data fresh 42s ago
-        </span>
+        <span className="envbadge">DEVELOP</span>
         <span className="grow" />
         <span
           className="obschip"
@@ -187,9 +184,10 @@ function Shell({ children }: { children: ReactNode }) {
         <div className="adscaffold">
           <Icon name="alert" size={14} />
           <span>
-            <b>Scaffold — no authentication or authorization yet.</b> This panel is reachable without sign-in and
-            the &ldquo;View as&rdquo; switcher is cosmetic. Nothing here can move user funds; the kill-switch is
-            propose-and-sign only.
+            <b>Admin access is enforced</b> (SIWE admin session — non-admins get a 404), but several panels
+            still show <b>illustrative sample data</b>, not live figures. Live today: LLM gateway, Allowlist,
+            Kill-switch, System. The &ldquo;View as&rdquo; switcher is cosmetic. Nothing here can move user
+            funds; the kill-switch is propose-and-sign only.
           </span>
           <button
             className="adscaffold-x"

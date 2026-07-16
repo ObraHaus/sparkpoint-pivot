@@ -55,6 +55,9 @@ const FORWARD_REQUEST_HEADERS = [
   "idempotency-key",
 ] as const;
 
+/** First path segment of endpoints exempt from the beta gate (read-only liveness/readiness only). */
+const STATUS_PATHS = new Set(["readyz", "healthz"]);
+
 /** Build a §1.5 error envelope Response the client's `parseErrorEnvelope` understands. */
 function envelope(code: string, httpStatus: number, message: string, retryable: boolean): Response {
   return new Response(
@@ -83,6 +86,16 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const claims = await verifySession(jar.get(SESSION_COOKIE)?.value);
   if (!claims) {
     return envelope("UNAUTHENTICATED", 401, "Sign in with your wallet to use the assistant.", false);
+  }
+
+  // BETA GATE (server-enforced, not just at the page middleware which exempts /api/*): the assistant
+  // + every write/derivation endpoint requires an allowlisted (beta) session, so a signed-in but
+  // non-beta wallet cannot drive the assistant or burn the shared LLM budget. Only read-only
+  // liveness/readiness probes are exempt (admin routes need beta too — admin implies beta, and the
+  // agent additionally enforces admin). Honest 403, never a silent pass. Never gates /exit,/trust
+  // (those don't route through here — direct RPC, N2).
+  if (!STATUS_PATHS.has(path[0] ?? "") && !claims.beta) {
+    return envelope("BETA_NOT_ENABLED", 403, "Beta access required — your wallet isn't in the beta yet.", false);
   }
 
   // Allowlist inbound headers, then set the derived identity + inject the S2S bearer. We never
