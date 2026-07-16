@@ -1,21 +1,20 @@
 "use client";
 
 /**
- * /verify — the REAL access check between /connect and onboarding.
+ * /verify — the REAL access check between /connect and onboarding, now backed by a SERVER session.
  *
- * No fabricated pass: every row reflects live state — the connected wallet (wagmi
- * useAccount), whether it's on a Base network, and the actual beta/whitelist result
- * (useBeta → the default-permissive testnet gate, or the configured allowlist on
- * mainnet). If nobody is connected there is nothing to verify, so it routes back to
- * /connect. If the wallet is genuinely not eligible, it says so honestly instead of
- * waving everyone through.
+ * Every row reflects live state — the connected wallet (wagmi useAccount), whether it's on Base,
+ * and the actual SIWE sign-in + allowlist result resolved server-side (nonce → sign → verify →
+ * httpOnly session carrying {beta, admin} from the agent's DB-backed allowlist). No fabricated
+ * pass: signing in only proves wallet control (authorizes nothing on-chain); a genuinely
+ * non-allowlisted wallet is told so honestly and can still withdraw anytime via /exit.
  */
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { Icon } from "@/lib/icons";
-import { useBeta } from "@/lib/auth/whitelist";
+import { useSession, useSiweLogin } from "@/lib/auth/useSiwe";
 import { PubTop } from "@/components/screens/PubTop";
 import "@/components/screens/public.css";
 
@@ -25,26 +24,21 @@ const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 export default function VerifyPage() {
   const router = useRouter();
   const { address, chainId, isConnected } = useAccount();
-  const beta = useBeta();
+  const { session, refresh } = useSession();
+  const { login, pending, error } = useSiweLogin();
 
   const onBase = chainId !== undefined && BASE_CHAINS.has(chainId);
-  const betaOk = isConnected && beta.canTransact;
-  const done = isConnected && onBase && betaOk;
-  const blocked = isConnected && onBase && !betaOk;
+  const signedIn = session != null; // null|undefined → not signed in / loading
+  const betaOk = signedIn && session.beta;
+  const done = betaOk;
+  const blocked = signedIn && !session.beta;
+  const needsSignIn = isConnected && onBase && session === null;
 
-  const steps: { label: string; ok: boolean; value?: string }[] = [
-    { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
-    {
-      label: "On Base network",
-      ok: onBase,
-      value: onBase ? (chainId === 84532 ? "Base Sepolia" : "Base") : isConnected ? "wrong network" : undefined,
-    },
-    {
-      label: "Whitelist (beta)",
-      ok: betaOk,
-      value: betaOk ? (beta.isTestnet ? "testnet — open" : "eligible") : blocked ? "not eligible" : undefined,
-    },
-  ];
+  const handleSignIn = useCallback(async () => {
+    if (!address || !chainId) return;
+    const result = await login(address, chainId);
+    if (result) await refresh();
+  }, [address, chainId, login, refresh]);
 
   // Nothing to verify without a connected wallet — return to the real connect step.
   useEffect(() => {
@@ -54,22 +48,47 @@ export default function VerifyPage() {
     }
   }, [isConnected, router]);
 
+  const steps: { label: string; ok: boolean; value?: string }[] = [
+    { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
+    {
+      label: "On Base network",
+      ok: onBase,
+      value: onBase ? (chainId === 84532 ? "Base Sepolia" : "Base") : isConnected ? "wrong network" : undefined,
+    },
+    {
+      label: "Signed in (SIWE)",
+      ok: signedIn,
+      value: signedIn ? "verified" : needsSignIn ? "sign to continue" : undefined,
+    },
+    {
+      label: "Beta access",
+      ok: betaOk,
+      value: betaOk ? "eligible" : blocked ? "not in beta yet" : undefined,
+    },
+  ];
+
   const title = !isConnected
     ? "Connect a wallet first"
-    : done
-      ? "You're in."
-      : blocked
-        ? "This wallet isn't in the beta yet"
-        : "Checking your access…";
+    : !onBase
+      ? "Switch to Base"
+      : done
+        ? "You're in."
+        : blocked
+          ? "This wallet isn't in the beta yet"
+          : needsSignIn
+            ? "Verify it's you"
+            : "Checking your access…";
   const subtitle = !isConnected
     ? "Taking you back to connect your wallet…"
-    : done
-      ? "Let's build your plan — it takes about 3 minutes."
-      : blocked
-        ? "Your wallet can still withdraw anytime via /exit, but new deposits aren't open for it yet."
-        : !onBase
-          ? "Switch your wallet to Base (or Base Sepolia) to continue."
-          : "Confirming your wallet's beta eligibility on Base.";
+    : !onBase
+      ? "Switch your wallet to Base (or Base Sepolia) to continue."
+      : done
+        ? "Let's build your plan — it takes about 3 minutes."
+        : blocked
+          ? "Your wallet can still withdraw anytime via /exit, but new deposits aren't open for it yet."
+          : needsSignIn
+            ? "Sign a message to prove you control this wallet. It authorizes nothing on-chain and moves no funds."
+            : "Confirming your session…";
 
   return (
     <div className="pubwrap">
@@ -133,7 +152,22 @@ export default function VerifyPage() {
                 </div>
               ))}
           </div>
+          {error && (
+            <p style={{ fontSize: "12.5px", color: "var(--loss, #ff6b6b)", margin: "8px 0 0", lineHeight: 1.5 }}>
+              {error}
+            </p>
+          )}
           <div id="vcta">
+            {needsSignIn && (
+              <a
+                className="btn btn-primary btn-lg"
+                onClick={pending ? undefined : handleSignIn}
+                aria-disabled={pending}
+                style={{ marginTop: "18px", display: "inline-flex", cursor: pending ? "default" : "pointer", opacity: pending ? 0.7 : 1 }}
+              >
+                {pending ? "Waiting for signature…" : "Sign in with wallet"}
+              </a>
+            )}
             {done && (
               <>
                 <a
@@ -145,7 +179,7 @@ export default function VerifyPage() {
                 </a>
                 <div style={{ marginTop: "10px" }}>
                   <a className="btn btn-ghost btn-sm" onClick={() => router.push("/chat")} style={{ cursor: "pointer" }}>
-                    Skip to app (demo)
+                    Skip to app
                   </a>
                 </div>
               </>

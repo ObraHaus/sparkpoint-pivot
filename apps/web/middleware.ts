@@ -1,63 +1,124 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
-// Construction gate — feature 003-landing-only-gate.
+// ─────────────────────────────────────────────────────────────────────────────
+// Gate 1 — Construction gate (feature 003-landing-only-gate). UNCHANGED.
 //
-// FAIL-CLOSED: any value other than an explicit "false" locks the site to the
-// landing page only. Read at build time for the Edge runtime, so SITE_LOCKED
-// MUST be present in each deployment's BUILD env (Coolify injects per-app env
-// at build):
-//   develop  -> SITE_LOCKED=false   (full app, team/client preview)
-//   public   -> SITE_LOCKED=true    (landing only)
-// Launch = set SITE_LOCKED=false and redeploy. No code change, no revert.
+// FAIL-CLOSED: any value other than an explicit "false" locks the site to the landing page only.
+// Read for the Edge runtime, so SITE_LOCKED MUST be in each deployment's env:
+//   develop -> SITE_LOCKED=false  (full app, gated by the Phase-B access gate below)
+//   public  -> SITE_LOCKED=true   (landing only)
+// ─────────────────────────────────────────────────────────────────────────────
 const LOCKED = (process.env.SITE_LOCKED ?? "").toLowerCase() !== "false";
 
-// Only these are public when locked. Matched on pathname so that RSC / .rsc /
-// .segment.rsc payload requests to gated routes — which share the gated
-// pathname — are gated too. This is an ALLOW-LIST, never a denylist: unknown,
-// dynamic, and future routes are gated by default.
 const ALLOW_EXACT = new Set([
   "/",
   "/coming-soon",
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml",
-  // App Router metadata asset routes — must stay public so the branded favicon,
-  // social/OG image, and PWA manifest load on the gated landing.
   "/manifest.webmanifest",
   "/icon.png",
   "/apple-icon",
   "/opengraph-image",
   "/twitter-image",
-  // Newsletter subscribe proxy — the landing's form must work while gated.
   "/api/subscribe",
 ]);
 const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
 
-export function middleware(req: NextRequest) {
-  if (!LOCKED) return NextResponse.next();
+// ─────────────────────────────────────────────────────────────────────────────
+// Gate 2 — Phase B access gate (runs only when UNLOCKED / develop).
+//
+// Enforces the SIWE session: (app) shell routes need a beta session; /admin needs an admin session
+// (invisible 404 to everyone else). NEVER gated — the landing, the login flow (/connect,/verify),
+// the escape hatches (/exit,/trust and their subpages, N2), static/infra, and /api/* (each API
+// route self-enforces: the BFF derives identity from the session, the auth routes are the login).
+// ─────────────────────────────────────────────────────────────────────────────
 
+/** Public pages that never require a session (exact match). */
+const PUBLIC_EXACT = new Set([
+  "/",
+  "/connect",
+  "/verify",
+  "/coming-soon",
+  "/geo-blocked",
+  "/favicon.ico",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.webmanifest",
+  "/icon.png",
+  "/apple-icon",
+  "/opengraph-image",
+  "/twitter-image",
+]);
+
+/** Static/infra + API prefixes — always allowed (API routes self-enforce). */
+const INFRA_PREFIX = ["/_next", "/api", "/assets", "/wallets", "/fonts", "/images"];
+
+/** The non-custody escape hatches — withdraw + trust center. NEVER gated by any auth (N2). */
+const ESCAPE_HATCH = ["/exit", "/trust"];
+
+/** True when `pathname` is exactly `base` or a descendant (`base/...`). */
+function under(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+/** Render the app's 404 for a denied /admin request — keeps the surface invisible (no 403 leak). */
+function deny404(req: NextRequest): NextResponse {
+  const url = req.nextUrl.clone();
+  url.pathname = "/gate-404";
+  url.search = "";
+  return NextResponse.rewrite(url);
+}
+
+export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
-  if (
-    ALLOW_EXACT.has(pathname) ||
-    ALLOW_PREFIX.some((p) => pathname.startsWith(p))
-  ) {
-    return NextResponse.next();
+
+  // Gate 1: construction lock.
+  if (LOCKED) {
+    if (ALLOW_EXACT.has(pathname) || ALLOW_PREFIX.some((p) => pathname.startsWith(p))) {
+      return NextResponse.next();
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/coming-soon";
+    url.search = "";
+    const res = NextResponse.redirect(url, 307);
+    res.headers.set("x-robots-tag", "noindex, nofollow");
+    return res;
   }
 
-  // Gated: send everything else to the Coming soon page. Use redirect (not
-  // rewrite) so a soft client navigation receives a real redirect instead of
-  // the wrong RSC flight. noindex so the under-construction app is not crawled.
-  const url = req.nextUrl.clone();
-  url.pathname = "/coming-soon";
-  url.search = "";
-  const res = NextResponse.redirect(url, 307);
-  res.headers.set("x-robots-tag", "noindex, nofollow");
-  return res;
+  // Gate 2: access gate (unlocked). Never-gated paths first.
+  if (INFRA_PREFIX.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (ESCAPE_HATCH.some((base) => under(pathname, base))) return NextResponse.next();
+  if (PUBLIC_EXACT.has(pathname)) return NextResponse.next();
+
+  const claims = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+
+  // Admin surface — invisible to non-admins (404, never 403 or a revealing redirect).
+  if (under(pathname, "/admin")) {
+    return claims?.admin ? NextResponse.next() : deny404(req);
+  }
+
+  // App shell — requires a beta session.
+  if (!claims) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/connect";
+    url.search = "";
+    return NextResponse.redirect(url, 307);
+  }
+  if (!claims.beta) {
+    // Authenticated but not allowlisted → the honest "not in the beta yet" state on /verify
+    // (which also points them at /exit to withdraw). Never a fake pass.
+    const url = req.nextUrl.clone();
+    url.pathname = "/verify";
+    url.search = "";
+    return NextResponse.redirect(url, 307);
+  }
+  return NextResponse.next();
 }
 
 export const config = {
-  // Skip middleware for true static infra (by PREFIX, not by file extension —
-  // excluding ".*\\..*" would let /chat.rsc bypass the gate). The in-code
-  // allow-list above is the real boundary; this matcher is only a cost guard.
+  // Skip middleware for true static infra (by PREFIX, not extension). The in-code lists above are
+  // the real boundary; this matcher is only a cost guard.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
