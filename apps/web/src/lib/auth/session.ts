@@ -118,45 +118,9 @@ export async function signSession(input: {
 
 /**
  * Verify + decode a session token. Returns the claims iff the signature is valid AND unexpired;
- * `null` for any tampering, malformation, missing secret, or expiry. Constant-time signature
- * check via `crypto.subtle.verify`.
+ * `null` for any tampering, malformation, missing secret, or expiry. Verification recomputes the
+ * HMAC and constant-time compares (edge-safe — see below), never `crypto.subtle.verify`.
  */
-/** TEMP diagnostic: recompute the HMAC via `sign` and string-compare to the presented sig, so we
- * can see whether the edge runtime's secret/crypto/encoding matches — without relying on `verify`. */
-export async function debugVerify(
-  token: string | undefined | null,
-  secretOverride?: string | null,
-): Promise<Record<string, unknown>> {
-  const secret = secretOverride ?? getSecret();
-  if (!secret) return { r: "nosecret" };
-  if (!token) return { r: "notoken" };
-  const dot = token.indexOf(".");
-  if (dot <= 0) return { r: "nodot" };
-  const payload = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  try {
-    const key = await importKey(secret);
-    const recomputed = bytesToBase64Url(
-      new Uint8Array(await crypto.subtle.sign({ name: "HMAC" }, key, asBufferSource(encoder.encode(payload)))),
-    );
-    let exp = -1;
-    try {
-      exp = (JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as SessionClaims).exp;
-    } catch {
-      /* ignore */
-    }
-    return {
-      r: recomputed === sig ? "match" : "mismatch",
-      sig10: sig.slice(0, 10),
-      re10: recomputed.slice(0, 10),
-      exp,
-      now: Math.floor(Date.now() / 1000),
-    };
-  } catch (e) {
-    return { r: "threw", name: e instanceof Error ? e.name : "e" };
-  }
-}
-
 export async function verifySession(
   token: string | undefined | null,
   secretOverride?: string | null,

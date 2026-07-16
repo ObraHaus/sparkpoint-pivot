@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, debugVerify, verifySession } from "@/lib/auth/session";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate 1 — Construction gate (feature 003-landing-only-gate). UNCHANGED.
@@ -98,23 +98,11 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   if (ESCAPE_HATCH.some((base) => under(pathname, base))) return NextResponse.next();
   if (PUBLIC_EXACT.has(pathname)) return NextResponse.next();
 
-  const rawCookie = req.cookies.get(SESSION_COOKIE)?.value;
-  let threw = "";
-  let claims = null as Awaited<ReturnType<typeof verifySession>>;
-  try {
-    claims = await verifySession(rawCookie, MW_SESSION_SECRET);
-  } catch (e) {
-    threw = e instanceof Error ? e.name : "err";
-  }
-  // TEMP diagnostic (no secret leaked): recompute HMAC via sign + compare to presented sig.
-  const dv = rawCookie ? await debugVerify(rawCookie, MW_SESSION_SECRET) : { r: "nock" };
-  const dbg = `sec=${MW_SESSION_SECRET ? 1 : 0} ck=${rawCookie ? 1 : 0} cl=${claims ? 1 : 0} th=${threw} | ${JSON.stringify(dv)}`;
+  const claims = await verifySession(req.cookies.get(SESSION_COOKIE)?.value, MW_SESSION_SECRET);
 
   // Admin surface — invisible to non-admins (404, never 403 or a revealing redirect).
   if (under(pathname, "/admin")) {
-    const r = claims?.admin ? NextResponse.next() : deny404(req);
-    r.headers.set("x-mw-dbg", dbg);
-    return r;
+    return claims?.admin ? NextResponse.next() : deny404(req);
   }
 
   // App shell — requires a beta session.
@@ -122,9 +110,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     const url = req.nextUrl.clone();
     url.pathname = "/connect";
     url.search = "";
-    const r = NextResponse.redirect(url, 307);
-    r.headers.set("x-mw-dbg", dbg);
-    return r;
+    return NextResponse.redirect(url, 307);
   }
   if (!claims.beta) {
     // Authenticated but not allowlisted → the honest "not in the beta yet" state on /verify
@@ -132,13 +118,9 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     const url = req.nextUrl.clone();
     url.pathname = "/verify";
     url.search = "";
-    const r = NextResponse.redirect(url, 307);
-    r.headers.set("x-mw-dbg", dbg);
-    return r;
+    return NextResponse.redirect(url, 307);
   }
-  const ok = NextResponse.next();
-  ok.headers.set("x-mw-dbg", dbg);
-  return ok;
+  return NextResponse.next();
 }
 
 export const config = {
