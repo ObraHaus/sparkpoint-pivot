@@ -1,33 +1,168 @@
 {
-  "plan": "SparkPoint Phase 2 — Execution Plan (rev 3.3)",
+  "plan": "SparkPoint Phase 2 \u2014 Execution Plan (rev 3.3)",
   "artifact": "https://claude.ai/code/artifact/31e5f3f5-d23b-4fc1-a0f7-648743524eb9",
   "spec": "specs/001-sparkpoint-pivot-mvp",
   "milestone": "2026-07-24",
   "updated": "2026-07-16",
-  "current_wave": "P1.5-done-P2-next",
+  "current_wave": "PhaseA-done-PhaseB-next",
   "gates": {
-    "A": { "status": "APPROVED", "at": "2026-07-13", "note": "git patch approved; Obsidian into Phase 2 (T121-T126); scope = full working MVP; hosting resolved (16c/cap14)" },
-    "B": { "status": "PASSED", "at": "2026-07-14", "note": "US1 vault LIVE on Base Sepolia (vault 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2, guardian=OZ TimelockController 0x0A21A9B4c2cd2d6a68EC828188826B673572d720). On-chain N1/N2/N5 asserted (AssertNonCustody all-OK). Withdraw-always drill PASSED: deposit 100 USDC->Aave, pause via timelock, redeem 100.000001 USDC (principal+yield) WHILE paused()==true (tx 0x6190b6cf675a81a3472d565bdf70e38b6358496dc0d41898fbe484ccfe1907a0). Deployer=guardian proposer/executor; production hardening (Safe M-of-N + 2d delay + renounce admin) = Gate C." },
-    "C": { "status": "WAITING", "note": "MAINNET (Phase 3+, out of Phase 2): T103 recorded internal audit + hardening sign-off. Never autonomous." }
+    "A": {
+      "status": "APPROVED",
+      "at": "2026-07-13",
+      "note": "git patch approved; Obsidian into Phase 2 (T121-T126); scope = full working MVP; hosting resolved (16c/cap14)"
+    },
+    "B": {
+      "status": "PASSED",
+      "at": "2026-07-14",
+      "note": "US1 vault LIVE on Base Sepolia (vault 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2, guardian=OZ TimelockController 0x0A21A9B4c2cd2d6a68EC828188826B673572d720). On-chain N1/N2/N5 asserted (AssertNonCustody all-OK). Withdraw-always drill PASSED: deposit 100 USDC->Aave, pause via timelock, redeem 100.000001 USDC (principal+yield) WHILE paused()==true (tx 0x6190b6cf675a81a3472d565bdf70e38b6358496dc0d41898fbe484ccfe1907a0). Deployer=guardian proposer/executor; production hardening (Safe M-of-N + 2d delay + renounce admin) = Gate C."
+    },
+    "C": {
+      "status": "WAITING",
+      "note": "MAINNET (Phase 3+, out of Phase 2): T103 recorded internal audit + hardening sign-off. Never autonomous."
+    }
   },
   "waves": [
-    { "id": "W0",  "title": "Workspace + safety artifacts",                       "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
-    { "id": "W1",  "title": "Skeletons + CI (green-by-skip)",                      "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
-    { "id": "W2",  "title": "Shared SoT + interfaces (chainId-keyed), FROZEN",      "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "frozen": true },
-    { "id": "W3",  "title": "Foundational (policy engine, agent, Simulator, T124 embedder)", "status": "completed", "started": "2026-07-13", "completed": "2026-07-13" },
-    { "id": "W4",  "title": "Seam consumers -> FOUNDATION READY",                  "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "commit": "fcbec2f", "note": "viem clients + swappable custom-AA adapter + typed agent client/cards + display-only policy mirror + env + geo-fence; apps/web green (tsc/lint/build 45 routes); web CI green" },
-    { "id": "W5a", "title": "Tests FIRST, must FAIL (RED)",                        "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "note": "45-test N1/N2/N5 + perf-fee + caps invariant/fuzz/fork suite authored, verified RED (23 fail vs stubs)" },
-    { "id": "W5b", "title": "Contracts GREEN + policy/sim + refuter swarm + bundler spike", "status": "completed", "started": "2026-07-13", "completed": "2026-07-13", "commit": "e04ceb7", "note": "SparkPointVault (ERC-4626 + profit-only HWM perf fee, withdraw-always, non-upgradeable) + CapRegistry + KillSwitch; 76 tests green incl. live Base-fork e2e; N1/N2/N5 refuter swarm (9/9/13 attacks) ALL NOT REFUTED; contracts CI green. Deviations recorded in commit: off-chain feeRate timelock (guardian=Timelock/multisig at deploy), totalAssets excl. idle, AaveV3Adapter stub deferred to W6" },
-    { "id": "W5c", "title": "Endpoints + /exit + STOP-AND-VALIDATE",              "status": "in_progress", "started": "2026-07-13", "gate": "B", "note": "DONE: T015 ABI export (bb3b19e) + PUBLIC /exit escape hatch (5df74a9) + keyless backend vault quote endpoints + fee indexer (7e4b369) + Gate-B deploy to Base Sepolia + withdraw-always drill PASSED (cc6a4f7). REMAINING (frontend tail): NonCustody badge + caps display + beta whitelist gate + vault dashboard deposit/withdraw wiring against the LIVE vault." },
-    { "id": "W5c-fe", "title": "Frontend tail — live vault UI wired (T046/T047/T049)", "status": "completed", "completed": "2026-07-14", "commit": "7e9f41e", "note": "useVault live-read hook + NonCustody badge + caps meter + deposit(approve+deposit)/withdraw(redeem) via ConfirmFlow opt-in exec (parity preserved) + deposit-only beta gate (never gates /exit). US1 complete end-to-end; web CI green" },
-    { "id": "W6",  "title": "US2 + full US3-US5 + Obsidian ingestion SCAFFOLD (T122/T123/T125)", "status": "completed", "started": "2026-07-14", "completed": "2026-07-14", "note": "US2 custom ERC-4337 account (74cc403; refuter caught+fixed a validUntil==0 session-drain; 162 tests + live fork round-trip through the deployed vault). US3-US5 assistant backend (b4ff656; Coordinator DAG + chat/portfolio/recommendations/mandate/onboarding; 223 tests; advisory + policy-gated + LLM-free boundary). Frontend assistant wiring + Obsidian ingestion CODE T121-126 (ae2ac84; + migration 0004 embedding-dim fix). NOTE: Obsidian is SCAFFOLDED here (ingestion pipeline + schema), NOT wired end-to-end — real prod corpus ingestion + citations on rec cards is P2 (item 9), not 'completed' here. All CI green." },
-    { "id": "MILESTONE", "title": "Jul 24 (Fri) testnet MVP",                     "status": "build_complete", "note": "All Phase-2 build waves (W0-W6) landed + CI-green on feature/w0-foundation, 10 days early. US1 vault LIVE on Base Sepolia + non-custody proven on-chain. REMAINING to the milestone (integration/ops, not build): (1) deploy the agent service + web to OH Coolify dev/staging (playbook §5) with NEXT_PUBLIC_AGENT_BASE_URL + apply migrations 0002/0003/0004; (2) full-stack e2e (Playwright) UI->agent->live vault; (3) PR feature/w0-foundation -> develop (human-gated per playbook). Gate C (mainnet + Safe-in-front-of-Timelock hardening) = Phase 3." },
-    { "id": "P0", "title": "Operator work order P0 — trust surfaces + BFF + 429-resilience", "status": "completed", "completed": "2026-07-15", "commit": "509c278", "note": "OAuth 429-resilience (jittered backoff/Retry-After, cap 3/<=60s, max_retries=0, async limiter max_inflight=2, prompt caching, fail-closed, token never logged) + same-origin BFF (bearer server-side; NEXT_PUBLIC_AGENT_* deleted; served bundle scanned 0-token-leaks) + fabricated-success purge. Deployed dev @ 71zxh8ed...aldrickb.app (web) / 8jcvimzny...aldrickb.app (agent)." },
-    { "id": "P1", "title": "Operator work order P1 — verification shell", "status": "completed", "completed": "2026-07-15", "commit": "86152a4", "note": "Real 3-way policy-parity gate, blocking mypy, non-broadcast deploy-testnet, custody-seam CI, contract/sim test gaps, v0.7 bundler spike. Adversarial verify: 9/10 go-live invariants high-confidence (prompt-caching integration check is a cost-only mock)." },
-    { "id": "P0.2", "title": "Deploy + soak validation (honest)", "status": "completed", "completed": "2026-07-15", "note": "Soak 20 chat + 5 rec + burst 5: chat 25/25 fail-closed under sustained shared-account OAuth 429 = operational constraint (org key = Phase 3), resilience behaves as designed. Soak caught+fixed 3 deploy defects: DB pool lifecycle (4240622), rec 500->503 UPSTREAM_UNAVAILABLE (da66e00), bounded startup connect (020d201). Agent+web running:healthy; agent gates green (ruff/mypy-62/pytest-287)." },
-    { "id": "P1.5", "title": "Post-checkpoint audit fixes (operator punch list)", "status": "completed", "completed": "2026-07-16", "note": "6 items: (1) agent public-hardening (docs/openapi off, anon readyz boolean) + honest topology, (2) purge remaining fabrications (connect/verify real, killswitch honest, admin tiles from readyz, portfolio Preview-data) 274d5d8, (3) PR #21 workflows->main, (4) https + .app-vs-.xyz deviation recorded + web bound on both, (5) hygiene: NEXT_PUBLIC_AGENT_BASE_URL removed, legacy token env removed, CORS gwc3 fixed, RPC Actions secret, REASON_SLIPPAGE test, verification artifact, W6/P2 Obsidian contradiction fixed, DEPLOYMENT/COOLIFY updated, (6) bundler safe-mode + mode-0x01 spike 47f6ef3 (reported honestly). Verified live on the develop URLs." },
-    { "id": "P2", "title": "Obsidian real wiring (item 9) — prod corpus ingestion + citations", "status": "completed", "completed": "2026-07-16", "commit": "80b12c2", "note": "OQ-5 embedding-provider Gate RESOLVED (operator's self-hosted OpenAI-compatible OpenWebUI, qwen3-embedding:8b; 4096-dim MRL-truncated to the pinned 1024 + renormalized; key server-side only, never logged). OpenAIEmbeddingBackend + openai_embedder factory; ingestion runner (python -m sparkpoint_agent.knowledge.ingest_cli) ran against the deployed spark-postgres → 6 sources / 25 chunks; default_citation_retriever wired into BOTH DAG builders (chat + recommendations), None-when-unconfigured so CI stays green; corpus +3 accurate notes (aerodrome-slipstream, erc4626-vaults, usdc-yield-strategies); knowledge_search embeds off the event loop. Verified: semantic retrieval is RELEVANT (Aave query→Aave/vault notes, concentrated-liquidity query→Aerodrome). Frontend already renders the 'N sources' chip; attaching to a LIVE rec card needs an LLM ranking turn (shared-quota 429). Agent gates green (mypy 63 / pytest 297)." },
-    { "id": "P3",  "title": "Phase 3: US6, Trust Center, bridge, hardening",       "status": "pending" }
+    {
+      "id": "W0",
+      "title": "Workspace + safety artifacts",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W1",
+      "title": "Skeletons + CI (green-by-skip)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W2",
+      "title": "Shared SoT + interfaces (chainId-keyed), FROZEN",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "frozen": true
+    },
+    {
+      "id": "W3",
+      "title": "Foundational (policy engine, agent, Simulator, T124 embedder)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W4",
+      "title": "Seam consumers -> FOUNDATION READY",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "commit": "fcbec2f",
+      "note": "viem clients + swappable custom-AA adapter + typed agent client/cards + display-only policy mirror + env + geo-fence; apps/web green (tsc/lint/build 45 routes); web CI green"
+    },
+    {
+      "id": "W5a",
+      "title": "Tests FIRST, must FAIL (RED)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "note": "45-test N1/N2/N5 + perf-fee + caps invariant/fuzz/fork suite authored, verified RED (23 fail vs stubs)"
+    },
+    {
+      "id": "W5b",
+      "title": "Contracts GREEN + policy/sim + refuter swarm + bundler spike",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "commit": "e04ceb7",
+      "note": "SparkPointVault (ERC-4626 + profit-only HWM perf fee, withdraw-always, non-upgradeable) + CapRegistry + KillSwitch; 76 tests green incl. live Base-fork e2e; N1/N2/N5 refuter swarm (9/9/13 attacks) ALL NOT REFUTED; contracts CI green. Deviations recorded in commit: off-chain feeRate timelock (guardian=Timelock/multisig at deploy), totalAssets excl. idle, AaveV3Adapter stub deferred to W6"
+    },
+    {
+      "id": "W5c",
+      "title": "Endpoints + /exit + STOP-AND-VALIDATE",
+      "status": "in_progress",
+      "started": "2026-07-13",
+      "gate": "B",
+      "note": "DONE: T015 ABI export (bb3b19e) + PUBLIC /exit escape hatch (5df74a9) + keyless backend vault quote endpoints + fee indexer (7e4b369) + Gate-B deploy to Base Sepolia + withdraw-always drill PASSED (cc6a4f7). REMAINING (frontend tail): NonCustody badge + caps display + beta whitelist gate + vault dashboard deposit/withdraw wiring against the LIVE vault."
+    },
+    {
+      "id": "W5c-fe",
+      "title": "Frontend tail \u2014 live vault UI wired (T046/T047/T049)",
+      "status": "completed",
+      "completed": "2026-07-14",
+      "commit": "7e9f41e",
+      "note": "useVault live-read hook + NonCustody badge + caps meter + deposit(approve+deposit)/withdraw(redeem) via ConfirmFlow opt-in exec (parity preserved) + deposit-only beta gate (never gates /exit). US1 complete end-to-end; web CI green"
+    },
+    {
+      "id": "W6",
+      "title": "US2 + full US3-US5 + Obsidian ingestion SCAFFOLD (T122/T123/T125)",
+      "status": "completed",
+      "started": "2026-07-14",
+      "completed": "2026-07-14",
+      "note": "US2 custom ERC-4337 account (74cc403; refuter caught+fixed a validUntil==0 session-drain; 162 tests + live fork round-trip through the deployed vault). US3-US5 assistant backend (b4ff656; Coordinator DAG + chat/portfolio/recommendations/mandate/onboarding; 223 tests; advisory + policy-gated + LLM-free boundary). Frontend assistant wiring + Obsidian ingestion CODE T121-126 (ae2ac84; + migration 0004 embedding-dim fix). NOTE: Obsidian is SCAFFOLDED here (ingestion pipeline + schema), NOT wired end-to-end \u2014 real prod corpus ingestion + citations on rec cards is P2 (item 9), not 'completed' here. All CI green."
+    },
+    {
+      "id": "MILESTONE",
+      "title": "Jul 24 (Fri) testnet MVP",
+      "status": "build_complete",
+      "note": "All Phase-2 build waves (W0-W6) landed + CI-green on feature/w0-foundation, 10 days early. US1 vault LIVE on Base Sepolia + non-custody proven on-chain. REMAINING to the milestone (integration/ops, not build): (1) deploy the agent service + web to OH Coolify dev/staging (playbook \u00a75) with NEXT_PUBLIC_AGENT_BASE_URL + apply migrations 0002/0003/0004; (2) full-stack e2e (Playwright) UI->agent->live vault; (3) PR feature/w0-foundation -> develop (human-gated per playbook). Gate C (mainnet + Safe-in-front-of-Timelock hardening) = Phase 3."
+    },
+    {
+      "id": "P0",
+      "title": "Operator work order P0 \u2014 trust surfaces + BFF + 429-resilience",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "commit": "509c278",
+      "note": "OAuth 429-resilience (jittered backoff/Retry-After, cap 3/<=60s, max_retries=0, async limiter max_inflight=2, prompt caching, fail-closed, token never logged) + same-origin BFF (bearer server-side; NEXT_PUBLIC_AGENT_* deleted; served bundle scanned 0-token-leaks) + fabricated-success purge. Deployed dev @ 71zxh8ed...aldrickb.app (web) / 8jcvimzny...aldrickb.app (agent)."
+    },
+    {
+      "id": "P1",
+      "title": "Operator work order P1 \u2014 verification shell",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "commit": "86152a4",
+      "note": "Real 3-way policy-parity gate, blocking mypy, non-broadcast deploy-testnet, custody-seam CI, contract/sim test gaps, v0.7 bundler spike. Adversarial verify: 9/10 go-live invariants high-confidence (prompt-caching integration check is a cost-only mock)."
+    },
+    {
+      "id": "P0.2",
+      "title": "Deploy + soak validation (honest)",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "note": "Soak 20 chat + 5 rec + burst 5: chat 25/25 fail-closed under sustained shared-account OAuth 429 = operational constraint (org key = Phase 3), resilience behaves as designed. Soak caught+fixed 3 deploy defects: DB pool lifecycle (4240622), rec 500->503 UPSTREAM_UNAVAILABLE (da66e00), bounded startup connect (020d201). Agent+web running:healthy; agent gates green (ruff/mypy-62/pytest-287)."
+    },
+    {
+      "id": "P1.5",
+      "title": "Post-checkpoint audit fixes (operator punch list)",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "6 items: (1) agent public-hardening (docs/openapi off, anon readyz boolean) + honest topology, (2) purge remaining fabrications (connect/verify real, killswitch honest, admin tiles from readyz, portfolio Preview-data) 274d5d8, (3) PR #21 workflows->main, (4) https + .app-vs-.xyz deviation recorded + web bound on both, (5) hygiene: NEXT_PUBLIC_AGENT_BASE_URL removed, legacy token env removed, CORS gwc3 fixed, RPC Actions secret, REASON_SLIPPAGE test, verification artifact, W6/P2 Obsidian contradiction fixed, DEPLOYMENT/COOLIFY updated, (6) bundler safe-mode + mode-0x01 spike 47f6ef3 (reported honestly). Verified live on the develop URLs."
+    },
+    {
+      "id": "P2",
+      "title": "Obsidian real wiring (item 9) \u2014 prod corpus ingestion + citations",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "commit": "80b12c2",
+      "note": "OQ-5 embedding-provider Gate RESOLVED (operator's self-hosted OpenAI-compatible OpenWebUI, qwen3-embedding:8b; 4096-dim MRL-truncated to the pinned 1024 + renormalized; key server-side only, never logged). OpenAIEmbeddingBackend + openai_embedder factory; ingestion runner (python -m sparkpoint_agent.knowledge.ingest_cli) ran against the deployed spark-postgres \u2192 6 sources / 25 chunks; default_citation_retriever wired into BOTH DAG builders (chat + recommendations), None-when-unconfigured so CI stays green; corpus +3 accurate notes (aerodrome-slipstream, erc4626-vaults, usdc-yield-strategies); knowledge_search embeds off the event loop. Verified: semantic retrieval is RELEVANT (Aave query\u2192Aave/vault notes, concentrated-liquidity query\u2192Aerodrome). Frontend already renders the 'N sources' chip; attaching to a LIVE rec card needs an LLM ranking turn (shared-quota 429). Agent gates green (mypy 63 / pytest 297)."
+    },
+    {
+      "id": "PHASE-A",
+      "title": "LLM pivot: OpenRouter via LiteLLM gateway + /trust live",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "/trust live reads + Spearbit/fake-addr deleted (a171824); LiteLLM gateway app + dedicated isolated Postgres + OpenRouter alias sparkpoint-chat with free fallback (e45a936/1ab4c2b); agent async LLM client pivoted to the gateway (OpenAICompatTransport, resilience kept, CC-prefix dropped, Anthropic-OAuth env fallback) + readyz real gateway liveness probe (587692d). VERIFIED LIVE: 20/20 real chat completions + recs with 6 real Obsidian citations (docs/verification/phase-a-llm-gateway.md). Checkpoint before Phase B."
+    },
+    {
+      "id": "P3",
+      "title": "Phase 3: US6, Trust Center, bridge, hardening",
+      "status": "pending"
+    }
   ],
-  "gate_wait_queue": ["Obsidian seed corpus (T121)", "deep fuzz on spark-fuzz", "refuter re-runs", "docs", "worktree reaping"]
+  "gate_wait_queue": [
+    "Obsidian seed corpus (T121)",
+    "deep fuzz on spark-fuzz",
+    "refuter re-runs",
+    "docs",
+    "worktree reaping"
+  ]
 }
