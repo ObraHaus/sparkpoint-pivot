@@ -112,3 +112,11 @@ Managed in the **Coolify UI** (the scheduled-tasks API isn't exposed). Record th
 ## REST API / token
 
 Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standing token:** `/home/hello/project/.claude/.env` (`COOLIFY_API_TOKEN`) — read + read:sensitive, **read-only**. **Mutations** (creating these apps, env writes, deploys) need the RWD token (`COOLIFY_API_TOKEN_RWD`) or, for secrets/admin, a temporary `root` key. **Always ask before any Coolify-mutating call** — treat it like a `git push`.
+
+> **LLM GATEWAY (Phase A) — recorded 2026-07-16.** Hermes no longer calls Anthropic directly; it calls an **OpenAI-compatible LiteLLM gateway → OpenRouter**. New Coolify develop resources (project "SparkPoint Pivot" > develop, env `t48o0ocs80os08g4cscg0o8k`, shared `coolify` network):
+> | Resource | UUID | FQDN / host | Notes |
+> |---|---|---|---|
+> | `sparkpoint-litellm-develop` (app) | `fog4okko4csgscgos00ws48c` | `fi5zmq5osp0g3aam93gnv2j4rl.aldrickb.app` (port 4000) | LiteLLM proxy (build from `/services/litellm`); alias `sparkpoint-chat` → openrouter (primary `gemma-4-31b:free` + verified free fallback `gemma-4-26b-a4b:free`, router retries). `/docs`→404; `/chat/completions` requires the virtual key (401 without). |
+> | `sparkpoint-litellm-db-develop` (postgres) | `t4w8wokwgk4ooosk0cwckg8g` | internal (`postgres:16-alpine`) | DEDICATED, isolated DB for LiteLLM keys+budgets — NOT spark-postgres, NOT the agent DB. |
+>
+> **Secrets (gateway env, server-side only, never committed):** `OPENROUTER_API_KEY` (ONLY the gateway holds it), `LITELLM_MASTER_KEY`, `DATABASE_URL` (→ the dedicated postgres), `DISABLE_ADMIN_UI=True`. **Agent env:** `LITELLM_BASE_URL` (→ gateway FQDN), `LITELLM_API_KEY` (a per-service **virtual key**: rpm 20 / tpm 40k / $5-a-day budget, alias `hermes-agent`), `LITELLM_MODEL=sparkpoint-chat`; `NEW_ANTHROPIC_OAUTH_TOKEN` remains as the env-selected fallback. readyz now probes the gateway's `/health/liveliness` (cached ~60s) as the `llm` check. Minor follow-up: `/openapi.json` on the gateway is still 200 (schema only; all endpoints require the key).
