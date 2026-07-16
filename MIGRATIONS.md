@@ -2,7 +2,8 @@
 
 Tracks which migrations have been applied to each environment (**Postgres + pgvector**). Migrations record **no** history of their own, so **this file is the source of truth** — update it whenever you apply a migration.
 
-> **Status.** No migrations exist yet. The current build is the **`apps/web` UI only** (mock data, no backend/DB), so there is nothing to migrate. The tables below are **seeded empty** — fill them in when the backend lands and the first migration is applied. The migrations directory is TBD (likely `services/agent/migrations/` or `packages/shared/db/migrations/`; finalized at build time).
+> **Status (2026-07-16).** The Hermes agent backend is live; migrations live in **`services/agent/migrations/`** (raw SQL, applied via **yoyo**, out-of-band at deploy — not on the app hot path). Develop (`spark-postgres`) is at **`0005`**. Apply with:
+> `uv run --group migrations yoyo apply --batch --database "$DATABASE_URL" ./migrations` (from `services/agent`).
 
 > **Note.** Production runs on the **client's infra** (TBD; likely sparkpoint.io); dev/staging runs on **OH Coolify** (Postgres+pgvector single instance). Migration level is tracked per environment regardless of host.
 
@@ -11,15 +12,17 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | Environment | DB | Migration level | As of |
 |---|---|---|---|
 | **Production** (client infra — TBD) | Postgres + pgvector (TBD) | **none** | — |
-| **Develop** (OH Coolify) | `sparkpoint-postgres-develop` (pgvector) | **none** | — |
+| **Develop** (OH Coolify) | `spark-postgres` (pgvector) | **0005** | 2026-07-16 |
 
 ## Per-migration status
 
-| Migration | Develop | Production |
-|---|---|---|
-| _none yet_ | — | — |
-
-_First planned migration (illustrative): `0001_init` — base schema + `CREATE EXTENSION IF NOT EXISTS vector;` for pgvector embeddings. Not written yet._
+| Migration | Develop | Production | What it adds |
+|---|---|---|---|
+| `0001_foundation` | ✅ | — | users, smart_accounts, networks, beta_whitelist (E15), audit_logs, pgvector `memory_chunks` |
+| `0002_vault` | ✅ | — | vault/position mirror |
+| `0003_assistant` | ✅ | — | mandates + assistant state |
+| `0004_embedding_dim` | ✅ | — | embedding dimension pin (1024) |
+| `0005_allowlists` | ✅ | — | Phase B: `wallet_allowlist` + `allowlist_audit` (beta/admin access gate, seeded from env) |
 
 ## How migrations are applied
 
@@ -40,4 +43,4 @@ Probe for an object each migration introduces (SQL/REST), e.g. a table, an index
 
 ## Changelog
 
-- _No migrations applied yet._
+- **2026-07-16** — `0005_allowlists` applied to develop (`spark-postgres`) via yoyo (Phase B beta/admin allowlist). `0001`–`0004` were already applied. Verify: `SELECT to_regclass('wallet_allowlist');` is non-null.

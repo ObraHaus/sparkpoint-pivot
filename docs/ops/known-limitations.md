@@ -25,6 +25,26 @@ a silent gap. Update in the same change that resolves one.
   chat latency is ~7–28 s (median ~12 s). Swap the alias to a cheap paid model / BYOK key on the
   gateway (`services/litellm/config.yaml`) for a snappy demo — config-only, no code change.
 
+## Auth / access control (Phase B)
+
+- **SIWE session is stateless (no server-side revocation list).** The session is a signed, 7-day
+  httpOnly cookie; there is no per-session store, so a specific session can't be revoked before
+  expiry short of rotating `SESSION_SECRET` (which logs everyone out). Allowlist changes take effect
+  on the wallet's **next login** (roles are baked into the cookie at login). Acceptable for the
+  access gate — it never gates custody (/exit, /trust, withdraw stay open, N2).
+- **Allowlist env is duplicated on two apps.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` live on both the
+  agent (which seeds the DB) and the web app (parity only — the web reads session claims, not the
+  env). They must be kept identical via `scripts/sync-allowlist-env.sh`; a hand-edit on one app can
+  drift. Only the agent's copy actually affects access.
+- **Admin LLM-gateway view is best-effort + read-only.** `/admin/gateway` reads the LiteLLM proxy
+  with the agent's virtual key; fields the gateway version doesn't expose show as "—"/null, and the
+  page cannot mutate gateway config (no master key is placed on the agent). Spend/limits reflect the
+  single service virtual key, not per-user rollups yet.
+- **Client `useBeta` still has a testnet-permissive fallback.** When signed in, the server session's
+  `beta` claim is authoritative; but while the session is still loading (or when disconnected) the
+  deposit gate falls back to the client default (permissive on Base Sepolia). The middleware is the
+  real enforcement, so this only affects a brief pre-session render.
+
 ## Knowledge / retrieval (P2)
 
 - **The chat path has no Obsidian grounding.** Citation retrieval is wired into the *recommender*

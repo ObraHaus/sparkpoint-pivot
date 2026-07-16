@@ -41,6 +41,21 @@ function getSecret(): string | null {
   return process.env.SESSION_SECRET || process.env.AUTH_SECRET || null;
 }
 
+/**
+ * Whether to mark cookies `Secure`, from the request protocol (we sit behind a TLS-terminating
+ * proxy, so trust `x-forwarded-proto`). https ⇒ Secure; plain http (e.g. a bare-http dev/preview
+ * host) ⇒ not Secure, so the SameSite=Lax session cookie still sets. Never downgrades https.
+ */
+export function isRequestSecure(req: Request): boolean {
+  const proto = req.headers.get("x-forwarded-proto");
+  if (proto) return proto.split(",")[0].trim() === "https";
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const encoder = new TextEncoder();
 
 /** Copy into a fresh ArrayBuffer — a `BufferSource` the Web Crypto typings accept across TS libs. */

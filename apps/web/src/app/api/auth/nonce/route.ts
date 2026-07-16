@@ -8,17 +8,17 @@
 
 import { NextResponse } from "next/server";
 import { generateSiweNonce } from "viem/siwe";
-import { NONCE_COOKIE, NONCE_TTL_SECONDS } from "@/lib/auth/session";
+import { NONCE_COOKIE, NONCE_TTL_SECONDS, isRequestSecure } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET(): NextResponse {
+export function GET(req: Request): NextResponse {
   const nonce = generateSiweNonce();
   const res = NextResponse.json({ nonce });
   res.cookies.set(NONCE_COOKIE, nonce, {
     httpOnly: true,
-    secure: true,
+    secure: isRequestSecure(req),
     sameSite: "lax",
     path: "/",
     maxAge: NONCE_TTL_SECONDS,

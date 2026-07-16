@@ -22,6 +22,7 @@ import {
   NONCE_COOKIE,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
+  isRequestSecure,
   signSession,
 } from "@/lib/auth/session";
 
@@ -85,6 +86,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
   if (!token) return bad("session_unconfigured", 500);
 
+  const secure = isRequestSecure(req);
   const res = NextResponse.json({
     ok: true,
     address: address.toLowerCase(),
@@ -93,7 +95,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
@@ -101,7 +103,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // Single-use nonce — clear it.
   res.cookies.set(NONCE_COOKIE, "", {
     httpOnly: true,
-    secure: true,
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: 0,

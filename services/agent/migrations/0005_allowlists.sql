@@ -15,7 +15,7 @@
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS wallet_allowlist (
-    address    text        NOT NULL CHECK (address = lower(address)),  -- lowercase 0x…40hex
+    address    text        NOT NULL CHECK (address = lower(address)),  -- lowercase 0x + 40 hex
     role       text        NOT NULL CHECK (role IN ('beta', 'admin')),
     added_by   text,                                                   -- lowercase admin addr | 'env-seed'
     added_at   timestamptz NOT NULL DEFAULT now(),

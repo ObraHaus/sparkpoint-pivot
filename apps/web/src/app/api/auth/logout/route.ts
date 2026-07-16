@@ -6,16 +6,16 @@
  */
 
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth/session";
+import { SESSION_COOKIE, isRequestSecure } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function POST(): NextResponse {
+export function POST(req: Request): NextResponse {
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, "", {
     httpOnly: true,
-    secure: true,
+    secure: isRequestSecure(req),
     sameSite: "lax",
     path: "/",
     maxAge: 0,
