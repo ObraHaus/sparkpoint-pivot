@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
+import { useNetwork } from "@/lib/network";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
@@ -48,6 +48,7 @@ export default function Page() {
   const router = useRouter();
   const { toast } = useOverlay();
   const { resolvedTheme, setTheme } = useTheme();
+  const { wallet } = useNetwork();
   const [tab, setTab] = useState<Tab>("account");
   const [density, setDensity] = useState<"Comfortable" | "Compact">("Comfortable");
 
@@ -90,7 +91,7 @@ export default function Page() {
                   Smart account on Base
                 </div>
               </div>
-              <span className="mono">{data.wallet}</span>
+              <span className="mono">{wallet}</span>
             </div>
             <div className="setrow">
               <div>

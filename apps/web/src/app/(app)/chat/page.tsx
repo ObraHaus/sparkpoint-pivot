@@ -443,6 +443,26 @@ export default function ChatPage() {
       <div className="chatcol">
         <div className="chatscroll" ref={scrollerRef}>
           <div className="chatstream">
+            {!online && (
+              <div
+                className="cturn ai"
+                style={{
+                  margin: "4px auto 10px",
+                  padding: "8px 12px",
+                  maxWidth: 620,
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  color: "var(--caution)",
+                  border: "1px solid var(--border-soft)",
+                  borderRadius: 10,
+                  background: "color-mix(in srgb, var(--caution) 8%, transparent)",
+                }}
+              >
+                <b>Demo mode</b> — the live assistant is offline (or your wallet isn’t connected),
+                so replies below are scripted examples, not real AI answers. Connect + sign in to
+                talk to the live assistant. Your funds are unaffected either way.
+              </div>
+            )}
             {turns.map((turn) => {
               if (turn.kind === "user") {
                 return (

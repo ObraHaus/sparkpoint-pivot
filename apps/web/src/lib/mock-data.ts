@@ -118,7 +118,9 @@ export const data: MockData = {
   wallet: "0x12A4…b9Ef",
   networks: [
     { id: "base", name: "Base", live: true, color: "#0052FF", wallet: "0x12A4…b9Ef" },
-    { id: "sui", name: "Sui", live: true, color: "#4DA8FF", wallet: "0x9c3f…7a2d" },
+    // Sui is a documented fast-follow, NOT live. (The live shell reads wagmi, not this mock;
+    // this value is kept honest for the remaining mock bridge screen.)
+    { id: "sui", name: "Sui", live: false, color: "#4DA8FF", wallet: "0x9c3f…7a2d" },
   ],
   activeNetwork: "base",
   bridgeAssets: [

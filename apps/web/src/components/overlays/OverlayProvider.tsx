@@ -18,6 +18,7 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { useNetwork } from "@/lib/network";
+import { useSession } from "@/lib/auth/useSiwe";
 import { toHref } from "@/lib/nav";
 
 /** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
@@ -354,43 +355,69 @@ function MenuItem({ icon, label, onClick, style }: { icon: string; label: ReactN
 }
 
 function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { wallet, network } = useNetwork();
+  const { wallet, network, address, explorerBase, isConnected, disconnectWallet } = useNetwork();
+
+  const copyAddress = () => {
+    close();
+    if (!address) return toast("No wallet connected");
+    navigator.clipboard
+      ?.writeText(address)
+      .then(() => toast("Address copied"))
+      .catch(() => toast("Couldn't copy address"));
+  };
+  const viewOnBasescan = () => {
+    close();
+    if (!address) return toast("No wallet connected");
+    window.open(`${explorerBase}/address/${address}`, "_blank", "noopener,noreferrer");
+  };
+  const disconnect = async () => {
+    close();
+    await disconnectWallet();
+    go("landing");
+  };
+
   return (
     <>
-      <MenuHeader title={`Connected · ${network.name}`} sub={wallet} />
-      <MenuItem icon="copy" label="Copy address" onClick={() => { close(); toast("Address copied"); }} />
-      <MenuItem icon="ext" label="View on Basescan" onClick={() => { close(); toast("Opens Basescan ↗"); }} />
+      <MenuHeader title={isConnected ? `Connected · ${network.name}` : "Not connected"} sub={wallet} />
+      <MenuItem icon="copy" label="Copy address" onClick={copyAddress} />
+      <MenuItem icon="ext" label="View on Basescan" onClick={viewOnBasescan} />
       <MenuItem icon="shieldcheck" label="View exact permissions" onClick={() => go("trust/permissions")} />
-      <MenuItem icon="refresh" label="Switch wallet" onClick={() => { close(); toast("Wallet switcher"); }} />
-      <MenuItem icon="logout" label="Disconnect" onClick={() => { toast("Disconnected — funds untouched"); go("landing"); }} />
+      <MenuItem icon="logout" label="Disconnect" onClick={disconnect} />
     </>
   );
 }
 
 function NetworkMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { networks, activeNetwork, setActiveNetwork } = useNetwork();
+  const { networks, network, onSupportedChain, switchToBase } = useNetwork();
   return (
     <>
       <div style={{ padding: "9px 12px 7px", fontSize: 11, color: "var(--muted-foreground)", fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase" }}>
         Network
       </div>
-      {networks.map((n) => (
-        <button
-          key={n.id}
-          className="menu-item"
-          onClick={() => { close(); setActiveNetwork(n.id); toast("Switched to " + n.name); }}
-        >
-          <span style={{ width: 12, height: 12, borderRadius: "50%", background: n.color, flex: "none" }} />
-          {n.name}
-          {n.id === activeNetwork ? (
-            <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
-              <Icon name="check" size={15} />
-            </span>
-          ) : (
-            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--gain)" }}>live</span>
-          )}
-        </button>
-      ))}
+      {networks.map((n) => {
+        const isBase = n.id === "base";
+        const active = isBase && onSupportedChain;
+        const onClick = () => {
+          close();
+          if (!isBase) return toast(`${n.name} support is coming soon`);
+          if (!onSupportedChain) switchToBase();
+        };
+        return (
+          <button key={n.id} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
+            <span style={{ width: 12, height: 12, borderRadius: "50%", background: n.color, flex: "none" }} />
+            {isBase ? network.name : n.name}
+            {active ? (
+              <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
+                <Icon name="check" size={15} />
+              </span>
+            ) : isBase ? (
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--caution)" }}>switch</span>
+            ) : (
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted-foreground)" }}>coming soon</span>
+            )}
+          </button>
+        );
+      })}
       <div style={{ padding: "8px 12px 4px", borderTop: "1px solid var(--border-soft)", marginTop: 4 }}>
         <MenuItem icon="refresh" label="Bridge assets between networks" onClick={() => go("bridge")} style={{ color: "var(--primary)" }} />
       </div>
@@ -399,7 +426,8 @@ function NetworkMenu({ go, toast, close }: { go: (r: string) => void; toast: (m:
 }
 
 function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string) => void }) {
-  const { wallet } = useNetwork();
+  const { wallet, disconnectWallet } = useNetwork();
+  const { session } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
   const isLight = resolvedTheme === "light";
   return (
@@ -414,7 +442,8 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
       <MenuItem icon="settings" label="Settings" onClick={() => go("settings")} />
       <MenuItem icon="sliders" label="Mandate" onClick={() => go("settings")} />
       <MenuItem icon="book" label="Learn" onClick={() => go("learn")} />
-      <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />
+      {/* Only admins see the admin entry — for everyone else the surface is a 404 (invisible). */}
+      {session?.admin && <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />}
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "6px 6px 4px" }} />
       <button
         className="menu-item"
@@ -431,7 +460,7 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
         <span className={"switch" + (isLight ? " on" : "")} style={{ marginLeft: "auto" }} />
       </button>
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "4px 6px" }} />
-      <MenuItem icon="logout" label="Log out" onClick={() => { toast("Logged out — funds untouched"); go("landing"); }} />
+      <MenuItem icon="logout" label="Log out" onClick={async () => { await disconnectWallet(); go("landing"); }} />
     </>
   );
 }

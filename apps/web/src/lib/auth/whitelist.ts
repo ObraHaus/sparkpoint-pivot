@@ -30,6 +30,7 @@
 import { useAccount } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
 import { isAddress, type Address } from "viem";
+import { useSession } from "@/lib/auth/useSiwe";
 
 /** Why the deposit/transact path is closed for this wallet (drives BetaGate copy). */
 export type BetaBlockReason = { kind: "geo_blocked" } | { kind: "not_allowlisted" };
@@ -127,8 +128,23 @@ export function computeBetaStatus(input: {
  * DEPOSIT-ONLY GATE. Deposit/transact surfaces read `canTransact` to decide whether to
  * render the amount form or <BetaGate/>. It NEVER gates /exit, /trust, or the withdraw
  * path — those import neither this hook nor BetaGate (non-custody law, N2).
+ *
+ * Phase B: when a SIWE session exists, the SERVER session's `beta` claim (resolved from the
+ * agent's DB-backed allowlist at login) is AUTHORITATIVE — the client `computeBetaStatus`
+ * default is used only while the session is still loading or when nobody is signed in. The
+ * route-level middleware is the primary enforcement; this keeps the deposit UI consistent with it.
  */
 export function useBeta(): BetaStatus {
   const { address, chainId, isConnected } = useAccount();
-  return computeBetaStatus({ address, chainId, isConnected });
+  const { session } = useSession();
+  const base = computeBetaStatus({ address, chainId, isConnected });
+  if (!session) return base; // undefined (loading) or null (not signed in) → client default
+  const enabled = session.beta;
+  const canTransact = enabled && base.geoAllowed;
+  return {
+    ...base,
+    enabled,
+    canTransact,
+    reason: canTransact ? null : { kind: "not_allowlisted" },
+  };
 }
