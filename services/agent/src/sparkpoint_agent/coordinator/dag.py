@@ -254,9 +254,15 @@ class CoordinatorDag:
 
     # -- stage 1: understand (LLM, NL only) -----------------------------------
 
-    async def understand(self, message: str, *, surface: str = "chat") -> Intent:
-        """Stage 1 — classify the turn via the planner (the ONLY LLM understanding step)."""
-        return await self.planner.classify(message, surface=surface)
+    async def understand(
+        self, message: str, *, surface: str = "chat", user: str | None = None
+    ) -> Intent:
+        """Stage 1 — classify the turn via the planner (the ONLY LLM understanding step).
+
+        ``user`` is the verified wallet, forwarded to the model gateway as the per-user
+        budget/attribution key — identity only, never authority.
+        """
+        return await self.planner.classify(message, surface=surface, user=user)
 
     # -- stage 2: gather (portfolio + mandate reads) --------------------------
 
@@ -268,10 +274,15 @@ class CoordinatorDag:
 
     # -- stage 3: propose (recommender; candidate set is code) ----------------
 
-    async def propose(self, intent: Intent, gathered: Gathered) -> tuple[Candidate, ...]:
+    async def propose(
+        self, intent: Intent, gathered: Gathered, *, user: str | None = None
+    ) -> tuple[Candidate, ...]:
         """Stage 3 — propose whitelist-only candidates (may be empty; raises ``_Refused``
-        on a model refusal so the caller emits a REFUSAL block)."""
-        result = await self.recommender.propose(intent, self._proposal_context(gathered))
+        on a model refusal so the caller emits a REFUSAL block). ``user`` is the verified
+        wallet (per-user gateway budget key) — identity only, never authority."""
+        result = await self.recommender.propose(
+            intent, self._proposal_context(gathered), user=user
+        )
         if result.refused:
             raise _Refused
         return result.candidates
@@ -318,8 +329,12 @@ class CoordinatorDag:
         directly-commanded action becomes an ``action`` block whose sign path exists ONLY when
         the deterministic verdict approved it.
         """
+        # The verified wallet (X-Owner) → the model gateway's per-user budget/attribution key.
+        # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
+        user = chain.owner
+
         yield ToolStepBlock("Understanding your request", "running")
-        intent = await self.understand(message, surface=surface)
+        intent = await self.understand(message, surface=surface, user=user)
         yield ToolStepBlock("Understanding your request", "done")
 
         if intent.refused:
@@ -328,7 +343,7 @@ class CoordinatorDag:
 
         if intent.kind is IntentKind.LEARN:
             yield ToolStepBlock("Explaining that", "running")
-            card = await self.literacy.tip(intent.topic)
+            card = await self.literacy.tip(intent.topic, user=user)
             yield ToolStepBlock("Explaining that", "done")
             yield TipBlock(card.topic, card.body)
             return
@@ -356,7 +371,7 @@ class CoordinatorDag:
 
         yield ToolStepBlock("Checking strategies against your guardrails", "running")
         try:
-            candidates = await self.propose(intent, gathered)
+            candidates = await self.propose(intent, gathered, user=user)
         except _Refused:
             yield ToolStepBlock("Checking strategies against your guardrails", "error")
             yield ErrorBlock("REFUSAL", "I couldn't produce a safe recommendation for that.")
@@ -380,7 +395,9 @@ class CoordinatorDag:
         """
         gathered = await self.gather(chain)
         try:
-            candidates = await self.propose(Intent(kind=IntentKind.RECOMMEND), gathered)
+            candidates = await self.propose(
+                Intent(kind=IntentKind.RECOMMEND), gathered, user=chain.owner
+            )
         except _Refused:
             return RecommendationsResult(
                 policy_version=POLICY_VERSION,

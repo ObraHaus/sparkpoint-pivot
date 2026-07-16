@@ -248,13 +248,17 @@ class Recommender:
     effort: Effort = EFFORT
     knowledge: CitationRetriever | None = None
 
-    async def propose(self, intent: Intent, ctx: ProposalContext) -> RecommendationResult:
+    async def propose(
+        self, intent: Intent, ctx: ProposalContext, *, user: str | None = None
+    ) -> RecommendationResult:
         """Produce ranked, whitelist-only :class:`Candidate`s for ``intent`` — fail-closed.
 
         A BUILD_ACTION turn yields the single commanded action (no ranking LLM call). A
         RECOMMEND turn builds the code-fixed yield set, then asks the model to rank + narrate
         it; a refusal returns no candidates, malformed output degrades to a deterministic
-        ranking. The candidates are NOT yet policy-gated — the DAG stamps each one.
+        ranking. The candidates are NOT yet policy-gated — the DAG stamps each one. ``user`` is
+        the verified wallet (LiteLLM per-user budget/attribution key) — identity only, never
+        authority; the whitelist + policy gate bind what can actually be built.
         """
         if intent.kind is IntentKind.BUILD_ACTION:
             explicit = self._build_explicit(intent, ctx)
@@ -273,6 +277,7 @@ class Recommender:
             messages=[{"role": "user", "content": self._rank_prompt(built, ctx)}],
             parse=_parse_ranking,
             effort=self.effort,
+            user=user,
         )
         if result.refused:
             return RecommendationResult((), refused=True)
