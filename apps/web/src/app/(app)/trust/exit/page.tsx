@@ -10,12 +10,17 @@
  */
 
 import { useRouter } from "next/navigation";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
 
+const VAULT_CHAIN = 84532;
+const EXPLORER = "https://sepolia.basescan.org";
+
 export default function Page() {
   const router = useRouter();
+  const vault = getAddresses(VAULT_CHAIN).vault;
 
   return (
     <div className="page page-narrow">
@@ -66,9 +71,21 @@ export default function Page() {
           <span className="num">1</span>
           <div>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>Open the vault on Basescan</div>
-            <div className="mono" style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 3 }}>
-              0x9f…2C1 <Icon name="ext" size={11} />
-            </div>
+            {vault ? (
+              <a
+                className="mono"
+                style={{ fontSize: 12, color: "var(--primary)", marginTop: 3, display: "inline-flex", gap: 4 }}
+                href={`${EXPLORER}/address/${vault}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {vault} <Icon name="ext" size={11} />
+              </a>
+            ) : (
+              <div className="mono" style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 3 }}>
+                vault not deployed on this network
+              </div>
+            )}
           </div>
         </div>
         <div className="exit-step">
