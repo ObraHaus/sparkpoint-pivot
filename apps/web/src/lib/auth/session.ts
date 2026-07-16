@@ -121,6 +121,42 @@ export async function signSession(input: {
  * `null` for any tampering, malformation, missing secret, or expiry. Constant-time signature
  * check via `crypto.subtle.verify`.
  */
+/** TEMP diagnostic: recompute the HMAC via `sign` and string-compare to the presented sig, so we
+ * can see whether the edge runtime's secret/crypto/encoding matches — without relying on `verify`. */
+export async function debugVerify(
+  token: string | undefined | null,
+  secretOverride?: string | null,
+): Promise<Record<string, unknown>> {
+  const secret = secretOverride ?? getSecret();
+  if (!secret) return { r: "nosecret" };
+  if (!token) return { r: "notoken" };
+  const dot = token.indexOf(".");
+  if (dot <= 0) return { r: "nodot" };
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  try {
+    const key = await importKey(secret);
+    const recomputed = bytesToBase64Url(
+      new Uint8Array(await crypto.subtle.sign("HMAC", key, asBufferSource(encoder.encode(payload)))),
+    );
+    let exp = -1;
+    try {
+      exp = (JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as SessionClaims).exp;
+    } catch {
+      /* ignore */
+    }
+    return {
+      r: recomputed === sig ? "match" : "mismatch",
+      sig10: sig.slice(0, 10),
+      re10: recomputed.slice(0, 10),
+      exp,
+      now: Math.floor(Date.now() / 1000),
+    };
+  } catch (e) {
+    return { r: "threw", name: e instanceof Error ? e.name : "e" };
+  }
+}
+
 export async function verifySession(
   token: string | undefined | null,
   secretOverride?: string | null,
@@ -136,13 +172,13 @@ export async function verifySession(
   const sig = token.slice(dot + 1);
   try {
     const key = await importKey(secret);
-    const ok = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      asBufferSource(base64UrlToBytes(sig)),
-      asBufferSource(encoder.encode(payload)),
+    // Verify by RECOMPUTING the HMAC (via sign) and constant-time comparing the base64url — NOT
+    // crypto.subtle.verify, which returned false in the edge runtime for a signature the node route
+    // accepts (sign is consistent across runtimes; verify was not). Same result, edge-safe.
+    const expected = bytesToBase64Url(
+      new Uint8Array(await crypto.subtle.sign("HMAC", key, asBufferSource(encoder.encode(payload)))),
     );
-    if (!ok) return null;
+    if (!timingSafeStrEqual(sig, expected)) return null;
     const claims = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as SessionClaims;
     if (typeof claims.address !== "string" || typeof claims.exp !== "number") return null;
     if (claims.exp < Math.floor(Date.now() / 1000)) return null;
@@ -150,4 +186,12 @@ export async function verifySession(
   } catch {
     return null;
   }
+}
+
+/** Length-checked, constant-time string compare (no early return on first mismatched char). */
+function timingSafeStrEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }

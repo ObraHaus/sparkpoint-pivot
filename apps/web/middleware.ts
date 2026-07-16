@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { SESSION_COOKIE, debugVerify, verifySession } from "@/lib/auth/session";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate 1 — Construction gate (feature 003-landing-only-gate). UNCHANGED.
@@ -106,8 +106,9 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   } catch (e) {
     threw = e instanceof Error ? e.name : "err";
   }
-  // TEMP diagnostic (no secret leaked): secret present? cookie present? claims resolved?
-  const dbg = `sec=${MW_SESSION_SECRET ? 1 : 0} ck=${rawCookie ? 1 : 0} cl=${claims ? 1 : 0} th=${threw}`;
+  // TEMP diagnostic (no secret leaked): recompute HMAC via sign + compare to presented sig.
+  const dv = rawCookie ? await debugVerify(rawCookie, MW_SESSION_SECRET) : { r: "nock" };
+  const dbg = `sec=${MW_SESSION_SECRET ? 1 : 0} ck=${rawCookie ? 1 : 0} cl=${claims ? 1 : 0} th=${threw} | ${JSON.stringify(dv)}`;
 
   // Admin surface — invisible to non-admins (404, never 403 or a revealing redirect).
   if (under(pathname, "/admin")) {
