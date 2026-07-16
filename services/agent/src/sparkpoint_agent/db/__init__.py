@@ -7,6 +7,12 @@ A derived index/accelerator only -- never on the withdrawal path, holds no keys
 
 from __future__ import annotations
 
+from .allowlist import (
+    ADMIN_ROLE,
+    BETA_ROLE,
+    AllowlistStore,
+    parse_allowlist_env,
+)
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .mandates import (
     MandateRecord,
@@ -18,7 +24,10 @@ from .mandates import (
 from .pool import Database, get_database
 
 __all__ = [
+    "ADMIN_ROLE",
+    "BETA_ROLE",
     "DATABASE_URL_ENV",
+    "AllowlistStore",
     "Database",
     "DatabaseConfig",
     "MandateRecord",
@@ -26,5 +35,6 @@ __all__ = [
     "MandateWrite",
     "PgMandateStore",
     "get_database",
+    "parse_allowlist_env",
     "row_to_record",
 ]
