@@ -58,6 +58,7 @@ from ..coordinator import (
     RecommendationsResult,
 )
 from ..db.mandates import MandateStore
+from ..knowledge import default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeError, LlmBusyError, status_code
 from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
 from .errors import ApiError, ErrorCode, ErrorReason
@@ -293,10 +294,15 @@ def _build_chain_context(
 def _build_dag(
     llm: AsyncClaudeClient, mandate_provider: MandateProvider, *, stale: bool
 ) -> CoordinatorDag:
-    """Build the advisory DAG. The gate defaults to the deterministic ``policy.evaluate``."""
+    """Build the advisory DAG. The gate defaults to the deterministic ``policy.evaluate``.
+
+    The recommender is wired with the Obsidian citation retriever when a real embedding backend
+    is configured (``EMBEDDING_OPENAI_*``); otherwise ``default_citation_retriever()`` returns
+    ``None`` and recommendations carry no corpus citations (fail-open, never fabricated).
+    """
     return CoordinatorDag(
         planner=Planner(llm=llm),
-        recommender=Recommender(llm=llm),
+        recommender=Recommender(llm=llm, knowledge=default_citation_retriever()),
         literacy=Literacy(llm=llm),
         portfolio_provider=_StaticPortfolio(stale=stale),
         mandate_provider=mandate_provider,

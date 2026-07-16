@@ -53,6 +53,7 @@ from ..coordinator import (
     MandateView,
     PortfolioView,
 )
+from ..knowledge import default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
@@ -209,7 +210,9 @@ def get_coordinator_dag() -> CoordinatorDag:
         ) from exc
     return CoordinatorDag(
         planner=Planner(llm=client),
-        recommender=Recommender(llm=client),
+        # The Obsidian citation retriever is wired when a real embedding backend is configured
+        # (EMBEDDING_OPENAI_*); otherwise None → no corpus citations (fail-open, never fabricated).
+        recommender=Recommender(llm=client, knowledge=default_citation_retriever()),
         literacy=Literacy(llm=client),
         portfolio_provider=_EmptyPortfolioProvider(),
         mandate_provider=_NoMandateProvider(),

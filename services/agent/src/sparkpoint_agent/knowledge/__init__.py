@@ -15,8 +15,11 @@ from .embeddings import (
     Embedder,
     Embedding,
     EmbeddingBackend,
+    EmbeddingBackendError,
     EmbeddingDimensionError,
+    OpenAIEmbeddingBackend,
     assert_backend_matches_pin,
+    openai_embedder,
     stub_embedder,
 )
 from .ingestion import (
@@ -33,7 +36,12 @@ from .ingestion import (
     parse_note,
     source_uuid,
 )
-from .retrieval import DEFAULT_K, CitationRetriever, KnowledgeRetriever
+from .retrieval import (
+    DEFAULT_K,
+    CitationRetriever,
+    KnowledgeRetriever,
+    default_citation_retriever,
+)
 from .search import hit_to_citation, knowledge_search
 from .store import (
     KNOWLEDGE_SOURCE_KIND,
@@ -59,16 +67,20 @@ __all__ = [
     "Embedder",
     "Embedding",
     "EmbeddingBackend",
+    "EmbeddingBackendError",
     "EmbeddingDimensionError",
     "IngestResult",
     "KnowledgeRetriever",
+    "OpenAIEmbeddingBackend",
     "ParsedNote",
     "PgChunkStore",
     "Section",
     "SqlExecutor",
     "assert_backend_matches_pin",
+    "openai_embedder",
     "chunk_note",
     "chunk_uuid",
+    "default_citation_retriever",
     "default_seed_dir",
     "hit_to_citation",
     "ingest_directory",
