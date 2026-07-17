@@ -47,12 +47,18 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
     );
   }
 
+  // Modes — a CONNECTED error/loading/wrong-network must NEVER read as "connect your wallet".
   const wrongNetwork = isConnected && base.unavailable?.kind === "vault_not_deployed";
-  const live = isConnected && base.isDeployed && !base.isError;
+  const loading = isConnected && !wrongNetwork && base.isLoading;
+  const error = isConnected && !wrongNetwork && !loading && base.isError;
+  const live = isConnected && base.isDeployed && !loading && !error && !wrongNetwork;
   const sharesNum = num(base.shares, 18);
   const valueUsd = num(base.underlying, 6);
   const realizable = num(v.previewRedeemAssets, 6);
   const dash = (n: number | undefined, f: (x: number) => string) => (n === undefined ? "…" : f(n));
+  // A connected value cell: skeleton while loading, real when live, dash otherwise.
+  const cell = (n: number | undefined, f: (x: number) => string) =>
+    loading ? "…" : live ? dash(n, f) : "—";
 
   return (
     <div className="page page-narrow">
@@ -66,6 +72,8 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
             Position detail ·{" "}
             {live ? <Tag text="Live" title="Read directly on-chain (no agent, no indexer)." />
                   : wrongNetwork ? <Tag text="Vault not on this network" title="Switch to Base Sepolia to see your live position." />
+                  : loading ? <Tag text="Reading…" title="Reading your position on-chain." />
+                  : error ? <Tag text="Couldn’t read the chain" title="A fresh read failed — retry below." />
                   : <Tag text="Preview" title="Connect your wallet on Base Sepolia to see your live position." />}
           </div>
         </div>
@@ -76,20 +84,28 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
         <div className="posstats">
           <div className="stat">
             <span className="k">Shares</span>
-            <span className="v tnum">{live ? dash(sharesNum, (x) => x.toLocaleString(undefined, { maximumFractionDigits: 4 })) : "—"}</span>
+            <span className="v tnum">{cell(sharesNum, (x) => x.toLocaleString(undefined, { maximumFractionDigits: 4 }))}</span>
             <span className="muted" style={{ fontSize: 11 }}>spvUSDC</span>
           </div>
           <div className="stat">
             <span className="k">Value</span>
-            <span className="v tnum">{live ? dash(valueUsd, (x) => money(x)) : "—"}</span>
+            <span className="v tnum">{cell(valueUsd, (x) => money(x))}</span>
             <span className="muted" style={{ fontSize: 11 }}>convertToAssets</span>
           </div>
           <div className="stat">
             <span className="k">Realizable now</span>
-            <span className="v tnum" style={{ color: "var(--gain)" }}>{live ? dash(realizable, (x) => money(x)) : "—"}</span>
+            <span className="v tnum" style={{ color: "var(--gain)" }}>{cell(realizable, (x) => money(x))}</span>
             <span className="muted" style={{ fontSize: 11 }}>previewRedeem (net of fee)</span>
           </div>
         </div>
+        {error && (
+          <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--caution)" }}>
+            Couldn’t read the chain just now.{" "}
+            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => base.refetch()}>Retry</a>. Your
+            funds are safe and withdrawable via{" "}
+            <Link style={{ color: "var(--primary)" }} href={toHref("exit")}>/exit</Link>.
+          </div>
+        )}
         <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", display: "inline-flex", gap: 8, alignItems: "center" }}>
           Accrued yield / PnL <Tag text="pending" title="PnL over time needs a history indexer, not wired yet." />
         </div>

@@ -3,9 +3,12 @@
 /**
  * /portfolio — Portfolio Overview. The vault position, wallet USDC, and native ETH are LIVE
  * direct-RPC reads (`useVault` + wagmi `useBalance`) — no agent, no indexer, no custody (N1/N2).
- * Allocation + positions are fully live; the net-worth HISTORY sparkline, the PnL column, and risk
- * drift/score remain honestly labelled (they need an indexer we don't have yet). We never mix a real
- * and a fake number in one card.
+ *
+ * HONEST DEGRADED STATES (R5 A7): only the DISCONNECTED preview shows illustrative mock figures, and
+ * every mock-fed card carries a "Preview data" tag. Every CONNECTED-but-not-live state — loading,
+ * wrong-network, chain-read error — shows DASHES / skeletons and a truthful banner, NEVER the mock
+ * numbers. The net-worth HISTORY sparkline, the PnL column, and risk drift/score stay labelled
+ * (they need an indexer we don't have yet). We never mix a real and a fake number in one card.
  */
 
 import { useState } from "react";
@@ -18,11 +21,13 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
+import { StatusTag } from "@/components/ui/status-tag";
 import "@/components/screens/portfolio.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors vault/page). */
 const DISPLAY_CHAIN_ID = 84532;
 const RANGES = ["1D", "1W", "1M", "1Y", "All"];
+const DASH = "—";
 
 function areaPath(vals: number[], W: number, H: number, pad = 6) {
   const min = Math.min(...vals), max = Math.max(...vals), rng = max - min || 1;
@@ -34,8 +39,8 @@ function areaPath(vals: number[], W: number, H: number, pad = 6) {
   return { line: d, area: d + ` L${(W - pad).toFixed(1)} ${H} L${pad} ${H} Z`, last: pts[pts.length - 1] };
 }
 
-/** A small honest label chip (caution-tinted). */
-function Tag({ text, title }: { text: string; title: string }) {
+/** A small honest FIELD-LEVEL note chip (caution-tinted) — for "PnL pending" / "illustrative" etc. */
+function Note({ text, title }: { text: string; title: string }) {
   return (
     <span
       className="pill"
@@ -62,28 +67,39 @@ export default function Page() {
     underlying: v.underlying, usdcBalance: v.usdcBalance, shares: v.shares, ethWei: eth.data?.value,
   });
 
-  // Mode: what the user's LIVE state actually is.
+  // Mode — what the user's LIVE state actually is. A CONNECTED-but-not-live state (loading /
+  // wrong-network / error) is DEGRADED → dashes + skeletons, never the mock figures. Only the
+  // disconnected PREVIEW shows illustrative mock (labelled on every card).
   const wrongNetwork = isConnected && v.unavailable?.kind === "vault_not_deployed";
-  const loading = isConnected && !wrongNetwork && v.isLoading;
+  const loading = isConnected && !wrongNetwork && (v.isLoading || (eth.isLoading && !!v.account));
   const error = isConnected && !wrongNetwork && !loading && v.isError;
-  const live = isConnected && v.isDeployed && !loading && !error;
-  const preview = !isConnected; // disconnected → keep illustrative mock + "Preview data"
+  const live = isConnected && v.isDeployed && !loading && !error && !wrongNetwork;
+  const preview = !isConnected;
+  const degraded = isConnected && !live; // dashes/skeletons — never mock
 
   const { line, area, last } = areaPath(data.series1M, 560, 150);
 
-  // Allocation split — live when connected, mock otherwise.
-  const vaultPct = live ? d.vaultPct : (data.allocation[0].v / data.allocation.reduce((s, x) => s + x.v, 0)) * 100;
-  const idlePct = 100 - vaultPct;
-  const donut = `conic-gradient(var(--risk-1) 0 ${vaultPct}%, var(--muted-foreground) ${vaultPct}% 100%)`;
-  const largest = live ? (d.vaultValue >= d.idleUsdc ? "Aave Yield Vault" : "Idle USDC") : "Aave Yield Vault";
+  // Allocation split — live real, preview mock, degraded 0 (rendered as dashes).
+  const mockTotal = data.allocation.reduce((s, x) => s + x.v, 0);
+  const mockVaultPct = (data.allocation[0].v / mockTotal) * 100;
+  const vaultPct = live ? d.vaultPct : preview ? mockVaultPct : 0;
+  const idlePct = live ? d.idlePct : preview ? 100 - mockVaultPct : 0;
+  const donut = degraded
+    ? "conic-gradient(var(--border-soft) 0 100%)"
+    : `conic-gradient(var(--risk-1) 0 ${vaultPct}%, var(--muted-foreground) ${vaultPct}% 100%)`;
+  const pctText = (p: number) => (live || preview ? `${p.toFixed(0)}%` : DASH);
+  const largest = live ? (d.vaultValue >= d.idleUsdc ? "Aave Yield Vault" : "Idle USDC") : preview ? "Aave Yield Vault" : DASH;
 
-  const positions = live
-    ? d.positions
-    : [
-        { key: "vault", label: "Aave Yield Vault", sub: "9,834.50 spvUSDC", valueUsd: data.allocation[0].v, shares: 9834.5 },
-        { key: "idle", label: "Idle USDC", sub: "in your wallet", valueUsd: data.allocation[1].v },
-      ];
+  const netWorthText = loading ? "…" : live ? money(d.totalUsd) : preview ? money(data.netWorth) : DASH;
+  const donutTotalText = loading ? "…" : live ? money(d.totalUsd, 0) : preview ? money(mockTotal, 0) : DASH;
+
+  const mockPositions = [
+    { key: "vault", label: "Aave Yield Vault", sub: "9,834.50 spvUSDC", valueUsd: data.allocation[0].v },
+    { key: "idle", label: "Idle USDC", sub: "in your wallet", valueUsd: data.allocation[1].v },
+  ];
+  const positions = live ? d.positions : preview ? mockPositions : [];
   const emptyLive = live && !d.hasPositions;
+  const previewTag = <StatusTag variant="mock" title="Illustrative — connect your wallet for your real position (balances read on-chain)." />;
 
   return (
     <div className="page page-wide">
@@ -111,8 +127,8 @@ export default function Page() {
       {error && (
         <div className="infobanner" style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)", marginBottom: 14 }}>
           <Icon name="info" size={16} />
-          <span>Couldn’t read the chain just now — showing the last state.{" "}
-            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => v.refetch()}>Retry</a></span>
+          <span>Couldn’t read the chain just now — figures below are hidden rather than guessed.{" "}
+            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => v.refetch()}>Retry</a>. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
         </div>
       )}
 
@@ -121,7 +137,7 @@ export default function Page() {
           <div className="card-hd">
             <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               Net worth
-              {preview && <Tag text="Preview data" title="Illustrative — connect your wallet for your real position (balances read on-chain)." />}
+              {preview && previewTag}
             </span>
             <div className="seg pf-range">
               {RANGES.map((r) => (
@@ -129,20 +145,24 @@ export default function Page() {
               ))}
             </div>
           </div>
-          <div className="pf-net tnum">{loading ? "…" : money(live ? d.totalUsd : data.netWorth)}</div>
+          <div className="pf-net tnum">{netWorthText}</div>
           {live ? (
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span className="muted" style={{ fontSize: 12.5 }}>USDC across vault + wallet</span>
               {d.ethBalance > 0 && <span className="pill ghosty" style={{ fontSize: 11 }}>+ {d.ethBalance.toFixed(4)} ETH (not in USD)</span>}
-              <Tag text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
+              <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
             </div>
-          ) : (
+          ) : preview ? (
             <div className="delta up" style={{ marginTop: 8 }}>
               <Icon name="up" size={15} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
             </div>
+          ) : (
+            <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
+              {loading ? "Reading your balances…" : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
+            </div>
           )}
           <div className="pf-spark-area" style={{ position: "relative" }}>
-            <svg width="100%" height="150" viewBox="0 0 560 150" preserveAspectRatio="none">
+            <svg width="100%" height="150" viewBox="0 0 560 150" preserveAspectRatio="none" style={{ opacity: degraded ? 0.35 : 1 }}>
               <defs>
                 <linearGradient id="pfg" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0" stopColor="var(--primary)" stopOpacity=".26" />
@@ -154,9 +174,9 @@ export default function Page() {
               <circle cx={last[0]} cy={last[1]} r="4" fill="var(--primary)" />
               <circle cx={last[0]} cy={last[1]} r="8" fill="var(--primary)" opacity=".2" />
             </svg>
-            {live && (
+            {(live || preview) && (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
-                <Tag text="Illustrative history" title="The shape is a placeholder — real net-worth history needs an indexer." />
+                <Note text="Illustrative history" title="The shape is a placeholder — real net-worth history needs an indexer." />
               </span>
             )}
           </div>
@@ -164,24 +184,27 @@ export default function Page() {
 
         <div className="card card-pad riskpanel">
           <div className="card-hd">
-            <span className="lbl">Risk panel</span>
+            <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Risk panel
+              {preview && previewTag}
+            </span>
             <RiskChip tier={1} />
           </div>
           <div className="rp-row">
             <span className="muted">Portfolio risk</span>
-            <span style={{ fontWeight: 600 }}>Lower · 1/5 <Tag text="from vault tier" title="The Aave vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
+            <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The Aave vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
           </div>
           <div className="rp-row">
             <span className="muted">Drift vs your plan</span>
-            <span className="muted" style={{ fontWeight: 600 }}>— <Tag text="needs your plan" title="Drift compares your live mix to your mandate; the mandate link isn't wired here yet." /></span>
+            <span className="muted" style={{ fontWeight: 600 }}>— <Note text="needs your plan" title="Drift compares your live mix to your mandate; the mandate link isn't wired here yet." /></span>
           </div>
           <div className="rp-row">
             <span className="muted">Concentration</span>
-            <span style={{ fontWeight: 600 }}>{loading ? "…" : `${vaultPct.toFixed(0)}% single vault`}</span>
+            <span style={{ fontWeight: 600 }}>{loading ? "…" : live || preview ? `${vaultPct.toFixed(0)}% single vault` : DASH}</span>
           </div>
           <div className="rp-row">
             <span className="muted">Largest position</span>
-            <span style={{ fontWeight: 600 }}>{largest}</span>
+            <span style={{ fontWeight: 600 }}>{loading ? "…" : largest}</span>
           </div>
           <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
             Capital-preservation-first. The audited Aave vault is the lowest tier on our scale.{" "}
@@ -194,7 +217,7 @@ export default function Page() {
         <div className="card card-pad">
           <div className="card-hd">
             <span className="t">Allocation by risk tier</span>
-            {preview && <Tag text="Preview data" title="Connect your wallet to see your real allocation." />}
+            {preview && previewTag}
           </div>
           {emptyLive ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
@@ -206,8 +229,8 @@ export default function Page() {
               <div className="donut" style={{ background: donut, position: "relative" }}>
                 <div style={{ position: "absolute", inset: 18, borderRadius: "50%", background: "var(--card)", display: "grid", placeItems: "center", textAlign: "center" }}>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 600 }} className="tnum">{money(live ? d.totalUsd : data.allocation.reduce((s, x) => s + x.v, 0), 0)}</div>
-                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>2 positions</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }} className="tnum">{donutTotalText}</div>
+                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>{degraded ? "—" : `${positions.length} positions`}</div>
                   </div>
                 </div>
               </div>
@@ -215,12 +238,12 @@ export default function Page() {
                 <div className="legrow">
                   <span className="sw" style={{ background: "var(--risk-1)" }} />
                   <span className="lg">Aave Yield Vault · Risk 1</span>
-                  <span className="lv tnum">{vaultPct.toFixed(0)}%</span>
+                  <span className="lv tnum">{pctText(vaultPct)}</span>
                 </div>
                 <div className="legrow">
                   <span className="sw" style={{ background: "var(--muted-foreground)" }} />
                   <span className="lg">Idle USDC · uninvested</span>
-                  <span className="lv tnum">{idlePct.toFixed(0)}%</span>
+                  <span className="lv tnum">{pctText(idlePct)}</span>
                 </div>
                 <div className="divider" />
                 <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
@@ -235,10 +258,14 @@ export default function Page() {
         <div className="card card-pad">
           <div className="card-hd">
             <span className="t">Positions</span>
-            <span className="lbl">net of fees</span>
+            {preview ? previewTag : <span className="lbl">net of fees</span>}
           </div>
           {emptyLive ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>No open positions.</div>
+          ) : degraded ? (
+            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
+              {loading ? "Reading your positions…" : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
+            </div>
           ) : (
             <table className="tbl">
               <thead>
@@ -257,7 +284,7 @@ export default function Page() {
                       <div style={{ fontWeight: 600 }}>{p.label}</div>
                       <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
                     </td>
-                    <td className="num tnum">{loading ? "…" : money(p.valueUsd)}</td>
+                    <td className="num tnum">{money(p.valueUsd)}</td>
                     <td className="num muted" title="PnL needs a history indexer, not wired yet">
                       — <span style={{ fontSize: 10 }}>pending</span>
                     </td>

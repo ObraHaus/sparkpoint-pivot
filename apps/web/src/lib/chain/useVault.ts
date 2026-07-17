@@ -293,14 +293,22 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     redeemShares === undefined || redeemShares === 0n ? 0n : (previewRedeemRead.data as bigint | undefined);
 
   // ── lifecycle aggregation ────────────────────────────────────────────────
+  // The DEPENDENT reads (convertToAssets/previewRedeem) are folded into the aggregate so a consumer
+  // never sees a transient "live $0.00" while `underlying` is still resolving after `shares` landed.
+  const underlyingPending = enabledGlobal && shares !== undefined && shares > 0n;
+  const redeemPending = enabledGlobal && redeemShares !== undefined && redeemShares > 0n;
   const isLoading =
     (enabledGlobal && globalReads.isLoading) ||
     (enabledAccount && accountReads.isLoading) ||
-    (enabledAccount && usdcAddress !== undefined && usdcReads.isLoading);
+    (enabledAccount && usdcAddress !== undefined && usdcReads.isLoading) ||
+    (underlyingPending && underlyingRead.isLoading) ||
+    (redeemPending && previewRedeemRead.isLoading);
   const isError =
     (enabledGlobal && globalReads.isError) ||
     (enabledAccount && accountReads.isError) ||
-    (enabledAccount && usdcAddress !== undefined && usdcReads.isError);
+    (enabledAccount && usdcAddress !== undefined && usdcReads.isError) ||
+    (underlyingPending && underlyingRead.isError) ||
+    (redeemPending && previewRedeemRead.isError);
 
   const refetch = useCallback(() => {
     void globalReads.refetch();
