@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 - **Chat starter prompts are now new-chat suggestion chips** — replaced the left-rail **"Examples"** group (a "demo"-badged, collapsible list of 8 scripted transcripts that replayed client-side) with the same starter prompts surfaced as **suggestion bubbles above the composer** on a new chat. The new-chat chip set (`EMPTY_CHIPS`) grows from 6 → 8, folding in the two prompts unique to the old examples — **"Is the Aave vault safe?"** and **"Explain vault shares"**. Clicking a chip now runs through the normal `send()` path (the live agent when connected, the scripted mock router in demo mode) instead of replaying a fixed transcript, leaving the thread rail to the real per-wallet chat history. Typecheck / lint green; Playwright-verified the Examples group is gone and all 8 chips render on "New chat".
+- **Chat suggestion chips wrap and show on first load** — the suggestion row now wraps to multiple rows (`flex-wrap`, width-matched to the composer) instead of scrolling horizontally, so all 8 chips are visible at once (previously ~half scrolled off-screen on desktop). The initial `/chat` view now shows the full suggestion set (`EMPTY_CHIPS`) as well, not only after clicking **New chat** (the smaller `PRIMED_CHIPS` set is removed). Typecheck / lint green; Playwright-verified all 8 chips render across rows on first load.
 
 ## [0.2.2] - 2026-07-10
 
