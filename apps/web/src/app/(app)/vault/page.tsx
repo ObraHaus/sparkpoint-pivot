@@ -18,7 +18,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatUnits } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { money, fmt } from "@/lib/utils";
@@ -77,11 +77,19 @@ const HIST_RANGES = ["7d", "30d", "90d"];
 export default function Page() {
   const router = useRouter();
   const [hist, setHist] = useState("30d");
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
 
   // Connected → follow the wallet's chain (account-scoped reads work). Disconnected → read
   // the deployed Base Sepolia vault so the vault-global figures aren't blank pre-connect.
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
+
+  // §B3 — the vault is BASE-ONLY. On a connected chain without it (e.g. Robinhood testnet 46630)
+  // useVault reports `vault_not_deployed`; surface an honest banner + disable the vault actions,
+  // mirroring the /portfolio page. Show the wallet's native ETH for the Robinhood case.
+  const wrongNetwork = isConnected && v.unavailable?.kind === "vault_not_deployed";
+  const robinhood = wrongNetwork && chainId === 46630;
+  const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
+  const ethBalance = eth.data?.value !== undefined ? Number(formatUnits(eth.data.value, 18)) : undefined;
 
   const framing = v.netApy(AAVE_SUPPLY_APY_BPS);
   const netPct = framing.netApyPct;
@@ -101,14 +109,66 @@ export default function Page() {
         </div>
         <div className="actions">
           <RiskChip tier={1} />
-          <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("vault/withdraw"))}>
+          <button
+            className="btn btn-outline btn-md"
+            disabled={wrongNetwork}
+            title={wrongNetwork ? "The vault is on Base — switch to Base Sepolia to manage it" : undefined}
+            onClick={() => router.push(toHref("vault/withdraw"))}
+          >
             <Icon name="door" size={16} /> Withdraw
           </button>
-          <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("vault/deposit"))}>
+          <button
+            className="btn btn-primary btn-md"
+            disabled={wrongNetwork}
+            title={wrongNetwork ? "The vault is on Base — switch to Base Sepolia to deposit" : undefined}
+            onClick={() => router.push(toHref("vault/deposit"))}
+          >
             Review deposit
           </button>
         </div>
       </div>
+      {wrongNetwork && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            marginBottom: 14,
+            padding: "11px 14px",
+            borderRadius: 10,
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            color: "var(--muted-foreground)",
+            background: "var(--caution-subtle)",
+            border: "1px solid color-mix(in srgb,var(--caution) 26%,transparent)",
+          }}
+        >
+          <span style={{ color: "var(--caution)", flex: "none", marginTop: 1 }}>
+            <Icon name="info" size={16} />
+          </span>
+          {robinhood ? (
+            <span>
+              You&apos;re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to{" "}
+              <b>Base Sepolia</b> to deposit or manage your vault.
+              {ethBalance !== undefined ? ` Your Robinhood ETH balance: ${ethBalance.toFixed(4)} ETH.` : ""} Your
+              vault funds on Base are always withdrawable via{" "}
+              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>
+                /exit
+              </a>
+              .
+            </span>
+          ) : (
+            <span>
+              The SparkPoint vault isn&apos;t deployed on your connected network. Switch to <b>Base Sepolia</b> to
+              deposit or manage your vault. Your funds are safe and withdrawable via{" "}
+              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>
+                /exit
+              </a>
+              .
+            </span>
+          )}
+        </div>
+      )}
       <div className="vault-grid">
         <div className="card card-pad">
           <div className="card-hd">
