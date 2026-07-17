@@ -55,8 +55,9 @@ export interface SwapExec {
   /** §fee — SparkPoint routing fee in bips (≤100=1% cap), taken IN the swap and paid straight to
    * ``feeRecipient`` on-chain (the app never custodies it). The user receives output − fee. */
   readonly feeBips: number;
-  /** The routing-fee recipient (the vault's ``feeRecipient()``, read live). */
-  readonly feeRecipient: Address;
+  /** The routing-fee recipient (the vault's ``feeRecipient()``, read live). `undefined` on a chain
+   * with NO vault (e.g. Robinhood testnet) — then no fee is taken and the plain swap path is used. */
+  readonly feeRecipient?: Address;
   readonly onDone?: () => void;
 }
 
@@ -84,37 +85,63 @@ function shortError(err: unknown): string {
 /**
  * Encode the router calls for a swap direction (fed into `multicall(deadline, data)`).
  *
- * §fee: the swap sends its output to the router (ADDRESS_THIS), then the fee-bearing payment leg
- * (`unwrapWETH9WithFee` for native-ETH out, `sweepTokenWithFee` for ERC-20 out) forwards
- * (output − routing fee) to the user and the fee straight to ``feeRecipient`` on-chain. The payment
- * leg's ``amountMinimum`` enforces the slippage floor on the GROSS output (checked before the split).
+ * With a routing fee (a chain that has a vault fee-recipient): the swap sends its output to the router
+ * (ADDRESS_THIS), then the fee-bearing payment leg (`unwrapWETH9WithFee` for native-ETH out,
+ * `sweepTokenWithFee` for ERC-20 out) forwards (output − routing fee) to the user and the fee straight
+ * to ``feeRecipient`` on-chain. The pay leg's ``amountMinimum`` enforces the slippage floor on the
+ * GROSS output (checked before the split).
+ *
+ * With NO fee (a chain with no vault, e.g. Robinhood testnet): the plain path — the swap sends output
+ * straight to the user with the slippage floor, and a native-ETH out is unwrapped to the user. This
+ * avoids the PeripheryPaymentsWithFee dependency (some V3 forks omit `*WithFee`).
  */
 function swapCalls(e: SwapExec): Hex[] {
+  const base = {
+    tokenIn: e.tokenIn,
+    tokenOut: e.tokenOut,
+    fee: e.fee,
+    amountIn: e.amountIn,
+    sqrtPriceLimitX96: 0n,
+  } as const;
+  const hasFee = e.feeBips > 0 && !!e.feeRecipient;
+
+  if (!hasFee) {
+    if (e.toNative) {
+      const swap = encodeFunctionData({
+        abi: swapRouter02Abi,
+        functionName: "exactInputSingle",
+        args: [{ ...base, recipient: ADDRESS_THIS, amountOutMinimum: 0n }],
+      });
+      const unwrap = encodeFunctionData({
+        abi: swapRouter02Abi,
+        functionName: "unwrapWETH9",
+        args: [e.amountOutMinimum, e.account],
+      });
+      return [swap, unwrap];
+    }
+    const swap = encodeFunctionData({
+      abi: swapRouter02Abi,
+      functionName: "exactInputSingle",
+      args: [{ ...base, recipient: e.account, amountOutMinimum: e.amountOutMinimum }],
+    });
+    return [swap];
+  }
+
   const swap = encodeFunctionData({
     abi: swapRouter02Abi,
     functionName: "exactInputSingle",
-    args: [
-      {
-        tokenIn: e.tokenIn,
-        tokenOut: e.tokenOut,
-        fee: e.fee,
-        recipient: ADDRESS_THIS, // output stays in the router so the fee leg can split it
-        amountIn: e.amountIn,
-        amountOutMinimum: 0n, // the fee leg below enforces the real min (on the gross output)
-        sqrtPriceLimitX96: 0n,
-      },
-    ],
+    args: [{ ...base, recipient: ADDRESS_THIS, amountOutMinimum: 0n }], // output stays for the fee split
   });
   const payLeg = e.toNative
     ? encodeFunctionData({
         abi: swapRouter02Abi,
         functionName: "unwrapWETH9WithFee",
-        args: [e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient],
+        args: [e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient!],
       })
     : encodeFunctionData({
         abi: swapRouter02Abi,
         functionName: "sweepTokenWithFee",
-        args: [e.tokenOut, e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient],
+        args: [e.tokenOut, e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient!],
       });
   return [swap, payLeg];
 }
