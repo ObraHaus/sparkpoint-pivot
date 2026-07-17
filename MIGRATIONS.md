@@ -27,6 +27,10 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0007_knowledge_backfill` | ✅ | — | knowledge tier: backfill/index for the knowledge source_kind |
 | `0008_knowledge_notes` | ✅ | — | R2: `knowledge_notes` (admin-owned corpus notes) + append-only `knowledge_audit` |
 | `0009_gateway_audit` | ✅ | — | R3: append-only `gateway_audit` of admin LLM-gateway config changes (no secrets) |
+| `0010_conversations` | ✅ | — | B1: per-wallet chat conversation history |
+| `0013_persona_notes` | ⏳ | — | Sparky persona: `persona_notes` (admin voice overrides) + `persona_audit` — **isolated** from the RAG corpus (no `memory_source` enum, no vector column, never embedded) |
+
+> **`0013` is new in this change and NOT yet applied to develop.** Apply it at deploy (yoyo, as above). It is independent of the RAG corpus/embedder — the Sparky persona editor works even when `EMBEDDING_OPENAI_*` is unset.
 
 ## How migrations are applied
 

@@ -39,6 +39,7 @@ from ..coordinator.onboarding import (
 from ..db import get_database
 from ..db.mandates import MandateStore, MandateWrite, PgMandateStore
 from ..llm import AsyncClaudeClient
+from ..persona import get_persona
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
 
@@ -142,7 +143,9 @@ def get_onboarding_machine() -> OnboardingMachine:
     """
     llm = AsyncClaudeClient.from_env()
     return OnboardingMachine(
-        planner=Planner(llm=llm), literacy=Literacy(llm=llm), store=_ONBOARDING_STORE
+        planner=Planner(llm=llm),
+        literacy=Literacy(llm=llm, persona_provider=get_persona),
+        store=_ONBOARDING_STORE,
     )
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sparkpoint_agent.agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, TipCard
+from sparkpoint_agent.agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, SYSTEM, Literacy, TipCard
 from sparkpoint_agent.llm import LlmResult
 
 
@@ -22,6 +22,17 @@ class _FakeLlm:
     async def complete(self, *, messages: Any, **_: Any) -> LlmResult:
         self.calls.append(messages)
         return self._result
+
+
+class _SysRecordingLlm:
+    """Captures the ``system`` prompt each call so persona composition can be asserted."""
+
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+
+    async def complete(self, *, system: str, messages: Any, **_: Any) -> LlmResult:
+        self.systems.append(system)
+        return LlmResult(text="ok", stop_reason="end_turn")
 
 
 async def test_tip_uses_model_text() -> None:
@@ -56,3 +67,29 @@ async def test_tip_none_topic_uses_general_key() -> None:
     card = await lit.tip(None)
     assert card.topic == FALLBACK_TOPIC
     assert card.body == "general help text"
+
+
+async def test_default_persona_keeps_exact_system() -> None:
+    # Back-compat: with no persona provider, the system prompt is EXACTLY the task SYSTEM.
+    fake = _SysRecordingLlm()
+    await Literacy(llm=fake).tip("what_is_apy")
+    assert fake.systems == [SYSTEM]
+
+
+async def test_persona_is_prepended_to_system() -> None:
+    # Persona goes FIRST (establishes character); the task SYSTEM stays LAST and intact.
+    fake = _SysRecordingLlm()
+    await Literacy(llm=fake, persona_provider=lambda: "PERSONA_SENTINEL_BLOCK").tip("what_is_apy")
+    (system,) = fake.systems
+    assert "PERSONA_SENTINEL_BLOCK" in system
+    assert system.endswith(SYSTEM)
+    assert system.startswith("PERSONA_SENTINEL_BLOCK")
+
+
+async def test_persona_system_is_byte_stable_across_calls() -> None:
+    # A process-stable persona provider ⇒ byte-identical system every call (prompt-cache safe).
+    fake = _SysRecordingLlm()
+    lit = Literacy(llm=fake, persona_provider=lambda: "STABLE_PERSONA")
+    await lit.tip("what_is_apy")
+    await lit.tip("what_is_a_vault")
+    assert fake.systems[0] == fake.systems[1]

@@ -60,6 +60,7 @@ from ..db import get_database
 from ..db.conversations import ConversationStore
 from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
+from ..persona import get_persona
 from .errors import ApiError, ErrorCode
 from .recommendations import (
     _build_chain_context,
@@ -259,7 +260,9 @@ def get_coordinator_dag(
         # The Obsidian citation retriever is wired when a real embedding backend is configured
         # (EMBEDDING_OPENAI_*); otherwise None → no corpus citations (fail-open, never fabricated).
         recommender=Recommender(llm=client, knowledge=default_citation_retriever()),
-        literacy=Literacy(llm=client),
+        # Sparky's persona (get_persona) shapes the literacy prose voice — trusted SYSTEM content,
+        # process-stable + memoised, never on the policy/action path.
+        literacy=Literacy(llm=client, persona_provider=get_persona),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky

@@ -21,6 +21,7 @@ flowchart TB
     API["FastAPI · Coordinator DAG\nchat · mandate · recommendations · /exit reads"]
     ALLOW["allowlist (DB) · /admin/*"]
     KN["knowledge retriever (pgvector)"]
+    PER["Sparky persona (persona_seed + persona_notes)\ntrusted system prompt · not embedded"]
   end
   GW["sparkpoint-litellm-develop\nguard proxy :4000 -> LiteLLM :4001"]
   OR["OpenRouter"]
@@ -100,8 +101,21 @@ On-chain (Base Sepolia 84532): vault `0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
 - Chat replies have **no Obsidian grounding** yet (citations are recommender-only).
 - Sui network shows **"coming soon"** (EVM-only today).
 
+## Sparky persona (trusted voice, not RAG)
+
+The chat assistant's character is a **trusted system-prompt block** composed once from
+`services/agent/persona_seed/*.md` (+ live admin overrides in the isolated `persona_notes` table)
+and prepended to the **literacy** prose agent. It is the *opposite* of the knowledge corpus: the RAG
+retriever feeds *untrusted* reference text into the user turn, while the persona is *trusted* content
+that steers voice. It is **never embedded** into `memory_chunks`, **never retrieved by similarity**,
+and **never on the policy/propose/build path** (a coordinator boundary test enforces this — voice
+can never influence a signable action, N2). Operators edit it live at `/admin/knowledge` → **Persona**
+tab (admin-gated, PII-fail-closed, audited); a save reloads the voice with no redeploy. No embedder
+required.
+
 ## Migrations (spark-postgres, applied via yoyo)
 
 `0001_foundation` · `0002_vault` · `0003_assistant` · `0004_embedding_dim` · `0005_allowlists` ·
 `0006_knowledge_enum` (adds `knowledge` source_kind) · `0007_knowledge_backfill` (migrates the corpus
-off the `literacy_tip` shim). See `MIGRATIONS.md`.
+off the `literacy_tip` shim) · `0013_persona_notes` (Sparky persona overrides + audit; isolated from
+the RAG corpus — no enum, no vector). See `MIGRATIONS.md`.

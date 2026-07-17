@@ -13,11 +13,17 @@ fabricated or empty one. Effort LOW (research.md §6 tiering; explanation is mec
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
 
 EFFORT: Effort = "low"
+
+
+def _no_persona() -> str:
+    """Default persona provider — no persona (preserves the exact pre-persona SYSTEM)."""
+    return ""
 
 FALLBACK_TOPIC = "general"
 
@@ -78,6 +84,17 @@ class Literacy:
 
     llm: AsyncClaudeClient
     effort: Effort = EFFORT
+    # Sparky's persona (``persona.get_persona`` in production; ``_no_persona`` in tests). Read at
+    # CALL time so an operator's live persona reload propagates without a redeploy, while staying
+    # byte-stable between reloads (it returns a memoised, process-stable string). Prepended to the
+    # task SYSTEM — the only free-form prose surface, so this is where Sparky's voice shows.
+    persona_provider: Callable[[], str] = field(default=_no_persona)
+
+    def _system(self) -> str:
+        """Persona FIRST (establishes character), task SYSTEM LAST (operational constraints
+        closest to the user turn). Empty persona keeps the exact pre-persona SYSTEM."""
+        persona = self.persona_provider().strip()
+        return f"{persona}\n\n{SYSTEM}" if persona else SYSTEM
 
     async def tip(
         self, topic: str | None, *, context_hint: str | None = None, user: str | None = None
@@ -93,7 +110,7 @@ class Literacy:
         if context_hint:
             user_content = f"{user_content}\ncontext={context_hint}"
         result = await self.llm.complete(
-            system=SYSTEM,
+            system=self._system(),
             messages=[{"role": "user", "content": user_content}],
             effort=self.effort,
             user=user,

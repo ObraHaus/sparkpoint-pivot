@@ -30,9 +30,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..chain import VaultUnavailable
 from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
+from ..db.persona_notes import PersonaNoteStore
+from ..persona import warm_persona
 from ..policy import POLICY_VERSION
 from .admin_knowledge import router as admin_knowledge_router
 from .admin_llm import router as admin_llm_router
+from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
@@ -118,6 +121,22 @@ async def _seed_allowlists(db: object) -> None:
         logger.warning("allowlist_seed_skipped (table missing or DB error)")
 
 
+async def _warm_persona(db: object) -> None:
+    """Warm Sparky's persona system block at boot: seed files + any admin overrides (fail-open).
+
+    Best-effort like the allowlist seed — a failure (0013 migration not yet applied, DB error, a
+    bad seed file) is logged and swallowed so it never blocks startup. Persona is VOICE only (never
+    custody, N2); chat still serves with a seed-only/empty persona if the override read can't run.
+    """
+    try:
+        overrides = await PersonaNoteStore(db).overrides()  # type: ignore[arg-type]
+    except Exception:
+        overrides = {}
+        logger.warning("persona_overrides_skipped (table missing or DB error)")
+    warm_persona(overrides)
+    logger.info("persona_warmed overrides=%d", len(overrides))
+
+
 _INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
 
 
@@ -196,6 +215,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
         await _seed_allowlists(db)
+        # Sparky persona: compose the literacy SYSTEM persona from persona_seed/ + any admin
+        # overrides, once, at boot. Trusted voice-only content; never on the withdraw/exit path.
+        await _warm_persona(db)
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
@@ -293,6 +315,9 @@ app.include_router(allowlist_router)
 app.include_router(admin_llm_router)
 # §R2 admin Obsidian console (/admin/knowledge/*) — admin-gated corpus view/edit/reingest.
 app.include_router(admin_knowledge_router)
+# Sparky persona console (/admin/persona*) — admin-gated view/edit/revert of Sparky's character.
+# Trusted SYSTEM content, isolated from the RAG corpus; never on the policy/action path (N2).
+app.include_router(admin_persona_router)
 # §B1 per-wallet chat conversation history (/conversations*) — session-scoped, no admin override.
 app.include_router(conversations_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).

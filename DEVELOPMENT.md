@@ -110,6 +110,15 @@ Migrations will live in a migrations dir (e.g. `services/agent/migrations/` or `
 - Every change must preserve the **five non-custody invariants (N1–N5)** in the constitution. Where the custom ERC-4337 stack threatens the schedule, the mid-build checkpoint may fall back to a battle-tested AA SDK (ZeroDev/Kernel) — any fallback must preserve N1–N5.
 - Simulate with **Tenderly** before any onchain action; verify on Basescan on deploy.
 
+## Sparky persona (agent voice)
+
+Sparky's character lives in **`services/agent/persona_seed/*.md`** (`IDENTITY`, `SOUL`, `VOICE`, `BOUNDARIES`, `EXAMPLES`) — Obsidian-style markdown loaded by `services/agent/src/sparkpoint_agent/persona.py`, composed once into a process-stable system-prompt block, and prepended to the **literacy** agent (the only free-form-prose surface).
+
+- **Trusted, not RAG.** Unlike `services/agent/knowledge_seed/` (the *untrusted* RAG corpus that grounds explanations), the persona is *trusted* content meant to steer voice. It is a **separate tree**, **never embedded** into `memory_chunks`, and **never on the policy/propose/build path** (enforced by `tests/coordinator/test_persona_boundary.py`). It needs **no embedder** (`EMBEDDING_OPENAI_*` unset is fine).
+- **Editing.** Change a seed file and redeploy the agent, **or** edit live in the admin console (`/admin/knowledge` → **Persona** tab): admin-gated, PII-fail-closed, audited; a save upserts the isolated `persona_notes` table and **reloads Sparky's voice on the next message, no redeploy**. Overrides win over the seed until reverted.
+- **Keep it on-brand.** `BOUNDARIES.md` restates the non-custody invariants (N1–N5) and the no-hype/no-emoji rules from `docs/design-handover/07-content-and-tone.md` — a test asserts the composed persona is emoji/exclamation/PII-free. Don't weaken the boundaries.
+- **Env:** `SPARKPOINT_PERSONA_DIR` overrides the seed dir (tests/fixtures); persona composes from that dir + any admin overrides at boot (`warm_persona`) and on edit (`reload_persona`).
+
 ## Dev environment
 
 Developed in a [Coder](https://coder.com/) workspace (`testcoder.aldrickb.xyz`); forwarded ports reached at `https://<port>--<workspace-host>`.

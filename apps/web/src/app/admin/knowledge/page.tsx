@@ -80,7 +80,39 @@ async function mutationError(r: Response): Promise<string> {
   return body.error?.message ?? `Request failed (${r.status}).`;
 }
 
+type AdminTab = "knowledge" | "persona";
+
+/**
+ * Admin → Knowledge & Persona. Two tabs over the same-origin BFF:
+ *   - Knowledge: the RAG "second brain" (embedded corpus behind Sparky's explanations).
+ *   - Persona:   Sparky's character (IDENTITY/SOUL/VOICE/BOUNDARIES/EXAMPLES) — TRUSTED system-prompt
+ *                content, NOT the RAG corpus (never embedded, never on the policy/action path). Edits
+ *                reload Sparky's voice live, no redeploy.
+ */
 export default function Page() {
+  const [tab, setTab] = useState<AdminTab>("knowledge");
+  return (
+    <>
+      <div className="seg" role="tablist" aria-label="Admin section" style={segWrap}>
+        {(["knowledge", "persona"] as const).map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className="btn btn-sm"
+            style={tab === t ? segOn : segOff}
+          >
+            {t === "knowledge" ? "Knowledge" : "Persona"}
+          </button>
+        ))}
+      </div>
+      {tab === "knowledge" ? <KnowledgePanel /> : <PersonaPanel />}
+    </>
+  );
+}
+
+function KnowledgePanel() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
@@ -524,4 +556,359 @@ const inputStyle: React.CSSProperties = {
   background: "var(--surface-2, transparent)",
   color: "var(--foreground)",
   fontSize: 13,
+};
+
+// ── Persona tab ──────────────────────────────────────────────────────────────
+// Sparky's character (IDENTITY/SOUL/VOICE/BOUNDARIES/EXAMPLES). Unlike Knowledge this is TRUSTED
+// system-prompt content — there is NO embedder and NO chunks; a save reloads Sparky's voice live.
+
+const PERSONA_API = "/api/agent/admin/persona";
+
+interface PersonaSection {
+  slug: string;
+  title: string;
+  required: boolean;
+  origin: "seed" | "admin";
+  has_seed: boolean;
+  author?: string | null;
+  updated_at?: string | null;
+}
+interface PersonaNote {
+  title: string;
+  markdown: string;
+  author?: string | null;
+  updated_at?: string;
+}
+interface PersonaDetail {
+  slug: string;
+  title: string;
+  required: boolean;
+  seed_markdown: string | null;
+  note: PersonaNote | null;
+}
+
+async function personaGet<T>(path: string): Promise<T> {
+  const r = await fetch(`${PERSONA_API}${path}`, { headers: CHAIN_HEADERS, cache: "no-store" });
+  if (!r.ok) throw new Error(String(r.status));
+  return (await r.json()) as T;
+}
+
+function PersonaPanel() {
+  const [sections, setSections] = useState<PersonaSection[]>([]);
+  const [personaChars, setPersonaChars] = useState<number | null>(null);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<PersonaDetail | null>(null);
+  const [title, setTitle] = useState("");
+  const [markdown, setMarkdown] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [banner, setBanner] = useState<Banner>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const list = await personaGet<{ sections: PersonaSection[]; persona_chars: number }>("");
+      setSections(list.sections ?? []);
+      setPersonaChars(list.persona_chars ?? null);
+      setState("ok");
+      try {
+        const a = await personaGet<{ entries: AuditEntry[] }>("/audit?limit=25");
+        setAudit(a.entries ?? []);
+      } catch {
+        setAudit([]);
+      }
+    } catch {
+      setState("error");
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [refresh]);
+
+  const open = useCallback(async (slug: string) => {
+    setSelected(slug);
+    setBanner(null);
+    setDetail(null);
+    try {
+      const d = await personaGet<PersonaDetail>(`/${encodeURIComponent(slug)}`);
+      setDetail(d);
+      // Prefill the editor with the live override if one exists, else the shipped seed markdown
+      // (the canonical default — editing from here creates an admin override that wins live).
+      if (d.note) {
+        setTitle(d.note.title);
+        setMarkdown(d.note.markdown);
+      } else {
+        setTitle(d.title);
+        setMarkdown(d.seed_markdown ?? "");
+      }
+    } catch {
+      setBanner({ kind: "err", text: "Couldn’t load that section." });
+    }
+  }, []);
+
+  const save = useCallback(async () => {
+    if (!selected) return;
+    if (!title.trim() || !markdown.trim()) {
+      setBanner({ kind: "err", text: "Both a title and markdown body are required." });
+      return;
+    }
+    setBusy(true);
+    setBanner(null);
+    try {
+      const r = await fetch(`${PERSONA_API}/${encodeURIComponent(selected)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...CHAIN_HEADERS },
+        body: JSON.stringify({ title: title.trim(), markdown }),
+      });
+      if (!r.ok) {
+        setBanner({ kind: "err", text: await mutationError(r) });
+        return;
+      }
+      setBanner({ kind: "ok", text: `Saved “${selected}”. Sparky’s voice reloaded — live on the next message.` });
+      await refresh();
+      await open(selected);
+    } catch {
+      setBanner({ kind: "err", text: "Save failed — the agent is unreachable." });
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, title, markdown, refresh, open]);
+
+  const revert = useCallback(async () => {
+    if (!selected) return;
+    if (!window.confirm(`Revert “${selected}” to the shipped seed default? Your override is removed.`)) return;
+    setBusy(true);
+    setBanner(null);
+    try {
+      const r = await fetch(`${PERSONA_API}/${encodeURIComponent(selected)}/delete`, {
+        method: "POST",
+        headers: CHAIN_HEADERS,
+      });
+      if (!r.ok) {
+        setBanner({ kind: "err", text: await mutationError(r) });
+        return;
+      }
+      setBanner({ kind: "ok", text: `Reverted “${selected}” to the seed default. Sparky’s voice reloaded.` });
+      await refresh();
+      await open(selected);
+    } catch {
+      setBanner({ kind: "err", text: "Revert failed — the agent is unreachable." });
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, refresh, open]);
+
+  const overrides = sections.filter((s) => s.origin === "admin").length;
+
+  return (
+    <>
+      <div className="pghead">
+        <div>
+          <h1>Persona</h1>
+          <div className="sub">
+            Sparky’s character — identity, soul, voice, boundaries, and examples. This is the assistant’s
+            trusted system prompt (not the knowledge corpus): edits reload Sparky’s voice on the next
+            message, no redeploy. Boundaries keep the non-custody rules; shapes tone only, never actions.
+          </div>
+        </div>
+        <span className={`pill ${state === "loading" ? "info" : "ok"}`}>
+          <span className="led" />
+          {state === "loading" ? "Loading…" : "Persona live"}
+        </span>
+      </div>
+
+      {state === "error" && (
+        <div
+          className="infobanner"
+          style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)" }}
+        >
+          Couldn’t load the persona sections.
+        </div>
+      )}
+
+      {/* Status band */}
+      <div className="chartcard" style={{ marginBottom: 14 }}>
+        <div className="ch">
+          <span className="ct">Persona</span>
+          <span className="prov">trusted system prompt · not embedded</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 22, padding: "10px 10px", fontSize: 13 }}>
+          <Stat label="Sections" value={sections.length ? String(sections.length) : "—"} />
+          <Stat label="Overrides" value={String(overrides)} />
+          <Stat label="Composed size" value={personaChars != null ? `${personaChars.toLocaleString()} ch` : "—"} />
+        </div>
+      </div>
+
+      <div className="grid2">
+        {/* Sections list */}
+        <div className="chartcard">
+          <div className="ch">
+            <span className="ct">
+              Sections <span className="prov">{sections.length}</span>
+            </span>
+          </div>
+          <div style={{ padding: "2px 2px 4px" }}>
+            {sections.length === 0 ? (
+              <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>
+                {loaded ? "No persona sections found." : "Loading…"}
+              </div>
+            ) : (
+              sections.map((s) => (
+                <button
+                  key={s.slug}
+                  onClick={() => open(s.slug)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "9px 8px",
+                    borderTop: "1px solid var(--border-soft)",
+                    background: selected === s.slug ? "var(--surface-2, rgba(127,127,127,.08))" : "transparent",
+                    color: "var(--foreground)",
+                    cursor: "pointer",
+                    font: "inherit",
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>
+                      {s.title}
+                      {s.required && <span className="muted" style={{ fontWeight: 400 }}> · required</span>}
+                    </span>
+                    <span className="mono muted" style={{ display: "block", fontSize: 11.5 }}>{s.slug}</span>
+                  </span>
+                  <OriginPill origin={s.origin} />
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div className="chartcard">
+          <div className="ch">
+            <span className="ct">{selected ? "Edit section" : "Editor"}</span>
+            {detail && <OriginPill origin={detail.note ? "admin" : "seed"} />}
+          </div>
+          {!selected ? (
+            <div className="muted" style={{ padding: "16px 10px", fontSize: 13 }}>
+              Select a section on the left to view and edit Sparky’s character. Keep the boundaries intact —
+              they hold the non-custody rules.
+            </div>
+          ) : (
+            <div style={{ padding: "10px" }}>
+              {detail && !detail.note && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  This section is the shipped seed default. Saving creates a live override that wins until
+                  you revert it.
+                </div>
+              )}
+              <input
+                className="mono"
+                placeholder="Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                style={{ ...inputStyle, width: "100%", marginBottom: 8 }}
+              />
+              <textarea
+                placeholder="# Section\n\nMarkdown body…"
+                value={markdown}
+                onChange={(e) => setMarkdown(e.target.value)}
+                spellCheck={false}
+                style={{
+                  width: "100%",
+                  minHeight: 260,
+                  padding: "10px 11px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-soft)",
+                  background: "var(--surface-2, transparent)",
+                  color: "var(--foreground)",
+                  font: "12.5px/1.6 var(--font-geist-mono, ui-monospace, monospace)",
+                  resize: "vertical",
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                <button className="btn btn-primary btn-sm" disabled={busy} onClick={save}>
+                  <Icon name="check" size={14} /> Save + reload
+                </button>
+                {detail?.note && (
+                  <button className="btn btn-ghost btn-sm" disabled={busy} onClick={revert}>
+                    <Icon name="refresh" size={14} /> Revert to seed
+                  </button>
+                )}
+              </div>
+              {banner && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    background:
+                      banner.kind === "ok"
+                        ? "var(--gain-subtle, rgba(0,180,120,.10))"
+                        : banner.kind === "warn"
+                          ? "var(--caution-subtle, rgba(200,150,0,.10))"
+                          : "var(--loss-subtle, rgba(255,80,80,.10))",
+                    color:
+                      banner.kind === "ok"
+                        ? "var(--gain)"
+                        : banner.kind === "warn"
+                          ? "var(--caution, #c89600)"
+                          : "var(--loss, #ff6b6b)",
+                  }}
+                >
+                  {banner.text}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Audit log */}
+      <div className="chartcard" style={{ marginTop: 14 }}>
+        <div className="ch">
+          <span className="ct">Recent changes</span>
+          <span className="prov">audit log</span>
+        </div>
+        <div style={{ padding: "4px 2px" }}>
+          {audit.length === 0 ? (
+            <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>
+              {loaded ? "No changes recorded yet." : "Loading…"}
+            </div>
+          ) : (
+            audit.map((e, i) => (
+              <div
+                key={i}
+                style={{ display: "flex", gap: 10, padding: "7px 8px", borderTop: "1px solid var(--border-soft)", fontSize: 12.5 }}
+              >
+                <span style={{ width: 72, color: e.action === "delete" ? "var(--loss, #ff6b6b)" : "var(--gain)" }}>
+                  {e.action}
+                </span>
+                <span className="mono" style={{ flex: 1, wordBreak: "break-all" }}>{e.source}</span>
+                <span className="mono muted" style={{ width: 130, wordBreak: "break-all" }}>{e.actor ?? "—"}</span>
+                <span className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(e.at).toLocaleString()}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+const segWrap: React.CSSProperties = { display: "inline-flex", gap: 4, marginBottom: 14 };
+const segOff: React.CSSProperties = { background: "transparent", color: "var(--muted-foreground)" };
+const segOn: React.CSSProperties = {
+  background: "var(--surface-2, rgba(127,127,127,.12))",
+  color: "var(--foreground)",
+  border: "1px solid var(--border-soft)",
 };

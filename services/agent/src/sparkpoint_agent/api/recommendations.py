@@ -60,6 +60,7 @@ from ..coordinator import (
 from ..db.mandates import MandateStore
 from ..knowledge import default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeError, LlmBusyError, status_code
+from ..persona import get_persona
 from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
 from .errors import ApiError, ErrorCode, ErrorReason
 from .mandate import get_mandate_store
@@ -303,7 +304,7 @@ def _build_dag(
     return CoordinatorDag(
         planner=Planner(llm=llm),
         recommender=Recommender(llm=llm, knowledge=default_citation_retriever()),
-        literacy=Literacy(llm=llm),
+        literacy=Literacy(llm=llm, persona_provider=get_persona),
         portfolio_provider=_StaticPortfolio(stale=stale),
         mandate_provider=mandate_provider,
     )
