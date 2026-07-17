@@ -202,6 +202,15 @@ export default function Page() {
             <div className="delta up" style={{ marginTop: 8 }}>
               <Icon name="up" size={15} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
             </div>
+          ) : robinhood ? (
+            // §B3: no USD oracle on Robinhood testnet, so keep USD net worth honest (dashed) but
+            // surface the wallet's native ETH as a REAL figure rather than only a banner sentence.
+            <div className="muted" style={{ marginTop: 8, fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span className="pill ghosty" style={{ fontSize: 11 }}>
+                {eth.data?.value !== undefined ? `${d.ethBalance.toFixed(4)} ETH` : "… ETH"} in your wallet
+              </span>
+              <span>No USD price on Robinhood testnet — read-only here.</span>
+            </div>
           ) : (
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
               {loading ? "Reading your balances…" : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}

@@ -59,29 +59,12 @@ type Turn =
 const EMPTY_CHIPS = [
   "What's in my wallet?",
   "Find steady, lower-risk yield",
+  "Put my idle USDC to work",
   "Swap ETH → USDC",
-  "Deposit & sign 2,150 USDC",
   "Bridge to Sui",
+  "Is the Aave vault safe?",
+  "Explain vault shares",
   "How do you keep my funds safe?",
-];
-
-/**
- * DEMO EXAMPLES — a single, labeled, undeletable group of scripted transcripts. Opening one replays
- * a client-side scripted transcript via `respond()` (the offline mock router) and NEVER calls the
- * live agent (so the demo can't burn the LLM budget or misrepresent unrepresentable features).
- * `prompt` is the user bubble shown; `scripted` is the text fed to the mock router. The state is
- * ephemeral — leaving the chat or opening another example resets it. Swap/bridge live here as
- * showcase-only replays: swap is unrepresentable on Base Sepolia and bridge isn't an ActionType.
- */
-const EXAMPLES: { title: string; prompt: string; scripted: string }[] = [
-  { title: "Your plan & first deposit", prompt: "Walk me through my plan and first deposit", scripted: "put my idle USDC to work" },
-  { title: "Deposit & sign — vault", prompt: "Deposit and sign 2,150 USDC into the vault", scripted: "Deposit and sign 2,150 USDC into the vault" },
-  { title: "Confirm + sign a swap", prompt: "Swap ETH for USDC then deposit", scripted: "Swap ETH for USDC then deposit" },
-  { title: "What's in my wallet?", prompt: "What's in my wallet?", scripted: "What's in my wallet?" },
-  { title: "Swap ETH → USDC", prompt: "Swap ETH for USDC", scripted: "Swap ETH for USDC" },
-  { title: "Bridge USDC to Sui", prompt: "Bridge USDC to Sui", scripted: "Bridge USDC to Sui" },
-  { title: "Is the Aave vault safe?", prompt: "Is the Aave vault safe?", scripted: "Is the Aave vault safe?" },
-  { title: "Explain vault shares", prompt: "Explain vault shares", scripted: "Explain vault shares" },
 ];
 
 let UID = 0;
@@ -102,7 +85,6 @@ function primedThread(): Turn[] {
     },
   ];
 }
-const PRIMED_CHIPS = ["Find steady, lower-risk yield", "Show my portfolio", "How do you keep my funds safe?"];
 
 /** The cold-start greeting (chat.js "New chat" handler). */
 function coldThread(): Turn[] {
@@ -131,11 +113,9 @@ export default function ChatPage() {
   const convRef = useRef<string | undefined>(undefined);
 
   const [turns, setTurns] = useState<Turn[]>(primedThread);
-  const [chips, setChips] = useState<string[]>(PRIMED_CHIPS);
-  // Which demo example is open (null ⇒ the live "New chat"). The "Examples" group is collapsible.
-  const [activeExample, setActiveExample] = useState<number | null>(null);
-  const [examplesOpen, setExamplesOpen] = useState(true);
-  // Persisted per-wallet chat history (B1): real threads below the ephemeral Examples group.
+  // First load shows the same starter suggestions as "New chat" (EMPTY_CHIPS).
+  const [chips, setChips] = useState<string[]>(EMPTY_CHIPS);
+  // Persisted per-wallet chat history (B1): the user's real saved threads.
   const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -447,7 +427,6 @@ export default function ChatPage() {
   const openConversation = useCallback(
     async (id: string) => {
       if (!agentClient) return;
-      setActiveExample(null);
       setActiveConvId(id);
       convRef.current = id;
       try {
@@ -536,44 +515,6 @@ export default function ChatPage() {
           <Icon name="plus" size={16} /> New chat
         </button>
 
-        {/* Examples: a single, labeled, undeletable group of SCRIPTED demo transcripts. Opening
-            one replays client-side (never the live agent). Ephemeral — leaving resets it. */}
-        <button
-          className="exampleshdr"
-          onClick={() => setExamplesOpen((o) => !o)}
-          aria-expanded={examplesOpen}
-          style={{
-            display: "flex", alignItems: "center", gap: 8, width: "100%", marginTop: 10,
-            padding: "8px 10px", background: "transparent", border: "none", cursor: "pointer",
-            color: "var(--muted-foreground)", font: "inherit", fontSize: 12, fontWeight: 600,
-            textTransform: "uppercase", letterSpacing: ".04em",
-          }}
-        >
-          <Icon name={examplesOpen ? "chevd" : "chevr"} size={14} />
-          <span style={{ flex: 1, textAlign: "left" }}>Examples</span>
-          <span
-            className="mono"
-            style={{
-              fontSize: 9.5, padding: "1px 6px", borderRadius: 999, letterSpacing: 0,
-              textTransform: "none", background: "color-mix(in srgb,var(--caution) 14%,transparent)",
-              color: "var(--caution)", border: "1px solid color-mix(in srgb,var(--caution) 30%,transparent)",
-            }}
-          >
-            demo
-          </span>
-        </button>
-        {examplesOpen &&
-          EXAMPLES.map((ex, i) => (
-            <div
-              key={i}
-              className={"threaditem" + (i === activeExample ? " active" : "")}
-              onClick={() => openExample(i)}
-            >
-              <div className="tt">{ex.title}</div>
-              <div className="ts">scripted example</div>
-            </div>
-          ))}
-
         {/* Persisted per-wallet history (B1) — real threads, individually deletable. */}
         {history.length > 0 && (
           <div
@@ -633,7 +574,7 @@ export default function ChatPage() {
                 }}
               >
                 <b>Demo mode</b> — the live assistant is offline (or your wallet isn’t connected),
-                so replies below are scripted examples, not real AI answers. Connect + sign in to
+                so replies below are scripted, not real AI answers. Connect + sign in to
                 talk to the live assistant. Your funds are unaffected either way.
               </div>
             )}
@@ -810,22 +751,10 @@ export default function ChatPage() {
 
   // "New chat" — the LIVE surface: reset to the cold-start greeting (chat.js newchat handler).
   function startNewChat() {
-    setActiveExample(null);
     setActiveConvId(null);
     convRef.current = undefined;
     setTurns(coldThread());
     setChips(EMPTY_CHIPS);
-  }
-
-  // Open a demo example — replay its SCRIPTED transcript client-side via the mock router, NEVER
-  // the live agent (regardless of `online`), so the demo can't burn budget or fake a live answer.
-  function openExample(i: number) {
-    const ex = EXAMPLES[i];
-    setActiveExample(i);
-    convRef.current = undefined;
-    setTurns([{ id: nextId(), kind: "user", text: ex.prompt }]);
-    setChips(EMPTY_CHIPS);
-    respond(ex.scripted);
   }
 }
 
