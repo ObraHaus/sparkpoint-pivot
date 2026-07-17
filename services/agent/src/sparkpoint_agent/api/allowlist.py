@@ -100,14 +100,10 @@ async def admin_add(
     return {"ok": True, "address": body.address.lower(), "role": body.role}
 
 
-@router.delete("/admin/allowlist/{role}/{address}")
-async def admin_remove(
-    role: Role,
-    address: str,
-    admin: Annotated[AccountContext, Depends(require_admin)],
-    store: Annotated[AllowlistStore, Depends(get_allowlist_store)],
+async def _remove_from_role(
+    role: Role, address: str, admin: AccountContext, store: AllowlistStore
 ) -> dict[str, object]:
-    """Remove ``address`` from ``role`` (admin-gated, audit-logged; actor = caller).
+    """Shared removal logic for the DELETE + POST routes (admin-gated, audit-logged; actor=caller).
 
     Guardrail: refuses to remove the LAST admin (an env re-seed would restore it on the next
     boot, but a mid-session lockout of every admin is never allowed).
@@ -124,6 +120,35 @@ async def admin_remove(
             )
     await store.remove(candidate, role, actor=admin.owner)
     return {"ok": True, "address": candidate.lower(), "role": role}
+
+
+@router.delete("/admin/allowlist/{role}/{address}")
+async def admin_remove(
+    role: Role,
+    address: str,
+    admin: Annotated[AccountContext, Depends(require_admin)],
+    store: Annotated[AllowlistStore, Depends(get_allowlist_store)],
+) -> dict[str, object]:
+    """Remove ``address`` from ``role`` (RESTful DELETE — for direct/API callers)."""
+    return await _remove_from_role(role, address, admin, store)
+
+
+class AllowlistRemove(BaseModel):
+    """``POST /admin/allowlist/{role}/delete`` body: ``{ address }``."""
+
+    address: str
+
+
+@router.post("/admin/allowlist/{role}/delete")
+async def admin_remove_post(
+    role: Role,
+    body: AllowlistRemove,
+    admin: Annotated[AccountContext, Depends(require_admin)],
+    store: Annotated[AllowlistStore, Depends(get_allowlist_store)],
+) -> dict[str, object]:
+    """POST alias for removal so the web console can reach it through the GET/POST-only BFF proxy
+    (the RESTful DELETE above never traverses that proxy). Same guardrail + audit."""
+    return await _remove_from_role(role, body.address, admin, store)
 
 
 @router.get("/admin/allowlist/audit")

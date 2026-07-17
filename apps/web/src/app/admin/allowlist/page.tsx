@@ -102,9 +102,12 @@ export default function Page() {
       setBusy(true);
       setMsg(null);
       try {
-        const res = await fetch(`/api/agent/admin/allowlist/${r}/${address}`, {
-          method: "DELETE",
-          headers: CHAIN_HEADERS,
+        // POST (not DELETE): the same-origin BFF proxy forwards only GET/POST, so removal is a POST
+        // to …/{role}/delete with the address in the body (the RESTful DELETE never reaches the agent).
+        const res = await fetch(`/api/agent/admin/allowlist/${r}/delete`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...CHAIN_HEADERS },
+          body: JSON.stringify({ address }),
         });
         if (!res.ok) {
           const detail = (await res.json().catch(() => ({}))) as { error?: { message?: string } };

@@ -174,6 +174,32 @@ def test_admin_remove_beta(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
     assert BETA_WALLET.lower() not in store.beta
 
 
+def test_admin_remove_beta_via_post(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
+    # The web console reaches removal through the GET/POST-only BFF, so it POSTs to …/{role}/delete.
+    client, store = ctx
+    store.admin.add(ADMIN_WALLET.lower())
+    store.beta.add(BETA_WALLET.lower())
+    resp = client.post(
+        "/admin/allowlist/beta/delete",
+        headers=_headers(ADMIN_WALLET),
+        json={"address": BETA_WALLET},
+    )
+    assert resp.status_code == 200
+    assert BETA_WALLET.lower() not in store.beta
+
+
+def test_post_remove_honours_last_admin_guardrail(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
+    client, store = ctx
+    store.admin.add(ADMIN_WALLET.lower())  # the ONLY admin
+    resp = client.post(
+        "/admin/allowlist/admin/delete",
+        headers=_headers(ADMIN_WALLET),
+        json={"address": ADMIN_WALLET},
+    )
+    assert resp.status_code == 400
+    assert ADMIN_WALLET.lower() in store.admin  # guardrail held on the POST path too
+
+
 def test_cannot_remove_last_admin(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
     client, store = ctx
     store.admin.add(ADMIN_WALLET.lower())  # the ONLY admin
