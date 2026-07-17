@@ -4,10 +4,20 @@
  * The repo has no token-metadata structure, so this is the small, honest source of truth for the
  * two tokens the alpha swaps on Base Sepolia: NATIVE ETH (routed through WETH) and the vault's
  * USDC (the Aave-market test token — the one you can then DEPOSIT into the vault). Addresses come
- * from the shared registry (`getAddresses`); symbols/decimals are pinned here (USDC 6dp, ETH 18dp).
+ * from the shared registry (`getAddresses`); symbols/decimals are pinned here (ETH 18dp; USDC 6dp on
+ * Base, 18dp on Robinhood testnet — see USDC_DECIMALS).
  */
 
 import { getAddresses } from "@sparkpoint/shared/addresses";
+
+/**
+ * USDC decimals PER CHAIN. Base Sepolia / Base mainnet USDC is 6dp, but Robinhood testnet's (Synthra
+ * pool) "USDC" is 18dp — verified on-chain. Getting this wrong mis-scales every amount by 1e12.
+ */
+const USDC_DECIMALS: Record<number, number> = {
+  46630: 18, // Robinhood Chain Testnet — this token reports decimals() == 18
+};
+const DEFAULT_USDC_DECIMALS = 6;
 
 export interface SwapToken {
   readonly symbol: string;
@@ -31,14 +41,14 @@ export function swapTokens(chainId: number | undefined): SwapToken[] {
   } catch {
     return [];
   }
-  // The vault's USDC (== Aave reserve on testnet) and native ETH (routed via WETH).
+  // Native ETH (routed via WETH) + USDC. USDC decimals are chain-specific (6 on Base, 18 on 46630).
   return [
     { symbol: "ETH", decimals: 18, address: book.weth, isNative: true },
-    { symbol: "USDC", decimals: 6, address: book.usdc, isNative: false },
+    { symbol: "USDC", decimals: USDC_DECIMALS[chainId] ?? DEFAULT_USDC_DECIMALS, address: book.usdc, isNative: false },
   ];
 }
 
-/** Zero address sentinel used to detect an unconfigured token (e.g. Robinhood testnet's zero USDC). */
+/** Zero address sentinel used to detect an unconfigured token (a chain whose book leaves it at 0x0). */
 export function isConfiguredToken(t: SwapToken): boolean {
   return !/^0x0{40}$/i.test(t.address);
 }
