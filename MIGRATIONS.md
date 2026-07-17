@@ -12,7 +12,7 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | Environment | DB | Migration level | As of |
 |---|---|---|---|
 | **Production** (client infra — TBD) | Postgres + pgvector (TBD) | **none** | — |
-| **Develop** (OH Coolify) | `spark-postgres` (pgvector) | **0008** (0009 pending) | 2026-07-17 |
+| **Develop** (OH Coolify) | `spark-postgres` (pgvector) | **0009** | 2026-07-17 |
 
 ## Per-migration status
 
@@ -26,7 +26,7 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0006_knowledge_enum` | ✅ | — | knowledge tier: extend `memory_chunks.source_kind` (`memory_source`) enum with `'knowledge'` |
 | `0007_knowledge_backfill` | ✅ | — | knowledge tier: backfill/index for the knowledge source_kind |
 | `0008_knowledge_notes` | ✅ | — | R2: `knowledge_notes` (admin-owned corpus notes) + append-only `knowledge_audit` |
-| `0009_gateway_audit` | ⏳ | — | R3: append-only `gateway_audit` of admin LLM-gateway config changes (no secrets) |
+| `0009_gateway_audit` | ✅ | — | R3: append-only `gateway_audit` of admin LLM-gateway config changes (no secrets) |
 
 ## How migrations are applied
 
@@ -47,6 +47,6 @@ Probe for an object each migration introduces (SQL/REST), e.g. a table, an index
 
 ## Changelog
 
-- **2026-07-17** — `0009_gateway_audit` authored (R3 configurable LLM gateway). **NOT yet applied** — folded into the R3 go-live (with the scoped `LITELLM_ADMIN_KEY` + `STORE_MODEL_IN_DB` provisioning). Apply: `uv run --group migrations yoyo apply --batch --database "$DATABASE_URL" ./migrations`. Verify: `SELECT to_regclass('gateway_audit');` non-null. The gateway Config-write path (add/remove model) audits here; stats/activity/config-view degrade honestly (`adminConfigured:false`) until the admin key lands.
+- **2026-07-17** — `0009_gateway_audit` applied to develop (`spark-postgres`) via yoyo (R3 configurable LLM gateway). Verified: `SELECT to_regclass('gateway_audit');` non-null (+ `gateway_audit_action_check`). Develop now at **0009**. Provisioned same day: a SCOPED proxy-admin LiteLLM key on the agent (`LITELLM_ADMIN_KEY`, minted from the master via `/user/new`, verified ≠ master + admin scope) and `STORE_MODEL_IN_DB=True` on the gateway (was 'False') so model-config writes persist.
 - **2026-07-17** — `0008_knowledge_notes` applied to develop (`spark-postgres` @ `192.168.31.26:5432/sparkpoint`) via yoyo (R2 admin knowledge console). `0006_knowledge_enum` + `0007_knowledge_backfill` were **already applied** in a prior session (the ledger row was stale; `yoyo list` confirmed A). Develop is now at **0008**. Verify: `SELECT to_regclass('knowledge_notes');` non-null (8 cols + `knowledge_notes_origin_check`), `to_regclass('knowledge_audit')` non-null, and `'knowledge'` is a label of the `memory_source` enum on `memory_chunks.source_kind`.
 - **2026-07-16** — `0005_allowlists` applied to develop (`spark-postgres`) via yoyo (Phase B beta/admin allowlist). `0001`–`0004` were already applied. Verify: `SELECT to_regclass('wallet_allowlist');` is non-null.
