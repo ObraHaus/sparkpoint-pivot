@@ -25,6 +25,7 @@ import httpx
 from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..chain import VaultUnavailable
 from ..db import get_database
@@ -37,6 +38,7 @@ from .chat import router as chat_router
 from .errors import (
     ApiError,
     api_error_handler,
+    http_exception_handler,
     internal_error_handler,
     validation_error_handler,
 )
@@ -199,6 +201,8 @@ app.add_middleware(
 # Every non-2xx response is the canonical §1.5 envelope (§1.6 codes).
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
+# Unmatched-route 404s share the gated-route NOT_FOUND envelope (invisible-admin posture).
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 # A fail-closed chain outage (vault undeployed / RPC unreachable) → clean §1.5 envelope
 # (SIMULATION_UNAVAILABLE / UPSTREAM_UNAVAILABLE), never a fabricated quote (§3.7).
 app.add_exception_handler(VaultUnavailable, vault_unavailable_handler)

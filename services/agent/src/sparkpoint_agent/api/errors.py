@@ -189,6 +189,19 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
     return JSONResponse(status_code=status, content=body)
 
 
+async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Normalise an unmatched-route 404 to the SAME ``NOT_FOUND`` envelope a gated admin route
+    returns — so a non-admin cannot distinguish 'route exists but gated' from 'route absent' by the
+    response body (invisible-admin posture). Non-404 ``HTTPException``s keep their default shape."""
+    status = int(getattr(exc, "status_code", 404) or 404)
+    if status == 404:
+        body = error_envelope(ErrorCode.NOT_FOUND, "Not found.", request_id=_request_id(request))
+        return JSONResponse(status_code=404, content=body)
+    detail = getattr(exc, "detail", None) or "Error"
+    headers = getattr(exc, "headers", None)
+    return JSONResponse(status_code=status, content={"detail": detail}, headers=headers)
+
+
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all → INTERNAL (500). Never leaks internals into the client message."""
     body = error_envelope(
