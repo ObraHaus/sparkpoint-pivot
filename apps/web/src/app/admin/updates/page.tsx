@@ -43,6 +43,15 @@ const BLANK = {
   cta_label: "",
   cta_href: "",
   is_active: true,
+  published_at: "", // YYYY-MM-DD; empty = today on create / unchanged on edit
+};
+
+const isoDate = (iso: string): string => (iso ? iso.slice(0, 10) : "");
+const fmtDate = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -83,6 +92,7 @@ export default function Page() {
       cta_label: e.ctaLabel ?? "",
       cta_href: e.ctaHref ?? "",
       is_active: e.isActive,
+      published_at: isoDate(e.publishedAt),
     });
     setBanner(null);
   };
@@ -107,6 +117,7 @@ export default function Page() {
         payload.cta_label = form.cta_label.trim();
         payload.cta_href = form.cta_href.trim();
       }
+      if (form.published_at.trim()) payload.published_at = form.published_at.trim();
       const r = await fetch(API, {
         method: "POST",
         headers: { ...CHAIN_HEADERS, "content-type": "application/json" },
@@ -214,6 +225,15 @@ export default function Page() {
               </select>
             </label>
           )}
+          <label style={labelStyle}>
+            Date {form.id ? "" : "(blank = today)"}
+            <input
+              type="date"
+              value={form.published_at}
+              onChange={(e) => setForm({ ...form, published_at: e.target.value })}
+              style={inputStyle}
+            />
+          </label>
           <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 18 }}>
             <input
               type="checkbox"
@@ -289,6 +309,12 @@ export default function Page() {
           >
             <span className="pill" style={{ fontSize: 10, fontWeight: 700 }}>
               {e.type}
+            </span>
+            <span
+              className="muted"
+              style={{ fontSize: 11, whiteSpace: "nowrap", paddingTop: 2, fontVariantNumeric: "tabular-nums" }}
+            >
+              {fmtDate(e.publishedAt)}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>

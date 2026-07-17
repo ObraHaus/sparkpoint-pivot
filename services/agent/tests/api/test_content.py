@@ -75,7 +75,7 @@ class _FakeContent:
         self.rows[entry_id] = {
             "id": entry_id, "type": kw["type_"], "title": kw["title"], "body": kw["body"],
             "tag": kw["tag"], "ctaLabel": kw["cta_label"], "ctaHref": kw["cta_href"],
-            "isActive": kw["is_active"],
+            "isActive": kw["is_active"], "publishedAt": kw.get("published_at"),
         }
         self.audit.append(("create", str(entry_id), (kw["actor"] or "").lower() or None))
         return entry_id
@@ -245,3 +245,32 @@ def test_cta_href_allows_internal_and_https(
             headers=_headers(ADMIN_WALLET),
         )
         assert resp.status_code == 200
+
+
+def test_published_at_backdate_is_passed_through(
+    ctx: tuple[TestClient, _FakeContent, _FakeAllowlist],
+) -> None:
+    client, content, allow = ctx
+    allow.admin.add(ADMIN_WALLET.lower())
+    resp = client.post(
+        "/admin/content",
+        json={"type": "changelog", "title": "Old news", "body": "b",
+              "tag": "New", "published_at": "2026-07-14"},
+        headers=_headers(ADMIN_WALLET),
+    )
+    assert resp.status_code == 200
+    new_id = resp.json()["id"]
+    assert content.rows[new_id]["publishedAt"] == "2026-07-14"
+
+
+def test_published_at_rejects_bad_date(
+    ctx: tuple[TestClient, _FakeContent, _FakeAllowlist],
+) -> None:
+    client, _, allow = ctx
+    allow.admin.add(ADMIN_WALLET.lower())
+    resp = client.post(
+        "/admin/content",
+        json={"type": "changelog", "title": "x", "body": "y", "published_at": "last tuesday"},
+        headers=_headers(ADMIN_WALLET),
+    )
+    assert resp.status_code == 400  # validation error — not an ISO date
