@@ -78,8 +78,8 @@ function primedThread(): Turn[] {
       kind: "ai",
       text: (
         <>
-          Your plan: <b>lower risk (1/5)</b>, capital-preservation-first, steady USDC yield. Want to put your idle USDC
-          to work, or look at the vault first?
+          Your plan: <b>lower risk (1/5)</b> — capital-preservation-first, steady USDC yield. Tell me what you&apos;d
+          like to do, or try one of the suggestions below.
         </>
       ),
     },
