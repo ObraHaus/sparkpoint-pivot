@@ -45,19 +45,28 @@ from pydantic import BaseModel, Field
 from ..agents.literacy import Literacy
 from ..agents.planner import Planner
 from ..agents.recommender import Recommender
+from ..chain import VaultReader, VaultUnavailable
+from ..config import AgentConfig
 from ..coordinator import (
     ChainContext,
     ChatBlock,
     CoordinatorDag,
     ErrorBlock,
-    MandateView,
+    MandateProvider,
     PortfolioView,
+    PositionLite,
 )
 from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from .errors import ApiError, ErrorCode
+from .recommendations import (
+    _build_chain_context,
+    _read_gate_inputs,
+    get_agent_config,
+    get_mandate_provider,
+)
 from .security import AccountContext
-from .vault import get_account
+from .vault import get_account, get_vault_reader
 
 router = APIRouter(tags=["chat"])
 
@@ -148,21 +157,20 @@ class FeedbackSink(Protocol):
     ) -> None: ...
 
 
-class _ScopingOnlyChainProvider:
-    """Default :class:`ChatChainProvider` — scoping only, fail-closed (no resolved targets).
+class _VaultChatChainProvider:
+    """The REAL :class:`ChatChainProvider` — reads fresh cap headroom + fee and resolves the
+    deployed vault target, so a whitelisted action (e.g. a first deposit on 84532) can build and
+    be policy-gated in chat (identical assembly to ``/recommendations``: ``_read_gate_inputs`` +
+    ``_build_chain_context``). Fail-closed: a :class:`VaultUnavailable` degrades to ``data_stale``,
+    never a fabricated headroom. The headers scope reads only — never authority to move funds."""
 
-    With no resolved targets the recommender's ``build_action`` cannot resolve a whitelisted
-    address, so every proposal drops out and ``/chat`` surfaces only safe read/tip/text
-    blocks. Later waves inject a provider that adds fresh targets/caps/market/sim so real
-    (still policy-gated) recommendations can surface.
-    """
+    def __init__(self, reader: VaultReader, config: AgentConfig) -> None:
+        self._reader = reader
+        self._config = config
 
     async def context(self, account: AccountContext, *, surface: str) -> ChainContext:
-        return ChainContext(
-            chain_id=account.chain_id,
-            user_account=account.account,
-            owner=account.owner,
-        )
+        caps, fee_bps, stale = await _read_gate_inputs(self._reader, account)
+        return _build_chain_context(account, self._config, caps, fee_bps, stale)
 
 
 class _NoopFeedbackSink:
@@ -174,18 +182,48 @@ class _NoopFeedbackSink:
         return None
 
 
-class _EmptyPortfolioProvider:
-    """Default portfolio read — an empty (nothing-known) view, never a fabricated balance."""
+def _fmt_units(raw: int, decimals: int) -> str:
+    """Format raw base units as a fixed-2-decimal string (exact, integer-only — never a float)."""
+    scale = 10**decimals
+    whole, frac = divmod(max(0, raw), scale)
+    cents = (frac * 100) // scale
+    return f"{whole:,}.{cents:02d}"
+
+
+class _VaultChatPortfolioProvider:
+    """The REAL chat portfolio read — the owner's vault position (shares → underlying value) plus
+    the idle USDC in their wallet, straight from chain via :class:`VaultReader`. Fail-closed: a
+    :class:`VaultUnavailable` degrades to an empty ``stale`` view, never a fabricated balance."""
+
+    def __init__(self, reader: VaultReader, config: AgentConfig) -> None:
+        self._reader = reader
+        self._config = config
 
     async def read(self, chain: ChainContext) -> PortfolioView:
-        return PortfolioView()
-
-
-class _NoMandateProvider:
-    """Default mandate read — ``None`` (not onboarded) until the DB is wired."""
-
-    async def active(self, chain: ChainContext) -> MandateView | None:
-        return None
+        owner = chain.owner or chain.user_account
+        try:
+            shares = await self._reader.balance_of(owner)
+            vault_assets = await self._reader.convert_to_assets(shares) if shares else 0
+            asset_addr = await self._reader.asset()
+            idle = await self._reader.token_balance_of(asset_addr, owner)
+        except VaultUnavailable:
+            return PortfolioView(stale=True)
+        positions: tuple[PositionLite, ...] = ()
+        if shares > 0:
+            positions = (
+                PositionLite(
+                    venue="SparkPoint Vault",
+                    asset="USDC",
+                    value_usd=_fmt_units(vault_assets, 6),
+                    shares=_fmt_units(shares, 18),
+                    underlying="USDC",
+                    price_source="ERC-4626 convertToAssets",
+                    risk_tier="conservative",
+                ),
+            )
+        # net worth = vault value + idle wallet USDC (both 6dp USDC); ETH excluded (no USD feed).
+        net = _fmt_units(vault_assets + idle, 6)
+        return PortfolioView(positions=positions, net_worth_usd=net, idle_usdc=idle, stale=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,12 +231,17 @@ class _NoMandateProvider:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def get_coordinator_dag() -> CoordinatorDag:
+def get_coordinator_dag(
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+    mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+) -> CoordinatorDag:
     """Build the deterministic advisory DAG from the process config (overridden in tests).
 
-    The three agents share one async Claude client (NL understanding + rationale only —
-    never the safety decision); the read providers default to fail-closed stubs the later
-    waves replace. A missing credential surfaces as a clean pre-stream
+    The three agents share one async Claude client (NL understanding + rationale only — never the
+    safety decision). The read providers are now REAL: the portfolio reads the owner's vault
+    position + idle USDC from chain; the mandate reads the DB-backed active mandate (same store the
+    §3.1 endpoints write). A missing credential surfaces as a clean pre-stream
     ``UPSTREAM_UNAVAILABLE`` (§1.6), never a half-built stream.
     """
     try:
@@ -214,8 +257,8 @@ def get_coordinator_dag() -> CoordinatorDag:
         # (EMBEDDING_OPENAI_*); otherwise None → no corpus citations (fail-open, never fabricated).
         recommender=Recommender(llm=client, knowledge=default_citation_retriever()),
         literacy=Literacy(llm=client),
-        portfolio_provider=_EmptyPortfolioProvider(),
-        mandate_provider=_NoMandateProvider(),
+        portfolio_provider=_VaultChatPortfolioProvider(reader, config),
+        mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
         # answers FROM the second brain (with citations). Active only when EMBEDDING_OPENAI_* is
         # set; None ⇒ ungrounded prose. Passage text never reaches the policy/action path.
@@ -223,9 +266,13 @@ def get_coordinator_dag() -> CoordinatorDag:
     )
 
 
-def get_chain_provider() -> ChatChainProvider:
-    """The per-request :class:`ChainContext` builder (overridden in tests)."""
-    return _ScopingOnlyChainProvider()
+def get_chain_provider(
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+) -> ChatChainProvider:
+    """The per-request :class:`ChainContext` builder — REAL (resolves the deployed vault target +
+    fresh caps/fee) so whitelisted actions can build in chat. Overridden in tests."""
+    return _VaultChatChainProvider(reader, config)
 
 
 def get_feedback_sink() -> FeedbackSink:

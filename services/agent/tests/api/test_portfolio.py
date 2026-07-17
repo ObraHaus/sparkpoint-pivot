@@ -47,11 +47,13 @@ class FakePortfolioReader:
         pps: int = _WAD,
         asset_address: str = USDC,
         block: int = 1_234_567,
+        idle: int = 0,
     ) -> None:
         self._balance = balance
         self._pps = pps
         self._asset = asset_address
         self._block = block
+        self._idle = idle
 
     async def balance_of(self, owner: str) -> int:
         return self._balance
@@ -61,6 +63,9 @@ class FakePortfolioReader:
 
     async def asset(self) -> str:
         return self._asset
+
+    async def token_balance_of(self, token: str, owner: str) -> int:
+        return self._idle
 
     async def block_number(self) -> int:
         return self._block
@@ -120,6 +125,28 @@ def test_portfolio_returns_enriched_position(client: TestClient) -> None:
     assert sources[0]["lastBlock"] == 42
 
 
+def test_portfolio_surfaces_idle_cash_and_includes_it_in_net_worth(client: TestClient) -> None:
+    # 100.25 USDC in the vault + 50.00 idle in the wallet → idleUsdc "50.00", netWorth "150.25".
+    _use(FakePortfolioReader(balance=100_250_000, idle=50_000_000, block=42))
+    resp = client.get("/portfolio", headers=GOOD_HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["idleUsdc"] == "50.00"
+    assert body["netWorthUsd"] == "150.25"  # vault value + idle cash
+    assert body["positions"][0]["valueUsd"] == "100.25"  # the position itself is vault-only
+
+
+def test_portfolio_empty_when_no_shares_still_reports_idle(client: TestClient) -> None:
+    # No vault shares but idle cash present → no position, but idle surfaces (available to deposit).
+    _use(FakePortfolioReader(balance=0, idle=25_000_000))
+    resp = client.get("/portfolio", headers=GOOD_HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["positions"] == []
+    assert body["idleUsdc"] == "25.00"
+    assert body["netWorthUsd"] == "25.00"
+
+
 def test_portfolio_empty_when_no_shares(client: TestClient) -> None:
     _use(FakePortfolioReader(balance=0))
     resp = client.get("/portfolio", headers=GOOD_HEADERS)
@@ -127,6 +154,7 @@ def test_portfolio_empty_when_no_shares(client: TestClient) -> None:
     body = resp.json()
     assert body["stale"] is False
     assert body["positions"] == []
+    assert body["idleUsdc"] == "0.00"
     assert body["netWorthUsd"] == "0.00"
     assert body["allocation"]["byAsset"] == []
     assert body["risk"]["concentrationBps"] == 0

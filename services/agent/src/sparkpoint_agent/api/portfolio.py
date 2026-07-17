@@ -136,6 +136,7 @@ class PortfolioResponse(BaseModel):
     asOf: str
     stale: bool
     netWorthUsd: str
+    idleUsdc: str  # spare wallet USDC available to deposit ("idle cash" line), $1 par
     positions: list[PositionDetail]
     allocation: Allocation | None = None
     pnl: Pnl | None = None
@@ -197,10 +198,11 @@ class _VaultPosition:
     """The live on-chain vault position (fresh reads), or a degraded/empty stand-in."""
 
     shares: int
-    underlying: int  # USDC base units (6 dp)
+    underlying: int  # USDC base units (6 dp) — the VALUE of the held vault shares
     asset_address: str
     block: int
     stale: bool
+    idle: int = 0  # spare underlying USDC in the wallet (not in the vault), 6 dp
 
     @property
     def held(self) -> bool:
@@ -219,11 +221,18 @@ async def _read_vault_position(reader: VaultReader, account: AccountContext) -> 
         shares = await reader.balance_of(account.account)
         underlying = await reader.convert_to_assets(shares) if shares else 0
         asset_address = await reader.asset()
+        # Idle cash = the owner's spare underlying-USDC balance (available to deposit).
+        idle = await reader.token_balance_of(asset_address, account.account)
         block = await reader.block_number()
     except VaultUnavailable:
         return _VaultPosition(shares=0, underlying=0, asset_address="", block=0, stale=True)
     return _VaultPosition(
-        shares=shares, underlying=underlying, asset_address=asset_address, block=block, stale=False
+        shares=shares,
+        underlying=underlying,
+        asset_address=asset_address,
+        block=block,
+        stale=False,
+        idle=idle,
     )
 
 
@@ -291,7 +300,10 @@ async def get_portfolio(
     if "positions" in sections and position.held:
         positions.append(_position_detail(position))
 
-    net_worth = _usd_from_usdc(position.underlying) if position.held else "0.00"
+    # Net worth = vault value + idle wallet USDC (both USDC at $1 par). A degraded read → "0.00".
+    vault_value = position.underlying if position.held else 0
+    net_worth = "0.00" if position.stale else _usd_from_usdc(vault_value + position.idle)
+    idle_usdc = "0.00" if position.stale else _usd_from_usdc(position.idle)
     status = "stale" if position.stale else "ok"
 
     return PortfolioResponse(
@@ -299,6 +311,7 @@ async def get_portfolio(
         asOf=_now_iso(),
         stale=position.stale,
         netWorthUsd=net_worth,
+        idleUsdc=idle_usdc,
         positions=positions,
         allocation=_allocation(position) if "allocation" in sections else None,
         pnl=Pnl(series=[], realizedUsd=None, unrealizedUsd=None) if "pnl" in sections else None,

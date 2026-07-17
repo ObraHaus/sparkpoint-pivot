@@ -303,17 +303,22 @@ class VaultReader:
                 VaultUnavailableReason.NOT_DEPLOYED,
                 "SPARKPOINT_VAULT_ADDRESS is unset — the vault is not deployed on this chain.",
             )
+        return await self._read_at(self._vault, method_name, args)
+
+    async def _read_at(self, to: str, method_name: str, args: Sequence[Any]) -> Any:
+        """eth_call one loaded view method against an arbitrary ``to`` (the vault, or its
+        underlying ERC-20 for idle-balance reads). Same fail-closed decode as :meth:`_read`."""
         method = load_vault_methods()[method_name]
         data = method.selector + eth_abi.encode(list(method.input_types), list(args)).hex()
         result = await self._transport.call(
-            "eth_call", [{"to": self._vault, "data": data}, "latest"]
+            "eth_call", [{"to": to.lower(), "data": data}, "latest"]
         )
 
         if result in ("0x", ""):
-            # No return data ⇒ typically no code at the address (vault not deployed here).
+            # No return data ⇒ typically no code at the address (contract not deployed here).
             raise VaultUnavailable(
                 VaultUnavailableReason.NOT_DEPLOYED,
-                f"{method_name}: empty eth_call result (no code at {self._vault}?).",
+                f"{method_name}: empty eth_call result (no code at {to}?).",
             )
         try:
             raw = bytes.fromhex(result[2:] if result.startswith("0x") else result)
@@ -398,6 +403,12 @@ class VaultReader:
     async def balance_of(self, owner: str) -> int:
         """balanceOf(owner) → the owner's vault-share balance."""
         return int(await self._read("balanceOf", [_normalize_address(owner)]))
+
+    async def token_balance_of(self, token: str, owner: str) -> int:
+        """ERC-20 ``balanceOf(owner)`` on an arbitrary ``token`` (e.g. the vault's underlying
+        USDC) → raw base units. Used for the "idle cash" line — the spare wallet balance that
+        isn't in the vault. Fail-closed (``VaultUnavailable``) like every other read."""
+        return int(await self._read_at(token, "balanceOf", [_normalize_address(owner)]))
 
     # ── Chain head ──
 

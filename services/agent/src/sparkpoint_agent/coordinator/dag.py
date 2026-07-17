@@ -52,6 +52,7 @@ from ..policy import (
     RiskProfile,
     SessionState,
     SimulationInput,
+    get_policy_constants,
 )
 from ..wire import Citation
 from .chat_blocks import (
@@ -478,7 +479,7 @@ class CoordinatorDag:
         chain = gathered.chain
         if intent.kind is IntentKind.BUILD_ACTION:
             if not stamped:
-                return [TextBlock("That action isn't available on the whitelist right now.")]
+                return [TextBlock(_build_action_refusal(chain.chain_id, intent.action_type))]
             first = stamped[0]
             wire = proposed_action_wire(first.candidate.action, chain.chain_id)
             return [ActionBlock(proposed_action=wire, policy=policy_stamp(first.verdict))]
@@ -519,18 +520,73 @@ class CoordinatorDag:
 
     @staticmethod
     def _portfolio_summary(gathered: Gathered) -> str:
-        count = len(gathered.portfolio.positions)
-        stale = " (some figures may be stale)" if gathered.portfolio.stale else ""
+        portfolio = gathered.portfolio
+        count = len(portfolio.positions)
+        stale = " (some figures may be stale)" if portfolio.stale else ""
         noun = "position" if count == 1 else "positions"
+        # Idle cash = spare underlying USDC in the wallet (not in the vault) — an honest, separate
+        # line so the user sees what's deployed vs. what's available to deposit.
+        idle = portfolio.idle_usdc
+        idle_line = ""
+        if idle:
+            idle_line = f" You also have ${_fmt_usdc6(idle)} in idle USDC in your wallet."
         return (
-            f"You're holding {count} {noun} worth about ${gathered.portfolio.net_worth_usd}"
-            f"{stale}."
+            f"You're holding {count} {noun} worth about ${portfolio.net_worth_usd}"
+            f"{stale}.{idle_line}"
         )
 
 
 def _explicit_ready(intent: Intent) -> bool:
     """True iff a directly-commanded action has all of action/asset/amount (else clarify)."""
     return intent.action_type is not None and intent.asset is not None and intent.amount is not None
+
+
+def _fmt_usdc6(raw: int) -> str:
+    """Format raw 6-dp USDC base units as a fixed-2-decimal string (exact, integer-only)."""
+    whole, frac = divmod(max(0, raw), 1_000_000)
+    cents = (frac * 100) // 1_000_000
+    return f"{whole:,}.{cents:02d}"
+
+
+_NETWORK_NAMES: dict[int, str] = {8453: "Base", 84532: "Base Sepolia", 31337: "the local fork"}
+
+# Human nouns for the "not supported on this network" message (kept out of the byte-identical
+# generic refusal so the user learns WHY nothing surfaced).
+_ACTION_NOUNS: dict[ActionType, str] = {
+    ActionType.AERODROME_SWAP: "token swaps",
+    ActionType.AAVE_SUPPLY: "direct Aave supply",
+    ActionType.AAVE_WITHDRAW: "direct Aave withdraw",
+    ActionType.VAULT_DEPOSIT: "vault deposits",
+    ActionType.VAULT_WITHDRAW: "vault withdrawals",
+}
+
+
+def _action_supported_on_chain(chain_id: int, action_type: ActionType | None) -> bool:
+    """True iff this chain's RESOLVED allowlist offers ``action_type`` (``undeployed`` entries are
+    already filtered out — so e.g. AERODROME_SWAP on 84532 is False: swaps are fork-only)."""
+    if action_type is None:
+        return False
+    try:
+        constants = get_policy_constants(chain_id)
+    except Exception:
+        return False
+    return any(entry.action is action_type for entry in constants.allowlist)
+
+
+def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
+    """Split the BUILD_ACTION no-candidate case by CAUSE (previously one byte-identical string):
+    an action the network doesn't offer at all vs. one it offers but we couldn't build."""
+    if not _action_supported_on_chain(chain_id, action_type):
+        network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
+        noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
+        return (
+            f"{noun.capitalize()} aren't supported on {network} yet — that's coming to a later "
+            "network. Ask me about depositing into the vault, which is live here."
+        )
+    return (
+        "I couldn't build that action right now — it may not clear your guardrails, or a fresh "
+        "read didn't line up. Try again in a moment, or ask me to explain the options."
+    )
 
 
 class _Refused(Exception):
