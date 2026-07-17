@@ -164,6 +164,16 @@ ORDER BY random()
 LIMIT $2
 """.strip()
 
+# Admin tip manager: ONE row per tip source (its lead chunk, index 0), active or not, ordered by
+# source. Reconstructs the editable tip (title/body/cta/active) from the chunk + metadata.
+_LIST_ALL_TIPS_SQL = """
+SELECT DISTINCT ON (metadata->>'source')
+       metadata->>'source' AS source, content, metadata
+FROM memory_chunks
+WHERE source_kind = $1::memory_source AND user_id IS NULL
+ORDER BY metadata->>'source', (metadata->>'chunk_index')::int
+""".strip()
+
 
 class PgChunkStore:
     """A :class:`ChunkStore` backed by ``memory_chunks`` via an asyncpg executor.
@@ -241,6 +251,15 @@ class PgChunkStore:
         if limit <= 0:
             return []
         records = await self._db.fetch(_LIST_TIPS_SQL, self._source_kind, min(limit, 20))
+        return [
+            ChunkHit(content=str(rec["content"]), metadata=_as_dict(rec["metadata"]), score=0.0)
+            for rec in records
+        ]
+
+    async def list_all_tips(self) -> list[ChunkHit]:
+        """One lead chunk per tip source (active or not), for the admin tip manager. The endpoint
+        reconstructs the editable {title, body, cta, active} from the chunk content + metadata."""
+        records = await self._db.fetch(_LIST_ALL_TIPS_SQL, self._source_kind)
         return [
             ChunkHit(content=str(rec["content"]), metadata=_as_dict(rec["metadata"]), score=0.0)
             for rec in records
