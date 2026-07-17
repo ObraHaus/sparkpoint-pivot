@@ -12,6 +12,7 @@ ACCESS/content only — never a signable artifact, never custody (N2).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -46,6 +47,9 @@ class ContentWrite(BaseModel):
     cta_label: str | None = Field(default=None, max_length=60)
     cta_href: str | None = Field(default=None, max_length=400)
     is_active: bool = True
+    # Optional backdating: an ISO date ("2026-07-14") or datetime so the changelog reads as a real
+    # timeline. Omitted → now() on create, unchanged on edit.
+    published_at: str | None = None
 
     @field_validator("cta_href")
     @classmethod
@@ -59,6 +63,20 @@ class ContentWrite(BaseModel):
         # javascript:/data: schemes.
         if not (candidate.startswith("/") or candidate.startswith("https://")):
             raise ValueError("cta_href must be an internal path ('/...') or an https:// URL")
+        return candidate
+
+    @field_validator("published_at")
+    @classmethod
+    def _valid_date(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            datetime.fromisoformat(candidate)  # accepts YYYY-MM-DD or full ISO
+        except ValueError as exc:
+            raise ValueError("published_at must be an ISO date (YYYY-MM-DD) or datetime") from exc
         return candidate
 
 
@@ -113,7 +131,7 @@ async def admin_upsert(
         new_id = await store.create(
             type_=body.type, title=body.title, body=body.body, tag=body.tag,
             cta_label=body.cta_label, cta_href=body.cta_href, is_active=body.is_active,
-            actor=admin.owner,
+            actor=admin.owner, published_at=body.published_at,
         )
         return {"ok": True, "id": new_id, "created": True}
     if await store.get(body.id) is None:
@@ -121,7 +139,7 @@ async def admin_upsert(
     await store.update(
         body.id, type_=body.type, title=body.title, body=body.body, tag=body.tag,
         cta_label=body.cta_label, cta_href=body.cta_href, is_active=body.is_active,
-        actor=admin.owner,
+        actor=admin.owner, published_at=body.published_at,
     )
     return {"ok": True, "id": body.id, "created": False}
 

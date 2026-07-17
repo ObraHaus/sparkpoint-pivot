@@ -7,10 +7,15 @@
  * ships later; Sui is a fast-follow. The route + nav entry stay. (R5 A5.)
  */
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { erc20Abi, formatUnits, type Address, type Hex } from "viem";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { useNetwork } from "@/lib/network";
+import { wagmiConfig } from "@/lib/wagmi";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { StatusTag } from "@/components/ui/status-tag";
 import { stageCopy } from "@/lib/stage";
@@ -67,6 +72,146 @@ function FaucetCard({ title, subtitle, links }: { title: string; subtitle: strin
   );
 }
 
+type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
+
+/** Aave-market test faucet: `mint(token, to, amount)` mints straight to `to` (the connecting wallet). */
+const FAUCET_MINT_ABI = [
+  {
+    type: "function",
+    name: "mint",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+/** One-click mint amount: 1,000 test USDC (6 decimals) — well above the per-user vault cap. */
+const MINT_AMOUNT = 1_000n * 10n ** 6n;
+
+function shortErr(e: unknown): string {
+  const a = e as { shortMessage?: string; message?: string } | null;
+  const m = a?.shortMessage ?? a?.message ?? "Transaction failed.";
+  return m.length > 140 ? `${m.slice(0, 137)}…` : m;
+}
+
+/**
+ * One-click, user-signed mint of the Aave-market test USDC (replaces sending the tester to Basescan's
+ * raw writeContract). Non-custodial: the user signs `mint(usdc, theirAddress, 1000e6)` and the USDC
+ * lands straight in their wallet. Only enabled while the wallet is on the faucet chain (Base Sepolia).
+ */
+function MintTestUsdcButton({ faucet, usdc, chainId }: { faucet: Address; usdc: Address; chainId: WagmiChainId }) {
+  const { address, isConnected, chainId: walletChain } = useAccount();
+  const onChain = isConnected && walletChain === chainId;
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient({ chainId });
+  const [stage, setStage] = useState<"idle" | "pending" | "done" | "error">("idle");
+  const [err, setErr] = useState<string>();
+  const [txHash, setTxHash] = useState<Hex>();
+  const bal = useReadContract({
+    address: usdc,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    chainId,
+    query: { enabled: isConnected && !!address },
+  });
+  const usdcBalance = bal.data !== undefined ? Number(formatUnits(bal.data as bigint, 6)) : undefined;
+
+  const mint = async () => {
+    if (!address || !publicClient) return;
+    setStage("pending");
+    setErr(undefined);
+    setTxHash(undefined);
+    try {
+      const tx = await writeContractAsync({
+        address: faucet,
+        abi: FAUCET_MINT_ABI,
+        functionName: "mint",
+        args: [usdc, address, MINT_AMOUNT],
+        chainId,
+      });
+      setTxHash(tx);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+      if (receipt.status === "reverted") {
+        setStage("error");
+        setErr("The mint reverted — the faucet enforces a per-address cooldown. Try again later, or swap ETH → USDC below.");
+        return;
+      }
+      setStage("done");
+      void bal.refetch();
+    } catch (e) {
+      setStage("error");
+      setErr(shortErr(e));
+    }
+  };
+
+  const busy = stage === "pending";
+  const receiptUrl = txHash ? explorerTxUrl(chainId, txHash) : undefined;
+  return (
+    <div>
+      <button className="btn btn-primary btn-md" style={{ width: "100%" }} disabled={!onChain || busy} onClick={mint}>
+        {busy ? "Confirm in your wallet…" : "Mint 1,000 test USDC"}
+      </button>
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+        {!isConnected
+          ? "Connect your wallet to mint."
+          : !onChain
+            ? "Switch your wallet to Base Sepolia to mint."
+            : usdcBalance !== undefined
+              ? `You sign; the USDC lands in your wallet (SparkPoint holds nothing). Balance: ${usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC.`
+              : "You sign; the USDC lands straight in your wallet — SparkPoint holds nothing."}
+      </div>
+      {stage === "done" && (
+        <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--gain)" }}>
+          ✓ Minted 1,000 test USDC to your wallet.{" "}
+          {receiptUrl && (
+            <a href={receiptUrl} target="_blank" rel="noreferrer" className="cite">
+              View tx ↗
+            </a>
+          )}
+        </div>
+      )}
+      {stage === "error" && err && (
+        <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--loss)" }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
+/** Hint that the swap page can also turn ETH into USDC (works on Base Sepolia + Robinhood testnet). */
+function SwapHint({ router }: { router: ReturnType<typeof useRouter> }) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        paddingTop: 12,
+        borderTop: "1px solid var(--border-soft)",
+        fontSize: 12.5,
+        color: "var(--muted-foreground)",
+        lineHeight: 1.55,
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-start",
+      }}
+    >
+      <span style={{ color: "var(--primary)", flex: "none", marginTop: 1 }}>
+        <Icon name="swap" size={14} />
+      </span>
+      <span>
+        Prefer to swap? You can swap <b>ETH → USDC</b> on the{" "}
+        <a onClick={() => router.push(toHref("swap"))} style={{ color: "var(--primary)", cursor: "pointer" }}>
+          Swap page
+        </a>{" "}
+        — real on-chain swaps on Base Sepolia and Robinhood testnet.
+      </span>
+    </div>
+  );
+}
+
 export default function Page() {
   const router = useRouter();
   const { chainId, isConnected } = useNetwork();
@@ -82,15 +227,6 @@ export default function Page() {
     { label: "Coinbase Developer Platform faucet", href: "https://portal.cdp.coinbase.com/products/faucet", note: "Base Sepolia ETH" },
     { label: "Alchemy Base Sepolia faucet", href: "https://www.alchemy.com/faucets/base-sepolia", note: "Base Sepolia ETH" },
   ];
-  const baseSepoliaUsdc: FaucetLink[] = faucet
-    ? [
-        {
-          label: "Mint test USDC (Aave-market faucet)",
-          href: `https://sepolia.basescan.org/address/${faucet}#writeContract`,
-          note: `Call mint(token, to, amount) with token = ${usdc} · 6 decimals · per-address timelock`,
-        },
-      ]
-    : [];
   const robinhood: FaucetLink[] = [
     { label: "Robinhood Chain testnet faucet (official)", href: "https://faucet.testnet.chain.robinhood.com/", note: "browser-only, bot-challenged — amounts are per the faucet site" },
     { label: "Chainlink faucets", href: "https://faucets.chain.link/", note: "select the Robinhood testnet if listed" },
@@ -150,9 +286,12 @@ export default function Page() {
             subtitle="Chain 46630 · Arbitrum-Nitro L2 on Sepolia · native ETH pays gas."
             links={robinhood}
           />
-          <div className="card card-pad" style={{ marginBottom: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
-            You can also bring Sepolia ETH over via the canonical Arbitrum bridge (~10 min). There is no official Circle
-            USDC or Aave market on this testnet yet, so the vault stays Base-only during Alpha.
+          <div className="card card-pad" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
+              You can also bring Sepolia ETH over via the canonical Arbitrum bridge (~10 min). There is no official Circle
+              USDC or Aave market on this testnet yet, so the vault stays Base-only during Alpha.
+            </div>
+            <SwapHint router={router} />
           </div>
         </>
       ) : (
@@ -162,12 +301,18 @@ export default function Page() {
             subtitle="You need a little Base Sepolia ETH to pay gas before depositing."
             links={baseSepoliaEth}
           />
-          {baseSepoliaUsdc.length > 0 && (
-            <FaucetCard
-              title="Base Sepolia — test USDC (to deposit)"
-              subtitle="The vault accepts the Aave-market test USDC. Mint some to your wallet, then deposit in the vault."
-              links={baseSepoliaUsdc}
-            />
+          {faucet && (
+            <div className="card card-pad" style={{ marginBottom: 14 }}>
+              <div className="card-hd">
+                <span className="t">Base Sepolia — test USDC (to deposit)</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", margin: "2px 0 12px" }}>
+                The vault accepts the Aave-market test USDC. Mint 1,000 to your wallet in one click — you sign, it lands
+                in your wallet — then deposit in the vault.
+              </div>
+              <MintTestUsdcButton faucet={faucet} usdc={usdc} chainId={BASE_SEPOLIA} />
+              <SwapHint router={router} />
+            </div>
           )}
         </>
       )}
