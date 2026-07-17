@@ -9,13 +9,14 @@
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import "@/components/screens/support.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 export default function Page() {
   return (
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>Outcome Log</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Outcome Log <StatusTag variant="mock" title={"Preview — the on-chain outcome/event index isn’t built yet."} /></h1>
           <div className="sub">Every move you acted on — wins and losses — tied to the advice that caused it.</div>
         </div>
       </div>

@@ -26,7 +26,9 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { useVault } from "@/lib/chain/useVault";
+import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 const DECIMALS = 6;
 
@@ -94,7 +96,7 @@ export default function Page() {
     <div className="page page-wide">
       <div className="pagehead">
         <div>
-          <h1>Aave Yield Vault</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Aave Yield Vault <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={["Net APY is illustrative until an Aave feed is wired", "Cost basis / PnL need the on-chain event index"]} /></h1>
           <div className="sub">Conservative, capital-preservation-first yield on USDC · Base</div>
         </div>
         <div className="actions">
@@ -180,7 +182,7 @@ export default function Page() {
           </div>
           <div className="divider" />
           <div className="card-hd">
-            <span className="lbl">Your beta cap</span>
+            <span className="lbl">Your {capNoun}</span>
             <span className="tnum" style={{ fontSize: 12 }}>
               {money(toNum(usedRaw), 0)} / {money(toNum(capRaw), 0)}
             </span>
@@ -189,7 +191,7 @@ export default function Page() {
             <i style={{ width: `${capPct}%` }} />
           </div>
           <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 8 }}>
-            {(100 - capPct).toFixed(0)}% of your beta cap remaining. You can always withdraw, regardless of caps.
+            {(100 - capPct).toFixed(0)}% of your {capNoun} remaining. You can always withdraw, regardless of caps.
           </div>
           <div className="divider" />
           <div style={{ display: "flex", gap: 8 }}>

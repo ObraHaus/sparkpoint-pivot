@@ -8,13 +8,14 @@
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import "@/components/screens/support.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 export default function Page() {
   return (
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>Notifications</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Notifications <StatusTag variant="mock" title={"Preview — notifications aren’t wired to a live feed yet."} /></h1>
           <div className="sub">Transaction results and important alerts.</div>
         </div>
       </div>

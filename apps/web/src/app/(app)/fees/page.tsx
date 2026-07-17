@@ -11,9 +11,18 @@
  */
 
 import { useRouter } from "next/navigation";
+import { useReadContracts } from "wagmi";
+import { type Address } from "viem";
+import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
+import { StatusTag } from "@/components/ui/status-tag";
 import "@/components/screens/fees.css";
+
+const VAULT_CHAIN = 84532;
+const EXPLORER = "https://sepolia.basescan.org";
+const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 /** Yield-vs-revenue bars (mirrors the design's `honestyBars`). */
 function HonestyBars() {
@@ -35,11 +44,33 @@ function HonestyBars() {
 
 export default function Page() {
   const router = useRouter();
+  const addrs = getAddresses(VAULT_CHAIN);
+  const vault = addrs.vault as Address | undefined;
+  const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
+  // REAL fee params, read live from the vault (the honesty panel must not lie).
+  const reads = useReadContracts({
+    query: { enabled: !!vault, refetchInterval: 30_000 },
+    contracts: [
+      { ...vaultC, functionName: "performanceFeeBps" }, // 0
+      { ...vaultC, functionName: "feeRecipient" }, // 1
+    ],
+  });
+  const perfFeeBps = reads.data?.[0]?.result as bigint | number | undefined;
+  const feeRecipient = reads.data?.[1]?.result as Address | undefined;
+  const perfFeePct = perfFeeBps === undefined ? undefined : Number(perfFeeBps) / 100;
+  const readsLive = !reads.isLoading && !reads.isError && reads.data !== undefined;
   return (
     <div className="page page-wide">
       <div className="pagehead">
         <div>
-          <h1>Fees &amp; how we make money</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            Fees &amp; how we make money
+            <StatusTag
+              variant="partial"
+              works={["Fee params (performance fee, recipient) read live from the vault", "0% deposit/withdraw fee is structural (ERC-4626)"]}
+              pending={["The yield-vs-revenue chart is illustrative", "\"Fees paid so far\" needs the on-chain event index"]}
+            />
+          </h1>
           <div className="fees-lede">
             We only earn when you earn — never on your principal, never by taking custody. Here&apos;s exactly what we
             charge, when, and why.
@@ -183,29 +214,52 @@ export default function Page() {
       </div>
 
       <div className="card verify">
-        <div className="card-hd" style={{ marginBottom: 4 }}>
+        <div className="card-hd" style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="t">Verify — don&apos;t take our word for it</span>
+          <StatusTag variant={readsLive ? "live" : "partial"} label={readsLive ? "Live reads" : "Reading…"} />
         </div>
         <div className="vrow">
           <span>Vault deposit/withdraw fee</span>
-          <span className="mono">
-            read: feeBps = 0 <Icon name="ext" size={11} />
+          <span className="mono" title="ERC-4626 has no entry/exit fee by design">
+            0% — no entry/exit fee (structural)
           </span>
         </div>
         <div className="vrow">
           <span>Vault performance fee</span>
-          <span className="mono">
-            read: perfFeeBps = 1000 (10%) <Icon name="ext" size={11} />
-          </span>
+          {vault ? (
+            <a
+              className="mono"
+              href={`${EXPLORER}/address/${vault}#readContract`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--primary)" }}
+            >
+              performanceFeeBps ={" "}
+              {perfFeeBps === undefined ? "…" : `${String(perfFeeBps)} (${perfFeePct}%)`}{" "}
+              <Icon name="ext" size={11} />
+            </a>
+          ) : (
+            <span className="mono">vault not deployed on this network</span>
+          )}
         </div>
         <div className="vrow">
-          <span>Swap fee-recipient</span>
-          <span className="mono">
-            0x7c…F12 <Icon name="ext" size={11} />
-          </span>
+          <span>Fee recipient</span>
+          {feeRecipient ? (
+            <a
+              className="mono"
+              href={`${EXPLORER}/address/${feeRecipient}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--primary)" }}
+            >
+              {shortAddr(feeRecipient)} <Icon name="ext" size={11} />
+            </a>
+          ) : (
+            <span className="mono">{reads.isLoading ? "…" : "—"}</span>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-          These fees live in the contracts, not this app.{" "}
+          These fees live in the contracts, not this app — read live from Base Sepolia RPC.{" "}
           <a
             style={{ color: "var(--primary)", cursor: "pointer" }}
             onClick={() => router.push(toHref("trust/permissions"))}

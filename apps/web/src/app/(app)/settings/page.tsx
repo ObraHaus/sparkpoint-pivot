@@ -18,6 +18,7 @@ import { useNetwork } from "@/lib/network";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 type Tab = "account" | "mandate" | "notifications" | "appearance" | "security";
 
@@ -56,7 +57,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>Settings</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations"]} pending={["Notification / display preferences aren’t persisted yet"]} /></h1>
         </div>
         <button
           className="btn btn-ghost btn-md"

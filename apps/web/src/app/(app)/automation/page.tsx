@@ -15,6 +15,7 @@ import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 const SAFE: [string, string][] = [
   ["Allowlist", "Can only touch the audited Aave vault — nothing else."],
@@ -32,7 +33,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>Automation</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Automation <StatusTag variant="mock" title={"Automation isn’t wired yet — this is a preview of granting Sparky a bounded automation session."} /></h1>
           <div className="sub">Opt-in, scoped, time-boxed — and revocable by you instantly.</div>
         </div>
       </div>

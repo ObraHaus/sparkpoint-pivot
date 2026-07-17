@@ -7,13 +7,14 @@
 
 import { Icon } from "@/lib/icons";
 import "@/components/screens/support.css";
+import { StatusTag } from "@/components/ui/status-tag";
 
 export default function Page() {
   return (
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>SRK</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>SRK <StatusTag variant="mock" title={"Preview — the SRK token/rewards surface isn’t live yet."} /></h1>
           <div className="sub">A non-essential utility token. Nothing core depends on it.</div>
         </div>
       </div>

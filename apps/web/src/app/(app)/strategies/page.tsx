@@ -16,6 +16,8 @@ import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
+import { capNoun } from "@/lib/stage";
+import { StatusTag } from "@/components/ui/status-tag";
 import { useRecommendationsView, type RecView } from "@/lib/agent/useAgent";
 import "@/components/screens/strategies.css";
 
@@ -39,13 +41,25 @@ export default function Page() {
 
   // Live GET /recommendations (§3.4) ranked vs. the mandate; mock fallback offline.
   // Each card is signable ONLY when policy-approved (RecView.signable ⟺ isSignable).
-  const recs = useRecommendationsView() ?? MOCK_RECS;
+  const liveRecs = useRecommendationsView();
+  const recs = liveRecs ?? MOCK_RECS;
+  const usingMock = liveRecs === undefined; // offline / not-yet-loaded → showing the mock fallback
 
   return (
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1>Strategies</h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            Strategies
+            {usingMock ? (
+              <StatusTag
+                variant="mock"
+                title="Showing example strategies — connect + sign in for live, mandate-ranked recommendations"
+              />
+            ) : (
+              <StatusTag variant="live" label="Live" />
+            )}
+          </h1>
           <div className="sub">Ranked against your plan — lower risk, steady yield</div>
         </div>
         <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("settings"))}>
@@ -126,7 +140,7 @@ export default function Page() {
           <div className={"whybd" + (open[i] ? " open" : "")}>
             Ranked against your mandate (lower risk, capital-preservation-first, steady yield).{" "}
             {r.best
-              ? "Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your beta cap and slippage guardrails."
+              ? `Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your ${capNoun} and slippage guardrails.`
               : "A conservative posture — less earning, more flexibility. Honest tradeoff, shown so you can choose."}
           </div>
         </div>

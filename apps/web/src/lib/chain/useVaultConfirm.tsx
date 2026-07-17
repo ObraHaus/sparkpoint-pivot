@@ -18,6 +18,7 @@ import { formatUnits, type Address } from "viem";
 import { money, fmt } from "@/lib/utils";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { useVault, type UseVaultResult } from "@/lib/chain/useVault";
+import { capNoun } from "@/lib/stage";
 import type { OnchainConfirm } from "@/components/ui/ConfirmFlow";
 
 const DECIMALS = 6;
@@ -133,7 +134,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
           : overBalance
             ? "Insufficient USDC balance"
             : overCap
-              ? "Above your beta cap"
+              ? `Above your ${capNoun}`
               : "Review deposit";
 
   // Withdraw: NEVER gated on beta/whitelist (N2). Only a connected wallet + a real,

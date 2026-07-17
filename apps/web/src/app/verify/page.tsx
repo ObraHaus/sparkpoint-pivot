@@ -16,6 +16,7 @@ import { useAccount } from "wagmi";
 import { Icon } from "@/lib/icons";
 import { useSession, useSiweLogin } from "@/lib/auth/useSiwe";
 import { PubTop } from "@/components/screens/PubTop";
+import { stageCopy } from "@/lib/stage";
 import "@/components/screens/public.css";
 
 const BASE_CHAINS = new Set<number>([8453, 84532]);
@@ -63,7 +64,7 @@ export default function VerifyPage() {
     {
       label: "Beta access",
       ok: betaOk,
-      value: betaOk ? "eligible" : blocked ? "not in beta yet" : undefined,
+      value: betaOk ? "eligible" : blocked ? `not in the ${stageCopy.adjective} yet` : undefined,
     },
   ];
 
@@ -74,7 +75,7 @@ export default function VerifyPage() {
       : done
         ? "You're in."
         : blocked
-          ? "This wallet isn't in the beta yet"
+          ? `This wallet isn’t in the ${stageCopy.adjective} yet`
           : needsSignIn
             ? "Verify it's you"
             : "Checking your access…";

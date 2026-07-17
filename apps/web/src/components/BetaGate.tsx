@@ -21,6 +21,7 @@ import Link from "next/link";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { useBeta, type BetaBlockReason } from "@/lib/auth/whitelist";
+import { gateNoun, stageCopy } from "@/lib/stage";
 
 export interface BetaGateProps {
   /** Override the block reason (defaults to the connected wallet's live reason). */
@@ -45,11 +46,15 @@ export function BetaGate({ reason }: BetaGateProps = {}) {
 
       <div className="pagehead">
         <div>
-          <h1>{isGeo ? "Deposits aren’t available in your region" : "Deposits are in private beta"}</h1>
+          <h1>
+            {isGeo
+              ? "Deposits aren’t available in your region"
+              : `Deposits are in ${gateNoun}`}
+          </h1>
           <div className="sub">
             {isGeo
               ? "New deposits aren’t available from your location yet — withdrawals are unaffected."
-              : "New deposits are gated while we roll out the beta — your wallet isn’t enabled yet."}
+              : `New deposits are gated while we roll out the ${stageCopy.adjective} — your wallet isn’t enabled yet.`}
           </div>
         </div>
       </div>
@@ -61,8 +66,8 @@ export function BetaGate({ reason }: BetaGateProps = {}) {
           </span>
           <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
             {isGeo
-              ? "Depositing new funds isn’t available from your region during the private beta. This is a limit on new deposits only — nothing else is restricted."
-              : "Depositing new funds is limited to allowlisted wallets during the private beta. This limit applies to new deposits only — nothing else is restricted."}
+              ? `Depositing new funds isn’t available from your region during the ${gateNoun}. This is a limit on new deposits only — nothing else is restricted.`
+              : `Depositing new funds is limited to allowlisted wallets during the ${gateNoun}. This limit applies to new deposits only — nothing else is restricted.`}
             {beta.address !== undefined && (
               <div style={{ marginTop: 8, fontSize: 12 }}>
                 Connected wallet <span className="tnum">{shortAddress(beta.address)}</span> isn’t enabled yet.
@@ -90,7 +95,8 @@ export function BetaGate({ reason }: BetaGateProps = {}) {
           </span>
           <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
             <b style={{ color: "var(--foreground)" }}>Your funds are never locked.</b> Withdrawals and on-chain exit
-            stay open to everyone during the beta — even while deposits are paused. The beta only limits new deposits.
+            stay open to everyone during the {stageCopy.adjective} — even while deposits are paused. The{" "}
+            {stageCopy.adjective} only limits new deposits.
           </div>
         </div>
 

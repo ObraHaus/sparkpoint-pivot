@@ -18,6 +18,7 @@ import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon, type IconName } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
+import { stageCopy } from "@/lib/stage";
 import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
@@ -145,7 +146,7 @@ export default function Page() {
           </div>
           <div className="card card-pad">
             <div className="card-hd">
-              <span className="t">Beta caps</span>
+              <span className="t">{stageCopy.label} caps</span>
               <span className="lbl">CapRegistry · live</span>
             </div>
             <div className="statusrow">

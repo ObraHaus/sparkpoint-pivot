@@ -25,6 +25,7 @@ import Link from "next/link";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
+import { stageCopy } from "@/lib/stage";
 import { formatBps } from "@/lib/policy/mirror";
 import { useVault } from "@/lib/chain/useVault";
 import { CapsMeter } from "@/components/CapsMeter";
@@ -170,7 +171,7 @@ export function NonCustodyBadge({ chainId }: NonCustodyBadgeProps) {
 
       {/* Beta caps — display-only meter. Never gates; withdrawals are never cap-gated (N2). */}
       <div className="card-hd" style={{ marginBottom: 12 }}>
-        <span className="lbl">Beta caps</span>
+        <span className="lbl">{stageCopy.label} caps</span>
       </div>
       {v.isDeployed && v.chainId !== undefined ? (
         <CapsMeter chainId={v.chainId} totalAssets={v.totalAssets} userPosition={v.underlying} />

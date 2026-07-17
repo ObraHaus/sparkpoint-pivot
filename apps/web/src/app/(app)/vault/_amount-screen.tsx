@@ -26,6 +26,7 @@ import Link from "next/link";
 import { parseUnits, formatUnits } from "viem";
 import { Icon } from "@/lib/icons";
 import { money, fmt } from "@/lib/utils";
+import { capNoun } from "@/lib/stage";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
@@ -106,7 +107,7 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
           </div>
           <div className="hint">
             {isDep
-              ? `Max ${money(toNum(v.usdcBalance))} (idle) · ${money(toNum(capRaw), 0)} beta cap`
+              ? `Max ${money(toNum(v.usdcBalance))} (idle) · ${money(toNum(capRaw), 0)} ${capNoun}`
               : `You hold ${money(toNum(v.underlying))} · withdraw any amount`}
           </div>
         </div>
@@ -135,7 +136,7 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
                 </span>
               </div>
               <div className="preview-row">
-                <span className="muted">Beta cap after</span>
+                <span className="muted" style={{ textTransform: "capitalize" }}>{capNoun} after</span>
                 <span className="tnum">
                   {money(toNum(usedAfter), 0)} / {money(toNum(capRaw), 0)}
                 </span>

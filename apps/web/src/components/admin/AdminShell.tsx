@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Icon, SparkMark } from "@/lib/icons";
+import { StageBadge } from "@/components/ui/stage-badge";
 import {
   AdminRoleProvider,
   useAdminRole,
@@ -169,7 +170,7 @@ function Shell({ children }: { children: ReactNode }) {
           <SparkMark size={21} className="smk" />
           Sparky Ops
         </span>
-        <span className="envbadge">DEVELOP</span>
+        <StageBadge className="envbadge" led={false} />
         <span className="grow" />
         <span
           className="obschip"

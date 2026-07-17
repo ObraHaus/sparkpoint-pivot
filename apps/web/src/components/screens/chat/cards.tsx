@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/lib/icons";
 import { data, TIER } from "@/lib/mock-data";
+import { capNoun } from "@/lib/stage";
 import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
@@ -81,7 +82,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
         </button>
         <div className={"whybd" + (open ? " open" : "")}>
           Your mandate is lower-risk, capital-preservation-first. This keeps 100% in the audited Aave vault (Risk 1),
-          satisfies your beta cap and slippage guardrails, and raises yield without changing your risk tier. The
+          satisfies your {capNoun} and slippage guardrails, and raises yield without changing your risk tier. The
           tradeoff: yield floats with the Aave rate.
         </div>
       </div>

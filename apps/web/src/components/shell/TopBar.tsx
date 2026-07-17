@@ -6,6 +6,7 @@ import { useNetwork } from "@/lib/network";
 import { data } from "@/lib/mock-data";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
+import { StageBadge } from "@/components/ui/stage-badge";
 
 export function TopBar({ active }: { active: string }) {
   const { network, wallet, isConnected, onSupportedChain, switchToBase } = useNetwork();
@@ -22,6 +23,7 @@ export function TopBar({ active }: { active: string }) {
       <PrimaryNav active={active} />
       <div className="grow" />
       <div className="rightcluster">
+        <StageBadge />
         <span className="pill" title="What Sparky can & can't do" onClick={ov.openProveIt}>
           <span className="led" />
           Fully self-custodial
