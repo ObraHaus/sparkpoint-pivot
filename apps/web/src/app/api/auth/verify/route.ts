@@ -47,11 +47,18 @@ const CHAIN_BY_ID = {
   [robinhoodTestnet.id]: robinhoodTestnet,
 } as const;
 
-/** Domain(s) this deployment will accept in a SIWE message — from a TRUSTED server env, never the
- * message body. Falls back to the proxy-set request host if unset (still not the message body). */
+/** The app's OWN canonical hosts — always accepted for SIWE alongside any `SIWE_DOMAIN` env, so the
+ * demo/production domains work without an env change. These are OUR domains (never a phishing risk);
+ * add new first-party hosts here. `alpha.sparkpoint.io` = the develop/client-demo domain. */
+const CANONICAL_DOMAINS = ["alpha.sparkpoint.io", "sparkpoint.io"];
+
+/** Domain(s) this deployment will accept in a SIWE message — from a TRUSTED server env + the app's
+ * own canonical hosts, never the message body. When `SIWE_DOMAIN` is unset it falls back to the
+ * proxy-set request host (still not the message body), preserving prior behavior. */
 function allowedDomains(req: Request): string[] {
   const pinned = (process.env.SIWE_DOMAIN ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (pinned.length) return pinned;
+  // Pinned env present → accept exactly those PLUS our own canonical hosts (dev slug + alpha/prod).
+  if (pinned.length) return Array.from(new Set([...pinned, ...CANONICAL_DOMAINS]));
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
   return host ? [host] : [];
 }
