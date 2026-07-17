@@ -19,7 +19,11 @@ import { PubTop } from "@/components/screens/PubTop";
 import { stageCopy } from "@/lib/stage";
 import "@/components/screens/public.css";
 
-const BASE_CHAINS = new Set<number>([8453, 84532]);
+// SIWE sign-in is offered on every chain the /verify route accepts (Base · Base Sepolia · Robinhood
+// Chain Testnet) — mirrors allowedChainIds() in app/api/auth/verify/route.ts. Without 46630 here, a
+// wallet on Robinhood testnet was never shown the "Sign in" CTA and was told to switch to Base.
+const SIGNIN_CHAINS = new Set<number>([8453, 84532, 46630]);
+const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood Testnet" };
 const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 export default function VerifyPage() {
@@ -28,12 +32,12 @@ export default function VerifyPage() {
   const { session, refresh } = useSession();
   const { login, pending, error } = useSiweLogin();
 
-  const onBase = chainId !== undefined && BASE_CHAINS.has(chainId);
+  const onSupported = chainId !== undefined && SIGNIN_CHAINS.has(chainId);
   const signedIn = session != null; // null|undefined → not signed in / loading
   const betaOk = signedIn && session.beta;
   const done = betaOk;
   const blocked = signedIn && !session.beta;
-  const needsSignIn = isConnected && onBase && session === null;
+  const needsSignIn = isConnected && onSupported && session === null;
 
   const handleSignIn = useCallback(async () => {
     if (!address || !chainId) return;
@@ -52,9 +56,9 @@ export default function VerifyPage() {
   const steps: { label: string; ok: boolean; value?: string }[] = [
     { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
     {
-      label: "On Base network",
-      ok: onBase,
-      value: onBase ? (chainId === 84532 ? "Base Sepolia" : "Base") : isConnected ? "wrong network" : undefined,
+      label: "On a supported network",
+      ok: onSupported,
+      value: onSupported ? (CHAIN_LABEL[chainId!] ?? "supported") : isConnected ? "wrong network" : undefined,
     },
     {
       label: "Signed in (SIWE)",
@@ -70,8 +74,8 @@ export default function VerifyPage() {
 
   const title = !isConnected
     ? "Connect a wallet first"
-    : !onBase
-      ? "Switch to Base"
+    : !onSupported
+      ? "Switch to a supported network"
       : done
         ? "You're in."
         : blocked
@@ -81,8 +85,8 @@ export default function VerifyPage() {
             : "Checking your access…";
   const subtitle = !isConnected
     ? "Taking you back to connect your wallet…"
-    : !onBase
-      ? "Switch your wallet to Base (or Base Sepolia) to continue."
+    : !onSupported
+      ? "Switch your wallet to Base Sepolia or Robinhood Testnet to continue."
       : done
         ? "Let's build your plan — it takes about 3 minutes."
         : blocked
@@ -101,7 +105,7 @@ export default function VerifyPage() {
               <span style={{ color: "var(--gain)" }}>
                 <Icon name="check" size={30} stroke={2.5} />
               </span>
-            ) : blocked || (isConnected && !onBase) ? (
+            ) : blocked || (isConnected && !onSupported) ? (
               <span style={{ color: "var(--caution)" }}>
                 <Icon name="info" size={28} />
               </span>

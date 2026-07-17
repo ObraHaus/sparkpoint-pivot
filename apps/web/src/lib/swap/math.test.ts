@@ -1,6 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { amountOutMinimum, formatBpsPercent } from "./math.ts";
+import { afterFee, amountOutMinimum, formatBpsPercent, ROUTING_FEE_BIPS } from "./math.ts";
+
+test("afterFee takes the routing fee (0.20%) as an exact integer floor", () => {
+  assert.equal(ROUTING_FEE_BIPS, 20); // matches the /fees page 0.20%
+  // 1000 USDC (6dp) − 0.20% = 998 USDC.
+  assert.equal(afterFee(1_000_000_000n, 20), 998_000_000n);
+  // The fee itself = gross − net = 2 USDC.
+  assert.equal(1_000_000_000n - afterFee(1_000_000_000n, 20), 2_000_000n);
+  // 0 fee → unchanged; floors (never rounds up against the user).
+  assert.equal(afterFee(123_456n, 0), 123_456n);
+  assert.equal(afterFee(101n, 20), 100n); // 101 × 0.998 = 100.798 → floors to 100
+});
+
+test("afterFee clamps feeBips to the Uniswap 100-bip (1%) cap", () => {
+  assert.equal(afterFee(1_000n, 100), 990n); // 1% max
+  assert.equal(afterFee(1_000n, 500), 990n); // clamped to 100
+  assert.equal(afterFee(1_000n, -5), 1_000n); // clamped to 0
+});
 
 test("amountOutMinimum applies the slippage floor as exact integer math (never a float)", () => {
   // 1000 USDC (6dp) at 0.5% slippage → min 995 USDC.

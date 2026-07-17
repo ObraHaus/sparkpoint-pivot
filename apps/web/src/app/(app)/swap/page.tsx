@@ -15,11 +15,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useBalance, useReadContract } from "wagmi";
-import { erc20Abi, formatUnits, parseUnits } from "viem";
+import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { wagmiConfig } from "@/lib/wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
@@ -28,10 +29,12 @@ import { swapTokens, isConfiguredToken, type SwapToken } from "@/lib/swap/tokens
 import { useSwapQuote } from "@/lib/swap/useSwapQuote";
 import { useExecuteSwapTx, type SwapExec } from "@/lib/swap/useExecuteSwapTx";
 import {
+  afterFee,
   amountOutMinimum,
   formatBpsPercent,
   DEFAULT_DEADLINE_SECONDS,
   HIGH_IMPACT_BPS,
+  ROUTING_FEE_BIPS,
   SLIPPAGE_PRESETS_BPS,
 } from "@/lib/swap/math";
 
@@ -71,19 +74,31 @@ export default function Page() {
   const dex = dexById(dexId);
   const dexLive = dexLiveOn(dex, activeChain);
 
-  // Resolve Uniswap addresses + the curated token pair for the active chain (fail-closed).
-  const { router: routerAddr, quoter, tokens } = useMemo(() => {
+  // Resolve Uniswap addresses + the vault (for the routing-fee recipient) + tokens (fail-closed).
+  const { router: routerAddr, quoter, vault, tokens } = useMemo(() => {
     try {
       const b = getAddresses(activeChain ?? DISPLAY_CHAIN_ID);
       return {
         router: b.uniswapV3SwapRouter02,
         quoter: b.uniswapV3QuoterV2,
+        vault: b.vault,
         tokens: swapTokens(activeChain),
       };
     } catch {
-      return { router: undefined, quoter: undefined, tokens: [] as SwapToken[] };
+      return { router: undefined, quoter: undefined, vault: undefined, tokens: [] as SwapToken[] };
     }
   }, [activeChain]);
+
+  // §fee — the routing fee (0.20%, /fees page) is paid to the VAULT's feeRecipient(), read live so
+  // the fee always lands on the real, on-chain recipient (matches /fees). Required to swap.
+  const feeRecipientRead = useReadContract({
+    address: vault,
+    abi: sparkPointVaultAbi,
+    functionName: "feeRecipient",
+    chainId: activeChain as WagmiChainId | undefined,
+    query: { enabled: isConnected && !!vault },
+  });
+  const feeRecipient = feeRecipientRead.data as Address | undefined;
 
   const eth = tokens.find((t) => t.isNative);
   const usdc = tokens.find((t) => !t.isNative);
@@ -126,14 +141,20 @@ export default function Page() {
     enabled: canQuote,
   });
 
-  const minOut = quote.amountOut !== undefined ? amountOutMinimum(quote.amountOut, slippageBps) : undefined;
+  // Gross = raw swap output; the 0.20% routing fee is taken IN the swap, so the user nets output−fee.
+  const grossOut = quote.amountOut;
+  const netOut = grossOut !== undefined ? afterFee(grossOut, ROUTING_FEE_BIPS) : undefined;
+  const minOut = grossOut !== undefined ? amountOutMinimum(grossOut, slippageBps) : undefined; // gross floor
+  const netMinOut = minOut !== undefined ? afterFee(minOut, ROUTING_FEE_BIPS) : undefined;
   const needsApprove =
     !ethToUsdc && amountIn > 0n && (allowance.data === undefined || (allowance.data as bigint) < amountIn);
   const insufficient = balanceIn !== undefined && amountIn > balanceIn;
 
-  // The real execution intent — built only when we have a live quote (else the hook is inert).
+  // The real execution intent — built only when we have a live quote AND the fee recipient (the
+  // 0.20% routing fee is taken in-swap, so we never execute without a resolved recipient).
   const exec: SwapExec | undefined = useMemo(() => {
     if (!routerAddr || !tokenIn || !tokenOut || !address || activeChain === undefined) return undefined;
+    if (!feeRecipient) return undefined;
     if (quote.amountOut === undefined || quote.fee === undefined || minOut === undefined || amountIn <= 0n)
       return undefined;
     return {
@@ -149,6 +170,8 @@ export default function Page() {
       fromNative: tokenIn.isNative,
       toNative: tokenOut.isNative,
       needsApprove,
+      feeBips: ROUTING_FEE_BIPS,
+      feeRecipient,
       onDone: () => {
         void ethBal.refetch();
         void usdcBal.refetch();
@@ -156,7 +179,7 @@ export default function Page() {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routerAddr, tokenIn, tokenOut, address, activeChain, quote.amountOut, quote.fee, minOut, amountIn, needsApprove]);
+  }, [routerAddr, tokenIn, tokenOut, address, activeChain, feeRecipient, quote.amountOut, quote.fee, minOut, amountIn, needsApprove]);
 
   const swapCtrl = useExecuteSwapTx(reviewing ? exec : undefined);
 
@@ -237,11 +260,9 @@ export default function Page() {
           </button>
         </div>
         <TokenRow
-          label="You receive (estimated)"
+          label="You receive (estimated, after fee)"
           token={tokenOut}
-          value={
-            canQuote && quote.amountOut !== undefined && tokenOut ? fmt(quote.amountOut, tokenOut.decimals) : ""
-          }
+          value={canQuote && netOut !== undefined && tokenOut ? fmt(netOut, tokenOut.decimals) : ""}
           placeholder={quote.isLoading ? "…" : "0.00"}
           editable={false}
         />
@@ -251,17 +272,19 @@ export default function Page() {
           <div style={{ marginTop: 14, display: "grid", gap: 6, fontSize: 12.5 }}>
             <Row
               k="Price impact"
-              v={
-                quote.priceImpactBps === undefined
-                  ? DASH
-                  : formatBpsPercent(quote.priceImpactBps)
-              }
+              v={quote.priceImpactBps === undefined ? DASH : formatBpsPercent(quote.priceImpactBps)}
               tone={highImpact ? "caution" : undefined}
             />
-            <Row k="Fee tier" v={quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} />
+            <Row k="Pool fee tier" v={quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} />
+            <Row
+              k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
+              v={grossOut !== undefined && netOut !== undefined && tokenOut
+                ? `${fmt(grossOut - netOut, tokenOut.decimals)} ${tokenOut.symbol}`
+                : DASH}
+            />
             <Row
               k={`Min received (slippage ${formatBpsPercent(slippageBps)})`}
-              v={minOut !== undefined && tokenOut ? `${fmt(minOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
+              v={netMinOut !== undefined && tokenOut ? `${fmt(netMinOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
             />
           </div>
         )}
@@ -299,6 +322,9 @@ export default function Page() {
           </Notice>
         )}
         {insufficient && <Notice>Amount exceeds your {tokenIn?.symbol} balance.</Notice>}
+        {canQuote && !insufficient && !feeRecipient && (
+          <Notice>Reading the routing-fee recipient from the vault… the swap needs it before you can confirm.</Notice>
+        )}
 
         {/* CTA / confirm / receipt */}
         {!swapCtrl.isDone ? (
@@ -306,7 +332,7 @@ export default function Page() {
             <button
               className="btn btn-primary btn-md"
               style={{ marginTop: 16, width: "100%" }}
-              disabled={!canQuote || quote.amountOut === undefined || insufficient || amountIn <= 0n}
+              disabled={!canQuote || quote.amountOut === undefined || insufficient || amountIn <= 0n || !feeRecipient}
               onClick={() => setReviewing(true)}
             >
               Review swap
@@ -317,18 +343,25 @@ export default function Page() {
               <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
                 <Row k="You pay" v={`${amount} ${tokenIn?.symbol}`} />
                 <Row
-                  k="You receive (est.)"
-                  v={quote.amountOut !== undefined && tokenOut ? `${fmt(quote.amountOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
+                  k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
+                  v={grossOut !== undefined && netOut !== undefined && tokenOut
+                    ? `${fmt(grossOut - netOut, tokenOut.decimals)} ${tokenOut.symbol}`
+                    : DASH}
+                />
+                <Row
+                  k="You receive (est., after fee)"
+                  v={netOut !== undefined && tokenOut ? `${fmt(netOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                 />
                 <Row
                   k="Minimum received"
-                  v={minOut !== undefined && tokenOut ? `${fmt(minOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
+                  v={netMinOut !== undefined && tokenOut ? `${fmt(netMinOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                 />
                 <Row k="Route" v={`${dex.label} · ${quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} pool`} />
               </div>
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)" }}>
                 You sign this from your own wallet. SparkPoint never holds your keys or funds — the swap
-                output goes straight to your address.
+                output (net of the {formatBpsPercent(ROUTING_FEE_BIPS)} routing fee) goes to your address, and
+                the fee goes on-chain straight to the vault&apos;s fee recipient.
               </div>
               {swapCtrl.error && (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--loss)" }}>{swapCtrl.error}</div>

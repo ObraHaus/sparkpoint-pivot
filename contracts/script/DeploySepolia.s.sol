@@ -32,6 +32,17 @@ contract DeploySepolia is Script {
     uint256 internal constant VAULT_CAP = 1_000_000e6;
     uint16 internal constant DEFAULT_PERFORMANCE_FEE_BPS = 1000; // 10%
 
+    /// @dev CREATE2 salt — a fixed version tag makes every deploy of the SAME bytecode with the SAME
+    ///      constructor args (same deployer + USDC/AAVE_POOL/AUSDC/fee) land at the SAME address, so
+    ///      redeploys DON'T churn addresses. This preserves the vault's immutability + non-custody
+    ///      guarantee (CREATE2 vs CREATE changes only the deploy method, NEVER the runtime bytecode —
+    ///      still the exact 76-test build); it does NOT make any contract upgradeable. Deterministic
+    ///      via Foundry's canonical CREATE2 deployer (0x4e59...4956C, present on Base Sepolia). Bump
+    ///      the tag ONLY to intentionally mint a fresh, distinct set of addresses. The address also
+    ///      depends on the constructor args, so a different Aave market / deployer yields a different
+    ///      address (correct — it is genuinely a different deployment).
+    bytes32 internal constant SALT = keccak256("sparkpoint-core-v1");
+
     function run() external {
         address deployer = msg.sender;
         vm.startBroadcast();
@@ -47,7 +58,8 @@ contract DeploySepolia is Script {
         address[] memory executors = new address[](1);
         executors[0] = deployer;
         uint256 minDelay = vm.envOr("TIMELOCK_MIN_DELAY", uint256(60));
-        TimelockController timelock = new TimelockController(minDelay, proposers, executors, deployer);
+        TimelockController timelock =
+            new TimelockController{ salt: SALT }(minDelay, proposers, executors, deployer);
         console2.log("TimelockController", address(timelock));
         console2.log("  minDelay        ", minDelay);
         return address(timelock);
@@ -55,11 +67,12 @@ contract DeploySepolia is Script {
 
     /// @dev Core: guardian + governance = the Timelock; feeRecipient = deployer (non-privileged holder).
     function _deployCore(address deployer, address timelock) internal {
-        CapRegistry capRegistry = new CapRegistry(timelock, PER_USER_CAP, TOTAL_CAP, VAULT_CAP);
-        KillSwitch killSwitch = new KillSwitch(timelock);
-        AaveV3Adapter adapter = new AaveV3Adapter(IPool(vm.envAddress("AAVE_POOL")));
+        CapRegistry capRegistry =
+            new CapRegistry{ salt: SALT }(timelock, PER_USER_CAP, TOTAL_CAP, VAULT_CAP);
+        KillSwitch killSwitch = new KillSwitch{ salt: SALT }(timelock);
+        AaveV3Adapter adapter = new AaveV3Adapter{ salt: SALT }(IPool(vm.envAddress("AAVE_POOL")));
         address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
-        SparkPointVault vault = new SparkPointVault(
+        SparkPointVault vault = new SparkPointVault{ salt: SALT }(
             IERC20(vm.envAddress("USDC")),
             IPool(vm.envAddress("AAVE_POOL")),
             IERC20(vm.envAddress("AUSDC")),

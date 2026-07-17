@@ -59,6 +59,16 @@ Resolve any findings in the Defender console / via its MCP server before merging
 
 > **Smart-contract gates (planned).** When contracts land, PRs touching `contracts/` should additionally be green on `forge test`, gas snapshots, and Tenderly simulation, and follow the non-custody invariant checks from the constitution (N1–N5). Audited contract addresses are recorded in the release notes when deployed to Base.
 
+### Deterministic contract addresses (CREATE2)
+
+`contracts/script/DeploySepolia.s.sol` deploys the core (`SparkPointVault` + `CapRegistry` + `KillSwitch` + `AaveV3Adapter` + `TimelockController`) via **`CREATE2` with a fixed salt** — `keccak256("sparkpoint-core-v1")`. The deployed address is a pure function of **(deployer, salt, init-code)**, so:
+
+- **Redeploying the same bytecode + constructor args from the same deployer lands at the same address** — no address churn across redeploys, and the address is pre-computable (see `test/DeployDeterminism.t.sol`). This keeps `packages/shared` address books and Coolify env stable through a redeploy.
+- The address **depends on the constructor args**, so a different Aave market / USDC / deployer correctly yields a *different* address (it is a genuinely different deployment).
+- **CREATE2 changes only the deploy *method*, never the runtime bytecode** — the vault stays the exact test-suite build and remains **immutable + non-custodial** (N1/N5). It does **not** make any contract upgradeable; only the ERC-4337 `SparkPointAccount` is UUPS-upgradeable (user-controlled) and was already CREATE2-counterfactual via its factory.
+- Deterministic via Foundry's **canonical CREATE2 factory** (`0x4e59…4956C`, present on Base Sepolia). **Bump the salt tag only to intentionally mint a fresh, distinct set** of addresses (e.g. a clean environment) — never to "upgrade" a live contract.
+- **Shipping a *corrected* contract** (changed bytecode) therefore lands at a **new** address by design; update the shared address books + env and record both addresses in the release notes (see Rollback below).
+
 ## Release procedure (production) — planned
 
 1. `develop` is green and deployed; smoke-check the develop URL.

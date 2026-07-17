@@ -76,6 +76,34 @@ export const swapRouter02Abi = [
     ],
     outputs: [],
   },
+  // §fee — the routing-fee variants (Uniswap PeripheryPaymentsWithFee, feeBips ≤ 100 = 1% cap). They
+  // send (output − fee) to the user and the fee straight to feeRecipient ON-CHAIN, so the app never
+  // custodies the fee. Used with a swap that sends output to ADDRESS_THIS first.
+  {
+    type: "function",
+    name: "unwrapWETH9WithFee",
+    stateMutability: "payable",
+    inputs: [
+      { name: "amountMinimum", type: "uint256" },
+      { name: "recipient", type: "address" },
+      { name: "feeBips", type: "uint256" },
+      { name: "feeRecipient", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "sweepTokenWithFee",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amountMinimum", type: "uint256" },
+      { name: "recipient", type: "address" },
+      { name: "feeBips", type: "uint256" },
+      { name: "feeRecipient", type: "address" },
+    ],
+    outputs: [],
+  },
   {
     type: "function",
     name: "refundETH",

@@ -390,33 +390,32 @@ function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: 
   );
 }
 
-function NetworkMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { networks, network, onSupportedChain, switchToBase } = useNetwork();
+function NetworkMenu({ go, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
+  // §B3 multi-network: offer the real switchable testnet chains (Base Sepolia + Robinhood Testnet)
+  // and switch by chainId. A single switchChain() also adds the chain to the wallet when unknown,
+  // so a user can actually get ONTO Robinhood testnet from here (not just be recognized on it).
+  const { switchableNetworks, chainId, switchToChain } = useNetwork();
   return (
     <>
       <div style={{ padding: "9px 12px 7px", fontSize: 11, color: "var(--muted-foreground)", fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase" }}>
         Network
       </div>
-      {networks.map((n) => {
-        const isBase = n.id === "base";
-        const active = isBase && onSupportedChain;
+      {switchableNetworks.map((n) => {
+        const active = chainId === n.chainId;
         const onClick = () => {
           close();
-          if (!isBase) return toast(`${n.name} support is coming soon`);
-          if (!onSupportedChain) switchToBase();
+          if (!active) switchToChain(n.chainId);
         };
         return (
-          <button key={n.id} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
+          <button key={n.chainId} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
             <span style={{ width: 12, height: 12, borderRadius: "50%", background: n.color, flex: "none" }} />
-            {isBase ? network.name : n.name}
+            {n.name}
             {active ? (
               <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
                 <Icon name="check" size={15} />
               </span>
-            ) : isBase ? (
-              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--caution)" }}>switch</span>
             ) : (
-              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted-foreground)" }}>coming soon</span>
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--caution)" }}>switch</span>
             )}
           </button>
         );
