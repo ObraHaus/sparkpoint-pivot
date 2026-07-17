@@ -365,11 +365,14 @@ function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: 
       .then(() => toast("Address copied"))
       .catch(() => toast("Couldn't copy address"));
   };
-  const viewOnBasescan = () => {
+  const viewOnExplorer = () => {
     close();
     if (!address) return toast("No wallet connected");
     window.open(`${explorerBase}/address/${address}`, "_blank", "noopener,noreferrer");
   };
+  // §B3: the explorer differs by chain (Basescan on Base; Blockscout on Robinhood testnet) — name it
+  // honestly from the active explorer host rather than hardcoding "Basescan".
+  const explorerName = /basescan\./i.test(explorerBase) ? "Basescan" : "explorer";
   const disconnect = async () => {
     close();
     await disconnectWallet();
@@ -380,7 +383,7 @@ function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: 
     <>
       <MenuHeader title={isConnected ? `Connected · ${network.name}` : "Not connected"} sub={wallet} />
       <MenuItem icon="copy" label="Copy address" onClick={copyAddress} />
-      <MenuItem icon="ext" label="View on Basescan" onClick={viewOnBasescan} />
+      <MenuItem icon="ext" label={`View on ${explorerName}`} onClick={viewOnExplorer} />
       <MenuItem icon="shieldcheck" label="View exact permissions" onClick={() => go("trust/permissions")} />
       <MenuItem icon="logout" label="Disconnect" onClick={disconnect} />
     </>
