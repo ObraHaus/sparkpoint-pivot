@@ -44,7 +44,7 @@
 .fbtn:hover{border-color:var(--primary);color:var(--foreground);}
 .fbtn.on{border-color:var(--primary);background:var(--spark-subtle);color:var(--primary);}
 
-.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0;max-width:680px;margin:0 auto;}
 .chips .chip{flex:none;}
 .composer-wrap{padding:8px 24px 16px;}
 .composer{max-width:680px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:10px;}

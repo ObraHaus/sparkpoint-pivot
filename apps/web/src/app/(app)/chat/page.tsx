@@ -85,7 +85,6 @@ function primedThread(): Turn[] {
     },
   ];
 }
-const PRIMED_CHIPS = ["Find steady, lower-risk yield", "Show my portfolio", "How do you keep my funds safe?"];
 
 /** The cold-start greeting (chat.js "New chat" handler). */
 function coldThread(): Turn[] {
@@ -114,7 +113,8 @@ export default function ChatPage() {
   const convRef = useRef<string | undefined>(undefined);
 
   const [turns, setTurns] = useState<Turn[]>(primedThread);
-  const [chips, setChips] = useState<string[]>(PRIMED_CHIPS);
+  // First load shows the same starter suggestions as "New chat" (EMPTY_CHIPS).
+  const [chips, setChips] = useState<string[]>(EMPTY_CHIPS);
   // Persisted per-wallet chat history (B1): the user's real saved threads.
   const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
