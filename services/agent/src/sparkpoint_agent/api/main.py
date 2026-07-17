@@ -126,28 +126,39 @@ async def _index_vault_flows_loop() -> None:
     ``GET /portfolio`` can derive a real cost basis + PnL. Off the request path, fail-open, and
     never on the withdraw/exit path (N2). No-op when the vault/RPC isn't configured.
     """
-    from ..chain.vault_reader import HttpxJsonRpcTransport
     from ..config import AgentConfig
-    from ..data.log_source import VaultFlowIndexer
+    from ..data.log_source import HttpxLogsRpc, VaultFlowIndexer
     from ..db.vault_flows import PgVaultFlowStore
 
     try:
         config = AgentConfig.from_env()
     except Exception:
         return
-    if not (config.vault_address and config.rpc_url):
+    # eth_getLogs range caps differ by provider/tier (Alchemy Free = 10 blocks) — allow a dedicated
+    # getLogs-friendly RPC (e.g. https://sepolia.base.org, 2000-block cap) separate from the
+    # eth_call RPC. Falls back to the main RPC (the adaptive window still copes with a tight cap).
+    log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
+    if not (config.vault_address and log_rpc):
         return
     start_block = 0
     try:
         start_block = int(os.getenv("VAULT_INDEX_FROM_BLOCK", "0") or "0")
     except ValueError:
         start_block = 0
+    kwargs: dict[str, int] = {}
+    try:
+        raw_window = os.getenv("VAULT_INDEX_WINDOW")
+        if raw_window:
+            kwargs["window"] = int(raw_window)
+    except ValueError:
+        pass
     indexer = VaultFlowIndexer(
-        transport=HttpxJsonRpcTransport(config.rpc_url),
+        transport=HttpxLogsRpc(log_rpc),
         store=PgVaultFlowStore(get_database(), config.vault_address),
         vault_address=config.vault_address,
         network_id="base",  # both Base chains map to the 'base' networks mirror id
         start_block=start_block,
+        **kwargs,
     )
     while True:
         try:

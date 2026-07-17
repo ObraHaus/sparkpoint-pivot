@@ -131,3 +131,55 @@ async def test_indexer_noop_when_caught_up() -> None:
     store.cursor = 100
     idx = VaultFlowIndexer(transport=transport, store=store, vault_address="0xV", start_block=0)
     assert await idx.run_once() == 0
+
+
+class _CappedTransport:
+    """Simulates a provider that REJECTS getLogs windows larger than ``cap`` blocks (Alchemy Free
+    returns HTTP 400 → the transport raises). Serves the deposit in whatever window contains it."""
+
+    def __init__(self, head: int, cap: int, deposit_block: int) -> None:
+        self._head = head
+        self._cap = cap
+        self._dep = deposit_block
+        self.windows: list[tuple[int, int]] = []
+        self.rejects = 0
+
+    async def call(self, method: str, params: Any) -> Any:
+        if method == "eth_blockNumber":
+            return hex(self._head)
+        if method == "eth_getLogs":
+            frm = int(params[0]["fromBlock"], 16)
+            to = int(params[0]["toBlock"], 16)
+            if to - frm + 1 > self._cap:
+                self.rejects += 1
+                raise RuntimeError(f"query exceeds max block range {self._cap}")
+            self.windows.append((frm, to))
+            if frm <= self._dep <= to:
+                return [{
+                    "topics": [DEPOSIT_TOPIC0, _topic_addr(SENDER), _topic_addr(OWNER)],
+                    "data": _data(250_000_000, 125_000_000),
+                    "blockNumber": hex(self._dep),
+                    "transactionHash": "0x" + "ab" * 32,
+                    "logIndex": hex(5),
+                }]
+            return []
+        raise AssertionError(method)
+
+
+@pytest.mark.asyncio
+async def test_indexer_shrinks_window_to_provider_cap_and_still_indexes() -> None:
+    # Alchemy Free (10-block cap): the 2000-block window must SHRINK to <=10 (not hard-fail), then
+    # walk the range and still index the deposit + advance the cursor to head.
+    dep = 1000
+    transport = _CappedTransport(head=1030, cap=10, deposit_block=dep)
+    store = _FakeStore()
+    idx = VaultFlowIndexer(
+        transport=transport, store=store, vault_address="0xVault",
+        network_id="base", start_block=dep - 5, window=2000,
+    )
+    written = await idx.run_once()
+    assert written == 1  # the deposit was found despite the tight cap
+    assert transport.rejects >= 1  # it actually hit the cap and shrank
+    assert all(to - frm + 1 <= 10 for frm, to in transport.windows)  # served windows fit the cap
+    assert store.cursor == 1030  # advanced to head
+    assert store.flows[0].owner == OWNER

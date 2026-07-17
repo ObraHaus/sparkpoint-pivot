@@ -2,11 +2,18 @@
 Deposit/Withdraw events, decoded into ``onchain_events`` so ``GET /portfolio`` can derive a REAL
 cost basis + unrealized PnL (no fabricated figures).
 
-Public-RPC reality (probe-verified): ``eth_getLogs`` is capped at ~2000 blocks per call and the
-endpoint throttles bursts, so this walks the range in ≤2000-block windows with pacing + retry, from
-the ``indexer_cursors`` watermark (stream ``vault_flows``). It holds NO key and issues NO
-state-changing call — read-only, non-custody (N2). Idempotent: rows upsert on the
-``(network_id, tx_hash, log_index)`` unique key, so a re-run never double-counts.
+Public-RPC reality (probe-verified, live): ``eth_getLogs`` block ranges are capped PER PROVIDER and
+tier — the paid Alchemy key on the FREE tier allows only a 10-block range, while the public Base
+node (``sepolia.base.org``) allows 2000. So the indexer (a) walks in windows, (b) ADAPTS the window
+down when a provider rejects the range (``query exceeds max block range`` / HTTP 400) and never
+hard-fails, and (c) can be pointed at a getLogs-friendly RPC distinct from the eth_call RPC
+(``VAULT_INDEX_RPC_URL``). It resumes from the ``indexer_cursors`` watermark (``vault_flows``).
+It holds NO key and issues NO state-changing call — read-only, non-custody (N2). Idempotent: rows
+upsert on the ``(network_id, tx_hash, log_index)`` unique key, so a re-run never double-counts.
+
+NOTE: ``eth_getLogs`` returns a JSON ARRAY, so this uses its own raw-result transport
+(:class:`HttpxLogsRpc`) — the vault-reader's ``HttpxJsonRpcTransport`` is eth_call-only (it requires
+a string ``result`` and would reject the array).
 """
 
 from __future__ import annotations
@@ -17,8 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import eth_abi
-
-from ..chain.vault_reader import JsonRpcTransport
+import httpx
 
 # Fixed ERC-4626 event topic0s (keccak of the signature) — hardcoded so this module needs no keccak
 # backend. Deposit(sender indexed, owner indexed, assets, shares); Withdraw(sender indexed, receiver
@@ -27,10 +33,49 @@ DEPOSIT_TOPIC0 = "0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c7
 WITHDRAW_TOPIC0 = "0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db"
 
 _STREAM = "vault_flows"
-_WINDOW = 2000  # eth_getLogs block cap (public RPC)
+_WINDOW = 2000  # default eth_getLogs window (sepolia.base.org's exact cap)
+_MIN_WINDOW = 8  # shrink floor — under Alchemy Free's 10-block cap, so even that tier progresses
 _PACING_S = 0.35  # ~throttle-safe gap between getLogs calls
-_MAX_WINDOWS_PER_RUN = 200  # bound a single catch-up run (200 * 2000 = 400k blocks)
-_RETRY_CODES = {-32016, 429}  # rate-limit-ish JSON-RPC / HTTP codes → backoff + retry
+_MAX_WINDOWS_PER_RUN = 400  # bound a single catch-up run (attempts, incl. shrink retries)
+
+# A browser-ish UA: some public nodes (sepolia.base.org) 403 the default httpx/urllib agent.
+_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari"
+
+
+class LogsRpc(Protocol):
+    """The indexer's JSON-RPC surface — returns the RAW ``result`` (a LIST for eth_getLogs, a hex
+    STRING for eth_blockNumber), unlike the eth_call transport which is string-only."""
+
+    async def call(self, method: str, params: list[Any]) -> Any: ...
+
+
+@dataclass
+class HttpxLogsRpc:
+    """Keyless raw-result JSON-RPC transport for the indexer (eth_getLogs + eth_blockNumber).
+
+    Returns ``body['result']`` untouched (array or string). Raises on any HTTP/RPC error so the
+    indexer's fail-open loop can shrink-and-retry or stop. Sends a browser UA (public nodes 403
+    the default agent).
+    """
+
+    url: str
+    timeout: float = 20.0
+
+    async def call(self, method: str, params: list[Any]) -> Any:
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        async with httpx.AsyncClient(
+            timeout=self.timeout, headers={"User-Agent": _UA}
+        ) as client:
+            response = await client.post(self.url, json=payload)
+        if response.status_code != 200:
+            # Provider range-cap rejections surface here (Alchemy Free → HTTP 400).
+            raise RuntimeError(f"getLogs RPC HTTP {response.status_code}")
+        body: Any = response.json()
+        if not isinstance(body, dict):
+            raise RuntimeError("getLogs RPC returned a non-object body")
+        if body.get("error") is not None:
+            raise RuntimeError(f"getLogs RPC error: {body['error']}")
+        return body.get("result")
 
 
 @dataclass(frozen=True)
@@ -102,11 +147,12 @@ class VaultFlowStore(Protocol):
 class VaultFlowIndexer:
     """Walks eth_getLogs for the vault's Deposit/Withdraw and persists them (idempotent)."""
 
-    transport: JsonRpcTransport
+    transport: LogsRpc
     store: VaultFlowStore
     vault_address: str
     network_id: str = "base"
     start_block: int = 0  # first run floors the cursor here (avoids scanning from genesis)
+    window: int = _WINDOW  # initial getLogs window; shrinks adaptively on provider range caps
 
     async def _rpc(self, method: str, params: list[Any]) -> Any:
         return await self.transport.call(method, params)
@@ -127,11 +173,15 @@ class VaultFlowIndexer:
         return result if isinstance(result, list) else []
 
     async def run_once(self) -> int:
-        """Catch up from the cursor to head in <=2000-block windows (bounded). Returns #written.
+        """Catch up from the cursor to head in bounded windows. Returns #written.
 
-        Fail-open: any RPC error stops the run at the last committed window (the cursor advances
-        only per window), so the next run resumes - never a crash, never a fabricated figure.
-        Non-custody: a stalled indexer just means PnL is momentarily stale.
+        Adaptive: when a provider rejects the window as too large (Alchemy Free caps getLogs at 10
+        blocks → HTTP 400), the window HALVES and the SAME ``frm`` is retried (down to
+        ``_MIN_WINDOW``) instead of hard-failing — so the indexer self-tunes to whatever the
+        configured RPC allows. Fail-open: once at the floor a persistent error stops the run at the
+        last committed window (the cursor advances only per successful window), so the next run
+        resumes — never a crash, never a fabricated figure. Non-custody: a stalled indexer just
+        means PnL is momentarily stale.
         """
         try:
             head = await self._head()
@@ -144,19 +194,23 @@ class VaultFlowIndexer:
         if frm > head:
             return 0
         written = 0
-        windows = 0
-        while frm <= head and windows < _MAX_WINDOWS_PER_RUN:
-            to = min(frm + _WINDOW - 1, head)
+        attempts = 0
+        window = max(_MIN_WINDOW, self.window)
+        while frm <= head and attempts < _MAX_WINDOWS_PER_RUN:
+            attempts += 1
+            to = min(frm + window - 1, head)
             try:
                 logs = await self._get_logs(frm, to)
             except Exception:
-                break  # stop gracefully; the cursor stays at the last good window
+                if window > _MIN_WINDOW:
+                    window = max(_MIN_WINDOW, window // 4)  # too-large range → shrink, retry frm
+                    continue
+                break  # at the floor and still failing → stop; cursor holds the last good block
             flows = [f for f in (decode_flow_log(x) for x in logs) if f is not None]
             if flows:
                 written += await self.store.upsert_flows(self.network_id, flows)
             await self.store.set_cursor(self.network_id, to)
             frm = to + 1
-            windows += 1
             if frm <= head:
                 await asyncio.sleep(_PACING_S)
         return written
