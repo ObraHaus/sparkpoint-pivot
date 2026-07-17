@@ -42,8 +42,38 @@ export function InlineConfirm({ intent }: { intent: InlineIntent }) {
   if (intent.kind === "deposit" || intent.kind === "withdraw") {
     return <InlineVaultConfirm intent={intent} />;
   }
-  // Not-yet-live intents → the shared honest placeholder (no sim, no sign, no success).
+  if (intent.kind === "swap") {
+    // Swaps are LIVE on the dedicated, non-custodial /swap page (Uniswap V3) — route the user
+    // there instead of the "ships at launch" placeholder.
+    return <InlineSwapRedirect />;
+  }
+  // Other not-yet-live intents (bridge | premium) → the shared honest placeholder.
   return <ConfirmFlow intent={intent.kind} mount="inline" />;
+}
+
+/** Swaps run on the dedicated, non-custodial Uniswap V3 `/swap` page — route the user there. */
+function InlineSwapRedirect() {
+  const router = useRouter();
+  return (
+    <div className="ccard cf-card" style={{ padding: 0, overflow: "hidden", maxWidth: 600 }}>
+      <div className="cf-hd">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Swap on the Swap page</div>
+          <Icon name="swap" size={18} />
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
+          Token swaps run on the dedicated <b>Swap</b> page — ETH ↔ USDC on Uniswap V3 (live on Base
+          Sepolia). You review the quote and sign from your own wallet. <b>Sparky can&apos;t move your
+          funds.</b>
+        </div>
+      </div>
+      <div className="cf-sec">
+        <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("swap"))}>
+          Open the Swap page
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Vault deposit/withdraw inline — the REAL gate when ready, an honest notice otherwise. */
