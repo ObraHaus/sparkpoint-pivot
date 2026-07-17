@@ -123,12 +123,13 @@ class CostBasis:
 
 @dataclass(frozen=True)
 class FlowRow:
-    """One indexed Deposit/Withdraw, for the transaction history (newest-first)."""
+    """One indexed Deposit/Withdraw, for the transaction history + value series."""
 
     kind: str  # 'deposit' | 'withdraw'
     assets: int  # USDC base units (6 dp)
     shares: int  # vault shares (6 dp)
     block_number: int
+    log_index: int  # intra-block ordering — the true on-chain execution order within a block
     tx_hash: str  # 0x… hex
 
 
@@ -158,6 +159,7 @@ class VaultFlowReader:
                 assets=int(r["assets"]),
                 shares=int(r["shares"]),
                 block_number=int(r["block_number"]),
+                log_index=int(r["log_index"]),
                 tx_hash="0x" + str(r["tx_hash"]),
             )
             for r in rows

@@ -78,8 +78,13 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const costBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
   const unrealizedPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
   const hasIndexedPnl = costBasisUsd !== undefined || unrealizedPnlUsd !== undefined;
-  // §tx: the indexed Deposit/Withdraw history — trusted only when LIVE + not stale.
-  const txs: PositionTx[] = live && txView && !txView.stale ? txView.txs : [];
+  // §tx: the indexed Deposit/Withdraw history — trusted only when LIVE + not stale. Distinguish a
+  // still-loading / failed fetch from a CONFIRMED-empty history (don't mislabel the former).
+  const txLive = live && !!txView && !txView.stale;
+  const txs: PositionTx[] = txLive ? txView.txs : [];
+  const txLoading = txLive && txView.isLoading;
+  const txError = txLive && txView.isError;
+  const txEmpty = txLive && txView.loaded && !txView.isError && txs.length === 0;
   const dash = (n: number | undefined, f: (x: number) => string) => (n === undefined ? "…" : f(n));
   // A connected value cell: skeleton while loading, real when live, dash otherwise.
   const cell = (n: number | undefined, f: (x: number) => string) =>
@@ -190,16 +195,32 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
               })}
             </tbody>
           </table>
-        ) : live ? (
+        ) : txLoading ? (
+          <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>Loading your transactions…</div>
+        ) : txError ? (
+          <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
+            Couldn&apos;t load your transactions just now.{" "}
+            <a className="cite" style={{ cursor: "pointer" }} onClick={() => txView?.refetch()}>Retry</a>, or verify on{" "}
+            <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
+              BaseScan <Icon name="ext" size={10} />
+            </a>.
+          </div>
+        ) : txEmpty ? (
           <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
             No deposits or withdrawals recorded for this position yet.
           </div>
-        ) : (
+        ) : !isConnected ? (
           <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
             Connect on Base Sepolia to see your indexed transaction history. It&apos;s also verifiable on{" "}
             <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
               BaseScan <Icon name="ext" size={10} />
             </a>.
+          </div>
+        ) : (
+          <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
+            {wrongNetwork ? "Switch to Base Sepolia to see your transaction history."
+              : loading ? "Reading your position…"
+              : "Transaction history is unavailable right now — verifiable on BaseScan."}
           </div>
         )}
       </div>

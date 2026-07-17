@@ -102,7 +102,11 @@ export default function Page() {
   const windowed = fullHistory.filter((p) => p.t >= cutoff);
   const realPoints = windowed.length >= 2 ? windowed : fullHistory;
   const realChart = realPoints.length >= 2;
-  const { line, area, last } = areaPath(realChart ? realPoints.map((p) => p.v) : data.series1M, 560, 150);
+  // Draw the REAL series when indexed; the mock shape ONLY in the disconnected preview. In a
+  // connected-degraded state (loading / wrong-network / error) draw NOTHING — never a faded,
+  // unlabeled mock uptrend that could read as the user's real history.
+  const chartVals = realChart ? realPoints.map((p) => p.v) : preview ? data.series1M : null;
+  const chart = chartVals && chartVals.length >= 2 ? areaPath(chartVals, 560, 150) : null;
 
   // Allocation split — live real, preview mock, degraded 0 (rendered as dashes).
   const mockTotal = data.allocation.reduce((s, x) => s + x.v, 0);
@@ -203,24 +207,33 @@ export default function Page() {
               {loading ? "Reading your balances…" : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
             </div>
           )}
-          <div className="pf-spark-area" style={{ position: "relative" }}>
-            <svg width="100%" height="150" viewBox="0 0 560 150" preserveAspectRatio="none" style={{ opacity: degraded ? 0.35 : 1 }}>
-              <defs>
-                <linearGradient id="pfg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="var(--primary)" stopOpacity=".26" />
-                  <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={area} fill="url(#pfg)" />
-              <path d={line} fill="none" stroke="var(--primary)" strokeWidth="2" />
-              <circle cx={last[0]} cy={last[1]} r="4" fill="var(--primary)" />
-              <circle cx={last[0]} cy={last[1]} r="8" fill="var(--primary)" opacity=".2" />
-            </svg>
+          <div className="pf-spark-area" style={{ position: "relative", minHeight: 150 }}>
+            {chart ? (
+              <svg width="100%" height="150" viewBox="0 0 560 150" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="pfg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="var(--primary)" stopOpacity=".26" />
+                    <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={chart.area} fill="url(#pfg)" />
+                <path d={chart.line} fill="none" stroke="var(--primary)" strokeWidth="2" />
+                <circle cx={chart.last[0]} cy={chart.last[1]} r="4" fill="var(--primary)" />
+                <circle cx={chart.last[0]} cy={chart.last[1]} r="8" fill="var(--primary)" opacity=".2" />
+              </svg>
+            ) : (
+              <div className="muted" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 150, fontSize: 12.5 }}>
+                {live ? "No history yet — it appears after your first deposit."
+                  : loading ? "Reading your history…"
+                  : wrongNetwork ? "Switch to Base Sepolia to see your history."
+                  : "History hidden."}
+              </div>
+            )}
             {realChart ? (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
                 <StatusTag variant="live" title="Real position-value history, derived from your on-chain deposits/withdrawals (indexed). Times are approximate." />
               </span>
-            ) : (live || preview) ? (
+            ) : preview ? (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
                 <Note text="Illustrative history" title="A placeholder shape — your real history appears once deposits/withdrawals are indexed." />
               </span>

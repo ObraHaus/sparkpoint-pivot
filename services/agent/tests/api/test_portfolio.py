@@ -279,9 +279,9 @@ def test_position_detail_lists_indexed_transactions(client: TestClient) -> None:
     # with the exact block + tx hash and an APPROXIMATE age from block height.
     flows = [
         FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
-                tx_hash="0x" + "ab" * 32),
+                log_index=0, tx_hash="0x" + "ab" * 32),
         FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
-                tx_hash="0x" + "cd" * 32),
+                log_index=0, tx_hash="0x" + "cd" * 32),
     ]
     _use(FakePortfolioReader(balance=125_000_000, block=44_251_000), flows=flows)
     body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
@@ -309,11 +309,11 @@ def test_portfolio_value_history_series_from_flows(client: TestClient) -> None:
     # → now (250 held). Values: 100 → 0 → 250 → 250.
     flows = [
         FlowRow(kind="deposit", assets=100_000_000, shares=100_000_000, block_number=44_135_823,
-                tx_hash="0x" + "11" * 32),
+                log_index=0, tx_hash="0x" + "11" * 32),
         FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
-                tx_hash="0x" + "22" * 32),
+                log_index=0, tx_hash="0x" + "22" * 32),
         FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
-                tx_hash="0x" + "33" * 32),
+                log_index=0, tx_hash="0x" + "33" * 32),
     ]
     # pps == 2e18 so convertToAssets(125M shares) == 250M (matches the last deposit's implied pps).
     _use(FakePortfolioReader(balance=125_000_000, pps=2 * _WAD, block=44_251_000), flows=flows)
@@ -321,6 +321,24 @@ def test_portfolio_value_history_series_from_flows(client: TestClient) -> None:
     series = body["pnl"]["series"]
     assert [p["valueUsd"] for p in series] == ["100.00", "0.00", "250.00", "250.00"]
     assert all(p["ts"] for p in series)  # every point carries a (approx) timestamp
+
+
+def test_portfolio_value_history_respects_intra_block_order(client: TestClient) -> None:
+    # Same-block deposit (log_index 2) THEN withdraw (log_index 5), returned in the WRONG order.
+    # The series must still replay in (block, log_index) order: deposit→100, withdraw→0.
+    flows = [
+        FlowRow(kind="withdraw", assets=100_000_000, shares=100_000_000, block_number=500,
+                log_index=5, tx_hash="0x" + "bb" * 32),
+        FlowRow(kind="deposit", assets=100_000_000, shares=100_000_000, block_number=500,
+                log_index=2, tx_hash="0x" + "aa" * 32),
+    ]
+    # balance=1 so the position is still "held" (the series needs position.held).
+    _use(FakePortfolioReader(balance=1, pps=_WAD, block=600), flows=flows)
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    vals = [p["valueUsd"] for p in body["pnl"]["series"]]
+    # deposit first (100), withdraw second (0), then the live now-point (~0).
+    assert vals[0] == "100.00"
+    assert vals[1] == "0.00"
 
 
 def test_portfolio_value_history_empty_when_no_flows(client: TestClient) -> None:

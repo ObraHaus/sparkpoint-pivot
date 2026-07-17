@@ -219,6 +219,9 @@ def _now_iso() -> str:
 
 
 _BASE_BLOCK_SECONDS = 2  # Base (mainnet + Sepolia) ~2s blocks — APPROX event age from height only
+# The value series reconstructs cumulative shares from zero, so it must fetch the WHOLE flow
+# history. One vault position per user ⇒ this bound is effectively "all" (a guard, not a real cap).
+_SERIES_MAX_FLOWS = 10_000
 
 
 def _approx_ts_iso(head_block: int, block: int) -> str:
@@ -252,7 +255,9 @@ def _value_series(flows: list[FlowRow], position: _VaultPosition) -> list[PnlSer
     """
     if not flows:
         return []
-    ordered = sorted(flows, key=lambda f: f.block_number)
+    # Ascending on-chain order — (block, log_index) so same-block flows replay in execution order
+    # (a withdraw never runs before the same-block deposit that funded it).
+    ordered = sorted(flows, key=lambda f: (f.block_number, f.log_index))
     cumulative = 0
     points: list[PnlSeriesPoint] = []
     for f in ordered:
@@ -421,11 +426,17 @@ async def get_portfolio(
 
     # §history value series — real net-worth (position value) over time from the indexed flows.
     # Fail-open ([] on any error / no flows), so a missing index degrades to the honest empty chart.
+    # NB: the series reconstructs cumulative shares FROM ZERO, so it needs the COMPLETE flow history
+    # (a truncated fetch that drops the oldest deposits would silently understate the whole curve) —
+    # hence the high bound (effectively all flows for any real user; one vault position per user).
     value_series: list[PnlSeriesPoint] = []
     if "pnl" in sections and position.held and config.vault_address:
         try:
             hist = await flows.list_flows(
-                _network_id(account.chain_id), config.vault_address, account.account, limit=200
+                _network_id(account.chain_id),
+                config.vault_address,
+                account.account,
+                limit=_SERIES_MAX_FLOWS,
             )
             value_series = _value_series(hist, position)
         except Exception:

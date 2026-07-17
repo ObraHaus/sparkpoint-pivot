@@ -199,11 +199,25 @@ interface PositionEventsResponse {
   onchainEvents?: PositionTx[];
 }
 
+export interface PositionTxView {
+  /** The indexed rows (empty only when the load SUCCEEDED with nothing indexed — see `loaded`). */
+  txs: PositionTx[];
+  stale: boolean;
+  /** The fetch is in flight (distinguish from a confirmed-empty history). */
+  isLoading: boolean;
+  /** The fetch failed (distinguish from a confirmed-empty history). */
+  isError: boolean;
+  /** A response was received (so `txs.length === 0` means genuinely no transactions). */
+  loaded: boolean;
+  refetch: () => void;
+}
+
 /**
  * The vault position's on-chain transaction history (indexed Deposit/Withdraw, newest first). `null`
- * when offline; `[]` when connected but nothing is indexed yet (honest — never fabricated).
+ * when offline. A confirmed-empty history (`loaded && txs.length === 0`) is distinct from a
+ * still-loading or failed fetch — the UI must not label the latter "no transactions".
  */
-export function usePositionTransactions(): { txs: PositionTx[]; stale: boolean } | null {
+export function usePositionTransactions(): PositionTxView | null {
   const { client, online, identity } = useAgentClient();
   const query = useQuery({
     queryKey: ["agent", "position-tx", "vault", identity?.account, identity?.chainId],
@@ -215,9 +229,15 @@ export function usePositionTransactions(): { txs: PositionTx[]; stale: boolean }
   });
   if (!online) return null;
   const d = query.data;
-  if (!d) return null;
-  const txs = Array.isArray(d.onchainEvents) ? d.onchainEvents : [];
-  return { txs, stale: d.stale === true };
+  const txs = Array.isArray(d?.onchainEvents) ? d!.onchainEvents : [];
+  return {
+    txs,
+    stale: d?.stale === true,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    loaded: query.isSuccess && d !== undefined,
+    refetch: () => void query.refetch(),
+  };
 }
 
 /* ── GET /recommendations (§3.4) ───────────────────────────────────────────── */
