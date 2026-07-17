@@ -1,8 +1,16 @@
 # Uptime monitors — SparkPoint develop (Uptime Kuma on spark-mon)
 
-Monitors to create in the Uptime Kuma instance on **spark-mon**. (I could not provision these from
-the build environment — no spark-mon/Kuma credentials or reachability — so this is the exact,
-apply-ready config. Create them in the Kuma UI or via its API with an admin token.)
+> **✅ INSTALLED + LIVE (2026-07-17).** Uptime Kuma is running on **spark-mon** (`192.168.31.175`) —
+> native **Node 20** install (no Docker: unprivileged LXC), a `uptime-kuma` **systemd** service on
+> **:3001**, `--max-old-space-size=320` so it stays well within the 512 MiB LXC (~200 MiB in use).
+> Dashboard: **http://192.168.31.175:3001** (admin `admin`; password in `/home/hello/project/.claude/.env`
+> as `KUMA_ADMIN_PASSWORD` — LAN-only, not internet-exposed). The 512 MiB LXC can't be built on
+> in-place (swap is blocked in an unprivileged container), so Kuma was **built on the workspace at
+> the matching Node 20 ABI and shipped** to `/opt/uptime-kuma`. All **5 monitors below are created
+> and reporting UP**. No monitor targets `/exit` or `/trust` (those must never be treated as health
+> gates). Re-provision (idempotent) with `scratchpad/provision_kuma.py` via `uptime-kuma-api`.
+
+Monitors (created via the Kuma Socket.IO API; the table is the source of truth for the config):
 
 | # | Name | Type | Target | Up when | Interval |
 |---|---|---|---|---|---|
