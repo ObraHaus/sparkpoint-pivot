@@ -23,6 +23,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { usePortfolioView } from "@/lib/agent/useAgent";
 import { StatusTag } from "@/components/ui/status-tag";
+import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors vault/page). */
@@ -381,6 +382,24 @@ export default function Page() {
           )}
         </div>
       </div>
+
+      {/* MetaMask-style wallet holdings: native ETH + every ERC-20 the wallet holds, on ANY network
+          (incl. Robinhood testnet, which has no vault). Non-custodial, read-only. */}
+      {isConnected && v.account && (
+        <WalletTokensCard
+          chainId={chainId}
+          address={v.account}
+          networkName={
+            chainId === 46630
+              ? "Robinhood Testnet"
+              : chainId === 8453
+                ? "Base"
+                : chainId === 84532
+                  ? "Base Sepolia"
+                  : "this network"
+          }
+        />
+      )}
     </div>
   );
 }
