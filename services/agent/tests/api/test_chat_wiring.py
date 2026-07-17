@@ -84,10 +84,25 @@ async def test_chat_portfolio_reads_real_position_and_idle() -> None:
     view = await provider.read(await _chain(reader))
     assert view.stale is False
     assert view.idle_usdc == 50_000_000
-    assert len(view.positions) == 1
+    assert len(view.positions) == 2  # vault position + idle wallet USDC (its own row)
     assert view.positions[0].venue == "SparkPoint Vault"
     assert view.positions[0].value_usd == "250.00"
+    assert view.positions[1].venue == "Wallet (idle)"
+    assert view.positions[1].asset == "USDC"
+    assert view.positions[1].value_usd == "50.00"
     assert view.net_worth_usd == "300.00"  # 250 vault + 50 idle
+
+
+@pytest.mark.asyncio
+async def test_chat_portfolio_idle_only_shows_as_position() -> None:
+    # No vault shares yet, only idle USDC → the card still shows the idle row (never empty).
+    reader = _FakeReader(shares=0, idle=25_000_000)
+    provider = _VaultChatPortfolioProvider(reader, _config())
+    view = await provider.read(await _chain(reader))
+    assert len(view.positions) == 1
+    assert view.positions[0].venue == "Wallet (idle)"
+    assert view.positions[0].value_usd == "25.00"
+    assert view.idle_usdc == 25_000_000
 
 
 @pytest.mark.asyncio
