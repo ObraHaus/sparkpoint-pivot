@@ -274,3 +274,17 @@ def test_published_at_rejects_bad_date(
         headers=_headers(ADMIN_WALLET),
     )
     assert resp.status_code == 400  # validation error — not an ISO date
+
+
+def test_parse_ts_backdating_helper() -> None:
+    from datetime import UTC, datetime
+
+    from sparkpoint_agent.db.content_entries import _parse_ts
+
+    assert _parse_ts(None) is None
+    assert _parse_ts("  ") is None
+    # date-only → midnight UTC (tz-aware, so asyncpg binds it to timestamptz)
+    assert _parse_ts("2026-07-10") == datetime(2026, 7, 10, tzinfo=UTC)
+    got = _parse_ts("2026-07-12T09:30")
+    assert got == datetime(2026, 7, 12, 9, 30, tzinfo=UTC)
+    assert got is not None and got.tzinfo is not None
