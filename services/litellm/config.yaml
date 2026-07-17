@@ -16,18 +16,20 @@
 model_list:
   - model_name: sparkpoint-chat
     litellm_params:
-      # operator's primary — mirrors OPENROUTER_MODEL (google/gemma-4-31b-it:free). Not a secret.
-      model: openrouter/google/gemma-4-31b-it:free
+      # primary (operator-approved 2026-07-17): 120B MoE w/ ~12B active — probed live at ~2s/turn
+      # with clean JSON intent output while gemma-4-31b:free 429'd on every attempt. weight biases
+      # simple-shuffle 4:1 toward this deployment; the 26b fallback absorbs cooldowns.
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
-      rpm: 60
+      weight: 4
   - model_name: sparkpoint-chat
     litellm_params:
       # verified-available free fallback (probed live) so the alias serves when the primary 429s.
       model: openrouter/google/gemma-4-26b-a4b-it:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
-      rpm: 60
+      weight: 1
 
 litellm_settings:
   drop_params: true          # tolerate provider-specific param differences
