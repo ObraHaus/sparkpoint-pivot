@@ -64,12 +64,14 @@ class FakePortfolioReader:
         asset_address: str = USDC,
         block: int = 1_234_567,
         idle: int = 0,
+        native: int = 0,
     ) -> None:
         self._balance = balance
         self._pps = pps
         self._asset = asset_address
         self._block = block
         self._idle = idle
+        self._native = native
 
     async def balance_of(self, owner: str) -> int:
         return self._balance
@@ -82,6 +84,9 @@ class FakePortfolioReader:
 
     async def token_balance_of(self, token: str, owner: str) -> int:
         return self._idle
+
+    async def native_balance(self, owner: str) -> int:
+        return self._native
 
     async def block_number(self) -> int:
         return self._block
@@ -175,6 +180,16 @@ def test_portfolio_surfaces_idle_cash_and_includes_it_in_net_worth(client: TestC
     assert body["idleUsdc"] == "50.00"
     assert body["netWorthUsd"] == "150.25"  # vault value + idle cash
     assert body["positions"][0]["valueUsd"] == "100.25"  # the position itself is vault-only
+
+
+def test_portfolio_surfaces_native_balance_not_in_usd(client: TestClient) -> None:
+    # §B3: native coin balance (wei) surfaces as a raw string, and is NOT folded into netWorthUsd
+    # (no oracle) — vault value + idle USDC only.
+    _use(FakePortfolioReader(balance=100_250_000, native=15_046_150_000_000_000, block=42))
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    assert body["nativeBalanceWei"] == "15046150000000000"
+    assert body["nativeSymbol"] == "ETH"
+    assert body["netWorthUsd"] == "100.25"  # native ETH is NOT valued into net worth
 
 
 def test_portfolio_empty_when_no_shares_still_reports_idle(client: TestClient) -> None:

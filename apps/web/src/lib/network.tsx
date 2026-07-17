@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
-import { base, baseSepolia } from "wagmi/chains";
+import { base, baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import type { Network, NetworkId } from "@/lib/mock-data";
 
 /**
@@ -13,10 +13,13 @@ import type { Network, NetworkId } from "@/lib/mock-data";
  * actions. Sui is shown as a documented fast-follow (NOT "live") — the earlier mock marked it live.
  */
 
-const SUPPORTED = new Set<number>([base.id, baseSepolia.id]);
+// §B3: Robinhood testnet (46630) is a supported network for chat + read-only portfolio (the vault
+// stays Base-only — the vault pages still show their own "not on this network" state off Base).
+const SUPPORTED = new Set<number>([base.id, baseSepolia.id, robinhoodTestnet.id]);
 const EXPLORER: Record<number, string> = {
   [base.id]: "https://basescan.org",
   [baseSepolia.id]: "https://sepolia.basescan.org",
+  [robinhoodTestnet.id]: "https://explorer.testnet.chain.robinhood.com",
 };
 /** The chain the develop vault lives on — where an off-network wallet is prompted to switch. */
 const PREFERRED_CHAIN = baseSepolia;
@@ -32,6 +35,7 @@ const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "Not co
 function chainName(chainId?: number): string {
   if (chainId === base.id) return "Base";
   if (chainId === baseSepolia.id) return "Base Sepolia";
+  if (chainId === robinhoodTestnet.id) return "Robinhood Testnet";
   return "Unsupported network";
 }
 

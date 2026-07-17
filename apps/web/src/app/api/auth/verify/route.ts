@@ -20,7 +20,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createPublicClient, http, isAddress, type Hex } from "viem";
-import { base, baseSepolia } from "viem/chains";
+import { base, baseSepolia, robinhoodTestnet } from "viem/chains";
 import { parseSiweMessage, verifySiweMessage } from "viem/siwe";
 import { fetchAllowlistStatus } from "@/lib/auth/agent-status";
 import {
@@ -37,7 +37,15 @@ export const dynamic = "force-dynamic";
 const RPC_URL: Record<number, string | undefined> = {
   [base.id]: process.env.BASE_RPC_URL ?? process.env.NEXT_PUBLIC_BASE_RPC_URL,
   [baseSepolia.id]: process.env.BASE_SEPOLIA_RPC_URL ?? process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
+  [robinhoodTestnet.id]: undefined, // §B3 — viem default RPC (rpc.testnet.chain.robinhood.com)
 };
+
+/** §B3 — the viem chain object per accepted chainId (used to build the verify client). */
+const CHAIN_BY_ID = {
+  [base.id]: base,
+  [baseSepolia.id]: baseSepolia,
+  [robinhoodTestnet.id]: robinhoodTestnet,
+} as const;
 
 /** Domain(s) this deployment will accept in a SIWE message — from a TRUSTED server env, never the
  * message body. Falls back to the proxy-set request host if unset (still not the message body). */
@@ -48,10 +56,19 @@ function allowedDomains(req: Request): string[] {
   return host ? [host] : [];
 }
 
-/** Chain(s) this deployment accepts. Pin with `SIWE_CHAIN_ID` (e.g. 84532 on develop); else both Base. */
+/**
+ * Chain(s) this deployment accepts (§B3 — a SET, operator-approved chainId-in-set). Pin with a
+ * comma-separated `SIWE_CHAIN_ID` (e.g. "84532,46630" on develop); a single value still works. When
+ * unset, all supported nets are accepted: Base, Base Sepolia, Robinhood testnet.
+ * ⚠️ If `SIWE_CHAIN_ID` is pinned to a single chain, login on the OTHERS is refused — set the full
+ * set (or unset) to enable multi-network SIWE.
+ */
 function allowedChainIds(): number[] {
-  const pinned = Number(process.env.SIWE_CHAIN_ID);
-  return Number.isInteger(pinned) && pinned > 0 ? [pinned] : [base.id, baseSepolia.id];
+  const pinned = (process.env.SIWE_CHAIN_ID ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return pinned.length ? pinned : [base.id, baseSepolia.id, robinhoodTestnet.id];
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -94,7 +111,10 @@ export async function POST(req: Request): Promise<NextResponse> {
   // Require an expiration (viem's verify checks it against `time`; we also require it be present).
   if (!parsed.expirationTime) return bad("expiration_required");
 
-  const chain = chainId === base.id ? base : baseSepolia;
+  // §B3 — resolve the real viem chain for the message's chainId (allowlisted just above), so the
+  // EIP-1271 verify client uses the correct network (EOA recovery is chain-agnostic; this keeps
+  // smart-wallet verification correct on every supported chain).
+  const chain = CHAIN_BY_ID[chainId as keyof typeof CHAIN_BY_ID] ?? baseSepolia;
   const client = createPublicClient({ chain, transport: http(RPC_URL[chainId]) });
 
   let valid = false;

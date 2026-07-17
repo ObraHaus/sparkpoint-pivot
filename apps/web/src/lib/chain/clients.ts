@@ -18,7 +18,7 @@
  */
 
 import { createPublicClient, http, type Chain, type PublicClient } from "viem";
-import { base, baseSepolia, foundry } from "viem/chains";
+import { base, baseSepolia, foundry, robinhoodTestnet } from "viem/chains";
 import { CHAIN_ID, SUPPORTED_CHAIN_IDS, type ChainId } from "@sparkpoint/shared/policy";
 
 /** Per-chain viem chain definition + the env var supplying its RPC url (public fallback). */
@@ -28,6 +28,11 @@ const CHAIN_CONFIG: Record<ChainId, { readonly chain: Chain; readonly rpcUrl: st
   // localFork (Anvil fork of Base mainnet). `foundry` (31337) defaults to
   // http://127.0.0.1:8545 when NEXT_PUBLIC_LOCAL_FORK_RPC_URL is unset.
   [CHAIN_ID.localFork]: { chain: foundry, rpcUrl: process.env.NEXT_PUBLIC_LOCAL_FORK_RPC_URL },
+  // §B3 Robinhood testnet (46630) — read-only display client; viem's default RPC when env unset.
+  [CHAIN_ID.robinhoodTestnet]: {
+    chain: robinhoodTestnet,
+    rpcUrl: process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL,
+  },
 };
 
 /** One client per chainId — a PublicClient is a thin, reusable read handle. */

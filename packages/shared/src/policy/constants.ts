@@ -37,6 +37,12 @@ export const CHAIN_ID = {
   baseSepolia: 84532,
   /** Local Anvil fork of Base mainnet — reuses the Base-mainnet targets. */
   localFork: 31337,
+  /**
+   * Robinhood Chain Testnet (§B3). The SparkPoint vault stays BASE-ONLY — 46630 is supported for
+   * chat + read-only portfolio, but its allowlist is EMPTY, so every vault/swap action fails closed
+   * (we NEVER point the adapter at the unofficial Robinhood "stock market" pilot pool).
+   */
+  robinhoodTestnet: 46630,
 } as const;
 export type ChainId = (typeof CHAIN_ID)[keyof typeof CHAIN_ID];
 
@@ -354,11 +360,20 @@ const BASE_SEPOLIA_ALLOWLIST: readonly AllowlistEntry[] = [
   },
 ];
 
+/**
+ * §B3 — Robinhood testnet (46630): EMPTY allowlist by design. The vault is Base-only and the only
+ * Aave-like venue here is an unofficial, resettable "stock market" pilot we must NEVER target. An
+ * empty allowlist makes every action fail allowlisting (fail-closed), so a BUILD_ACTION on 46630
+ * correctly refuses with "not supported on this network".
+ */
+const ROBINHOOD_TESTNET_ALLOWLIST: readonly AllowlistEntry[] = [];
+
 /** Raw (unfiltered) allowlist table per chain — includes `undeployed` placeholders. */
 const ALLOWLIST_BY_CHAIN: Readonly<Record<number, readonly AllowlistEntry[]>> = {
   [CHAIN_ID.base]: BASE_MAINNET_ALLOWLIST,
   [CHAIN_ID.baseSepolia]: BASE_SEPOLIA_ALLOWLIST,
   [CHAIN_ID.localFork]: BASE_MAINNET_ALLOWLIST, // Anvil fork of Base mainnet (R14)
+  [CHAIN_ID.robinhoodTestnet]: ROBINHOOD_TESTNET_ALLOWLIST, // §B3 vault Base-only ⇒ empty (fail-closed)
 };
 
 /* ────────────────────────────────────────────────────────────────────────────

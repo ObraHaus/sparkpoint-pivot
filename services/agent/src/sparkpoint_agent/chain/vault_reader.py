@@ -410,6 +410,21 @@ class VaultReader:
         isn't in the vault. Fail-closed (``VaultUnavailable``) like every other read."""
         return int(await self._read_at(token, "balanceOf", [_normalize_address(owner)]))
 
+    async def native_balance(self, owner: str) -> int:
+        """eth_getBalance(owner) → the owner's NATIVE coin balance in wei (ETH on Base / Robinhood
+        testnet). Powers the wallet's native holding on chains without a vault. Fail-closed
+        (``VaultUnavailable``) like every other read — never a fabricated balance."""
+        result = await self._transport.call(
+            "eth_getBalance", [_normalize_address(owner), "latest"]
+        )
+        try:
+            return int(result, 16)
+        except (ValueError, TypeError) as exc:
+            raise VaultUnavailable(
+                VaultUnavailableReason.RPC_UNREACHABLE,
+                f"eth_getBalance returned a non-hex quantity: {result!r}",
+            ) from exc
+
     # ── Chain head ──
 
     async def block_number(self) -> int:

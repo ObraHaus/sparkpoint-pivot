@@ -93,6 +93,36 @@ def test_missing_rpc_getter_fails_closed() -> None:
         cfg.require_rpc_url()
 
 
+# ── §B3 Robinhood testnet (46630) multi-network ────────────────────────────────
+
+
+def test_robinhood_chain_supported_with_keyless_public_rpc_default() -> None:
+    # 46630 is a supported chain; with no RPC env it falls back to the keyless public RH RPC.
+    cfg = AgentConfig.from_env({"CHAIN_ID": "46630"})
+    assert cfg.chain_id == 46630
+    assert cfg.rpc_url == "https://rpc.testnet.chain.robinhood.com"
+
+
+def test_robinhood_rpc_env_override_wins() -> None:
+    cfg = AgentConfig.from_env({"CHAIN_ID": "46630", "ROBINHOOD_RPC_URL": _OVERRIDE})
+    assert cfg.require_rpc_url() == _OVERRIDE
+
+
+def test_for_chain_drops_vault_off_home_chain_but_resolves_rpc() -> None:
+    # Agent configured for Base Sepolia (vault + RPC). A 46630-scoped read keeps NO vault
+    # (Base-only ⇒ fail-closed there) but DOES resolve the 46630 RPC.
+    cfg = AgentConfig.from_env(
+        {"CHAIN_ID": "84532", "BASE_SEPOLIA_RPC_URL": _SEPOLIA, "SPARKPOINT_VAULT_ADDRESS": _VAULT}
+    )
+    assert cfg.vault_address is not None
+    rh = cfg.for_chain(46630)
+    assert rh.chain_id == 46630
+    assert rh.vault_address is None  # vault is Base-only ⇒ not deployed on 46630
+    assert rh.rpc_url == "https://rpc.testnet.chain.robinhood.com"
+    # Scoping to the SAME chain returns the config unchanged (vault retained).
+    assert cfg.for_chain(84532) is cfg
+
+
 def test_missing_database_url_getter_fails_closed() -> None:
     cfg = AgentConfig.from_env({"SIM_FORK_RPC_URL": _SIM})
     assert cfg.database_url is None

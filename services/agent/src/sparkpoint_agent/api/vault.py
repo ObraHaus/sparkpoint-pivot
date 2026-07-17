@@ -195,15 +195,22 @@ def get_account(request: Request) -> AccountContext:
     return account
 
 
-def get_vault_reader() -> VaultReader:
-    """Build the fail-closed chain-read client from the process config (T030).
+def get_vault_reader(request: Request) -> VaultReader:
+    """Build the fail-closed chain-read client, SCOPED to the request's chain (T030 · §B3).
 
-    Construction raises :class:`VaultUnavailable` (RPC_UNREACHABLE) when no RPC is
-    configured; each read raises :class:`VaultUnavailable` (NOT_DEPLOYED) when the vault
-    address is unset — both mapped to the §1.5 envelope by :func:`vault_unavailable_handler`.
-    Overridden in tests with a mocked reader.
+    The reader targets the chain the caller asserted via ``X-Chain-Id``: the RPC is resolved for
+    that chain, and the vault address is carried ONLY on the agent's configured vault chain. So a
+    request on any OTHER supported chain (e.g. Robinhood 46630, where the vault is Base-only) reads
+    the correct RPC yet fails closed with NOT_DEPLOYED on vault views — never a cross-chain vault
+    read. Construction raises :class:`VaultUnavailable` (RPC_UNREACHABLE) when no RPC is configured;
+    each vault read raises NOT_DEPLOYED when the vault address is unset — both mapped to the §1.5
+    envelope by :func:`vault_unavailable_handler`. Overridden in tests with a mocked reader.
     """
-    return VaultReader.from_config(AgentConfig.from_env())
+    config = AgentConfig.from_env()
+    account = getattr(request.state, "account", None)
+    if isinstance(account, AccountContext):
+        config = config.for_chain(account.chain_id)
+    return VaultReader.from_config(config)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

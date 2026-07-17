@@ -13,10 +13,11 @@
 
 import type { Hex } from "viem";
 
-/** BaseScan roots per chain id (Base mainnet 8453 · Base Sepolia 84532). */
+/** Explorer roots per chain id (Base mainnet 8453 · Base Sepolia 84532 · Robinhood testnet 46630). */
 const EXPLORER_ROOT: Record<number, string> = {
   8453: "https://basescan.org",
   84532: "https://sepolia.basescan.org",
+  46630: "https://explorer.testnet.chain.robinhood.com", // §B3 Blockscout (uses /tx/{hash})
   // 31337 (local Anvil fork) has no public explorer → undefined (no link rendered).
 };
 

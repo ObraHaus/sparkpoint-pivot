@@ -146,6 +146,12 @@ class PortfolioResponse(BaseModel):
     stale: bool
     netWorthUsd: str
     idleUsdc: str  # spare wallet USDC available to deposit ("idle cash" line), $1 par
+    # §B3 — the wallet's NATIVE coin balance on the request chain (wei, string for uint precision).
+    # Read independently of the vault so it surfaces even where the vault isn't deployed (e.g.
+    # Robinhood 46630). NOT USD-valued (no oracle wired) → never folded into netWorthUsd. null on a
+    # native-read outage (honest, never fabricated).
+    nativeBalanceWei: str | None = None
+    nativeSymbol: str = "ETH"
     positions: list[PositionDetail]
     allocation: Allocation | None = None
     pnl: Pnl | None = None
@@ -323,6 +329,17 @@ async def get_portfolio(
     sections = _parse_include(include)
     position = await _read_vault_position(reader, account)
 
+    # §B3 native coin balance — read via the request-chain RPC, INDEPENDENT of the vault so it
+    # surfaces even where the vault isn't deployed (e.g. Robinhood 46630, vault is Base-only).
+    # Fail-open → null (honest, never fabricated). Not USD-valued (no oracle) → never in netWorth.
+    native_wei: str | None = None
+    try:
+        native_wei = str(await reader.native_balance(account.account))
+    except Exception:
+        # Best-effort wallet display — a native-balance outage must NEVER break the portfolio
+        # (non-custody). Fail-open to null, exactly like the cost-basis read below.
+        native_wei = None
+
     # Cost basis from the indexed flows — fail-open (a missing/unindexed value → null PnL, honest).
     basis: CostBasis | None = None
     if not position.stale and config.vault_address:
@@ -350,6 +367,7 @@ async def get_portfolio(
         stale=position.stale,
         netWorthUsd=net_worth,
         idleUsdc=idle_usdc,
+        nativeBalanceWei=native_wei,
         positions=positions,
         allocation=_allocation(position) if "allocation" in sections else None,
         pnl=(

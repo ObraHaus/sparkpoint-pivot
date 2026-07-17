@@ -60,7 +60,7 @@ export default function Page() {
   const router = useRouter();
   const [range, setRange] = useState("1M");
 
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
   // Native ETH on the connected chain (useBalance defaults to the wallet's chain; disabled off-wallet).
   const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
@@ -72,6 +72,9 @@ export default function Page() {
   // wrong-network / error) is DEGRADED → dashes + skeletons, never the mock figures. Only the
   // disconnected PREVIEW shows illustrative mock (labelled on every card).
   const wrongNetwork = isConnected && v.unavailable?.kind === "vault_not_deployed";
+  // §B3: Robinhood testnet (46630) is a SUPPORTED chain with no vault (vault is Base-only). It's a
+  // "wrong network" for the VAULT, but we acknowledge it honestly and still show the wallet's ETH.
+  const robinhood = wrongNetwork && chainId === 46630;
   const loading = isConnected && !wrongNetwork && (v.isLoading || (eth.isLoading && !!v.account));
   const error = isConnected && !wrongNetwork && !loading && v.isError;
   const live = isConnected && v.isDeployed && !loading && !error && !wrongNetwork;
@@ -131,7 +134,11 @@ export default function Page() {
       {wrongNetwork && (
         <div className="infobanner" style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)", marginBottom: 14 }}>
           <Icon name="info" size={16} />
-          <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
+          {robinhood ? (
+            <span>You’re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to <b>Base Sepolia</b> for your vault position.{eth.data?.value !== undefined && ` Your Robinhood ETH balance: ${d.ethBalance.toFixed(4)} ETH.`} Your vault funds on Base are always withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
+          ) : (
+            <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
+          )}
         </div>
       )}
       {error && (

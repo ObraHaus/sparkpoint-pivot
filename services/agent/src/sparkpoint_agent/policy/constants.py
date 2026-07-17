@@ -38,8 +38,12 @@ CHAIN_ID: dict[str, int] = {
     "base": 8453,
     "base_sepolia": 84532,
     "local_fork": 31337,
+    # Robinhood Chain Testnet (§B3). The SparkPoint vault stays BASE-ONLY — 46630 is
+    # supported for chat + read-only portfolio, but its allowlist is EMPTY so every vault/
+    # swap action fails closed (we NEVER point the adapter at the unofficial Robinhood pilot).
+    "robinhood_testnet": 46630,
 }
-SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 31337)
+SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 31337, 46630)
 
 # A symbolic reference to an on-chain target, resolved via the address book.
 TargetRef = Literal[
@@ -324,11 +328,18 @@ _BASE_SEPOLIA_ALLOWLIST: tuple[AllowlistEntry, ...] = (
     ),
 )
 
+# §B3 — Robinhood testnet (46630): EMPTY allowlist by design. The vault is Base-only and the only
+# on-chain Aave-like venue here is an unofficial, resettable "stock market" pilot we must NEVER
+# target. An empty allowlist makes every (target, selector) action fail allowlisting (fail-closed),
+# so BUILD_ACTION on 46630 correctly refuses with "not supported on this network".
+_ROBINHOOD_TESTNET_ALLOWLIST: tuple[AllowlistEntry, ...] = ()
+
 # Raw (unfiltered) allowlist per chain — includes ``undeployed`` placeholders.
 _ALLOWLIST_BY_CHAIN: dict[int, tuple[AllowlistEntry, ...]] = {
     8453: _BASE_MAINNET_ALLOWLIST,
     84532: _BASE_SEPOLIA_ALLOWLIST,
     31337: _BASE_MAINNET_ALLOWLIST,  # Anvil fork of Base mainnet (R14)
+    46630: _ROBINHOOD_TESTNET_ALLOWLIST,  # §B3 vault Base-only ⇒ empty (fail-closed)
 }
 
 
@@ -385,10 +396,24 @@ _LOCAL_FORK_ADDRESSES = AddressBook(
     vault=None,
 )
 
+# §B3 — Robinhood testnet (46630): NO official Aave/USDC/WETH deployment; the vault is Base-only.
+# The token/pool fields are the zero address (a non-target) — they are NEVER used because the 46630
+# allowlist is empty (every action fails closed) and no action target resolves through them. Present
+# only so ``get_addresses(46630)`` honors the same supported-chain contract as get_policy_constants.
+_ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+_ROBINHOOD_TESTNET_ADDRESSES = AddressBook(
+    chain_id=46630,
+    aave_pool=_ZERO_ADDRESS,
+    usdc=_ZERO_ADDRESS,
+    weth=_ZERO_ADDRESS,
+    vault=None,  # vault is Base-only (fail-closed everywhere off Base)
+)
+
 _ADDRESSES_BY_CHAIN: dict[int, AddressBook] = {
     8453: _BASE_ADDRESSES,
     84532: _BASE_SEPOLIA_ADDRESSES,
     31337: _LOCAL_FORK_ADDRESSES,
+    46630: _ROBINHOOD_TESTNET_ADDRESSES,  # §B3 — no real targets (empty allowlist)
 }
 
 # TargetRef → AddressBook field. A new TargetRef without a mapping here raises at

@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .policy import SUPPORTED_CHAIN_IDS
 
@@ -39,6 +39,12 @@ VAULT_ADDRESS_ENV = "SPARKPOINT_VAULT_ADDRESS"
 RPC_URL_ENV = "SPARKPOINT_RPC_URL"  # explicit override; wins over the chain-specific vars
 SIM_FORK_RPC_URL_ENV = "SIM_FORK_RPC_URL"
 BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
+ROBINHOOD_RPC_URL_ENV = "ROBINHOOD_RPC_URL"  # §B3 Robinhood testnet (46630); keyless public default
+
+# §B3 — the keyless public Robinhood testnet RPC, used when ROBINHOOD_RPC_URL is unset. The chain
+# has no official Aave/USDC (vault stays Base-only); powers read-only chat + wallet balance only.
+ROBINHOOD_TESTNET_CHAIN_ID = 46630
+_ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
 
 # Default to Base mainnet (8453) — the chainId the live SIM_FORK_RPC_URL reports.
 DEFAULT_CHAIN_ID = 8453
@@ -52,6 +58,7 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         RPC_URL_ENV,
         SIM_FORK_RPC_URL_ENV,
         BASE_SEPOLIA_RPC_URL_ENV,
+        ROBINHOOD_RPC_URL_ENV,
     }
 )
 
@@ -112,6 +119,9 @@ def _resolve_rpc_url(source: Mapping[str, str], chain_id: int) -> str | None:
 
     Returns ``None`` when nothing is configured (the getter fails closed on use).
     """
+    if chain_id == ROBINHOOD_TESTNET_CHAIN_ID:  # §B3 Robinhood testnet (46630)
+        # Explicit override wins; else the keyless public RPC (this chain needs no key).
+        return source.get(RPC_URL_ENV) or source.get(ROBINHOOD_RPC_URL_ENV) or _ROBINHOOD_PUBLIC_RPC
     if chain_id == 84532:  # Base Sepolia
         order = (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV, SIM_FORK_RPC_URL_ENV)
     else:  # 8453 (Base mainnet) · 31337 (Anvil fork of Base mainnet) → the sim fork
@@ -196,4 +206,22 @@ class AgentConfig:
             rpc_url=_resolve_rpc_url(source, chain_id),
             vault_address=vault_address,
             database_url=source.get(DATABASE_URL_ENV) or None,
+        )
+
+    def for_chain(self, chain_id: int) -> AgentConfig:
+        """A read-config scoped to ``chain_id`` (§B3 multi-network reads).
+
+        The RPC is resolved for the TARGET chain; the vault address is carried ONLY when the
+        target is this agent's configured vault chain. On every OTHER supported chain (e.g.
+        Robinhood 46630) the vault is not deployed here, so ``vault_address`` is ``None`` and vault
+        reads fail closed (NOT_DEPLOYED) — the portfolio degrades honestly rather than reading a
+        Base vault for a non-Base request. The DB DSN is unchanged (shared across chains).
+        """
+        if chain_id == self.chain_id:
+            return self
+        return replace(
+            self,
+            chain_id=chain_id,
+            rpc_url=_resolve_rpc_url(os.environ, chain_id),
+            vault_address=None,
         )
