@@ -52,6 +52,11 @@ export interface SwapExec {
   readonly toNative: boolean;
   /** true ⇒ an ERC-20 `approve(router, amountIn)` leg is needed (token-in that isn't native). */
   readonly needsApprove: boolean;
+  /** §fee — SparkPoint routing fee in bips (≤100=1% cap), taken IN the swap and paid straight to
+   * ``feeRecipient`` on-chain (the app never custodies it). The user receives output − fee. */
+  readonly feeBips: number;
+  /** The routing-fee recipient (the vault's ``feeRecipient()``, read live). */
+  readonly feeRecipient: Address;
   readonly onDone?: () => void;
 }
 
@@ -76,36 +81,42 @@ function shortError(err: unknown): string {
   return msg.length > 140 ? `${msg.slice(0, 137)}…` : msg;
 }
 
-/** Encode the router calls for a swap direction (fed into `multicall(deadline, data)`). */
+/**
+ * Encode the router calls for a swap direction (fed into `multicall(deadline, data)`).
+ *
+ * §fee: the swap sends its output to the router (ADDRESS_THIS), then the fee-bearing payment leg
+ * (`unwrapWETH9WithFee` for native-ETH out, `sweepTokenWithFee` for ERC-20 out) forwards
+ * (output − routing fee) to the user and the fee straight to ``feeRecipient`` on-chain. The payment
+ * leg's ``amountMinimum`` enforces the slippage floor on the GROSS output (checked before the split).
+ */
 function swapCalls(e: SwapExec): Hex[] {
-  const base = {
-    tokenIn: e.tokenIn,
-    tokenOut: e.tokenOut,
-    fee: e.fee,
-    amountIn: e.amountIn,
-    sqrtPriceLimitX96: 0n,
-  } as const;
-  if (e.toNative) {
-    // Output stays in the router (ADDRESS_THIS), then unwrapWETH9 enforces the min + sends ETH.
-    const swap = encodeFunctionData({
-      abi: swapRouter02Abi,
-      functionName: "exactInputSingle",
-      args: [{ ...base, recipient: ADDRESS_THIS, amountOutMinimum: 0n }],
-    });
-    const unwrap = encodeFunctionData({
-      abi: swapRouter02Abi,
-      functionName: "unwrapWETH9",
-      args: [e.amountOutMinimum, e.account],
-    });
-    return [swap, unwrap];
-  }
-  // ETH-in or plain ERC-20 out → the swap sends the output straight to the user with the min floor.
   const swap = encodeFunctionData({
     abi: swapRouter02Abi,
     functionName: "exactInputSingle",
-    args: [{ ...base, recipient: e.account, amountOutMinimum: e.amountOutMinimum }],
+    args: [
+      {
+        tokenIn: e.tokenIn,
+        tokenOut: e.tokenOut,
+        fee: e.fee,
+        recipient: ADDRESS_THIS, // output stays in the router so the fee leg can split it
+        amountIn: e.amountIn,
+        amountOutMinimum: 0n, // the fee leg below enforces the real min (on the gross output)
+        sqrtPriceLimitX96: 0n,
+      },
+    ],
   });
-  return [swap];
+  const payLeg = e.toNative
+    ? encodeFunctionData({
+        abi: swapRouter02Abi,
+        functionName: "unwrapWETH9WithFee",
+        args: [e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient],
+      })
+    : encodeFunctionData({
+        abi: swapRouter02Abi,
+        functionName: "sweepTokenWithFee",
+        args: [e.tokenOut, e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient],
+      });
+  return [swap, payLeg];
 }
 
 export function useExecuteSwapTx(exec: SwapExec | undefined): SwapExecController {

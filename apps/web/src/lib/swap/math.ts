@@ -12,6 +12,17 @@ export const SLIPPAGE_PRESETS_BPS = [50, 100, 300] as const;
 /** A price impact at/above this (bps) gets a prominent warning (the Sepolia pool is thin). */
 export const HIGH_IMPACT_BPS = 300;
 
+/** The SparkPoint routing fee (bips) taken INSIDE a swap — matches the /fees page (0.20%). The
+ * Uniswap fee helpers cap feeBips at 100 (1%); 20 is well under. Paid to the vault's feeRecipient. */
+export const ROUTING_FEE_BIPS = 20;
+
+/** The amount the user actually receives AFTER the routing fee = amount × (10000 − feeBips)/10000,
+ * floored (exact integer math). Mirrors the on-chain sweep/unwrap-with-fee split. */
+export function afterFee(amount: bigint, feeBips: number): bigint {
+  const bps = BigInt(Math.max(0, Math.min(100, Math.round(feeBips))));
+  return (amount * (10_000n - bps)) / 10_000n;
+}
+
 /**
  * The minimum output to accept = `amountOut × (1 − slippageBps/10000)`, floored (integer, never a
  * float). `slippageBps` is clamped to [0, 10000]. This is the ONLY value protecting the user from
