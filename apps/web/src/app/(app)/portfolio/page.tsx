@@ -148,8 +148,10 @@ export default function Page() {
       </div>
 
       {wrongNetwork && (
-        <div className="infobanner" style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)", marginBottom: 14 }}>
-          <Icon name="info" size={16} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, padding: "11px 14px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-foreground)", background: "var(--caution-subtle)", border: "1px solid color-mix(in srgb,var(--caution) 26%,transparent)" }}>
+          <span style={{ color: "var(--caution)", flex: "none", marginTop: 1 }}>
+            <Icon name="info" size={16} />
+          </span>
           {robinhood ? (
             <span>You’re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to <b>Base Sepolia</b> for your vault position.{eth.data?.value !== undefined && ` Your Robinhood ETH balance: ${d.ethBalance.toFixed(4)} ETH.`} Your vault funds on Base are always withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
           ) : (
@@ -158,8 +160,10 @@ export default function Page() {
         </div>
       )}
       {error && (
-        <div className="infobanner" style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)", marginBottom: 14 }}>
-          <Icon name="info" size={16} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, padding: "11px 14px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-foreground)", background: "var(--caution-subtle)", border: "1px solid color-mix(in srgb,var(--caution) 26%,transparent)" }}>
+          <span style={{ color: "var(--caution)", flex: "none", marginTop: 1 }}>
+            <Icon name="info" size={16} />
+          </span>
           <span>Couldn’t read the chain just now — figures below are hidden rather than guessed.{" "}
             <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => v.refetch()}>Retry</a>. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
         </div>
