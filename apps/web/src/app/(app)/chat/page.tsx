@@ -129,6 +129,9 @@ export default function ChatPage() {
   // Which demo example is open (null ⇒ the live "New chat"). The "Examples" group is collapsible.
   const [activeExample, setActiveExample] = useState<number | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(true);
+  // Persisted per-wallet chat history (B1): real threads below the ephemeral Examples group.
+  const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   // The "Source" sheet opened by a citation chip (chat.js SP.openSheet('Source', …)).
   const [citeOpen, setCiteOpen] = useState(false);
@@ -346,6 +349,25 @@ export default function ChatPage() {
   );
 
   // ----- live send: stream ChatBlocks from POST /chat, rendered fail-closed -----
+  // ----- persisted per-wallet history (B1) -----
+  const refreshHistory = useCallback(async () => {
+    if (!agentClient) return;
+    try {
+      const r = await agentClient.request<{ conversations: { id: string; title: string }[] }>(
+        "/conversations",
+      );
+      setHistory(r.conversations ?? []);
+    } catch {
+      /* history is a nicety — never block the chat on it */
+    }
+  }, [agentClient]);
+
+  useEffect(() => {
+    // Load the wallet's chat history when the live agent becomes available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (online) void refreshHistory();
+  }, [online, refreshHistory]);
+
   const sendLive = useCallback(
     async (text: string) => {
       if (!agentClient) {
@@ -374,13 +396,57 @@ export default function ChatPage() {
           patch((x) => ({ ...x, cards: [...x.cards, card] }));
         }
         patch((x) => ({ ...x, streaming: false }));
+        void refreshHistory(); // a live turn may have created/renamed a persisted thread
       } catch (e) {
         const message =
           e instanceof AgentApiError ? e.message : "The assistant is unavailable right now. Nothing moved.";
         patch((x) => ({ ...x, streaming: false, error: message }));
       }
     },
-    [agentClient, respond],
+    [agentClient, respond, refreshHistory],
+  );
+
+  const openConversation = useCallback(
+    async (id: string) => {
+      if (!agentClient) return;
+      setActiveExample(null);
+      setActiveConvId(id);
+      convRef.current = id;
+      try {
+        const c = await agentClient.request<{ turns: { role: string; content: string }[] }>(
+          `/conversations/${id}`,
+        );
+        // Replay persisted turns (assistant content is a compact summary, not the live cards).
+        setTurns(
+          c.turns
+            .filter((t) => t.content.trim().length > 0)
+            .map((t) =>
+              t.role === "user"
+                ? { id: nextId(), kind: "user" as const, text: t.content }
+                : { id: nextId(), kind: "ai" as const, text: t.content },
+            ),
+        );
+        setChips(EMPTY_CHIPS);
+      } catch {
+        setTurns([{ id: nextId(), kind: "ai", text: "Couldn’t load that conversation." }]);
+      }
+    },
+    [agentClient],
+  );
+
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      if (!agentClient) return;
+      if (!window.confirm("Delete this conversation? This can’t be undone.")) return;
+      try {
+        await agentClient.request(`/conversations/${id}/delete`, { method: "POST", body: {} });
+      } catch {
+        /* best-effort */
+      }
+      if (convRef.current === id) startNewChat();
+      void refreshHistory();
+    },
+    [agentClient, refreshHistory],
   );
 
   // ----- send (user turn + live stream, or the mock keyword router offline) -----
@@ -469,6 +535,45 @@ export default function ChatPage() {
               <div className="ts">scripted example</div>
             </div>
           ))}
+
+        {/* Persisted per-wallet history (B1) — real threads, individually deletable. */}
+        {history.length > 0 && (
+          <div
+            style={{
+              marginTop: 12, padding: "8px 10px", fontSize: 12, fontWeight: 600,
+              textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)",
+            }}
+          >
+            Your chats
+          </div>
+        )}
+        {history.map((h) => (
+          <div
+            key={h.id}
+            className={"threaditem" + (h.id === activeConvId ? " active" : "")}
+            onClick={() => openConversation(h.id)}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="tt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {h.title}
+              </div>
+            </div>
+            <button
+              title="Delete conversation"
+              onClick={(e) => {
+                e.stopPropagation();
+                void deleteConversation(h.id);
+              }}
+              style={{
+                background: "transparent", border: "none", cursor: "pointer",
+                color: "var(--muted-foreground)", padding: 2, flex: "none",
+              }}
+            >
+              <Icon name="x" size={13} />
+            </button>
+          </div>
+        ))}
       </aside>
 
       <div className="chatcol">
@@ -651,6 +756,7 @@ export default function ChatPage() {
   // "New chat" — the LIVE surface: reset to the cold-start greeting (chat.js newchat handler).
   function startNewChat() {
     setActiveExample(null);
+    setActiveConvId(null);
     convRef.current = undefined;
     setTurns(coldThread());
     setChips(EMPTY_CHIPS);
