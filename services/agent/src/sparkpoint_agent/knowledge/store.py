@@ -126,6 +126,26 @@ ORDER BY embedding <=> $1::vector
 LIMIT $3
 """.strip()
 
+# Admin console reads: one row per source (note), with provenance + chunk count.
+_LIST_SOURCES_SQL = """
+SELECT metadata->>'source'      AS source,
+       max(metadata->>'title')  AS title,
+       count(*)                 AS chunk_count,
+       max(metadata->>'git_sha')     AS git_sha,
+       max(metadata->>'ingested_at') AS ingested_at
+FROM memory_chunks
+WHERE source_kind = $1::memory_source AND user_id IS NULL
+GROUP BY metadata->>'source'
+ORDER BY 1
+""".strip()
+
+_SOURCE_CHUNKS_SQL = """
+SELECT content, metadata
+FROM memory_chunks
+WHERE source_kind = $1::memory_source AND user_id IS NULL AND metadata->>'source' = $2
+ORDER BY (metadata->>'chunk_index')::int
+""".strip()
+
 
 class PgChunkStore:
     """A :class:`ChunkStore` backed by ``memory_chunks`` via an asyncpg executor.
@@ -172,6 +192,28 @@ class PgChunkStore:
                 metadata=_as_dict(rec["metadata"]),
                 score=float(rec["score"]),
             )
+            for rec in records
+        ]
+
+    async def list_sources(self) -> list[dict[str, Any]]:
+        """One summary row per ingested note (source, title, chunk_count, git_sha, ingested_at)."""
+        records = await self._db.fetch(_LIST_SOURCES_SQL, self._source_kind)
+        return [
+            {
+                "source": str(rec["source"]),
+                "title": str(rec["title"] or rec["source"]),
+                "chunk_count": int(rec["chunk_count"]),
+                "git_sha": (str(rec["git_sha"]) if rec["git_sha"] else None),
+                "ingested_at": (str(rec["ingested_at"]) if rec["ingested_at"] else None),
+            }
+            for rec in records
+        ]
+
+    async def get_source_chunks(self, source: str) -> list[ChunkHit]:
+        """All chunks for one note, ordered by chunk index (score 0 — not a search)."""
+        records = await self._db.fetch(_SOURCE_CHUNKS_SQL, self._source_kind, source)
+        return [
+            ChunkHit(content=str(rec["content"]), metadata=_as_dict(rec["metadata"]), score=0.0)
             for rec in records
         ]
 

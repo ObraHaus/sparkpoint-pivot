@@ -27,6 +27,7 @@ from .ingestion import (
     CorpusReport,
     IngestResult,
     ParsedNote,
+    PiiDetectedError,
     Section,
     chunk_note,
     chunk_uuid,
@@ -34,6 +35,7 @@ from .ingestion import (
     ingest_directory,
     ingest_note,
     parse_note,
+    scan_for_pii,
     source_uuid,
 )
 from .retrieval import (
@@ -79,6 +81,7 @@ __all__ = [
     "ParsedNote",
     "Passage",
     "PgChunkStore",
+    "PiiDetectedError",
     "Section",
     "SqlExecutor",
     "assert_backend_matches_pin",
@@ -93,6 +96,7 @@ __all__ = [
     "ingest_note",
     "knowledge_search",
     "parse_note",
+    "scan_for_pii",
     "source_uuid",
     "stub_embedder",
     "to_vector_literal",

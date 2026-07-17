@@ -18,6 +18,7 @@ NON-CUSTODY / boundary (T126): imports the stdlib + the shared ``embeddings`` em
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from collections.abc import Sequence
@@ -336,7 +337,9 @@ async def ingest_note(
         return IngestResult(source=source, written=0, pruned=pruned)
 
     provenance = _provenance(source_ref)
-    embeddings = embedder.embed([c.text for c in chunks])
+    # The backend embed is a synchronous network call — run it OFF the event loop so an ingest
+    # (incl. an admin-console PUT on the request path) never blocks request serving.
+    embeddings = await asyncio.to_thread(embedder.embed, [c.text for c in chunks])
     rows = [
         ChunkRow(
             id=chunk_uuid(source, chunk.index),
@@ -383,12 +386,23 @@ async def ingest_directory(
     store: ChunkStore,
     embedder: Embedder,
     pattern: str = "*.md",
+    skip_sources: set[str] | None = None,
+    source_ref: str | None = None,
 ) -> CorpusReport:
-    """Ingest every markdown note under ``path`` (sorted, stem = source slug)."""
+    """Ingest every markdown note under ``path`` (sorted, stem = source slug).
+
+    PRECEDENCE (R2): a source in ``skip_sources`` is NOT re-ingested — an admin-edited note of the
+    same slug wins over the shipped seed. ``source_ref`` stamps the git sha onto every chunk.
+    """
+    skip = skip_sources or set()
     results: list[IngestResult] = []
     for source, text in read_corpus(path, pattern=pattern):
+        if source in skip:
+            continue
         results.append(
-            await ingest_note(text, source=source, store=store, embedder=embedder)
+            await ingest_note(
+                text, source=source, store=store, embedder=embedder, source_ref=source_ref
+            )
         )
     return CorpusReport(results=tuple(results))
 

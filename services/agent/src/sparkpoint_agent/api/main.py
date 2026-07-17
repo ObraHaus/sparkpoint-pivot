@@ -30,6 +30,7 @@ from ..chain import VaultUnavailable
 from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
 from ..policy import POLICY_VERSION
+from .admin_knowledge import router as admin_knowledge_router
 from .admin_llm import router as admin_llm_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
@@ -221,6 +222,8 @@ app.include_router(recommendations_router)
 app.include_router(allowlist_router)
 # §B admin LLM-gateway view (/admin/llm/status) — admin-gated, read-only gateway telemetry.
 app.include_router(admin_llm_router)
+# §R2 admin Obsidian console (/admin/knowledge/*) — admin-gated corpus view/edit/reingest.
+app.include_router(admin_knowledge_router)
 
 
 @app.get("/healthz")
