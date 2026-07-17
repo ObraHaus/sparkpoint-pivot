@@ -605,9 +605,9 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
     if not _action_supported_on_chain(chain_id, action_type):
         network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
         noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
-        # Only claim the vault is "live here" on a chain that actually offers vault deposits — the
-        # SparkPoint vault is Base-only, so on Robinhood testnet (46630) this pointed users at a vault
-        # that does not exist here. Point them at what IS available on this network instead.
+        # Only claim the vault is "live here" on a chain that actually offers vault deposits: the
+        # vault is Base-only, so on 46630 (Robinhood testnet) this pointed users at a vault that
+        # does not exist there. Point them at what IS available on this network instead.
         vault_here = _action_supported_on_chain(chain_id, ActionType.VAULT_DEPOSIT)
         tail = (
             "Ask me about depositing into the vault, which is live here."
@@ -617,7 +617,10 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
                 "your wallet, and answer questions about DeFi on this network."
             )
         )
-        return f"{noun.capitalize()} aren't supported on {network} yet — that's coming to a later network. {tail}"
+        return (
+            f"{noun.capitalize()} aren't supported on {network} yet — that's coming to a later "
+            f"network. {tail}"
+        )
     return (
         "I couldn't build that action right now — it may not clear your guardrails, or a fresh "
         "read didn't line up. Try again in a moment, or ask me to explain the options."
