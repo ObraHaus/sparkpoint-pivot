@@ -39,8 +39,11 @@ from .ingestion import (
 from .retrieval import (
     DEFAULT_K,
     CitationRetriever,
+    KnowledgeGrounder,
     KnowledgeRetriever,
+    Passage,
     default_citation_retriever,
+    default_grounder,
 )
 from .search import hit_to_citation, knowledge_search
 from .store import (
@@ -70,9 +73,11 @@ __all__ = [
     "EmbeddingBackendError",
     "EmbeddingDimensionError",
     "IngestResult",
+    "KnowledgeGrounder",
     "KnowledgeRetriever",
     "OpenAIEmbeddingBackend",
     "ParsedNote",
+    "Passage",
     "PgChunkStore",
     "Section",
     "SqlExecutor",
@@ -81,6 +86,7 @@ __all__ = [
     "chunk_note",
     "chunk_uuid",
     "default_citation_retriever",
+    "default_grounder",
     "default_seed_dir",
     "hit_to_citation",
     "ingest_directory",

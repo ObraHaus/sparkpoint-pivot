@@ -50,6 +50,26 @@ def hit_to_citation(hit: ChunkHit) -> Citation:
     )
 
 
+async def knowledge_search_hits(
+    query: str,
+    k: int,
+    *,
+    store: ChunkStore,
+    embedder: Embedder,
+) -> list[ChunkHit]:
+    """Return the top-``k`` :class:`ChunkHit`s for ``query`` (cosine, nearest-first).
+
+    Empty/blank query or non-positive ``k`` returns ``[]`` without a round-trip. The query is
+    embedded in the SAME pinned space as the stored chunks (single shared :class:`Embedder`), so
+    distances are comparable. The backend embed is a synchronous network call — run off the event
+    loop so a retrieval never blocks request serving.
+    """
+    if k <= 0 or not query.strip():
+        return []
+    query_vector = (await asyncio.to_thread(embedder.embed_one, query)).vector
+    return await store.search(query_vector, k)
+
+
 async def knowledge_search(
     query: str,
     k: int,
@@ -57,16 +77,6 @@ async def knowledge_search(
     store: ChunkStore,
     embedder: Embedder,
 ) -> list[Citation]:
-    """Return the top-``k`` advisory :class:`Citation`s for ``query`` (cosine, nearest-first).
-
-    Empty/blank query or non-positive ``k`` returns ``[]`` without a round-trip. The
-    query is embedded in the SAME pinned space as the stored chunks (single shared
-    :class:`Embedder`), so distances are comparable.
-    """
-    if k <= 0 or not query.strip():
-        return []
-    # The backend embed is a synchronous network call (the OpenAI-compatible provider); run it
-    # off the event loop so a retrieval never blocks request serving. Advisory + fail-closed.
-    query_vector = (await asyncio.to_thread(embedder.embed_one, query)).vector
-    hits = await store.search(query_vector, k)
+    """Return the top-``k`` advisory :class:`Citation`s for ``query`` (cosine, nearest-first)."""
+    hits = await knowledge_search_hits(query, k, store=store, embedder=embedder)
     return [hit_to_citation(hit) for hit in hits]

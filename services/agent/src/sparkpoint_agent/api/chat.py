@@ -53,7 +53,7 @@ from ..coordinator import (
     MandateView,
     PortfolioView,
 )
-from ..knowledge import default_citation_retriever
+from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
@@ -216,6 +216,10 @@ def get_coordinator_dag() -> CoordinatorDag:
         literacy=Literacy(llm=client),
         portfolio_provider=_EmptyPortfolioProvider(),
         mandate_provider=_NoMandateProvider(),
+        # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
+        # answers FROM the second brain (with citations). Active only when EMBEDDING_OPENAI_* is
+        # set; None ⇒ ungrounded prose. Passage text never reaches the policy/action path.
+        knowledge=default_grounder(),
     )
 
 
