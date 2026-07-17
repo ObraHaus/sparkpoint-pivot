@@ -569,7 +569,12 @@ def _fmt_usdc6(raw: int) -> str:
     return f"{whole:,}.{cents:02d}"
 
 
-_NETWORK_NAMES: dict[int, str] = {8453: "Base", 84532: "Base Sepolia", 31337: "the local fork"}
+_NETWORK_NAMES: dict[int, str] = {
+    8453: "Base",
+    84532: "Base Sepolia",
+    46630: "Robinhood Testnet",
+    31337: "the local fork",
+}
 
 # Human nouns for the "not supported on this network" message (kept out of the byte-identical
 # generic refusal so the user learns WHY nothing surfaced).
@@ -600,10 +605,19 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
     if not _action_supported_on_chain(chain_id, action_type):
         network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
         noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
-        return (
-            f"{noun.capitalize()} aren't supported on {network} yet — that's coming to a later "
-            "network. Ask me about depositing into the vault, which is live here."
+        # Only claim the vault is "live here" on a chain that actually offers vault deposits — the
+        # SparkPoint vault is Base-only, so on Robinhood testnet (46630) this pointed users at a vault
+        # that does not exist here. Point them at what IS available on this network instead.
+        vault_here = _action_supported_on_chain(chain_id, ActionType.VAULT_DEPOSIT)
+        tail = (
+            "Ask me about depositing into the vault, which is live here."
+            if vault_here
+            else (
+                "The SparkPoint vault is on Base only — but I can still explain your options, read "
+                "your wallet, and answer questions about DeFi on this network."
+            )
         )
+        return f"{noun.capitalize()} aren't supported on {network} yet — that's coming to a later network. {tail}"
     return (
         "I couldn't build that action right now — it may not clear your guardrails, or a fresh "
         "read didn't line up. Try again in a moment, or ask me to explain the options."
