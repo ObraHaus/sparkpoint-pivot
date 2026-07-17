@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- **Backdate changelog entries** — the **Admin → Updates** editor now has a **Date** field and `POST /admin/content` accepts an optional `published_at` (ISO date/datetime, validated), so the in-app changelog reads as an honest timeline instead of every entry showing "today." Also added an **Admin → Tips** manager (edit/add/hide the sidebar tips in-app) and a standing **no-changelog-drift** rule in `CLAUDE.md` (keep BOTH `CHANGELOG.md` and the in-app `/changelog` current after every PR).
 - **Live changelog** page (`/changelog`) + a left-rail button — an admin-curated "What's new" feed for the always-hot Alpha (client + tester facing).
 - **Sidebar tip widget** — rotating tips sourced from the Obsidian corpus under a new `source_kind='tip'` (isolated from the assistant's RAG citations), plus an admin-configurable **announcement** pinned first.
 - **Admin → Updates** panel to author both the changelog and the announcement from one place (one `content_entries` table + append-only `content_audit`; non-admin → 404).

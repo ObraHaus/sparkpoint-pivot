@@ -36,12 +36,14 @@ _GET_SQL = (
     "author FROM content_entries WHERE id = $1"
 )
 _INSERT_SQL = (
-    "INSERT INTO content_entries (type, title, body, tag, cta_label, cta_href, is_active, author) "
-    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
+    "INSERT INTO content_entries "
+    "(type, title, body, tag, cta_label, cta_href, is_active, author, published_at) "
+    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now())) RETURNING id"
 )
 _UPDATE_SQL = (
     "UPDATE content_entries SET type = $2, title = $3, body = $4, tag = $5, cta_label = $6, "
-    "cta_href = $7, is_active = $8, updated_at = now() WHERE id = $1"
+    "cta_href = $7, is_active = $8, published_at = COALESCE($9::timestamptz, published_at), "
+    "updated_at = now() WHERE id = $1"
 )
 _DELETE_SQL = "DELETE FROM content_entries WHERE id = $1"
 _AUDIT_SQL = (
@@ -88,12 +90,17 @@ class ContentEntryStore:
         cta_href: str | None,
         is_active: bool,
         actor: str | None,
+        published_at: str | None = None,
     ) -> int:
-        """Insert one entry + a ``create`` audit row in the SAME transaction; return the new id."""
+        """Insert one entry + a ``create`` audit row in the SAME transaction; return the new id.
+
+        ``published_at`` (ISO date/datetime) lets an admin backdate an entry so the changelog reads
+        as a real timeline; ``None`` defaults to now()."""
         act = (actor or "").lower() or None
         async with self.db.acquire() as conn, conn.transaction():
             new_id = await conn.fetchval(
-                _INSERT_SQL, type_, title, body, tag, cta_label, cta_href, is_active, act
+                _INSERT_SQL, type_, title, body, tag, cta_label, cta_href, is_active, act,
+                published_at,
             )
             await conn.execute(_AUDIT_SQL, "create", str(new_id), act, json.dumps({"type": type_}))
         return int(new_id)
@@ -110,12 +117,16 @@ class ContentEntryStore:
         cta_href: str | None,
         is_active: bool,
         actor: str | None,
+        published_at: str | None = None,
     ) -> None:
-        """Update one entry + an ``update`` audit row in the SAME transaction."""
+        """Update one entry + an ``update`` audit row in the SAME transaction.
+
+        ``published_at`` (ISO) re-dates the entry if provided; ``None`` keeps the current date."""
         act = (actor or "").lower() or None
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(
-                _UPDATE_SQL, entry_id, type_, title, body, tag, cta_label, cta_href, is_active
+                _UPDATE_SQL, entry_id, type_, title, body, tag, cta_label, cta_href, is_active,
+                published_at,
             )
             await conn.execute(
                 _AUDIT_SQL, "update", str(entry_id), act, json.dumps({"type": type_})
