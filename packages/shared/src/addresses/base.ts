@@ -33,6 +33,12 @@ export const base: AddressBook = {
   aerodromeRouter: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
   aerodromeFactory: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da", // == Router.defaultFactory() (verified)
 
+  // ── Uniswap V3 (Base mainnet) — verified on-chain (eth_getCode non-empty). For the swap page's
+  // future mainnet path; the alpha runs on Base Sepolia. ──
+  uniswapV3SwapRouter02: "0x2626664c2603336E57B271c5C0b26F421741e481",
+  uniswapV3QuoterV2: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+  uniswapV3Factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+
   // ── ERC-20 tokens ──
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // native Circle USDC on Base
   weth: "0x4200000000000000000000000000000000000006", // OP-stack WETH predeploy

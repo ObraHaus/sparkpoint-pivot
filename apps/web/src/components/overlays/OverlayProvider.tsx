@@ -474,7 +474,7 @@ const CMDK_ACTIONS: [string, string, string][] = [
   ["Go to Chat", "chat", "chat"],
   ["Open Portfolio", "portfolio", "portfolio"],
   ["Open Vault", "vault", "vault"],
-  ["Swap ETH → USDC", "activity", "confirm/swap"],
+  ["Swap tokens", "swap", "swap"],
   ["Bridge Base ↔ Sui", "refresh", "bridge"],
   ["Fees / how we make money", "coins", "fees"],
   ["Premium", "zap", "premium"],

@@ -72,6 +72,17 @@ export interface AddressBook {
   /** Aerodrome PoolFactory the whitelisted `Route[].factory` must equal (TargetRef `aerodrome_factory`). */
   readonly aerodromeFactory?: Address;
 
+  /* ── Uniswap V3 (§B-swap — the manual, client-signed swap page) ──
+   * NOT policy `TargetRef`s (the swap page is user-signed / non-custodial, not an agent-proposed
+   * action), so these are plain optional address fields with no `TARGET_REF_FIELD` / parity impact.
+   * Undefined ⇒ Uniswap V3 not wired on this chain (the DEX selector shows it unavailable). */
+  /** Uniswap V3 `SwapRouter02` — `exactInputSingle` / `multicall` target for user-signed swaps. */
+  readonly uniswapV3SwapRouter02?: Address;
+  /** Uniswap V3 `QuoterV2` — off-chain (`simulateContract`) quote source for the swap preview. */
+  readonly uniswapV3QuoterV2?: Address;
+  /** Uniswap V3 `UniswapV3Factory` — pool discovery (optional; QuoterV2 resolves pools internally). */
+  readonly uniswapV3Factory?: Address;
+
   /* ── ERC-20 tokens ── */
   /** Canonical USDC the app treats as `Asset.USDC` on this chain (== reserveUsdc where the Aave market uses it). */
   readonly usdc: Address;

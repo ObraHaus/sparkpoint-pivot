@@ -20,6 +20,7 @@ export const PRIMARY: NavItem[] = [
 
 /** Left "Trust & control" rail (and the More sheet). */
 export const SECONDARY: NavItem[] = [
+  { route: "swap", label: "Swap", icon: "swap" },
   { route: "bridge", label: "Bridge", icon: "refresh" },
   { route: "trust", label: "Trust Center", icon: "shieldcheck" },
   { route: "automation", label: "Automation", icon: "zap" },
