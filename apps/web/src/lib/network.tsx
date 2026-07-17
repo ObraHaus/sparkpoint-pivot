@@ -30,6 +30,29 @@ const NETWORKS: Network[] = [
   { id: "sui", name: "Sui", color: "#4DA8FF", live: false, wallet: "" },
 ];
 
+/** The chain ids wagmi is configured for (Base · Base Sepolia · Robinhood testnet). */
+export type SupportedChainId = typeof base.id | typeof baseSepolia.id | typeof robinhoodTestnet.id;
+
+/** A chain the user can switch to from the in-app network menu. */
+export interface SwitchableNetwork {
+  chainId: SupportedChainId;
+  name: string;
+  color: string;
+  live: boolean;
+}
+
+/**
+ * Chains offered in the in-app network switcher. Alpha is testnet-only, so only the testnet chains
+ * are switchable here (Base mainnet is configured in wagmi for RECOGNITION but is intentionally not
+ * offered on the testnet alpha). Because both chains are registered in {@link wagmiConfig}, a single
+ * `switchChain({ chainId })` also triggers the wallet's `wallet_addEthereumChain` when the chain is
+ * unknown — so no manual add-chain call is needed to get a user onto Robinhood testnet.
+ */
+const SWITCHABLE: SwitchableNetwork[] = [
+  { chainId: baseSepolia.id, name: "Base Sepolia", color: "#0052FF", live: true },
+  { chainId: robinhoodTestnet.id, name: "Robinhood Testnet", color: "#00C805", live: true },
+];
+
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "Not connected");
 
 function chainName(chainId?: number): string {
@@ -56,7 +79,11 @@ interface NetworkContextValue {
   explorerBase: string;
   /** Kept for compatibility; only "base" is selectable (Sui is a fast-follow). */
   setActiveNetwork: (id: NetworkId) => void;
-  /** Prompt the wallet to switch to the supported develop chain. */
+  /** The chains offered in the in-app network switcher (testnet chains for the alpha). */
+  switchableNetworks: SwitchableNetwork[];
+  /** Prompt the wallet to switch to (and add, if unknown) a supported chain by id. */
+  switchToChain: (chainId: SupportedChainId) => void;
+  /** Prompt the wallet to switch to the supported develop chain (Base Sepolia). */
   switchToBase: () => void;
   /** Real wagmi disconnect + server session logout. */
   disconnectWallet: () => Promise<void>;
@@ -77,6 +104,13 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     }
   }, [disconnectAsync]);
+
+  const switchToChain = useCallback(
+    (id: SupportedChainId) => {
+      switchChain({ chainId: id });
+    },
+    [switchChain],
+  );
 
   const switchToBase = useCallback(() => {
     switchChain({ chainId: PREFERRED_CHAIN.id });
@@ -102,10 +136,12 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       onSupportedChain,
       explorerBase: (chainId && EXPLORER[chainId]) || EXPLORER[PREFERRED_CHAIN.id],
       setActiveNetwork: () => undefined,
+      switchableNetworks: SWITCHABLE,
+      switchToChain,
       switchToBase,
       disconnectWallet,
     };
-  }, [address, chainId, isConnected, switchToBase, disconnectWallet]);
+  }, [address, chainId, isConnected, switchToChain, switchToBase, disconnectWallet]);
 
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
 }

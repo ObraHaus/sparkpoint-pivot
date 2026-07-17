@@ -19,7 +19,7 @@ export const stage: Stage = env.appStage;
 interface StageCopy {
   /** Short badge label, e.g. "Alpha". */
   label: string;
-  /** Longer descriptor, e.g. "Alpha — testnet (Base Sepolia)". */
+  /** Longer descriptor, e.g. "Alpha — testnet". */
   long: string;
   /** Deposit-cap noun, e.g. "alpha cap". */
   capNoun: string;
@@ -32,7 +32,9 @@ interface StageCopy {
 const COPY: Record<Stage, StageCopy> = {
   alpha: {
     label: "Alpha",
-    long: "Alpha — testnet (Base Sepolia)",
+    // Multi-network testnet (Base Sepolia + Robinhood Chain Testnet) — not chain-specific, so the
+    // badge no longer names a single chain (which read as "only Base Sepolia is supported").
+    long: "Alpha — testnet",
     capNoun: "alpha cap",
     gateNoun: "private alpha",
     adjective: "alpha",
