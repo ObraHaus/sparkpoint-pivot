@@ -2,7 +2,7 @@
 """Unit tests for the OAuth 429/529 resilience layer (llm/resilience.py) — no network.
 
 Covers the credential/resilience work order (a)/(b)/(d):
-  - only 429/529 are retryable; other statuses propagate immediately;
+  - 429/529 + transient gateway 5xx (502/503/504) are retryable; other statuses propagate;
   - backoff honors the ``Retry-After`` header; jittered backoff stays within the window;
   - the retry loop retries then succeeds, and re-raises on exhaustion (fail-closed);
   - the process-global limiter SERIALIZES concurrent calls, and fails closed on queue timeout;
@@ -82,8 +82,11 @@ def test_status_code_reads_attr() -> None:
     assert status_code(ValueError("no status")) is None
 
 
-@pytest.mark.parametrize("code, retry", [(429, True), (529, True), (400, False), (500, False)])
-def test_is_retryable_only_429_and_529(code: int, retry: bool) -> None:
+@pytest.mark.parametrize(
+    "code, retry",
+    [(429, True), (529, True), (502, True), (503, True), (504, True), (400, False), (500, False)],
+)
+def test_is_retryable_transient_and_gateway_5xx(code: int, retry: bool) -> None:
     assert is_retryable(_StatusError(code)) is retry
 
 

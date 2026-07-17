@@ -31,6 +31,7 @@ Stage contract (what each endpoint calls):
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
@@ -389,6 +390,14 @@ class CoordinatorDag:
         # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
         user = chain.owner
 
+        # Bridging to another chain isn't an advisory action here — answer it honestly and
+        # deterministically (no model call, no "how much?"), rather than misclassifying it.
+        if _BRIDGE_RE.search(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(_BRIDGE_UNAVAILABLE_MESSAGE)
+            return
+
         yield ToolStepBlock("Understanding your request", "running")
         intent = await self.understand(message, surface=surface, user=user, history=history)
         yield ToolStepBlock("Understanding your request", "done")
@@ -436,11 +445,18 @@ class CoordinatorDag:
             yield TextBlock(self._portfolio_summary(gathered))
             return
 
-        if intent.kind is IntentKind.BUILD_ACTION and not _explicit_ready(intent):
-            yield TextBlock(
-                "I can build that once I know the amount — how much would you like to use?"
-            )
-            return
+        if intent.kind is IntentKind.BUILD_ACTION:
+            is_swap = intent.action_type is ActionType.AERODROME_SWAP
+            # Swaps can't be built here (Aerodrome is fork-only) but the live Uniswap Swap page
+            # can — route there immediately, whether or not an amount was given (no dead-end).
+            if is_swap and chain.chain_id in _SWAP_PAGE_CHAINS:
+                yield TextBlock(_SWAP_PAGE_MESSAGE)
+                return
+            if not _explicit_ready(intent):
+                yield TextBlock(
+                    "I can build that once I know the amount — how much would you like to use?"
+                )
+                return
 
         yield ToolStepBlock("Checking strategies against your guardrails", "running")
         try:
@@ -591,6 +607,22 @@ _ACTION_NOUNS: dict[ActionType, str] = {
 # chains it points the user at the working Swap page instead of a flat "not supported".
 _SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453})
 
+# One copy for "swaps live on the /swap page" wherever a swap surfaces (chat routing + refusal).
+_SWAP_PAGE_MESSAGE = (
+    "Token swaps run on the Swap page — open Swap in the sidebar to swap ETH ↔ USDC on "
+    "Uniswap V3. You review the quote and sign from your own wallet; I can't move your funds."
+)
+
+# Bridging isn't an advisory action (no ActionType) and the vault/swaps are Base-only, so a bridge
+# request is answered honestly rather than being classified as a buildable action that asks for an
+# amount it can never use. Deterministic keyword guard — "bridge/bridging/cross-chain".
+_BRIDGE_UNAVAILABLE_MESSAGE = (
+    "Bridging to another chain (like Sui) isn't available in the assistant yet — the SparkPoint "
+    "vault and swaps are on Base. I can still help you deposit into the vault, swap on the Swap "
+    "page, or read your wallet on this network."
+)
+_BRIDGE_RE = re.compile(r"\bbridg(?:e|es|ed|ing)\b|\bcross[- ]?chain\b", re.IGNORECASE)
+
 
 def _action_supported_on_chain(chain_id: int, action_type: ActionType | None) -> bool:
     """True iff this chain's RESOLVED allowlist offers ``action_type`` (``undeployed`` entries are
@@ -612,11 +644,7 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
         # non-custodial Uniswap V3 Swap page IS live on Base — send the user there, not a flat
         # "not supported". (Chains without a Swap page, e.g. 46630, get the generic message.)
         if action_type is ActionType.AERODROME_SWAP and chain_id in _SWAP_PAGE_CHAINS:
-            return (
-                "Token swaps run on the Swap page — open Swap in the sidebar to swap "
-                "ETH ↔ USDC on Uniswap V3. You review the quote and sign from your own "
-                "wallet; I can't move your funds."
-            )
+            return _SWAP_PAGE_MESSAGE
         network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
         noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
         # Only claim the vault is "live here" on a chain that actually offers vault deposits: the

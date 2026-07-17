@@ -242,6 +242,30 @@ async def test_chat_build_action_underspecified_asks_for_amount() -> None:
     assert not any(w["type"] == "action" for w in wires)
 
 
+async def test_chat_swap_routes_to_swap_page_not_amount_prompt() -> None:
+    # A swap can't be built here (Aerodrome is fork-only) — the DAG points to the live Uniswap
+    # Swap page immediately, with no "how much?" dead-end (chain 8453 ∈ the swap-page chains).
+    intent = Intent(kind=IntentKind.BUILD_ACTION, action_type=ActionType.AERODROME_SWAP)
+    dag = _dag(intent=intent)
+    wires = await _collect(dag, "swap ETH to USDC", _chain())
+    assert _types(wires)[-1] == "text"
+    body = wires[-1]["markdown"]
+    assert "Swap page" in body and "Uniswap" in body
+    assert "how much" not in body.lower()
+    assert not any(w["type"] == "action" for w in wires)
+
+
+async def test_chat_bridge_request_is_honest_no_amount_prompt() -> None:
+    # Bridging isn't an advisory action — answered honestly and deterministically (the guard fires
+    # before classification, so the planner intent is irrelevant), never "how much?".
+    dag = _dag(intent=Intent(kind=IntentKind.OTHER))
+    wires = await _collect(dag, "Bridge my USDC to Sui", _chain())
+    assert _types(wires)[-1] == "text"
+    body = wires[-1]["markdown"].lower()
+    assert "bridg" in body and "available" in body
+    assert not any(w["type"] in {"action", "recommendation"} for w in wires)
+
+
 # ── run_chat: refusal + other ────────────────────────────────────────────────
 
 

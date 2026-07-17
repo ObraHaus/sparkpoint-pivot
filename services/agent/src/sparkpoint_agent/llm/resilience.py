@@ -1,10 +1,12 @@
 """OAuth 429/529 resilience for the Anthropic calls — retry, jitter, a global limiter.
 
-This module is the single place the LLM boundary hardens itself against the two transient
-Anthropic failures the Claude-Code OAuth path hits under load:
+This module is the single place the LLM boundary hardens itself against the transient
+upstream failures the LLM path hits under load:
 
-  - **429 Too Many Requests** (rate limit), and
-  - **529 Overloaded** (server capacity).
+  - **429 Too Many Requests** (rate limit),
+  - **529 Overloaded** (Anthropic server capacity), and
+  - **502 / 503 / 504** — transient gateway/proxy blips from the LiteLLM → OpenRouter hop
+    (a fresh retry usually clears them; without this they surfaced as "Bad Gateway" turn errors).
 
 Design (credential/resilience work order (a)/(b)/(d)):
 
@@ -57,9 +59,10 @@ from .claude import ClaudeError
 
 logger = logging.getLogger("sparkpoint_agent.llm.resilience")
 
-# The only two transient statuses we retry (work order (a)). A 4xx that is NOT 429 is a
-# client error — re-sending it would be wrong; a 5xx that is not 529 is treated as fatal.
-RETRYABLE_STATUS: frozenset[int] = frozenset({429, 529})
+# Transient statuses we retry: 429 (rate limit) / 529 (Anthropic overload), plus the gateway
+# 5xx (502/503/504) the LiteLLM → OpenRouter proxy hops return transiently. A 4xx that is NOT 429
+# is a client error (never re-sent), and 500 is treated as a real (non-transient) server error.
+RETRYABLE_STATUS: frozenset[int] = frozenset({429, 502, 503, 504, 529})
 
 # Global limiter defaults — 1–2 in-flight Anthropic calls, a bounded queue wait.
 DEFAULT_MAX_INFLIGHT = 2
