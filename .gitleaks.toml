@@ -1,0 +1,19 @@
+# gitleaks config for SparkPoint Pivot (OH Defender runs `gitleaks detect --source . --no-git`,
+# no --config, so this repo-root file is auto-loaded). We KEEP the full default rule set and add
+# ONE narrowly-scoped allowlist for a known false positive.
+title = "SparkPoint Pivot — gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Bundler-spike safe-mode debug logs (R10/OQ-2 ERC-4337 acceptance spike evidence) contain PUBLIC
+ERC-4337 session-key ADDRESSES — 42-char 0x + 40 hex — near the literal word "key". A private key
+would be 66 chars (0x + 64 hex); these are 20-byte public addresses and safe to commit. gitleaks'
+`generic-api-key` heuristic mis-flags them. Scope is limited to that debug-log directory ONLY, so
+the default secret detection stays fully active everywhere else in the repo.
+"""
+paths = [
+  '''contracts/script/bundler-spike/safemode-logs/.*''',
+]
