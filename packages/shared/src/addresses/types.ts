@@ -78,6 +78,14 @@ export interface AddressBook {
   /** WETH (OP-stack predeploy on Base + Base Sepolia). */
   readonly weth: Address;
 
+  /* ── Testnet utilities (NOT policy targets) ── */
+  /**
+   * The Aave-market faucet that mints the test USDC on a testnet — `mint(token,to,amount)` with
+   * `token == usdc` (6dp, per-address mint timelock). Testnet-only convenience for the Faucets
+   * panel; `undefined` where no such faucet exists (e.g. mainnet). Never a policy `TargetRef`.
+   */
+  readonly usdcFaucet?: Address;
+
   /* ── Deployed SparkPoint contracts (smart-contracts.md §1) ──
    * Deploy-time-determined; the deploy/arm scripts (`ArmGuardrails`) fill these.
    * Optional so this module has zero deploy-time coupling and stays drift-safe. */

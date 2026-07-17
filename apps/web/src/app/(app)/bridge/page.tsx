@@ -1,198 +1,181 @@
 "use client";
 
 /**
- * /bridge — Cross-network Bridge (Base ↔ Sui). Fully self-custodial: you sign the
- * lock/burn, the canonical bridge verifies, and you receive in your own wallet on the
- * destination network — Sparky never holds funds in transit.
- *
- * Faithful 1:1 port of the design's `bridge` screen
- * (docs/design-handover/showcase/screens/bridge.js). Markup, classes, copy, the
- * asset/network/amount controls, the swap-direction flip, and the route + custody
- * sections are reproduced verbatim; balances read from data.bridgeAssets.
+ * /bridge — during Alpha this is NOT a live bridge. The old Base↔Sui form was a full mock (fixture
+ * balances, a fabricated $0.40 fee), so it's replaced with an honest "unavailable during Alpha"
+ * notice + a real, chain-keyed FAUCETS panel so a tester can actually fund a testnet wallet. Bridging
+ * ships later; Sui is a fast-follow. The route + nav entry stay. (R5 A5.)
  */
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
-import { fmt } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
+import { useNetwork } from "@/lib/network";
+import { getAddresses } from "@sparkpoint/shared/addresses";
+import { StatusTag } from "@/components/ui/status-tag";
+import { stageCopy } from "@/lib/stage";
 import "@/components/screens/bridge.css";
 
-type NetId = "base" | "sui";
+const BASE_SEPOLIA = 84532;
+const ROBINHOOD_TESTNET = 46630;
 
-const NET: Record<NetId, { name: string; color: string }> = {
-  base: { name: "Base", color: "#0052FF" },
-  sui: { name: "Sui", color: "#4DA8FF" },
-};
+interface FaucetLink {
+  label: string;
+  href: string;
+  note?: string;
+}
 
-const ASSETS = ["USDC", "ETH"] as const;
-type Asset = (typeof ASSETS)[number];
+function FaucetCard({ title, subtitle, links }: { title: string; subtitle: string; links: FaucetLink[] }) {
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14 }}>
+      <div className="card-hd">
+        <span className="t">{title}</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", margin: "2px 0 10px" }}>{subtitle}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {links.map((l) => (
+          <a
+            key={l.href}
+            href={l.href}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--border-soft)",
+              color: "var(--foreground)",
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
+            <Icon name="ext" size={14} />
+            <span style={{ flex: 1 }}>
+              {l.label}
+              {l.note && (
+                <span className="muted" style={{ display: "block", fontSize: 11.5 }}>
+                  {l.note}
+                </span>
+              )}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Page() {
   const router = useRouter();
-  const [from, setFrom] = useState<NetId>("base");
-  const [to, setTo] = useState<NetId>("sui");
-  const [asset, setAsset] = useState<Asset>("USDC");
-  const [amt, setAmt] = useState("500.00");
-  const [focus, setFocus] = useState(false);
+  const { chainId, isConnected } = useNetwork();
+  const addrs = getAddresses(BASE_SEPOLIA);
+  const usdc = addrs.usdc;
+  const faucet = addrs.usdcFaucet;
 
-  const balOf = (net: NetId): number => {
-    const a = data.bridgeAssets.find((x) => x.sym === asset);
-    return a ? a[net] : 0;
-  };
+  // Which faucet set to show — follow the connected chain; default to Base Sepolia otherwise.
+  const onRobinhood = chainId === ROBINHOOD_TESTNET;
 
-  const flip = () => {
-    setFrom(to);
-    setTo(from);
-  };
-
-  const f = NET[from];
-  const t = NET[to];
-  const dec = asset === "ETH" ? 4 : 2;
+  const baseSepoliaEth: FaucetLink[] = [
+    { label: "Base Sepolia faucet list (Base docs)", href: "https://docs.base.org/chain/network-faucets" },
+    { label: "Coinbase Developer Platform faucet", href: "https://portal.cdp.coinbase.com/products/faucet", note: "Base Sepolia ETH" },
+    { label: "Alchemy Base Sepolia faucet", href: "https://www.alchemy.com/faucets/base-sepolia", note: "Base Sepolia ETH" },
+  ];
+  const baseSepoliaUsdc: FaucetLink[] = faucet
+    ? [
+        {
+          label: "Mint test USDC (Aave-market faucet)",
+          href: `https://sepolia.basescan.org/address/${faucet}#writeContract`,
+          note: `Call mint(token, to, amount) with token = ${usdc} · 6 decimals · per-address timelock`,
+        },
+      ]
+    : [];
+  const robinhood: FaucetLink[] = [
+    { label: "Robinhood Chain testnet faucet (official)", href: "https://faucet.testnet.chain.robinhood.com/", note: "browser-only, bot-challenged — amounts are per the faucet site" },
+    { label: "Chainlink faucets", href: "https://faucets.chain.link/", note: "select the Robinhood testnet if listed" },
+  ];
 
   return (
-    <div className="page">
-      <div className="br-wrap">
-        <div className="pagehead">
-          <div>
-            <h1>Bridge</h1>
-            <div className="sub">
-              Move assets between networks. Non-custodial — you sign; Sparky never holds your funds in transit.
-            </div>
+    <div className="page page-narrow">
+      <div className="pagehead">
+        <div>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            Bridge
+            <StatusTag variant="mock" label={`Unavailable during ${stageCopy.label}`} />
+          </h1>
+          <div className="sub">Cross-network bridging (Base ↔ Sui) ships after Alpha. Sui is a fast-follow.</div>
+        </div>
+      </div>
+
+      <div
+        className="card card-pad"
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-start",
+          background: "var(--caution-subtle)",
+          borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)",
+        }}
+      >
+        <span style={{ color: "var(--caution)", marginTop: 1 }}>
+          <Icon name="info" size={18} />
+        </span>
+        <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
+          <b style={{ color: "var(--foreground)" }}>Bridging isn’t available during Alpha.</b> SparkPoint is
+          testnet-only right now (Base Sepolia). In the meantime, use the faucets below to fund a testnet wallet so
+          you can try the vault. When bridging ships it will be fully self-custodial — you sign, funds land in your own
+          wallet on the other side.
+        </div>
+      </div>
+
+      <div className="pagehead" style={{ marginBottom: 10 }}>
+        <div>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Testnet faucets</h2>
+          <div className="sub">
+            {isConnected
+              ? onRobinhood
+                ? "For your connected wallet on Robinhood Chain testnet."
+                : "For your connected wallet on Base Sepolia."
+              : "Connect a wallet to auto-select faucets for its network. Showing Base Sepolia by default."}
           </div>
         </div>
-        <div className="card-pad" style={{ padding: 0 }}>
-          <div className="br-card">
-            <div className="assetpick" style={{ marginBottom: 14 }}>
-              {ASSETS.map((a) => (
-                <button key={a} className={a === asset ? "on" : ""} onClick={() => setAsset(a)}>
-                  {a}
-                </button>
-              ))}
-            </div>
-            <div className={"netbox" + (focus ? " focus" : "")}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11.5, color: "var(--muted-foreground)", fontWeight: 500 }}>From</span>
-                <span className="netsel" onClick={flip}>
-                  <span className="ndot" style={{ background: f.color }} />
-                  {f.name}
-                  <Icon name="chevd" size={13} />
-                </span>
-              </div>
-              <div className="br-amt">
-                <input
-                  id="bramt"
-                  inputMode="decimal"
-                  value={amt}
-                  onChange={(e) => setAmt(e.target.value)}
-                  onFocus={() => setFocus(true)}
-                  onBlur={() => setFocus(false)}
-                />
-                <span style={{ fontSize: 15, fontWeight: 600, color: "var(--muted-foreground)" }}>{asset}</span>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 4 }}>
-                Balance on {f.name}:{" "}
-                <span className="tnum">
-                  {fmt(balOf(from), dec)} {asset}
-                </span>{" "}
-                ·{" "}
-                <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => setAmt(fmt(balOf(from), dec))}>
-                  Max
-                </a>
-              </div>
-            </div>
-            <div className="br-swap">
-              <button title="Swap direction" onClick={flip}>
-                <Icon name="refresh" size={17} />
-              </button>
-            </div>
-            <div className="netbox">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11.5, color: "var(--muted-foreground)", fontWeight: 500 }}>To</span>
-                <span className="netsel">
-                  <span className="ndot" style={{ background: t.color }} />
-                  {t.name}
-                </span>
-              </div>
-              <div className="br-amt">
-                <span style={{ flex: 1, fontSize: 26, fontWeight: 600 }} className="tnum">
-                  {amt || "0.00"}
-                </span>
-                <span style={{ fontSize: 15, fontWeight: 600, color: "var(--muted-foreground)" }}>{asset}</span>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 4 }}>
-                Balance on {t.name}:{" "}
-                <span className="tnum">
-                  {fmt(balOf(to), dec)} {asset}
-                </span>
-              </div>
-            </div>
-            <div
-              style={{
-                background: "var(--background)",
-                border: "1px solid var(--border-soft)",
-                borderRadius: "var(--radius)",
-                padding: 13,
-                marginTop: 14,
-              }}
-            >
-              <div className="br-row">
-                <span className="muted">Bridge route</span>
-                <span>
-                  {f.name} → {t.name} · canonical
-                </span>
-              </div>
-              <div className="br-row">
-                <span className="muted">Est. time</span>
-                <span className="tnum">~3–5 min</span>
-              </div>
-              <div className="br-row">
-                <span className="muted">Bridge fee</span>
-                <span className="tnum">~$0.40</span>
-              </div>
-              <div className="br-row">
-                <span className="muted">You&apos;ll receive</span>
-                <span className="tnum" style={{ fontWeight: 600 }}>
-                  ≈ {amt || "0.00"} {asset} on {t.name}
-                </span>
-              </div>
-            </div>
-            <button
-              className="btn btn-primary btn-lg"
-              style={{ width: "100%", marginTop: 16 }}
-              onClick={() => router.push(toHref("confirm/bridge"))}
-            >
-              Review bridge
-            </button>
-            <div style={{ textAlign: "center", fontSize: 11, color: "var(--muted-foreground)", marginTop: 10 }}>
-              Next: simulation + guardrail check, then you sign. Withdraw-always applies on both networks.
-            </div>
+      </div>
+
+      {onRobinhood ? (
+        <>
+          <FaucetCard
+            title="Robinhood Chain testnet — native ETH"
+            subtitle="Chain 46630 · Arbitrum-Nitro L2 on Sepolia · native ETH pays gas."
+            links={robinhood}
+          />
+          <div className="card card-pad" style={{ marginBottom: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
+            You can also bring Sepolia ETH over via the canonical Arbitrum bridge (~10 min). There is no official Circle
+            USDC or Aave market on this testnet yet, so the vault stays Base-only during Alpha.
           </div>
-        </div>
-        <div className="card card-pad" style={{ marginTop: 16 }}>
-          <div className="card-hd">
-            <span className="t">How the bridge keeps custody yours</span>
-          </div>
-          <div className="route-step">
-            <span className="rn">1</span>
-            <div>
-              You sign a <b>lock/burn</b> on {f.name} — funds leave your wallet only by your signature.
-            </div>
-          </div>
-          <div className="route-step">
-            <span className="rn">2</span>
-            <div>
-              The canonical bridge <b>verifies</b> the message across networks.
-            </div>
-          </div>
-          <div className="route-step">
-            <span className="rn">3</span>
-            <div>
-              You <b>receive</b> the asset on {t.name}, in your own wallet. Sparky never custodies it in transit.
-            </div>
-          </div>
-        </div>
+        </>
+      ) : (
+        <>
+          <FaucetCard
+            title="Base Sepolia — native ETH (for gas)"
+            subtitle="You need a little Base Sepolia ETH to pay gas before depositing."
+            links={baseSepoliaEth}
+          />
+          {baseSepoliaUsdc.length > 0 && (
+            <FaucetCard
+              title="Base Sepolia — test USDC (to deposit)"
+              subtitle="The vault accepts the Aave-market test USDC. Mint some to your wallet, then deposit in the vault."
+              links={baseSepoliaUsdc}
+            />
+          )}
+        </>
+      )}
+
+      <div style={{ marginTop: 6 }}>
+        <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("vault"))}>
+          Go to the vault →
+        </button>
       </div>
     </div>
   );

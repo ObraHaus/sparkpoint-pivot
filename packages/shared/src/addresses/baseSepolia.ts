@@ -42,6 +42,7 @@ export const baseSepolia: AddressBook = {
   // ── ERC-20 tokens ──
   usdc: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f", // == reserveUsdc: system USDC on Sepolia is the Aave test token
   weth: "0x4200000000000000000000000000000000000006", // OP-stack WETH predeploy (same on Base Sepolia)
+  usdcFaucet: "0xD9145b5F45Ad4519c7ACcD6E0A4A82e83bB8A6Dc", // Aave-market faucet: mint(token,to,amount), per-addr timelock
 
   // ── SparkPoint contracts — filled by deploy (undefined ⇒ fail-closed) ──
   // US1 core deployed to Base Sepolia 2026-07-14 via script/DeploySepolia.s.sol
