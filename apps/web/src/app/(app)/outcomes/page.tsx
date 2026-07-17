@@ -24,7 +24,7 @@ export default function Page() {
         <div style={{ display: "flex", gap: 18, marginBottom: 18 }}>
           <div className="stat">
             <span className="k">Net realized</span>
-            <span className="v tnum" style={{ color: "var(--gain)" }}>
+            <span className="v tnum" style={{ color: "var(--loss)" }}>
               −$27.86
             </span>
           </div>
