@@ -9,7 +9,7 @@ import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
 
 export function TopBar({ active }: { active: string }) {
-  const { network, wallet, isConnected, onSupportedChain, switchToBase } = useNetwork();
+  const { network, wallet, isConnected, onSupportedChain } = useNetwork();
   const ov = useOverlay();
   const unread = data.notifications.filter((n) => n.unread).length;
   const wrongNetwork = isConnected && !onSupportedChain;
@@ -31,10 +31,10 @@ export function TopBar({ active }: { active: string }) {
         <span
           className="pill netPill"
           title={wrongNetwork ? "Switch to a supported network" : "Switch network"}
-          onClick={wrongNetwork ? switchToBase : ov.openNetworkMenu}
+          onClick={ov.openNetworkMenu}
         >
           <span style={{ width: 11, height: 11, borderRadius: "50%", background: network.color, flex: "none" }} />
-          <span>{wrongNetwork ? "Switch to Base" : network.name}</span>
+          <span>{wrongNetwork ? "Switch network" : network.name}</span>
           <Icon name="chevd" size={12} />
         </span>
         <span className="pill walletPill" onClick={ov.openWalletMenu}>
