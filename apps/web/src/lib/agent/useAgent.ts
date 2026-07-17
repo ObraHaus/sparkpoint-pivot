@@ -125,6 +125,9 @@ export interface PortfolioView {
   unrealizedUsd?: number;
   /** Per-position cost basis + unrealized PnL, keyed by positionId (e.g. `"vault"`). */
   positionPnl: Record<string, PositionPnl>;
+  /** Timestamped position-value history for the net-worth chart (`t` = ms epoch, `v` = USD).
+   * Real, derived from the indexed flows; empty when nothing is indexed (honest — never mock). */
+  history: { t: number; v: number }[];
   stale: boolean;
 }
 
@@ -157,6 +160,13 @@ export function usePortfolioView(): PortfolioView | null {
     pnl = { abs: Math.round(abs * 100) / 100, pct };
   }
 
+  // Timestamped value history (for the net-worth chart + range selector).
+  const history = Array.isArray(d.pnl?.series)
+    ? d.pnl!.series
+        .map((p) => ({ t: Date.parse(p?.ts ?? ""), v: numeric(p?.valueUsd) }))
+        .filter((p): p is { t: number; v: number } => !Number.isNaN(p.t) && p.v !== undefined)
+    : [];
+
   // §B2 derived figures. `numeric(null)` ⇒ undefined, so an unindexed value stays "pending".
   const unrealizedUsd = numeric(d.pnl?.unrealizedUsd);
   const positionPnl: Record<string, PositionPnl> = {};
@@ -168,7 +178,46 @@ export function usePortfolioView(): PortfolioView | null {
     };
   }
 
-  return { netWorth, series, pnl, unrealizedUsd, positionPnl, stale: d.stale === true };
+  return { netWorth, series, pnl, unrealizedUsd, positionPnl, history, stale: d.stale === true };
+}
+
+/* ── GET /portfolio/positions/{id} — transaction history (§tx) ─────────────── */
+
+/** One indexed Deposit/Withdraw row for the transaction list. `tsApprox` is an ESTIMATE from block
+ * height (Base ~2s blocks) — surfaced as approximate; `blockNumber`/`txHash` are exact. */
+export interface PositionTx {
+  kind: "deposit" | "withdraw";
+  amountUsd: string;
+  shares: string;
+  blockNumber: number;
+  txHash: `0x${string}`;
+  tsApprox: string;
+}
+
+interface PositionEventsResponse {
+  stale?: boolean;
+  onchainEvents?: PositionTx[];
+}
+
+/**
+ * The vault position's on-chain transaction history (indexed Deposit/Withdraw, newest first). `null`
+ * when offline; `[]` when connected but nothing is indexed yet (honest — never fabricated).
+ */
+export function usePositionTransactions(): { txs: PositionTx[]; stale: boolean } | null {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "position-tx", "vault", identity?.account, identity?.chainId],
+    enabled: online,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) =>
+      client!.request<PositionEventsResponse>("/portfolio/positions/vault", { signal }),
+  });
+  if (!online) return null;
+  const d = query.data;
+  if (!d) return null;
+  const txs = Array.isArray(d.onchainEvents) ? d.onchainEvents : [];
+  return { txs, stale: d.stale === true };
 }
 
 /* ── GET /recommendations (§3.4) ───────────────────────────────────────────── */

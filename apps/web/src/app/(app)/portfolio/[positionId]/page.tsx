@@ -16,11 +16,23 @@ import { money } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
-import { usePortfolioView } from "@/lib/agent/useAgent";
+import { usePortfolioView, usePositionTransactions, type PositionTx } from "@/lib/agent/useAgent";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import "@/components/screens/portfolio.css";
 
 const DISPLAY_CHAIN_ID = 84532;
 const num = (x: bigint | undefined, d: number) => (x === undefined ? undefined : Number(formatUnits(x, d)));
+
+/** A short "~2d ago" style relative age from an ISO string (the tx timestamp is APPROXIMATE). */
+function agoApprox(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 90) return "just now";
+  if (s < 3600) return `~${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `~${Math.round(s / 3600)}h ago`;
+  return `~${Math.round(s / 86400)}d ago`;
+}
 
 function Tag({ text, title }: { text: string; title: string }) {
   return (
@@ -32,12 +44,13 @@ function Tag({ text, title }: { text: string; title: string }) {
 
 export default function Page({ params }: { params: Promise<{ positionId: string }> }) {
   const { positionId } = use(params);
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
   const base = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
   // Second instance parameterized on the loaded shares → previewRedeem(all shares) = realizable now.
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID, previewRedeemShares: base.shares });
-  // §B2 agent-derived PnL (called unconditionally — Rules of Hooks — before any early return).
+  // §B2/§tx agent-derived PnL + transaction history (called unconditionally — Rules of Hooks).
   const agent = usePortfolioView();
+  const txView = usePositionTransactions();
 
   if (positionId !== "vault") {
     return (
@@ -65,6 +78,8 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const costBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
   const unrealizedPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
   const hasIndexedPnl = costBasisUsd !== undefined || unrealizedPnlUsd !== undefined;
+  // §tx: the indexed Deposit/Withdraw history — trusted only when LIVE + not stale.
+  const txs: PositionTx[] = live && txView && !txView.stale ? txView.txs : [];
   const dash = (n: number | undefined, f: (x: number) => string) => (n === undefined ? "…" : f(n));
   // A connected value cell: skeleton while loading, real when live, dash otherwise.
   const cell = (n: number | undefined, f: (x: number) => string) =>
@@ -143,14 +158,50 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
       <div className="card card-pad">
         <div className="card-hd">
           <span className="t">Transactions</span>
-          <Tag text="not indexed yet" title="Deposit/withdraw history needs an indexer; read it on BaseScan for now." />
+          {txs.length > 0 && <span className="lbl" title="Times are approximate (from block height)">indexed on-chain</span>}
         </div>
-        <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
-          Transaction history isn’t indexed in this build. Your on-chain activity is verifiable directly on{" "}
-          <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
-            BaseScan <Icon name="ext" size={10} />
-          </a>.
-        </div>
+        {txs.length > 0 ? (
+          <table className="tbl">
+            <tbody>
+              {txs.map((t) => {
+                const url = explorerTxUrl(chainId, t.txHash);
+                const isDep = t.kind === "deposit";
+                return (
+                  <tr key={t.txHash}>
+                    <td>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+                        <Icon name={isDep ? "down" : "up"} size={14} />
+                        {isDep ? "Deposit" : "Withdraw"}
+                      </div>
+                      <div className="muted" style={{ fontSize: 11.5 }}>
+                        {agoApprox(t.tsApprox)} · block {t.blockNumber.toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="num tnum">{isDep ? "+" : "−"}{money(Number(t.amountUsd))}</td>
+                    <td className="num">
+                      {url ? (
+                        <a className="cite" href={url} target="_blank" rel="noreferrer" title="View on explorer">
+                          <Icon name="ext" size={12} />
+                        </a>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : live ? (
+          <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
+            No deposits or withdrawals recorded for this position yet.
+          </div>
+        ) : (
+          <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
+            Connect on Base Sepolia to see your indexed transaction history. It&apos;s also verifiable on{" "}
+            <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
+              BaseScan <Icon name="ext" size={10} />
+            </a>.
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>

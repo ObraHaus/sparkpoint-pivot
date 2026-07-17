@@ -42,6 +42,20 @@ FROM onchain_events
 WHERE network_id = $1 AND address = $2 AND lower(decoded->>'owner') = lower($3)
   AND decoded->>'kind' IN ('deposit', 'withdraw')
 """.strip()
+# One owner's Deposit/Withdraw rows, newest first — the transaction history (§tx).
+_LIST_FLOWS = """
+SELECT decoded->>'kind' AS kind,
+       decoded->>'assets' AS assets,
+       decoded->>'shares' AS shares,
+       block_number,
+       encode(tx_hash, 'hex') AS tx_hash,
+       log_index
+FROM onchain_events
+WHERE network_id = $1 AND address = $2 AND lower(decoded->>'owner') = lower($3)
+  AND decoded->>'kind' IN ('deposit', 'withdraw')
+ORDER BY block_number DESC, log_index DESC
+LIMIT $4
+""".strip()
 
 
 def _hexb(h: str) -> bytes:
@@ -107,6 +121,17 @@ class CostBasis:
         return self.event_count > 0
 
 
+@dataclass(frozen=True)
+class FlowRow:
+    """One indexed Deposit/Withdraw, for the transaction history (newest-first)."""
+
+    kind: str  # 'deposit' | 'withdraw'
+    assets: int  # USDC base units (6 dp)
+    shares: int  # vault shares (6 dp)
+    block_number: int
+    tx_hash: str  # 0x… hex
+
+
 @dataclass
 class VaultFlowReader:
     """Reads the indexed flows to derive a user's cost basis (drives GET /portfolio PnL)."""
@@ -121,3 +146,19 @@ class VaultFlowReader:
             deposited=int(row["deposited"]), withdrawn=int(row["withdrawn"]),
             event_count=int(row["n"]),
         )
+
+    async def list_flows(
+        self, network_id: str, vault: str, owner: str, limit: int = 50
+    ) -> list[FlowRow]:
+        """The owner's indexed Deposit/Withdraw rows (newest first) — the transaction history."""
+        rows = await self.db.fetch(_LIST_FLOWS, network_id, vault.lower(), owner, limit)
+        return [
+            FlowRow(
+                kind=str(r["kind"]),
+                assets=int(r["assets"]),
+                shares=int(r["shares"]),
+                block_number=int(r["block_number"]),
+                tx_hash="0x" + str(r["tx_hash"]),
+            )
+            for r in rows
+        ]

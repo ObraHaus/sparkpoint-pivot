@@ -15,8 +15,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon, SparkMark } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
-import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
@@ -35,6 +33,7 @@ import {
   type CardActions,
 } from "@/components/screens/chat/cards";
 import { useAgentClient } from "@/lib/agent/useAgent";
+import { ChatPortfolioCard } from "@/components/screens/chat/portfolio-card";
 import { parseCard, type ChatCard } from "@/lib/agent/cards";
 import { AgentApiError } from "@/lib/agent/client";
 import "@/components/screens/chat.css";
@@ -696,15 +695,7 @@ export default function ChatPage() {
             </a>
           </div>
         </div>
-        <div className="ctx-card">
-          <div className="ck">Portfolio</div>
-          <div style={{ fontSize: 20, fontWeight: 600 }} className="tnum">
-            {money(data.netWorth)}
-          </div>
-          <div className="delta up" style={{ fontSize: 12.5, marginTop: 3 }}>
-            <Icon name="up" size={13} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
-          </div>
-        </div>
+        <ChatPortfolioCard onOpen={() => go("portfolio")} />
         <div className="ctx-card">
           <div className="ck">Quick links</div>
           <div className="qlink" onClick={() => go("portfolio")}>

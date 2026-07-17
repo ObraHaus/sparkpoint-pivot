@@ -22,19 +22,27 @@ from sparkpoint_agent.api.recommendations import get_agent_config
 from sparkpoint_agent.api.vault import get_vault_reader
 from sparkpoint_agent.chain import VaultReader
 from sparkpoint_agent.config import AgentConfig
-from sparkpoint_agent.db.vault_flows import CostBasis
+from sparkpoint_agent.db.vault_flows import CostBasis, FlowRow
 
 VAULT = "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2"
 
 
 class _FakeFlowReader:
-    """In-memory cost-basis reader for the PnL path (no DB)."""
+    """In-memory cost-basis + flow-list reader (no DB)."""
 
-    def __init__(self, basis: CostBasis | None = None) -> None:
+    def __init__(
+        self, basis: CostBasis | None = None, flows: list[FlowRow] | None = None
+    ) -> None:
         self._basis = basis or CostBasis(0, 0, 0)
+        self._flows = flows or []
 
     async def cost_basis(self, network_id: str, vault: str, owner: str) -> CostBasis:
         return self._basis
+
+    async def list_flows(
+        self, network_id: str, vault: str, owner: str, limit: int = 50
+    ) -> list[FlowRow]:
+        return self._flows[:limit]
 
 _WAD = 10**18
 
@@ -107,11 +115,13 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
-def _use(reader: object, *, basis: CostBasis | None = None) -> None:
+def _use(
+    reader: object, *, basis: CostBasis | None = None, flows: list[FlowRow] | None = None
+) -> None:
     app.dependency_overrides[get_vault_reader] = lambda: reader
     # B2: the portfolio endpoint now derives PnL from indexed flows + reads the vault address from
     # config — provide in-memory fakes (no DB) so the cost-basis path is exercised without Postgres.
-    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader(basis)
+    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader(basis, flows)
     app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
         chain_id=84532, rpc_url=None, vault_address=VAULT, database_url=None
     )
@@ -262,6 +272,61 @@ def test_position_detail_found(client: TestClient) -> None:
     # History + per-position series need the (unbuilt) event index → empty, never fabricated.
     assert body["onchainEvents"] == []
     assert body["pnlSeries"] == []
+
+
+def test_position_detail_lists_indexed_transactions(client: TestClient) -> None:
+    # §tx: the indexed Deposit/Withdraw flows surface as onchainEvents (newest first), USD-valued,
+    # with the exact block + tx hash and an APPROXIMATE age from block height.
+    flows = [
+        FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
+                tx_hash="0x" + "ab" * 32),
+        FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
+                tx_hash="0x" + "cd" * 32),
+    ]
+    _use(FakePortfolioReader(balance=125_000_000, block=44_251_000), flows=flows)
+    body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
+    evs = body["onchainEvents"]
+    assert len(evs) == 2
+    assert evs[0]["kind"] == "deposit"
+    assert evs[0]["amountUsd"] == "250.00"
+    assert evs[0]["blockNumber"] == 44_248_630
+    assert evs[0]["txHash"] == "0x" + "ab" * 32
+    assert evs[0]["tsApprox"]  # a non-empty ISO estimate
+    assert evs[1]["kind"] == "withdraw"
+    assert evs[1]["amountUsd"] == "100.00"
+
+
+def test_position_detail_no_transactions_when_unindexed(client: TestClient) -> None:
+    # No indexed flows → empty transaction list (honest, never fabricated).
+    _use(FakePortfolioReader(balance=125_000_000), flows=[])
+    body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
+    assert body["onchainEvents"] == []
+
+
+def test_portfolio_value_history_series_from_flows(client: TestClient) -> None:
+    # §history: the net-worth (position value) series is derived from the indexed flows' implied pps
+    # (assets/shares) + the current value. deposit 100 (pps 1) → withdraw all → deposit 250 (pps 2)
+    # → now (250 held). Values: 100 → 0 → 250 → 250.
+    flows = [
+        FlowRow(kind="deposit", assets=100_000_000, shares=100_000_000, block_number=44_135_823,
+                tx_hash="0x" + "11" * 32),
+        FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
+                tx_hash="0x" + "22" * 32),
+        FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
+                tx_hash="0x" + "33" * 32),
+    ]
+    # pps == 2e18 so convertToAssets(125M shares) == 250M (matches the last deposit's implied pps).
+    _use(FakePortfolioReader(balance=125_000_000, pps=2 * _WAD, block=44_251_000), flows=flows)
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    series = body["pnl"]["series"]
+    assert [p["valueUsd"] for p in series] == ["100.00", "0.00", "250.00", "250.00"]
+    assert all(p["ts"] for p in series)  # every point carries a (approx) timestamp
+
+
+def test_portfolio_value_history_empty_when_no_flows(client: TestClient) -> None:
+    _use(FakePortfolioReader(balance=125_000_000, pps=2 * _WAD), flows=[])
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    assert body["pnl"]["series"] == []
 
 
 def test_position_detail_surfaces_indexed_pnl(client: TestClient) -> None:

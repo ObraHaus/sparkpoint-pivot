@@ -90,7 +90,19 @@ export default function Page() {
   const vaultPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
   const vaultCostBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
 
-  const { line, area, last } = areaPath(data.series1M, 560, 150);
+  // §history — REAL position-value series from the agent's on-chain flow index. The range selector
+  // filters the time window; if the window has <2 points (sparse testnet data) we fall back to the
+  // full real series so the chart isn't empty. Only when there's no real history do we draw the mock
+  // shape (labelled "Illustrative"). `realChart` gates that label so a real curve is never mislabeled.
+  const RANGE_DAYS: Record<string, number> = { "1D": 1, "1W": 7, "1M": 30, "1Y": 365, All: Infinity };
+  const fullHistory = agentLive ? agent.history : [];
+  // Window the series relative to its LATEST point (≈ now) — keeps the render pure (no Date.now()).
+  const lastT = fullHistory.length ? fullHistory[fullHistory.length - 1].t : 0;
+  const cutoff = lastT - (RANGE_DAYS[range] ?? 30) * 86_400_000;
+  const windowed = fullHistory.filter((p) => p.t >= cutoff);
+  const realPoints = windowed.length >= 2 ? windowed : fullHistory;
+  const realChart = realPoints.length >= 2;
+  const { line, area, last } = areaPath(realChart ? realPoints.map((p) => p.v) : data.series1M, 560, 150);
 
   // Allocation split — live real, preview mock, degraded 0 (rendered as dashes).
   const mockTotal = data.allocation.reduce((s, x) => s + x.v, 0);
@@ -204,11 +216,15 @@ export default function Page() {
               <circle cx={last[0]} cy={last[1]} r="4" fill="var(--primary)" />
               <circle cx={last[0]} cy={last[1]} r="8" fill="var(--primary)" opacity=".2" />
             </svg>
-            {(live || preview) && (
+            {realChart ? (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
-                <Note text="Illustrative history" title="The shape is a placeholder — real net-worth history needs an indexer." />
+                <StatusTag variant="live" title="Real position-value history, derived from your on-chain deposits/withdrawals (indexed). Times are approximate." />
               </span>
-            )}
+            ) : (live || preview) ? (
+              <span style={{ position: "absolute", top: 6, right: 8 }}>
+                <Note text="Illustrative history" title="A placeholder shape — your real history appears once deposits/withdrawals are indexed." />
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -317,10 +333,14 @@ export default function Page() {
                     <td className="num tnum">{money(p.valueUsd)}</td>
                     {p.key === "vault" && vaultPnlUsd !== undefined ? (
                       <td
-                        className={`num tnum ${vaultPnlUsd > 0 ? "delta up" : vaultPnlUsd < 0 ? "delta down" : "delta flat"}`}
+                        className="num tnum"
                         title={vaultCostBasisUsd !== undefined ? `Cost basis ${money(vaultCostBasisUsd)} (net deposited, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
                       >
-                        {vaultPnlUsd >= 0 ? "+" : "−"}{money(Math.abs(vaultPnlUsd))}
+                        {/* .delta is display:inline-flex — it must live in an inner <span>, NOT on the
+                            <td> (that would override display:table-cell and break the column grid). */}
+                        <span className={vaultPnlUsd > 0 ? "delta up" : vaultPnlUsd < 0 ? "delta down" : "delta flat"} style={{ display: "inline-flex", justifyContent: "flex-end" }}>
+                          {vaultPnlUsd >= 0 ? "+" : "−"}{money(Math.abs(vaultPnlUsd))}
+                        </span>
                       </td>
                     ) : (
                       <td className="num muted" title="PnL needs a history indexer, not wired yet">

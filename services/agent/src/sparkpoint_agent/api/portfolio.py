@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
 from ..db import get_database
-from ..db.vault_flows import CostBasis, VaultFlowReader
+from ..db.vault_flows import CostBasis, FlowRow, VaultFlowReader
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
@@ -114,6 +114,19 @@ class PnlSeriesPoint(BaseModel):
     valueUsd: str
 
 
+class OnchainEvent(BaseModel):
+    """One indexed Deposit/Withdraw for the transaction history (§tx). ``blockNumber``/``txHash``
+    are EXACT + verifiable on-chain; ``tsApprox`` is an APPROXIMATE age derived from block height
+    (Base ~2s blocks) — the frontend labels it an estimate (``onchain_events`` carries no time)."""
+
+    kind: str  # 'deposit' | 'withdraw'
+    amountUsd: str  # USDC value moved (2 dp, $1 par)
+    shares: str  # vault shares moved (6-dp base units)
+    blockNumber: int
+    txHash: str
+    tsApprox: str
+
+
 class Pnl(BaseModel):
     """§3.3 ``pnl`` — realized/unrealized + a time-series (null/empty until indexed)."""
 
@@ -170,7 +183,7 @@ class PositionEventsResponse(BaseModel):
     asOf: str
     stale: bool
     position: PositionDetail
-    onchainEvents: list[dict[str, str]]
+    onchainEvents: list[OnchainEvent]
     pnlSeries: list[PnlSeriesPoint]
 
 
@@ -203,6 +216,58 @@ def _bps_of(part: int, whole: int) -> int:
 def _now_iso() -> str:
     """A UTC ISO-8601 ``asOf`` timestamp for the response envelope."""
     return datetime.now(UTC).isoformat()
+
+
+_BASE_BLOCK_SECONDS = 2  # Base (mainnet + Sepolia) ~2s blocks — APPROX event age from height only
+
+
+def _approx_ts_iso(head_block: int, block: int) -> str:
+    """An APPROXIMATE ISO timestamp for an indexed event, from block height vs the current head
+    (``onchain_events`` stores no time). Base's ~2s blocks make this a close estimate; the frontend
+    labels it as approximate. Never used for money — only to date a transaction row."""
+    delta_s = max(0, head_block - block) * _BASE_BLOCK_SECONDS
+    return datetime.fromtimestamp(datetime.now(UTC).timestamp() - delta_s, UTC).isoformat()
+
+
+def _to_event(flow: FlowRow, head_block: int) -> OnchainEvent:
+    """Map an indexed :class:`FlowRow` to the §tx wire event."""
+    return OnchainEvent(
+        kind=flow.kind,
+        amountUsd=_usd_from_usdc(flow.assets),
+        shares=str(flow.shares),
+        blockNumber=flow.block_number,
+        txHash=flow.tx_hash,
+        tsApprox=_approx_ts_iso(head_block, flow.block_number),
+    )
+
+
+def _value_series(flows: list[FlowRow], position: _VaultPosition) -> list[PnlSeriesPoint]:
+    """The vault position VALUE over time (§history) — REAL, derived from the indexed flows + the
+    current on-chain value, no sampler/backfill/oracle:
+
+    Each Deposit/Withdraw implies the vault's price-per-share AT its block (``assets / shares``),
+    and at any block ALL of a user's shares are worth that same pps — so the position value at flow
+    ``i`` is ``cumulative_shares(after i) x pps(i)``. The final point is the live value. Sparse
+    (one point per flow + now) but never fabricated; timestamps are APPROX from block height.
+    """
+    if not flows:
+        return []
+    ordered = sorted(flows, key=lambda f: f.block_number)
+    cumulative = 0
+    points: list[PnlSeriesPoint] = []
+    for f in ordered:
+        cumulative += f.shares if f.kind == "deposit" else -f.shares
+        # pps(block) implied by the event = assets per share; value = shares held x pps.
+        value = cumulative * f.assets // f.shares if f.shares > 0 and cumulative > 0 else 0
+        points.append(
+            PnlSeriesPoint(
+                ts=_approx_ts_iso(position.block, f.block_number),
+                valueUsd=_usd_from_usdc(max(0, value)),
+            )
+        )
+    # The live on-chain value now (convertToAssets of the current shares).
+    points.append(PnlSeriesPoint(ts=_now_iso(), valueUsd=_usd_from_usdc(position.underlying)))
+    return points
 
 
 def _parse_include(include: str | None) -> frozenset[str]:
@@ -354,6 +419,18 @@ async def get_portfolio(
     if "positions" in sections and position.held:
         positions.append(_position_detail(position, basis))
 
+    # §history value series — real net-worth (position value) over time from the indexed flows.
+    # Fail-open ([] on any error / no flows), so a missing index degrades to the honest empty chart.
+    value_series: list[PnlSeriesPoint] = []
+    if "pnl" in sections and position.held and config.vault_address:
+        try:
+            hist = await flows.list_flows(
+                _network_id(account.chain_id), config.vault_address, account.account, limit=200
+            )
+            value_series = _value_series(hist, position)
+        except Exception:
+            value_series = []
+
     # Net worth = vault value + idle wallet USDC (both USDC at $1 par). A degraded read → "0.00".
     vault_value = position.underlying if position.held else 0
     net_worth = "0.00" if position.stale else _usd_from_usdc(vault_value + position.idle)
@@ -371,7 +448,7 @@ async def get_portfolio(
         positions=positions,
         allocation=_allocation(position) if "allocation" in sections else None,
         pnl=(
-            Pnl(series=[], realizedUsd=None, unrealizedUsd=unrealized)
+            Pnl(series=value_series, realizedUsd=None, unrealizedUsd=unrealized)
             if "pnl" in sections else None
         ),
         risk=_risk(position) if "risk" in sections else None,
@@ -419,15 +496,20 @@ async def get_position(
             reasons=[ErrorReason("NOT_FOUND", "zero vault shares")],
         )
 
-    # Cost basis from the indexed flows — fail-open (a missing/unindexed value → null PnL).
+    # Cost basis + transaction history from indexed flows — fail-open (missing → null/[], honest).
     basis: CostBasis | None = None
+    events: list[OnchainEvent] = []
     if not position.stale and position.held and config.vault_address:
+        network_id = _network_id(account.chain_id)
         try:
-            basis = await flows.cost_basis(
-                _network_id(account.chain_id), config.vault_address, account.account
-            )
+            basis = await flows.cost_basis(network_id, config.vault_address, account.account)
         except Exception:
             basis = None
+        try:
+            rows = await flows.list_flows(network_id, config.vault_address, account.account)
+            events = [_to_event(f, position.block) for f in rows]
+        except Exception:
+            events = []
 
     detail = (
         _position_detail(position, basis)
@@ -448,7 +530,8 @@ async def get_position(
         asOf=_now_iso(),
         stale=position.stale,
         position=detail,
-        # On-chain event history + per-position PnL need the event index → empty for now.
-        onchainEvents=[],
+        # Real transaction history from the §B2 indexed Deposit/Withdraw flows. The per-position PnL
+        # time-series still needs the pps sampler → empty for now.
+        onchainEvents=events,
         pnlSeries=[],
     )
