@@ -11,9 +11,22 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from .pool import Database
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    """Parse an ISO date/datetime backdating string into a tz-aware datetime (UTC), or ``None``.
+
+    Passing a real ``datetime`` (not a str) lets asyncpg bind it directly to ``timestamptz`` — a
+    ``$n::timestamptz`` cast on a str parameter confuses asyncpg's type inference. Assumed already
+    validated by the API layer; a bad value raises ``ValueError`` (caller has validated)."""
+    if value is None or not value.strip():
+        return None
+    dt = datetime.fromisoformat(value.strip())
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 # Full column lists spelled out in each query (no f-string interpolation — keeps the SQL static so
 # ruff's S608 never fires; matches db/knowledge_notes.py style).
@@ -38,11 +51,11 @@ _GET_SQL = (
 _INSERT_SQL = (
     "INSERT INTO content_entries "
     "(type, title, body, tag, cta_label, cta_href, is_active, author, published_at) "
-    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now())) RETURNING id"
+    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now())) RETURNING id"
 )
 _UPDATE_SQL = (
     "UPDATE content_entries SET type = $2, title = $3, body = $4, tag = $5, cta_label = $6, "
-    "cta_href = $7, is_active = $8, published_at = COALESCE($9::timestamptz, published_at), "
+    "cta_href = $7, is_active = $8, published_at = COALESCE($9, published_at), "
     "updated_at = now() WHERE id = $1"
 )
 _DELETE_SQL = "DELETE FROM content_entries WHERE id = $1"
@@ -100,7 +113,7 @@ class ContentEntryStore:
         async with self.db.acquire() as conn, conn.transaction():
             new_id = await conn.fetchval(
                 _INSERT_SQL, type_, title, body, tag, cta_label, cta_href, is_active, act,
-                published_at,
+                _parse_ts(published_at),
             )
             await conn.execute(_AUDIT_SQL, "create", str(new_id), act, json.dumps({"type": type_}))
         return int(new_id)
@@ -126,7 +139,7 @@ class ContentEntryStore:
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(
                 _UPDATE_SQL, entry_id, type_, title, body, tag, cta_label, cta_href, is_active,
-                published_at,
+                _parse_ts(published_at),
             )
             await conn.execute(
                 _AUDIT_SQL, "update", str(entry_id), act, json.dumps({"type": type_})
