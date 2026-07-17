@@ -29,7 +29,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from .embeddings import Embedder
-from .store import ChunkRow, ChunkStore
+from .store import KNOWLEDGE_SOURCE_KIND, ChunkRow, ChunkStore
 
 # ─────────────────────────────────────────────────────────────────────────────
 # T123 — pre-ingest PII/secret denylist + provenance stamp
@@ -123,6 +123,11 @@ class Chunk:
     wikilinks: tuple[str, ...] = ()
     risk_tier: str | None = None
     updated: str | None = None
+    # Tip-databank fields (from frontmatter): an optional call-to-action + an active flag. Harmless
+    # on knowledge notes (they simply carry None/'true'); consumed by the sidebar tip widget.
+    cta_url: str | None = None
+    cta_label: str | None = None
+    active: str | None = None
 
     def metadata(self) -> dict[str, Any]:
         """The ``memory_chunks.metadata`` JSONB payload for this chunk."""
@@ -135,6 +140,9 @@ class Chunk:
             "wikilinks": list(self.wikilinks),
             "risk_tier": self.risk_tier,
             "updated": self.updated,
+            "cta_url": self.cta_url,
+            "cta_label": self.cta_label,
+            "active": self.active,
             "tier": "obsidian",
         }
 
@@ -268,6 +276,9 @@ def chunk_note(note: ParsedNote) -> list[Chunk]:
     """
     risk_tier = note.frontmatter.get("risk_tier")
     updated = note.frontmatter.get("updated")
+    cta_url = note.frontmatter.get("cta_url")
+    cta_label = note.frontmatter.get("cta_label")
+    active = note.frontmatter.get("active")
     chunks: list[Chunk] = []
     index = 0
     for section in note.sections:
@@ -288,6 +299,9 @@ def chunk_note(note: ParsedNote) -> list[Chunk]:
                     wikilinks=note.wikilinks,
                     risk_tier=str(risk_tier) if risk_tier is not None else None,
                     updated=str(updated) if updated is not None else None,
+                    cta_url=str(cta_url) if cta_url else None,
+                    cta_label=str(cta_label) if cta_label else None,
+                    active=str(active) if active is not None else None,
                 )
             )
             index += 1
@@ -315,6 +329,7 @@ async def ingest_note(
     store: ChunkStore,
     embedder: Embedder,
     source_ref: str | None = None,
+    source_kind: str = KNOWLEDGE_SOURCE_KIND,
 ) -> IngestResult:
     """Parse → chunk → embed → upsert one note; idempotent for a fixed ``source``.
 
@@ -348,6 +363,7 @@ async def ingest_note(
             embedding=emb.vector,
             embedding_model=emb.model_version,
             metadata={**chunk.metadata(), **provenance},
+            source_kind=source_kind,
         )
         for chunk, emb in zip(chunks, embeddings, strict=True)
     ]
@@ -388,6 +404,7 @@ async def ingest_directory(
     pattern: str = "*.md",
     skip_sources: set[str] | None = None,
     source_ref: str | None = None,
+    source_kind: str = KNOWLEDGE_SOURCE_KIND,
 ) -> CorpusReport:
     """Ingest every markdown note under ``path`` (sorted, stem = source slug).
 
@@ -401,7 +418,8 @@ async def ingest_directory(
             continue
         results.append(
             await ingest_note(
-                text, source=source, store=store, embedder=embedder, source_ref=source_ref
+                text, source=source, store=store, embedder=embedder, source_ref=source_ref,
+                source_kind=source_kind,
             )
         )
     return CorpusReport(results=tuple(results))
@@ -411,6 +429,14 @@ def default_seed_dir() -> Path:
     """Absolute path to the shipped seed corpus (``services/agent/knowledge_seed``)."""
     # knowledge/ingestion.py -> knowledge -> sparkpoint_agent -> src -> agent root
     return Path(__file__).resolve().parents[3] / "knowledge_seed"
+
+
+def tips_seed_dir() -> Path:
+    """Absolute path to the shipped TIP databank (``services/agent/knowledge_seed_tips``).
+
+    Ingested under ``source_kind='tip'`` — a databank for the sidebar widget, isolated from the
+    assistant's ``'knowledge'`` RAG citations."""
+    return Path(__file__).resolve().parents[3] / "knowledge_seed_tips"
 
 
 def note_sources(chunks: Sequence[Chunk]) -> list[str]:

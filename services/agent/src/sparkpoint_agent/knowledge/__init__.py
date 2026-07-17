@@ -37,6 +37,7 @@ from .ingestion import (
     parse_note,
     scan_for_pii,
     source_uuid,
+    tips_seed_dir,
 )
 from .retrieval import (
     DEFAULT_K,
@@ -50,6 +51,7 @@ from .retrieval import (
 from .search import hit_to_citation, knowledge_search
 from .store import (
     KNOWLEDGE_SOURCE_KIND,
+    TIP_SOURCE_KIND,
     ChunkHit,
     ChunkRow,
     ChunkStore,
@@ -63,6 +65,7 @@ __all__ = [
     "EMBEDDING_DIM",
     "EMBEDDING_MODEL_VERSION",
     "KNOWLEDGE_SOURCE_KIND",
+    "TIP_SOURCE_KIND",
     "Chunk",
     "ChunkHit",
     "ChunkRow",
@@ -91,6 +94,7 @@ __all__ = [
     "default_citation_retriever",
     "default_grounder",
     "default_seed_dir",
+    "tips_seed_dir",
     "hit_to_citation",
     "ingest_directory",
     "ingest_note",

@@ -84,10 +84,25 @@ async def test_chat_portfolio_reads_real_position_and_idle() -> None:
     view = await provider.read(await _chain(reader))
     assert view.stale is False
     assert view.idle_usdc == 50_000_000
-    assert len(view.positions) == 1
+    assert len(view.positions) == 2  # vault position + idle wallet USDC (its own row)
     assert view.positions[0].venue == "SparkPoint Vault"
     assert view.positions[0].value_usd == "250.00"
+    assert view.positions[1].venue == "Wallet (idle)"
+    assert view.positions[1].asset == "USDC"
+    assert view.positions[1].value_usd == "50.00"
     assert view.net_worth_usd == "300.00"  # 250 vault + 50 idle
+
+
+@pytest.mark.asyncio
+async def test_chat_portfolio_idle_only_shows_as_position() -> None:
+    # No vault shares yet, only idle USDC → the card still shows the idle row (never empty).
+    reader = _FakeReader(shares=0, idle=25_000_000)
+    provider = _VaultChatPortfolioProvider(reader, _config())
+    view = await provider.read(await _chain(reader))
+    assert len(view.positions) == 1
+    assert view.positions[0].venue == "Wallet (idle)"
+    assert view.positions[0].value_usd == "25.00"
+    assert view.idle_usdc == 25_000_000
 
 
 @pytest.mark.asyncio
@@ -111,11 +126,20 @@ async def _chain(reader: _FakeReader):
     return await _VaultChatChainProvider(reader, _config()).context(_account(), surface="chat")
 
 
-def test_refusal_split_swap_on_sepolia_is_network_message() -> None:
-    # AERODROME_SWAP is undeployed on 84532 → "not supported on this network", not the generic line.
+def test_refusal_swap_on_base_points_to_swap_page() -> None:
+    # AERODROME_SWAP is fork-only, but the manual Uniswap /swap page is live on Base Sepolia →
+    # point the user to the Swap page rather than a flat "not supported".
     msg = _build_action_refusal(84532, ActionType.AERODROME_SWAP)
-    assert "Base Sepolia" in msg
+    assert "Swap page" in msg
+    assert "Uniswap" in msg
+    assert "aren't supported" not in msg.lower()
+
+
+def test_refusal_swap_on_non_swap_page_chain_is_network_message() -> None:
+    # No Uniswap Swap page on Robinhood testnet (46630) → the generic "not supported" line.
+    msg = _build_action_refusal(46630, ActionType.AERODROME_SWAP)
     assert "aren't supported" in msg.lower()
+    assert "Swap page" not in msg
 
 
 def test_refusal_split_deposit_is_build_message() -> None:

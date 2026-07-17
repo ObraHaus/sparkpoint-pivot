@@ -586,6 +586,11 @@ _ACTION_NOUNS: dict[ActionType, str] = {
     ActionType.VAULT_WITHDRAW: "vault withdrawals",
 }
 
+# Chains where the manual, non-custodial Uniswap V3 Swap page (/swap) is live (mirrors the web's
+# swap dex config). The assistant can't build an Aerodrome swap (fork-only on testnet), but on these
+# chains it points the user at the working Swap page instead of a flat "not supported".
+_SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453})
+
 
 def _action_supported_on_chain(chain_id: int, action_type: ActionType | None) -> bool:
     """True iff this chain's RESOLVED allowlist offers ``action_type`` (``undeployed`` entries are
@@ -603,6 +608,15 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
     """Split the BUILD_ACTION no-candidate case by CAUSE (previously one byte-identical string):
     an action the network doesn't offer at all vs. one it offers but we couldn't build."""
     if not _action_supported_on_chain(chain_id, action_type):
+        # Swaps: the assistant can't build an Aerodrome swap (fork-only on testnet), but the
+        # non-custodial Uniswap V3 Swap page IS live on Base — send the user there, not a flat
+        # "not supported". (Chains without a Swap page, e.g. 46630, get the generic message.)
+        if action_type is ActionType.AERODROME_SWAP and chain_id in _SWAP_PAGE_CHAINS:
+            return (
+                "Token swaps run on the Swap page — open Swap in the sidebar to swap "
+                "ETH ↔ USDC on Uniswap V3. You review the quote and sign from your own "
+                "wallet; I can't move your funds."
+            )
         network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
         noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
         # Only claim the vault is "live here" on a chain that actually offers vault deposits: the

@@ -14,6 +14,13 @@ RUN uv pip install --system \
 
 COPY src ./src
 
+# The seed corpora the admin reingest endpoints load at runtime (resolved relative to /app):
+#   knowledge_seed      -> /app/knowledge_seed      (Obsidian RAG corpus; /admin/knowledge/reingest)
+#   knowledge_seed_tips -> /app/knowledge_seed_tips (sidebar tip databank; /admin/tips/reingest)
+# Without these in the image the reingest endpoints find no notes and ingest 0.
+COPY knowledge_seed ./knowledge_seed
+COPY knowledge_seed_tips ./knowledge_seed_tips
+
 # The vendored, forge-build-free vault ABI the chain-reader loads (T015 export).
 ENV SPARKPOINT_VAULT_ABI_PATH=/app/src/sparkpoint_agent/chain/abi/SparkPointVault.abi.json
 

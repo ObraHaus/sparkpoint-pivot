@@ -211,9 +211,9 @@ class _VaultChatPortfolioProvider:
             idle = await self._reader.token_balance_of(asset_addr, owner)
         except VaultUnavailable:
             return PortfolioView(stale=True)
-        positions: tuple[PositionLite, ...] = ()
+        positions: list[PositionLite] = []
         if shares > 0:
-            positions = (
+            positions.append(
                 PositionLite(
                     venue="SparkPoint Vault",
                     asset="USDC",
@@ -223,11 +223,26 @@ class _VaultChatPortfolioProvider:
                     underlying="USDC",
                     price_source="ERC-4626 convertToAssets",
                     risk_tier="conservative",
-                ),
+                )
+            )
+        # Idle wallet USDC is a real, spendable holding — surface it as its own row so the
+        # portfolio_snapshot card matches the "you also have $X idle USDC" summary line (the card
+        # previously showed only the vault position, which read as "where's my idle balance?").
+        if idle > 0:
+            positions.append(
+                PositionLite(
+                    venue="Wallet (idle)",
+                    asset="USDC",
+                    value_usd=_fmt_units(idle, 6),
+                    underlying="USDC",
+                    price_source="wallet balance",
+                )
             )
         # net worth = vault value + idle wallet USDC (both 6dp USDC); ETH excluded (no USD feed).
         net = _fmt_units(vault_assets + idle, 6)
-        return PortfolioView(positions=positions, net_worth_usd=net, idle_usdc=idle, stale=False)
+        return PortfolioView(
+            positions=tuple(positions), net_worth_usd=net, idle_usdc=idle, stale=False
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

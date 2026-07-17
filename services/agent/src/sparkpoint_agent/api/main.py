@@ -39,6 +39,7 @@ from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
+from .content import router as content_router
 from .conversations import router as conversations_router
 from .errors import (
     ApiError,
@@ -53,6 +54,7 @@ from .middleware import RequestContextMiddleware
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
+from .tips import router as tips_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
@@ -322,6 +324,11 @@ app.include_router(admin_persona_router)
 app.include_router(conversations_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
+# Alpha content — public changelog/announcement reads (any beta wallet) + admin authoring
+# (/admin/content*). ACCESS/content only; never a signable artifact (N2).
+app.include_router(content_router)
+# Alpha sidebar tip widget — keyless GET /tips over the Obsidian 'tip' databank (no LLM/embed).
+app.include_router(tips_router)
 
 
 @app.get("/healthz")
