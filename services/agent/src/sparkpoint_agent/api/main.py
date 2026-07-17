@@ -33,6 +33,7 @@ from ..db.allowlist import AllowlistStore, parse_allowlist_env
 from ..policy import POLICY_VERSION
 from .admin_knowledge import router as admin_knowledge_router
 from .admin_llm import router as admin_llm_router
+from .admin_uptime import router as admin_uptime_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
 from .conversations import router as conversations_router
@@ -231,6 +232,8 @@ app.include_router(admin_llm_router)
 app.include_router(admin_knowledge_router)
 # §B1 per-wallet chat conversation history (/conversations*) — session-scoped, no admin override.
 app.include_router(conversations_router)
+# §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
+app.include_router(admin_uptime_router)
 
 
 @app.get("/healthz")
