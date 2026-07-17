@@ -52,7 +52,7 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const loading = isConnected && !wrongNetwork && base.isLoading;
   const error = isConnected && !wrongNetwork && !loading && base.isError;
   const live = isConnected && base.isDeployed && !loading && !error && !wrongNetwork;
-  const sharesNum = num(base.shares, 18);
+  const sharesNum = num(base.shares, 6); // vault share token is 6-dp (== USDC asset)
   const valueUsd = num(base.underlying, 6);
   const realizable = num(v.previewRedeemAssets, 6);
   const dash = (n: number | undefined, f: (x: number) => string) => (n === undefined ? "…" : f(n));

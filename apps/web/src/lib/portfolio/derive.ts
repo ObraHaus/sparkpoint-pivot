@@ -22,7 +22,7 @@ export interface LivePosition {
 export interface DerivedPortfolio {
   readonly vaultValue: number; // USDC value of the vault position (6-dp source)
   readonly idleUsdc: number; // idle wallet USDC (6-dp source)
-  readonly sharesNum: number; // vault shares (18-dp source)
+  readonly sharesNum: number; // vault shares (6-dp source: ERC-4626 share decimals == USDC)
   readonly ethBalance: number; // native ETH (18-dp source) — displayed in ETH, never USD
   readonly totalUsd: number; // net worth in USD = vaultValue + idleUsdc (ETH excluded)
   readonly hasPositions: boolean; // totalUsd > 0 (drives the empty state)
@@ -34,12 +34,12 @@ export interface DerivedPortfolio {
 export function derivePortfolio(input: {
   underlying?: bigint; // convertToAssets(shares) — 6-dp USDC
   usdcBalance?: bigint; // idle USDC — 6-dp
-  shares?: bigint; // spvUSDC — 18-dp
+  shares?: bigint; // spvUSDC — 6-dp (vault share decimals == the USDC asset's)
   ethWei?: bigint; // native ETH — 18-dp
 }): DerivedPortfolio {
   const vaultValue = toNum(input.underlying, 6);
   const idleUsdc = toNum(input.usdcBalance, 6);
-  const sharesNum = toNum(input.shares, 18);
+  const sharesNum = toNum(input.shares, 6);
   const ethBalance = toNum(input.ethWei, 18);
   const totalUsd = vaultValue + idleUsdc;
   const hasPositions = totalUsd > 0;

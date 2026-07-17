@@ -215,7 +215,8 @@ class _VaultChatPortfolioProvider:
                     venue="SparkPoint Vault",
                     asset="USDC",
                     value_usd=_fmt_units(vault_assets, 6),
-                    shares=_fmt_units(shares, 18),
+                    # The vault's share token is 6-dp (ERC-4626 share decimals == the USDC asset's).
+                    shares=_fmt_units(shares, 6),
                     underlying="USDC",
                     price_source="ERC-4626 convertToAssets",
                     risk_tier="conservative",

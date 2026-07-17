@@ -2,11 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { derivePortfolio } from "./derive.ts";
 
-test("decimals are pinned: USDC 6dp, shares + ETH 18dp; ETH excluded from USD total", () => {
+test("decimals are pinned: USDC + shares 6dp, ETH 18dp; ETH excluded from USD total", () => {
   const d = derivePortfolio({
     underlying: 1_500_000n, // 1.5 USDC (6dp)
     usdcBalance: 500_000n, // 0.5 USDC (6dp)
-    shares: 1_500_000_000_000_000_000n, // 1.5 spvUSDC (18dp)
+    shares: 1_500_000n, // 1.5 spvUSDC (6dp — the vault share token is 6-dp, == the USDC asset)
     ethWei: 2_000_000_000_000_000_000n, // 2 ETH (18dp)
   });
   assert.equal(d.vaultValue, 1.5);
@@ -27,7 +27,7 @@ test("empty state when there are no positions (guards total===0)", () => {
 });
 
 test("positions array: vault first (with shares), then idle", () => {
-  const d = derivePortfolio({ underlying: 1_000_000n, usdcBalance: 0n, shares: 10n ** 18n });
+  const d = derivePortfolio({ underlying: 1_000_000n, usdcBalance: 0n, shares: 1_000_000n }); // 1.0 shares (6dp)
   assert.equal(d.positions.length, 2);
   assert.equal(d.positions[0].key, "vault");
   assert.equal(d.positions[0].valueUsd, 1);
