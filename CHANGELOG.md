@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Live changelog** page (`/changelog`) + a left-rail button — an admin-curated "What's new" feed for the always-hot Alpha (client + tester facing).
+- **Sidebar tip widget** — rotating tips sourced from the Obsidian corpus under a new `source_kind='tip'` (isolated from the assistant's RAG citations), plus an admin-configurable **announcement** pinned first.
+- **Admin → Updates** panel to author both the changelog and the announcement from one place (one `content_entries` table + append-only `content_audit`; non-admin → 404).
+- Agent endpoints: public `GET /content/changelog`, `GET /content/announcement`, keyless `GET /tips`; admin `POST /admin/content` (create/edit), `POST /admin/content/delete`, `GET /admin/content` + `/audit`, and `POST /admin/tips/reingest`.
+- Migrations `0011_content_entries` (+ seed changelog/announcement rows) and `0012_tip_source_kind`.
+
 ## [0.2.2] - 2026-07-10
 
 ### Added

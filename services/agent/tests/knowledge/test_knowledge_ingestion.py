@@ -89,6 +89,19 @@ def test_chunk_note_carries_provenance_and_dense_indexes() -> None:
 # ── ingest ─────────────────────────────────────────────────────────────────
 
 
+TIP_NOTE = """---
+title: Fund your wallet
+cta_url: /bridge
+cta_label: Get testnet funds
+active: true
+---
+
+# Fund your wallet
+
+Grab Base Sepolia ETH + test USDC from the faucets on the Bridge page, then deposit.
+"""
+
+
 async def test_ingest_upserts_one_row_per_chunk(
     store: Any, embedder: Embedder
 ) -> None:
@@ -104,6 +117,29 @@ async def test_ingest_upserts_one_row_per_chunk(
     assert row.embedding_model  # non-empty stamp
     # Primary keys are the deterministic per-(source,index) UUID5.
     assert chunk_uuid("aave-v3-supply", 0) in store.rows
+
+
+async def test_ingest_tip_source_kind_and_cta_metadata(store: Any, embedder: Embedder) -> None:
+    # A tip note ingested under source_kind='tip' lands on the 'tip' rows (never 'knowledge'),
+    # and its CTA + active flag ride in metadata for the sidebar widget.
+    result = await ingest_note(
+        TIP_NOTE, source="tip-fund-wallet", store=store, embedder=embedder, source_kind="tip"
+    )
+    assert result.written >= 1
+    row = next(iter(store.rows.values()))
+    assert row.source_kind == "tip"  # NOT the default 'knowledge'
+    assert row.metadata["cta_url"] == "/bridge"
+    assert row.metadata["cta_label"] == "Get testnet funds"
+    assert row.metadata["active"] == "true"
+    assert row.metadata["title"] == "Fund your wallet"
+
+
+async def test_ingest_default_source_kind_carries_no_cta(store: Any, embedder: Embedder) -> None:
+    # A normal knowledge note has null CTA metadata (harmless — the tip widget never reads it).
+    await ingest_note(NOTE, source="aave-v3-supply", store=store, embedder=embedder)
+    row = next(iter(store.rows.values()))
+    assert row.metadata["cta_url"] is None
+    assert row.metadata["cta_label"] is None
 
 
 async def test_ingest_is_idempotent(

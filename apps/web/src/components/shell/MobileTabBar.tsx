@@ -45,6 +45,10 @@ export function MobileTabBar({ active }: { active: string }) {
                 <Icon name="shieldcheck" size={18} />
                 Prove it — permissions
               </Link>
+              <Link href="/changelog" className="navlink" onClick={() => setMoreOpen(false)}>
+                <Icon name="book" size={18} />
+                Changelog
+              </Link>
               <div className="divider" />
               {moreLinks.map((n) => (
                 <Link key={n.route} href={"/" + n.route} className="navlink" onClick={() => setMoreOpen(false)}>
