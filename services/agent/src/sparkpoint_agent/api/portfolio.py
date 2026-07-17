@@ -38,9 +38,18 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..chain import VaultReader, VaultUnavailable
+from ..config import AgentConfig
+from ..db import get_database
+from ..db.vault_flows import CostBasis, VaultFlowReader
 from .errors import ApiError, ErrorCode, ErrorReason
+from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
 from .vault import get_account, get_vault_reader
+
+
+def get_vault_flow_reader() -> VaultFlowReader:
+    """The indexed vault-flow reader (cost basis for PnL). Overridden in tests."""
+    return VaultFlowReader(get_database())
 
 router = APIRouter(tags=["portfolio"])
 
@@ -174,6 +183,12 @@ def _usd_from_usdc(base_units: int) -> str:
     return f"{cents // 100}.{cents % 100:02d}"
 
 
+def _usd_signed(base_units: int) -> str:
+    """Signed USD (2 dp) from USDC base units — PnL/cost-basis can be negative (net withdrawn)."""
+    sign = "-" if base_units < 0 else ""
+    return f"{sign}{_usd_from_usdc(abs(base_units))}"
+
+
 def _bps_of(part: int, whole: int) -> int:
     """``part`` as basis points of ``whole`` (0 when ``whole`` is 0). Exact integer math."""
     return (part * 10_000) // whole if whole > 0 else 0
@@ -236,8 +251,20 @@ async def _read_vault_position(reader: VaultReader, account: AccountContext) -> 
     )
 
 
-def _position_detail(position: _VaultPosition) -> PositionDetail:
-    """Map a held vault position to the §3.3 ``PositionDetail`` (cost-basis/PnL still null)."""
+def _pnl_usd(position: _VaultPosition, basis: CostBasis | None) -> tuple[str | None, str | None]:
+    """(costBasisUsd, unrealizedPnlUsd) from the INDEXED flows, or (None, None) when no flow is
+    indexed yet (honest null, never a fabricated figure). Cost basis = Σ deposits − Σ withdrawals;
+    unrealized PnL = current value (convertToAssets) − cost basis. Both signed USD at $1 par."""
+    if basis is None or not basis.has_history:
+        return None, None
+    net = basis.net_deposited
+    return _usd_signed(net), _usd_signed(position.underlying - net)
+
+
+def _position_detail(position: _VaultPosition, basis: CostBasis | None = None) -> PositionDetail:
+    """Map a held vault position to the §3.3 ``PositionDetail``, with cost-basis/PnL from the
+    indexed on-chain flows when available (else null — never faked)."""
+    cost_basis_usd, unrealized_pnl_usd = _pnl_usd(position, basis)
     return PositionDetail(
         positionId=_VAULT_POSITION_ID,
         venue="vault",
@@ -247,9 +274,8 @@ def _position_detail(position: _VaultPosition) -> PositionDetail:
         valueUsd=_usd_from_usdc(position.underlying),
         # convertToAssets is the on-chain source; USDC is valued at $1 par (stable underlying).
         priceSource="onchain",
-        # Cost basis + unrealized PnL need the derived index (fee indexer) → null, never faked.
-        costBasisUsd=None,
-        unrealizedPnlUsd=None,
+        costBasisUsd=cost_basis_usd,
+        unrealizedPnlUsd=unrealized_pnl_usd,
         riskTier=_VAULT_RISK_TIER,
     )
 
@@ -283,28 +309,40 @@ def _risk(position: _VaultPosition) -> RiskSummary:
 async def get_portfolio(
     account: Annotated[AccountContext, Depends(get_account)],
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
     include: Annotated[str | None, Query()] = None,
 ) -> PortfolioResponse:
     """Enriched, derived portfolio — stale-markable (agent-service-api.md §3.3).
 
     Reads the user's vault position from chain, values USDC at $1 par, and derives
-    allocation/concentration from it. Derived history (cost basis, PnL series, risk score)
-    needs the fee indexer → surfaced as ``null`` / ``[]``, never fabricated. A chain outage
-    DEGRADES to ``200 + stale:true`` (the frontend reconciles custody balances via direct
-    RPC) rather than erroring, per §3.3 / SC-011.
+    allocation/concentration from it. Cost basis + unrealized PnL come from the INDEXED on-chain
+    Deposit/Withdraw flows (B2) when available, else null (never fabricated). A chain outage
+    DEGRADES to ``200 + stale:true`` (the frontend reconciles custody balances via direct RPC).
     """
     sections = _parse_include(include)
     position = await _read_vault_position(reader, account)
 
+    # Cost basis from the indexed flows — fail-open (a missing/unindexed value → null PnL, honest).
+    basis: CostBasis | None = None
+    if not position.stale and config.vault_address:
+        try:
+            basis = await flows.cost_basis(
+                _network_id(account.chain_id), config.vault_address, account.account
+            )
+        except Exception:
+            basis = None
+
     positions: list[PositionDetail] = []
     if "positions" in sections and position.held:
-        positions.append(_position_detail(position))
+        positions.append(_position_detail(position, basis))
 
     # Net worth = vault value + idle wallet USDC (both USDC at $1 par). A degraded read → "0.00".
     vault_value = position.underlying if position.held else 0
     net_worth = "0.00" if position.stale else _usd_from_usdc(vault_value + position.idle)
     idle_usdc = "0.00" if position.stale else _usd_from_usdc(position.idle)
     status = "stale" if position.stale else "ok"
+    _, unrealized = _pnl_usd(position, basis) if position.held else (None, None)
 
     return PortfolioResponse(
         asOfBlock=position.block,
@@ -314,7 +352,10 @@ async def get_portfolio(
         idleUsdc=idle_usdc,
         positions=positions,
         allocation=_allocation(position) if "allocation" in sections else None,
-        pnl=Pnl(series=[], realizedUsd=None, unrealizedUsd=None) if "pnl" in sections else None,
+        pnl=(
+            Pnl(series=[], realizedUsd=None, unrealizedUsd=unrealized)
+            if "pnl" in sections else None
+        ),
         risk=_risk(position) if "risk" in sections else None,
         dataSources=[
             DataSource(
@@ -331,13 +372,16 @@ async def get_position(
     position_id: str,
     account: Annotated[AccountContext, Depends(get_account)],
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
 ) -> PositionEventsResponse:
     """One enriched position + its on-chain event history + per-position PnL series (§3.3).
 
     Only the single vault position (id ``"vault"``) exists; any other id — or a request for
     the vault position when the user holds no shares — is ``NOT_FOUND``. A chain outage
-    DEGRADES to a ``stale`` position shell (never a hard error). The event history + PnL
-    series need the on-chain event index (not yet built) → ``[]``.
+    DEGRADES to a ``stale`` position shell (never a hard error). Cost basis + unrealized PnL
+    come from the INDEXED on-chain flows (B2) when available; the raw event/PnL time-series
+    still needs a per-block sampler → ``[]``.
     """
     if position_id != _VAULT_POSITION_ID:
         raise ApiError(
@@ -357,8 +401,18 @@ async def get_position(
             reasons=[ErrorReason("NOT_FOUND", "zero vault shares")],
         )
 
+    # Cost basis from the indexed flows — fail-open (a missing/unindexed value → null PnL).
+    basis: CostBasis | None = None
+    if not position.stale and position.held and config.vault_address:
+        try:
+            basis = await flows.cost_basis(
+                _network_id(account.chain_id), config.vault_address, account.account
+            )
+        except Exception:
+            basis = None
+
     detail = (
-        _position_detail(position)
+        _position_detail(position, basis)
         if position.held
         else PositionDetail(
             positionId=_VAULT_POSITION_ID,

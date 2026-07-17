@@ -118,6 +118,52 @@ async def _seed_allowlists(db: object) -> None:
         logger.warning("allowlist_seed_skipped (table missing or DB error)")
 
 
+_INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
+
+
+async def _index_vault_flows_loop() -> None:
+    """§B2 background indexer: catch up the vault's Deposit/Withdraw into ``onchain_events`` so
+    ``GET /portfolio`` can derive a real cost basis + PnL. Off the request path, fail-open, and
+    never on the withdraw/exit path (N2). No-op when the vault/RPC isn't configured.
+    """
+    from ..chain.vault_reader import HttpxJsonRpcTransport
+    from ..config import AgentConfig
+    from ..data.log_source import VaultFlowIndexer
+    from ..db.vault_flows import PgVaultFlowStore
+
+    try:
+        config = AgentConfig.from_env()
+    except Exception:
+        return
+    if not (config.vault_address and config.rpc_url):
+        return
+    start_block = 0
+    try:
+        start_block = int(os.getenv("VAULT_INDEX_FROM_BLOCK", "0") or "0")
+    except ValueError:
+        start_block = 0
+    indexer = VaultFlowIndexer(
+        transport=HttpxJsonRpcTransport(config.rpc_url),
+        store=PgVaultFlowStore(get_database(), config.vault_address),
+        vault_address=config.vault_address,
+        network_id="base",  # both Base chains map to the 'base' networks mirror id
+        start_block=start_block,
+    )
+    while True:
+        try:
+            written = await indexer.run_once()
+            if written:
+                logger.info("vault_flows_indexed added=%d", written)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("vault_flow_index_error (degrading; PnL stays stale)")
+        try:
+            await asyncio.sleep(_INDEX_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own the process-wide asyncpg pool lifecycle (connect on startup / close on shutdown).
@@ -133,11 +179,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     outage cannot trap funds.
     """
     db = None
+    index_task: asyncio.Task[None] | None = None
     try:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
         await _seed_allowlists(db)
+        # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
+        # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
+        index_task = asyncio.create_task(_index_vault_flows_loop())
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -145,6 +195,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        if index_task is not None:
+            index_task.cancel()
         if db is not None:
             try:
                 await asyncio.wait_for(db.disconnect(), timeout=_DB_DISCONNECT_TIMEOUT_S)

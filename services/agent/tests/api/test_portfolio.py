@@ -17,8 +17,24 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api.main import app
+from sparkpoint_agent.api.portfolio import get_vault_flow_reader
+from sparkpoint_agent.api.recommendations import get_agent_config
 from sparkpoint_agent.api.vault import get_vault_reader
 from sparkpoint_agent.chain import VaultReader
+from sparkpoint_agent.config import AgentConfig
+from sparkpoint_agent.db.vault_flows import CostBasis
+
+VAULT = "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2"
+
+
+class _FakeFlowReader:
+    """In-memory cost-basis reader for the PnL path (no DB)."""
+
+    def __init__(self, basis: CostBasis | None = None) -> None:
+        self._basis = basis or CostBasis(0, 0, 0)
+
+    async def cost_basis(self, network_id: str, vault: str, owner: str) -> CostBasis:
+        return self._basis
 
 _WAD = 10**18
 
@@ -86,8 +102,14 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
-def _use(reader: object) -> None:
+def _use(reader: object, *, basis: CostBasis | None = None) -> None:
     app.dependency_overrides[get_vault_reader] = lambda: reader
+    # B2: the portfolio endpoint now derives PnL from indexed flows + reads the vault address from
+    # config — provide in-memory fakes (no DB) so the cost-basis path is exercised without Postgres.
+    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader(basis)
+    app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
+        chain_id=84532, rpc_url=None, vault_address=VAULT, database_url=None
+    )
 
 
 # ── GET /portfolio ────────────────────────────────────────────────────────────────
@@ -123,6 +145,25 @@ def test_portfolio_returns_enriched_position(client: TestClient) -> None:
     sources = body["dataSources"]
     assert sources[0]["status"] == "ok"
     assert sources[0]["lastBlock"] == 42
+
+
+def test_portfolio_pnl_from_indexed_cost_basis(client: TestClient) -> None:
+    # Position worth 300 USDC, cost basis = 250 deposited − 0 withdrawn → unrealized PnL = +50.
+    _use(FakePortfolioReader(balance=300_000_000, block=42), basis=CostBasis(250_000_000, 0, 3))
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    pos = body["positions"][0]
+    assert pos["costBasisUsd"] == "250.00"
+    assert pos["unrealizedPnlUsd"] == "50.00"
+    assert body["pnl"]["unrealizedUsd"] == "50.00"
+
+
+def test_portfolio_pnl_null_when_no_flows_indexed(client: TestClient) -> None:
+    # No indexed flows (event_count 0) → cost basis + PnL are null (honest), never fabricated.
+    _use(FakePortfolioReader(balance=300_000_000), basis=CostBasis(0, 0, 0))
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    assert body["positions"][0]["costBasisUsd"] is None
+    assert body["positions"][0]["unrealizedPnlUsd"] is None
+    assert body["pnl"]["unrealizedUsd"] is None
 
 
 def test_portfolio_surfaces_idle_cash_and_includes_it_in_net_worth(client: TestClient) -> None:
@@ -206,6 +247,14 @@ def test_position_detail_found(client: TestClient) -> None:
     # History + per-position series need the (unbuilt) event index → empty, never fabricated.
     assert body["onchainEvents"] == []
     assert body["pnlSeries"] == []
+
+
+def test_position_detail_surfaces_indexed_pnl(client: TestClient) -> None:
+    # Detail view must match the list view: 300 held − 250 basis → cost "250.00", PnL "50.00".
+    _use(FakePortfolioReader(balance=300_000_000, block=99), basis=CostBasis(250_000_000, 0, 3))
+    body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
+    assert body["position"]["costBasisUsd"] == "250.00"
+    assert body["position"]["unrealizedPnlUsd"] == "50.00"
 
 
 def test_position_detail_unknown_id_is_not_found(client: TestClient) -> None:
