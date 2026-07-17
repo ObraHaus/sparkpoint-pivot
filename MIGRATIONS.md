@@ -12,7 +12,7 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | Environment | DB | Migration level | As of |
 |---|---|---|---|
 | **Production** (client infra — TBD) | Postgres + pgvector (TBD) | **none** | — |
-| **Develop** (OH Coolify) | `spark-postgres` (pgvector) | **0005** (0006–0008 pending) | 2026-07-16 |
+| **Develop** (OH Coolify) | `spark-postgres` (pgvector) | **0008** | 2026-07-17 |
 
 ## Per-migration status
 
@@ -23,9 +23,9 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0003_assistant` | ✅ | — | mandates + assistant state |
 | `0004_embedding_dim` | ✅ | — | embedding dimension pin (1024) |
 | `0005_allowlists` | ✅ | — | Phase B: `wallet_allowlist` + `allowlist_audit` (beta/admin access gate, seeded from env) |
-| `0006_knowledge_enum` | ⏳ | — | knowledge tier: extend `memory_chunks.source_kind` enum with `'knowledge'` |
-| `0007_knowledge_backfill` | ⏳ | — | knowledge tier: backfill/index for the knowledge source_kind |
-| `0008_knowledge_notes` | ⏳ | — | R2: `knowledge_notes` (admin-owned corpus notes) + append-only `knowledge_audit` |
+| `0006_knowledge_enum` | ✅ | — | knowledge tier: extend `memory_chunks.source_kind` (`memory_source`) enum with `'knowledge'` |
+| `0007_knowledge_backfill` | ✅ | — | knowledge tier: backfill/index for the knowledge source_kind |
+| `0008_knowledge_notes` | ✅ | — | R2: `knowledge_notes` (admin-owned corpus notes) + append-only `knowledge_audit` |
 
 ## How migrations are applied
 
@@ -46,5 +46,5 @@ Probe for an object each migration introduces (SQL/REST), e.g. a table, an index
 
 ## Changelog
 
-- **2026-07-17** — `0006_knowledge_enum`, `0007_knowledge_backfill`, `0008_knowledge_notes` authored for the knowledge tier + R2 admin console. **NOT yet applied to develop** — they need the `DATABASE_URL` (via `192.168.31.240` + published port) and an operator go-ahead for the shared dev DB. Apply in order (`0006`→`0008`) with `uv run --group migrations yoyo apply --batch --database "$DATABASE_URL" ./migrations`. Verify: `SELECT to_regclass('knowledge_notes');` non-null and `'knowledge' = ANY(enum_range(NULL::source_kind)::text[])`. The grounded assistant + admin/knowledge console degrade honestly (503/empty) until these land.
+- **2026-07-17** — `0008_knowledge_notes` applied to develop (`spark-postgres` @ `192.168.31.26:5432/sparkpoint`) via yoyo (R2 admin knowledge console). `0006_knowledge_enum` + `0007_knowledge_backfill` were **already applied** in a prior session (the ledger row was stale; `yoyo list` confirmed A). Develop is now at **0008**. Verify: `SELECT to_regclass('knowledge_notes');` non-null (8 cols + `knowledge_notes_origin_check`), `to_regclass('knowledge_audit')` non-null, and `'knowledge'` is a label of the `memory_source` enum on `memory_chunks.source_kind`.
 - **2026-07-16** — `0005_allowlists` applied to develop (`spark-postgres`) via yoyo (Phase B beta/admin allowlist). `0001`–`0004` were already applied. Verify: `SELECT to_regclass('wallet_allowlist');` is non-null.
