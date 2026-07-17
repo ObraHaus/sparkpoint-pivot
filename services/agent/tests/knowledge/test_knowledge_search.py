@@ -5,7 +5,9 @@ the recommender attaches advisory citations. DB + embedder MOCKED.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sparkpoint_agent.agents.planner import Intent, IntentKind
@@ -105,8 +107,35 @@ def test_hit_to_citation_maps_source_and_snippet() -> None:
     assert cite.provider == "Aave v3"
     assert cite.endpoint == "obsidian://aave-v3-supply"
     assert cite.field == "Yield"
-    assert cite.as_of == "2026-07-10"
+    assert cite.as_of == "2026-07-10T00:00:00Z"  # date-only frontmatter → Z-suffixed ISO
     assert cite.value == "Aave supply yield"  # whitespace collapsed
+
+
+_ISO_Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def _cite_with_updated(updated: object) -> Citation:
+    return hit_to_citation(
+        ChunkHit(content="x", metadata={"source": "s", "title": "t", "updated": updated}, score=0.1)
+    )
+
+
+def test_hit_to_citation_normalizes_as_of_to_strict_z_iso() -> None:
+    # The shared Citation.asOf schema is z.string().datetime() — it accepts ONLY a
+    # Z-suffixed ISO-8601 datetime. Date-only frontmatter, a +00:00 offset, a
+    # date/datetime object, or a missing value must all normalize to that shape, or
+    # the recommendation block fails validation and renders as an inert card.
+    assert _cite_with_updated("2026-07-14").as_of == "2026-07-14T00:00:00Z"
+    assert _cite_with_updated("2026-07-14T12:30:00+00:00").as_of == "2026-07-14T12:30:00Z"
+    assert _cite_with_updated(date(2026, 7, 14)).as_of == "2026-07-14T00:00:00Z"
+    assert (
+        _cite_with_updated(datetime(2026, 7, 14, 12, 30, tzinfo=UTC)).as_of
+        == "2026-07-14T12:30:00Z"
+    )
+    # Missing / blank / unparseable → a Z-suffixed fallback
+    # (never "" — which fails the schema).
+    for bad in (None, "", "   ", "not-a-date"):
+        assert _ISO_Z.match(_cite_with_updated(bad).as_of)
 
 
 # ── the shipped seed corpus ingests + is searchable ──────────────────────────

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, date, datetime
 
 from ..wire import Citation
 from .embeddings import Embedder
@@ -33,6 +34,30 @@ def _snippet(content: str) -> str:
     return flat[: _SNIPPET_CHARS - 1].rstrip() + "…"
 
 
+def _as_of_iso(updated: object) -> str:
+    """Normalize an Obsidian ``updated`` frontmatter value to a ``Z``-suffixed
+    ISO-8601 UTC datetime — the only shape the shared ``Citation.asOf`` schema
+    (``z.string().datetime()``, agent-service-api.md §2.6) accepts. Date-only
+    frontmatter (``2026-07-14``) is expanded to midnight UTC; anything absent or
+    unparseable falls back to now. ``datetime.isoformat()`` is deliberately avoided
+    — it yields a ``+00:00`` offset the strict schema rejects."""
+    dt: datetime | None = None
+    if isinstance(updated, datetime):  # must precede `date` (datetime subclasses date)
+        dt = updated
+    elif isinstance(updated, date):
+        dt = datetime(updated.year, updated.month, updated.day, tzinfo=UTC)
+    elif isinstance(updated, str) and updated.strip():
+        try:
+            dt = datetime.fromisoformat(updated.strip().replace("Z", "+00:00"))
+        except ValueError:
+            dt = None
+    if dt is None:
+        dt = datetime.now(UTC)
+    elif dt.tzinfo is not None:
+        dt = dt.astimezone(UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def hit_to_citation(hit: ChunkHit) -> Citation:
     """Map one retrieved chunk to the shared wire :class:`Citation` (source + snippet)."""
     md = hit.metadata
@@ -45,7 +70,7 @@ def hit_to_citation(hit: ChunkHit) -> Citation:
         endpoint=f"obsidian://{source}",
         field=section,
         value=_snippet(hit.content),
-        as_of=str(updated) if updated else "",
+        as_of=_as_of_iso(updated),
         stale=False,  # advisory knowledge is never "stale market data"
     )
 
