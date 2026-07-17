@@ -91,21 +91,32 @@ type AdminTab = "knowledge" | "persona";
  */
 export default function Page() {
   const [tab, setTab] = useState<AdminTab>("knowledge");
+  const tabButton = (t: AdminTab, label: string) => (
+    <button
+      key={t}
+      role="tab"
+      aria-selected={tab === t}
+      onClick={() => setTab(t)}
+      style={{
+        padding: "8px 18px",
+        borderRadius: 8,
+        border: tab === t ? "1px solid var(--accent, #6a8bff)" : "1px solid var(--border-soft)",
+        background: tab === t ? "var(--accent, #6a8bff)" : "var(--surface-2, rgba(127,127,127,.12))",
+        color: tab === t ? "#fff" : "var(--foreground)",
+        fontWeight: 600,
+        fontSize: 14,
+        cursor: "pointer",
+        lineHeight: 1.4,
+      }}
+    >
+      {label}
+    </button>
+  );
   return (
     <>
-      <div className="seg" role="tablist" aria-label="Admin section" style={segWrap}>
-        {(["knowledge", "persona"] as const).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className="btn btn-sm"
-            style={tab === t ? segOn : segOff}
-          >
-            {t === "knowledge" ? "Knowledge" : "Persona"}
-          </button>
-        ))}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }} role="tablist" aria-label="Admin section">
+        {tabButton("knowledge", "Knowledge")}
+        {tabButton("persona", "Persona")}
       </div>
       {tab === "knowledge" ? <KnowledgePanel /> : <PersonaPanel />}
     </>
@@ -904,11 +915,3 @@ function PersonaPanel() {
     </>
   );
 }
-
-const segWrap: React.CSSProperties = { display: "inline-flex", gap: 4, marginBottom: 14 };
-const segOff: React.CSSProperties = { background: "transparent", color: "var(--muted-foreground)" };
-const segOn: React.CSSProperties = {
-  background: "var(--surface-2, rgba(127,127,127,.12))",
-  color: "var(--foreground)",
-  border: "1px solid var(--border-soft)",
-};
