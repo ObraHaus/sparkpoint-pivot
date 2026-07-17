@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon, SparkMark } from "@/lib/icons";
+import { data } from "@/lib/mock-data";
+import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
@@ -32,11 +34,16 @@ import {
   CiteBody,
   type CardActions,
 } from "@/components/screens/chat/cards";
-import { useAgentClient } from "@/lib/agent/useAgent";
-import { ChatPortfolioCard } from "@/components/screens/chat/portfolio-card";
+import { useAgentClient, usePortfolioView } from "@/lib/agent/useAgent";
 import { parseCard, type ChatCard } from "@/lib/agent/cards";
 import { AgentApiError } from "@/lib/agent/client";
+import { useAccount, useBalance } from "wagmi";
+import { useVault } from "@/lib/chain/useVault";
+import { derivePortfolio } from "@/lib/portfolio/derive";
 import "@/components/screens/chat.css";
+
+/** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors portfolio/page). */
+const CHAT_DISPLAY_CHAIN_ID = 84532;
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
 
@@ -153,6 +160,38 @@ export default function ChatPage() {
     () => true,
     () => false,
   );
+
+  // Right-rail Portfolio card — LIVE direct-RPC reads (mirrors /portfolio), NEVER the mock figure.
+  // Only the disconnected preview may show illustrative mock; every connected-but-not-live state
+  // shows a dash + honest note. Unrealized PnL comes from the agent's flow index and only when
+  // it's live and non-stale (avoids the phantom-PnL window flagged in the R5 audit).
+  const { isConnected: railConnected } = useAccount();
+  const railVault = useVault({ chainId: railConnected ? undefined : CHAT_DISPLAY_CHAIN_ID });
+  const railEth = useBalance({
+    address: railVault.account,
+    query: { enabled: railConnected && !!railVault.account },
+  });
+  const railDerived = derivePortfolio({
+    underlying: railVault.underlying,
+    usdcBalance: railVault.usdcBalance,
+    shares: railVault.shares,
+    ethWei: railEth.data?.value,
+  });
+  const railWrongNetwork = railConnected && railVault.unavailable?.kind === "vault_not_deployed";
+  const railLoading =
+    railConnected && !railWrongNetwork && (railVault.isLoading || (railEth.isLoading && !!railVault.account));
+  const railError = railConnected && !railWrongNetwork && !railLoading && railVault.isError;
+  const railLive = railConnected && railVault.isDeployed && !railLoading && !railError && !railWrongNetwork;
+  const railPreview = !railConnected;
+  const railAgent = usePortfolioView();
+  const railUnrealized = railLive && railAgent && !railAgent.stale ? railAgent.unrealizedUsd : undefined;
+  const railNetWorth = railLoading
+    ? "…"
+    : railLive
+      ? money(railDerived.totalUsd)
+      : railPreview
+        ? money(data.netWorth)
+        : "—";
 
   const scrollDown = useCallback(() => {
     const el = scrollerRef.current;
@@ -695,7 +734,32 @@ export default function ChatPage() {
             </a>
           </div>
         </div>
-        <ChatPortfolioCard onOpen={() => go("portfolio")} />
+        <div className="ctx-card">
+          <div className="ck">Portfolio</div>
+          <div style={{ fontSize: 20, fontWeight: 600 }} className="tnum">
+            {railNetWorth}
+          </div>
+          {railUnrealized !== undefined && railUnrealized !== null ? (
+            <div
+              className={"delta " + (railUnrealized >= 0 ? "up" : "down")}
+              style={{ fontSize: 12.5, marginTop: 3 }}
+            >
+              <Icon name={railUnrealized >= 0 ? "up" : "down"} size={13} />
+              {railUnrealized >= 0 ? "+" : "−"}
+              {money(Math.abs(railUnrealized))} unrealized
+            </div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 3 }}>
+              {railPreview
+                ? "Preview — connect for your position"
+                : railLive
+                  ? "USDC · vault + wallet"
+                  : railLoading
+                    ? "…"
+                    : "Position unavailable right now"}
+            </div>
+          )}
+        </div>
         <div className="ctx-card">
           <div className="ck">Quick links</div>
           <div className="qlink" onClick={() => go("portfolio")}>
