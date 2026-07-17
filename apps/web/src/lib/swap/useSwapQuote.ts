@@ -11,7 +11,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import type { Address } from "viem";
+import { BaseError, type Address } from "viem";
 import { getPublicClient } from "@/lib/chain/clients";
 import { quoterV2Abi } from "./abis";
 
@@ -43,6 +43,21 @@ interface QuoteParams {
   readonly enabled: boolean;
 }
 
+/**
+ * A CONTRACT revert (QuoterV2 reverts when the pool/tier doesn't exist or has no liquidity) means
+ * "no pool at this tier" → skip it. Any OTHER error (transport/timeout/rate-limit) must propagate so
+ * the caller can show an honest "couldn't fetch a quote, retry" state instead of a false
+ * "no liquidity". viem raises reverts as a `BaseError` chain; transport errors are not reverts.
+ */
+function isPoolRevert(err: unknown): boolean {
+  if (!(err instanceof BaseError)) return false;
+  const walked = err.walk();
+  const name = (walked as { name?: string })?.name ?? err.name;
+  const msg = err.shortMessage ?? err.message ?? "";
+  return /ContractFunction|Revert/i.test(name) || /revert|out of gas|no data/i.test(msg);
+}
+
+/** Result of quoting one fee tier: `out` on success, `revert` for a missing pool, else it throws. */
 async function quoteOneTier(
   chainId: number,
   quoter: Address,
@@ -61,8 +76,9 @@ async function quoteOneTier(
     });
     const amountOut = result[0];
     return amountOut > 0n ? amountOut : undefined;
-  } catch {
-    return undefined; // no pool / no liquidity / revert on this tier — skip it
+  } catch (err) {
+    if (isPoolRevert(err)) return undefined; // genuinely no pool/liquidity at this tier — skip it
+    throw err; // transport/RPC error → let react-query surface it as isError (retryable), not "noRoute"
   }
 }
 
@@ -91,25 +107,34 @@ export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
     staleTime: 10_000,
     retry: false,
     queryFn: async (): Promise<{ amountOut?: bigint; fee?: number; priceImpactBps?: number }> => {
-      // Quote every tier; keep the best output.
-      const outs = await Promise.all(
+      // Quote every tier; keep the best output. allSettled so a transient error on ONE tier can't
+      // discard a good quote from another — but if NO tier yields an output AND some tier hit a
+      // transport error, throw so the UI shows "couldn't fetch, retry" (not a false "no liquidity").
+      const settled = await Promise.allSettled(
         FEE_TIERS.map((fee) =>
-          quoteOneTier(chainId!, quoter!, tokenIn!, tokenOut!, amountIn!, fee).then((out) => ({
-            fee,
-            out,
-          })),
+          quoteOneTier(chainId!, quoter!, tokenIn!, tokenOut!, amountIn!, fee).then((out) => ({ fee, out })),
         ),
       );
-      const best = outs
+      const best = settled
+        .filter((s): s is PromiseFulfilledResult<{ fee: number; out: bigint | undefined }> => s.status === "fulfilled")
+        .map((s) => s.value)
         .filter((x): x is { fee: number; out: bigint } => x.out !== undefined)
         .sort((a, b) => (a.out < b.out ? 1 : -1))[0];
-      if (best === undefined) return {};
+      if (best === undefined) {
+        if (settled.some((s) => s.status === "rejected")) {
+          throw new Error("quote_unavailable"); // transport/RPC error → isError (retryable), not noRoute
+        }
+        return {}; // every tier reverted → genuinely no pool/liquidity (honest noRoute)
+      }
 
-      // Price impact vs a tiny reference trade (0.001 token) at the SAME best tier.
+      // Price impact vs a tiny reference trade (0.001 token) at the SAME best tier — best-effort
+      // (a transport error here just omits the impact figure; it doesn't fail the whole quote).
       let priceImpactBps: number | undefined;
       const refIn = 10n ** BigInt(decimalsIn) / 1000n;
       if (refIn > 0n && refIn < amountIn!) {
-        const refOut = await quoteOneTier(chainId!, quoter!, tokenIn!, tokenOut!, refIn, best.fee);
+        const refOut = await quoteOneTier(chainId!, quoter!, tokenIn!, tokenOut!, refIn, best.fee).catch(
+          () => undefined,
+        );
         if (refOut !== undefined && refOut > 0n) {
           // impact = 1 − (out/amountIn)/(refOut/refIn) = 1 − (out·refIn)/(refOut·amountIn)
           const num = best.out * refIn;

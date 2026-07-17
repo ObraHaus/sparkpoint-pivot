@@ -240,7 +240,7 @@ export default function Page() {
           label="You receive (estimated)"
           token={tokenOut}
           value={
-            quote.amountOut !== undefined && tokenOut ? fmt(quote.amountOut, tokenOut.decimals) : ""
+            canQuote && quote.amountOut !== undefined && tokenOut ? fmt(quote.amountOut, tokenOut.decimals) : ""
           }
           placeholder={quote.isLoading ? "…" : "0.00"}
           editable={false}
@@ -285,6 +285,12 @@ export default function Page() {
         )}
         {canQuote && quote.noRoute && (
           <Notice>No Uniswap V3 liquidity for this pair on Base Sepolia.</Notice>
+        )}
+        {canQuote && quote.isError && (
+          <Notice>
+            Couldn&apos;t fetch a quote just now — check your connection and{" "}
+            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => quote.refetch()}>retry</a>.
+          </Notice>
         )}
         {canQuote && highImpact && (
           <Notice>
@@ -376,7 +382,7 @@ export default function Page() {
               >
                 New swap
               </button>
-              {!ethToUsdc || tokenOut?.symbol === "USDC" ? (
+              {tokenOut?.symbol === "USDC" ? (
                 <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("vault/deposit"))}>
                   Deposit USDC into vault
                 </button>
