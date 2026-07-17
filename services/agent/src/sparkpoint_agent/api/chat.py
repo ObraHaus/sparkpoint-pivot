@@ -56,6 +56,8 @@ from ..coordinator import (
     PortfolioView,
     PositionLite,
 )
+from ..db import get_database
+from ..db.conversations import ConversationStore
 from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from .errors import ApiError, ErrorCode
@@ -281,9 +283,86 @@ def get_feedback_sink() -> FeedbackSink:
     return _NoopFeedbackSink()
 
 
+class _ConversationSink:
+    """FAIL-OPEN per-wallet conversation persistence (B1). Every method swallows DB errors so a
+    persistence outage (or a test with no DB) degrades to no history — it NEVER breaks a chat turn
+    or sits on the response path (non-custody). Overridden with a no-op in the chat tests."""
+
+    def __init__(self, store: ConversationStore) -> None:
+        self._store = store
+
+    async def resolve(self, owner_eoa: str, conversation_id: str | None, first_message: str) -> str:
+        try:
+            cid = await self._store.ensure_conversation(
+                owner_eoa=owner_eoa, conversation_id=conversation_id, first_message=first_message
+            )
+            return str(cid)
+        except Exception:
+            return conversation_id or _new_conversation_id()
+
+    async def history(self, conversation_id: str) -> list[tuple[str, str]]:
+        try:
+            return await self._store.recent_history(_uuid(conversation_id))
+        except Exception:
+            return []
+
+    async def record(self, conversation_id: str, role: str, content: str) -> None:
+        if not content:
+            return
+        try:
+            await self._store.append_turn(_uuid(conversation_id), role, content)
+        except Exception:
+            return
+
+
+class _NoopConversationSink(_ConversationSink):
+    """Default in tests — no persistence, no history (chat behaves exactly as before B1)."""
+
+    def __init__(self) -> None:  # noqa: D401 — deliberately skips the store
+        pass
+
+    async def resolve(self, owner_eoa: str, conversation_id: str | None, first_message: str) -> str:
+        return conversation_id or _new_conversation_id()
+
+    async def history(self, conversation_id: str) -> list[tuple[str, str]]:
+        return []
+
+    async def record(self, conversation_id: str, role: str, content: str) -> None:
+        return None
+
+
+def _uuid(value: str) -> Any:
+    from uuid import UUID
+
+    return UUID(value)
+
+
+def get_conversation_sink() -> _ConversationSink:
+    """The per-wallet conversation-history sink (fail-open Pg-backed; overridden in tests)."""
+    return _ConversationSink(ConversationStore(get_database()))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SSE stream
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _assistant_summary(block_wire: dict[str, Any]) -> str:
+    """A compact, content-only text fragment for a streamed block — the assistant-turn memory
+    (never raw CoT / never a re-serialized card). Empty for tool-step/citation/error scaffolding."""
+    t = block_wire.get("type")
+    if t in ("text", "tip"):
+        return str(
+            block_wire.get("markdown") or block_wire.get("body") or block_wire.get("text") or ""
+        )
+    if t == "recommendation":
+        return f"[recommended: {block_wire.get('title', 'a strategy')}]"
+    if t == "action":
+        pa = block_wire.get("proposedAction") or {}
+        return f"[proposed action: {pa.get('type', 'action')}]"
+    if t == "portfolio_snapshot":
+        return "[showed your portfolio]"
+    return ""
 
 
 async def _event_stream(
@@ -293,25 +372,37 @@ async def _event_stream(
     *,
     surface: str,
     conversation_id: str,
+    history: list[tuple[str, str]],
+    sink: _ConversationSink,
+    owner_eoa: str,
 ) -> AsyncIterator[str]:
     """Drive one ``run_chat`` turn and frame each §2.7 block as an SSE ``block`` event.
 
     Terminates with a ``done`` event carrying ``{conversationId, blockCount}``. Any
     unexpected error mid-stream (which the app exception handlers can no longer catch,
     the response having already started) degrades to a single inert ``error`` block so a
-    traceback or partial output can never reach the wire — fail-closed, non-custody.
+    traceback or partial output can never reach the wire — fail-closed, non-custody. The user
+    turn + a compact assistant summary are persisted (fail-open) for multi-turn history.
     """
+    # Persist the user's turn up front (fail-open) so history survives even a mid-stream failure.
+    await sink.record(conversation_id, "user", message)
     count = 0
+    summary_parts: list[str] = []
     try:
-        async for block in dag.run_chat(message, chain, surface=surface):
+        async for block in dag.run_chat(message, chain, surface=surface, history=history):
             count += 1
-            yield _sse(_EVENT_BLOCK, block.to_wire())
+            wire = block.to_wire()
+            frag = _assistant_summary(wire)
+            if frag:
+                summary_parts.append(frag)
+            yield _sse(_EVENT_BLOCK, wire)
     except Exception:
         # Fail-closed: degrade to an inert block, never leak internals (BaseException — e.g.
         # a cancelled request — deliberately propagates untouched).
         fallback: ChatBlock = ErrorBlock("UPSTREAM_UNAVAILABLE", _STREAM_FAILURE_MESSAGE)
         count += 1
         yield _sse(_EVENT_BLOCK, fallback.to_wire())
+    await sink.record(conversation_id, "assistant", " ".join(summary_parts).strip())
     yield _sse(_EVENT_DONE, {"conversationId": conversation_id, "blockCount": count})
 
 
@@ -326,6 +417,7 @@ async def chat(
     account: Annotated[AccountContext, Depends(get_account)],
     dag: Annotated[CoordinatorDag, Depends(get_coordinator_dag)],
     chain_provider: Annotated[ChatChainProvider, Depends(get_chain_provider)],
+    sink: Annotated[_ConversationSink, Depends(get_conversation_sink)],
 ) -> StreamingResponse:
     """Primary conversational surface — stream §2.7 ChatBlocks as SSE (agent-service-api.md §3.2).
 
@@ -336,11 +428,23 @@ async def chat(
     LLM-free gate); the user must call ``/build-tx`` (§3.5) to materialize an ``IntentBundle``.
     """
     surface: str = body.context.surface if body.context is not None else "chat"
-    conversation_id = body.conversationId or _new_conversation_id()
+    # Resolve (or create) the caller's conversation + fetch bounded prior turns for multi-turn
+    # context — both fail-open (persistence never blocks a chat turn). Ownership is enforced in the
+    # sink: a mismatched/foreign conversationId yields a fresh conversation, never an append into
+    # someone else's thread.
+    conversation_id = await sink.resolve(account.owner, body.conversationId, body.message)
+    history = await sink.history(conversation_id)
     # Built before streaming so a read failure surfaces as a clean pre-stream §1.5 envelope.
     chain = await chain_provider.context(account, surface=surface)
     stream = _event_stream(
-        dag, body.message, chain, surface=surface, conversation_id=conversation_id
+        dag,
+        body.message,
+        chain,
+        surface=surface,
+        conversation_id=conversation_id,
+        history=history,
+        sink=sink,
+        owner_eoa=account.owner,
     )
     return StreamingResponse(
         stream,

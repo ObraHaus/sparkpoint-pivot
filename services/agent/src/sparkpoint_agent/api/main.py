@@ -35,6 +35,7 @@ from .admin_knowledge import router as admin_knowledge_router
 from .admin_llm import router as admin_llm_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
+from .conversations import router as conversations_router
 from .errors import (
     ApiError,
     api_error_handler,
@@ -228,6 +229,8 @@ app.include_router(allowlist_router)
 app.include_router(admin_llm_router)
 # §R2 admin Obsidian console (/admin/knowledge/*) — admin-gated corpus view/edit/reingest.
 app.include_router(admin_knowledge_router)
+# §B1 per-wallet chat conversation history (/conversations*) — session-scoped, no admin override.
+app.include_router(conversations_router)
 
 
 @app.get("/healthz")

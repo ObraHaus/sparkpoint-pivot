@@ -28,7 +28,9 @@ from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender, _Rank
 from sparkpoint_agent.api.chat import (
+    _NoopConversationSink,
     get_chain_provider,
+    get_conversation_sink,
     get_coordinator_dag,
     get_feedback_sink,
 )
@@ -236,6 +238,8 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 def _wire(dag: CoordinatorDag, chain: ChainContext) -> None:
     app.dependency_overrides[get_coordinator_dag] = lambda: dag
     app.dependency_overrides[get_chain_provider] = lambda: _FakeChainProvider(chain)
+    # Hermetic: no DB-backed conversation persistence in the chat unit tests (B1).
+    app.dependency_overrides[get_conversation_sink] = lambda: _NoopConversationSink()
 
 
 def _post_chat(client: TestClient, message: str, **body: Any) -> Any:

@@ -32,7 +32,7 @@ Stage contract (what each endpoint calls):
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -280,14 +280,20 @@ class CoordinatorDag:
     # -- stage 1: understand (LLM, NL only) -----------------------------------
 
     async def understand(
-        self, message: str, *, surface: str = "chat", user: str | None = None
+        self,
+        message: str,
+        *,
+        surface: str = "chat",
+        user: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
     ) -> Intent:
         """Stage 1 — classify the turn via the planner (the ONLY LLM understanding step).
 
         ``user`` is the verified wallet, forwarded to the model gateway as the per-user
-        budget/attribution key — identity only, never authority.
+        budget/attribution key — identity only, never authority. ``history`` is bounded recent
+        turns for follow-up disambiguation (never authority, never bypasses the whitelist).
         """
-        return await self.planner.classify(message, surface=surface, user=user)
+        return await self.planner.classify(message, surface=surface, user=user, history=history)
 
     async def _ground(self, query: str, k: int = _GROUND_K) -> tuple[Passage, ...]:
         """Retrieve advisory grounding passages for a PROSE answer — fail-open to () (never blocks
@@ -356,21 +362,27 @@ class CoordinatorDag:
     # -- high-level: /chat SSE stream -----------------------------------------
 
     async def run_chat(
-        self, message: str, chain: ChainContext, *, surface: str = "chat"
+        self,
+        message: str,
+        chain: ChainContext,
+        *,
+        surface: str = "chat",
+        history: Sequence[tuple[str, str]] | None = None,
     ) -> AsyncIterator[ChatBlock]:
         """Drive one /chat turn as a stream of §2.7 ChatBlocks (never a signable bundle).
 
         Emits code-authored ``tool_step`` labels (summarized trace, never raw CoT), routes on
         the classified intent, and — for a proposal — surfaces only policy-cleared blocks. A
         directly-commanded action becomes an ``action`` block whose sign path exists ONLY when
-        the deterministic verdict approved it.
+        the deterministic verdict approved it. ``history`` is bounded recent turns for follow-up
+        disambiguation (fed ONLY to the classifier's NL understanding — never to policy/action).
         """
         # The verified wallet (X-Owner) → the model gateway's per-user budget/attribution key.
         # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
         user = chain.owner
 
         yield ToolStepBlock("Understanding your request", "running")
-        intent = await self.understand(message, surface=surface, user=user)
+        intent = await self.understand(message, surface=surface, user=user, history=history)
         yield ToolStepBlock("Understanding your request", "done")
 
         if intent.refused:

@@ -15,12 +15,30 @@ DAG asks the user rather than inventing a number), and an unknown asset/action d
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
 from ..llm import AsyncClaudeClient, Effort
 from ..policy import ActionType, Asset
+
+# Bound the multi-turn context fed to the classifier (recent turns, each clamped) so the token
+# window + attack surface stay small — history is disambiguation context, never authority.
+_HISTORY_TURNS = 6
+_HISTORY_CHARS = 300
+
+
+def _render_history(history: Sequence[tuple[str, str]] | None) -> str:
+    """Render the recent turns as a compact, delimited context block (empty when none)."""
+    if not history:
+        return ""
+    lines = []
+    for role, content in list(history)[-_HISTORY_TURNS:]:
+        text = " ".join(str(content).split())[:_HISTORY_CHARS]
+        speaker = "user" if role == "user" else "assistant"
+        lines.append(f"{speaker}: {text}")
+    return "recent_conversation:\n" + "\n".join(lines) + "\n"
 
 # Extraction is light judgment (parse an amount/asset from free text), not deep
 # reasoning — MEDIUM effort (research.md §6 effort-tiering; the recommender is HIGH).
@@ -164,7 +182,12 @@ class Planner:
     effort: Effort = EFFORT
 
     async def classify(
-        self, message: str, *, surface: str = "chat", user: str | None = None
+        self,
+        message: str,
+        *,
+        surface: str = "chat",
+        user: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
     ) -> Intent:
         """Classify ``message`` into an :class:`Intent`, fail-closed.
 
@@ -172,9 +195,12 @@ class Planner:
         ``Intent(kind=OTHER)``. Either way the caller can never build an action from the
         turn — only a valid, whitelisted classification yields actionable params. ``user`` is
         the verified wallet (LiteLLM per-user budget/attribution key) — identity only, never
-        authority.
+        authority. ``history`` is the recent (role, content) turns — context so a follow-up
+        ("yes, do that" / "the first one") classifies against the prior turn; it never grants
+        authority and never bypasses the whitelist.
         """
-        user_content = f"surface={surface}\nmessage={message}"
+        context = _render_history(history)
+        user_content = f"surface={surface}\n{context}message={message}"
         result = await self.llm.structured(
             system=SYSTEM,
             messages=[{"role": "user", "content": user_content}],
