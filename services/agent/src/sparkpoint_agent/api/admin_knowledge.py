@@ -157,8 +157,8 @@ async def reingest(admin: Annotated[AccountContext, Depends(require_admin)]) -> 
         ),
         timeout=_INGEST_TIMEOUT_S * 4,
     )
-    for r in report.results:
-        await notes.record("reingest", r.source, admin.owner)
+    # One transaction for the whole re-ingest audit trail (atomic — never a half-written log, B5).
+    await notes.record_many("reingest", [r.source for r in report.results], admin.owner)
     return {
         "ok": True,
         "ingested": [{"source": r.source, "written": r.written} for r in report.results],

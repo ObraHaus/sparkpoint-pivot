@@ -417,6 +417,14 @@ async def admin_llm_delete_model(
             "Couldn't read the current deployments; refusing the delete to avoid stranding chat.",
         )
     alias_ids = {d["id"] for d in _alias_deployments(model_info) if d["id"]}
+    # Fail CLOSED on an unconfirmable state: a well-formed 200 /model/info with ZERO parseable alias
+    # deployments means we can't see the chat backends at all (renamed alias / changed shape /
+    # parse gap) — refuse rather than delete blind (B5).
+    if not alias_ids:
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            f"Couldn't confirm any '{_alias()}' deployment from the gateway; refusing the delete.",
+        )
     # Fail CLOSED: require a confirmed surviving backend for the alias after this delete.
     if target in alias_ids and len(alias_ids - {target}) < 1:
         raise ApiError(

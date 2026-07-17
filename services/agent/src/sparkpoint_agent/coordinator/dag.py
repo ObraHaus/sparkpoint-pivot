@@ -94,6 +94,10 @@ _GENERAL_HELP = (
 
 # How many corpus passages to ground a prose answer on.
 _GROUND_K = 3
+# OTHER-branch grounding threshold (cosine): a general question the corpus doesn't really cover
+# should ground NOTHING (answered without citations) rather than cite a tangential note (B5). LEARN
+# is an EXPLICIT ask to teach a topic, so it keeps the unthresholded top-k.
+_OTHER_MIN_SCORE = 0.35
 
 
 def _format_grounding(passages: tuple[Passage, ...]) -> str:
@@ -295,14 +299,18 @@ class CoordinatorDag:
         """
         return await self.planner.classify(message, surface=surface, user=user, history=history)
 
-    async def _ground(self, query: str, k: int = _GROUND_K) -> tuple[Passage, ...]:
+    async def _ground(
+        self, query: str, k: int = _GROUND_K, *, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
         """Retrieve advisory grounding passages for a PROSE answer — fail-open to () (never blocks
-        chat, never fabricates). Returns () when no grounder is configured. Boundary: the caller may
-        pass these only to prose agents, never to propose/build_action/policy (N-invariant)."""
+        chat, never fabricates). Returns () when no grounder is configured. ``min_score`` drops
+        barely-related hits (so a general question the corpus doesn't cover grounds NOTHING rather
+        than citing a tangential note). Boundary: the caller may pass these only to prose agents,
+        never to propose/build_action/policy (N-invariant)."""
         if self.knowledge is None:
             return ()
         try:
-            return await self.knowledge.retrieve_passages(query, k=k)
+            return await self.knowledge.retrieve_passages(query, k=k, min_score=min_score)
         except Exception:
             return ()
 
@@ -402,8 +410,9 @@ class CoordinatorDag:
 
         if intent.kind is IntentKind.OTHER:
             # Grounded explainer: answer FROM the corpus when it covers the question, else the
-            # static general-help. Passage text feeds only this prose turn (never an action/policy).
-            passages = await self._ground(message)
+            # static general-help. A similarity threshold means a barely-related corpus hit grounds
+            # NOTHING (no fake citations). Passage text feeds only this prose turn (never policy).
+            passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
             if passages:
                 yield ToolStepBlock("Checking the knowledge base", "running")
                 card = await self.literacy.tip(

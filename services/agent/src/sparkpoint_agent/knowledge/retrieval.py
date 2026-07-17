@@ -63,7 +63,7 @@ class KnowledgeGrounder(Protocol):
     """
 
     async def retrieve_passages(
-        self, query: str, *, k: int | None = None
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
     ) -> tuple[Passage, ...]:
         ...
 
@@ -91,9 +91,14 @@ class KnowledgeRetriever:
         return tuple(citations)
 
     async def retrieve_passages(
-        self, query: str, *, k: int | None = None
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
     ) -> tuple[Passage, ...]:
-        """Top-``k`` passages (full text + citation) for GROUNDING prose — fail-closed to ()."""
+        """Top-``k`` passages (full text + citation) for GROUNDING prose — fail-closed to ().
+
+        ``min_score`` (cosine, ``[-1,1]``) drops barely-related hits so a general question that the
+        corpus doesn't really cover grounds NOTHING (and is answered without citations) rather than
+        citing a tangential note (B5). Default ``0.0`` keeps prior behaviour for explicit-learn.
+        """
         limit = self.default_k if k is None else k
         try:
             hits = await knowledge_search_hits(
@@ -101,7 +106,11 @@ class KnowledgeRetriever:
             )
         except Exception:
             return ()
-        return tuple(Passage(content=hit.content, citation=hit_to_citation(hit)) for hit in hits)
+        return tuple(
+            Passage(content=hit.content, citation=hit_to_citation(hit))
+            for hit in hits
+            if hit.score >= min_score
+        )
 
 
 def default_citation_retriever() -> KnowledgeRetriever | None:

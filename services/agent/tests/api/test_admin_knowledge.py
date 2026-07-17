@@ -76,6 +76,25 @@ def test_non_admin_status_gets_404(client: TestClient) -> None:
     assert resp.json()["error"]["code"] == "NOT_FOUND"
 
 
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/admin/knowledge/sources"),
+        ("GET", "/admin/knowledge/sources/aave-basics"),
+        ("POST", "/admin/knowledge/sources/aave-basics/delete"),
+        ("POST", "/admin/knowledge/reingest"),
+        ("GET", "/admin/knowledge/audit"),
+    ],
+)
+def test_every_knowledge_route_404s_for_non_admin(
+    client: TestClient, method: str, path: str
+) -> None:
+    # The whole admin-knowledge surface is invisible to a non-admin (404 before any DB access).
+    resp = client.request(method, path, headers=_headers(STRANGER), json={})
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
 def test_put_rejects_pii_with_422_before_embed(client: TestClient) -> None:
     # An email address trips scan_for_pii; the note must be refused BEFORE any embed/store call.
     resp = client.post(

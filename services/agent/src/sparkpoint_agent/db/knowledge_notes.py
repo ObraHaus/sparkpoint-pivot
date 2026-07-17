@@ -100,6 +100,15 @@ class KnowledgeNoteStore:
     async def record(self, action: str, source: str, actor: str | None) -> None:
         await self.db.execute(_AUDIT_SQL, action, source, (actor or "").lower() or None)
 
+    async def record_many(self, action: str, sources: list[str], actor: str | None) -> None:
+        """Record one audit row per source in a SINGLE transaction (atomic together) — used by a
+        re-ingest so its audit trail can't half-write if the process dies mid-loop (B5)."""
+        act = (actor or "").lower() or None
+        if not sources:
+            return
+        async with self.db.acquire() as conn, conn.transaction():
+            await conn.executemany(_AUDIT_SQL, [(action, s, act) for s in sources])
+
     async def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self.db.fetch(_AUDIT_READ_SQL, max(1, min(limit, 500)))
         return [

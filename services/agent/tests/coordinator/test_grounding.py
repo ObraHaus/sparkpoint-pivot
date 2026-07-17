@@ -26,7 +26,7 @@ from sparkpoint_agent.coordinator.dag import (
 )
 from sparkpoint_agent.knowledge import Passage
 from sparkpoint_agent.llm import LlmResult, StructuredResult
-from sparkpoint_agent.policy import ActionType, CapHeadroom
+from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom
 from sparkpoint_agent.wire import Citation
 
 SENTINEL = "AERODROME_VE33_SECRET_PASSAGE_TEXT_XYZ"
@@ -39,7 +39,9 @@ class _FakeGrounder:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def retrieve_passages(self, query: str, *, k: int | None = None) -> tuple[Passage, ...]:
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
         self.calls.append(query)
         cite = Citation(provider="Aerodrome", endpoint="obsidian://aerodrome-slipstream",
                         field="", value=SENTINEL[:40], as_of="", stale=False)
@@ -136,3 +138,50 @@ async def test_corpus_text_never_reaches_propose_or_policy() -> None:
     assert g.calls == [], "the grounder must NOT be consulted on the action/recommend path"
     assert all(SENTINEL not in str(m) for m in reco.messages), "no corpus text in propose"
     assert all(SENTINEL not in str(b) for b in wires), "no corpus text in a block"
+
+
+async def test_corpus_text_never_reaches_build_action_or_policy() -> None:
+    # BOUNDARY extended to BUILD_ACTION (B5): a directly-commanded action goes understand → gather →
+    # propose → build_action → policy_gate → assemble; the grounder must NOT be consulted and the
+    # sentinel must appear in NO recommender input and NO emitted block.
+    g, lit = _FakeGrounder(), _RecordingComplete()
+    ranking = {ActionType.VAULT_DEPOSIT: _Rank(rank=1, title="Deposit", rationale="steady")}
+    reco = _RecordingStructured(StructuredResult(ok=True, value=ranking))
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION, action_type=ActionType.VAULT_DEPOSIT,
+        asset=Asset.USDC, amount=100_000_000,
+    )
+    dag = _dag(intent, grounder=g, literacy_llm=lit, reco_llm=reco)
+    wires = await _run(dag, "deposit 100 USDC into the vault")
+    assert g.calls == [], "the grounder must NOT be consulted on the build-action path"
+    assert all(SENTINEL not in str(m) for m in reco.messages), "no corpus text in build_action"
+    assert all(SENTINEL not in str(b) for b in wires), "no corpus text in a block"
+
+
+class _ThresholdGrounder:
+    """Returns a passage only when the caller passes NO threshold (min_score == 0) — simulates a
+    below-threshold OTHER hit that must ground NOTHING (B5)."""
+
+    def __init__(self) -> None:
+        self.calls: list[float] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.calls.append(min_score)
+        if min_score > 0.0:
+            return ()  # below the OTHER threshold -> nothing grounds
+        cite = Citation(provider="X", endpoint="obsidian://x", field="",
+                        value="x", as_of="", stale=False)
+        return (Passage(content=SENTINEL, citation=cite),)
+
+
+async def test_other_branch_below_threshold_grounds_nothing() -> None:
+    # The OTHER branch passes a similarity threshold; a below-threshold hit yields NO citation block
+    # (and no corpus text) — the answer degrades to the ungrounded general help rather than lying.
+    g, lit = _ThresholdGrounder(), _RecordingComplete()
+    dag = _dag(Intent(kind=IntentKind.OTHER), grounder=g,  # type: ignore[arg-type]
+               literacy_llm=lit, reco_llm=_RecordingStructured(StructuredResult(ok=True, value={})))
+    wires = await _run(dag, "an unrelated general question")
+    assert g.calls and g.calls[0] > 0.0, "OTHER must apply a similarity threshold"
+    assert not any(b.get("type") == "citation" for b in wires), "below-threshold must not cite"

@@ -298,6 +298,41 @@ def test_delete_fails_closed_when_model_info_unreadable(
         app.dependency_overrides.pop(get_allowlist_store, None)
 
 
+def test_delete_fails_closed_when_zero_alias_deployments_parse(
+    monkeypatch: pytest.MonkeyPatch, audit: _FakeAudit
+) -> None:
+    # A well-formed 200 /model/info with NO deployments for the alias (renamed/parse gap) must
+    # REFUSE the delete (can't confirm the chat backends) — not delete blind (B5).
+    monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://gw/v1")
+    monkeypatch.setenv("LITELLM_ADMIN_KEY", "sk-admin-scoped-test")
+    monkeypatch.setenv("LITELLM_MODEL", ALIAS)
+    real_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/model/info":
+            # 200, but the only model serves a DIFFERENT alias → zero parseable for sparkpoint-chat.
+            other = {"model_name": "some-other-alias", "model_info": {"id": "x"},
+                     "litellm_params": {}}
+            return httpx.Response(200, json={"data": [other]})
+        if request.url.path == "/model/delete":
+            return httpx.Response(200, json={"deleted": True})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        admin_llm.httpx, "AsyncClient", lambda *a, **kw: real_client(transport=transport)
+    )
+    app.dependency_overrides[get_allowlist_store] = lambda: _FakeAllowlist({ADMIN})
+    try:
+        client = TestClient(app)
+        r = client.post("/admin/llm/config/model/delete", headers=_headers(ADMIN), json={"id": "x"})
+        assert r.status_code == 503
+        assert audit.rows == []
+    finally:
+        app.dependency_overrides.pop(get_allowlist_store, None)
+
+
 def test_delete_non_last_succeeds_and_audits(
     configured: Callable[[list[str]], TestClient], audit: _FakeAudit
 ) -> None:
