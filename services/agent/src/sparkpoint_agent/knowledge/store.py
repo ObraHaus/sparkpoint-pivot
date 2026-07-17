@@ -26,6 +26,12 @@ from uuid import UUID
 # provenance (note slug, section, tags, wikilinks, git sha) rides in the ``metadata`` JSONB.
 KNOWLEDGE_SOURCE_KIND = "knowledge"
 
+# The dedicated ``memory_source`` member for the sidebar TIP databank (migration 0012). Kept
+# SEPARATE from ``'knowledge'`` so a curated UI tip can NEVER surface in an assistant RAG citation
+# (the advisory ``_SEARCH_SQL`` is scoped to ``'knowledge'``). Tips are read WITHOUT an embedding
+# via :meth:`PgChunkStore.list_tips`, so the widget never spends an embed/LLM call.
+TIP_SOURCE_KIND = "tip"
+
 
 @dataclass(frozen=True)
 class ChunkRow:
@@ -146,6 +152,18 @@ WHERE source_kind = $1::memory_source AND user_id IS NULL AND metadata->>'source
 ORDER BY (metadata->>'chunk_index')::int
 """.strip()
 
+# Keyless tip read for the sidebar widget: random ACTIVE tips, no embedding. A tip is active unless
+# its metadata explicitly says ``active: 'false'`` (absent ⇒ active). Never touches _SEARCH_SQL.
+_LIST_TIPS_SQL = """
+SELECT content, metadata
+FROM memory_chunks
+WHERE source_kind = $1::memory_source
+  AND user_id IS NULL
+  AND coalesce(metadata->>'active', 'true') <> 'false'
+ORDER BY random()
+LIMIT $2
+""".strip()
+
 
 class PgChunkStore:
     """A :class:`ChunkStore` backed by ``memory_chunks`` via an asyncpg executor.
@@ -212,6 +230,17 @@ class PgChunkStore:
     async def get_source_chunks(self, source: str) -> list[ChunkHit]:
         """All chunks for one note, ordered by chunk index (score 0 — not a search)."""
         records = await self._db.fetch(_SOURCE_CHUNKS_SQL, self._source_kind, source)
+        return [
+            ChunkHit(content=str(rec["content"]), metadata=_as_dict(rec["metadata"]), score=0.0)
+            for rec in records
+        ]
+
+    async def list_tips(self, limit: int) -> list[ChunkHit]:
+        """Up to ``limit`` (capped 20) random ACTIVE tips for this store's ``source_kind`` — a
+        KEYLESS read (no embedding), for the sidebar tip widget. Never runs the RAG search path."""
+        if limit <= 0:
+            return []
+        records = await self._db.fetch(_LIST_TIPS_SQL, self._source_kind, min(limit, 20))
         return [
             ChunkHit(content=str(rec["content"]), metadata=_as_dict(rec["metadata"]), score=0.0)
             for rec in records

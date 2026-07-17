@@ -14,6 +14,7 @@ from .allowlist import (
     parse_allowlist_env,
 )
 from .config import DATABASE_URL_ENV, DatabaseConfig
+from .content_entries import ContentEntryStore
 from .mandates import (
     MandateRecord,
     MandateStore,
@@ -28,6 +29,7 @@ __all__ = [
     "BETA_ROLE",
     "DATABASE_URL_ENV",
     "AllowlistStore",
+    "ContentEntryStore",
     "Database",
     "DatabaseConfig",
     "MandateRecord",
