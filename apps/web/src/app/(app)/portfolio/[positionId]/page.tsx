@@ -16,6 +16,7 @@ import { money } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
+import { usePortfolioView } from "@/lib/agent/useAgent";
 import "@/components/screens/portfolio.css";
 
 const DISPLAY_CHAIN_ID = 84532;
@@ -35,6 +36,8 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const base = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
   // Second instance parameterized on the loaded shares → previewRedeem(all shares) = realizable now.
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID, previewRedeemShares: base.shares });
+  // §B2 agent-derived PnL (called unconditionally — Rules of Hooks — before any early return).
+  const agent = usePortfolioView();
 
   if (positionId !== "vault") {
     return (
@@ -55,6 +58,13 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const sharesNum = num(base.shares, 6); // vault share token is 6-dp (== USDC asset)
   const valueUsd = num(base.underlying, 6);
   const realizable = num(v.previewRedeemAssets, 6);
+
+  // §B2 DERIVED (non-custody): real cost basis + unrealized PnL from the on-chain flow index.
+  // Trusted only when LIVE and not stale — else the honest "pending" label holds.
+  const agentLive = live && !!agent && !agent.stale;
+  const costBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
+  const unrealizedPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
+  const hasIndexedPnl = costBasisUsd !== undefined || unrealizedPnlUsd !== undefined;
   const dash = (n: number | undefined, f: (x: number) => string) => (n === undefined ? "…" : f(n));
   // A connected value cell: skeleton while loading, real when live, dash otherwise.
   const cell = (n: number | undefined, f: (x: number) => string) =>
@@ -106,9 +116,28 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
             <Link style={{ color: "var(--primary)" }} href={toHref("exit")}>/exit</Link>.
           </div>
         )}
-        <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", display: "inline-flex", gap: 8, alignItems: "center" }}>
-          Accrued yield / PnL <Tag text="pending" title="PnL over time needs a history indexer, not wired yet." />
-        </div>
+        {hasIndexedPnl ? (
+          <div style={{ marginTop: 12, display: "flex", gap: 20, flexWrap: "wrap", alignItems: "baseline" }}>
+            <div className="stat">
+              <span className="k">Cost basis</span>
+              <span className="v tnum">{costBasisUsd !== undefined ? money(costBasisUsd) : "—"}</span>
+              <span className="muted" style={{ fontSize: 11 }}>net deposited (indexed on-chain)</span>
+            </div>
+            <div className="stat">
+              <span className="k">Unrealized PnL</span>
+              <span
+                className={`v tnum ${unrealizedPnlUsd !== undefined ? (unrealizedPnlUsd > 0 ? "delta up" : unrealizedPnlUsd < 0 ? "delta down" : "delta flat") : ""}`}
+              >
+                {unrealizedPnlUsd !== undefined ? `${unrealizedPnlUsd >= 0 ? "+" : "−"}${money(Math.abs(unrealizedPnlUsd))}` : "—"}
+              </span>
+              <span className="muted" style={{ fontSize: 11 }}>value − cost basis</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", display: "inline-flex", gap: 8, alignItems: "center" }}>
+            Accrued yield / PnL <Tag text="pending" title="PnL over time needs a history indexer, not wired yet." />
+          </div>
+        )}
       </div>
 
       <div className="card card-pad">

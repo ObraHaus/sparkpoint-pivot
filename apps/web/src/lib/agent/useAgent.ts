@@ -86,10 +86,27 @@ function numeric(value: unknown): number | undefined {
 
 /* ── GET /portfolio (§3.3) ─────────────────────────────────────────────────── */
 
+interface PortfolioPositionDto {
+  positionId?: string;
+  costBasisUsd?: string | null;
+  unrealizedPnlUsd?: string | null;
+}
+
 interface PortfolioResponse {
   netWorthUsd?: string;
   stale?: boolean;
-  pnl?: { series?: { ts?: string; valueUsd?: string }[]; realizedUsd?: string; unrealizedUsd?: string };
+  positions?: PortfolioPositionDto[];
+  pnl?: {
+    series?: { ts?: string; valueUsd?: string }[];
+    realizedUsd?: string | null;
+    unrealizedUsd?: string | null;
+  };
+}
+
+/** Per-position derived figures from the §B2 on-chain flow index. `undefined` ⇒ not indexed yet. */
+export interface PositionPnl {
+  costBasisUsd?: number;
+  unrealizedPnlUsd?: number;
 }
 
 /**
@@ -97,12 +114,17 @@ interface PortfolioResponse {
  * portfolio screen already consumes (`netWorth`, `series`, `pnl`). Every field is
  * OPTIONAL: the screen fills any gap from mock data via `??`, so a partial/stale
  * response degrades gracefully instead of blanking the UI. `null` ⇒ offline (all
- * mock). The custody-critical balances stay on direct RPC (`useVault`), never here.
+ * mock). The custody-critical balances stay on direct RPC (`useVault`), never here —
+ * only the DERIVED, non-custody figures (cost basis + unrealized PnL, §B2) come from here.
  */
 export interface PortfolioView {
   netWorth?: number;
   series?: number[];
   pnl?: { abs: number; pct: number };
+  /** Aggregate unrealized PnL in USD (indexed cost basis vs current value); `undefined` if unindexed. */
+  unrealizedUsd?: number;
+  /** Per-position cost basis + unrealized PnL, keyed by positionId (e.g. `"vault"`). */
+  positionPnl: Record<string, PositionPnl>;
   stale: boolean;
 }
 
@@ -135,7 +157,18 @@ export function usePortfolioView(): PortfolioView | null {
     pnl = { abs: Math.round(abs * 100) / 100, pct };
   }
 
-  return { netWorth, series, pnl, stale: d.stale === true };
+  // §B2 derived figures. `numeric(null)` ⇒ undefined, so an unindexed value stays "pending".
+  const unrealizedUsd = numeric(d.pnl?.unrealizedUsd);
+  const positionPnl: Record<string, PositionPnl> = {};
+  for (const p of d.positions ?? []) {
+    if (!p?.positionId) continue;
+    positionPnl[p.positionId] = {
+      costBasisUsd: numeric(p.costBasisUsd),
+      unrealizedPnlUsd: numeric(p.unrealizedPnlUsd),
+    };
+  }
+
+  return { netWorth, series, pnl, unrealizedUsd, positionPnl, stale: d.stale === true };
 }
 
 /* ── GET /recommendations (§3.4) ───────────────────────────────────────────── */

@@ -21,6 +21,7 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
+import { usePortfolioView } from "@/lib/agent/useAgent";
 import { StatusTag } from "@/components/ui/status-tag";
 import "@/components/screens/portfolio.css";
 
@@ -76,6 +77,15 @@ export default function Page() {
   const live = isConnected && v.isDeployed && !loading && !error && !wrongNetwork;
   const preview = !isConnected;
   const degraded = isConnected && !live; // dashes/skeletons — never mock
+
+  // §B2 DERIVED (non-custody) figures — real cost basis + unrealized PnL from the agent's on-chain
+  // flow index. Custody balances above stay on direct RPC; this only fills the PnL slots. Trusted
+  // ONLY when we're LIVE and the agent's read isn't stale — else the honest "pending" fallback holds.
+  const agent = usePortfolioView();
+  const agentLive = live && !!agent && !agent.stale;
+  const netUnrealizedUsd = agentLive ? agent.unrealizedUsd : undefined;
+  const vaultPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
+  const vaultCostBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
 
   const { line, area, last } = areaPath(data.series1M, 560, 150);
 
@@ -150,7 +160,20 @@ export default function Page() {
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span className="muted" style={{ fontSize: 12.5 }}>USDC across vault + wallet</span>
               {d.ethBalance > 0 && <span className="pill ghosty" style={{ fontSize: 11 }}>+ {d.ethBalance.toFixed(4)} ETH (not in USD)</span>}
-              <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
+              {netUnrealizedUsd !== undefined ? (
+                <span
+                  className={`delta ${netUnrealizedUsd > 0 ? "up" : netUnrealizedUsd < 0 ? "down" : "flat"}`}
+                  style={{ fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}
+                  title={vaultCostBasisUsd !== undefined
+                    ? `Unrealized PnL vs your ${money(vaultCostBasisUsd)} net deposited — indexed from on-chain deposits & withdrawals.`
+                    : "Unrealized PnL = current value − net deposited, indexed from on-chain deposits & withdrawals."}
+                >
+                  {netUnrealizedUsd >= 0 ? "+" : "−"}{money(Math.abs(netUnrealizedUsd))} unrealized
+                  <span className="pill" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", color: "var(--muted-foreground)" }}>indexed</span>
+                </span>
+              ) : (
+                <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
+              )}
             </div>
           ) : preview ? (
             <div className="delta up" style={{ marginTop: 8 }}>
@@ -285,9 +308,18 @@ export default function Page() {
                       <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
                     </td>
                     <td className="num tnum">{money(p.valueUsd)}</td>
-                    <td className="num muted" title="PnL needs a history indexer, not wired yet">
-                      — <span style={{ fontSize: 10 }}>pending</span>
-                    </td>
+                    {p.key === "vault" && vaultPnlUsd !== undefined ? (
+                      <td
+                        className={`num tnum ${vaultPnlUsd > 0 ? "delta up" : vaultPnlUsd < 0 ? "delta down" : "delta flat"}`}
+                        title={vaultCostBasisUsd !== undefined ? `Cost basis ${money(vaultCostBasisUsd)} (net deposited, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
+                      >
+                        {vaultPnlUsd >= 0 ? "+" : "−"}{money(Math.abs(vaultPnlUsd))}
+                      </td>
+                    ) : (
+                      <td className="num muted" title="PnL needs a history indexer, not wired yet">
+                        — <span style={{ fontSize: 10 }}>pending</span>
+                      </td>
+                    )}
                     <td>{p.key === "vault" ? <Icon name="chevr" size={15} /> : null}</td>
                   </tr>
                 ))}
