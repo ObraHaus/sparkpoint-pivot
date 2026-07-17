@@ -20,5 +20,9 @@ jobs:
         run: printf '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n' > apps/web/next-env.d.ts
       - name: typecheck
         run: pnpm --filter @sparkpoint/web exec tsc --noEmit
+      - name: typecheck tests
+        run: pnpm --filter @sparkpoint/web typecheck:test
+      - name: unit tests (node:test)
+        run: pnpm --filter @sparkpoint/web test
       - name: lint
         run: pnpm --filter @sparkpoint/web lint

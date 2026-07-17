@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "e2e:pw": "playwright test",
     "e2e:pw:install": "playwright install chromium"
   },

@@ -1,0 +1,10 @@
+{
+  "//": "Typechecks the unit tests (which the base tsconfig excludes so `next build`/lint stay clean). Run: tsc --noEmit -p tsconfig.test.json.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.mts"],
+  "exclude": ["node_modules"]
+}
