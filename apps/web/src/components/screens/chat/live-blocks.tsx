@@ -22,10 +22,10 @@ import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
 /**
- * Map a live block's `proposedAction` to the chat inline-confirm intent, carrying the
- * LIVE amount so a vault action drives the REAL execution path (never a mock amount).
- * Vault deposit/withdraw/redeem resolve to the real vault gate; anything else is a
- * non-signable "ships at launch" placeholder.
+ * Map a live block's `proposedAction` to the chat inline-confirm intent, carrying the LIVE amount so
+ * the action drives a REAL execution path (never a mock amount). Vault deposit/withdraw/redeem →
+ * the real vault gate; `aerodrome_swap` → the functional inline swap (user-signed via Uniswap,
+ * independent of the agent's fail-closed swap policy); anything else → an honest placeholder.
  */
 function inlineIntentFor(action: ProposedAction): InlineIntent {
   const amount = (() => {
@@ -42,9 +42,18 @@ function inlineIntentFor(action: ProposedAction): InlineIntent {
       return { kind: "withdraw", assets: amount };
     case "vault_redeem":
       return { kind: "withdraw", shares: amount };
+    case "aerodrome_swap":
+      // Functional inline swap — executed via the web's own Uniswap path (user-signed), NOT the
+      // agent's fail-closed swap policy. Default ETH→USDC (the card can flip); carry amount/slippage.
+      return {
+        kind: "swap",
+        ethToUsdc: true,
+        amountIn: amount > 0n ? amount : undefined,
+        slippageBps: action.params?.maxSlippageBps,
+      };
     default:
-      // aerodrome_swap and any non-vault action are not on-chain-live yet.
-      return { kind: "swap" };
+      // aave_supply / aave_withdraw etc. aren't inline-wired yet → honest placeholder.
+      return { kind: "premium" };
   }
 }
 
@@ -163,13 +172,13 @@ function LiveBlock({
             )}
           </div>
           <div className="cnote">Estimates, not guarantees.</div>
-          {signable ? (
+          {signable || block.proposedAction.type === "aerodrome_swap" ? (
             <div className="cact">
               <button
                 className="btn btn-primary btn-md"
                 onClick={() => onReview(inlineIntentFor(block.proposedAction))}
               >
-                Review this move
+                {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
               </button>
             </div>
           ) : (
@@ -186,15 +195,19 @@ function LiveBlock({
             <span className="rank">Proposed action</span>
             <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
           </div>
-          {signable ? (
+          {signable || block.proposedAction.type === "aerodrome_swap" ? (
             <>
-              <div className="cthesis">This action is ready — review every change and sign right here.</div>
+              <div className="cthesis">
+                {block.proposedAction.type === "aerodrome_swap"
+                  ? "Swap ETH ↔ USDC on Uniswap — review the live quote and sign right here."
+                  : "This action is ready — review every change and sign right here."}
+              </div>
               <div className="cact">
                 <button
                   className="btn btn-primary btn-md"
                   onClick={() => onReview(inlineIntentFor(block.proposedAction))}
                 >
-                  Review this move
+                  {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
                 </button>
               </div>
             </>

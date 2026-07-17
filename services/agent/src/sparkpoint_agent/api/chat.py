@@ -186,11 +186,14 @@ class _NoopFeedbackSink:
 
 
 def _fmt_units(raw: int, decimals: int) -> str:
-    """Format raw base units as a fixed-2-decimal string (exact, integer-only — never a float)."""
+    """Format raw base units as a **separator-free** fixed-2-decimal string (exact, integer-only,
+    never a float). No thousands comma: the shared wire ``UsdStringSchema`` rejects grouping commas,
+    so a ``valueUsd`` >= $1,000 formatted with a comma (e.g. ``10,000.00``) fails validation and
+    renders the whole portfolio_snapshot card inert. The client adds grouping for display."""
     scale = 10**decimals
     whole, frac = divmod(max(0, raw), scale)
     cents = (frac * 100) // scale
-    return f"{whole:,}.{cents:02d}"
+    return f"{whole}.{cents:02d}"
 
 
 class _VaultChatPortfolioProvider:

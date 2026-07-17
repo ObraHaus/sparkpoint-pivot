@@ -8,6 +8,8 @@ cause ("not supported on this network" vs "couldn't build") instead of one byte-
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from sparkpoint_agent.api.chat import (
@@ -103,6 +105,23 @@ async def test_chat_portfolio_idle_only_shows_as_position() -> None:
     assert view.positions[0].venue == "Wallet (idle)"
     assert view.positions[0].value_usd == "25.00"
     assert view.idle_usdc == 25_000_000
+
+
+_USD_STRING_RE = re.compile(r"^-?\d+(\.\d+)?$")  # mirrors the shared wire UsdStringSchema regex
+
+
+@pytest.mark.asyncio
+async def test_chat_portfolio_valueusd_has_no_thousands_comma() -> None:
+    # A position >= $1,000 must serialize valueUsd WITHOUT a grouping comma, else the strict shared
+    # UsdStringSchema rejects it and the web fail-closes the portfolio_snapshot to an inert card.
+    reader = _FakeReader(shares=12_500_000_000, idle=3_000_000_000)  # $12,500 vault + $3,000 idle
+    provider = _VaultChatPortfolioProvider(reader, _config())
+    view = await provider.read(await _chain(reader))
+    assert view.positions[0].value_usd == "12500.00"
+    assert view.positions[1].value_usd == "3000.00"
+    for pos in view.positions:
+        assert "," not in pos.value_usd
+        assert _USD_STRING_RE.match(pos.value_usd), pos.value_usd
 
 
 @pytest.mark.asyncio

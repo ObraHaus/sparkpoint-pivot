@@ -35,7 +35,7 @@ import re
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..agents import guardrail
 from ..agents.literacy import Literacy
@@ -59,6 +59,7 @@ from ..wire import Citation
 from .chat_blocks import (
     ActionBlock,
     ChatBlock,
+    ChatPolicyStamp,
     CitationBlock,
     ErrorBlock,
     PortfolioSnapshotBlock,
@@ -447,10 +448,15 @@ class CoordinatorDag:
 
         if intent.kind is IntentKind.BUILD_ACTION:
             is_swap = intent.action_type is ActionType.AERODROME_SWAP
-            # Swaps can't be built here (Aerodrome is fork-only) but the live Uniswap Swap page
-            # can — route there immediately, whether or not an amount was given (no dead-end).
+            # Swaps aren't built by the agent (Aerodrome fork-only) — surface the web's functional
+            # inline swap card via an `action` block. It executes on the web's own Uniswap path
+            # (user-signed), NOT this fork-only policy, so the stamp is honestly "rejected"; the web
+            # renders "Review swap" for an aerodrome_swap block regardless.
             if is_swap and chain.chain_id in _SWAP_PAGE_CHAINS:
-                yield TextBlock(_SWAP_PAGE_MESSAGE)
+                yield ActionBlock(
+                    proposed_action=_swap_proposed_action(intent),
+                    policy=ChatPolicyStamp(status="rejected", reason=_SWAP_ADVISORY_REASON),
+                )
                 return
             if not _explicit_ready(intent):
                 yield TextBlock(
@@ -612,6 +618,31 @@ _SWAP_PAGE_MESSAGE = (
     "Token swaps run on the Swap page — open Swap in the sidebar to swap ETH ↔ USDC on "
     "Uniswap V3. You review the quote and sign from your own wallet; I can't move your funds."
 )
+
+# A swap ask on a Swap-page chain surfaces the web's FUNCTIONAL inline swap card via an `action`
+# block. The swap executes on the web's own Uniswap path (user-signed) — NOT this fork-only agent
+# policy — so the stamp is honestly "rejected"; `asset`/`decimals` are ETH-in schema fillers the web
+# ignores (it resolves the real swap tokens + live quote itself).
+_SWAP_ASSET_FILLER = "0x4200000000000000000000000000000000000006"  # WETH on Base / Base Sepolia
+_DEFAULT_SWAP_SLIPPAGE_BPS = 50  # 0.5% — matches the web's default slippage preset
+_SWAP_ADVISORY_REASON = (
+    "Swaps run on Uniswap V3 — the assistant doesn't build them; you review the quote and sign."
+)
+
+
+def _swap_proposed_action(intent: Intent) -> dict[str, Any]:
+    """Synthetic ``aerodrome_swap`` proposedAction that drives the web's inline swap card."""
+    slippage = intent.max_slippage_bps
+    if slippage is None:
+        slippage = _DEFAULT_SWAP_SLIPPAGE_BPS
+    return {
+        "type": ActionType.AERODROME_SWAP.value,
+        "asset": _SWAP_ASSET_FILLER,
+        "decimals": 18,
+        "amount": str(intent.amount) if intent.amount else "0",
+        "params": {"maxSlippageBps": slippage},
+    }
+
 
 # Bridging isn't an advisory action (no ActionType) and the vault/swaps are Base-only, so a bridge
 # request is answered honestly rather than being classified as a buildable action that asks for an
