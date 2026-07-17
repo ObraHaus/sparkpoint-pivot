@@ -13,15 +13,12 @@
  * │ full position on-chain via /exit while this gate says it can't deposit.      │
  * └────────────────────────────────────────────────────────────────────────────┘
  *
- * Structural MVP: there is no beta-status backend endpoint yet. Eligibility is
- * derived CLIENT-SIDE from an optional address allowlist
- * (`NEXT_PUBLIC_BETA_ALLOWLIST`, a csv of addresses) and is DEFAULT-PERMISSIVE on
- * Base Sepolia testnet (84532) and whenever no allowlist is configured — so the
- * testnet MVP transacts freely and the wallet-inert design showcase is unchanged.
- *
- * TODO(W6): replace {@link computeBetaStatus}'s body with a call to the backend
- * `/beta-status` endpoint (address → `{ enabled, geoAllowed }`). The return shape
- * is stable, so that swap is invisible to every caller (the shell + amount screen).
+ * AUTHORITY: the SERVER session's `beta` claim (resolved at SIWE login from the agent's DB-backed
+ * allowlist) is the source of truth, enforced by the route middleware + BFF. This client hook only
+ * mirrors it for the deposit UI. There is deliberately NO client-side address allowlist: the old
+ * `NEXT_PUBLIC_BETA_ALLOWLIST` shipped allowlisted wallet addresses in the public bundle (a privacy
+ * leak once a real client is added), so it was removed. The client default is permissive
+ * (deposit form shows) until the session resolves — the server + middleware do the real gating.
  *
  * Grounding: specs/001-sparkpoint-pivot-mvp/tasks.md T047 (beta whitelist +
  * per-user-cap gate; NEVER gates /exit).
@@ -29,7 +26,7 @@
 
 import { useAccount } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
-import { isAddress, type Address } from "viem";
+import { type Address } from "viem";
 import { useSession } from "@/lib/auth/useSiwe";
 
 /** Why the deposit/transact path is closed for this wallet (drives BetaGate copy). */
@@ -66,22 +63,6 @@ export interface BetaStatus {
 const TESTNET_CHAIN_ID: number = baseSepolia.id;
 
 /**
- * The optional client allowlist, parsed once from `NEXT_PUBLIC_BETA_ALLOWLIST` (a csv
- * of addresses) into a lowercased Set. An EMPTY set means "no allowlist configured" →
- * the gate is open (the testnet MVP default). Malformed entries are ignored — a bad
- * env value must never crash a display gate. This is the seam a backend replaces.
- */
-const BETA_ALLOWLIST: ReadonlySet<string> = (() => {
-  const raw = process.env.NEXT_PUBLIC_BETA_ALLOWLIST ?? "";
-  const set = new Set<string>();
-  for (const entry of raw.split(",")) {
-    const addr = entry.trim();
-    if (addr.length > 0 && isAddress(addr)) set.add(addr.toLowerCase());
-  }
-  return set;
-})();
-
-/**
  * Geo/jurisdiction check. Placeholder until a compliance backend exists — structurally
  * present so it is trivially swappable. TODO(W6): resolve from the backend /beta-status
  * response (or a geo-IP edge check) keyed by the connecting wallet.
@@ -104,12 +85,10 @@ export function computeBetaStatus(input: {
   const isConnected = input.isConnected ?? address !== undefined;
   const isTestnet = chainId === TESTNET_CHAIN_ID;
 
-  const allowlistConfigured = BETA_ALLOWLIST.size > 0;
-  const addressAllowed = address !== undefined && BETA_ALLOWLIST.has(address.toLowerCase());
-
-  // Default-permissive on testnet, and whenever no allowlist is configured (the testnet
-  // MVP default). Once an allowlist IS configured, mainnet transacting is restricted to it.
-  const enabled = isTestnet || !allowlistConfigured || addressAllowed;
+  // Client default is PERMISSIVE — there is no client-side allowlist (the server session's `beta`
+  // claim + the route middleware are authoritative). This value is only used pre-session (loading /
+  // not signed in); `useBeta` overrides it with the server claim the moment a session exists.
+  const enabled = true;
   const geoAllowed = checkGeoAllowed(address);
   const canTransact = enabled && geoAllowed;
 
