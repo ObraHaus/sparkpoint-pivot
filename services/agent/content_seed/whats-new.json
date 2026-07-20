@@ -6,7 +6,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Switching wallets is recognized right away",
-      "body": "If you switch to a different wallet in your browser extension, SparkPoint now picks up the new wallet immediately — prompting you to sign in for it — instead of getting stuck on the previous wallet's access status. Your funds are never affected; withdrawals and exit stay open no matter what.",
+      "body": "If you switch to a different wallet in your browser extension — anywhere in the app — SparkPoint now picks up the new wallet immediately and asks you to sign in for it, instead of getting stuck on the previous wallet's access status. Your funds are never affected; withdrawals and exit stay open no matter what.",
       "published_at": "2026-07-20",
       "active": true
     },

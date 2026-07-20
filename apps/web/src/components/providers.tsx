@@ -9,6 +9,20 @@ import { NetworkProvider } from "@/lib/network";
 import { OverlayProvider } from "@/components/overlays/OverlayProvider";
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WhatsNewModal } from "@/components/shell/WhatsNewModal";
+import { useSession } from "@/lib/auth/useSiwe";
+
+/**
+ * Renders nothing. It exists only to keep ONE `useSession()` instance mounted on EVERY route, so the
+ * account-binding effect inside it (clears a stale session when the connected wallet switches or
+ * disconnects) runs app-wide — even on app routes that never otherwise read the session (e.g.
+ * /portfolio) and with no overlay open. Without this, the binding ran only where the session is
+ * consumed (/verify, the deposit gate, the avatar menu), so a wallet switch on any other route left
+ * the previous wallet's session live until the next such page — the middleware kept admitting it.
+ */
+function SessionWalletBinder(): null {
+  useSession();
+  return null;
+}
 
 /**
  * App-wide providers.
@@ -32,6 +46,8 @@ export function Providers({ children }: { children: ReactNode }) {
               <UpdateBanner />
               {/* Feature 006 — What's New greeting (opens only when there are unseen changelog entries). */}
               <WhatsNewModal />
+              {/* Keep the session bound to the live wallet on every route (see SessionWalletBinder). */}
+              <SessionWalletBinder />
             </OverlayProvider>
           </NetworkProvider>
         </QueryClientProvider>
