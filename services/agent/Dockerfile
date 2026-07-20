@@ -18,10 +18,12 @@ COPY src ./src
 #   knowledge_seed      -> /app/knowledge_seed      (Obsidian RAG corpus; /admin/knowledge/reingest)
 #   knowledge_seed_tips -> /app/knowledge_seed_tips (sidebar tip databank; /admin/tips/reingest)
 #   persona_seed        -> /app/persona_seed        (Sparky persona; composed into the literacy SYSTEM)
+#   content_seed        -> /app/content_seed        (feature 006 changelog seed; /admin/content/reingest)
 # Without these in the image the loaders find no files: reingest ingests 0, and the persona is empty.
 COPY knowledge_seed ./knowledge_seed
 COPY knowledge_seed_tips ./knowledge_seed_tips
 COPY persona_seed ./persona_seed
+COPY content_seed ./content_seed
 
 # The vendored, forge-build-free vault ABI the chain-reader loads (T015 export).
 ENV SPARKPOINT_VAULT_ABI_PATH=/app/src/sparkpoint_agent/chain/abi/SparkPointVault.abi.json

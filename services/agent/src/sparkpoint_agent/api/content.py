@@ -18,6 +18,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
+from ..content_seed import seed_changelog
 from ..db import get_database
 from ..db.content_entries import ContentEntryStore
 from .allowlist import require_admin
@@ -165,3 +166,16 @@ async def admin_audit(
 ) -> dict[str, Any]:
     """Recent content-console changes (newest first)."""
     return {"entries": await store.recent_audit(limit)}
+
+
+@router.post("/admin/content/reingest")
+async def admin_reingest(
+    admin: Annotated[AccountContext, Depends(require_admin)],
+    store: Annotated[ContentEntryStore, Depends(get_content_store)],
+) -> dict[str, Any]:
+    """Re-apply ``content_seed/whats-new.json`` into ``content_entries`` (idempotent upsert by
+    slug), without a full redeploy — mirrors ``POST /admin/tips/reingest``. Each entry is audited
+    inside the store. Feature 006; content only, never custody (N2)."""
+    counts = await seed_changelog(store)
+    active = len(await store.list_changelog(200))
+    return {"ok": True, **counts, "total_active": active}

@@ -139,6 +139,20 @@ async def _warm_persona(db: object) -> None:
     logger.info("persona_warmed overrides=%d", len(overrides))
 
 
+async def _seed_changelog(db: object) -> None:
+    """Ingest ``content_seed/whats-new.json`` into ``content_entries`` at boot (feature 006). One
+    repo file feeds the in-app changelog. Best-effort like the persona/allowlist seeds: a missing
+    file, bad JSON, an un-applied 0014 migration, or a DB error is logged and swallowed so it never
+    blocks startup. Content only, never custody (N2)."""
+    try:
+        from ..content_seed import seed_changelog
+        from ..db.content_entries import ContentEntryStore
+
+        await seed_changelog(ContentEntryStore(db))  # type: ignore[arg-type]
+    except Exception:
+        logger.warning("whats_new_seed_skipped (table missing or DB error)")
+
+
 _INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
 
 
@@ -220,6 +234,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Sparky persona: compose the literacy SYSTEM persona from persona_seed/ + any admin
         # overrides, once, at boot. Trusted voice-only content; never on the withdraw/exit path.
         await _warm_persona(db)
+        # Feature 006: ingest content_seed/whats-new.json into content_entries so one repo file
+        # feeds the in-app changelog. Best-effort; content only (N2).
+        await _seed_changelog(db)
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())

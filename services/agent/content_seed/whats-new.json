@@ -1,0 +1,41 @@
+{
+  "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
+  "entries": [
+    {
+      "slug": "wallet-holdings-every-network",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Wallet holdings on every network",
+      "body": "Your Portfolio now lists your native ETH plus every token your wallet holds — on Base, Base Sepolia, and Robinhood testnet.",
+      "cta_label": "Open Portfolio",
+      "cta_href": "/portfolio",
+      "published_at": "2026-07-17"
+    },
+    {
+      "slug": "sparky-consistent-voice",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky has a consistent voice",
+      "body": "The assistant now speaks with one on-brand character — clearer and steadier, and still no hype or emoji.",
+      "published_at": "2026-07-17"
+    },
+    {
+      "slug": "live-whats-new-feed",
+      "type": "changelog",
+      "tag": "New",
+      "title": "A live What's New feed",
+      "body": "Open the changelog any time from the left rail to see everything we've shipped to the alpha.",
+      "cta_label": "See what's new",
+      "cta_href": "/changelog",
+      "published_at": "2026-07-16"
+    },
+    {
+      "slug": "steadier-chat",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Steadier chat",
+      "body": "Chat now recovers from brief gateway hiccups instead of failing a turn — fewer \"hit a problem\" messages.",
+      "published_at": "2026-07-16"
+    }
+  ]
+}
