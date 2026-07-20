@@ -79,7 +79,10 @@ async def test_seed_changelog_swallows_upsert_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     f = tmp_path / "whats-new.json"
-    _write(f, [{"slug": "a", "title": "A", "body": "ba"}, {"slug": "b", "title": "B", "body": "bb"}])
+    _write(
+        f,
+        [{"slug": "a", "title": "A", "body": "ba"}, {"slug": "b", "title": "B", "body": "bb"}],
+    )
     monkeypatch.setenv("SPARKPOINT_WHATS_NEW_PATH", str(f))
 
     class _Boom:
