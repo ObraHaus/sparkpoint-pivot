@@ -52,6 +52,9 @@ export interface SwapExec {
   readonly toNative: boolean;
   /** true ⇒ an ERC-20 `approve(router, amountIn)` leg is needed (token-in that isn't native). */
   readonly needsApprove: boolean;
+  /** true ⇒ token-in requires a reset-to-zero approve BEFORE the real approve (USDT-style tokens that
+   * revert on a non-zero→non-zero `approve`). Adds one extra signature. */
+  readonly approveResetToZero?: boolean;
   /** §fee — SparkPoint routing fee in bips (≤100=1% cap), taken IN the swap and paid straight to
    * ``feeRecipient`` on-chain (the app never custodies it). The user receives output − fee. */
   readonly feeBips: number;
@@ -168,6 +171,24 @@ export function useExecuteSwapTx(exec: SwapExec | undefined): SwapExecController
         // ── leg 0: ERC-20 approve (only when the token-in isn't native ETH) ──
         if (e.needsApprove && !e.fromNative) {
           setStage("approve");
+          // USDT-style tokens revert on a non-zero→non-zero approve — reset the allowance to 0 first.
+          if (e.approveResetToZero) {
+            setAwaitingWallet(true);
+            const resetTx = await writeContractAsync({
+              address: e.tokenIn,
+              abi: erc20Abi,
+              functionName: "approve",
+              args: [e.router, 0n],
+              chainId: e.chainId as WagmiChainId,
+            });
+            setAwaitingWallet(false);
+            const resetReceipt = await publicClient.waitForTransactionReceipt({ hash: resetTx });
+            if (resetReceipt.status === "reverted") {
+              setStage("error");
+              setError("Allowance reset reverted on-chain — nothing moved.");
+              return;
+            }
+          }
           setAwaitingWallet(true);
           const approveTx = await writeContractAsync({
             address: e.tokenIn,

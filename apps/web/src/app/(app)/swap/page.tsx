@@ -1,58 +1,48 @@
 "use client";
 
 /**
- * /swap — manual, NON-CUSTODIAL token swap (§B-swap). The user picks a DEX + tokens + amount; the
- * app quotes on-chain (Uniswap V3 QuoterV2), the user signs the swap from their OWN wallet
- * (wagmi `writeContractAsync` via `useExecuteSwapTx`). SparkPoint never holds a key or custody, and
- * the swap recipient is ALWAYS the connecting account.
+ * /swap — manual, NON-CUSTODIAL token swap (§B-swap · universal swap, feature 007).
  *
- * Honest states only: disconnected → connect prompt; a chain without Uniswap (or Aerodrome, which is
- * Base-mainnet-only) → an honest "not on this network" notice; no pool → "no liquidity"; a quote
- * failure → dashes. The Base-Sepolia pool is THIN, so price impact is shown prominently and a
- * slippage floor (`amountOutMinimum`) + deadline guard every swap.
+ * ETH + USDC are one-tap RECOMMENDED tokens, but the user can pick ANY ERC-20 (pasted address, resolved
+ * on-chain) on either leg. The app quotes on-chain (Uniswap V3 QuoterV2 via the shared `useSwapConfirm`
+ * resolver — the SAME engine the in-chat swap uses) and the user signs from their OWN wallet
+ * (`useExecuteSwapTx`). SparkPoint never holds a key or custody; the recipient is ALWAYS the connecting
+ * account; the 0.20% routing fee is split on-chain.
+ *
+ * Safety for arbitrary tokens is surfaced at the SIGNING gate, not just the picker: any non-recommended
+ * receive-token shows its address + a verified/unverified badge, a symbol-collision warning, and requires
+ * an "I understand" acknowledgement before the swap can be confirmed. Honest states only (no route → "no
+ * liquidity", quote failure → dashes, wrong network → notice); a slippage floor + deadline guard every swap.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useBalance, useReadContract } from "wagmi";
-import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
+import { useAccount } from "wagmi";
+import { formatUnits } from "viem";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
-import { wagmiConfig } from "@/lib/wagmi";
-import { getAddresses } from "@sparkpoint/shared/addresses";
-import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
-import { swapTokens, isConfiguredToken, type SwapToken } from "@/lib/swap/tokens";
-import { useSwapQuote } from "@/lib/swap/useSwapQuote";
-import { useExecuteSwapTx, type SwapExec } from "@/lib/swap/useExecuteSwapTx";
+import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
+import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
+import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
+import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
-import {
-  afterFee,
-  amountOutMinimum,
-  formatBpsPercent,
-  DEFAULT_DEADLINE_SECONDS,
-  HIGH_IMPACT_BPS,
-  ROUTING_FEE_BIPS,
-  SLIPPAGE_PRESETS_BPS,
-} from "@/lib/swap/math";
+import { TokenPicker } from "@/components/screens/swap/TokenPicker";
+import { formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
-type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
 const DISPLAY_CHAIN_ID = 84532;
 const DASH = "—";
 /** Keep a little native ETH for gas when the user taps "Max" on an ETH-in swap. */
 const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH
 
-function parseSafe(s: string, decimals: number): bigint {
-  const cleaned = s.replace(/,/g, "").trim();
-  if (cleaned === "") return 0n;
-  try {
-    return parseUnits(cleaned, decimals);
-  } catch {
-    return 0n;
-  }
+const eqAddr = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: SwapToken } {
+  const rec = swapTokens(chainId);
+  return { tin: rec.find((t) => t.isNative) ?? rec[0], tout: rec.find((t) => !t.isNative) ?? rec[1] };
 }
 
 function fmt(v: bigint | undefined, decimals: number, max = 6): string {
@@ -63,153 +53,80 @@ function fmt(v: bigint | undefined, decimals: number, max = 6): string {
 
 export default function Page() {
   const router = useRouter();
-  const { address, isConnected, chainId } = useAccount();
+  const { isConnected, chainId } = useAccount();
   const activeChain = isConnected ? chainId : DISPLAY_CHAIN_ID;
 
   const [dexId, setDexId] = useState<DexId>("uniswap_v3");
-  const [ethToUsdc, setEthToUsdc] = useState(true); // direction (only ETH↔USDC pair exists)
+  const initial = defaultTokens(DISPLAY_CHAIN_ID);
+  const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(initial.tin);
+  const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(initial.tout);
   const [amount, setAmount] = useState("");
   const [slippageBps, setSlippageBps] = useState<number>(SLIPPAGE_PRESETS_BPS[0]);
   const [reviewing, setReviewing] = useState(false);
+  const [ackUnverified, setAckUnverified] = useState(false);
+  const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
+
+  // Chain switch = a different set of tokens (the same 0x address is a DIFFERENT contract per chain) —
+  // reset to that chain's recommended defaults so we never quote/execute the wrong token. setState here
+  // syncs to an EXTERNAL change (the connected network), the sanctioned use of an effect.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const d = defaultTokens(activeChain);
+    setTokenIn(d.tin);
+    setTokenOut(d.tout);
+    setAmount("");
+    setReviewing(false);
+    setAckUnverified(false);
+  }, [activeChain]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const dex = dexById(dexId);
   const dexLive = dexLiveOn(dex, activeChain);
-
-  // Chain-aware labels — the swap venue + network name follow the connected chain (Base Sepolia /
-  // Base / Robinhood Testnet where the route is Synthra V3), so no copy hardcodes "Base Sepolia".
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
+  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
 
-  // Resolve Uniswap addresses + the vault (for the routing-fee recipient) + tokens (fail-closed).
-  const { router: routerAddr, quoter, vault, tokens } = useMemo(() => {
-    try {
-      const b = getAddresses(activeChain ?? DISPLAY_CHAIN_ID);
-      return {
-        router: b.uniswapV3SwapRouter02,
-        quoter: b.uniswapV3QuoterV2,
-        vault: b.vault,
-        tokens: swapTokens(activeChain),
-      };
-    } catch {
-      return { router: undefined, quoter: undefined, vault: undefined, tokens: [] as SwapToken[] };
-    }
-  }, [activeChain]);
-
-  // §fee — the routing fee (0.20%, /fees page) is paid to the VAULT's feeRecipient(), read live so
-  // the fee always lands on the real, on-chain recipient (matches /fees). Required to swap.
-  const feeRecipientRead = useReadContract({
-    address: vault,
-    abi: sparkPointVaultAbi,
-    functionName: "feeRecipient",
-    chainId: activeChain as WagmiChainId | undefined,
-    query: { enabled: isConnected && !!vault },
-  });
-  const feeRecipient = feeRecipientRead.data as Address | undefined;
-  // The 0.20% routing fee applies only where there's a vault to receive it (its feeRecipient). On a
-  // chain with NO vault (e.g. Robinhood testnet 46630) the swap is fee-free and uses the plain path.
-  const feeActive = !!vault;
-
-  const eth = tokens.find((t) => t.isNative);
-  const usdc = tokens.find((t) => !t.isNative);
-  const tokenIn = ethToUsdc ? eth : usdc;
-  const tokenOut = ethToUsdc ? usdc : eth;
-  const pairReady =
-    !!tokenIn && !!tokenOut && isConfiguredToken(tokenIn) && isConfiguredToken(tokenOut);
-
-  const amountIn = tokenIn ? parseSafe(amount, tokenIn.decimals) : 0n;
-
-  // Balances (direct-RPC, never the agent): native ETH + the USDC ERC-20.
-  const ethBal = useBalance({ address, chainId: activeChain as WagmiChainId | undefined, query: { enabled: isConnected && !!address } });
-  const usdcBal = useReadContract({
-    address: usdc?.address,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: address ? [address] : undefined,
-    chainId: activeChain as WagmiChainId | undefined,
-    query: { enabled: isConnected && !!address && !!usdc && isConfiguredToken(usdc) },
-  });
-  const allowance = useReadContract({
-    address: usdc?.address,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: address && routerAddr ? [address, routerAddr] : undefined,
-    chainId: activeChain as WagmiChainId | undefined,
-    query: { enabled: isConnected && !!address && !!usdc && !!routerAddr && !ethToUsdc },
-  });
-  const balanceIn = tokenIn?.isNative ? ethBal.data?.value : (usdcBal.data as bigint | undefined);
-
-  const canQuote =
-    dexId === "uniswap_v3" && dexLive && pairReady && amountIn > 0n && !!quoter && isConnected;
-  const quote = useSwapQuote({
-    chainId: activeChain,
-    quoter,
-    tokenIn: tokenIn?.address,
-    tokenOut: tokenOut?.address,
-    amountIn,
-    decimalsIn: tokenIn?.decimals ?? 18,
-    enabled: canQuote,
-  });
-
-  // Gross = raw swap output; where a fee applies it's taken IN the swap, so the user nets output−fee.
-  // Fee-free chains (no vault) net the gross output.
-  const grossOut = quote.amountOut;
-  const netOut =
-    grossOut !== undefined ? (feeActive ? afterFee(grossOut, ROUTING_FEE_BIPS) : grossOut) : undefined;
-  const minOut = grossOut !== undefined ? amountOutMinimum(grossOut, slippageBps) : undefined; // gross floor
-  const netMinOut =
-    minOut !== undefined ? (feeActive ? afterFee(minOut, ROUTING_FEE_BIPS) : minOut) : undefined;
-  const needsApprove =
-    !ethToUsdc && amountIn > 0n && (allowance.data === undefined || (allowance.data as bigint) < amountIn);
-  const insufficient = balanceIn !== undefined && amountIn > balanceIn;
-
-  // The real execution intent — built only when we have a live quote AND the fee recipient (the
-  // 0.20% routing fee is taken in-swap, so we never execute without a resolved recipient).
-  const exec: SwapExec | undefined = useMemo(() => {
-    if (!routerAddr || !tokenIn || !tokenOut || !address || activeChain === undefined) return undefined;
-    if (feeActive && !feeRecipient) return undefined; // fee chains need the recipient before executing
-    if (quote.amountOut === undefined || quote.fee === undefined || minOut === undefined || amountIn <= 0n)
-      return undefined;
-    return {
-      chainId: activeChain,
-      router: routerAddr,
-      tokenIn: tokenIn.address,
-      tokenOut: tokenOut.address,
-      fee: quote.fee,
-      account: address,
-      amountIn,
-      amountOutMinimum: minOut,
-      deadlineSeconds: DEFAULT_DEADLINE_SECONDS,
-      fromNative: tokenIn.isNative,
-      toNative: tokenOut.isNative,
-      needsApprove,
-      feeBips: feeActive ? ROUTING_FEE_BIPS : 0,
-      feeRecipient: feeActive ? feeRecipient : undefined,
-      onDone: () => {
-        void ethBal.refetch();
-        void usdcBal.refetch();
-        void allowance.refetch();
-      },
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routerAddr, tokenIn, tokenOut, address, activeChain, feeActive, feeRecipient, quote.amountOut, quote.fee, minOut, amountIn, needsApprove]);
-
-  const swapCtrl = useExecuteSwapTx(reviewing ? exec : undefined);
-
-  // Feature 006: pause the force-refresh while a swap is signing/broadcasting (LOCKED). `isBusy`
-  // (stage approve|execute) subsumes the pending-txHash double-submit window.
+  const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
+  const swapCtrl = useExecuteSwapTx(reviewing ? s.exec : undefined);
+  // Feature 006: pause the force-refresh while a swap is signing/broadcasting (LOCKED).
   useHoldCriticalOp(swapCtrl.isBusy, "locked");
 
+  const { quote, netOut, netMinOut, feeAmount } = s;
+  const balanceIn = s.balanceIn;
+
+  // Safety gate — a non-recommended (unverified) receive-token must be acknowledged before confirming.
+  const outUnverified = !!tokenOut && !tokenOut.isNative && !tokenOut.verified;
+  const outCollision = outUnverified ? findVerifiedBySymbol(activeChain ?? 0, tokenOut!.symbol) : undefined;
+  const outCollisionMismatch = !!outCollision && !eqAddr(outCollision.address, tokenOut!.address);
+  const safetyGateOk = !outUnverified || ackUnverified;
+
+  const canQuote = dexId === "uniswap_v3" && dexLive && s.canQuote;
   const highImpact = (quote.priceImpactBps ?? 0) >= HIGH_IMPACT_BPS;
+  const canReview =
+    canQuote && quote.amountOut !== undefined && !s.insufficient && s.amountIn > 0n && !s.feeRecipientPending && safetyGateOk;
 
   const onMax = () => {
     if (!tokenIn || balanceIn === undefined) return;
     const usable = tokenIn.isNative ? (balanceIn > ETH_GAS_BUFFER ? balanceIn - ETH_GAS_BUFFER : 0n) : balanceIn;
     setAmount(formatUnits(usable, tokenIn.decimals));
+    setReviewing(false);
   };
   const flip = () => {
-    setEthToUsdc((d) => !d);
+    setTokenIn(tokenOut);
+    setTokenOut(tokenIn);
     setAmount("");
+    setReviewing(false);
+    setAckUnverified(false);
+  };
+  const onPick = (side: "in" | "out", token: SwapToken) => {
+    if (side === "in") {
+      if (eqAddr(token.address, tokenOut?.address)) setTokenOut(tokenIn); // avoid same-token pair
+      setTokenIn(token);
+    } else {
+      if (eqAddr(token.address, tokenIn?.address)) setTokenIn(tokenOut);
+      setTokenOut(token);
+      setAckUnverified(false);
+    }
     setReviewing(false);
   };
 
@@ -232,6 +149,15 @@ export default function Page() {
 
   return (
     <Shell tagTitle={swapTagTitle}>
+      {pickerFor && (
+        <TokenPicker
+          chainId={activeChain}
+          exclude={pickerFor === "in" ? tokenOut?.address : tokenIn?.address}
+          onSelect={(t) => onPick(pickerFor, t)}
+          onClose={() => setPickerFor(null)}
+        />
+      )}
+
       {/* DEX selector */}
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="card-hd">
@@ -265,6 +191,7 @@ export default function Page() {
           editable
           balance={balanceIn}
           onMax={onMax}
+          onPickToken={() => setPickerFor("in")}
         />
         <div style={{ display: "flex", justifyContent: "center", margin: "6px 0" }}>
           <button
@@ -277,12 +204,43 @@ export default function Page() {
           </button>
         </div>
         <TokenRow
-          label={feeActive ? "You receive (estimated, after fee)" : "You receive (estimated)"}
+          label={s.feeActive ? "You receive (estimated, after fee)" : "You receive (estimated)"}
           token={tokenOut}
           value={canQuote && netOut !== undefined && tokenOut ? fmt(netOut, tokenOut.decimals) : ""}
           placeholder={quote.isLoading ? "…" : "0.00"}
           editable={false}
+          onPickToken={() => setPickerFor("out")}
         />
+
+        {/* Unverified-token safety (surfaced again at the signing gate, not just the picker) */}
+        {outUnverified && tokenOut && (
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--caution-subtle)",
+              color: "var(--caution)",
+              border: "1px solid color-mix(in srgb,var(--caution) 26%,transparent)",
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>
+              ⚠ Unverified token{outCollisionMismatch ? ` — this is NOT the official ${tokenOut.symbol}` : ""}
+            </div>
+            <div style={{ marginTop: 3 }}>
+              Anyone can create a token with any name. Confirm you trust this exact contract:
+            </div>
+            <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, marginTop: 4, wordBreak: "break-all" }}>
+              {tokenOut.address}
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={ackUnverified} onChange={(e) => setAckUnverified(e.target.checked)} />
+              I understand and want to receive this token.
+            </label>
+          </div>
+        )}
 
         {/* Quote details */}
         {canQuote && (
@@ -293,12 +251,10 @@ export default function Page() {
               tone={highImpact ? "caution" : undefined}
             />
             <Row k="Pool fee tier" v={quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} />
-            {feeActive && (
+            {s.feeActive && (
               <Row
                 k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
-                v={grossOut !== undefined && netOut !== undefined && tokenOut
-                  ? `${fmt(grossOut - netOut, tokenOut.decimals)} ${tokenOut.symbol}`
-                  : DASH}
+                v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
               />
             )}
             <Row
@@ -326,7 +282,7 @@ export default function Page() {
           <Notice>{uniswapVenue} isn&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>
         )}
         {canQuote && quote.noRoute && (
-          <Notice>No {uniswapVenue} liquidity for this pair on {netLabel}.</Notice>
+          <Notice>No {uniswapVenue} liquidity for this pair on {netLabel}. (Multi-hop routing arrives next.)</Notice>
         )}
         {canQuote && quote.isError && (
           <Notice>
@@ -340,8 +296,8 @@ export default function Page() {
             smaller amount or raise your slippage.
           </Notice>
         )}
-        {insufficient && <Notice>Amount exceeds your {tokenIn?.symbol} balance.</Notice>}
-        {canQuote && !insufficient && feeActive && !feeRecipient && (
+        {s.insufficient && <Notice>Amount exceeds your {tokenIn?.symbol} balance.</Notice>}
+        {canQuote && !s.insufficient && s.feeRecipientPending && (
           <Notice>Reading the routing-fee recipient from the vault… the swap needs it before you can confirm.</Notice>
         )}
 
@@ -351,7 +307,7 @@ export default function Page() {
             <button
               className="btn btn-primary btn-md"
               style={{ marginTop: 16, width: "100%" }}
-              disabled={!canQuote || quote.amountOut === undefined || insufficient || amountIn <= 0n || (feeActive && !feeRecipient)}
+              disabled={!canReview}
               onClick={() => setReviewing(true)}
             >
               Review swap
@@ -361,16 +317,14 @@ export default function Page() {
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Confirm swap</div>
               <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
                 <Row k="You pay" v={`${amount} ${tokenIn?.symbol}`} />
-                {feeActive && (
+                {s.feeActive && (
                   <Row
                     k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
-                    v={grossOut !== undefined && netOut !== undefined && tokenOut
-                      ? `${fmt(grossOut - netOut, tokenOut.decimals)} ${tokenOut.symbol}`
-                      : DASH}
+                    v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                   />
                 )}
                 <Row
-                  k={feeActive ? "You receive (est., after fee)" : "You receive (est.)"}
+                  k={s.feeActive ? "You receive (est., after fee)" : "You receive (est.)"}
                   v={netOut !== undefined && tokenOut ? `${fmt(netOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                 />
                 <Row
@@ -379,10 +333,15 @@ export default function Page() {
                 />
                 <Row k="Route" v={`${dexDisplayLabel(dex, activeChain)} · ${quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} pool`} />
               </div>
+              {tokenOut && !tokenOut.isNative && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: outUnverified ? "var(--caution)" : "var(--muted-foreground)", wordBreak: "break-all" }}>
+                  {outUnverified ? "⚠ Unverified" : "✓ Verified"} · {tokenOut.symbol} {tokenOut.address}
+                </div>
+              )}
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)" }}>
                 You sign this from your own wallet. SparkPoint never holds your keys or funds — the swap
-                output{feeActive ? ` (net of the ${formatBpsPercent(ROUTING_FEE_BIPS)} routing fee)` : ""} goes
-                straight to your address{feeActive ? ", and the fee goes on-chain straight to the vault's fee recipient" : ""}.
+                output{s.feeActive ? ` (net of the ${formatBpsPercent(ROUTING_FEE_BIPS)} routing fee)` : ""} goes
+                straight to your address{s.feeActive ? ", and the fee goes on-chain straight to the vault's fee recipient" : ""}.
               </div>
               {swapCtrl.error && (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--loss)" }}>{swapCtrl.error}</div>
@@ -401,10 +360,10 @@ export default function Page() {
                 <button
                   className="btn btn-primary btn-md"
                   style={{ flex: 1 }}
-                  disabled={swapCtrl.isBusy || !exec}
+                  disabled={swapCtrl.isBusy || !s.exec}
                   onClick={() => swapCtrl.start()}
                 >
-                  {swapCtrl.isBusy ? swapCtrl.label : needsApprove ? `Approve + Swap` : "Confirm & swap"}
+                  {swapCtrl.isBusy ? swapCtrl.label : s.needsApprove ? `Approve + Swap` : "Confirm & swap"}
                 </button>
               </div>
             </div>
@@ -436,7 +395,7 @@ export default function Page() {
               >
                 New swap
               </button>
-              {tokenOut?.symbol === "USDC" ? (
+              {tokenOut?.symbol === "USDC" && tokenOut?.verified ? (
                 <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("vault/deposit"))}>
                   Deposit USDC into vault
                 </button>
@@ -475,6 +434,7 @@ function TokenRow({
   placeholder,
   balance,
   onMax,
+  onPickToken,
 }: {
   label: string;
   token?: SwapToken;
@@ -484,6 +444,7 @@ function TokenRow({
   placeholder?: string;
   balance?: bigint;
   onMax?: () => void;
+  onPickToken?: () => void;
 }) {
   return (
     <div className="field">
@@ -510,7 +471,14 @@ function TokenRow({
           readOnly={!editable}
           onChange={editable && onChange ? (e) => onChange(e.target.value) : undefined}
         />
-        <span className="pill" style={{ fontWeight: 700 }}>{token?.symbol ?? DASH}</span>
+        <button
+          className="pill"
+          onClick={onPickToken}
+          style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", border: "1px solid var(--border)" }}
+        >
+          {token?.symbol ?? "Select"}
+          <Icon name="chevron-down" size={13} />
+        </button>
       </div>
     </div>
   );
