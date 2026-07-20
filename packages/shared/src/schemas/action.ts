@@ -28,6 +28,20 @@ export const ActionParamsSchema = z
 export type ActionParams = z.infer<typeof ActionParamsSchema>;
 
 /**
+ * A token reference on a proposed swap (universal swap, feature 007 · US4 chat parity). `decimals`/
+ * `symbol` are UNTRUSTED HINTS for display only — the web ALWAYS re-reads `decimals()` on-chain before
+ * scaling any amount (a wrong `decimals` on the input leg would mis-scale what the user pays).
+ */
+export const TokenRefSchema = z
+  .object({
+    address: HexAddressSchema,
+    decimals: z.number().int().nonnegative().optional(),
+    symbol: z.string().optional(),
+  })
+  .strict();
+export type TokenRef = z.infer<typeof TokenRefSchema>;
+
+/**
  * §3.5 / §2.7 — the canonical, NOT-yet-signable action. Reused for
  * `PolicyVerdict.normalizedAction` (§2.4) and ChatBlock `proposedAction` (§2.7).
  */
@@ -41,6 +55,13 @@ export const ProposedActionSchema = z
     amount: UintAmountSchema,
     params: ActionParamsSchema.optional(),
     recommendationId: z.string().optional(),
+    // ── universal swap (007 · US4) — an OPTIONAL token pair + chain for a swap proposal. Additive so an
+    // OLD single-`asset` block still validates (fields absent); the web MUST deploy this tolerant schema
+    // before the agent emits the pair (the agent redeploys independently). tokenIn is constrained to a
+    // known-decimals recommended token agent-side; tokenOut may be an arbitrary ERC-20. ──
+    tokenIn: TokenRefSchema.optional(),
+    tokenOut: TokenRefSchema.optional(),
+    chainId: z.number().int().positive().optional(),
   })
   .strict();
 export type ProposedAction = z.infer<typeof ProposedActionSchema>;
