@@ -13,6 +13,12 @@ session runs end-to-end without a wallet extension. Complements the Node gate-ma
 - **connect-siwe.spec.ts** (injected wallet): the wallet auto-connects and `/connect` advances to
   `/verify`; the SIWE signature mints a session and admits a beta-allowlisted wallet ("You're in.",
   beta eligible); an authenticated wallet opens a protected app route (the live portfolio).
+- **wallet-switch.spec.ts** (injected wallet, two accounts): the SIWE session stays bound to the
+  connected wallet. FORWARD — sign in with a non-allowlisted wallet ("not in the alpha yet"), switch
+  the extension to an allowlisted wallet, and the app clears the stale session and re-offers sign-in
+  (then admits it). REVERSE — sign in with an allowlisted wallet, switch to a non-allowlisted one,
+  and the next protected navigation bounces to `/connect` (no stale beta-pass) while `/exit` stays
+  open. Needs `PW_TEST_PRIVKEY_NONBETA` in addition to `PW_TEST_PRIVKEY`.
 
 ## Running
 
@@ -25,6 +31,7 @@ export NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL=<base-sepolia-rpc>
 export NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<reown-id>
 export AGENT_INTERNAL_URL=<agent-fqdn> AGENT_S2S_TOKEN=<s2s-token>
 export PW_TEST_PRIVKEY=<0x… key of a BETA-allowlisted test wallet>   # else SIWE specs skip
+export PW_TEST_PRIVKEY_NONBETA=<0x… key of a NON-allowlisted test wallet>  # else wallet-switch skips
 pnpm --filter @sparkpoint/web build
 pnpm --filter @sparkpoint/web e2e:pw
 ```

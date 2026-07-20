@@ -2,6 +2,15 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "wallet-switch-access-recognized",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Switching wallets is recognized right away",
+      "body": "If you switch to a different wallet in your browser extension, SparkPoint now picks up the new wallet immediately — prompting you to sign in for it — instead of getting stuck on the previous wallet's access status. Your funds are never affected; withdrawals and exit stay open no matter what.",
+      "published_at": "2026-07-20",
+      "active": true
+    },
+    {
       "slug": "auto-updates-and-whats-new",
       "type": "changelog",
       "tag": "New",

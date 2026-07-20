@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { base, baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import type { Network, NetworkId } from "@/lib/mock-data";
@@ -115,6 +115,22 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   const switchToBase = useCallback(() => {
     switchChain({ chainId: PREFERRED_CHAIN.id });
   }, [switchChain]);
+
+  // Disconnect watcher — end the server session when the wallet disconnects in the EXTENSION (not
+  // via the in-app Disconnect button, which already logs out). A SIWE session is tied to a specific
+  // wallet; once no wallet is connected, the httpOnly sp_session cookie must not keep admitting this
+  // browser (esp. a stale `beta` claim). Fires ONLY on a genuine connected → disconnected
+  // transition, never on the initial not-yet-connected render — that would drop a valid cookie
+  // before wagmi finishes reconnecting on load. Idempotent + complements the per-wallet binding in
+  // useSession(). NON-CUSTODY: clears the access cookie only — never the wallet, keys, or funds.
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    const was = wasConnectedRef.current;
+    wasConnectedRef.current = isConnected;
+    if (was && !isConnected) {
+      void fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    }
+  }, [isConnected]);
 
   const value = useMemo<NetworkContextValue>(() => {
     const onSupportedChain = chainId !== undefined && SUPPORTED.has(chainId);
