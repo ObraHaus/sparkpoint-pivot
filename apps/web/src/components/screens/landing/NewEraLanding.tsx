@@ -1241,7 +1241,7 @@ export default function NewEraLanding() {
         </div>
         <div className="fbot">
           <div className="fine">
-            Single Aave Yield Vault · Base only · beta-gated. Not financial advice; capital at
+            Single Aave Yield Vault · Base only · alpha-gated. Not financial advice; capital at
             risk.
           </div>
           <div className="fcopy">© 2026 Sparky — AI-native onchain hedge fund.</div>
