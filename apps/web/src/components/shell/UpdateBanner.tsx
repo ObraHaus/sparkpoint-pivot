@@ -152,6 +152,11 @@ export function UpdateBanner() {
         margin: 0,
         zIndex: 80,
         boxShadow: "var(--shadow-md)",
+        // OPAQUE background — the shared `.tipcard-ann` fill is `--info-subtle` (a translucent tint)
+        // which is fine for the in-flow sidebar widget but lets page text bleed through THIS fixed,
+        // floating banner. Blend the info accent over the opaque `--popover` so it stays on-brand as
+        // an announcement while being fully readable in both light and dark themes.
+        background: "color-mix(in srgb, var(--info) 12%, var(--popover))",
       }}
     >
       <div className="tipcard-hd">

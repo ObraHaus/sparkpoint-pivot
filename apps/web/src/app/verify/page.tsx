@@ -66,7 +66,9 @@ export default function VerifyPage() {
       value: signedIn ? "verified" : needsSignIn ? "sign to continue" : undefined,
     },
     {
-      label: "Beta access",
+      // Stage-driven so it tracks NEXT_PUBLIC_APP_STAGE ("Alpha access" now; "Beta access" if we
+      // ever flip to beta) — matches the sibling `value` which already uses stageCopy.adjective.
+      label: `${stageCopy.label} access`,
       ok: betaOk,
       value: betaOk ? "eligible" : blocked ? `not in the ${stageCopy.adjective} yet` : undefined,
     },

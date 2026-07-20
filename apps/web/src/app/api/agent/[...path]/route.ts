@@ -95,7 +95,9 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // agent additionally enforces admin). Honest 403, never a silent pass. Never gates /exit,/trust
   // (those don't route through here — direct RPC, N2).
   if (!STATUS_PATHS.has(path[0] ?? "") && !claims.beta) {
-    return envelope("BETA_NOT_ENABLED", 403, "Beta access required — your wallet isn't in the beta yet.", false);
+    // Machine code stays BETA_NOT_ENABLED (stable API contract); only the human message tracks the
+    // current stage wording — the app is in alpha, so don't tell a user they're "not in the beta".
+    return envelope("BETA_NOT_ENABLED", 403, "Alpha access required — your wallet isn't in the alpha yet.", false);
   }
 
   // Allowlist inbound headers, then set the derived identity + inject the S2S bearer. We never
