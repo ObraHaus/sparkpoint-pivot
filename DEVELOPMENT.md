@@ -119,6 +119,26 @@ Sparky's character lives in **`services/agent/persona_seed/*.md`** (`IDENTITY`, 
 - **Keep it on-brand.** `BOUNDARIES.md` restates the non-custody invariants (N1–N5) and the no-hype/no-emoji rules from `docs/design-handover/07-content-and-tone.md` — a test asserts the composed persona is emoji/exclamation/PII-free. Don't weaken the boundaries.
 - **Env:** `SPARKPOINT_PERSONA_DIR` overrides the seed dir (tests/fixtures); persona composes from that dir + any admin overrides at boot (`warm_persona`) and on edit (`reload_persona`).
 
+## Swap configuration (feature 007 — universal swap)
+
+The `/swap` page and the in-chat swap are **user-signed, non-custodial, and outside the policy engine**.
+Two pieces of config:
+
+- **`swapFeeRecipient` (per-chain address book — `packages/shared/src/addresses/*.ts`).** The treasury that
+  receives the **0.20% routing fee** (`ROUTING_FEE_BIPS` in `apps/web/src/lib/swap/math.ts`). A plain
+  optional `AddressBook` field, **NOT** a policy `TargetRef`. Resolution is `swapFeeRecipient ?? vault.feeRecipient()`:
+  where a vault exists (Base, Base Sepolia) the field is left **unset** so the recipient stays the auditable
+  live vault read; on a **vault-less** chain (Robinhood 46630) it is **set** so the fee is still collected.
+  It is currently the SparkPoint deployer EOA `0xA71e…5c30` (the same address the Base Sepolia vault's
+  `feeRecipient()` resolves to). A zero/unset value ⇒ the fee is not activated (never sent to `0x0`); the
+  fee-expectation gate is **synchronous**, so a still-loading recipient blocks the swap rather than degrading
+  it to fee-free. Enabling the in-swap fee on a fork requires the router to expose `sweepTokenWithFee` +
+  `unwrapWETH9WithFee` (verified on Synthra 46630, 2026-07-20).
+- **`sp.swap.imported.v1` (browser `localStorage`).** The user's per-chain "imported / recently used" custom
+  tokens (`apps/web/src/lib/swap/importedTokens.ts`), keyed by chainId (the same address is a different
+  contract per chain), LRU-capped. Convenience only — the swap path always re-reads `decimals()` on-chain, so
+  a stale cache can never mis-scale a swap.
+
 ## Dev environment
 
 Developed in a [Coder](https://coder.com/) workspace (`testcoder.aldrickb.xyz`); forwarded ports reached at `https://<port>--<workspace-host>`.

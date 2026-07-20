@@ -47,6 +47,14 @@ export const robinhoodTestnet: AddressBook = {
   uniswapV3QuoterV2: "0x231606c321A99DE81e28fE48B07a93F1ba49e713",
   uniswapV3Factory: "0x911b4000D3422F482F4062a913885f7b035382Df",
 
+  // §fee (007) — routing-fee treasury. Robinhood has NO vault, so there is no vault `feeRecipient()` to
+  // fall back to; without this the swap would be fee-free here. Set to the SparkPoint deployer EOA — the
+  // SAME address the Base Sepolia vault's `feeRecipient()` resolves to (0xA71e…5c30, verified on-chain) —
+  // so the 0.20% routing fee is collected on 46630 too. Synthra exposes `sweepTokenWithFee` +
+  // `unwrapWETH9WithFee` + `exactInput`/`quoteExactInput` (verified on-chain 2026-07-20), so the fee is
+  // taken IN the user-signed swap exactly like Base. EOAs are chain-agnostic (same key, same address).
+  swapFeeRecipient: "0xA71e24359A6cb7A939aae2d62dD12b6256365c30",
+
   // ── ERC-20 tokens — Robinhood-testnet WETH + USDC (the Synthra WETH/USDC pool pair). NOTE: this
   // testnet's "USDC" is 18-decimals (not 6) — swapTokens() pins USDC decimals per-chain. ──
   usdc: "0xbf4479C07Dc6fdc6dAa764A0ccA06969e894275F",

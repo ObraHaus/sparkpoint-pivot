@@ -37,6 +37,7 @@ import {
 
 type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
 const DISPLAY_CHAIN_ID = 84532;
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
 /** Parse a decimal amount string to base units; empty/invalid ⇒ 0n (fail-closed, never throws). */
 function parseSafe(s: string, decimals: number): bigint {
@@ -101,18 +102,21 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const uniswapVenue = dexDisplayLabel(dex, activeChain);
 
-  const { router: routerAddr, quoter, vault, weth, usdc } = useMemo(() => {
+  const { router: routerAddr, quoter, vault, weth, usdc, swapFeeRecipient } = useMemo(() => {
     try {
       const b = getAddresses(activeChain ?? DISPLAY_CHAIN_ID);
+      // A configured routing-fee treasury, ignoring an unset/zero value (never activate a fee to 0x0).
+      const treasury = b.swapFeeRecipient && b.swapFeeRecipient.toLowerCase() !== ZERO_ADDR ? b.swapFeeRecipient : undefined;
       return {
         router: b.uniswapV3SwapRouter02,
         quoter: b.uniswapV3QuoterV2,
         vault: b.vault,
         weth: b.weth,
         usdc: b.usdc,
+        swapFeeRecipient: treasury,
       };
     } catch {
-      return { router: undefined, quoter: undefined, vault: undefined, weth: undefined, usdc: undefined };
+      return { router: undefined, quoter: undefined, vault: undefined, weth: undefined, usdc: undefined, swapFeeRecipient: undefined };
     }
   }, [activeChain]);
 
@@ -135,18 +139,24 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
     !eqAddr(tokenIn.address, tokenOut.address);
   const amountIn = tokenIn ? parseSafe(amount, tokenIn.decimals) : 0n;
 
-  // §fee — the 0.20% routing fee is paid to the VAULT's feeRecipient(), read live. Fee-free on a chain
-  // with no vault (e.g. Robinhood testnet), which then uses the plain swap path. (Feature 007 Phase C
-  // adds a vault-independent swapFeeRecipient so the fee applies on non-vault chains too.)
+  // §fee (007) — the 0.20% routing-fee recipient: a configured per-chain treasury (`swapFeeRecipient`)
+  // wins SYNCHRONOUSLY, so a chain with NO vault (e.g. Robinhood 46630) still charges the fee. Where unset,
+  // fall back to the vault's live `feeRecipient()` (kept auditable on vault chains). The vault read is
+  // disabled when a treasury is configured (no async read needed there).
   const feeRecipientRead = useReadContract({
     address: vault,
     abi: sparkPointVaultAbi,
     functionName: "feeRecipient",
     chainId: activeChain as WagmiChainId | undefined,
-    query: { enabled: isConnected && !!vault },
+    query: { enabled: isConnected && !!vault && !swapFeeRecipient },
   });
-  const feeRecipient = feeRecipientRead.data as Address | undefined;
-  const feeActive = !!vault; // synchronous — the *value* is async, the *expectation* is not.
+  const vaultFeeRecipient = feeRecipientRead.data as Address | undefined;
+  const feeRecipient = swapFeeRecipient ?? vaultFeeRecipient;
+  // `feeExpected` is SYNCHRONOUS (never derived from the async recipient value), so a still-loading vault
+  // recipient BLOCKS the swap below rather than silently degrading it to a fee-free swap.
+  const feeExpected = !!swapFeeRecipient || !!vault;
+  const feeReady = !!feeRecipient; // already normalized to a non-zero address
+  const feeActive = feeExpected;
 
   // Balances/allowance — generic over any tokenIn: native ETH via useBalance, else the ERC-20 balanceOf.
   const nonNativeIn = !!tokenIn && !tokenIn.isNative && isConfiguredToken(tokenIn);
@@ -205,7 +215,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
 
   const exec: SwapExec | undefined = useMemo(() => {
     if (!routerAddr || !tokenIn || !tokenOut || !address || activeChain === undefined) return undefined;
-    if (feeActive && !feeRecipient) return undefined; // fee chains need the recipient before executing
+    if (feeExpected && !feeReady) return undefined; // fee chains need the recipient before executing (never fee-free)
     const route = quote.route;
     if (route === undefined || minOut === undefined || amountIn <= 0n) return undefined;
     return {
@@ -255,7 +265,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
     highImpact,
     feeActive,
     feeRecipient,
-    feeRecipientPending: feeActive && !feeRecipient,
+    feeRecipientPending: feeExpected && !feeReady,
     canQuote,
     exec,
   };

@@ -82,6 +82,13 @@ export interface AddressBook {
   readonly uniswapV3QuoterV2?: Address;
   /** Uniswap V3 `UniswapV3Factory` — pool discovery (optional; QuoterV2 resolves pools internally). */
   readonly uniswapV3Factory?: Address;
+  /**
+   * §fee (007) — the routing-fee treasury for the user-signed swap on this chain. A PLAIN optional field
+   * (NOT a policy `TargetRef`): where set it receives the 0.20% swap routing fee, letting the fee apply on
+   * a chain with NO vault (e.g. Robinhood 46630). Where unset, the fee falls back to the vault's live
+   * `feeRecipient()` (kept auditable on vault chains). A zero/unset value ⇒ no vault-independent recipient.
+   */
+  readonly swapFeeRecipient?: Address;
 
   /* ── ERC-20 tokens ── */
   /** Canonical USDC the app treats as `Asset.USDC` on this chain (== reserveUsdc where the Aave market uses it). */

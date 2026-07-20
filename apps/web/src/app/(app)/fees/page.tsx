@@ -135,12 +135,29 @@ export default function Page() {
               <Icon name="check" size={14} />
               Taken inside your own signed swap — never on the vault or deposits.
             </li>
+            <li>
+              <Icon name="check" size={14} />
+              Applies on <b>every supported network</b> — Base, Base Sepolia, and Robinhood testnet.
+            </li>
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button className="btn btn-outline btn-sm" onClick={() => router.push(toHref("confirm/swap"))}>
               See an example
             </button>
-            <button className="btn btn-ghost btn-sm">Verify recipient ↗</button>
+            {feeRecipient ? (
+              <a
+                className="btn btn-ghost btn-sm"
+                href={`${EXPLORER}/address/${feeRecipient}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Verify recipient ↗
+              </a>
+            ) : (
+              <button className="btn btn-ghost btn-sm" disabled>
+                Verify recipient ↗
+              </button>
+            )}
           </div>
         </div>
         <div className="card card-pad fcard">
