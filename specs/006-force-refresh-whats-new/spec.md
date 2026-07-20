@@ -16,7 +16,7 @@
 - Q: Detection cadence? → A: Poll roughly every **60 seconds** plus an on-tab-focus re-check.
 - Q: Maximum defer window for a stuck critical/data-loss operation? → A: **10 minutes**, after which the system surfaces a manual refresh. The exit/trust never-reload rule (N2) is absolute regardless of this window.
 - Q: Loop-breaker window? → A: If a reload does not clear the release mismatch within **~30 seconds**, stop auto-reloading and offer a manual refresh.
-- Q: First-time user with no last-seen marker — greet them with the whole backlog? → A: **No.** Initialize the marker to the current release silently on first load; the greeting is only for users crossing from an older seen release to a newer one.
+- Q: First-time user with no last-seen marker — greet them with the whole backlog? → A: **No — but don't stay silent either (revised 2026-07-20).** Originally the marker was set silently on first load (no greeting). That also suppressed the greeting for testers who were active *before* the feature shipped (they have no marker), which defeats the point. Revised: on the first flag-on visit, greet **once** with the most recent **few** entries (capped, currently 4 — a bounded welcome, not the whole backlog), then set the marker on acknowledge; every visit after is incremental (only entries newer than the marker).
 - Q: Enforcement model / hard block? → A: **GitHub Free + a merge-gating hook plus the pre-merge check signal**; server-side branch protection is out of scope for now.
 
 ## User Scenarios & Testing *(mandatory)*

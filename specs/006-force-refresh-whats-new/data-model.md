@@ -19,7 +19,7 @@
 ## Last-seen marker (client, localStorage)
 - **Key**: `sp-app-version-seen` via `useLocalState`.
 - **Value**: the release id the user has been greeted for.
-- **Rules**: initialized to the current release silently on first run (no greeting); the greeting opens only when the current release differs AND ≥1 changelog entry is newer than the marker's release/date; acknowledging ("Got it") sets it to the current release.
+- **Rules** (revised 2026-07-20): on the **first** flag-on run (marker absent) the greeting opens **once** with the most recent few entries (capped, `FIRST_VISIT_CAP=4` — a bounded welcome, so returning testers who predate the feature aren't skipped); on every later run it opens only when ≥1 changelog entry is newer than the marker; acknowledging ("Got it"/close) sets the marker to the latest id, so the first-visit welcome never repeats.
 - **Related (session)**: `sp-whatsnew-pending` (sessionStorage one-shot) set just before an update-driven reload so the greeting shows once on the fresh load.
 
 ## Critical-op state (client, in-memory ref-counter)
