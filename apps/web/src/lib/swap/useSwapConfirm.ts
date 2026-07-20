@@ -101,12 +101,18 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const uniswapVenue = dexDisplayLabel(dex, activeChain);
 
-  const { router: routerAddr, quoter, vault } = useMemo(() => {
+  const { router: routerAddr, quoter, vault, weth, usdc } = useMemo(() => {
     try {
       const b = getAddresses(activeChain ?? DISPLAY_CHAIN_ID);
-      return { router: b.uniswapV3SwapRouter02, quoter: b.uniswapV3QuoterV2, vault: b.vault };
+      return {
+        router: b.uniswapV3SwapRouter02,
+        quoter: b.uniswapV3QuoterV2,
+        vault: b.vault,
+        weth: b.weth,
+        usdc: b.usdc,
+      };
     } catch {
-      return { router: undefined, quoter: undefined, vault: undefined };
+      return { router: undefined, quoter: undefined, vault: undefined, weth: undefined, usdc: undefined };
     }
   }, [activeChain]);
 
@@ -168,14 +174,19 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const balanceIn = tokenIn?.isNative ? ethBal.data?.value : (tokenInBal.data as bigint | undefined);
   const allowance = allowanceRead.data as bigint | undefined;
 
-  const canQuote = dexLive && pairReady && amountIn > 0n && !!quoter && isConnected;
+  // USDC is a real routing (hop) asset on Base mainnet + Robinhood, but NOT on Base Sepolia / local fork
+  // where "USDC" is the Aave test token with no pools beyond WETH — skip the USDC hop there.
+  const usdcIsRoutingAsset = activeChain !== 84532 && activeChain !== 31337;
+  const canQuote = dexLive && pairReady && amountIn > 0n && !!quoter && !!weth && isConnected;
   const quote = useSwapQuote({
     chainId: activeChain,
     quoter,
     tokenIn: tokenIn?.address,
     tokenOut: tokenOut?.address,
     amountIn,
-    decimalsIn: tokenIn?.decimals ?? 18,
+    weth,
+    usdc,
+    usdcIsRoutingAsset,
     enabled: canQuote,
   });
 
@@ -195,14 +206,16 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const exec: SwapExec | undefined = useMemo(() => {
     if (!routerAddr || !tokenIn || !tokenOut || !address || activeChain === undefined) return undefined;
     if (feeActive && !feeRecipient) return undefined; // fee chains need the recipient before executing
-    if (quote.amountOut === undefined || quote.fee === undefined || minOut === undefined || amountIn <= 0n)
-      return undefined;
+    const route = quote.route;
+    if (route === undefined || minOut === undefined || amountIn <= 0n) return undefined;
     return {
       chainId: activeChain,
       router: routerAddr,
       tokenIn: tokenIn.address,
       tokenOut: tokenOut.address,
-      fee: quote.fee,
+      // single-hop uses `fee`; multi-hop uses the packed `path` (fee is then unused).
+      fee: route.kind === "single" ? route.fee : 0,
+      path: route.kind === "multi" ? route.path : undefined,
       account: address,
       amountIn,
       amountOutMinimum: minOut,
@@ -220,7 +233,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routerAddr, tokenIn, tokenOut, address, activeChain, feeActive, feeRecipient, quote.amountOut, quote.fee, minOut, amountIn, needsApprove, needsApproveReset]);
+  }, [routerAddr, tokenIn, tokenOut, address, activeChain, feeActive, feeRecipient, quote.route, minOut, amountIn, needsApprove, needsApproveReset]);
 
   return {
     activeChain,

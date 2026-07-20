@@ -250,7 +250,16 @@ export default function Page() {
               v={quote.priceImpactBps === undefined ? DASH : formatBpsPercent(quote.priceImpactBps)}
               tone={highImpact ? "caution" : undefined}
             />
-            <Row k="Pool fee tier" v={quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} />
+            <Row
+              k="Route"
+              v={
+                quote.route === undefined
+                  ? DASH
+                  : quote.route.kind === "single"
+                    ? `${formatBpsPercent(quote.route.fee / 100)} pool`
+                    : `via ${quote.route.via} · 2 hops`
+              }
+            />
             {s.feeActive && (
               <Row
                 k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
@@ -282,7 +291,7 @@ export default function Page() {
           <Notice>{uniswapVenue} isn&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>
         )}
         {canQuote && quote.noRoute && (
-          <Notice>No {uniswapVenue} liquidity for this pair on {netLabel}. (Multi-hop routing arrives next.)</Notice>
+          <Notice>No {uniswapVenue} route for this pair on {netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>
         )}
         {canQuote && quote.isError && (
           <Notice>
@@ -331,7 +340,16 @@ export default function Page() {
                   k="Minimum received"
                   v={netMinOut !== undefined && tokenOut ? `${fmt(netMinOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                 />
-                <Row k="Route" v={`${dexDisplayLabel(dex, activeChain)} · ${quote.fee !== undefined ? formatBpsPercent(quote.fee / 100) : DASH} pool`} />
+                <Row
+                  k="Route"
+                  v={
+                    quote.route === undefined
+                      ? DASH
+                      : quote.route.kind === "single"
+                        ? `${dexDisplayLabel(dex, activeChain)} · ${formatBpsPercent(quote.route.fee / 100)} pool`
+                        : `${dexDisplayLabel(dex, activeChain)} · ${tokenIn?.symbol} → ${quote.route.via} → ${tokenOut?.symbol}`
+                  }
+                />
               </div>
               {tokenOut && !tokenOut.isNative && (
                 <div style={{ marginTop: 8, fontSize: 11.5, color: outUnverified ? "var(--caution)" : "var(--muted-foreground)", wordBreak: "break-all" }}>
