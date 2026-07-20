@@ -28,6 +28,7 @@ import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/sw
 import { swapTokens, isConfiguredToken, type SwapToken } from "@/lib/swap/tokens";
 import { useSwapQuote } from "@/lib/swap/useSwapQuote";
 import { useExecuteSwapTx, type SwapExec } from "@/lib/swap/useExecuteSwapTx";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import {
   afterFee,
   amountOutMinimum,
@@ -194,6 +195,10 @@ export default function Page() {
   }, [routerAddr, tokenIn, tokenOut, address, activeChain, feeActive, feeRecipient, quote.amountOut, quote.fee, minOut, amountIn, needsApprove]);
 
   const swapCtrl = useExecuteSwapTx(reviewing ? exec : undefined);
+
+  // Feature 006: pause the force-refresh while a swap is signing/broadcasting (LOCKED). `isBusy`
+  // (stage approve|execute) subsumes the pending-txHash double-submit window.
+  useHoldCriticalOp(swapCtrl.isBusy, "locked");
 
   const highImpact = (quote.priceImpactBps ?? 0) >= HIGH_IMPACT_BPS;
 

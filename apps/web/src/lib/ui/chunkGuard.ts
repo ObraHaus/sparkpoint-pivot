@@ -5,8 +5,9 @@ import { isLocked } from "./criticalOp";
 /**
  * ChunkLoadError backstop (feature 006). Independent of the version banner: if a stale tab requests a
  * chunk the new container no longer serves, hard-reload ONCE to pick up the new build. Never reloads
- * while a funds-critical op is LOCKED, and a sessionStorage timestamp prevents a genuinely-broken
- * build from looping. Not installed until the feature mounts (see providers wiring in a later phase).
+ * while a funds-critical op is LOCKED, never on the non-custody escape hatches (/exit, /trust — N2),
+ * and a sessionStorage timestamp prevents a genuinely-broken build from looping. Installed only when
+ * the force-refresh feature is enabled (see UpdateBanner mount effect).
  */
 
 const RELOAD_KEY = "sp-chunk-reload-at";
@@ -18,6 +19,16 @@ export function isChunkLoadError(message: string): boolean {
   return CHUNK_RE.test(message);
 }
 
+/** The non-custody escape hatches must survive a chunk error — never auto-reload them (N2). */
+function isEscapeHatch(pathname: string): boolean {
+  return (
+    pathname === "/exit" ||
+    pathname === "/trust" ||
+    pathname.startsWith("/exit/") ||
+    pathname.startsWith("/trust/")
+  );
+}
+
 let installed = false;
 
 export function installChunkGuard(): void {
@@ -27,6 +38,7 @@ export function installChunkGuard(): void {
   const maybeReload = (message: string): void => {
     if (!isChunkLoadError(message)) return;
     if (isLocked()) return; // never reload through a signature/broadcast
+    if (isEscapeHatch(window.location.pathname)) return; // N2 — never reload /exit or /trust
     let last = 0;
     try {
       last = Number(window.sessionStorage.getItem(RELOAD_KEY)) || 0;
