@@ -44,7 +44,27 @@ Self-hosted **Coolify** (Nixpacks) for dev/staging. **Auto-deploy on push**: `de
 
 > **Construction gate (current phase).** The first public deploy is **landing-only**: the `main` build runs with `SITE_LOCKED=true`, so only the marketing landing (`/`) is reachable and every other route redirects to a `noindex` `/coming-soon` page. `develop` runs `SITE_LOCKED=false` (full app) for team/client preview — same artifact, config-only difference (see [COOLIFY.md](./COOLIFY.md) → "Construction gate"). **Launch (un-gate):** set `SITE_LOCKED=false` **and** `NEXT_PUBLIC_SITE_LOCKED=false` on the public app and redeploy — no code change, no revert. The gate is **fail-closed** (unset ⇒ locked), so never rely on omitting the var to open the site. Spec Kit feature `specs/003-landing-only-gate/`.
 
-> **Force-refresh on new release (feature 006) — go-live.** The alpha web app can auto-reload stale tabs onto a new deploy and greet users with what changed, all **flag-off by default**. To enable: (1) set `NEXT_PUBLIC_FORCE_REFRESH=true` in the web app's **build** env and wire the build SHA (see [COOLIFY.md](./COOLIFY.md) → "Feature 006 — force-refresh build env"); (2) apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`); (3) redeploy the agent so `content_seed/whats-new.json` ingests, then flip the 006 client entry to `active: true`. It **never** reloads while a signature/broadcast tx is in flight or on the `/exit`/`/trust` escape hatches (N2). Smoke check after: `GET /api/version` == the baked id, and `GET /content/changelog` active count == `whats-new.json` active count. Spec Kit feature `specs/006-force-refresh-whats-new/`.
+### Feature 006 — force-refresh + What's New (flag-gated): how to deploy
+
+The web app can auto-reload stale tabs onto a new deploy and greet users with what changed. It **ships flag-off** (`NEXT_PUBLIC_FORCE_REFRESH` unset → dormant, zero user impact) and is safe by construction: it **never** reloads while a signature or a broadcast-but-unconfirmed tx is in flight, or on the `/exit`/`/trust` escape hatches (N2). Spec Kit: `specs/006-force-refresh-whats-new/`.
+
+> **This exact sequence was executed + verified on `develop` 2026-07-20** (PRs #43 + #44). **Prod is the same, applied to BOTH LB replicas.**
+
+**Staged rollout — deploy dark → verify → flip:**
+
+1. **Deploy the code, dark.** Merge to the target branch → Coolify auto-deploys web + agent with the flag OFF. Nothing user-visible changes yet.
+2. **Apply migration `0014_content_slug`** to that env's DB, **before the agent boots** (yoyo, `PGCLIENTENCODING=UTF8` — see [MIGRATIONS.md](./MIGRATIONS.md)). ⚠️ If the agent already booted, its changelog boot-loader logs `whats_new_upsert_failed` (missing `slug` column, fail-open) — **restart the agent** (`POST /api/v1/applications/{uuid}/restart`) to re-ingest.
+3. **Verify dark:** `GET /api/version` returns JSON + `Cache-Control: no-store` with the per-build id; the app loads; the seed ingested (DB has rows with a `slug`; `/content/changelog` active count == `whats-new.json` active count).
+4. **Flip the flag:** set `NEXT_PUBLIC_FORCE_REFRESH=true` in the web app's **build** env, then **redeploy the web app**. Confirm the client bundle inlines `NEXT_PUBLIC_FORCE_REFRESH:"true"`.
+5. **Activate the 006 announcement:** flip its `content_seed/whats-new.json` entry to `active: true` (a content PR) → agent re-ingest.
+
+**Coolify gotchas (learned on develop — identical on prod):**
+- **Version id is automatic — nothing to bump.** `next.config.ts` builds `<SOURCE_COMMIT>-<build timestamp>`. Coolify **does** expose `SOURCE_COMMIT` to the Nixpacks build here, so `/api/version` returns the real commit SHA + a per-build timestamp; it changes on every deploy even with no config. (The `build_command` `git rev-parse` fallback returns empty in the Nixpacks context, but `SOURCE_COMMIT` covers it — so the earlier "wire the build SHA" step is effectively already done.)
+- **`NEXT_PUBLIC_FORCE_REFRESH` is build-time-inlined** → set the env **then** redeploy. A deploy triggered *before* the env is set builds dark (wasted rebuild). The env-create API on `4.0.0-beta.434` **rejects `is_build_time`** — POST `{key,value}` only (Coolify defaults new vars to build + runtime, which is what we need).
+- **Prod = primary + secondary + nginx LB** ([specs/003-landing-only-gate/deploy-runbook.md](./specs/003-landing-only-gate/deploy-runbook.md)). Set the flag env on **BOTH replicas** and redeploy both, exactly like `SITE_LOCKED` — a flag on one replica only sends ~half the users (`ip_hash`) to a dark build.
+- **`content_seed` must be COPYed in the agent Dockerfile** (it is) or the loader ingests 0. **Trust the deployment record** (`status: finished`), not the health badge (see COOLIFY.md).
+
+**Rollback:** set `NEXT_PUBLIC_FORCE_REFRESH=false` (or delete the var) + redeploy → fully dark again, no code revert. The migration + seed are additive and can stay.
 
 ## Branch flow & PR gates
 
