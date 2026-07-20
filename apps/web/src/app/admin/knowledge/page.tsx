@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
 const CHAIN_HEADERS = { "x-chain-id": "84532" };
 const API = "/api/agent/admin/knowledge";
@@ -279,6 +280,18 @@ function KnowledgePanel() {
   }, [refresh]);
 
   const embedderOk = status?.embedder_configured ?? false;
+
+  // Feature 006: pause the force-refresh while the editor has unsaved edits, or a save/delete/reingest
+  // is in flight (BUSY — admin-only data loss). `dirty` is derived in render from `detail` (the prefill
+  // source), mirroring open()/startNew() exactly — no effect/ref, so it can't trip react-hooks.
+  const baseTitle = detail ? (detail.note ? detail.note.title : detail.source) : "";
+  const baseMarkdown = detail
+    ? detail.note
+      ? detail.note.markdown
+      : detail.chunks.map((c) => c.content).join("\n\n")
+    : "";
+  const dirty = selected !== null && detail !== null && (title !== baseTitle || markdown !== baseMarkdown);
+  useHoldCriticalOp(dirty || busy, "busy");
 
   return (
     <>
@@ -716,6 +729,13 @@ function PersonaPanel() {
   }, [selected, refresh, open]);
 
   const overrides = sections.filter((s) => s.origin === "admin").length;
+
+  // Feature 006: pause the force-refresh while the persona editor has unsaved edits, or a save is in
+  // flight (BUSY — admin-only data loss). Derived in render from `detail`, mirroring open() exactly.
+  const baseTitle = detail ? (detail.note ? detail.note.title : detail.title) : "";
+  const baseMarkdown = detail ? (detail.note ? detail.note.markdown : detail.seed_markdown ?? "") : "";
+  const dirty = selected !== null && detail !== null && (title !== baseTitle || markdown !== baseMarkdown);
+  useHoldCriticalOp(dirty || busy, "busy");
 
   return (
     <>

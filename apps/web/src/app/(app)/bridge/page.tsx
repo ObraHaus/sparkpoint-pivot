@@ -14,6 +14,7 @@ import { erc20Abi, formatUnits, type Address, type Hex } from "viem";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { useNetwork } from "@/lib/network";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { wagmiConfig } from "@/lib/wagmi";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -150,6 +151,8 @@ function MintTestUsdcButton({ faucet, usdc, chainId }: { faucet: Address; usdc: 
   };
 
   const busy = stage === "pending";
+  // Feature 006: pause the force-refresh while the faucet mint is signing/broadcasting (LOCKED).
+  useHoldCriticalOp(busy, "locked");
   const receiptUrl = txHash ? explorerTxUrl(chainId, txHash) : undefined;
   return (
     <div>

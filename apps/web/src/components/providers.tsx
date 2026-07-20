@@ -7,6 +7,8 @@ import { useState, type ReactNode } from "react";
 import { wagmiConfig } from "@/lib/wagmi";
 import { NetworkProvider } from "@/lib/network";
 import { OverlayProvider } from "@/components/overlays/OverlayProvider";
+import { UpdateBanner } from "@/components/shell/UpdateBanner";
+import { WhatsNewModal } from "@/components/shell/WhatsNewModal";
 
 /**
  * App-wide providers.
@@ -24,7 +26,13 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <NetworkProvider>
-            <OverlayProvider>{children}</OverlayProvider>
+            <OverlayProvider>
+              {children}
+              {/* Feature 006 — force-refresh banner (dormant until NEXT_PUBLIC_FORCE_REFRESH=true). */}
+              <UpdateBanner />
+              {/* Feature 006 — What's New greeting (opens only when there are unseen changelog entries). */}
+              <WhatsNewModal />
+            </OverlayProvider>
           </NetworkProvider>
         </QueryClientProvider>
       </WagmiProvider>

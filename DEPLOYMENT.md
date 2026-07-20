@@ -44,6 +44,8 @@ Self-hosted **Coolify** (Nixpacks) for dev/staging. **Auto-deploy on push**: `de
 
 > **Construction gate (current phase).** The first public deploy is **landing-only**: the `main` build runs with `SITE_LOCKED=true`, so only the marketing landing (`/`) is reachable and every other route redirects to a `noindex` `/coming-soon` page. `develop` runs `SITE_LOCKED=false` (full app) for team/client preview — same artifact, config-only difference (see [COOLIFY.md](./COOLIFY.md) → "Construction gate"). **Launch (un-gate):** set `SITE_LOCKED=false` **and** `NEXT_PUBLIC_SITE_LOCKED=false` on the public app and redeploy — no code change, no revert. The gate is **fail-closed** (unset ⇒ locked), so never rely on omitting the var to open the site. Spec Kit feature `specs/003-landing-only-gate/`.
 
+> **Force-refresh on new release (feature 006) — go-live.** The alpha web app can auto-reload stale tabs onto a new deploy and greet users with what changed, all **flag-off by default**. To enable: (1) set `NEXT_PUBLIC_FORCE_REFRESH=true` in the web app's **build** env and wire the build SHA (see [COOLIFY.md](./COOLIFY.md) → "Feature 006 — force-refresh build env"); (2) apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`); (3) redeploy the agent so `content_seed/whats-new.json` ingests, then flip the 006 client entry to `active: true`. It **never** reloads while a signature/broadcast tx is in flight or on the `/exit`/`/trust` escape hatches (N2). Smoke check after: `GET /api/version` == the baked id, and `GET /content/changelog` active count == `whats-new.json` active count. Spec Kit feature `specs/006-force-refresh-whats-new/`.
+
 ## Branch flow & PR gates
 
 ```

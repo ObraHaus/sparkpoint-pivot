@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSignMessage } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
 export interface Session {
   readonly address: string;
@@ -82,6 +83,10 @@ export function useSiweLogin(): {
     },
     [signMessageAsync],
   );
+
+  // Feature 006: pause the force-refresh while a sign-in signature is in flight (BUSY — no funds move,
+  // but don't interrupt the wallet signature). Held in the hook so every caller inherits it.
+  useHoldCriticalOp(pending, "busy");
 
   return { login, pending, error };
 }

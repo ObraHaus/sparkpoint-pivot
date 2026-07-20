@@ -31,8 +31,9 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0011_content_entries` | ✅ | — | Alpha changelog/announcement: `content_entries` + append-only `content_audit` (+ seed rows) |
 | `0012_tip_source_kind` | ✅ | — | adds a `'tip'` label to the `memory_source` enum (sidebar tip databank) |
 | `0013_persona_notes` | ⏳ | — | Sparky persona: `persona_notes` (admin voice overrides) + `persona_audit` — **isolated** from the RAG corpus (no `memory_source` enum, no vector column, never embedded) |
+| `0014_content_slug` | ⏳ | — | Feature 006: add `content_entries.slug` + a **partial**-unique index (`WHERE slug IS NOT NULL`) so the committed `content_seed/whats-new.json` upserts changelog entries by slug. No backfill/delete — existing rows keep `slug NULL` and render unchanged |
 
-> **`0013` is new in this change and NOT yet applied to develop.** Apply it at deploy (yoyo, as above). It is independent of the RAG corpus/embedder — the Sparky persona editor works even when `EMBEDDING_OPENAI_*` is unset.
+> **`0013` and `0014` are new in recent changes and NOT yet applied to develop.** Apply them at deploy (yoyo, as above; `0014` is additive + idempotent — a nullable column + a partial-unique index, safe to re-run). `0013` is independent of the RAG corpus/embedder (the Sparky persona editor works even when `EMBEDDING_OPENAI_*` is unset).
 
 ## How migrations are applied
 

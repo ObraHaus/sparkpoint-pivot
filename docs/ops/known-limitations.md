@@ -73,3 +73,8 @@ a silent gap. Update in the same change that resolves one.
   chain; `/trust/permissions` says so honestly. The safe-mode bundler spike could not render a clean
   ERC-7562 verdict on Anvil (tooling), but the tracer confirmed a `recordSpend`-in-validation
   external-storage write to resolve before Phase-3 AA (see `contracts/script/bundler-spike/RESULT-safemode.md`).
+
+## Web app deploys / stale clients (feature 006)
+
+- **A develop redeploy can strand an open tab (ChunkLoadError).** develop is a single container with Next's per-build chunk ids and no CDN/`assetPrefix` holding old assets, so a tab opened before a deploy can request chunks the new container no longer serves. **Feature 006** (force-refresh + a ChunkLoadError backstop) mitigates this but **ships flag-off** (`NEXT_PUBLIC_FORCE_REFRESH` unset) — until it is enabled at go-live, a stale tab still needs a manual refresh. Enabling: see [COOLIFY.md](../../COOLIFY.md) → "Feature 006 — force-refresh build env".
+- **The What's-New greeting is flag-gated too.** The committed `content_seed/whats-new.json` feeds the in-app `/changelog` on agent boot, but the auto-greeting modal (and the auto-reload) stay dormant until the same flag is on. The force-refresh **never** interrupts a signing/broadcast tx or the `/exit`/`/trust` escape hatches (N2).

@@ -18,6 +18,7 @@ import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { formatBpsPercent, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DASH = "—";
@@ -82,6 +83,8 @@ export function InlineSwapConfirm({
 
   const s = useSwapConfirm({ ethToUsdc, amount, slippageBps });
   const swapCtrl = useExecuteSwapTx(reviewing ? s.exec : undefined);
+  // Feature 006: pause the force-refresh while an in-chat swap is signing/broadcasting (LOCKED).
+  useHoldCriticalOp(swapCtrl.isBusy, "locked");
   const { tokenIn, tokenOut, quote, netOut, netMinOut, feeAmount } = s;
 
   const onMax = () => {

@@ -56,7 +56,9 @@ _INSERT_SQL = (
 _UPDATE_SQL = (
     "UPDATE content_entries SET type = $2, title = $3, body = $4, tag = $5, cta_label = $6, "
     "cta_href = $7, is_active = $8, published_at = COALESCE($9, published_at), "
-    "updated_at = now() WHERE id = $1"
+    # Feature 006: stamp the editing admin as author so a hand-edited seed row flips OFF 'seed';
+    # upsert_seed then skips it, so the operator's live edit wins over the repo re-seed on redeploy.
+    "author = COALESCE($10, author), updated_at = now() WHERE id = $1"
 )
 _DELETE_SQL = "DELETE FROM content_entries WHERE id = $1"
 _AUDIT_SQL = (
@@ -65,6 +67,26 @@ _AUDIT_SQL = (
 _AUDIT_READ_SQL = (
     "SELECT action, subject, actor, detail, at FROM content_audit ORDER BY at DESC LIMIT $1"
 )
+
+# Feature 006 — repo-file changelog seed (content_seed/whats-new.json). Upsert by `slug` so one repo
+# edit feeds the in-app changelog idempotently; a same-title legacy row (slug NULL) is adopted
+# rather than duplicated, and an operator's live edit (author set, != 'seed') is never overwritten.
+_FIND_BY_SLUG_SQL = "SELECT id, author FROM content_entries WHERE slug = $1"
+_FIND_LEGACY_SQL = (
+    "SELECT id, author FROM content_entries "
+    "WHERE type = $1 AND slug IS NULL AND title = $2 ORDER BY id LIMIT 1"
+)
+_INSERT_SEED_SQL = (
+    "INSERT INTO content_entries "
+    "(slug, type, title, body, tag, cta_label, cta_href, is_active, author, published_at) "
+    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'seed', COALESCE($9, now())) RETURNING id"
+)
+_UPDATE_SEED_SQL = (
+    "UPDATE content_entries SET slug = $2, type = $3, title = $4, body = $5, tag = $6, "
+    "cta_label = $7, cta_href = $8, is_active = $9, "
+    "published_at = COALESCE($10, published_at), author = 'seed', updated_at = now() WHERE id = $1"
+)
+_ADOPT_SLUG_SQL = "UPDATE content_entries SET slug = $2, updated_at = now() WHERE id = $1"
 
 
 @dataclass
@@ -139,7 +161,7 @@ class ContentEntryStore:
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(
                 _UPDATE_SQL, entry_id, type_, title, body, tag, cta_label, cta_href, is_active,
-                _parse_ts(published_at),
+                _parse_ts(published_at), act,
             )
             await conn.execute(
                 _AUDIT_SQL, "update", str(entry_id), act, json.dumps({"type": type_})
@@ -151,6 +173,64 @@ class ContentEntryStore:
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(_DELETE_SQL, entry_id)
             await conn.execute(_AUDIT_SQL, "delete", str(entry_id), act, json.dumps({}))
+
+    async def upsert_seed(
+        self,
+        *,
+        slug: str,
+        type_: str,
+        title: str,
+        body: str,
+        tag: str | None,
+        cta_label: str | None,
+        cta_href: str | None,
+        is_active: bool,
+        published_at: str | None = None,
+    ) -> str:
+        """Idempotently upsert a repo-seeded (feature 006) entry keyed by ``slug``.
+
+        Returns ``'inserted'`` | ``'updated'`` | ``'adopted'`` | ``'skipped'``. Never overwrites an
+        operator's live edit (a row whose ``author`` is set and not ``'seed'``): a matching slug is
+        skipped; a same-title legacy row (slug NULL) has only its slug adopted. Content only."""
+        pub = _parse_ts(published_at)
+        async with self.db.acquire() as conn, conn.transaction():
+            existing = await conn.fetchrow(_FIND_BY_SLUG_SQL, slug)
+            if existing is not None:
+                if existing["author"] not in (None, "seed"):
+                    return "skipped"  # operator owns this slug — their edit wins
+                await conn.execute(
+                    _UPDATE_SEED_SQL, existing["id"], slug, type_, title, body, tag,
+                    cta_label, cta_href, is_active, pub,
+                )
+                await conn.execute(
+                    _AUDIT_SQL, "update", str(existing["id"]), "seed",
+                    json.dumps({"slug": slug, "src": "whats-new"}),
+                )
+                return "updated"
+            legacy = await conn.fetchrow(_FIND_LEGACY_SQL, type_, title)
+            if legacy is not None:
+                if legacy["author"] not in (None, "seed"):
+                    # operator-authored legacy row with the same title — adopt the slug only.
+                    await conn.execute(_ADOPT_SLUG_SQL, legacy["id"], slug)
+                    return "adopted"
+                await conn.execute(
+                    _UPDATE_SEED_SQL, legacy["id"], slug, type_, title, body, tag,
+                    cta_label, cta_href, is_active, pub,
+                )
+                await conn.execute(
+                    _AUDIT_SQL, "update", str(legacy["id"]), "seed",
+                    json.dumps({"slug": slug, "src": "whats-new", "adopted": True}),
+                )
+                return "adopted"
+            new_id = await conn.fetchval(
+                _INSERT_SEED_SQL, slug, type_, title, body, tag, cta_label, cta_href,
+                is_active, pub,
+            )
+            await conn.execute(
+                _AUDIT_SQL, "create", str(new_id), "seed",
+                json.dumps({"slug": slug, "src": "whats-new"}),
+            )
+            return "inserted"
 
     async def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self.db.fetch(_AUDIT_READ_SQL, max(1, min(limit, 500)))

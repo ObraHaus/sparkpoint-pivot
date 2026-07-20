@@ -87,6 +87,13 @@ Launch = set both to `false` on the public app and redeploy (no code change). Bo
 
 > **As-deployed 2026-07-10:** prod (`sparkpoint-web-primary`/`-secondary`) has `SITE_LOCKED=true` + `NEXT_PUBLIC_SITE_LOCKED=true`. **Develop (`sparkpoint-web`) has neither set** → fail-closed = **landing-only too** — **intentional** while the project is still in development (only the landing is exposed on any environment for now). When a shared full-app preview is wanted, set both to `false` on the develop app + redeploy.
 
+### Feature 006 — force-refresh build env (ships flag-off)
+
+The alpha web app can auto-reload stale tabs onto a new deploy + greet users with what changed (feature 006), **dormant until go-live**:
+- **`NEXT_PUBLIC_FORCE_REFRESH`** — the kill-switch. Default/unset = OFF (nothing renders). Set to `"true"` in the web app's **build** env to enable the auto-reload banner + What's-New greeting.
+- **Per-build version id** — `apps/web/next.config.ts` derives it automatically from `SPARKPOINT_BUILD_ID` (or Coolify's predefined `SOURCE_COMMIT`) **+ a build-frozen timestamp**, so it changes on every deploy even with no config. For a human-readable git SHA in the id, either set the **build_command** to `export SPARKPOINT_BUILD_ID=$(git rev-parse --short=8 HEAD); pnpm --filter @sparkpoint/web build`, or enable **Advanced → "Include Source Commit in Build"**. ⚠️ Coolify `4.0.0-beta.434` does **NOT** accept `include_source_commit_in_build` via the API (`PATCH …/applications/{uuid}` → `422`) — it is a UI-only toggle on this instance. The timestamp fallback means the refresh arms either way; no new **runtime** env is required (`/api/version` echoes the baked id).
+- **Also:** apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`) and redeploy the agent so `content_seed/whats-new.json` ingests (the Dockerfile now COPYs `content_seed`).
+
 ## Verify a deploy — use the deployment record, NOT the status badge
 
 The app `.status` badge is unreliable (apps on `coolify-build` can show `unhealthy` while serving the latest code). Use the deployment record:

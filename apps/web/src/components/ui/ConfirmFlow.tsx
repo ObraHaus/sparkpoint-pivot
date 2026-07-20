@@ -33,6 +33,7 @@ import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { useExecuteVaultTx, type VaultExec } from "@/lib/chain/useExecuteVaultTx";
 import { useConfirmPreview } from "@/lib/chain/useConfirmPreview";
 import { explorerTxUrl } from "@/lib/chain/explorer";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import "@/components/screens/confirm.css";
 
 export type ConfirmIntent = "deposit" | "withdraw" | "swap" | "premium" | "bridge";
@@ -247,6 +248,11 @@ function OnchainConfirmFlow({
 
   const busy = exec.isBusy;
   const showDone = exec.isDone;
+
+  // Feature 006: pause the force-refresh while a deposit/withdraw is signing or broadcast-but-not-yet
+  // -receipted (the double-submit window). `exec.isBusy` (stage approve|execute) already spans both
+  // legs and the txHash-pending-receipt window, so no extra txHash clause is needed. LOCKED = block reload.
+  useHoldCriticalOp(busy, "locked");
 
   const go = (route: string) => router.push(toHref(route));
   const onBack = () => (chrome.backRoute === "history" ? router.back() : go(chrome.backRoute));

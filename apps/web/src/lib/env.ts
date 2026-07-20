@@ -35,6 +35,9 @@ const RAW = {
   // Product STAGE — the single source for user-visible stage wording (alpha/beta/prod). This is a
   // presentation flag ONLY; it never gates access (that's the server-anchored beta allowlist).
   NEXT_PUBLIC_APP_STAGE: process.env.NEXT_PUBLIC_APP_STAGE,
+  // Feature 006 — force-refresh kill-switch. Ships OFF; the auto-reload is enabled only after the
+  // US2 safety nets are verified. Behaviour flag ONLY — never gates funds or the withdraw/exit path.
+  NEXT_PUBLIC_FORCE_REFRESH: process.env.NEXT_PUBLIC_FORCE_REFRESH,
   // NOTE: there is deliberately NO client-side agent base-URL override. The browser ALWAYS
   // calls the same-origin BFF (`/api/agent`), which injects the service bearer server-side —
   // a `NEXT_PUBLIC_AGENT_BASE_URL` would let a deploy redirect user-scoped calls straight to
@@ -79,6 +82,8 @@ const EnvSchema = z.object({
   walletConnectProjectId: z.string().min(1).optional().catch(undefined),
   /** Product stage — the SINGLE source of user-visible stage copy. Defaults to `alpha`. */
   appStage: z.enum(["alpha", "beta", "prod"]).default("alpha").catch("alpha"),
+  /** Force-refresh feature flag (feature 006). Default OFF; only `"true"` enables the auto-reload. */
+  forceRefresh: z.preprocess((v) => v === "true", z.boolean()).catch(false),
 });
 
 /** The validated public config shape. */
@@ -94,5 +99,6 @@ export const env: Env = Object.freeze(
     baseSepoliaRpcUrl: RAW.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
     walletConnectProjectId: RAW.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     appStage: RAW.NEXT_PUBLIC_APP_STAGE,
+    forceRefresh: RAW.NEXT_PUBLIC_FORCE_REFRESH,
   }),
 );

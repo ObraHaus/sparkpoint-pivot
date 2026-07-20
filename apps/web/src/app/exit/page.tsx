@@ -28,6 +28,7 @@ import {
   useWaitForTransactionReceipt,
 } from "wagmi";
 import type { Address } from "viem";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { buildRedeemCall, vaultAddressFor } from "@/lib/chain/exit";
 
@@ -82,6 +83,11 @@ export default function ExitPage() {
 
   const { sendTransaction, data: txHash, isPending: sending, error: sendError, reset } = useSendTransaction();
   const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({ hash: txHash });
+
+  // Feature 006: pause the force-refresh while a redemption is in flight (LOCKED). This is only a
+  // SECONDARY net — /exit is ALSO hard-excluded from any auto-reload by pathname (see UpdateBanner),
+  // because between reads / after a partial redeem the counter is 0 and this N2 page must always work.
+  useHoldCriticalOp(sending || confirming || (!!txHash && !confirmed), "locked");
 
   // Refetch the position once a redemption confirms (refetch is not setState — lint-safe).
   useEffect(() => {

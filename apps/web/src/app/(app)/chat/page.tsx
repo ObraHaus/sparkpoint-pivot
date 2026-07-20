@@ -20,6 +20,7 @@ import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
+import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
 import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
@@ -119,6 +120,12 @@ export default function ChatPage() {
   const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+
+  // Feature 006: pause the force-refresh while a chat answer is streaming or an unsent draft exists
+  // (BUSY — data loss, not funds). `streaming` is derived from the live turn's own flag.
+  const streaming = turns.some((t) => t.kind === "live" && t.streaming);
+  useHoldCriticalOp(streaming || draft.trim().length > 0, "busy");
+
   // The "Source" sheet opened by a citation chip (chat.js SP.openSheet('Source', …)).
   const [citeOpen, setCiteOpen] = useState(false);
   const [citeShow, setCiteShow] = useState(false);
