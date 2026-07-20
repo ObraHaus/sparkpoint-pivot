@@ -1,0 +1,51 @@
+name: changelog-required
+# Feature 006 (US4): a USER-FACING change must update BOTH changelogs, so the force-refresh never
+# shows a blank /changelog ~60s after a deploy and the version signal is never orphaned. Run-ALWAYS
+# (no `paths:` filter — a path-skipped required check stays perpetually pending and is invisible to
+# `gh pr checks`); the diff is computed inside the job. Escape hatch for infra-only PRs: the
+# `skip-changelog` label OR a `[skip changelog]` marker in the PR body (both auditable).
+on:
+  pull_request:
+    branches: [develop]
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Require a changelog entry for user-facing changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -e
+          # Escape hatch: infra-only PRs opt out explicitly (auditable).
+          case ",${LABELS}," in *,skip-changelog,*) echo "skip-changelog label present — gate skipped."; exit 0 ;; esac
+          if printf '%s' "$PR_BODY" | grep -qiF '[skip changelog]'; then
+            echo "[skip changelog] marker in the PR body — gate skipped."; exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          PRODUCT="$(printf '%s\n' "$CHANGED" | grep -E '^(apps/web/src/|services/agent/src/)' || true)"
+          if [ -z "$PRODUCT" ]; then
+            echo "No user-facing product source changed (apps/web/src, services/agent/src) — changelog not required."
+            exit 0
+          fi
+          echo "User-facing source changed:"; printf '%s\n' "$PRODUCT" | sed 's/^/  /'
+
+          fail=0
+          # (1) CHANGELOG.md must gain added content (a dev bullet, normally under ## [Unreleased]).
+          ADDS="$(git diff -U0 "$BASE_SHA" "$HEAD_SHA" -- CHANGELOG.md | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+          if [ -z "$ADDS" ]; then
+            echo "::error::CHANGELOG.md has no added lines — add a bullet under '## [Unreleased]' (or apply the skip-changelog label for an infra-only change)."
+            fail=1
+          fi
+          # (2) The committed client changelog source must be updated for user-facing changes.
+          if ! printf '%s\n' "$CHANGED" | grep -qE '^services/agent/content_seed/whats-new\.json$'; then
+            echo "::error::services/agent/content_seed/whats-new.json not updated — add a client-facing entry (or apply the skip-changelog label for an infra-only change)."
+            fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "Both changelog surfaces updated — gate green."; else exit 1; fi

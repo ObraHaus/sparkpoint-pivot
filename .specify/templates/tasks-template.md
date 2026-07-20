@@ -26,6 +26,20 @@ description: "Task list template for feature implementation"
 - **Mobile**: `api/src/`, `ios/src/` or `android/src/`
 - Paths shown below assume single project - adjust based on plan.md structure
 
+## Definition of Done (every SparkPoint feature — feature 006)
+
+The force-refresh shows users the in-app changelog ~60s after every deploy, so housekeeping is a
+release gate, not an afterthought. A feature is "done" only when:
+
+- [ ] `CHANGELOG.md` — a dev bullet under `## [Unreleased]` for any behavior/schema/infra change.
+- [ ] `services/agent/content_seed/whats-new.json` — a **client-facing** entry for any USER-VISIBLE
+      change (curated/tester-friendly, no dev detail, stable `slug`); infra-only → `skip-changelog` label.
+- [ ] Version id left automatic (nothing hand-bumped); migrations apply with `PGCLIENTENCODING=UTF8`;
+      every new agent seed dir has an explicit `COPY` in `services/agent/Dockerfile`.
+- [ ] `changelog-required` CI green (or `skip-changelog` applied + justified); tests/typecheck/lint green.
+
+(Enforced by `.github/workflows/changelog-required.yml` + the `require-changelog` Stop-hook.)
+
 <!--
   ============================================================================
   IMPORTANT: The tasks below are SAMPLE TASKS for illustration purposes only.
