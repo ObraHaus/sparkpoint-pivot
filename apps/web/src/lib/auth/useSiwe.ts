@@ -12,10 +12,11 @@
  * says so, so a user always knows what they're signing.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { useSignMessage } from "wagmi";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAccount, useSignMessage } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
+import { isSessionWalletStale } from "@/lib/auth/session-binding";
 
 export interface Session {
   readonly address: string;
@@ -91,11 +92,31 @@ export function useSiweLogin(): {
   return { login, pending, error };
 }
 
+// A single wallet switch is observed by every mounted `useSession()` instance at once (the global
+// OverlayProvider, the /verify page, `useBeta` on deposit surfaces). Dedupe their reaction through
+// one in-flight promise so the switch fires ONE logout POST, not a burst of identical ones. Cleared
+// when it settles, so a subsequent switch logs out again. Idempotent regardless (logout just clears
+// the cookie), so this is a cheapness/hardening guard, not a correctness requirement.
+let pendingLogout: Promise<void> | null = null;
+function endSessionForWalletChange(): Promise<void> {
+  pendingLogout ??= fetch("/api/auth/logout", { method: "POST" })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      pendingLogout = null;
+    });
+  return pendingLogout;
+}
+
 export function useSession(): {
   session: Session | null | undefined; // undefined = still loading
   refresh: () => Promise<void>;
 } {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const { address } = useAccount();
+  // Whether a connected wallet has EVER been observed in this instance — lets us tell a real
+  // disconnect apart from the brief `address === undefined` window while wagmi reconnects on load.
+  const seenConnectedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -114,6 +135,29 @@ export function useSession(): {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
+
+  // Bind the in-memory session to the LIVE connected wallet. A SIWE session proves control of
+  // exactly ONE address; when the browser wallet switches to a DIFFERENT account (or fully
+  // disconnects after having been connected), that session is stale for the wallet now in front of
+  // the user. End it server-side (clears the httpOnly sp_session cookie, so the middleware also
+  // stops honouring the old wallet's `beta` claim) and re-fetch (→ null), so the UI treats this as
+  // signed-out and offers a fresh sign-in for the new wallet. Without this, switching from a
+  // non-allowlisted wallet to an allowlisted one left the app stuck on the old "not in the alpha
+  // yet" verdict with no way to re-sign; the reverse let a switched-in wallet coast on the old
+  // wallet's beta claim. NON-CUSTODY: logout only drops the access cookie — it never touches the
+  // wallet, keys, or funds, and never gates /exit or /trust.
+  useEffect(() => {
+    if (address) seenConnectedRef.current = true;
+    if (!isSessionWalletStale(session, address, seenConnectedRef.current)) return;
+    let cancelled = false;
+    void (async () => {
+      await endSessionForWalletChange();
+      if (!cancelled) await refresh();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, session, refresh]);
 
   return { session, refresh };
 }
