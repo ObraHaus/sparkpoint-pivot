@@ -110,6 +110,12 @@ export async function installInjectedWallet(
         return addresses[active];
       };
 
+      // Test hook: true once wagmi's connector has SUBSCRIBED to `accountsChanged`. Emitting a switch
+      // before this is subscribed would be dropped (wagmi would keep the polled account), so tests
+      // wait on this before switching — makes the switch deterministic instead of racy.
+      (window as unknown as { __pwWalletReady: () => boolean }).__pwWalletReady = () =>
+        (listeners["accountsChanged"]?.length ?? 0) > 0;
+
       // Primary discovery path: window.ethereum.
       Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
 
@@ -143,5 +149,17 @@ export async function switchInjectedAccount(page: Page, index: number): Promise<
   return page.evaluate(
     (i) => (window as unknown as { __pwSetAccount: (i: number) => `0x${string}` }).__pwSetAccount(i),
     index,
+  );
+}
+
+/**
+ * Wait until wagmi's connector has subscribed to `accountsChanged` on the injected provider, so a
+ * subsequent {@link switchInjectedAccount} is guaranteed to propagate (not dropped as a race).
+ */
+export async function waitForWalletReady(page: Page, timeoutMs = 20_000): Promise<void> {
+  await page.waitForFunction(
+    () => (window as unknown as { __pwWalletReady?: () => boolean }).__pwWalletReady?.() === true,
+    undefined,
+    { timeout: timeoutMs },
   );
 }

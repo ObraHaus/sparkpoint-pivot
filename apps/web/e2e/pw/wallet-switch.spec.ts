@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Hex } from "viem";
-import { installInjectedWallet, switchInjectedAccount } from "./injected-wallet";
+import { installInjectedWallet, switchInjectedAccount, waitForWalletReady } from "./injected-wallet";
 
 /**
  * Wallet-switch regression (the reported alpha bug): a SIWE session must stay bound to the wallet in
@@ -32,12 +32,17 @@ async function clickSignIn(page: Page): Promise<void> {
   await signLink.click();
 }
 
-/** Switch the injected account and wait for the app's stale-session logout to fire. */
+/**
+ * Switch the injected account and wait for the app's stale-session logout to fire. Waits for wagmi
+ * to be subscribed first (so the switch always propagates), then gives the effect headroom on heavy
+ * routes (e.g. /portfolio) where hydration + live reads can delay it.
+ */
 async function switchAndAwaitLogout(page: Page, index: number): Promise<void> {
+  await waitForWalletReady(page);
   await Promise.all([
     page.waitForResponse(
       (r) => r.url().includes("/api/auth/logout") && r.request().method() === "POST",
-      { timeout: 15_000 },
+      { timeout: 30_000 },
     ),
     switchInjectedAccount(page, index),
   ]);
