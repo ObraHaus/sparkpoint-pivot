@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CLIENT_BUILD_ID, isRealUpdate, parseVersion } from "./version";
+import { CLIENT_BUILD_ID, isKnownId, isRealUpdate, parseVersion } from "./version";
 
 /** One lightweight no-store GET; returns the server's release id or null on any uncertainty. */
 async function fetchServerVersion(): Promise<string | null> {
@@ -41,6 +41,7 @@ export function useVersionCheck(pollMs = 60_000): VersionCheck {
   });
 
   const server = query.data ?? null;
+  const serverKnown = isKnownId(server);
   const real = isRealUpdate(CLIENT_BUILD_ID, server);
 
   // Corroboration: require TWO consecutive differing reads before flagging (debounces prod
@@ -51,10 +52,18 @@ export function useVersionCheck(pollMs = 60_000): VersionCheck {
 
   useEffect(() => {
     if (query.dataUpdatedAt === streak.current.at) return; // same fetch — nothing new
-    const count = real ? streak.current.count + 1 : 0;
-    streak.current = { at: query.dataUpdatedAt, count };
-    setUpdateAvailable(real && count >= 2);
-  }, [query.dataUpdatedAt, real]);
+    streak.current = { ...streak.current, at: query.dataUpdatedAt };
+    // Uncertainty is a NO-OP: a null / unknown server read must never de-latch a confirmed update or
+    // reset the streak (the "uncertainty = do nothing" safety law). Only a KNOWN server id updates it.
+    if (!serverKnown) return;
+    if (real) {
+      streak.current.count += 1;
+      setUpdateAvailable(streak.current.count >= 2);
+    } else {
+      streak.current.count = 0; // server known AND equals client → legitimately back in sync
+      setUpdateAvailable(false);
+    }
+  }, [query.dataUpdatedAt, real, serverKnown]);
 
   return { updateAvailable, serverVersion: server };
 }

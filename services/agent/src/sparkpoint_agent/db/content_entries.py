@@ -56,7 +56,9 @@ _INSERT_SQL = (
 _UPDATE_SQL = (
     "UPDATE content_entries SET type = $2, title = $3, body = $4, tag = $5, cta_label = $6, "
     "cta_href = $7, is_active = $8, published_at = COALESCE($9, published_at), "
-    "updated_at = now() WHERE id = $1"
+    # Feature 006: stamp the editing admin as author so a hand-edited seed row flips OFF 'seed';
+    # upsert_seed then skips it, so the operator's live edit wins over the repo re-seed on redeploy.
+    "author = COALESCE($10, author), updated_at = now() WHERE id = $1"
 )
 _DELETE_SQL = "DELETE FROM content_entries WHERE id = $1"
 _AUDIT_SQL = (
@@ -159,7 +161,7 @@ class ContentEntryStore:
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(
                 _UPDATE_SQL, entry_id, type_, title, body, tag, cta_label, cta_href, is_active,
-                _parse_ts(published_at),
+                _parse_ts(published_at), act,
             )
             await conn.execute(
                 _AUDIT_SQL, "update", str(entry_id), act, json.dumps({"type": type_})

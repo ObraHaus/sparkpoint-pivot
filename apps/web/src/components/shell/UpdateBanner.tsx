@@ -31,7 +31,7 @@ import { installChunkGuard } from "@/lib/ui/chunkGuard";
 
 const COUNTDOWN_SECS = 60;
 const MAX_DEFER_MS = 10 * 60 * 1000; // 10 min — a stuck op can't defer past this (but /exit still never reloads)
-const LOOPBREAK_WINDOW_MS = 30 * 1000; // a reload that doesn't clear the mismatch within 30s → manual Refresh
+const LOOPBREAK_MAX_RELOADS = 2; // after N auto-reloads for a build that don't clear the mismatch → manual Refresh
 const EXCLUDED = ["/exit", "/trust"]; // N2 — never auto-reload these, independent of the counters
 
 function isExcluded(pathname: string): boolean {
@@ -56,12 +56,16 @@ export function UpdateBanner() {
     if (enabled) installChunkGuard();
   }, [enabled]);
 
-  // Reload once, respecting the LOCKED guard. Stamps the per-build loop-breaker key BEFORE reloading;
-  // the arm effect reads that stamp on the next load to detect a build that a reload can't clear.
+  // Reload once, respecting the LOCKED guard. Increments a per-build reload COUNTER before reloading;
+  // the arm effect reads the count on the next load — a build whose reload never clears the mismatch
+  // trips the loop-breaker after LOOPBREAK_MAX_RELOADS. (A wall-clock window would be racier than the
+  // >=2-read re-detection latency and could never engage.)
   const performReload = useCallback((id: string) => {
     if (isLocked()) return; // defense in depth — never reload through a signature/broadcast
     try {
-      window.sessionStorage.setItem(`sp-loopbreak-${id}`, String(Date.now()));
+      const key = `sp-loopbreak-${id}`;
+      const n = Number(window.sessionStorage.getItem(key)) || 0;
+      window.sessionStorage.setItem(key, String(n + 1));
     } catch {
       /* private mode — proceed with the reload */
     }
@@ -76,12 +80,12 @@ export function UpdateBanner() {
     }
     if (!firstSeen.current || firstSeen.current.id !== serverVersion) {
       firstSeen.current = { id: serverVersion, at: Date.now() };
-      // Loop-breaker: if we already reloaded for THIS build id within the window and still see the
+      // Loop-breaker: if we've already auto-reloaded for THIS build id enough times and STILL see the
       // mismatch, a reload won't help (broken deploy) — stop auto-reloading and offer manual Refresh.
       let looped = false;
       try {
-        const last = Number(window.sessionStorage.getItem(`sp-loopbreak-${serverVersion}`)) || 0;
-        looped = last > 0 && Date.now() - last < LOOPBREAK_WINDOW_MS;
+        const n = Number(window.sessionStorage.getItem(`sp-loopbreak-${serverVersion}`)) || 0;
+        looped = n >= LOOPBREAK_MAX_RELOADS;
       } catch {
         looped = false;
       }
@@ -93,15 +97,6 @@ export function UpdateBanner() {
   // The countdown / reload driver. Re-runs each second and on locked/busy transitions.
   useEffect(() => {
     if (!show || !serverVersion || loopBroken) return;
-
-    // Max-defer: a stuck op can't postpone forever. Once past the cap, reload as soon as it is not
-    // LOCKED (a BUSY-only state stops blocking here). /exit/trust are already excluded via `show`.
-    const deferredMs = firstSeen.current ? Date.now() - firstSeen.current.at : 0;
-    if (deferredMs > MAX_DEFER_MS && !locked) {
-      performReload(serverVersion);
-      return;
-    }
-
     if (paused) return; // freeze the countdown while a critical/busy op is active
     if (secs <= 0) {
       performReload(serverVersion);
@@ -109,7 +104,21 @@ export function UpdateBanner() {
     }
     const t = window.setTimeout(() => setSecs((s) => s - 1), 1000);
     return () => window.clearTimeout(t);
-  }, [show, serverVersion, loopBroken, paused, locked, secs, performReload]);
+  }, [show, serverVersion, loopBroken, paused, secs, performReload]);
+
+  // Max-defer: a stuck op can't postpone forever. A timer armed independently of the countdown (which
+  // freezes while paused) forces a reload at firstSeen + 10 min — but ONLY when not LOCKED, so it never
+  // reloads through a signature/broadcast; /exit + /trust are already excluded via `show`.
+  useEffect(() => {
+    if (!show || !serverVersion || loopBroken) return;
+    const seen = firstSeen.current;
+    if (!seen || seen.id !== serverVersion) return;
+    const remaining = Math.max(0, seen.at + MAX_DEFER_MS - Date.now());
+    const t = window.setTimeout(() => {
+      if (!isLocked()) performReload(serverVersion);
+    }, remaining);
+    return () => window.clearTimeout(t);
+  }, [show, serverVersion, loopBroken, performReload]);
 
   // beforeunload guard — warn on a manual close/refresh while a funds or data op is active.
   useEffect(() => {

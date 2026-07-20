@@ -23,6 +23,15 @@ test("isRealUpdate: true only when both ids are known AND differ", () => {
   assert.equal(isRealUpdate("A", null), false);
 });
 
+test("isRealUpdate: server must be strictly NEWER by the trailing build timestamp", () => {
+  const id = (n: number) => `sha-${n.toString(36)}`;
+  assert.equal(isRealUpdate(id(1000), id(2000)), true); // server newer → update
+  assert.equal(isRealUpdate(id(2000), id(1000)), false); // OLDER replica (rolling deploy) → no reload
+  assert.equal(isRealUpdate(id(1000), id(1000)), false); // identical → no-op
+  // Unparseable trailing segment (non-base36) → fall back to plain inequality.
+  assert.equal(isRealUpdate("x-@@", "y-##"), true);
+});
+
 test("parseVersion: returns the version on a clean JSON 200", async () => {
   const res = new Response(JSON.stringify({ version: "abc-123" }), {
     status: 200,

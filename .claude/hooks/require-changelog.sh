@@ -21,12 +21,12 @@ BASE="origin/develop"
 git rev-parse --verify -q "$BASE" >/dev/null 2>&1 || exit 0
 
 CHANGED="$( { git diff --name-only "$BASE"...HEAD; git diff --name-only; git diff --name-only --cached; } 2>/dev/null | sort -u )"
-PRODUCT="$(printf '%s\n' "$CHANGED" | grep -E '^(apps/web/src/|services/agent/src/)' || true)"
+PRODUCT="$(printf '%s\n' "$CHANGED" | grep -E '^(apps/web/src/|services/agent/src/)' | grep -vE '(\.test\.|\.spec\.|\.stories\.|__tests__/|\.d\.ts$)' || true)"
 [ -z "$PRODUCT" ] && exit 0
 
-CL="$(printf '%s\n' "$CHANGED"  | grep -E '^CHANGELOG\.md$' || true)"
+CL_ADDS="$( { git diff -U0 "$BASE"...HEAD -- CHANGELOG.md; git diff -U0 -- CHANGELOG.md; git diff -U0 --cached -- CHANGELOG.md; } 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' || true )"
 WN="$(printf '%s\n' "$CHANGED"  | grep -E '^services/agent/content_seed/whats-new\.json$' || true)"
-[ -n "$CL" ] && [ -n "$WN" ] && exit 0
+[ -n "$CL_ADDS" ] && [ -n "$WN" ] && exit 0
 
 reason="Release housekeeping: product source under apps/web/src or services/agent/src changed, but the changelog is not updated. Before finishing, add a bullet to CHANGELOG.md (## [Unreleased]) AND a client entry to services/agent/content_seed/whats-new.json (or apply the skip-changelog PR label for an infra-only change). See the Definition of Done in DEVELOPMENT.md."
 if command -v jq >/dev/null 2>&1; then

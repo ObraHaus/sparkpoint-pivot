@@ -18,12 +18,28 @@ export function isKnownId(id: string | null | undefined): id is string {
   return typeof id === "string" && id.length > 0 && !UNKNOWN_IDS.has(id);
 }
 
-/** True only when both ids are known AND differ — i.e. a genuinely newer server build. */
+/** The trailing base-36 build timestamp (next.config appends `-<Date.now().toString(36)>`), or null. */
+function buildTimestamp(id: string): number | null {
+  const seg = id.slice(id.lastIndexOf("-") + 1);
+  const n = Number.parseInt(seg, 36);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * True only when the server build is genuinely NEWER than the client's. Both ids carry a trailing
+ * per-build timestamp, so compare those (strictly greater) — this avoids flagging an "update" when a
+ * rolling-deploy load balancer serves a still-draining OLDER replica to an already-upgraded client.
+ * Falls back to plain inequality if either suffix isn't a parseable timestamp.
+ */
 export function isRealUpdate(
   client: string | null | undefined,
   server: string | null | undefined,
 ): boolean {
-  return isKnownId(client) && isKnownId(server) && client !== server;
+  if (!isKnownId(client) || !isKnownId(server) || client === server) return false;
+  const ct = buildTimestamp(client);
+  const st = buildTimestamp(server);
+  if (ct !== null && st !== null) return st > ct;
+  return true; // unparseable suffix → treat "different" as an update
 }
 
 /**
