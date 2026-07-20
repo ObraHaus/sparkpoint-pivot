@@ -76,7 +76,7 @@
 - [ ] T027 [P] [US3] `services/agent/content_seed/whats-new.yml` — backfill current live changelog rows (contracts/whats-new-yml.md).
 - [ ] T028 [US3] `services/agent/src/sparkpoint_agent/api/main.py` lifespan boot loader (fail-open, next to `_warm_persona`) + `api/content.py` `POST /admin/content/reingest` (contracts/admin-content-reingest.md).
 - [ ] T029 [US3] `services/agent/Dockerfile` — `COPY content_seed` (else prod ingests 0).
-- [ ] T030 [P] [US3] `apps/web/src/components/shell/WhatsNewModal.tsx` — suppress-on-empty (open iff newCount>0); `useChangelog`; last-seen `sp-app-version-seen` (first-run silent); app-routes only; mount in `providers.tsx`.
+- [ ] T030 [P] [US3] `apps/web/src/components/shell/WhatsNewModal.tsx` — suppress-on-empty (open iff newCount>0); `useChangelog`; last-seen `sp-app-version-seen` (first visit greets once with the recent few, `FIRST_VISIT_CAP`; incremental after — revised 2026-07-20); app-routes only; mount in `providers.tsx`.
 - [ ] T031 [US3] Set one-shot `sp-whatsnew-pending` (sessionStorage) just before an update-driven reload so the greeting shows once on the fresh load.
 - [ ] T032 [test] [US3] Agent pytest: reingest idempotency + skip_sources precedence; web: modal suppressed when 0 new / on error.
 

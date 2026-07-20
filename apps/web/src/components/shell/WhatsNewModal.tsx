@@ -3,17 +3,19 @@
 /**
  * WhatsNewModal (feature 006, US3). Greets the user with what changed since they were last here —
  * right after an update-driven reload, and for a returning user whose last-seen marker is older than
- * the newest changelog entry. It opens ONLY when there is genuinely something new (never a blank
- * modal), only on authenticated app routes (the changelog is beta-gated), and never for a first-time
- * user (their marker is set silently). Content only, never custody (N2).
+ * the newest changelog entry. On the FIRST flag-on visit (no marker yet — a brand-new user OR one who
+ * was active before this feature shipped) it greets ONCE with the most recent few entries (capped, a
+ * welcome — not the whole backlog); every visit after shows only entries newer than the marker. It
+ * opens ONLY when there is genuinely something to show (never a blank modal), only on authenticated
+ * app routes (the changelog is beta-gated). Content only, never custody (N2).
  *
  * "Newer than last-seen" is keyed to the changelog entry id (monotonic), NOT the build version — so
- * an infra-only deploy that added no entry shows nothing, and a deploy that shipped a client entry
- * greets automatically. Visibility is derived in render; the only effect writes the localStorage
- * marker (via useLocalState, an external store — not React setState).
+ * an infra-only deploy that added no entry shows nothing after the first visit, and a deploy that
+ * shipped a client entry greets automatically. Visibility is fully derived in render; the marker is
+ * written only on acknowledge (gotIt → useLocalState, an external store, not React setState).
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { env } from "@/lib/env";
@@ -41,6 +43,10 @@ function isAppRoute(pathname: string): boolean {
   return !BLOCKED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// The FIRST flag-on visit greets with at most this many recent entries — a bounded welcome, not the
+// whole backlog. Every later visit shows only entries newer than the last-seen marker.
+const FIRST_VISIT_CAP = 4;
+
 export function WhatsNewModal() {
   const { entries, online, loading } = useChangelog();
   const [lastSeen, setLastSeen] = useLocalState<number | null>("sp-app-version-seen", null);
@@ -53,13 +59,18 @@ export function WhatsNewModal() {
   const maxId = entries.length ? Math.max(...entries.map((e) => e.id)) : null;
   const ready = enabled && online && !loading && maxId !== null;
 
-  // First run: silently adopt the latest entry as "seen" so a brand-new user isn't greeted with the
-  // whole backlog. setLastSeen writes localStorage (external store) — not a React setState.
-  useEffect(() => {
-    if (ready && lastSeen === null && maxId !== null) setLastSeen(maxId);
-  }, [ready, lastSeen, maxId, setLastSeen]);
-
-  const hasNew = ready && lastSeen !== null && maxId !== null && maxId > lastSeen;
+  // What to show:
+  //  • FIRST flag-on visit (no marker yet — a brand-new user OR someone who was active before this
+  //    feature existed): the most recent few entries, capped, as a one-time welcome.
+  //  • Every later visit: only the entries newer than the last-seen marker.
+  // `entries` arrive newest-first (published_at DESC) from the API. Clicking "Got it"/close (gotIt)
+  // writes the marker to the latest id, so the first-run greeting never repeats once acknowledged.
+  const fresh = !ready
+    ? []
+    : lastSeen === null
+      ? entries.slice(0, FIRST_VISIT_CAP)
+      : entries.filter((e) => e.id > lastSeen).slice(0, 8);
+  const hasNew = fresh.length > 0;
   const show = hasNew && !dismissed && isAppRoute(pathname);
 
   function gotIt() {
@@ -68,9 +79,6 @@ export function WhatsNewModal() {
   }
 
   if (!show || typeof document === "undefined") return null;
-
-  // Only the entries newer than the last-seen marker (guaranteed non-empty by `hasNew`); capped.
-  const fresh = entries.filter((e) => lastSeen === null || e.id > lastSeen).slice(0, 8);
 
   return createPortal(
     <div
