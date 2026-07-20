@@ -8,7 +8,7 @@
       "title": "SparkPoint keeps itself up to date",
       "body": "When we ship an update, SparkPoint now quietly refreshes to the newest version and shows you what changed — and it always waits until any transaction or unsaved work is safely finished first.",
       "published_at": "2026-07-20",
-      "active": false
+      "active": true
     },
     {
       "slug": "wallet-holdings-every-network",
