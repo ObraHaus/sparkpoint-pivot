@@ -289,7 +289,7 @@ export function SwapCard({ actions }: { actions: CardActions }) {
         into the vault.
       </div>
       <div className="cact">
-        <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "swap" })}>
+        <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "swap", ethToUsdc: true })}>
           Review swap
         </button>
         <button className="btn btn-ghost btn-md" onClick={actions.dismiss}>

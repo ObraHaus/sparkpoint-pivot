@@ -23,6 +23,7 @@ import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm } from "@/lib/chain/useVaultConfirm";
+import { InlineSwapConfirm } from "@/components/screens/chat/inline-swap-confirm";
 import "@/components/screens/confirm.css";
 
 /**
@@ -34,7 +35,7 @@ import "@/components/screens/confirm.css";
 export type InlineIntent =
   | { kind: "deposit"; assets?: bigint }
   | { kind: "withdraw"; assets?: bigint; shares?: bigint }
-  | { kind: "swap" }
+  | { kind: "swap"; ethToUsdc?: boolean; amountIn?: bigint; slippageBps?: number }
   | { kind: "bridge" }
   | { kind: "premium" };
 
@@ -43,37 +44,18 @@ export function InlineConfirm({ intent }: { intent: InlineIntent }) {
     return <InlineVaultConfirm intent={intent} />;
   }
   if (intent.kind === "swap") {
-    // Swaps are LIVE on the dedicated, non-custodial /swap page (Uniswap V3) — route the user
-    // there instead of the "ships at launch" placeholder.
-    return <InlineSwapRedirect />;
+    // Functional, non-custodial inline swap (Uniswap V3): the user enters an amount, sees a live
+    // quote, and signs right here — the same engines as the /swap page.
+    return (
+      <InlineSwapConfirm
+        ethToUsdc={intent.ethToUsdc}
+        amountIn={intent.amountIn}
+        slippageBps={intent.slippageBps}
+      />
+    );
   }
   // Other not-yet-live intents (bridge | premium) → the shared honest placeholder.
   return <ConfirmFlow intent={intent.kind} mount="inline" />;
-}
-
-/** Swaps run on the dedicated, non-custodial Uniswap V3 `/swap` page — route the user there. */
-function InlineSwapRedirect() {
-  const router = useRouter();
-  return (
-    <div className="ccard cf-card" style={{ padding: 0, overflow: "hidden", maxWidth: 600 }}>
-      <div className="cf-hd">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>Swap on the Swap page</div>
-          <Icon name="swap" size={18} />
-        </div>
-        <div style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
-          Token swaps run on the dedicated <b>Swap</b> page — ETH ↔ USDC on Uniswap V3 (live on Base
-          Sepolia). You review the quote and sign from your own wallet. <b>Sparky can&apos;t move your
-          funds.</b>
-        </div>
-      </div>
-      <div className="cf-sec">
-        <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("swap"))}>
-          Open the Swap page
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /** Vault deposit/withdraw inline — the REAL gate when ready, an honest notice otherwise. */
