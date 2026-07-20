@@ -29,6 +29,9 @@ const ALLOW_EXACT = new Set([
   "/opengraph-image",
   "/twitter-image",
   "/api/subscribe",
+  // Feature 006: the release-id read must return JSON even on a LOCKED (landing-only) deploy,
+  // not a 307 to /coming-soon (the poller no-ops on a redirect/HTML).
+  "/api/version",
 ]);
 const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
 
