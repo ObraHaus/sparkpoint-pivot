@@ -87,12 +87,14 @@ Launch = set both to `false` on the public app and redeploy (no code change). Bo
 
 > **As-deployed 2026-07-10:** prod (`sparkpoint-web-primary`/`-secondary`) has `SITE_LOCKED=true` + `NEXT_PUBLIC_SITE_LOCKED=true`. **Develop (`sparkpoint-web`) has neither set** → fail-closed = **landing-only too** — **intentional** while the project is still in development (only the landing is exposed on any environment for now). When a shared full-app preview is wanted, set both to `false` on the develop app + redeploy.
 
-### Feature 006 — force-refresh build env (ships flag-off)
+### Feature 006 — force-refresh build env (LIVE on develop, dark on prod)
 
-The alpha web app can auto-reload stale tabs onto a new deploy + greet users with what changed (feature 006), **dormant until go-live**:
+The web app can auto-reload stale tabs onto a new deploy + greet users with what changed (feature 006). **LIVE on develop since 2026-07-20** (`NEXT_PUBLIC_FORCE_REFRESH=true`); dormant on any env where the flag is unset:
 - **`NEXT_PUBLIC_FORCE_REFRESH`** — the kill-switch. Default/unset = OFF (nothing renders). Set to `"true"` in the web app's **build** env to enable the auto-reload banner + What's-New greeting.
-- **Per-build version id** — `apps/web/next.config.ts` derives it automatically from `SPARKPOINT_BUILD_ID` (or Coolify's predefined `SOURCE_COMMIT`) **+ a build-frozen timestamp**, so it changes on every deploy even with no config. For a human-readable git SHA in the id, either set the **build_command** to `export SPARKPOINT_BUILD_ID=$(git rev-parse --short=8 HEAD); pnpm --filter @sparkpoint/web build`, or enable **Advanced → "Include Source Commit in Build"**. ⚠️ Coolify `4.0.0-beta.434` does **NOT** accept `include_source_commit_in_build` via the API (`PATCH …/applications/{uuid}` → `422`) — it is a UI-only toggle on this instance. The timestamp fallback means the refresh arms either way; no new **runtime** env is required (`/api/version` echoes the baked id).
-- **Also:** apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`) and redeploy the agent so `content_seed/whats-new.json` ingests (the Dockerfile now COPYs `content_seed`).
+- **Per-build version id** — `apps/web/next.config.ts` derives it automatically as `<SOURCE_COMMIT>-<build-frozen timestamp>`, so it changes on every deploy even with no config. **Confirmed on develop:** Coolify **does** expose `SOURCE_COMMIT` to the Nixpacks build here, so `/api/version` returns the real commit SHA + timestamp — **no extra wiring needed**. (The optional `build_command` `git rev-parse --short=8 HEAD` returns empty in the Nixpacks context, and the API rejects the *"Include Source Commit in Build"* toggle on `4.0.0-beta.434` (`422`) — but neither is needed since `SOURCE_COMMIT` already works.) `/api/version` echoes the baked id with `no-store`; no new **runtime** env required.
+- **Also:** apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`) **before** the agent boots, and redeploy the agent so `content_seed/whats-new.json` ingests (the Dockerfile COPYs `content_seed`). If the agent booted first, restart it to re-ingest (see [DEPLOYMENT.md](./DEPLOYMENT.md) → "Feature 006 — how to deploy").
+
+> **As-deployed 2026-07-20:** develop web app (`i4cw0ogsookkkocsw808gwc4`) has `NEXT_PUBLIC_FORCE_REFRESH=true` and `0014` applied. ⚠️ The env-create API rejects `is_build_time` on this Coolify — POST `{key,value}` only, and set the env **then** redeploy (a deploy triggered before the env builds dark). Prod (`main` replicas) is **unset** (dark) — a separate go/no-go; enable it on **both** replicas like `SITE_LOCKED`.
 
 ## Verify a deploy — use the deployment record, NOT the status badge
 
