@@ -92,3 +92,25 @@ def test_all_deployments_includes_every_alias() -> None:
     assert {d["model_name"] for d in deps} == {"sparkpoint-chat", "sparkpoint-chat-premium"}
     premium = [d["upstream"] for d in deps if d["model_name"] == "sparkpoint-chat-premium"]
     assert "openrouter/deepseek/deepseek-v4-flash" in premium
+
+
+def test_aggregate_logs_sums_by_model_and_filters_window() -> None:
+    # Spend stats come from /spend/logs (the report endpoint is Enterprise-gated); this sums the
+    # per-call feed by model, dropping calls before `since` and any without a numeric spend.
+    from datetime import UTC, datetime
+
+    from sparkpoint_agent.api.admin_llm import _aggregate_logs, _cost_per_m
+
+    since = datetime(2026, 7, 1, tzinfo=UTC)
+    logs = [
+        {"model": "deepseek", "spend": 0.001, "startTime": "2026-07-10T00:00:00Z"},
+        {"model": "deepseek", "spend": 0.002, "startTime": "2026-07-11T00:00:00Z"},
+        {"model": "qwen", "spend": 0.0005, "startTime": "2026-07-12T00:00:00Z"},
+        {"model": "old", "spend": 9.0, "startTime": "2026-06-30T00:00:00Z"},  # before window
+        {"model": "bad", "spend": None, "startTime": "2026-07-12T00:00:00Z"},  # no spend
+    ]
+    total, by_model = _aggregate_logs(logs, since)
+    assert round(total, 4) == 0.0035  # 'old' excluded, 'bad' skipped
+    assert by_model[0] == {"model": "deepseek", "spend": 0.003}  # ranked desc
+    assert _cost_per_m(1e-07) == 0.1  # per-token -> per-1M
+    assert _cost_per_m(None) is None
