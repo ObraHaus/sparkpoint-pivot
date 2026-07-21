@@ -36,7 +36,7 @@ test.describe("connect → SIWE → session", () => {
     await signIn(page);
     // The four verify steps all resolve green for an allowlisted wallet.
     await expect(page.locator("#vsteps")).toContainText("Signed in (SIWE) · verified");
-    await expect(page.locator("#vsteps")).toContainText("Beta access · eligible");
+    await expect(page.locator("#vsteps")).toContainText("Alpha access · eligible");
     // The success CTA into the app is offered.
     await expect(page.locator("a:has-text('Start onboarding')")).toBeVisible();
   });
