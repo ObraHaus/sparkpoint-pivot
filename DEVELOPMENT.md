@@ -57,10 +57,19 @@ pnpm dev                        # runs apps/web (and the agent service per the w
 
 ```bash
 # --- AI (called directly; NOT via obrahaus-governor) ---
-ANTHROPIC_API_KEY=              # Claude reasoning for the agent service
-# OpenAI-compatible alternative / future own gateway:
+ANTHROPIC_API_KEY=              # Claude reasoning (fallback path when the gateway is unset)
+# OpenAI-compatible alternative:
 OPENAI_API_KEY=
 OPENAI_BASE_URL=                # e.g. a self-hosted gateway endpoint
+
+# --- LLM gateway (LiteLLM → OpenRouter) — the agent's real LLM path; see "LLM gateway" below ---
+# Set on the AGENT app:
+LITELLM_BASE_URL=               # gateway base URL (reachable from the agent)
+LITELLM_API_KEY=                # scoped VIRTUAL chat key (low-privilege; per-wallet budgets) — used for chat
+LITELLM_ADMIN_KEY=             # scoped ADMIN/management key for the admin console (NEVER the master key)
+LITELLM_MODEL=sparkpoint-chat   # default alias; premium turns route to `sparkpoint-chat-premium` per-request
+# Set ONLY on the GATEWAY container (never the agent/web) — the gateway is the sole key-holder:
+# OPENROUTER_API_KEY  (upstream key)   LITELLM_MASTER_KEY  (root key)   DATABASE_URL  (gateway's own isolated DB)
 
 # --- Onchain / RPC (Base) ---
 ALCHEMY_BASE_RPC_URL=           # Base RPC via Alchemy
@@ -109,6 +118,22 @@ Migrations will live in a migrations dir (e.g. `services/agent/migrations/` or `
 - **Foundry** in `contracts/` targeting **Base**. Custom **ERC-4337** account stack (SparkPointAccount, AccountFactory, SessionKeyValidator, PolicyModule) + **SparkPointVault (ERC-4626)**; integrations limited to Aave v3 + Aerodrome at launch.
 - Every change must preserve the **five non-custody invariants (N1–N5)** in the constitution. Where the custom ERC-4337 stack threatens the schedule, the mid-build checkpoint may fall back to a battle-tested AA SDK (ZeroDev/Kernel) — any fallback must preserve N1–N5.
 - Simulate with **Tenderly** before any onchain action; verify on Basescan on deploy.
+
+## LLM gateway (LiteLLM → OpenRouter)
+
+The agent talks to models through a self-hosted **LiteLLM** proxy (`services/litellm/config.yaml`), which fronts **OpenRouter**. The gateway is the **only** holder of the upstream `OPENROUTER_API_KEY`; the agent calls it with a scoped **virtual key**, never the master. Config lives in `services/agent/src/sparkpoint_agent/api/admin_llm.py` (admin API) + `.../llm/claude.py` + `.../llm/client.py` (chat transport).
+
+- **Keys (three tiers, least-privilege).** `LITELLM_MASTER_KEY` (root) + `OPENROUTER_API_KEY` live **only** on the gateway container. The agent holds two scoped keys: `LITELLM_API_KEY` (the **virtual chat key** — low-privilege, per-wallet budgets, used for actual chat) and `LITELLM_ADMIN_KEY` (a **scoped admin/management key** for the console; unset ⇒ the admin tabs honestly degrade to `adminConfigured:false`, never fall back to the master or 500).
+  - ⚠️ **Gotcha:** a virtual key is scoped to its own model allowlist, so `GET /model/info` **through the virtual key only returns that key's alias(es)** (e.g. just `sparkpoint-chat`). Any admin **model-list** view must use the **admin key** — this is why `/admin/llm/status` fetches the model list with `LITELLM_ADMIN_KEY` (falling back to the virtual key) while `/key/info` stays on the virtual key.
+- **Aliases.** `sparkpoint-chat` (free — open models) and `sparkpoint-chat-premium` (paid — DeepSeek V4 Flash + Qwen 3.5 Flash, priced + `rpm` per deployment, with a router fallback to the free alias). `LITELLM_MODEL` sets the default; the quota dependency sets a per-request `set_model_alias(...)` contextvar (feature 008) so a **premium** turn routes to `sparkpoint-chat-premium` while free stays on `sparkpoint-chat`.
+- **Admin console** (`/admin/gateway`, admin-gated → **404** to non-admins; every write is a POST, audit-logged to `gateway_audit`). Backed by these agent endpoints (BFF at `/api/agent/admin/llm/*`):
+  - `GET /admin/llm/status` — reachability + model list (by alias, priced) + the virtual key's spend/limits.
+  - `GET /admin/llm/stats` — spend aggregates from `/spend/logs` (the per-model report endpoint is Enterprise-gated): month-to-date, projected-month, $/day, budget-used %.
+  - `GET /admin/llm/activity` — recent requests, **scrubbed** (model/tokens/spend/time; wallet masked, no prompt content).
+  - `GET /admin/llm/config` · `POST /admin/llm/config/model` · `POST /admin/llm/config/model/delete` — view/add/remove deployments per alias (add takes an `alias` + input/output price + `rpm`); delete has a **per-alias last-backend guardrail** (never strands an alias with zero backends).
+  - `GET /admin/llm/openrouter/price` — live OpenRouter price lookup that auto-fills the add-form.
+  - `POST /admin/llm/key/config` — edit the virtual key's `max_budget` / `budget_duration` / `rpm` / `tpm` (the abuse ceiling), operator-tunable without a redeploy.
+- **Deploy.** Changing `services/litellm/config.yaml` (e.g. adding a model or a price) requires the **litellm** app to redeploy; it auto-deploys on merge to `develop`. Config-file model prices/`rpm` feed LiteLLM's own cost accounting + the Config price display; real billing still passes through from OpenRouter.
 
 ## Sparky persona (agent voice)
 
