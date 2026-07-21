@@ -4,13 +4,13 @@ description: "Task list for 011-wrapper-vault-factory"
 
 # Tasks: Wrapper Vault Factory
 
-> # ⛔ BLOCKED — DO NOT START IMPLEMENTATION
-> **No task below T001 may begin until the Phase-0 constitution amendment is ratified by the operator
-> (super-majority re-ratification).** This feature routes pooled user funds into Morpho (non-whitelisted
-> under Guardrail IV.5), adds vaults beyond the "SINGLE conservative Aave Yield Vault" (Principles V + VII),
-> and therefore touches CUSTODY SEMANTICS — which per Governance "MUST NOT be made implicitly through
-> implementation." The Constitution Check in [`plan.md`](./plan.md) is **GATE BLOCKED**. An agent may NOT
-> self-authorize this (ObraHaus Playbook 2.6). T001 is a HUMAN/OPERATOR task and gates EVERY other task.
+> # ✅ UNBLOCKED — Phase-0 amendment RATIFIED (2026-07-21)
+> **The Phase-0 constitution amendment (`v1.3.0 → v2.0.0`, Curated Morpho-Wrapper Vaults) was ratified by
+> the operator (super-majority, aldrickb) on 2026-07-21** and recorded in `.specify/memory/constitution.md`
+> (full text [`constitution-amendment.md`](./constitution-amendment.md)). The Constitution Check in
+> [`plan.md`](./plan.md) is now **GATE PASS**. **T001 (and T002) are DONE**; US2–US5 (template → factory →
+> admin manage → app deposit/withdraw) may proceed. The amendment was ratified explicitly by the operator —
+> never self-authorized by an agent (ObraHaus Playbook 2.6) — and **before** any implementation task began.
 
 **Input**: Design documents in `specs/011-wrapper-vault-factory/` (spec.md, plan.md, research.md,
 data-model.md, contracts/vault-factory-interfaces.md, quickstart.md).
@@ -55,7 +55,7 @@ A task-group / phase is "done" only when:
 
 ---
 
-## Phase 0 → User Story 1 — Ratify the constitution amendment (Priority: P0, GOVERNANCE GATE) 🚧 BLOCKS ALL
+## Phase 0 → User Story 1 — Ratify the constitution amendment (Priority: P0, GOVERNANCE GATE) ✅ DONE 2026-07-21
 
 **Goal**: obtain the super-majority re-ratification that permits a factory of branded, single-purpose,
 NON-upgradeable Morpho-wrapper vaults preserving N1–N5, amending Guardrail IV.5 (extend the whitelist to
@@ -66,18 +66,18 @@ DEFAULT and preserving all five non-custody invariants + pause-only killswitch +
 **Independent Test**: quickstart US1 — the amendment record exists, the constitution version is bumped, and
 the super-majority approval is logged BEFORE any code lands.
 
-- [ ] **T001 [US1] 🚧 OPERATOR TASK (human, NOT code) — ratify the constitution amendment (super-majority).
-      BLOCKS ALL TASKS BELOW.** Draft + circulate + obtain super-majority approval for the amendment in
-      [`plan.md`](./plan.md) "Proposed amendment (operator decision)". This is a custody-touching amendment
-      (N5 single-purpose semantics + Guardrail IV.5 whitelist + Principles V/VII) — an agent may NOT
-      self-authorize it (Playbook 2.6). **No T002+ may start until this is ratified.**
-- [ ] T002 [US1] (BLOCKED by T001) Record the ratified amendment: bump `.specify/memory/constitution.md`
-      (e.g. → v1.4.0), add the amendment record (the extended IV.5 whitelist, the multi-vault-under-factory
-      allowance, the preserved N1–N5 + default Aave vault), and the super-majority approval log. Files:
+- [x] **T001 [US1] ✅ OPERATOR TASK (human) — ratified the constitution amendment (super-majority), 2026-07-21.**
+      The operator (aldrickb) directed + approved the `v1.3.0 → v2.0.0` amendment; the hardened text (closing
+      the underlying-curator N1 seam, allowlist governance, immutable target, fee-as-share-dilution, policy-path
+      separation — found by a 3-lens adversarial review) is in [`constitution-amendment.md`](./constitution-amendment.md).
+      Not self-authorized by an agent (Playbook 2.6). US2+ unblocked.
+- [x] T002 [US1] Recorded the ratified amendment: `.specify/memory/constitution.md` bumped to **v2.0.0**
+      (Edits 1–9: IV.5 curated-allowlist whitelist, IV.6 every-instance non-upgradeable, V deploy-only factory
+      + N1–N5 per wrapper, VII deferrals, Chain&scope, named contracts, amendment-log entry). Files:
       `.specify/memory/constitution.md`.
-- [ ] T003 [US1] (BLOCKED by T001) Update the 011 artifacts' Constitution Check from **GATE BLOCKED** to
-      **GATE PASS (with the ratified amendment cited)**; keep the honest conflict history in Complexity
-      Tracking. Files: `specs/011-wrapper-vault-factory/plan.md`.
+- [x] T003 [US1] Updated the 011 Constitution Check from **GATE BLOCKED** → **GATE PASS** (ratified amendment
+      cited); the honest conflict history is preserved in the amended rows + Complexity Tracking. Files:
+      `specs/011-wrapper-vault-factory/plan.md`.
 - [ ] T004 [P] [US1] (BLOCKED by T001) `CHANGELOG.md` — `## [Unreleased]` bullet: "gov: ratify Morpho-wrapper
       factory amendment (constitution vX.Y.0)". Files: `CHANGELOG.md`.
 

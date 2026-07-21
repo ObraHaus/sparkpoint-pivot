@@ -2,7 +2,7 @@
 
 Decisions and rationale grounding [plan.md](./plan.md) and [spec.md](./spec.md). Sources: direct read of `contracts/src/vault/SparkPointVault.sol`, `contracts/src/interfaces/ISparkPointVault.sol`, the existing Foundry suites (`contracts/test/{fuzz,fork,invariant,refute}`), `services/agent/src/sparkpoint_agent/chain/vault_reader.py`, `apps/web/src/lib/chain/*`, the `010-universal-vaults` companion artifacts, the SparkPoint Constitution v1.3.0 (`.specify/memory/constitution.md`), the Morpho ERC-4626 / Vaults V1.1 + V2 docs, and an adversarial review of the first draft.
 
-> **Framing:** every decision below is **contingent on the Phase 0 governance gate** ([plan.md](./plan.md) Constitution Check → **GATE BLOCKED**). None of it is implemented until the operator ratifies the super-majority amendment (US1 / FR-001). Research is allowed pre-ratification; code is not.
+> **Framing:** the Phase 0 governance gate is **✅ CLEARED** — the operator ratified the `v1.3.0 → v2.0.0` super-majority amendment on 2026-07-21 ([plan.md](./plan.md) Constitution Check → **GATE PASS**; see [`constitution-amendment.md`](./constitution-amendment.md)), so the decisions below are now in ratified scope and US2–US5 implementation may proceed.
 
 ## D0 — The governance gate is real; a scope note is NOT available here (contrast 007)
 
