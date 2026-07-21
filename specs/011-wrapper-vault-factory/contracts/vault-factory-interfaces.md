@@ -1,9 +1,10 @@
 # Internal Interface Contracts: Wrapper Vault Factory (Phase 1–4)
 
-> **GATE.** All interfaces, the admin API, and the test obligations below are DESIGN ONLY. **No Solidity,
-> no endpoint, and no test may be authored until the Phase-0 constitution amendment is ratified**
-> (super-majority re-ratification — [`plan.md`](../plan.md) Constitution Check, [`tasks.md`](../tasks.md)
-> T001). This document is the contract the ratified implementation must satisfy, not a licence to start.
+> **GATE — ✅ CLEARED (2026-07-21).** The Phase-0 constitution amendment was ratified (super-majority,
+> constitution **v2.0.0**; [`plan.md`](../plan.md) Constitution Check → **GATE PASS**, [`tasks.md`](../tasks.md)
+> T001 done). The interfaces + test obligations below are now the **contract the implementation must satisfy**,
+> and implementation may proceed **phase by phase** (Phase 1 = the `ISparkPointMorphoVault` template + tests;
+> the factory/admin/app surfaces remain later phases). See [`checklists/phase-1-wrapper-template.md`](../checklists/phase-1-wrapper-template.md).
 
 This feature adds (1) two new on-chain Solidity interfaces (a wrapper template + a deploy-only factory),
 (2) an admin BFF surface for the MANAGE half of `/admin/vaults` that only READS and PREPARES calldata
