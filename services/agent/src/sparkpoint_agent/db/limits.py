@@ -74,6 +74,23 @@ _AUDIT_READ_SQL = (
     "SELECT action, subject, actor, detail, at FROM limits_audit ORDER BY at DESC LIMIT $1"
 )
 
+# -- monitoring aggregations (US3) --
+_USAGE_BY_TIER_SQL = (
+    "SELECT COALESCE(tier_at_use, 'unknown') AS tier, count(DISTINCT address) AS wallets, "
+    "COALESCE(sum(count), 0) AS turns FROM usage_counters WHERE window_start = $1 "
+    "GROUP BY 1 ORDER BY turns DESC"
+)
+_TOP_CONSUMERS_SQL = (
+    "SELECT address, COALESCE(max(tier_at_use), 'free') AS tier, COALESCE(sum(count), 0) AS turns "
+    "FROM usage_counters WHERE window_start = $1 GROUP BY address ORDER BY turns DESC LIMIT $2"
+)
+_EVENT_COUNTS_SQL = (
+    "SELECT verdict, count(*) AS n FROM limits_event WHERE at >= $1 GROUP BY verdict"
+)
+_RECENT_EVENTS_SQL = (
+    "SELECT verdict, metric, tier, subject, at FROM limits_event ORDER BY at DESC LIMIT $1"
+)
+
 
 def _norm(address: str | None) -> str:
     return (address or "").strip().lower()
@@ -247,6 +264,41 @@ class LimitsStore:
         detail: dict[str, Any] | None = None,
     ) -> None:
         await self.db.execute(_EVENT_SQL, verdict, metric, tier, subject, json.dumps(detail or {}))
+
+    async def usage_by_tier(self, window_start: datetime) -> list[dict[str, Any]]:
+        """Per-tier consumption for one window: active wallets + total turns."""
+        rows = await self.db.fetch(_USAGE_BY_TIER_SQL, window_start)
+        return [
+            {"tier": str(r["tier"]), "wallets": int(r["wallets"]), "turns": int(r["turns"])}
+            for r in rows
+        ]
+
+    async def top_consumers(self, window_start: datetime, limit: int = 10) -> list[dict[str, Any]]:
+        """Heaviest wallets for one window (raw address; the API layer masks it)."""
+        rows = await self.db.fetch(_TOP_CONSUMERS_SQL, window_start, max(1, min(limit, 100)))
+        return [
+            {"address": str(r["address"]), "tier": str(r["tier"]), "turns": int(r["turns"])}
+            for r in rows
+        ]
+
+    async def event_counts(self, since: datetime) -> dict[str, int]:
+        """Counts of allow/deny/throttle events since ``since`` (drives the throttle/deny rate)."""
+        rows = await self.db.fetch(_EVENT_COUNTS_SQL, since)
+        return {str(r["verdict"]): int(r["n"]) for r in rows}
+
+    async def recent_events(self, limit: int = 25) -> list[dict[str, Any]]:
+        """The most-recent decision events (masked subject; no content), newest first."""
+        rows = await self.db.fetch(_RECENT_EVENTS_SQL, max(1, min(limit, 200)))
+        return [
+            {
+                "verdict": str(r["verdict"]),
+                "metric": str(r["metric"]),
+                "tier": str(r["tier"]),
+                "subject": (str(r["subject"]) if r["subject"] is not None else None),
+                "at": r["at"].isoformat(),
+            }
+            for r in rows
+        ]
 
     async def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self.db.fetch(_AUDIT_READ_SQL, max(1, min(limit, 500)))

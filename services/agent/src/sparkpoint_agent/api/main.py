@@ -39,6 +39,7 @@ from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
+from .admin_usage import router as admin_usage_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
 from .content import router as content_router
@@ -368,6 +369,8 @@ app.include_router(admin_uptime_router)
 # Feature 008 admin tier-limits config (/admin/limits/*) — admin-gated, audited, POST-only writes.
 # Advisory-compute config only; never a signable artifact, never the withdraw path (N2).
 app.include_router(admin_limits_router)
+# Feature 008 admin usage/limits monitoring (/admin/usage/*) — admin-gated, masked, honest-degrade.
+app.include_router(admin_usage_router)
 # Alpha content — public changelog/announcement reads (any beta wallet) + admin authoring
 # (/admin/content*). ACCESS/content only; never a signable artifact (N2).
 app.include_router(content_router)
