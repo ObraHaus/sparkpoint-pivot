@@ -19,14 +19,24 @@ const USDC_DECIMALS: Record<number, number> = {
 };
 const DEFAULT_USDC_DECIMALS = 6;
 
+/** Where a {@link SwapToken} came from — drives the picker section + the verified/unverified badge. */
+export type TokenSource = "recommended" | "imported" | "native";
+
 export interface SwapToken {
   readonly symbol: string;
-  /** Decimals of the token amount the user enters/receives (native ETH + WETH are 18; USDC 6). */
+  /** Decimals of the token amount the user enters/receives (native ETH + WETH are 18; USDC 6). Always
+   * the ON-CHAIN value for a pasted token (resolved via metadata.ts) — never a wire/agent/cached hint. */
   readonly decimals: number;
   /** The ERC-20 address used on-chain — for the native-ETH pseudo-token this is WETH (routing). */
   readonly address: `0x${string}`;
   /** true ⇒ NATIVE ETH: balance is native, ETH-in needs no ERC-20 approve, ETH-out is unwrapped. */
   readonly isNative: boolean;
+  /** Human name (`name()`), when known — display only. */
+  readonly name?: string;
+  /** Provenance: native ETH, a curated recommended token, or a user-imported custom token. */
+  readonly source?: TokenSource;
+  /** true ⇒ the ADDRESS is in the curated verified set (tokenList). Never inferred from the symbol. */
+  readonly verified?: boolean;
 }
 
 /**
@@ -42,11 +52,25 @@ export function swapTokens(chainId: number | undefined): SwapToken[] {
     return [];
   }
   // Native ETH (routed via WETH) + USDC. USDC decimals are chain-specific (6 on Base, 18 on 46630).
+  // Both are recommended + verified (their addresses come from the shared registry, the source of truth).
   return [
-    { symbol: "ETH", decimals: 18, address: book.weth, isNative: true },
-    { symbol: "USDC", decimals: USDC_DECIMALS[chainId] ?? DEFAULT_USDC_DECIMALS, address: book.usdc, isNative: false },
+    { symbol: "ETH", decimals: 18, address: book.weth, isNative: true, source: "native", verified: true },
+    {
+      symbol: "USDC",
+      decimals: USDC_DECIMALS[chainId] ?? DEFAULT_USDC_DECIMALS,
+      address: book.usdc,
+      isNative: false,
+      source: "recommended",
+      verified: true,
+    },
   ];
 }
+
+/**
+ * The recommended (one-tap) tokens for `chainId` — the honest alias the universal-swap picker uses. Same
+ * output as {@link swapTokens}; kept as a clearer name now that arbitrary imported tokens also exist.
+ */
+export const recommendedTokens = swapTokens;
 
 /** Zero address sentinel used to detect an unconfigured token (a chain whose book leaves it at 0x0). */
 export function isConfiguredToken(t: SwapToken): boolean {

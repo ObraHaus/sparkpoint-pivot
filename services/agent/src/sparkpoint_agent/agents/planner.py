@@ -15,6 +15,7 @@ DAG asks the user rather than inventing a number), and an unknown asset/action d
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -60,12 +61,17 @@ SYSTEM = (
     'question like \'what is APY?\'), "portfolio" (asking about their holdings/PnL), or '
     '"other".\n'
     '  "actionType": one of "vault_deposit", "aave_supply", "aerodrome_swap", or null.\n'
-    '  "asset": "USDC", "ETH", or null.\n'
+    '  "asset": the token to act on — for a SWAP this is the token to swap FROM. "USDC", '
+    '"ETH", or null.\n'
     '  "amount": the amount in RAW BASE UNITS as an integer string (USDC has 6 decimals, '
     "so 100 USDC = \"100000000\"), or null if the user gave no amount.\n"
     '  "maxSlippageBps": an integer basis-point slippage for swaps, or null.\n'
+    '  "tokenOutAddress": for a swap INTO a specific token given by its contract address, the '
+    '0x-prefixed 40-hex ERC-20 address (e.g. "0xabc…def"), or null. Use ONLY when the user '
+    'pastes a contract address; for a plain "swap ETH to USDC" leave it null.\n'
     '  "topic": a short snake_case concept key for "learn" (e.g. "what_is_apy"), or null.\n'
-    "Never guess an amount the user did not state. Output JSON only."
+    "Never guess an amount the user did not state. Never invent a contract address. "
+    "Output JSON only."
 )
 
 
@@ -92,6 +98,9 @@ class Intent:
     asset: Asset | None = None
     amount: int | None = None
     max_slippage_bps: int | None = None
+    # Swaps only: a user-pasted receive-token address (007 · US4). The web re-reads it on-chain
+    # (decimals authoritative) and treats a non-recommended token as unverified.
+    token_out_addr: str | None = None
     topic: str | None = None
     refused: bool = False
 
@@ -122,6 +131,22 @@ def _coerce_asset(raw: Any) -> Asset | None:
         return Asset(str(raw))
     except ValueError:
         return None
+
+
+_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def _coerce_address(raw: Any) -> str | None:
+    """Validate a 0x-prefixed 20-byte hex address; anything else → ``None`` (fail-closed).
+
+    Lower-cased for a stable wire value. This is a SYNTACTIC gate only — the web re-checksums and
+    re-reads the token on-chain, so a malformed / hallucinated address is dropped here and the DAG
+    falls back to the recommended pair rather than proposing a bogus token (non-custody).
+    """
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    return text.lower() if _ADDRESS_RE.match(text) else None
 
 
 def _coerce_amount(raw: Any) -> int | None:
@@ -170,6 +195,7 @@ def _parse_intent(payload: Any) -> Intent:
         asset=_coerce_asset(payload.get("asset")),
         amount=_coerce_amount(payload.get("amount")),
         max_slippage_bps=_coerce_bps(payload.get("maxSlippageBps")),
+        token_out_addr=_coerce_address(payload.get("tokenOutAddress")),
         topic=_coerce_topic(payload.get("topic")),
     )
 

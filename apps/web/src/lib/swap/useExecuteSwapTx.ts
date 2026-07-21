@@ -36,8 +36,12 @@ export interface SwapExec {
   readonly tokenIn: Address;
   /** tokenOut on-chain address — for the native-ETH output this is WETH (unwrapped to ETH). */
   readonly tokenOut: Address;
-  /** The pool fee tier chosen (best-output tier from the quote). */
+  /** The pool fee tier chosen (best-output tier from the quote) — used for the SINGLE-hop route. */
   readonly fee: number;
+  /** Multi-hop packed path (`token|fee|token[|fee|token]`). Present ⇒ execute `exactInput(path)` instead
+   * of `exactInputSingle(fee)`. The fee split composes identically (it's taken on the FINAL output token
+   * the router holds), so the 0.20% routing fee is preserved verbatim for multi-hop. */
+  readonly path?: Hex;
   /** recipient of the output == the connecting account (non-custody). */
   readonly account: Address;
   readonly amountIn: bigint;
@@ -52,6 +56,9 @@ export interface SwapExec {
   readonly toNative: boolean;
   /** true ⇒ an ERC-20 `approve(router, amountIn)` leg is needed (token-in that isn't native). */
   readonly needsApprove: boolean;
+  /** true ⇒ token-in requires a reset-to-zero approve BEFORE the real approve (USDT-style tokens that
+   * revert on a non-zero→non-zero `approve`). Adds one extra signature. */
+  readonly approveResetToZero?: boolean;
   /** §fee — SparkPoint routing fee in bips (≤100=1% cap), taken IN the swap and paid straight to
    * ``feeRecipient`` on-chain (the app never custodies it). The user receives output − fee. */
   readonly feeBips: number;
@@ -96,42 +103,48 @@ function shortError(err: unknown): string {
  * avoids the PeripheryPaymentsWithFee dependency (some V3 forks omit `*WithFee`).
  */
 function swapCalls(e: SwapExec): Hex[] {
-  const base = {
-    tokenIn: e.tokenIn,
-    tokenOut: e.tokenOut,
-    fee: e.fee,
-    amountIn: e.amountIn,
-    sqrtPriceLimitX96: 0n,
-  } as const;
+  // The swap leg — multi-hop `exactInput(path)` when a path is present, else single-hop
+  // `exactInputSingle(fee)`. Everything downstream (the fee/unwrap pay-legs) is hop-count-agnostic.
+  const swapLeg = (recipient: Address, amountOutMinimum: bigint): Hex =>
+    e.path
+      ? encodeFunctionData({
+          abi: swapRouter02Abi,
+          functionName: "exactInput",
+          args: [{ path: e.path, recipient, amountIn: e.amountIn, amountOutMinimum }],
+        })
+      : encodeFunctionData({
+          abi: swapRouter02Abi,
+          functionName: "exactInputSingle",
+          args: [
+            {
+              tokenIn: e.tokenIn,
+              tokenOut: e.tokenOut,
+              fee: e.fee,
+              recipient,
+              amountIn: e.amountIn,
+              amountOutMinimum,
+              sqrtPriceLimitX96: 0n,
+            },
+          ],
+        });
+
   const hasFee = e.feeBips > 0 && !!e.feeRecipient;
 
   if (!hasFee) {
     if (e.toNative) {
-      const swap = encodeFunctionData({
-        abi: swapRouter02Abi,
-        functionName: "exactInputSingle",
-        args: [{ ...base, recipient: ADDRESS_THIS, amountOutMinimum: 0n }],
-      });
+      // Output stays in the router as WETH; unwrapWETH9 enforces the slippage floor + forwards native ETH.
       const unwrap = encodeFunctionData({
         abi: swapRouter02Abi,
         functionName: "unwrapWETH9",
         args: [e.amountOutMinimum, e.account],
       });
-      return [swap, unwrap];
+      return [swapLeg(ADDRESS_THIS, 0n), unwrap];
     }
-    const swap = encodeFunctionData({
-      abi: swapRouter02Abi,
-      functionName: "exactInputSingle",
-      args: [{ ...base, recipient: e.account, amountOutMinimum: e.amountOutMinimum }],
-    });
-    return [swap];
+    return [swapLeg(e.account, e.amountOutMinimum)];
   }
 
-  const swap = encodeFunctionData({
-    abi: swapRouter02Abi,
-    functionName: "exactInputSingle",
-    args: [{ ...base, recipient: ADDRESS_THIS, amountOutMinimum: 0n }], // output stays for the fee split
-  });
+  // Fee path: swap output goes to the router (ADDRESS_THIS), then the pay-leg forwards (output − fee) to
+  // the user and the fee straight to feeRecipient. The pay-leg's amountMinimum is the GROSS slippage floor.
   const payLeg = e.toNative
     ? encodeFunctionData({
         abi: swapRouter02Abi,
@@ -143,7 +156,7 @@ function swapCalls(e: SwapExec): Hex[] {
         functionName: "sweepTokenWithFee",
         args: [e.tokenOut, e.amountOutMinimum, e.account, BigInt(e.feeBips), e.feeRecipient!],
       });
-  return [swap, payLeg];
+  return [swapLeg(ADDRESS_THIS, 0n), payLeg];
 }
 
 export function useExecuteSwapTx(exec: SwapExec | undefined): SwapExecController {
@@ -168,6 +181,24 @@ export function useExecuteSwapTx(exec: SwapExec | undefined): SwapExecController
         // ── leg 0: ERC-20 approve (only when the token-in isn't native ETH) ──
         if (e.needsApprove && !e.fromNative) {
           setStage("approve");
+          // USDT-style tokens revert on a non-zero→non-zero approve — reset the allowance to 0 first.
+          if (e.approveResetToZero) {
+            setAwaitingWallet(true);
+            const resetTx = await writeContractAsync({
+              address: e.tokenIn,
+              abi: erc20Abi,
+              functionName: "approve",
+              args: [e.router, 0n],
+              chainId: e.chainId as WagmiChainId,
+            });
+            setAwaitingWallet(false);
+            const resetReceipt = await publicClient.waitForTransactionReceipt({ hash: resetTx });
+            if (resetReceipt.status === "reverted") {
+              setStage("error");
+              setError("Allowance reset reverted on-chain — nothing moved.");
+              return;
+            }
+          }
           setAwaitingWallet(true);
           const approveTx = await writeContractAsync({
             address: e.tokenIn,

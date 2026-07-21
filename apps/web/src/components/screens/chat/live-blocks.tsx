@@ -42,15 +42,21 @@ function inlineIntentFor(action: ProposedAction): InlineIntent {
       return { kind: "withdraw", assets: amount };
     case "vault_redeem":
       return { kind: "withdraw", shares: amount };
-    case "aerodrome_swap":
-      // Functional inline swap — executed via the web's own Uniswap path (user-signed), NOT the
-      // agent's fail-closed swap policy. Default ETH→USDC (the card can flip); carry amount/slippage.
+    case "aerodrome_swap": {
+      // Functional inline swap — executed via the web's own Uniswap path (user-signed), NOT the agent's
+      // fail-closed swap policy. Forward an assistant-proposed token PAIR + chainId when present (007 · US4);
+      // an OLD single-`asset` block has neither, so it falls back to the recommended ETH→USDC swap.
+      const hasPair = !!action.tokenIn || !!action.tokenOut;
       return {
         kind: "swap",
-        ethToUsdc: true,
+        ethToUsdc: hasPair ? undefined : true,
+        tokenIn: action.tokenIn ? { address: action.tokenIn.address, symbol: action.tokenIn.symbol } : undefined,
+        tokenOut: action.tokenOut ? { address: action.tokenOut.address, symbol: action.tokenOut.symbol } : undefined,
+        chainId: action.chainId,
         amountIn: amount > 0n ? amount : undefined,
         slippageBps: action.params?.maxSlippageBps,
       };
+    }
     default:
       // aave_supply / aave_withdraw etc. aren't inline-wired yet → honest placeholder.
       return { kind: "premium" };

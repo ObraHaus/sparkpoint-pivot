@@ -19,6 +19,7 @@
  */
 
 import { useRouter } from "next/navigation";
+import type { TokenRef } from "@sparkpoint/shared/schemas";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
@@ -35,7 +36,18 @@ import "@/components/screens/confirm.css";
 export type InlineIntent =
   | { kind: "deposit"; assets?: bigint }
   | { kind: "withdraw"; assets?: bigint; shares?: bigint }
-  | { kind: "swap"; ethToUsdc?: boolean; amountIn?: bigint; slippageBps?: number }
+  | {
+      kind: "swap";
+      ethToUsdc?: boolean;
+      amountIn?: bigint;
+      slippageBps?: number;
+      /** An assistant-proposed pay/receive token pair (007 · US4). Addresses only — the card re-reads
+       * `decimals()` on-chain and treats a non-recommended token as unverified by default. */
+      tokenIn?: TokenRef;
+      tokenOut?: TokenRef;
+      /** The network the proposal targets — reconciled against the connected wallet before quoting. */
+      chainId?: number;
+    }
   | { kind: "bridge" }
   | { kind: "premium" };
 
@@ -51,6 +63,9 @@ export function InlineConfirm({ intent }: { intent: InlineIntent }) {
         ethToUsdc={intent.ethToUsdc}
         amountIn={intent.amountIn}
         slippageBps={intent.slippageBps}
+        tokenIn={intent.tokenIn}
+        tokenOut={intent.tokenOut}
+        chainId={intent.chainId}
       />
     );
   }

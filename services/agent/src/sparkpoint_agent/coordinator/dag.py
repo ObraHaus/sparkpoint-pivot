@@ -46,6 +46,7 @@ from ..policy import (
     POLICY_VERSION,
     Action,
     ActionType,
+    Asset,
     CapHeadroom,
     MandateContext,
     PolicyContext,
@@ -71,6 +72,7 @@ from .chat_blocks import (
     policy_stamp,
     proposed_action_wire,
     recommendation_protocol,
+    token_address,
 )
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
@@ -454,7 +456,7 @@ class CoordinatorDag:
             # renders "Review swap" for an aerodrome_swap block regardless.
             if is_swap and chain.chain_id in _SWAP_PAGE_CHAINS:
                 yield ActionBlock(
-                    proposed_action=_swap_proposed_action(intent),
+                    proposed_action=_swap_proposed_action(intent, chain.chain_id),
                     policy=ChatPolicyStamp(status="rejected", reason=_SWAP_ADVISORY_REASON),
                 )
                 return
@@ -630,17 +632,36 @@ _SWAP_ADVISORY_REASON = (
 )
 
 
-def _swap_proposed_action(intent: Intent) -> dict[str, Any]:
-    """Synthetic ``aerodrome_swap`` proposedAction that drives the web's inline swap card."""
+def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
+    """Synthetic ``aerodrome_swap`` proposedAction that drives the web's inline swap card.
+
+    Carries an optional custom token PAIR + chain (007 · US4). ``tokenIn`` is always a recommended,
+    known-decimals token (ETH/USDC — the token the user swaps FROM) so the web can safely seed the
+    amount for an ETH input; ``tokenOut`` is a user-pasted ERC-20 address when given, else the
+    opposite recommended token. The web re-reads ``decimals()`` on-chain and treats a
+    non-recommended token as UNVERIFIED — the agent only PROPOSES; the swap is user-signed via the
+    web's Uniswap path, outside the fail-closed policy (no ``Asset`` enum / allowlist widening).
+    """
     slippage = intent.max_slippage_bps
     if slippage is None:
         slippage = _DEFAULT_SWAP_SLIPPAGE_BPS
+    in_asset = intent.asset or Asset.ETH  # the token to swap FROM (default ETH)
+    in_addr = token_address(chain_id, in_asset)
+    if intent.token_out_addr is not None:
+        token_out: dict[str, Any] = {"address": intent.token_out_addr}
+    else:
+        out_asset = Asset.USDC if in_asset is Asset.ETH else Asset.ETH
+        token_out = {"address": token_address(chain_id, out_asset), "symbol": out_asset.value}
     return {
         "type": ActionType.AERODROME_SWAP.value,
+        # legacy single-asset field (schema-required); the web ignores it when a pair is present.
         "asset": _SWAP_ASSET_FILLER,
         "decimals": 18,
         "amount": str(intent.amount) if intent.amount else "0",
         "params": {"maxSlippageBps": slippage},
+        "tokenIn": {"address": in_addr, "symbol": in_asset.value},
+        "tokenOut": token_out,
+        "chainId": chain_id,
     }
 
 
