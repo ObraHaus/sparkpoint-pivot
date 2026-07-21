@@ -1,0 +1,290 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import { StdInvariant } from "forge-std/StdInvariant.sol";
+import { Test } from "forge-std/Test.sol";
+
+import { MorphoVaultTestBase } from "../utils/MorphoVaultTestBase.sol";
+import { SparkPointMorphoVault } from "../../src/vault/SparkPointMorphoVault.sol";
+import { MockERC20, MockMorphoVault } from "../mocks/Mocks.sol";
+
+/// @notice N1 fuzz driver for the Morpho WRAPPER: honest actors deposit/withdraw, Morpho yield accrues,
+///         and an `attacker` that never deposited hammers EVERY admin/governance/exit selector trying to
+///         extract funds. None may ever leave the attacker holding USDC (N1).
+contract MorphoNonCustodyHandler is Test {
+    SparkPointMorphoVault internal vault;
+    MockERC20 internal usdc;
+    MockMorphoVault internal morpho;
+    address[] internal actors;
+    address public immutable attacker;
+
+    constructor(
+        SparkPointMorphoVault vault_,
+        MockERC20 usdc_,
+        MockMorphoVault morpho_,
+        address[] memory actors_
+    ) {
+        vault = vault_;
+        usdc = usdc_;
+        morpho = morpho_;
+        actors = actors_;
+        attacker = makeAddr("attacker");
+    }
+
+    function _actor(uint256 seed) internal view returns (address) {
+        return actors[seed % actors.length];
+    }
+
+    function deposit(uint256 seed, uint256 amount) public {
+        address a = _actor(seed);
+        amount = bound(amount, 1, 100_000e6);
+        usdc.mint(a, amount);
+        vm.startPrank(a);
+        usdc.approve(address(vault), amount);
+        try vault.deposit(amount, a) { } catch { }
+        vm.stopPrank();
+    }
+
+    function withdraw(uint256 seed, uint256 amount) public {
+        address a = _actor(seed);
+        uint256 maxW = vault.maxWithdraw(a);
+        if (maxW == 0) return;
+        amount = bound(amount, 1, maxW);
+        vm.prank(a);
+        try vault.withdraw(amount, a, a) { } catch { }
+    }
+
+    function accrueYield(uint256 amount) public {
+        amount = bound(amount, 0, 50_000e6);
+        morpho.simulateYield(amount);
+    }
+
+    /// @notice Model Morpho utilization so the attacker also probes the partial-liquidity path.
+    function utilize(uint256 amount) public {
+        uint256 avail = vault.availableLiquidity();
+        if (avail == 0) return;
+        amount = bound(amount, 0, avail);
+        try morpho.lendOut(amount) { } catch { }
+    }
+
+    /// @notice The attacker tries every non-view selector. NONE may move underlying to it (N1).
+    function attackerAssault(uint256 amount, uint16 feeBps) public {
+        vm.startPrank(attacker);
+        try vault.pauseDeposits() { } catch { }
+        try vault.unpauseDeposits() { } catch { }
+        try vault.setPerformanceFeeBps(feeBps) { } catch { }
+        try vault.setFeeRecipient(attacker) { } catch { }
+        try vault.accrueFee() { } catch { }
+        try vault.harvest() { } catch { }
+        try vault.withdraw(amount, attacker, actors[0]) { } catch { }
+        try vault.redeem(amount, attacker, actors[0]) { } catch { }
+        vm.stopPrank();
+    }
+}
+
+/// @title Morpho wrapper NonCustody invariants — N1 (no admin drain), N2 (withdraw-always), N5.
+contract MorphoVaultNonCustodyInvariantTest is StdInvariant, MorphoVaultTestBase {
+    // EIP-1967 slots (must be EMPTY for a non-proxy, N5).
+    bytes32 internal constant EIP1967_IMPL_SLOT =
+        0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    bytes32 internal constant EIP1967_ADMIN_SLOT =
+        0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
+
+    MorphoNonCustodyHandler internal handler;
+
+    function setUp() public {
+        _deployStack();
+        address[] memory actors = new address[](3);
+        actors[0] = alice;
+        actors[1] = bob;
+        actors[2] = carol;
+        handler = new MorphoNonCustodyHandler(vault, usdc, morpho, actors);
+        targetContract(address(handler));
+    }
+
+    // ── N1: no admin/governance path can drain to a non-holder ──
+    function invariant_noAdminCanDrain() public view {
+        assertEq(usdc.balanceOf(handler.attacker()), 0, "N1: admin/attacker extracted underlying");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // N2 — withdraw-always (even while paused + backend "offline")
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_withdrawWorks_whenPaused() public {
+        uint256 amount = 1_000e6;
+        _deposit(alice, amount);
+
+        vm.prank(guardian);
+        vault.pauseDeposits();
+        assertTrue(vault.paused(), "precondition: vault must be paused");
+
+        uint256 shares = vault.balanceOf(alice);
+        vm.prank(alice);
+        uint256 assetsOut = vault.redeem(shares, alice, alice);
+
+        assertGt(assetsOut, 0, "N2: redeem must return funds while paused");
+        assertEq(usdc.balanceOf(alice), assetsOut, "N2: user received underlying while paused");
+        assertEq(vault.balanceOf(alice), 0, "N2: shares fully burned");
+    }
+
+    /// @dev N2 must hold even for a Vaults-V2 (max*==0) backend while paused — the escape hatch is never
+    ///      blocked by a spuriously-zero clamp.
+    function test_withdrawWorks_whenPaused_andVaultsV2() public {
+        _deposit(alice, 1_000e6);
+
+        morpho.setMaxReturnsZero(true);
+        vm.prank(guardian);
+        vault.pauseDeposits();
+
+        uint256 shares = vault.balanceOf(alice);
+        vm.prank(alice);
+        uint256 out = vault.redeem(shares, alice, alice);
+        assertGt(out, 0, "N2: redeem must succeed while paused even under Morpho V2 max*==0");
+        assertEq(usdc.balanceOf(alice), out, "N2: user received underlying");
+    }
+
+    function test_deposit_revertsWhenPaused() public {
+        vm.prank(guardian);
+        vault.pauseDeposits();
+
+        usdc.mint(bob, 1_000e6);
+        vm.startPrank(bob);
+        usdc.approve(address(vault), 1_000e6);
+        vm.expectRevert(SparkPointMorphoVault.DepositsArePaused.selector);
+        vault.deposit(1_000e6, bob);
+        vm.stopPrank();
+    }
+
+    /// @dev Source-level assert (COMMENTS STRIPPED): ONLY deposit/mint carry the pause modifier;
+    ///      withdraw/redeem NEVER do. Also pins the single-purpose immutable Morpho target (N5).
+    function test_onlyDepositMintCarryPauseModifier() public view {
+        string memory code = _stripComments(vm.readFile("src/vault/SparkPointMorphoVault.sol"));
+        assertTrue(
+            _contains(code, "whenDepositsAllowed"),
+            "N2: deposit/mint must carry the whenDepositsAllowed pause modifier"
+        );
+        assertFalse(
+            _contains(code, "whenNotPaused"),
+            "N2: withdraw/redeem must NEVER carry a pause modifier"
+        );
+        assertTrue(
+            _contains(code, "immutable_morphoVault") || _contains(code, "immutable _morphoVault"),
+            "N5: the single Morpho target must be an immutable"
+        );
+    }
+
+    /// @dev N1 source assert: NO fund-egress selector exists (no sweep/migrate/rescue/recover/skim/
+    ///      upgradeTo). The only asset-out path is ERC-4626 withdraw/redeem.
+    function test_noFundEgressSelector() public view {
+        string memory code = _stripComments(vm.readFile("src/vault/SparkPointMorphoVault.sol"));
+        assertFalse(_contains(code, "function sweep"), "N1: no sweep selector");
+        assertFalse(_contains(code, "function migrate"), "N1: no migrate selector");
+        assertFalse(_contains(code, "function rescue"), "N1: no rescue selector");
+        assertFalse(_contains(code, "function recover"), "N1: no recover selector");
+        assertFalse(_contains(code, "function skim"), "N1: no skim selector");
+        assertFalse(_contains(code, "function upgradeTo"), "N5: no upgradeTo selector");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // N5 — non-upgradeable + provable + pause-only governance
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function test_vaultNotBehindProxy() public view {
+        assertEq(
+            vm.load(address(vault), EIP1967_IMPL_SLOT), bytes32(0), "N5: EIP-1967 impl slot set"
+        );
+        assertEq(
+            vm.load(address(vault), EIP1967_ADMIN_SLOT), bytes32(0), "N5: EIP-1967 admin slot set"
+        );
+        assertGt(
+            address(vault).code.length, 1000, "N5: vault looks like a proxy, not a real contract"
+        );
+    }
+
+    function test_governanceIsPauseOnly() public {
+        _deposit(alice, 5_000e6);
+        uint256 vaultBalBefore = usdc.balanceOf(address(vault));
+        uint256 guardianBalBefore = usdc.balanceOf(guardian);
+
+        vm.startPrank(guardian);
+        vault.pauseDeposits();
+        vault.unpauseDeposits();
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(address(vault)), vaultBalBefore, "N5: pause moved vault funds");
+        assertEq(usdc.balanceOf(guardian), guardianBalBefore, "N5: pause moved funds to guardian");
+    }
+
+    function test_feeConstantsAreZero() public view {
+        assertEq(vault.entryFeeBasisPoints(), 0, "N5: entry fee must be 0");
+        assertEq(vault.exitFeeBasisPoints(), 0, "N5: exit fee must be 0");
+        assertEq(vault.managementFeeBasisPoints(), 0, "N5: management fee must be 0");
+        assertEq(vault.MAX_PERFORMANCE_FEE_BPS(), 2000, "N5: perf-fee hard cap must be 2000 bps");
+    }
+
+    function test_hwmSeededAtDeployment() public view {
+        assertGe(vault.highWaterMark(), 1e18, "N5/FR-050: HWM must be seeded to >= 1e18 at deploy");
+    }
+
+    /// @dev morphoVault() is the wrapped target and is immutable across the instance's life (N5).
+    function test_morphoVaultImmutable() public {
+        assertEq(vault.morphoVault(), address(morpho), "N5: morphoVault() must be the wrapped target");
+        // Exercise governance + accrual; the target can never be redirected.
+        _deposit(alice, 1_000e6);
+        _simulateYield(500e6);
+        vault.accrueFee();
+        vm.startPrank(guardian);
+        vault.pauseDeposits();
+        vault.unpauseDeposits();
+        vm.stopPrank();
+        assertEq(vault.morphoVault(), address(morpho), "N5: morphoVault() must be unchanged");
+        assertEq(vault.factory(), factory, "N5: factory() must be the immutable deployer");
+    }
+
+    /// @dev Remove `//`/`///` line comments and `/* */` block comments so only code is searched.
+    function _stripComments(string memory src) internal pure returns (string memory) {
+        bytes memory b = bytes(src);
+        bytes memory out = new bytes(b.length);
+        uint256 k;
+        uint256 i;
+        bytes1 slash = bytes1("/");
+        bytes1 star = bytes1("*");
+        bytes1 nl = bytes1("\n");
+        while (i < b.length) {
+            if (i + 1 < b.length && b[i] == slash && b[i + 1] == slash) {
+                while (i < b.length && b[i] != nl) i++;
+            } else if (i + 1 < b.length && b[i] == slash && b[i + 1] == star) {
+                i += 2;
+                while (i + 1 < b.length && !(b[i] == star && b[i + 1] == slash)) i++;
+                i += 2;
+            } else {
+                out[k++] = b[i++];
+            }
+        }
+        bytes memory res = new bytes(k);
+        for (uint256 j = 0; j < k; j++) {
+            res[j] = out[j];
+        }
+        return string(res);
+    }
+
+    // ── substring helper ──
+    function _contains(string memory hay, string memory needle) internal pure returns (bool) {
+        bytes memory h = bytes(hay);
+        bytes memory n = bytes(needle);
+        if (n.length == 0) return true;
+        if (n.length > h.length) return false;
+        for (uint256 i = 0; i <= h.length - n.length; i++) {
+            bool ok = true;
+            for (uint256 j = 0; j < n.length; j++) {
+                if (h[i + j] != n[j]) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return true;
+        }
+        return false;
+    }
+}

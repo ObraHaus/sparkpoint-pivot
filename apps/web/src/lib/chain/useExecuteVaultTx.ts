@@ -24,6 +24,13 @@
  * (src/lib/chain/exit.ts) — the vault re-checks everything on-chain at execution and
  * never pause-gates withdrawals (N2). This hook only ORCHESTRATES the user's own txs.
  *
+ * Multi-vault (011 Phase 4): the flow is vault-generic — `exec.vault` is whatever the confirm gate
+ * SELECTED (the launch Aave vault by default, or a branded SparkPointMorphoVault WRAPPER). A wrapper
+ * exposes the SAME ERC-4626 `approve`→`deposit(assets,receiver)` / `redeem(shares,owner,owner)` surface,
+ * so the identical two-leg, user-signed path drives it; the withdraw honors the wrapper's `maxRedeem`
+ * (clamped to live Morpho liquidity — a request within it succeeds, above it the wrapper reverts
+ * cleanly). All deposits/withdrawals stay USER-SIGNED and OUTSIDE the deterministic policy engine.
+ *
  * INERT when `exec` is `undefined`: the wagmi hooks still mount (Rules of Hooks) but
  * `start()` is a no-op — so ConfirmFlow can call it unconditionally and its non-onchain
  * callers (chat/premium/bridge/swap) are completely unaffected.

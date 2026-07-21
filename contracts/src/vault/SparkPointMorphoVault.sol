@@ -1,0 +1,455 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { ERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+
+import { ISparkPointMorphoVault } from "../interfaces/ISparkPointMorphoVault.sol";
+import { ICapRegistry } from "../interfaces/ICapRegistry.sol";
+
+/// @title SparkPointMorphoVault — the Morpho Wrapper Vault (ERC-4626, non-upgradeable, profit-only perf fee)
+/// @notice USDC in -> ONE curated Morpho IERC4626 -> withdraw anytime (up to live Morpho liquidity).
+///         0% management, 0% entry/exit, 0% on principal; a PERFORMANCE FEE (default 10%, hard-capped
+///         20%) is charged on REALIZED YIELD ONLY, above a share-price high-water mark — never on
+///         principal, never in flat/down periods. The SparkPoint fee STACKS on Morpho's native curator
+///         fee (both disclosed off-chain). NON-Aave yield source.
+/// @dev CLONE of SparkPointVault.sol with the Aave leg swapped for one IERC4626 morphoVault. Enforces the
+///      non-custody invariants BY CONSTRUCTION:
+///        N1  the only asset-out paths are ERC-4626 withdraw/redeem (share-owner/approved only); the
+///            perf fee is share DILUTION (_mint to a non-privileged feeRecipient), never an asset move;
+///            there is NO sweep/rescue/migrate selector.
+///        N2  withdraw/redeem/_withdraw carry NO pause modifier and unwind DIRECTLY against the Morpho
+///            vault; the fee accrual on the exit path is try/catch FAIL-OPEN; only deposit/mint carry
+///            the deposit-side pause (whenDepositsAllowed).
+///        N5  plain contract — no proxy, no upgradeTo, no EIP-1967 slots, no delegatecall-to-impl;
+///            custody immutables (morphoVault, guardian, factory, capRegistry) set in the constructor;
+///            governance is pause-only + one hard-capped (<=20%) forward-only performance-fee rate +
+///            feeRecipient; mgmt/entry/exit fees pure 0.
+///      NON-REBASING: totalAssets == morphoVault.convertToAssets(morphoVault.balanceOf(this)) — it tracks
+///      the Morpho share-price UP and DOWN (a Morpho-side loss is reflected, never fabricated). Built on
+///      OZ v5 ERC4626 with the default virtual-shares offset (donation/inflation safe). The constructor
+///      SEEDS the HWM to convertToAssets(1e18) (== 1e18 at empty-vault state) so the first accrual can
+///      never tax principal (FR-050).
+contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
+    using SafeERC20 for IERC20;
+
+    /// @dev Hard cap on the performance-fee rate (bytecode constant). Governance can NEVER exceed it.
+    uint16 internal constant _MAX_PERFORMANCE_FEE_BPS = 2000; // 20%
+    uint256 internal constant _BPS_DENOMINATOR = 10_000;
+
+    // ── Custody immutables (N5) — set once in the constructor, never mutable ──
+    IERC4626 internal immutable _morphoVault;
+    address internal immutable _guardian;
+    address internal immutable _factory;
+    address internal immutable _capRegistry;
+
+    // ── Set-once branding (Solidity strings can't be immutable → storage, set once, NO setter) ──
+    string internal _label;
+
+    // ── Governance-mutable state ──
+    address internal _feeRecipient; // ordinary, non-privileged share holder (§6.1)
+    uint16 internal _performanceFeeBps; // the ONLY mutable fee param; timelocked (guardian) + hard-capped
+    uint256 internal _highWaterMark; // share price (assets-per-share, 1e18-scaled); seeded to 1e18 (FR-050)
+    bool internal _paused; // deposit-side ONLY; withdrawals are unaffected (N2)
+
+    // ── Revert selectors ──
+    error FeeExceedsCap();
+    error DepositsArePaused();
+    error CapExceeded();
+    error NotGuardian();
+    error ZeroAddress();
+    error ZeroShares();
+
+    /// @dev Deposit-side pause (N2): touches deposit/mint ONLY — never withdraw/redeem.
+    modifier whenDepositsAllowed() {
+        if (_paused) revert DepositsArePaused();
+        _;
+    }
+
+    /// @dev The guardian is the pause + timelocked-fee-governance authority. It has NO fund path.
+    modifier onlyGuardian() {
+        if (msg.sender != _guardian) revert NotGuardian();
+        _;
+    }
+
+    /// @dev Sets the custody immutables and SEEDS highWaterMark so the first accrual can never tax
+    ///      principal (§6/§6.1, FR-050). At empty-vault state convertToAssets(1e18) == 1e18 under OZ
+    ///      ERC4626's virtual-shares offset, so the seed is exactly 1e18.
+    constructor(
+        IERC20 usdc_,
+        IERC4626 morphoVault_,
+        address guardian_,
+        address factory_,
+        address capRegistry_,
+        address feeRecipient_,
+        uint16 performanceFeeBps_,
+        string memory name_,
+        string memory symbol_,
+        string memory label_
+    ) ERC20(name_, symbol_) ERC4626(usdc_) {
+        if (
+            address(usdc_) == address(0) || address(morphoVault_) == address(0)
+                || guardian_ == address(0) || factory_ == address(0)
+                || capRegistry_ == address(0) || feeRecipient_ == address(0)
+        ) {
+            revert ZeroAddress();
+        }
+        if (performanceFeeBps_ > _MAX_PERFORMANCE_FEE_BPS) revert FeeExceedsCap();
+
+        _morphoVault = morphoVault_;
+        _guardian = guardian_;
+        _factory = factory_;
+        _capRegistry = capRegistry_;
+        _feeRecipient = feeRecipient_;
+        _performanceFeeBps = performanceFeeBps_;
+        _label = label_;
+        _highWaterMark = convertToAssets(1e18); // SEED == 1e18 (empty-vault virtual-offset)
+
+        // One-time approval so the Morpho vault can pull USDC on deposit(). The Morpho vault only pulls
+        // when this vault itself calls deposit(); this grants no admin asset-movement path (N1).
+        usdc_.forceApprove(address(morphoVault_), type(uint256).max);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ERC-4626 accounting — totalAssets is the full Morpho-backed claim (NON-REBASING)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice The vault's Morpho-backed claim: morphoVault.convertToAssets(morphoVault.balanceOf(this)).
+    ///         NON-REBASING — the wrapper holds Morpho SHARES, so the claim is priced through the Morpho
+    ///         share price and tracks it UP and DOWN (a Morpho-side loss is reflected, never fabricated).
+    ///         Every deposited USDC is supplied to Morpho immediately, so idle USDC is always ~0 — pricing
+    ///         off the Morpho claim ONLY makes raw-USDC DONATIONS NOT move the share price, hardening the
+    ///         OZ virtual-offset against inflation/donation attacks. The performance fee is share dilution
+    ///         (§6.1), NOT a term here, so totalAssets is always the full claim.
+    function totalAssets() public view override(ERC4626, IERC4626) returns (uint256) {
+        return _morphoVault.convertToAssets(_morphoVault.balanceOf(address(this)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Caps (G2) — enforced via maxDeposit/maxMint; caps NEVER gate withdraw/redeem (N2)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice min(perUserRemaining, totalRemaining, vaultRemaining); 0 at cap or while paused.
+    function maxDeposit(address receiver)
+        public
+        view
+        override(ERC4626, IERC4626)
+        returns (uint256)
+    {
+        if (_paused) return 0;
+        ICapRegistry reg = ICapRegistry(_capRegistry);
+        uint256 ta = totalAssets();
+        uint256 userAssets = convertToAssets(balanceOf(receiver));
+
+        uint256 perUserCap = reg.perUserCap();
+        uint256 totalCap = reg.totalCap();
+        uint256 vaultCap = reg.vaultCap();
+
+        uint256 perUserRemaining = perUserCap > userAssets ? perUserCap - userAssets : 0;
+        uint256 totalRemaining = totalCap > ta ? totalCap - ta : 0;
+        uint256 vaultRemaining = vaultCap > ta ? vaultCap - ta : 0;
+
+        return Math.min(perUserRemaining, Math.min(totalRemaining, vaultRemaining));
+    }
+
+    /// @notice The share-denominated cap, derived from maxDeposit (rounds DOWN, vault's favor).
+    function maxMint(address receiver) public view override(ERC4626, IERC4626) returns (uint256) {
+        uint256 assetsCap = maxDeposit(receiver);
+        if (assetsCap == type(uint256).max) return type(uint256).max;
+        return convertToShares(assetsCap);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Withdraw liquidity clamps (N2) — rounding-sound against availableLiquidity
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice Underlying USDC currently withdrawable from Morpho for this vault. Normally
+    ///         morphoVault.maxWithdraw(this) — for a request <= this, morphoVault.withdraw returns EXACTLY
+    ///         the requested amount. VAULTS-V2 FALLBACK (§1.3): a Morpho Vaults V2 returns max*==0 while
+    ///         holding value; a naive clamp would spuriously zero this instance's liquidity and BLOCK the
+    ///         N2 escape hatch. So when maxWithdraw==0 && totalAssets>0 we fall back to the FULL claim
+    ///         (OPTIMISTIC); the real morphoVault.withdraw + the "PARTIAL" require in _withdraw then
+    ///         fail-close CLEANLY if liquidity is actually short — never a spuriously-zero clamp.
+    function availableLiquidity() public view returns (uint256) {
+        uint256 mw = _morphoVault.maxWithdraw(address(this));
+        if (mw == 0 && totalAssets() > 0) {
+            return _morphoVault.convertToAssets(_morphoVault.balanceOf(address(this)));
+        }
+        return mw;
+    }
+
+    /// @notice Assets implied by the owner's shares (rounds DOWN), clamped to what Morpho can pay. Never
+    ///         reduced by pause, caps, or fee accrual.
+    function maxWithdraw(address owner)
+        public
+        view
+        override(ERC4626, ISparkPointMorphoVault)
+        returns (uint256)
+    {
+        return Math.min(convertToAssets(balanceOf(owner)), availableLiquidity());
+    }
+
+    /// @notice Shares payable from current liquidity (convertToShares rounds DOWN, so
+    ///         previewRedeem(maxRedeem) <= availableLiquidity). Never reduced by pause/caps/fee.
+    function maxRedeem(address owner)
+        public
+        view
+        override(ERC4626, ISparkPointMorphoVault)
+        returns (uint256)
+    {
+        return Math.min(balanceOf(owner), convertToShares(availableLiquidity()));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Deposit / mint — pausable + cap-checked; ACCRUE-THEN-PRICE (FR-050)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Accrue FIRST (atomic mint-for-gain-above-HWM AND advance) so existing holders pay the fee
+    ///      on yield-up-to-now BEFORE the new shares are priced. accrueFee() is FAIL-OPEN; if (and only
+    ///      if) its fee-share MINT leg is skipped, the MANDATORY _settleHighWaterMark() fallback
+    ///      force-advances the HWM to the current pps WITHOUT minting — so a late depositor is never
+    ///      charged on pre-entry yield. The fallback is a no-op on the success path and NEVER runs
+    ///      before/instead of the mint (that would zero the gain and under-collect the fee).
+    function deposit(uint256 assets, address receiver)
+        public
+        override(ERC4626, IERC4626)
+        whenDepositsAllowed
+        returns (uint256 shares)
+    {
+        _tryAccrueFee();
+        _settleHighWaterMark();
+        if (assets > maxDeposit(receiver)) revert CapExceeded();
+        shares = previewDeposit(assets); // priced AFTER accrual so the depositor is not diluted by it
+        // Refuse a deposit that would mint 0 shares (a donation/inflated-pps edge) so a depositor never
+        // surrenders assets for nothing — the OZ virtual-offset defence, backstopped by construction.
+        if (shares == 0) revert ZeroShares();
+        _deposit(_msgSender(), receiver, assets, shares);
+    }
+
+    function mint(uint256 shares, address receiver)
+        public
+        override(ERC4626, IERC4626)
+        whenDepositsAllowed
+        returns (uint256 assets)
+    {
+        _tryAccrueFee();
+        _settleHighWaterMark();
+        if (shares > maxMint(receiver)) revert CapExceeded();
+        assets = previewMint(shares);
+        _deposit(_msgSender(), receiver, assets, shares);
+    }
+
+    /// @dev Pull USDC in, supply it to Morpho (Morpho shares held by the vault), then mint spk-shares.
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares)
+        internal
+        override
+    {
+        IERC20 usdc = IERC20(asset());
+        usdc.safeTransferFrom(caller, address(this), assets);
+        uint256 morphoShares = _morphoVault.deposit(assets, address(this));
+        _mint(receiver, shares);
+        emit Deposit(caller, receiver, assets, shares);
+        emit MorphoSupplied(assets, morphoShares);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Withdraw / redeem — NO pause modifier (N2); unwind DIRECTLY against Morpho
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev _tryAccrueFee() is FAIL-OPEN; it can NEVER block the exit below. The OZ path clamps to
+    ///      maxWithdraw, then _withdraw pulls from Morpho and burns.
+    function withdraw(uint256 assets, address receiver, address owner)
+        public
+        override(ERC4626, IERC4626)
+        returns (uint256 shares)
+    {
+        _tryAccrueFee();
+        return super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(uint256 shares, address receiver, address owner)
+        public
+        override(ERC4626, IERC4626)
+        returns (uint256 assets)
+    {
+        _tryAccrueFee();
+        return super.redeem(shares, receiver, owner);
+    }
+
+    /// @dev Pull from Morpho FIRST (to this vault), then burn shares + transfer to the receiver. Measure
+    ///      the USDC actually delivered and require it EXACTLY equals the request — no silent short-fill;
+    ///      if Morpho liquidity is short the morphoVault.withdraw itself reverts, or this require fails,
+    ///      so the exit fails CLEANLY. Do NOT call _spendAllowance here — super._withdraw already spends
+    ///      it exactly once when caller != owner.
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal override {
+        IERC20 usdc = IERC20(asset());
+        uint256 before = usdc.balanceOf(address(this));
+        uint256 morphoShares = _morphoVault.withdraw(assets, address(this), address(this));
+        uint256 got = usdc.balanceOf(address(this)) - before;
+        require(got == assets, "PARTIAL");
+        super._withdraw(caller, receiver, owner, assets, shares);
+        emit MorphoWithdrawn(assets, morphoShares, receiver);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // §6.1 performance fee — lazy, profit-only, HWM, FAIL-OPEN mint leg
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice Lazy, idempotent fee accrual. Mints fee shares to feeRecipient worth
+    ///         feeRate x (assets gained above the HWM since last accrual), then advances the HWM.
+    ///         Profit-only: no fee at/below the HWM (flat/down periods), no fee on principal.
+    /// @dev Kept `virtual` so a test harness can mock a reverting accrual to prove the exit path is
+    ///      fail-open (N2). Fee is DILUTION (new shares to a non-privileged holder), so totalAssets()
+    ///      is never touched and no existing holder's underlying is reduced below principal.
+    function accrueFee() public virtual override returns (uint256 feeShares) {
+        uint256 pps = convertToAssets(1e18);
+        uint256 hwm = _highWaterMark;
+        if (pps <= hwm) return 0; // flat/down -> no fee, HWM unchanged
+
+        uint256 supply = totalSupply();
+        uint256 gainAssets = ((pps - hwm) * supply) / 1e18; // yield realized above the mark
+        uint256 feeAssets = (gainAssets * _performanceFeeBps) / _BPS_DENOMINATOR;
+        if (feeAssets == 0) return 0;
+
+        uint256 ta = totalAssets();
+        if (ta <= feeAssets) return 0; // defensive: cannot dilute more than exists
+        feeShares = (feeAssets * supply) / (ta - feeAssets); // round DOWN (vault's / holders' favor)
+        if (feeShares == 0) return 0;
+
+        _mint(_feeRecipient, feeShares); // dilution only — totalAssets() untouched
+        uint256 newHwm = convertToAssets(1e18); // post-mint pps (monotonic up)
+        emit PerformanceFeeAccrued(_feeRecipient, feeShares, gainAssets, newHwm);
+        emit HighWaterMarkUpdated(hwm, newHwm);
+        _highWaterMark = newHwm;
+    }
+
+    /// @notice Realize Morpho yield into the share price and accrue the fee (keeper convenience).
+    ///         The Morpho claim already reflects accrued yield, so this is a fail-open accrual.
+    function harvest() external override {
+        _tryAccrueFee();
+    }
+
+    /// @dev FAIL-OPEN wrapper. A revert in fee accrual is swallowed so the redemption/deposit is never
+    ///      blocked (N2). The external self-call boundary is what makes the try/catch effective.
+    function _tryAccrueFee() internal {
+        try this.accrueFee() returns (uint256) { } catch { }
+    }
+
+    /// @notice MANDATORY (non-fail-open) deposit-time HWM advance. Settles the HWM up to the current
+    ///         pps WITHOUT minting. Runs AFTER _tryAccrueFee() in deposit()/mint() — never before/
+    ///         instead of the fee-share mint. A no-op on the success path (accrueFee already advanced
+    ///         the HWM); it does real work only when accrueFee's mint leg failed open, so a late
+    ///         depositor entering above the global HWM is never later charged on pre-entry yield.
+    function _settleHighWaterMark() internal {
+        uint256 pps = convertToAssets(1e18);
+        if (pps > _highWaterMark) {
+            emit HighWaterMarkUpdated(_highWaterMark, pps);
+            _highWaterMark = pps;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Governance — timelocked (guardian), hard-capped; NEVER a fund/withdraw path (N1, N5)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice Set the performance-fee rate. Guardian-only (timelock/multisig); reverts above the cap.
+    ///         Touches only the FORWARD fee on FUTURE yield-above-HWM — never principal/withdraw.
+    function setPerformanceFeeBps(uint16 newRateBps) external override onlyGuardian {
+        if (newRateBps > _MAX_PERFORMANCE_FEE_BPS) revert FeeExceedsCap();
+        emit FeeRateUpdated(_performanceFeeBps, newRateBps);
+        _performanceFeeBps = newRateBps;
+    }
+
+    /// @notice Set the fee-share recipient. Guardian-only. The recipient is always an ordinary,
+    ///         non-privileged share holder with no authority over other users' funds.
+    function setFeeRecipient(address newRecipient) external override onlyGuardian {
+        if (newRecipient == address(0)) revert ZeroAddress();
+        emit FeeRecipientUpdated(_feeRecipient, newRecipient);
+        _feeRecipient = newRecipient;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pause — PAUSE-ONLY kill switch (N5). Guardian-only; deposit/mint side ONLY.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function pauseDeposits() external override onlyGuardian {
+        _paused = true;
+        emit DepositsPaused(msg.sender);
+    }
+
+    function unpauseDeposits() external override onlyGuardian {
+        _paused = false;
+        emit DepositsUnpaused(msg.sender);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Custody-relevant views (public for Trust Center provability, N5)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function morphoVault() external view override returns (address) {
+        return address(_morphoVault);
+    }
+
+    function factory() external view override returns (address) {
+        return _factory;
+    }
+
+    function label() external view override returns (string memory) {
+        return _label;
+    }
+
+    function paused() public view override returns (bool) {
+        return _paused;
+    }
+
+    function guardian() external view override returns (address) {
+        return _guardian;
+    }
+
+    function capRegistry() external view override returns (address) {
+        return _capRegistry;
+    }
+
+    function depositCap() external view override returns (uint256) {
+        return ICapRegistry(_capRegistry).vaultCap();
+    }
+
+    function feeRecipient() external view override returns (address) {
+        return _feeRecipient;
+    }
+
+    function performanceFeeBps() external view override returns (uint16) {
+        return _performanceFeeBps;
+    }
+
+    function highWaterMark() external view override returns (uint256) {
+        return _highWaterMark;
+    }
+
+    // ── Fees that are a compile-time constant 0 at the bytecode level (N5) ──
+    function MAX_PERFORMANCE_FEE_BPS() external pure override returns (uint16) {
+        return _MAX_PERFORMANCE_FEE_BPS;
+    }
+
+    function entryFeeBasisPoints() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function exitFeeBasisPoints() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function managementFeeBasisPoints() external pure override returns (uint256) {
+        return 0;
+    }
+}
