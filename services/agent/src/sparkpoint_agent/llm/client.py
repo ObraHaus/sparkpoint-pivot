@@ -28,6 +28,7 @@ logged — this module emits no logs and keeps the token inside the SDK object
 
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -153,6 +154,27 @@ class AnthropicTransport:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Per-request model-alias override (feature 008, US4 — premium model routing). Set at the API
+# boundary (the quota dependency) to the caller's tier model_alias; the gateway transport uses it
+# in place of its default alias for that request. asyncio task-context isolation keeps it
+# per-request (a ``set`` mutates only this request task's context copy — no cross-request leak, no
+# reset needed). ``None`` (default) => the transport's configured alias. Advisory routing only,
+# never a funds path (N2).
+_MODEL_ALIAS: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "sparkpoint_model_alias", default=None
+)
+
+
+def set_model_alias(alias: str | None) -> None:
+    """Set the current request's gateway model alias (its tier's ``model_alias``), read by the
+    transport. Fail-safe: an empty/unknown value falls back to the transport's default alias."""
+    _MODEL_ALIAS.set(alias or None)
+
+
+def current_model_alias() -> str | None:
+    return _MODEL_ALIAS.get()
+
+
 # OpenAI-compatible gateway transport (LiteLLM → OpenRouter) — the DEFAULT path.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -247,7 +269,8 @@ class OpenAICompatTransport:
         user: str | None = None,
     ) -> Any:
         payload: dict[str, Any] = {
-            "model": self.model,
+            # Per-request tier override (premium routing) if set, else the configured alias.
+            "model": current_model_alias() or self.model,
             "messages": _oai_messages(system, messages),
             "max_tokens": max_tokens,
         }

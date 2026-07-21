@@ -15,6 +15,7 @@ from .allowlist import (
 )
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .content_entries import ContentEntryStore
+from .limits import DEFAULT_TIER, LimitsStore
 from .mandates import (
     MandateRecord,
     MandateStore,
@@ -28,9 +29,11 @@ __all__ = [
     "ADMIN_ROLE",
     "BETA_ROLE",
     "DATABASE_URL_ENV",
+    "DEFAULT_TIER",
     "AllowlistStore",
     "ContentEntryStore",
     "Database",
+    "LimitsStore",
     "DatabaseConfig",
     "MandateRecord",
     "MandateStore",

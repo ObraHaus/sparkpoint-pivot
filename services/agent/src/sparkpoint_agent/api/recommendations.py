@@ -64,6 +64,7 @@ from ..persona import get_persona
 from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
 from .errors import ApiError, ErrorCode, ErrorReason
 from .mandate import get_mandate_store
+from .quota import require_within_quota
 from .security import AccountContext
 from .vault import get_account, get_vault_reader
 
@@ -395,7 +396,11 @@ async def _compute(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("/recommendations", response_model=RecommendationsResponse)
+@router.get(
+    "/recommendations",
+    response_model=RecommendationsResponse,
+    dependencies=[Depends(require_within_quota("recs"))],
+)
 async def get_recommendations(
     account: Annotated[AccountContext, Depends(get_account)],
     reader: Annotated[VaultReader, Depends(get_vault_reader)],

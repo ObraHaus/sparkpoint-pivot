@@ -1,7 +1,7 @@
 # ruff: noqa: S101
 """T021 — the feature-011 provenance store (``VaultFactoryStore``) SQL shape + the 0015 migration.
 
-Two 011-owned tables from ``migrations/0015_vault_factory.sql`` (``morpho_curated_allowlist`` +
+Two 011-owned tables from ``migrations/0016_vault_factory.sql`` (``morpho_curated_allowlist`` +
 ``sparkpoint_wrappers``). This asserts:
 
   * the migration is the next-free number (0015) and CREATEs both tables (010 has none to ALTER);
@@ -54,15 +54,15 @@ class _FakeDb:
 # ── migration file ───────────────────────────────────────────────────────────
 
 
-def test_migration_is_next_free_0015() -> None:
+def test_migration_is_next_free_0016() -> None:
     numbers = sorted(int(p.name[:4]) for p in _MIGRATIONS.glob("0*.sql"))
-    assert 15 in numbers, "0015 migration must exist"
-    # 0015 is exactly one past the previous max (no gap, no clash).
-    assert max(n for n in numbers if n < 15) == 14
+    assert 16 in numbers, "0016 migration must exist"
+    # 0016 is exactly one past the previous max (0015_limits — feature 008, merged from develop).
+    assert max(n for n in numbers if n < 16) == 15
 
 
 def test_migration_creates_both_011_tables() -> None:
-    sql = (_MIGRATIONS / "0015_vault_factory.sql").read_text().lower()
+    sql = (_MIGRATIONS / "0016_vault_factory.sql").read_text().lower()
     assert "create table if not exists morpho_curated_allowlist" in sql
     assert "create table if not exists sparkpoint_wrappers" in sql
     # No ALTER — 010 owns a static-config registry, so there is no table to ALTER.

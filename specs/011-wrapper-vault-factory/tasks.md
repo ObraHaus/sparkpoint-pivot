@@ -33,7 +33,7 @@ governance gate; Phases 1–4 ship independently to `develop` ONLY after T001.
 A task-group / phase is "done" only when:
 
 - [ ] `CHANGELOG.md` — a dev bullet under `## [Unreleased]` for any behavior/schema/infra change (the
-      template, the factory, the 011-owned `0015_vault_factory.sql` migration (curated-allowlist +
+      template, the factory, the 011-owned `0016_vault_factory.sql` migration (curated-allowlist +
       `sparkpoint_wrappers`), the
       admin-manage endpoints, the address-book factory/curated-vault fields all qualify).
 - [ ] `services/agent/content_seed/whats-new.json` — a **client-facing** entry per user-visible phase
@@ -200,7 +200,7 @@ unified `/admin/vaults` page; the "no move-funds action exists" invariant is vis
 - [ ] T021 [P] [US4] (BLOCKED by T001) Migration — CREATE the two **011-owned** tables `morpho_curated_allowlist`
       + `sparkpoint_wrappers` (`vault_address`, `chain_id`, `kind`, `label`, `morpho_vault`, `native_fee_bps`,
       `deploy_tx`, `factory_address`, `created_at`) apply cleanly (`PGCLIENTENCODING=UTF8`); 010 has no DB table
-      to ALTER. Files: `services/agent/migrations/0015_vault_factory.sql` (confirm next-free number at impl
+      to ALTER. Files: `services/agent/migrations/0016_vault_factory.sql` (confirm next-free number at impl
       time; `0014` is the current max), `services/agent/tests/db/…`.
 - [ ] T022 [P] [US4] (BLOCKED by T001) BFF unit — `/admin/vaults/create` refuses a non-allowlisted
       `morphoVault` + `feeBps>2000` and returns calldata (never signs); the guardian-action enum contains
@@ -230,7 +230,7 @@ unified `/admin/vaults` page; the "no move-funds action exists" invariant is vis
 **Checkpoint**: ✅ DONE 2026-07-21 — operators create + govern wrappers from `/admin/vaults` via user-signed
 timelock actions; **no move-funds action exists** (closed guardian enum {pause,unpause,setFee,
 setFeeRecipient,setCaps}); the BFF holds no key + returns prepared calldata only (eth_call reads, keyless
-transport). Migration `0015_vault_factory.sql` (2 011-owned tables) + `admin_vaults.py` BFF + the
+transport). Migration `0016_vault_factory.sql` (2 011-owned tables) + `admin_vaults.py` BFF + the
 `/admin/vaults` page. Agent `pytest` **506 passed** (+36 in the two new suites incl. non-allowlisted/feeBps
 refusals, prepared-calldata-never-signs, closed-enum rejection, pending→live provenance promotion, chain-id
 consistency, setCaps ceiling gate); `mypy` strict clean; web `tsc`/`eslint`/`build` green. Non-custody

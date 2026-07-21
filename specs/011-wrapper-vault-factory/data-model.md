@@ -135,7 +135,7 @@ needs no ABI change to list a wrapper.
 
 ### Migration (new — owned by 011)
 
-`services/agent/migrations/` — 011 owns a single NEW migration, `0015_vault_factory.sql` (confirm the next
+`services/agent/migrations/` — 011 owns a single NEW migration, `0016_vault_factory.sql` (confirm the next
 free number at implementation time; the repo max on `develop` is `0014`, and a parallel feature may claim
 `0015`). It CREATES two 011-owned tables: `morpho_curated_allowlist` (§3) and `sparkpoint_wrappers` (§4:
 `vault_address`, `chain_id`, `kind`, `label`, `morpho_vault`, `native_fee_bps`, `deploy_tx`,

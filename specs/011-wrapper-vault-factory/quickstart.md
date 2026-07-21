@@ -167,6 +167,6 @@ pnpm -w typecheck && pnpm -w lint && pnpm -w build
 - `DEVELOPMENT.md` — the factory + curated-vault address-book fields, the Morpho GraphQL data feed
   (mainnet-only), and any new env var (e.g. `MORPHO_GRAPHQL_URL`).
 - `.specify/memory/constitution.md` — the ratified amendment record (US1) + version bump.
-- `MIGRATIONS.md` — the 011 migration `0015_vault_factory.sql` (curated allowlist + `sparkpoint_wrappers`; apply with
+- `MIGRATIONS.md` — the 011 migration `0016_vault_factory.sql` (curated allowlist + `sparkpoint_wrappers`; apply with
   `PGCLIENTENCODING=UTF8`).
 - The in-app `/admin/vaults` + `/changelog` copy — the branded-wrapper double-fee disclosure.

@@ -1,6 +1,6 @@
-"""Authoritative store for the feature-011 branded-wrapper PROVENANCE (migration 0015).
+"""Authoritative store for the feature-011 branded-wrapper PROVENANCE (migration 0016).
 
-Two 011-owned tables (see ``migrations/0015_vault_factory.sql``):
+Two 011-owned tables (see ``migrations/0016_vault_factory.sql``):
 
   * ``morpho_curated_allowlist`` — the off-chain VETTING record behind each on-chain allowlist add
     (the on-chain ``morphoAllowlist[addr]`` mapping is the enforcement; this row is the rationale).

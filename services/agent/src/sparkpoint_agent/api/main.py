@@ -30,13 +30,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..chain import VaultUnavailable
 from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
+from ..db.limits import LimitsStore
 from ..db.persona_notes import PersonaNoteStore
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
 from .admin_knowledge import router as admin_knowledge_router
+from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
+from .admin_usage import router as admin_usage_router
 from .admin_vaults import router as admin_vaults_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
@@ -56,6 +59,7 @@ from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
 from .tips import router as tips_router
+from .usage import router as usage_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
@@ -122,6 +126,26 @@ async def _seed_allowlists(db: object) -> None:
     except Exception:
         # Never interpolate env values; a seed failure must not crash boot.
         logger.warning("allowlist_seed_skipped (table missing or DB error)")
+
+
+async def _seed_tier_limits(db: object) -> None:
+    """Idempotently seed premium wallets from ``PREMIUM_ALLOWLIST`` (comma-separated) on boot
+    (feature 008). The two tiers themselves ship seeded by migration 0015; this only assigns the
+    launch premium wallets.
+
+    Best-effort like the allowlist seed: a failure (0015 not yet applied, DB error) is logged and
+    swallowed so it never blocks startup. Tier limits are an advisory-compute gate, never the
+    withdraw/exit path (N2); if the table is missing, enforcement simply has no premium grants.
+    """
+    try:
+        premium = parse_allowlist_env(os.getenv("PREMIUM_ALLOWLIST"))
+        if not premium:
+            return
+        added = await LimitsStore(db).seed_premium(premium)  # type: ignore[arg-type]
+        logger.info("tier_limits_seeded premium_added=%d", added)
+    except Exception:
+        # Never interpolate env values; a seed failure must not crash boot.
+        logger.warning("tier_limits_seed_skipped (table missing or DB error)")
 
 
 async def _warm_persona(db: object) -> None:
@@ -232,6 +256,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
         await _seed_allowlists(db)
+        # Feature 008: seed any PREMIUM_ALLOWLIST wallets to the premium tier (best-effort).
+        await _seed_tier_limits(db)
         # Sparky persona: compose the literacy SYSTEM persona from persona_seed/ + any admin
         # overrides, once, at boot. Trusted voice-only content; never on the withdraw/exit path.
         await _warm_persona(db)
@@ -342,6 +368,13 @@ app.include_router(admin_persona_router)
 app.include_router(conversations_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
+# Feature 008 admin tier-limits config (/admin/limits/*) — admin-gated, audited, POST-only writes.
+# Advisory-compute config only; never a signable artifact, never the withdraw path (N2).
+app.include_router(admin_limits_router)
+# Feature 008 admin usage/limits monitoring (/admin/usage/*) — admin-gated, masked, honest-degrade.
+app.include_router(admin_usage_router)
+# Feature 008 self-scoped usage read (/usage/self) — a wallet reads its OWN allowance (not admin).
+app.include_router(usage_router)
 # Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the
 # branded Morpho wrapper factory. Every mutating route returns calldata the operator signs off-app;
 # NO server key, NO fund path, and NO move-funds guardian verb exists (N1/N2/US4).

@@ -298,11 +298,12 @@ def test_delete_fails_closed_when_model_info_unreadable(
         app.dependency_overrides.pop(get_allowlist_store, None)
 
 
-def test_delete_fails_closed_when_zero_alias_deployments_parse(
+def test_delete_fails_closed_when_target_not_found(
     monkeypatch: pytest.MonkeyPatch, audit: _FakeAudit
 ) -> None:
-    # A well-formed 200 /model/info with NO deployments for the alias (renamed/parse gap) must
-    # REFUSE the delete (can't confirm the chat backends) — not delete blind (B5).
+    # A delete whose target id isn't among the gateway's deployments (renamed/gone/parse gap) must
+    # REFUSE — not delete blind (B5). The guardrail is now per-alias, so an unknown target fails
+    # closed on "couldn't find it" rather than "couldn't confirm the chat backends".
     monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
     monkeypatch.setenv("LITELLM_BASE_URL", "http://gw/v1")
     monkeypatch.setenv("LITELLM_ADMIN_KEY", "sk-admin-scoped-test")
@@ -311,7 +312,6 @@ def test_delete_fails_closed_when_zero_alias_deployments_parse(
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/model/info":
-            # 200, but the only model serves a DIFFERENT alias → zero parseable for sparkpoint-chat.
             other = {"model_name": "some-other-alias", "model_info": {"id": "x"},
                      "litellm_params": {}}
             return httpx.Response(200, json={"data": [other]})
@@ -326,7 +326,10 @@ def test_delete_fails_closed_when_zero_alias_deployments_parse(
     app.dependency_overrides[get_allowlist_store] = lambda: _FakeAllowlist({ADMIN})
     try:
         client = TestClient(app)
-        r = client.post("/admin/llm/config/model/delete", headers=_headers(ADMIN), json={"id": "x"})
+        # "ghost" isn't in /model/info (only "x" is) → target-not-found → refuse, no audit.
+        r = client.post(
+            "/admin/llm/config/model/delete", headers=_headers(ADMIN), json={"id": "ghost"}
+        )
         assert r.status_code == 503
         assert audit.rows == []
     finally:

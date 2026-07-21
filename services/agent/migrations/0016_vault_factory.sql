@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0015_vault_factory.sql  -  Feature 011: branded Morpho wrapper factory (MANAGE half)
+-- 0016_vault_factory.sql  -  Feature 011: branded Morpho wrapper factory (MANAGE half)
 -- =============================================================================
 -- Feature 011 adds an admin-gated CREATE2 factory that deploys branded SparkPointMorphoVault
 -- wrappers over a CURATED, on-chain Morpho allowlist. The on-chain contracts are the enforcement;
