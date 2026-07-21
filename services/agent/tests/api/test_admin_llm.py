@@ -69,6 +69,57 @@ def test_requires_s2s_auth() -> None:
     assert resp.status_code in (401, 400)
 
 
+def test_status_model_list_uses_admin_key_so_every_alias_shows(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The virtual chat key is scoped to its own allowlist, so /model/info through it can't see other
+    # aliases (e.g. the premium one). /status must fetch the MODEL LIST with the ADMIN key so the
+    # Overview shows every alias — while /key/info stays on the VIRTUAL key (the one we meter).
+    import sparkpoint_agent.api.admin_llm as m
+
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://gw.local")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-virtual")
+    monkeypatch.setenv("LITELLM_ADMIN_KEY", "sk-admin")
+
+    seen: dict[str, str] = {}
+
+    async def fake_get_json(_client: object, url: str, headers: dict[str, str]) -> object:
+        auth = headers.get("authorization", "")
+        if url.endswith("/model/info"):
+            seen["model_info"] = auth
+            base = {"model_name": "sparkpoint-chat", "litellm_params": {"model": "openrouter/x"}}
+            if auth == "Bearer sk-admin":  # only the admin key can see the premium alias
+                return {
+                    "data": [
+                        base,
+                        {
+                            "model_name": "sparkpoint-chat-premium",
+                            "litellm_params": {"model": "openrouter/deepseek"},
+                            "model_info": {"input_cost_per_token": 9.4e-08},
+                        },
+                    ]
+                }
+            return {"data": [base]}
+        if url.endswith("/key/info"):
+            seen["key_info"] = auth
+            return {"info": {"spend": 1.0, "max_budget": 5.0}}
+        if url.endswith("/health/liveliness"):
+            return {}
+        return None
+
+    monkeypatch.setattr(m, "_get_json", fake_get_json)
+
+    resp = client.get("/admin/llm/status", headers=_headers(ADMIN))
+    assert resp.status_code == 200
+    body = resp.json()
+    names = {mm["name"] for mm in body["models"]}
+    assert "sparkpoint-chat-premium" in names  # admin key used → premium visible in the Overview
+    assert seen["model_info"] == "Bearer sk-admin"
+    assert seen["key_info"] == "Bearer sk-virtual"  # key spend/limits still from the virtual key
+    premium = next(mm for mm in body["models"] if mm["name"] == "sparkpoint-chat-premium")
+    assert premium["inputCostPerM"] == 0.094  # per-token cost surfaced as per-1M for the Overview
+
+
 def test_all_deployments_includes_every_alias() -> None:
     # The Config view must show EVERY alias (not just the chat default) so a premium alias appears;
     # `_all_deployments` is unfiltered, unlike the delete-guardrail's `_alias_deployments`.

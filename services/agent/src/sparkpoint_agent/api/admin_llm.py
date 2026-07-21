@@ -122,9 +122,9 @@ async def _get_json(client: httpx.AsyncClient, url: str, headers: dict[str, str]
         return None
 
 
-def _parse_models(payload: Any) -> list[dict[str, str]]:
-    """Best-effort extraction of ``[{name, upstream}]`` from a /model/info response."""
-    models: list[dict[str, str]] = []
+def _parse_models(payload: Any) -> list[dict[str, Any]]:
+    """Extract ``[{name, upstream, inputCostPerM, outputCostPerM}]`` from a /model/info response."""
+    models: list[dict[str, Any]] = []
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
         return models
@@ -133,9 +133,23 @@ def _parse_models(payload: Any) -> list[dict[str, str]]:
             continue
         name = str(item.get("model_name") or "")
         params = item.get("litellm_params") if isinstance(item.get("litellm_params"), dict) else {}
-        upstream = str(params.get("model") or "") if isinstance(params, dict) else ""
+        params = params if isinstance(params, dict) else {}
+        upstream = str(params.get("model") or "")
+        raw_info = item.get("model_info")
+        info = raw_info if isinstance(raw_info, dict) else {}
         if name:
-            models.append({"name": name, "upstream": upstream})
+            models.append(
+                {
+                    "name": name,
+                    "upstream": upstream,
+                    "inputCostPerM": _cost_per_m(
+                        info.get("input_cost_per_token") or params.get("input_cost_per_token")
+                    ),
+                    "outputCostPerM": _cost_per_m(
+                        info.get("output_cost_per_token") or params.get("output_cost_per_token")
+                    ),
+                }
+            )
     return models
 
 
@@ -160,14 +174,24 @@ async def admin_llm_status(
     if gw is None:
         return {"configured": False, "reachable": False, "models": [], "key": None}
     root, api_key = gw
-    headers = {"accept": "application/json"}
+    # The MODEL LIST uses the admin key when provisioned: the virtual chat key is scoped to its own
+    # allowlist (e.g. only `sparkpoint-chat`), so /model/info through it can't see other aliases
+    # (e.g. the premium one) and the Overview would silently omit them. The admin key sees every
+    # deployment. Fall back to the virtual key when the admin key is unset. /key/info stays on the
+    # virtual key (that IS the key whose spend/limits we surface).
+    admin_gw = _admin_gateway()
+    model_key = admin_gw[1] if admin_gw is not None else api_key
+    model_headers = {"accept": "application/json"}
+    if model_key:
+        model_headers["authorization"] = f"Bearer {model_key}"
+    key_headers = {"accept": "application/json"}
     if api_key:
-        headers["authorization"] = f"Bearer {api_key}"
+        key_headers["authorization"] = f"Bearer {api_key}"
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
         live = await _get_json(client, f"{root}/health/liveliness", {})
-        model_info = await _get_json(client, f"{root}/model/info", headers)
-        key_info = await _get_json(client, f"{root}/key/info", headers)
+        model_info = await _get_json(client, f"{root}/model/info", model_headers)
+        key_info = await _get_json(client, f"{root}/key/info", key_headers)
 
     return {
         "configured": True,
