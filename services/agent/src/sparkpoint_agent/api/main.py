@@ -35,6 +35,7 @@ from ..db.persona_notes import PersonaNoteStore
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
 from .admin_knowledge import router as admin_knowledge_router
+from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
@@ -364,6 +365,9 @@ app.include_router(admin_persona_router)
 app.include_router(conversations_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
+# Feature 008 admin tier-limits config (/admin/limits/*) — admin-gated, audited, POST-only writes.
+# Advisory-compute config only; never a signable artifact, never the withdraw path (N2).
+app.include_router(admin_limits_router)
 # Alpha content — public changelog/announcement reads (any beta wallet) + admin authoring
 # (/admin/content*). ACCESS/content only; never a signable artifact (N2).
 app.include_router(content_router)
