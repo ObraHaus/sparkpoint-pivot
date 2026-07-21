@@ -29,6 +29,7 @@ from typing import Annotated, Any, Literal, cast
 from fastapi import Depends
 
 from ..db import Database, LimitsStore, get_database
+from ..llm.resilience import set_priority
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
 from .vault import get_account
@@ -117,6 +118,9 @@ async def check_and_consume(store: LimitsStore, owner: str, metric: Metric) -> L
         if tier_def is None:
             # No config row for the resolved tier (e.g. 0015 not applied) - fail open.
             return LimitDecision(allowed=True, tier=tier, metric=metric, used=0, limit=0)
+        # Tier the LLM-limiter queue budget for this request (US4 priority compute): premium waits
+        # the full budget, free degrades first under contention. Read by llm/resilience.slot().
+        set_priority(int(tier_def.get("priorityWeight", 1)))
         limit = int(tier_def[_LIMIT_FIELD[metric]])
         ws = window_start()
         used_before = await store.get_usage(owner, metric, ws)
