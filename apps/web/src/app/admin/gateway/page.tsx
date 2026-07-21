@@ -433,47 +433,68 @@ function ConfigTab() {
   if (state === "error") return <ErrBanner />;
   if (!cfg?.adminConfigured) return <AdminOffNotice />;
 
-  // Mirror the server guardrail, which counts DISTINCT non-empty deployment ids (not array length).
-  const distinctIds = new Set(cfg.deployments.map((d) => d.id).filter(Boolean)).size;
-  const isLast = distinctIds <= 1;
+  // Group the gateway's deployments by alias (model_name) so EVERY alias is visible — e.g. the
+  // premium alias. The chat-default alias is DB-managed here (add/remove + last-backend guardrail);
+  // other aliases (e.g. sparkpoint-chat-premium) are defined in the gateway config → shown read-only.
+  const byAlias: Record<string, Deployment[]> = {};
+  for (const d of cfg.deployments) (byAlias[d.model_name] ??= []).push(d);
+  const aliases = Object.keys(byAlias).sort((a, b) =>
+    a === cfg.alias ? -1 : b === cfg.alias ? 1 : a.localeCompare(b),
+  );
   return (
     <>
-      <div className="chartcard">
-        <div className="ch">
-          <span className="ct">
-            Deployments <span className="prov">alias: {cfg.alias}</span>
-          </span>
+      {aliases.length === 0 && (
+        <div className="chartcard">
+          <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>No deployments.</div>
         </div>
-        <div style={{ padding: "4px 2px" }}>
-          {cfg.deployments.length === 0 ? (
-            <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>No deployments.</div>
-          ) : (
-            cfg.deployments.map((d) => (
-              <div key={d.id} style={rowStyle}>
-                <span className="mono" style={{ flex: 1, wordBreak: "break-all", fontSize: 12.5 }}>
-                  {d.upstream || d.id}
-                </span>
-                <span className="muted" style={{ width: 70, textAlign: "right", fontSize: 12 }}>
-                  rpm {fmt(d.rpm)}
-                </span>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  disabled={busy || isLast}
-                  onClick={() => remove(d.id)}
-                  title={isLast ? "Can’t remove the last backend — chat would have none" : `Remove ${d.id}`}
-                >
-                  <Icon name="x" size={13} /> Remove
-                </button>
+      )}
+      {aliases.map((alias) => {
+        const deps = byAlias[alias];
+        const isPrimary = alias === cfg.alias;
+        const distinctIds = new Set(deps.map((d) => d.id).filter(Boolean)).size;
+        const isLast = distinctIds <= 1;
+        return (
+          <div className="chartcard" key={alias} style={{ marginBottom: 14 }}>
+            <div className="ch">
+              <span className="ct">
+                {alias}{" "}
+                <span className="prov">{isPrimary ? "chat default · editable" : "from gateway config"}</span>
+              </span>
+            </div>
+            <div style={{ padding: "4px 2px" }}>
+              {deps.map((d) => (
+                <div key={d.id || d.upstream} style={rowStyle}>
+                  <span className="mono" style={{ flex: 1, wordBreak: "break-all", fontSize: 12.5 }}>
+                    {d.upstream || d.id}
+                  </span>
+                  <span className="muted" style={{ width: 70, textAlign: "right", fontSize: 12 }}>
+                    rpm {fmt(d.rpm)}
+                  </span>
+                  {isPrimary ? (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      disabled={busy || isLast}
+                      onClick={() => remove(d.id)}
+                      title={isLast ? "Can’t remove the last backend — chat would have none" : `Remove ${d.id}`}
+                    >
+                      <Icon name="x" size={13} /> Remove
+                    </button>
+                  ) : (
+                    <span className="muted" style={{ width: 70, textAlign: "right", fontSize: 11 }}>
+                      config
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {isPrimary && distinctIds === 1 && (
+              <div className="muted" style={{ padding: "6px 10px", fontSize: 11.5 }}>
+                Only one backend serves this alias — the last one can’t be removed (guardrail).
               </div>
-            ))
-          )}
-        </div>
-        {distinctIds === 1 && (
-          <div className="muted" style={{ padding: "6px 10px", fontSize: 11.5 }}>
-            Only one backend serves the alias — the last one can’t be removed (guardrail).
+            )}
           </div>
-        )}
-      </div>
+        );
+      })}
 
       <div className="chartcard" style={{ marginTop: 14 }}>
         <div className="ch">

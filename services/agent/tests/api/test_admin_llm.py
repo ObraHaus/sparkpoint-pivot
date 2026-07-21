@@ -67,3 +67,28 @@ def test_admin_unconfigured_gateway_degrades(client: TestClient) -> None:
 def test_requires_s2s_auth() -> None:
     resp = TestClient(app).get("/admin/llm/status")
     assert resp.status_code in (401, 400)
+
+
+def test_all_deployments_includes_every_alias() -> None:
+    # The Config view must show EVERY alias (not just the chat default) so a premium alias appears;
+    # `_all_deployments` is unfiltered, unlike the delete-guardrail's `_alias_deployments`.
+    from sparkpoint_agent.api.admin_llm import _all_deployments
+
+    def _dep(alias: str, upstream: str, mid: str) -> dict[str, object]:
+        return {
+            "model_name": alias,
+            "litellm_params": {"model": upstream},
+            "model_info": {"id": mid},
+        }
+
+    model_info = {
+        "data": [
+            _dep("sparkpoint-chat", "openrouter/nvidia/x:free", "a"),
+            _dep("sparkpoint-chat-premium", "openrouter/deepseek/deepseek-v4-flash", "b"),
+            _dep("sparkpoint-chat-premium", "openrouter/qwen/qwen3.5-flash-02-23", "c"),
+        ]
+    }
+    deps = _all_deployments(model_info)
+    assert {d["model_name"] for d in deps} == {"sparkpoint-chat", "sparkpoint-chat-premium"}
+    premium = [d["upstream"] for d in deps if d["model_name"] == "sparkpoint-chat-premium"]
+    assert "openrouter/deepseek/deepseek-v4-flash" in premium

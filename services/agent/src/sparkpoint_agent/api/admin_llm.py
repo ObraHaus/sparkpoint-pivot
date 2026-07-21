@@ -235,6 +235,33 @@ def _alias_deployments(model_info: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _all_deployments(model_info: Any) -> list[dict[str, Any]]:
+    """Every deployment the gateway serves, across ALL aliases (id, model_name, upstream, rpm).
+
+    Scrubbed. Unlike :func:`_alias_deployments` (scoped to the chat alias for the delete
+    guardrail), this powers the read view so every alias — e.g. a premium alias — is visible."""
+    out: list[dict[str, Any]] = []
+    for item in _as_rows(model_info):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("model_name") or "")
+        if not name:
+            continue
+        raw_info = item.get("model_info")
+        info = raw_info if isinstance(raw_info, dict) else {}
+        raw_params = item.get("litellm_params")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        out.append(
+            {
+                "id": str(info.get("id") or item.get("id") or ""),
+                "model_name": name,
+                "upstream": str(params.get("model") or ""),
+                "rpm": params.get("rpm"),
+            }
+        )
+    return out
+
+
 @router.get("/admin/llm/stats")
 async def admin_llm_stats(
     admin: Annotated[AccountContext, Depends(require_admin)],
@@ -330,8 +357,8 @@ async def admin_llm_config(
     return {
         "configured": True,
         "adminConfigured": True,
-        "alias": _alias(),
-        "deployments": _alias_deployments(model_info),
+        "alias": _alias(),  # the primary chat alias (the add-model target + delete guardrail scope)
+        "deployments": _all_deployments(model_info),  # ALL aliases so a premium alias is visible
         "audit": audit,
     }
 
