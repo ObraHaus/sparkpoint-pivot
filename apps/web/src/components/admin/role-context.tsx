@@ -24,6 +24,7 @@ export type NavKey =
   | "tips"
   | "uptime"
   | "tvl"
+  | "vaults"
   | "revenue"
   | "system"
   | "killswitch"
@@ -41,12 +42,12 @@ export interface RoleDef {
 export const ROLES: Record<RoleKey, RoleDef> = {
   super: {
     label: "Super-Admin",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   ops: {
     label: "Ops / Internal",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   stake: {
@@ -75,6 +76,7 @@ export const NAVMETA: Record<NavKey, [string, string]> = {
   tips: ["Tips", "info"],
   uptime: ["Uptime", "activity"],
   tvl: ["TVL / Vault", "vault"],
+  vaults: ["Vaults", "vault"],
   revenue: ["Revenue", "portfolio"],
   system: ["System", "shield"],
   killswitch: ["Kill-switch", "pause"],
@@ -95,6 +97,7 @@ export const NAV_HREF: Record<NavKey, string> = {
   tips: "/admin/tips",
   uptime: "/admin/uptime",
   tvl: "/admin/tvl",
+  vaults: "/admin/vaults",
   revenue: "/admin/revenue",
   system: "/admin/system",
   killswitch: "/admin/killswitch",

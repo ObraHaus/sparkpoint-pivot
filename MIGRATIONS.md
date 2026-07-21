@@ -32,6 +32,7 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0012_tip_source_kind` | ✅ | — | adds a `'tip'` label to the `memory_source` enum (sidebar tip databank) |
 | `0013_persona_notes` | ✅ | — | Sparky persona: `persona_notes` (admin voice overrides) + `persona_audit` — **isolated** from the RAG corpus (no `memory_source` enum, no vector column, never embedded) |
 | `0014_content_slug` | ✅ | — | Feature 006: add `content_entries.slug` + a **partial**-unique index (`WHERE slug IS NOT NULL`) so the committed `content_seed/whats-new.json` upserts changelog entries by slug. No backfill/delete — existing rows keep `slug NULL` and render unchanged |
+| `0015_vault_factory` | ⬜ *(new — not yet applied)* | — | Feature 011 Phase 3: two 011-owned tables — `morpho_curated_allowlist` (off-chain curated-vault vetting record) + `sparkpoint_wrappers` (deploy provenance the 010 reader merges: `vault_address`, `chain_id`, `kind`, `label`, `morpho_vault`, `native_fee_bps`, `deploy_tx`, `factory_address`, `status` pending→live, `created_at`). Additive + idempotent (`IF NOT EXISTS`), no backfill. Apply with `PGCLIENTENCODING=UTF8`. Inert until the agent reads it (the `/admin/vaults` manage BFF) |
 
 > **`0013` and `0014` are now APPLIED to develop** (see the Changelog below). Both are additive/idempotent — `0013` is an isolated persona table; `0014` is a nullable column + a partial-unique index (safe to re-run). **Production** (client infra, TBD) is still at **none**: apply the full `0001`–`0014` chain there at the prod handoff.
 

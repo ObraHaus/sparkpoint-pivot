@@ -37,6 +37,7 @@ from .admin_knowledge import router as admin_knowledge_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
 from .admin_uptime import router as admin_uptime_router
+from .admin_vaults import router as admin_vaults_router
 from .allowlist import router as allowlist_router
 from .chat import router as chat_router
 from .content import router as content_router
@@ -341,6 +342,10 @@ app.include_router(admin_persona_router)
 app.include_router(conversations_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
+# Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the
+# branded Morpho wrapper factory. Every mutating route returns calldata the operator signs off-app;
+# NO server key, NO fund path, and NO move-funds guardian verb exists (N1/N2/US4).
+app.include_router(admin_vaults_router)
 # Alpha content — public changelog/announcement reads (any beta wallet) + admin authoring
 # (/admin/content*). ACCESS/content only; never a signable artifact (N2).
 app.include_router(content_router)

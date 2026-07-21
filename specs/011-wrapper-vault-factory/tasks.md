@@ -187,7 +187,7 @@ gate + no-fund-path verified.
 
 ---
 
-## Phase 3 → User Story 4 — `/admin/vaults` MANAGE half (Priority: P2)
+## Phase 3 → User Story 4 — `/admin/vaults` MANAGE half (Priority: P2) ✅ DONE 2026-07-21
 
 **Goal**: the create-vault flow + guardian-gated (timelock) pause/setFee/setFeeRecipient/adjust-caps on the
 unified `/admin/vaults` page; the "no move-funds action exists" invariant is visible AND enforced. Reuses
@@ -227,8 +227,16 @@ unified `/admin/vaults` page; the "no move-funds action exists" invariant is vis
 - [ ] T026 [P] [US4] (BLOCKED by T001) Living docs: `CHANGELOG.md` + `whats-new.json` ("Manage branded
       vaults from Admin") + `DEVELOPMENT.md` + `MIGRATIONS.md` (0015).
 
-**Checkpoint**: operators create + govern wrappers from `/admin/vaults` via user-signed timelock actions; no
-move-funds action exists; the 010 read half + 011 manage half share one page.
+**Checkpoint**: ✅ DONE 2026-07-21 — operators create + govern wrappers from `/admin/vaults` via user-signed
+timelock actions; **no move-funds action exists** (closed guardian enum {pause,unpause,setFee,
+setFeeRecipient,setCaps}); the BFF holds no key + returns prepared calldata only (eth_call reads, keyless
+transport). Migration `0015_vault_factory.sql` (2 011-owned tables) + `admin_vaults.py` BFF + the
+`/admin/vaults` page. Agent `pytest` **506 passed** (+36 in the two new suites incl. non-allowlisted/feeBps
+refusals, prepared-calldata-never-signs, closed-enum rejection, pending→live provenance promotion, chain-id
+consistency, setCaps ceiling gate); `mypy` strict clean; web `tsc`/`eslint`/`build` green. Non-custody
+review **SOUND**; correctness fixes applied. **Go-live:** apply `0015` + redeploy the agent + set
+`SPARKPOINT_VAULT_FACTORY_ADDRESS` (inert/fail-closed till then). The full read half is built here (010's
+read half isn't yet). whats-new client entry deferred to Phase 4 (admin-only until users can deposit).
 
 ---
 
