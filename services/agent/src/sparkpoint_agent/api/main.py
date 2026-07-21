@@ -58,6 +58,7 @@ from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
 from .tips import router as tips_router
+from .usage import router as usage_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 
@@ -371,6 +372,8 @@ app.include_router(admin_uptime_router)
 app.include_router(admin_limits_router)
 # Feature 008 admin usage/limits monitoring (/admin/usage/*) — admin-gated, masked, honest-degrade.
 app.include_router(admin_usage_router)
+# Feature 008 self-scoped usage read (/usage/self) — a wallet reads its OWN allowance (not admin).
+app.include_router(usage_router)
 # Alpha content — public changelog/announcement reads (any beta wallet) + admin authoring
 # (/admin/content*). ACCESS/content only; never a signable artifact (N2).
 app.include_router(content_router)
