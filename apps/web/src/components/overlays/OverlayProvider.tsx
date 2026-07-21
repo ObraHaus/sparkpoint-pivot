@@ -20,6 +20,7 @@ import { data } from "@/lib/mock-data";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
 import { toHref } from "@/lib/nav";
+import { NetworkLogo } from "@/components/ui/NetworkLogo";
 
 /** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
 const _DEPLOYED = getAddresses(84532);
@@ -408,7 +409,7 @@ function NetworkMenu({ go, close }: { go: (r: string) => void; toast: (m: string
         };
         return (
           <button key={n.chainId} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
-            <span style={{ width: 12, height: 12, borderRadius: "50%", background: n.color, flex: "none" }} />
+            <NetworkLogo chainId={n.chainId} color={n.color} size={18} />
             {n.name}
             {active ? (
               <span style={{ marginLeft: "auto", color: "var(--primary)" }}>

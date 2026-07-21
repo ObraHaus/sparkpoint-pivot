@@ -17,6 +17,7 @@ import { recommendedTokens, type SwapToken } from "@/lib/swap/tokens";
 import { resolveErc20 } from "@/lib/swap/metadata";
 import { isVerifiedAddress, findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { getImported, addImported, removeImported } from "@/lib/swap/importedTokens";
+import { TokenLogo } from "@/components/ui/TokenLogo";
 
 const MUTED = "var(--muted-foreground)";
 const eqAddr = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -54,11 +55,13 @@ function VerifiedBadge({ verified }: { verified?: boolean }) {
 
 function TokenLine({
   token,
+  chainId,
   onSelect,
   onRemove,
   disabled,
 }: {
   token: SwapToken;
+  chainId: number | undefined;
   onSelect: () => void;
   onRemove?: () => void;
   disabled?: boolean;
@@ -69,8 +72,9 @@ function TokenLine({
         className="btn btn-ghost"
         onClick={onSelect}
         disabled={disabled}
-        style={{ flex: 1, justifyContent: "flex-start", textAlign: "left", padding: "8px 10px", height: "auto", opacity: disabled ? 0.5 : 1 }}
+        style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-start", textAlign: "left", padding: "8px 10px", height: "auto", opacity: disabled ? 0.5 : 1 }}
       >
+        <TokenLogo token={token} chainId={chainId} size={26} />
         <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <b style={{ fontSize: 14 }}>{token.symbol}</b>
@@ -209,7 +213,7 @@ export function TokenPicker({
                 ⚠ This is <b>NOT</b> the official {resolved.symbol}. Anyone can create a token with any name — verify the address.
               </div>
             )}
-            <TokenLine token={resolved} onSelect={() => pick(resolved)} disabled={eqAddr(resolved.address, exclude)} />
+            <TokenLine token={resolved} chainId={chainId} onSelect={() => pick(resolved)} disabled={eqAddr(resolved.address, exclude)} />
             {eqAddr(resolved.address, exclude) && (
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>Already selected on the other side.</div>
             )}
@@ -222,7 +226,7 @@ export function TokenPicker({
         </div>
         <div style={{ display: "grid", gap: 2 }}>
           {recommended.map((t) => (
-            <TokenLine key={t.symbol + t.address} token={t} onSelect={() => pick(t)} disabled={eqAddr(t.address, exclude)} />
+            <TokenLine key={t.symbol + t.address} token={t} chainId={chainId} onSelect={() => pick(t)} disabled={eqAddr(t.address, exclude)} />
           ))}
         </div>
 
@@ -237,6 +241,7 @@ export function TokenPicker({
                 <TokenLine
                   key={t.address}
                   token={t}
+                  chainId={chainId}
                   onSelect={() => pick(t)}
                   disabled={eqAddr(t.address, exclude)}
                   onRemove={() => {

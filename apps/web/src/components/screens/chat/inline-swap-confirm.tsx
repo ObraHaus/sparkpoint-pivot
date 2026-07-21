@@ -26,6 +26,7 @@ import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { resolveErc20 } from "@/lib/swap/metadata";
 import { isVerifiedAddress, findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { TokenPicker } from "@/components/screens/swap/TokenPicker";
+import { TokenLogo } from "@/components/ui/TokenLogo";
 import { formatBpsPercent, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DASH = "—";
@@ -77,13 +78,14 @@ function Notice({ children, tone = "caution" }: { children: React.ReactNode; ton
   );
 }
 
-function PickerButton({ token, onClick }: { token?: SwapToken; onClick: () => void }) {
+function PickerButton({ token, chainId, onClick }: { token?: SwapToken; chainId?: number; onClick: () => void }) {
   return (
     <button
       className="btn btn-ghost btn-sm"
       onClick={onClick}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 600, border: "1px solid var(--border)" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, border: "1px solid var(--border)" }}
     >
+      {token && <TokenLogo token={token} chainId={chainId} size={18} />}
       {token?.symbol ?? "Select"}
       <Icon name="chevron-down" size={12} />
     </button>
@@ -288,7 +290,7 @@ export function InlineSwapConfirm({
                   color: "var(--foreground)", outline: "none",
                 }}
               />
-              <PickerButton token={tokenIn} onClick={() => setPickerFor("in")} />
+              <PickerButton token={tokenIn} chainId={activeChain} onClick={() => setPickerFor("in")} />
               <button className="btn btn-ghost btn-sm" onClick={onMax} disabled={s.balanceIn === undefined}>Max</button>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -313,7 +315,7 @@ export function InlineSwapConfirm({
                   {s.canQuote && netOut !== undefined && tokenOut ? fmt(netOut, tokenOut.decimals) : (quote.isLoading ? "…" : DASH)}
                 </b>
               </span>
-              <PickerButton token={tokenOut} onClick={() => setPickerFor("out")} />
+              <PickerButton token={tokenOut} chainId={activeChain} onClick={() => setPickerFor("out")} />
             </div>
 
             {/* Unverified receive-token safety (also gates Confirm) */}
