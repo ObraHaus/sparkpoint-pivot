@@ -49,6 +49,9 @@ model_list:
       # OpenRouter; this is LiteLLM's own cost accounting. Keep in sync if the upstream price moves.
       input_cost_per_token: 0.000000094
       output_cost_per_token: 0.000000188
+      # Per-deployment request/min ceiling used by the router for load-based routing (primary carries
+      # the bulk of premium traffic). The virtual key's global rpm is the real spend/abuse ceiling.
+      rpm: 60
   - model_name: sparkpoint-chat-premium
     litellm_params:
       model: openrouter/qwen/qwen3.5-flash-02-23
@@ -58,6 +61,8 @@ model_list:
       # ~$0.065 / $0.26 per 1M tok (in/out) — see the note above.
       input_cost_per_token: 0.000000065
       output_cost_per_token: 0.000000260
+      # Fallback deployment — a smaller per-min ceiling (it only absorbs the primary's cooldowns).
+      rpm: 30
 
 litellm_settings:
   drop_params: true          # tolerate provider-specific param differences

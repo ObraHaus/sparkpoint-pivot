@@ -25,11 +25,20 @@ const fmt = (v: unknown) => (v === null || v === undefined ? "—" : String(v));
 const money = (v: unknown) =>
   v === undefined || v === null || v === "" ? "—" : `$${Number(v).toFixed(4)}`;
 
+// Format a per-1M in/out price pair. Each side is INDEPENDENT: a null side is unknown/unset ("—"),
+// never coalesced to "$0" (the gateway distinguishes free=0 from unknown=null). Both null → "price —".
+const priceText = (inM?: number | null, outM?: number | null) =>
+  inM == null && outM == null
+    ? "price —"
+    : `${inM == null ? "—" : `$${inM}`} / ${outM == null ? "—" : `$${outM}`} /1M`;
+
 type Tab = "overview" | "stats" | "activity" | "config";
 
 interface GatewayModel {
   name: string;
   upstream: string;
+  inputCostPerM?: number | null;
+  outputCostPerM?: number | null;
 }
 interface KeyInfo {
   spend?: number;
@@ -238,23 +247,38 @@ function OverviewTab() {
             </div>
           ) : (
             Object.entries(
-              (status?.models ?? []).reduce<Record<string, string[]>>((acc, m) => {
-                (acc[m.name] ??= []).push(m.upstream || "—");
+              (status?.models ?? []).reduce<Record<string, GatewayModel[]>>((acc, m) => {
+                (acc[m.name] ??= []).push(m);
                 return acc;
               }, {}),
-            ).map(([alias, upstreams]) => (
+            ).map(([alias, models]) => (
               <div
                 key={alias}
                 style={{ borderTop: "1px solid var(--border-soft)", padding: "8px 8px" }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{alias}</div>
-                {upstreams.map((u, i) => (
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+                  {alias}{" "}
+                  <span className="muted" style={{ fontWeight: 400, fontSize: 11 }}>
+                    · {models.length} backend{models.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {models.map((m, i) => (
                   <div
                     key={i}
-                    className="mono muted"
-                    style={{ fontSize: 12.5, paddingLeft: 10, wordBreak: "break-all" }}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "baseline",
+                      paddingLeft: 10,
+                      fontSize: 12.5,
+                    }}
                   >
-                    {u}
+                    <span className="mono muted" style={{ flex: 1, wordBreak: "break-all" }}>
+                      {m.upstream || "—"}
+                    </span>
+                    <span className="muted" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                      {priceText(m.inputCostPerM, m.outputCostPerM)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -283,7 +307,12 @@ function StatsTab() {
   if (state === "error") return <ErrBanner />;
   if (!stats?.adminConfigured) return <AdminOffNotice />;
   const k = stats.key ?? null;
-  const budgetTone = (stats.budgetUsedPct ?? 0) > 80 ? "var(--loss, #ff6b6b)" : undefined;
+  const budgetPct = stats.budgetUsedPct ?? null;
+  const budgetTone = (budgetPct ?? 0) > 80 ? "var(--loss, #ff6b6b)" : undefined;
+  const mtd = Number(stats.monthToDate) || 0;
+  const proj = Number(stats.projectedMonthly) || 0;
+  const mtdPctOfProj = proj > 0 ? Math.min(100, (mtd / proj) * 100) : 0;
+  const maxSpend = Math.max(0, ...(stats.by_model ?? []).map((m) => Number(m.spend) || 0));
   return (
     <>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
@@ -297,54 +326,170 @@ function StatsTab() {
         <StatTile label="Per day (avg)" value={money(stats.spendPerDay)} />
         <StatTile
           label="Budget used"
-          value={stats.budgetUsedPct != null ? `${stats.budgetUsedPct}%` : "—"}
+          value={budgetPct != null ? `${budgetPct}%` : "—"}
           tone={budgetTone}
         />
+        <StatTile label="All-time spend" value={money(stats.total_spend)} />
       </div>
+
       <div className="grid2">
         <div className="chartcard">
           <div className="ch">
-            <span className="ct">All-time spend</span>
-            <span className="prov">/global/spend</span>
+            <span className="ct">Budget used</span>
+            <span className="prov">virtual key</span>
           </div>
-          <div style={{ padding: "14px 12px", fontSize: 28, fontWeight: 800 }}>
-            {money(stats.total_spend)}
+          <div
+            style={{
+              display: "flex",
+              gap: 14,
+              alignItems: "center",
+              padding: "10px 12px",
+              flexWrap: "wrap",
+            }}
+          >
+            <Donut pct={budgetPct} />
+            <dl style={{ margin: 0, fontSize: 13, lineHeight: 1.9, flex: "1 1 150px" }}>
+              <Row k="Spend" v={money(k?.spend)} />
+              <Row k="Budget" v={k?.max_budget != null ? money(k.max_budget) : "unlimited"} />
+              <Row k="Resets" v={fmt(k?.budget_duration)} />
+              <Row k="RPM / TPM" v={`${fmt(k?.rpm_limit)} / ${fmt(k?.tpm_limit)}`} />
+            </dl>
           </div>
         </div>
         <div className="chartcard">
           <div className="ch">
-            <span className="ct">Virtual key</span>
-            <span className="prov">/key/info</span>
+            <span className="ct">Monthly pace</span>
+            <span className="prov">MTD → projected</span>
           </div>
-          <dl style={{ margin: 0, padding: "6px 8px", fontSize: 13, lineHeight: 1.9 }}>
-            <Row k="Spend (period)" v={money(k?.spend)} />
-            <Row k="Budget" v={k?.max_budget != null ? money(k.max_budget) : "unlimited"} />
-            <Row k="Resets" v={fmt(k?.budget_duration)} />
-            <Row k="RPM / TPM" v={`${fmt(k?.rpm_limit)} / ${fmt(k?.tpm_limit)}`} />
-          </dl>
+          <div style={{ padding: "16px 12px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 12.5,
+                marginBottom: 8,
+              }}
+            >
+              <span className="muted">
+                To date <b style={{ color: "var(--foreground)" }}>{money(stats.monthToDate)}</b>
+              </span>
+              <span className="muted">
+                Projected <b style={{ color: "var(--foreground)" }}>{money(stats.projectedMonthly)}</b>
+              </span>
+            </div>
+            <div
+              style={{
+                height: 12,
+                borderRadius: 6,
+                background: "var(--border-soft)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${mtdPctOfProj}%`,
+                  height: "100%",
+                  background: "var(--accent, #6a8bff)",
+                  borderRadius: 6,
+                }}
+              />
+            </div>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
+              {proj > 0
+                ? `${Math.round(mtdPctOfProj)}% of the projected month spent · ${money(
+                    stats.spendPerDay,
+                  )}/day`
+                : "Not enough spend this month to project a pace yet."}
+            </div>
+          </div>
         </div>
       </div>
+
       <div className="chartcard" style={{ marginTop: 14 }}>
         <div className="ch">
           <span className="ct">Spend by model</span>
           <span className="prov">this month · /spend/logs</span>
         </div>
-        <div style={{ padding: "4px 2px" }}>
+        <div style={{ padding: "8px 2px" }}>
           {(stats.by_model?.length ?? 0) === 0 ? (
             <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>
               No per-model spend yet this month.
             </div>
           ) : (
             stats.by_model!.map((m, i) => (
-              <div key={i} style={rowStyle}>
-                <span className="mono" style={{ flex: 1, wordBreak: "break-all" }}>{m.model}</span>
-                <span style={{ fontWeight: 600 }}>{money(m.spend)}</span>
-              </div>
+              <HBar key={i} label={m.model} value={Number(m.spend) || 0} max={maxSpend} />
             ))
           )}
         </div>
       </div>
     </>
+  );
+}
+
+// A budget-used ring gauge (pure SVG; the arc starts at 12 o'clock, colour steps green→amber→red).
+function Donut({ pct, tone }: { pct?: number | null; tone?: string }) {
+  const has = pct != null;
+  const p = Math.max(0, Math.min(100, pct ?? 0));
+  const r = 42;
+  const cx = 55;
+  const cy = 55;
+  const circ = 2 * Math.PI * r;
+  const dash = (p / 100) * circ;
+  const color =
+    tone ?? (p > 90 ? "var(--loss, #ff6b6b)" : p > 70 ? "var(--caution, #e0a33e)" : "var(--gain, #33c27f)");
+  return (
+    <svg
+      viewBox="0 0 110 110"
+      width="112"
+      height="112"
+      role="img"
+      aria-label={`Budget used ${has ? `${Math.round(p)} percent` : "unknown"}`}
+    >
+      <g transform={`rotate(-90 ${cx} ${cy})`}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border-soft)" strokeWidth="10" />
+        {has && p > 0 && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${circ - dash}`}
+          />
+        )}
+      </g>
+      <text x={cx} y={cy - 2} textAnchor="middle" fontSize="21" fontWeight="700" fill="var(--foreground)">
+        {has ? `${Math.round(p)}%` : "—"}
+      </text>
+      <text x={cx} y={cy + 15} textAnchor="middle" fontSize="9.5" fill="var(--muted-foreground)">
+        of budget
+      </text>
+    </svg>
+  );
+}
+
+// A horizontal spend bar for the by-model breakdown (width ∝ spend, min 2% so a nonzero bar shows).
+function HBar({ label, value, max, tone }: { label: string; value: number; max: number; tone?: string }) {
+  const pct = max > 0 ? Math.max(2, (value / max) * 100) : 0;
+  return (
+    <div style={{ padding: "5px 8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+        <span className="mono" style={{ wordBreak: "break-all", paddingRight: 8 }}>{label}</span>
+        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{money(value)}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 5, background: "var(--border-soft)", overflow: "hidden" }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: tone ?? "var(--accent, #6a8bff)",
+            borderRadius: 5,
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -588,10 +733,7 @@ function ConfigTab() {
   const aliases = Object.keys(byAlias).sort((a, b) =>
     a === cfg.alias ? -1 : b === cfg.alias ? 1 : a.localeCompare(b),
   );
-  const priceLabel = (d: Deployment) =>
-    d.inputCostPerM == null && d.outputCostPerM == null
-      ? "price —"
-      : `$${d.inputCostPerM ?? 0} / $${d.outputCostPerM ?? 0} /1M`;
+  const priceLabel = (d: Deployment) => priceText(d.inputCostPerM, d.outputCostPerM);
   return (
     <>
       {aliases.length === 0 && (
