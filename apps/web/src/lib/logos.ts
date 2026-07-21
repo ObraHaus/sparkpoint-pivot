@@ -54,7 +54,7 @@ const NETWORK_LOGO: Record<number, string> = {
   1: ETH_LOGO,
   8453: `${CDN}/base/info/logo.png`,
   84532: `${CDN}/base/info/logo.png`,
-  // 46630 Robinhood testnet — no reliable online logo; falls back to the network color dot.
+  46630: "/networks/robinhood.png", // Robinhood Chain testnet — bundled brand asset (no CDN logo exists)
 };
 export function networkLogoUrl(chainId: number | undefined): string | undefined {
   return chainId !== undefined ? NETWORK_LOGO[chainId] : undefined;
