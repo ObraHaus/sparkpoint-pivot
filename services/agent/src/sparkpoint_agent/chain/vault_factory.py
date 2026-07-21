@@ -70,7 +70,19 @@ def _canonical_type(entry: Mapping[str, Any]) -> str:
 
 
 def _find_artifact(rel_parts: tuple[str, ...]) -> Path:
-    """Walk up from this file to the repo's ``contracts/out`` artifact (fails loudly if missing)."""
+    """Resolve a contract artifact. Resolution order (first hit wins):
+
+    1. ``SPARKPOINT_ARTIFACTS_DIR`` override (a forge ``out/`` dir), if set.
+    2. the repo's freshly-built ``contracts/out/…`` (present after ``forge build`` — local dev).
+    3. the committed slim ``{abi, methodIdentifiers}`` export at
+       ``packages/shared/src/abis/<Contract>.abi.json``.
+
+    Step 3 is what lets **agent CI need no** ``forge build`` — it mirrors the ``vault_reader``
+    ``SPARKPOINT_VAULT_ABI_PATH`` committed export, but resolves by walking to the shared
+    ``abis/`` dir so no per-artifact env var is needed. Only ``abi`` + ``methodIdentifiers`` are
+    ever read (no bytecode — ``predictVaultAddress`` is an on-chain ``eth_call``), so the slim
+    export is a complete substitute for the full forge artifact here. Fails loudly if none hit.
+    """
     override = os.getenv("SPARKPOINT_ARTIFACTS_DIR")
     if override:
         candidate = Path(override).joinpath(*rel_parts[1:])  # drop the leading "contracts"
@@ -80,9 +92,15 @@ def _find_artifact(rel_parts: tuple[str, ...]) -> Path:
         candidate = parent.joinpath(*rel_parts)
         if candidate.is_file():
             return candidate
+    # Committed slim export fallback: contracts/out/<C>.sol/<C>.json -> <C>.abi.json in shared/abis.
+    contract_abi = rel_parts[-1].removesuffix(".json") + ".abi.json"
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent.joinpath("packages", "shared", "src", "abis", contract_abi)
+        if candidate.is_file():
+            return candidate
     raise RuntimeError(
-        f"artifact {'/'.join(rel_parts)} not found — run `forge build` in contracts/ "
-        "(or set SPARKPOINT_ARTIFACTS_DIR)."
+        f"artifact {'/'.join(rel_parts)} not found — run `forge build` in contracts/, set "
+        f"SPARKPOINT_ARTIFACTS_DIR, or vendor packages/shared/src/abis/{contract_abi}."
     )
 
 
