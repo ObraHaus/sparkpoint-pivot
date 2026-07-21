@@ -31,6 +31,7 @@ import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { TokenPicker } from "@/components/screens/swap/TokenPicker";
+import { TokenLogo } from "@/components/ui/TokenLogo";
 import { formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DISPLAY_CHAIN_ID = 84532;
@@ -192,6 +193,7 @@ export default function Page() {
           balance={balanceIn}
           onMax={onMax}
           onPickToken={() => setPickerFor("in")}
+          chainId={activeChain}
         />
         <div style={{ display: "flex", justifyContent: "center", margin: "6px 0" }}>
           <button
@@ -210,6 +212,7 @@ export default function Page() {
           placeholder={quote.isLoading ? "…" : "0.00"}
           editable={false}
           onPickToken={() => setPickerFor("out")}
+          chainId={activeChain}
         />
 
         {/* Unverified-token safety (surfaced again at the signing gate, not just the picker) */}
@@ -453,6 +456,7 @@ function TokenRow({
   balance,
   onMax,
   onPickToken,
+  chainId,
 }: {
   label: string;
   token?: SwapToken;
@@ -463,6 +467,7 @@ function TokenRow({
   balance?: bigint;
   onMax?: () => void;
   onPickToken?: () => void;
+  chainId?: number;
 }) {
   return (
     <div className="field">
@@ -492,8 +497,9 @@ function TokenRow({
         <button
           className="pill"
           onClick={onPickToken}
-          style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", border: "1px solid var(--border)" }}
+          style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", border: "1px solid var(--border)" }}
         >
+          {token && <TokenLogo token={token} chainId={chainId} size={20} />}
           {token?.symbol ?? "Select"}
           <Icon name="chevron-down" size={13} />
         </button>

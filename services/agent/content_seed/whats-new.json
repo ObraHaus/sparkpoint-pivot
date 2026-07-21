@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "token-network-icons",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Real token and network icons",
+      "body": "The Swap page and the network switcher now show real token logos (ETH, USDC, and more) and network logos, instead of just a symbol and a colored dot. A token without a known logo — like a brand-new or testnet token — falls back to a clean lettered badge. The icon is only for recognition: whether a token is verified is still shown separately, so a look-alike logo can never vouch for a token.",
+      "cta_label": "Open Swap",
+      "cta_href": "/swap",
+      "published_at": "2026-07-21",
+      "active": true
+    },
+    {
       "slug": "swap-any-token",
       "type": "changelog",
       "tag": "New",

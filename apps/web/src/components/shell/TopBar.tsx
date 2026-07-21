@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { Icon, SparkMark } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
+import { NetworkLogo } from "@/components/ui/NetworkLogo";
 import { data } from "@/lib/mock-data";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
 
 export function TopBar({ active }: { active: string }) {
-  const { network, wallet, isConnected, onSupportedChain } = useNetwork();
+  const { network, wallet, isConnected, onSupportedChain, chainId } = useNetwork();
   const ov = useOverlay();
   const unread = data.notifications.filter((n) => n.unread).length;
   const wrongNetwork = isConnected && !onSupportedChain;
@@ -33,7 +34,7 @@ export function TopBar({ active }: { active: string }) {
           title={wrongNetwork ? "Switch to a supported network" : "Switch network"}
           onClick={ov.openNetworkMenu}
         >
-          <span style={{ width: 11, height: 11, borderRadius: "50%", background: network.color, flex: "none" }} />
+          <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
           <span>{wrongNetwork ? "Switch network" : network.name}</span>
           <Icon name="chevd" size={12} />
         </span>
