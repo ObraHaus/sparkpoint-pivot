@@ -154,11 +154,12 @@ def test_refusal_swap_on_base_points_to_swap_page() -> None:
     assert "aren't supported" not in msg.lower()
 
 
-def test_refusal_swap_on_non_swap_page_chain_is_network_message() -> None:
-    # No Uniswap Swap page on Robinhood testnet (46630) → the generic "not supported" line.
+def test_refusal_swap_on_robinhood_points_to_swap_page() -> None:
+    # The manual Uniswap-fork (Synthra V3) Swap page is now live on Robinhood testnet (46630) too, so
+    # a swap there points to the Swap page like Base (007: swaps on every supported network).
     msg = _build_action_refusal(46630, ActionType.AERODROME_SWAP)
-    assert "aren't supported" in msg.lower()
-    assert "Swap page" not in msg
+    assert "Swap page" in msg
+    assert "aren't supported" not in msg.lower()
 
 
 def test_refusal_split_deposit_is_build_message() -> None:

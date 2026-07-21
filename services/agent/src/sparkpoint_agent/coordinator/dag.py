@@ -611,9 +611,10 @@ _ACTION_NOUNS: dict[ActionType, str] = {
 }
 
 # Chains where the manual, non-custodial Uniswap V3 Swap page (/swap) is live (mirrors the web's
-# swap dex config). The assistant can't build an Aerodrome swap (fork-only on testnet), but on these
-# chains it points the user at the working Swap page instead of a flat "not supported".
-_SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453})
+# swap dex config `apps/web/src/lib/swap/dex.ts` — Base Sepolia + Base + Robinhood testnet 46630 via
+# the Synthra V3 fork). The assistant can't build an Aerodrome swap (fork-only on testnet), but on
+# these chains it surfaces the web's functional inline swap card instead of a flat "not supported".
+_SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453, 46630})
 
 # One copy for "swaps live on the /swap page" wherever a swap surfaces (chat routing + refusal).
 _SWAP_PAGE_MESSAGE = (
