@@ -32,6 +32,9 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | `0012_tip_source_kind` | ✅ | — | adds a `'tip'` label to the `memory_source` enum (sidebar tip databank) |
 | `0013_persona_notes` | ✅ | — | Sparky persona: `persona_notes` (admin voice overrides) + `persona_audit` — **isolated** from the RAG corpus (no `memory_source` enum, no vector column, never embedded) |
 | `0014_content_slug` | ✅ | — | Feature 006: add `content_entries.slug` + a **partial**-unique index (`WHERE slug IS NOT NULL`) so the committed `content_seed/whats-new.json` upserts changelog entries by slug. No backfill/delete — existing rows keep `slug NULL` and render unchanged |
+| `0015_limits` | ⏳ pending | — | Feature 008: `tier_definitions` (seeded free/premium, admin-editable caps), `wallet_tier` (premium assignments), `usage_counters` (atomic per-window tally), append-only `limits_event` (throttle/deny feed) + `limits_audit`. Advisory-compute gate only — never custody (N2). **Not yet applied**; apply at the feature-008 deploy **before** the agent boots, with `PGCLIENTENCODING=UTF8` |
+
+> **`0015_limits` is NOT yet applied** to any environment (feature 008 Phase 0 — schema + store committed on `feature/008-limits-priority-compute`). Apply it (yoyo, `PGCLIENTENCODING=UTF8`) **before** the agent boots at the feature-008 deploy; the `_seed_tier_limits` boot hook is best-effort, so a missing table degrades to "no premium grants" (never blocks anything). Develop stays at **0014** until then.
 
 > **`0013` and `0014` are now APPLIED to develop** (see the Changelog below). Both are additive/idempotent — `0013` is an isolated persona table; `0014` is a nullable column + a partial-unique index (safe to re-run). **Production** (client infra, TBD) is still at **none**: apply the full `0001`–`0014` chain there at the prod handoff.
 

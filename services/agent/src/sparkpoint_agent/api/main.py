@@ -30,6 +30,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..chain import VaultUnavailable
 from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
+from ..db.limits import LimitsStore
 from ..db.persona_notes import PersonaNoteStore
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
@@ -121,6 +122,26 @@ async def _seed_allowlists(db: object) -> None:
     except Exception:
         # Never interpolate env values; a seed failure must not crash boot.
         logger.warning("allowlist_seed_skipped (table missing or DB error)")
+
+
+async def _seed_tier_limits(db: object) -> None:
+    """Idempotently seed premium wallets from ``PREMIUM_ALLOWLIST`` (comma-separated) on boot
+    (feature 008). The two tiers themselves ship seeded by migration 0015; this only assigns the
+    launch premium wallets.
+
+    Best-effort like the allowlist seed: a failure (0015 not yet applied, DB error) is logged and
+    swallowed so it never blocks startup. Tier limits are an advisory-compute gate, never the
+    withdraw/exit path (N2); if the table is missing, enforcement simply has no premium grants.
+    """
+    try:
+        premium = parse_allowlist_env(os.getenv("PREMIUM_ALLOWLIST"))
+        if not premium:
+            return
+        added = await LimitsStore(db).seed_premium(premium)  # type: ignore[arg-type]
+        logger.info("tier_limits_seeded premium_added=%d", added)
+    except Exception:
+        # Never interpolate env values; a seed failure must not crash boot.
+        logger.warning("tier_limits_seed_skipped (table missing or DB error)")
 
 
 async def _warm_persona(db: object) -> None:
@@ -231,6 +252,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
         logger.info("db_pool_connected")
         await _seed_allowlists(db)
+        # Feature 008: seed any PREMIUM_ALLOWLIST wallets to the premium tier (best-effort).
+        await _seed_tier_limits(db)
         # Sparky persona: compose the literacy SYSTEM persona from persona_seed/ + any admin
         # overrides, once, at boot. Trusted voice-only content; never on the withdraw/exit path.
         await _warm_persona(db)
