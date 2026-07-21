@@ -156,6 +156,8 @@ interface ISparkPointVaultFactory {
 }
 ```
 
+**Implementation note (2026-07-21).** `predictVaultAddress` shipped with the refined signature `predictVaultAddress(morphoVault, feeBps, Caps, label)` (not the `(morphoVault, label)` sketched above): the wrapper is **full-bytecode** CREATE2, so its address is a pure function of its entire init code — which embeds `feeBps`, the derived name/symbol/label, and the per-wrapper CapRegistry's own CREATE2 address (varied by `caps`). Predict therefore takes the **same inputs as `createVault`** and recomputes the identical init code via shared helpers, so `predict()` and `createVault()` can never disagree (a documented, justified deviation the spec authorized; the salt is still `keccak256(morphoVault, label, chainId)`). See `contracts/src/interfaces/ISparkPointVaultFactory.sol`.
+
 **External dependency.** `MORPHO_VAULT` is typed as OZ `IERC4626`
 (`@openzeppelin/contracts/interfaces/IERC4626.sol`) — MetaMorpho V1.1 and Vaults V2 are both standard
 ERC-4626 (+ERC-2612). No Morpho-specific interface is imported into the vault; the factory allowlist is the

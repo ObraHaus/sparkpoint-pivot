@@ -137,7 +137,7 @@ the mainnet-audit gate — see `checklists/phase-1-wrapper-template.md`). No fac
 
 ---
 
-## Phase 2 → User Story 3 — `SparkPointVaultFactory` + curated allowlist + deploy (Priority: P2)
+## Phase 2 → User Story 3 — `SparkPointVaultFactory` + curated allowlist + deploy (Priority: P2) ✅ DONE 2026-07-21
 
 **Goal**: an admin-gated CREATE2 full-bytecode factory that deploys wrappers from a vetted, gated on-chain
 Morpho allowlist; holds no funds.
@@ -177,8 +177,13 @@ Morpho allowlist; holds no funds.
 - [ ] T020 [P] [US3] (BLOCKED by T001) Living docs: `CHANGELOG.md` + `DEVELOPMENT.md` (factory/curated-vault
       address fields).
 
-**Checkpoint**: the factory deploys allowlisted wrappers deterministically, admin-gated, holding no funds;
-whitelist-by-construction preserved at the factory boundary.
+**Checkpoint**: ✅ DONE 2026-07-21 — factory deploys allowlisted wrappers deterministically (predict ==
+deployed address), admin/timelock-gated, holding no funds; whitelist-by-construction preserved at the
+factory boundary; de-allowlist leaves deployed wrappers withdrawable (N2). `forge test` **209 passed / 0
+failed / 3 skipped** (Phase-1's 191 unchanged; +18 new); both adversarial reviews **SOUND** (minor doc/test
+notes applied or deferred to the mainnet-audit gate). T019 shared address-book fields added (plain,
+non-`TargetRef`) with values left undefined until deploy; T020 living docs done. Full CREATE2/allowlist
+gate + no-fund-path verified.
 
 ---
 

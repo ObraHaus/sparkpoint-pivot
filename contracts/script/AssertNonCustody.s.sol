@@ -6,6 +6,7 @@ import { console2 } from "forge-std/console2.sol";
 
 import { SparkPointVault } from "../src/vault/SparkPointVault.sol";
 import { SparkPointMorphoVault } from "../src/vault/SparkPointMorphoVault.sol";
+import { SparkPointVaultFactory } from "../src/factory/SparkPointVaultFactory.sol";
 
 /// @title AssertNonCustody — post-deploy Trust-Center assertions for the SparkPointVault (N1/N2/N5).
 /// @notice Reads the deployed vault (env VAULT_ADDRESS, else deployments/<chainId>/addresses.json) and
@@ -76,6 +77,44 @@ contract AssertNonCustody is Script {
         //    unaffected when WRAPPER_VAULT_ADDRESS is unset.
         address wrapperAddr = vm.envOr("WRAPPER_VAULT_ADDRESS", address(0));
         if (wrapperAddr != address(0)) _assertMorphoWrapper(wrapperAddr);
+
+        // ── 011: if a FACTORY address is provided, assert it is a non-custodian: no fund-egress
+        //    selector + zero balance. Optional — unset FACTORY_ADDRESS leaves plain runs unaffected.
+        address factoryAddr = vm.envOr("FACTORY_ADDRESS", address(0));
+        if (factoryAddr != address(0)) _assertFactoryNonCustody(factoryAddr);
+    }
+
+    /// @dev N1: the SparkPointVaultFactory holds NO funds and has NO fund-egress path. It exposes no
+    ///      deposit/withdraw/sweep/transfer/rescue/skim selector and no receive/fallback, so a bare
+    ///      value transfer reverts and its balance is provably 0. It only reads state + deploys wrappers.
+    function _assertFactoryNonCustody(address factoryAddr) internal view {
+        SparkPointVaultFactory factory = SparkPointVaultFactory(factoryAddr);
+        console2.log("Asserting non-custody invariants for factory", factoryAddr);
+
+        // ── N1: zero balance (the factory is never a custodian) ──
+        require(factoryAddr.balance == 0, "N1(factory): factory holds a balance");
+
+        // ── N1: NO fund-egress selector dispatches — a value-bearing / egress call has no function ──
+        require(!_hasSelector(factoryAddr, "sweep(address,uint256)"), "N1(factory): sweep selector present");
+        require(!_hasSelector(factoryAddr, "withdraw(address,uint256)"), "N1(factory): withdraw selector present");
+        require(!_hasSelector(factoryAddr, "transfer(address,uint256)"), "N1(factory): transfer selector present");
+        require(!_hasSelector(factoryAddr, "rescue(address,uint256)"), "N1(factory): rescue selector present");
+        require(
+            !_hasSelector(factoryAddr, "recoverERC20(address,uint256)"),
+            "N1(factory): recoverERC20 selector present"
+        );
+        require(!_hasSelector(factoryAddr, "skim(address)"), "N1(factory): skim selector present");
+
+        // ── Provenance sanity: the factory's own immutables are wired (usdc/guardian/feeRecipient) ──
+        require(address(factory.usdc()) != address(0), "N1(factory): usdc immutable unset");
+        require(factory.guardian() != address(0), "N5(factory): guardian immutable unset");
+        require(factory.feeRecipient() != address(0), "N5(factory): feeRecipient immutable unset");
+        require(factory.owner() != address(0), "factory owner unset");
+
+        console2.log("OK  factory balance == 0");
+        console2.log("OK  factory exposes no fund-egress selector (N1)");
+        console2.log("OK  factory owner", factory.owner());
+        console2.log("All factory non-custody assertions passed (N1).");
     }
 
     /// @dev Mirrors the SparkPointVault assertions for the Morpho WRAPPER and adds the N1/N5

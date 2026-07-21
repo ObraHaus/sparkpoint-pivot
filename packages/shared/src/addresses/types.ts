@@ -121,6 +121,20 @@ export interface AddressBook {
   readonly capRegistry?: Address;
   /** `KillSwitch`/`Guardian` — PAUSE-ONLY controller (N5). */
   readonly killSwitch?: Address;
+  /**
+   * `SparkPointVaultFactory` (feature 011) — the deploy-only CREATE2 registrar of branded
+   * Morpho-wrapper vaults. A PLAIN address-book field, **NOT** a policy `TargetRef`: the factory is
+   * admin/timelock-gated and never on the agent policy path, and (constitution IV.5(d)) its curated
+   * Morpho allowlist is consulted ONLY at deploy time — never by the policy engine. Undefined ⇒ not
+   * yet deployed on this chain.
+   */
+  readonly sparkPointVaultFactory?: Address;
+  /**
+   * Curated Morpho ERC-4626 vaults (feature 011) the factory may wrap on this chain — a vetted display
+   * list for the app / 010 reader; **NOT** policy `TargetRef`s. Empty/undefined ⇒ none curated yet
+   * (e.g. Base Sepolia, where Morpho has no ready curated vaults with real TVL/liquidity).
+   */
+  readonly curatedMorphoVaults?: readonly Address[];
 }
 
 /**
