@@ -20,6 +20,7 @@ from sparkpoint_agent.llm.client import (
     GatewayError,
     OpenAICompatTransport,
     normalize_message,
+    set_model_alias,
 )
 from sparkpoint_agent.llm.resilience import is_retryable, status_code
 
@@ -127,3 +128,50 @@ def test_from_env_falls_back_to_anthropic(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("NEW_ANTHROPIC_OAUTH_TOKEN", "oauth-token")
     client = AsyncClaudeClient.from_env()
     assert client.auth_mode is AuthMode.OAUTH
+
+
+def _capture_model_transport() -> tuple[OpenAICompatTransport, dict[str, object]]:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["model"] = json.loads(request.content)["model"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                "model": "x",
+            },
+        )
+
+    return _transport(handler), captured
+
+
+async def _one_turn(t: OpenAICompatTransport) -> None:
+    await t.create(
+        model="ignored",
+        system=[{"type": "text", "text": "sys"}],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=16,
+        tools=None,
+        extra_body={},
+        user="0xabc",
+    )
+
+
+async def test_model_alias_override_routes_premium_to_its_alias() -> None:
+    # Feature 008 US4: a per-request tier alias (premium) overrides the transport's default alias.
+    t, captured = _capture_model_transport()
+    set_model_alias("sparkpoint-chat-premium")
+    try:
+        await _one_turn(t)
+    finally:
+        set_model_alias(None)
+    assert captured["model"] == "sparkpoint-chat-premium"
+
+
+async def test_model_defaults_to_transport_alias_when_unset() -> None:
+    t, captured = _capture_model_transport()
+    set_model_alias(None)  # free / no override
+    await _one_turn(t)
+    assert captured["model"] == "sparkpoint-chat"  # the transport's configured default

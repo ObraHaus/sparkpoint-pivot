@@ -90,6 +90,8 @@ export default function Page() {
       const [tiers, log] = await Promise.all([listTiers(), listAudit()]);
       setDrafts(Object.fromEntries(tiers.map((t) => [t.tier, t])));
       setOrder(tiers.map((t) => t.tier));
+      const firstPaid = tiers.find((t) => !t.isDefault);
+      if (firstPaid) setGrantTier(firstPaid.tier);
       setAudit(log);
       setLoadErr(null);
     } catch (e) {
@@ -245,6 +247,10 @@ export default function Page() {
         <div className="ch">
           <span className="ct">Premium membership</span>
         </div>
+        <div style={{ fontSize: 12, color: "var(--muted-foreground)", padding: "2px 4px 6px" }}>
+          Every wallet is on the default (free) tier automatically — grant a paid tier here, and
+          revoke to return a wallet to free.
+        </div>
         <div
           style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "10px 4px", alignItems: "center" }}
         >
@@ -260,11 +266,13 @@ export default function Page() {
             onChange={(e) => setGrantTier(e.target.value)}
             style={{ ...INPUT_STYLE, width: "auto" }}
           >
-            {order.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
+            {order
+              .filter((name) => !drafts[name]?.isDefault)
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
           </select>
           <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => membership("assign")}>
             <Icon name="plus" size={14} /> Grant

@@ -116,9 +116,21 @@ async def assign_tier(
     admin: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[LimitsStore, Depends(get_limits_store)],
 ) -> dict[str, object]:
-    """Grant a wallet a tier (admin-gated, audited, effective next request)."""
-    if await store.get_tier(body.tier) is None:
+    """Grant a wallet a NON-default tier (admin-gated, audited, effective next request).
+
+    The default tier (free) is what every wallet already resolves to with no assignment, so it is
+    not grantable — use ``revoke`` to return a wallet to the default. Rejecting it keeps
+    ``wallet_tier`` free of redundant rows.
+    """
+    target = await store.get_tier(body.tier)
+    if target is None:
         raise ApiError(ErrorCode.VALIDATION_ERROR, "Unknown tier.")
+    if target.get("isDefault"):
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "That's the default tier — every wallet already has it. Use revoke to return a "
+            "wallet to the default.",
+        )
     await store.assign(body.address, body.tier, actor=admin.owner)
     return {"ok": True, "address": body.address.lower(), "tier": body.tier.strip().lower()}
 
