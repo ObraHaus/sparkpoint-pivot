@@ -35,6 +35,39 @@ import { vaultAddressFor } from "@/lib/chain/exit";
 import { wagmiConfig } from "@/lib/wagmi";
 
 /**
+ * Which vault this hook is reading. The conservative launch Aave vault is the DEFAULT (calling with
+ * no `vaultAddress` resolves it, exactly as before). A `morpho_wrapper` is a branded, single-purpose
+ * SparkPointMorphoVault over ONE curated Morpho vault — its yield is Morpho, NOT Aave (011 Phase 4).
+ */
+export type VaultKind = "aave_launch" | "morpho_wrapper";
+
+/**
+ * The wrapper-only views (011). The 4626 + fee/pause spine is already covered by `sparkPointVaultAbi`
+ * (a wrapper exposes the SparkPoint superset — abiKind 'sparkpoint'), so only these ADDITIVE reads are
+ * declared here. Read-only, view-filtered — nothing signable, matching the file's non-custody stance.
+ */
+const morphoWrapperViewsAbi = [
+  { type: "function", name: "label", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "morphoVault", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "factory", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+] as const;
+
+/**
+ * Factory provenance attestation (011). 010's reader trusts a wrapper ONLY if the factory attests it
+ * via `isSparkPointVault(address)`; an unattested address is refused (fail-closed) — never rendered as
+ * a SparkPoint vault. A pure view read; the factory has no fund path.
+ */
+const vaultFactoryProvenanceAbi = [
+  {
+    type: "function",
+    name: "isSparkPointVault",
+    stateMutability: "view",
+    inputs: [{ type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
+
+/**
  * The chain-ids wagmi can select a transport for (the configured chains). A read
  * `chainId` outside this set has no transport, so we type the read target as this
  * union; the resolved `chainId` we return/use for address lookups stays `number`.
@@ -84,6 +117,16 @@ export interface UseVaultOptions {
   readonly previewDepositAssets?: bigint;
   /** Shares to price a redeem preview for — drives `previewRedeemAssets`. */
   readonly previewRedeemShares?: bigint;
+  /**
+   * The vault to read (011 multi-vault). OMITTED ⇒ the conservative launch Aave vault for this chain
+   * (unchanged default). Pass a wrapper address (with `kind: 'morpho_wrapper'`) to read a branded
+   * SparkPointMorphoVault instead. All the shared ERC-4626 + fee/pause reads target this address.
+   */
+  readonly vaultAddress?: Address;
+  /** The vault's kind (010 registry). Defaults to `'aave_launch'`; set `'morpho_wrapper'` for a wrapper. */
+  readonly kind?: VaultKind;
+  /** A registry display label override (else the launch default, or the wrapper's on-chain `label()`). */
+  readonly label?: string;
 }
 
 export interface UseVaultResult {
@@ -95,8 +138,28 @@ export interface UseVaultResult {
   readonly vault: Address | undefined;
   /** The underlying-asset (USDC) address from the SoT registry for the ERC-20 reads. */
   readonly usdcAddress: Address | undefined;
-  /** Fixed underlying decimals (6). Exposed so consumers never re-derive it. */
+  /**
+   * The vault asset's decimals. Read live on-chain per vault (`decimals()`), falling back to USDC's 6
+   * before the read resolves — so a wrapper over a non-6dp asset scales correctly, never hardcoded.
+   * This is the vault's SHARE-token `decimals()`; it equals the ASSET decimals only under the
+   * `_decimalsOffset() == 0` invariant these OZ-ERC-4626 vaults hold (see the read site).
+   */
   readonly assetDecimals: number;
+
+  // ── multi-vault identity (011 Phase 4) ─────────────────────────────────────
+  /** `'aave_launch'` (default) or `'morpho_wrapper'`. Drives copy + the double-fee disclosure. */
+  readonly kind: VaultKind;
+  /** Human display name — the launch label, a registry override, or the wrapper's on-chain `label()`. */
+  readonly label: string;
+  /** Honest venue: the launch vault yields via Aave v3; a wrapper via Morpho (NOT Aave). */
+  readonly underlyingProtocol: "aave_v3" | "morpho";
+  /** For a wrapper: the single curated Morpho vault it routes into (`morphoVault()`). Else undefined. */
+  readonly morphoVault: Address | undefined;
+  /**
+   * Wrapper PROVENANCE via `factory.isSparkPointVault(vault)`: `true` ⇒ attested (safe to render),
+   * `false` ⇒ refused (fail-closed), `undefined` ⇒ launch vault / factory not deployed / still loading.
+   */
+  readonly factoryVerified: boolean | undefined;
 
   // ── fail-closed gate ─────────────────────────────────────────────────────
   /** Non-null ⇒ the live view can't act; render a notice. Never gate `/exit` on this. */
@@ -173,6 +236,16 @@ function usdcAddressFor(chainId: number | undefined): Address | undefined {
   }
 }
 
+/** SparkPointVaultFactory address (011) from the SoT registry — `undefined` where not deployed. */
+function factoryAddressFor(chainId: number | undefined): Address | undefined {
+  if (chainId === undefined) return undefined;
+  try {
+    return getAddresses(chainId).sparkPointVaultFactory;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The live vault view. All reads are wagmi/react-query direct-RPC reads targeting
  * the resolved chain's transport — no agent, no backend, no custody. See file docs.
@@ -186,8 +259,14 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // closed (never a fabricated value).
   const readChainId = chainId as ReadChainId | undefined;
 
-  const vault = chainId === undefined ? undefined : vaultAddressFor(chainId);
+  // Multi-vault resolution (011): an explicit `vaultAddress` targets a branded wrapper; omitting it
+  // resolves the conservative launch Aave vault for this chain — the UNCHANGED default.
+  const kind: VaultKind = options.kind ?? "aave_launch";
+  const isWrapper = kind === "morpho_wrapper";
+  const launchVault = chainId === undefined ? undefined : vaultAddressFor(chainId);
+  const vault = options.vaultAddress ?? launchVault;
   const usdcAddress = usdcAddressFor(chainId);
+  const factoryAddress = chainId === undefined ? undefined : factoryAddressFor(chainId);
 
   const unavailable: VaultUnavailable | null =
     chainId === undefined
@@ -271,6 +350,59 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const usdcBalance = usdcReads.data?.[0]?.result as bigint | undefined;
   const usdcAllowance = usdcReads.data?.[1]?.result as bigint | undefined;
 
+  // ── per-vault decimals (011): read live so a wrapper over a non-6dp asset scales right; the
+  //    launch vault reads 6 and matches USDC_DECIMALS. Fails soft to 6 before it resolves.
+  //
+  //    INVARIANT (fix 6): this reads the vault's OWN erc20 `decimals()` — i.e. the SHARE-token
+  //    decimals — yet consumers also scale ASSET amounts (deposit/withdraw USDC) with it. That is
+  //    sound ONLY because these OZ ERC-4626 vaults (launch `SparkPointVault` + the branded
+  //    `SparkPointMorphoVault` wrapper) use the default `_decimalsOffset() == 0`, so
+  //    share-decimals == asset-decimals. If a future vault sets a non-zero virtual offset this
+  //    breaks; such a vault MUST instead read `asset()`'s decimals separately. Launch: 6 == 6. ──
+  const decimalsRead = useReadContract({
+    address: vault as Address,
+    abi: erc20Abi,
+    chainId: readChainId,
+    functionName: "decimals",
+    query: { enabled: enabledGlobal },
+  });
+  const decimalsLive = decimalsRead.data as number | undefined;
+  const assetDecimals = decimalsLive ?? USDC_DECIMALS;
+
+  // ── wrapper-only views (011): branded label + the single curated Morpho target it routes into. ──
+  const wrapperReads = useReadContracts({
+    allowFailure: true,
+    contracts: [
+      { address: vault as Address, abi: morphoWrapperViewsAbi, chainId: readChainId, functionName: "label" },
+      { address: vault as Address, abi: morphoWrapperViewsAbi, chainId: readChainId, functionName: "morphoVault" },
+    ],
+    query: { enabled: enabledGlobal && isWrapper },
+  });
+  const wrapperLabel = wrapperReads.data?.[0]?.result as string | undefined;
+  const morphoVault = wrapperReads.data?.[1]?.result as Address | undefined;
+
+  // ── wrapper PROVENANCE (011): render a wrapper ONLY when the factory attests it. Unverified ⇒
+  //    false (refuse, fail-closed). Launch vault / no factory ⇒ never queried (stays undefined).
+  //    NOTE (fix 5): this is queried ONLY when `kind === 'morpho_wrapper'`, so `factoryVerified`
+  //    is populated just for that case. `useVaultConfirm` still treats a true attestation as the
+  //    trust root (an attested address is a wrapper even absent `kind`); see the kind↔address↔
+  //    provenance contract in vaultConfirmModel.ts. Enforcement (deposit fail-close) lives there. ──
+  const provenanceRead = useReadContract({
+    address: factoryAddress as Address,
+    abi: vaultFactoryProvenanceAbi,
+    chainId: readChainId,
+    functionName: "isSparkPointVault",
+    args: [vault as Address],
+    query: { enabled: enabledGlobal && isWrapper && factoryAddress !== undefined },
+  });
+  const factoryVerified = isWrapper ? (provenanceRead.data as boolean | undefined) : undefined;
+
+  // ── multi-vault identity ─────────────────────────────────────────────────
+  const label = isWrapper
+    ? (wrapperLabel ?? options.label ?? "SparkPoint Vault")
+    : (options.label ?? "Aave Yield Vault");
+  const underlyingProtocol: "aave_v3" | "morpho" = isWrapper ? "morpho" : "aave_v3";
+
   // ── parameterized previews ───────────────────────────────────────────────
   const depositAssets = options.previewDepositAssets;
   const previewDepositRead = useReadContract({
@@ -317,7 +449,20 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     void usdcReads.refetch();
     void previewDepositRead.refetch();
     void previewRedeemRead.refetch();
-  }, [globalReads, accountReads, underlyingRead, usdcReads, previewDepositRead, previewRedeemRead]);
+    void decimalsRead.refetch();
+    void wrapperReads.refetch();
+    void provenanceRead.refetch();
+  }, [
+    globalReads,
+    accountReads,
+    underlyingRead,
+    usdcReads,
+    previewDepositRead,
+    previewRedeemRead,
+    decimalsRead,
+    wrapperReads,
+    provenanceRead,
+  ]);
 
   // ── derived helpers ──────────────────────────────────────────────────────
   const needsApproval = useCallback(
@@ -349,7 +494,12 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     isConnected: acct.isConnected,
     vault,
     usdcAddress,
-    assetDecimals: USDC_DECIMALS,
+    assetDecimals,
+    kind,
+    label,
+    underlyingProtocol,
+    morphoVault,
+    factoryVerified,
     unavailable,
     isDeployed,
     isLoading,

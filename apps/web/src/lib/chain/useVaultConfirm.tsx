@@ -12,32 +12,37 @@
  * real `VaultExec` for `useExecuteVaultTx`; `ready`/`label` gate whether a Sign can
  * even be offered (connected + deployed + within the live cap / balance, not paused;
  * withdraw is NEVER cap/pause-gated — N2). Nothing here signs or holds a key.
+ *
+ * The gating + honest-copy DECISIONS live in the pure, JSX-free {@link deriveVaultConfirm}
+ * (vaultConfirmModel.ts) so they are directly unit-testable; this hook only wires the LIVE
+ * `useVault` reads into it and wraps its plain-data outputs in the design's JSX. The launch
+ * Aave vault path renders byte-identically to before — the wrapper branches (011) are latent
+ * until a caller passes a `vaultAddress` + `kind`.
  */
 
-import { formatUnits, type Address } from "viem";
 import { money, fmt } from "@/lib/utils";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { useVault, type UseVaultResult } from "@/lib/chain/useVault";
 import { capNoun } from "@/lib/stage";
+import {
+  deriveVaultConfirm,
+  toNum,
+  type VaultConfirmInput,
+  type VaultConfirmModel,
+} from "@/lib/chain/vaultConfirmModel";
 import type { OnchainConfirm } from "@/components/ui/ConfirmFlow";
 
-const DECIMALS = 6;
+// Re-exported for the existing call sites (`_amount-screen.tsx` imports `toNum` from here).
+export { toNum };
+export type { VaultConfirmInput };
 
 /**
- * Aave USDC supply-rate estimate (bps) — frames the net-of-fee APY. The performance
- * fee applied is LIVE from the chain (`useVault.netApy`); only the gross Aave rate is
- * an off-chain estimate.
+ * Aave USDC supply-rate estimate (bps) — frames the net-of-fee APY for the LAUNCH vault. The
+ * performance fee applied is LIVE from the chain (`useVault.netApy`); only the gross Aave rate is
+ * an off-chain estimate. A wrapper is NEVER framed with this figure — its Net APY renders "—"
+ * (honest; the real net-of-both-fees APY is a 010 market-data follow-up).
  */
 const AAVE_SUPPLY_APY_BPS = 430;
-
-/** Raw base units → a JS number for the design's `fmt`/`money` display helpers. */
-export function toNum(x: bigint | undefined, decimals = DECIMALS): number {
-  return x === undefined ? 0 : Number(formatUnits(x, decimals));
-}
-
-function clampBig(x: bigint, lo: bigint, hi: bigint): bigint {
-  return x < lo ? lo : x > hi ? hi : x;
-}
 
 /** Per-user beta cap (raw USDC base units) for a chain; fail-closed to 0 on unsupported. */
 function perUserCapRaw(chainId: number | undefined): bigint {
@@ -47,15 +52,6 @@ function perUserCapRaw(chainId: number | undefined): bigint {
   } catch {
     return 0n;
   }
-}
-
-/** What the caller wants to move: USDC assets, and (redeem-by-shares) optional shares. */
-export interface VaultConfirmInput {
-  readonly mode: "deposit" | "withdraw";
-  /** USDC (6-dp base units) to deposit, or to withdraw (drives `redeemShares`). */
-  readonly assets?: bigint;
-  /** Vault shares to redeem directly (a `vault_redeem` proposedAction); overrides `assets`. */
-  readonly shares?: bigint;
 }
 
 export interface VaultConfirmState {
@@ -69,9 +65,9 @@ export interface VaultConfirmState {
   readonly feePctInt: number;
   readonly usedAfter: bigint;
   readonly remaining: bigint;
-  /** Deposit: connected+deployed+within cap/balance+not paused. Withdraw: connected+position+redeemable (never cap/pause-gated). */
+  /** Deposit: connected+deployed+within cap/balance+not paused+(attested wrapper). Withdraw: connected+position+redeemable (never cap/pause/provenance-gated). */
   readonly ready: boolean;
-  /** The CTA/blocked label (e.g. "Review deposit" / "Connect your wallet" / "Above your beta cap"). */
+  /** The CTA/blocked label (e.g. "Review deposit" / "Connect your wallet" / "Unverified vault"). */
   readonly label: string;
   /** The REAL execution config for the confirm gate (only meaningful when `ready`). */
   readonly onchain: OnchainConfirm;
@@ -79,8 +75,8 @@ export interface VaultConfirmState {
 
 /**
  * Compute the live figures, the ready/label gate, and the real `OnchainConfirm` for
- * `input`. Pure derivation over `useVault` (no effects); safe to call with a 0 amount
- * (everything reads as not-ready until an amount + wallet are present).
+ * `input`. Reads via `useVault`; the derivation is the pure {@link deriveVaultConfirm}.
+ * Safe to call with a 0 amount (everything reads as not-ready until an amount + wallet).
  */
 export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
   const isDep = input.mode === "deposit";
@@ -88,148 +84,82 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
 
   const v = useVault({
     previewDepositAssets: isDep && wantUnits > 0n ? wantUnits : undefined,
+    vaultAddress: input.vaultAddress,
+    kind: input.kind,
+    label: input.label,
   });
 
-  // Shares a withdraw redeems. Prefer an explicit shares amount (redeem-by-shares);
-  // otherwise convert the USDC amount at the current share price (convertToAssets is
-  // linear: underlying == convertToAssets(shares)), clamped to what's redeemable now
-  // (maxRedeem, i.e. Aave liquidity).
-  const redeemShares = isDep
-    ? 0n
-    : input.shares !== undefined
-      ? clampBig(input.shares, 0n, v.maxRedeem ?? input.shares)
-      : v.shares !== undefined && v.underlying !== undefined && v.underlying > 0n && wantUnits > 0n
-        ? clampBig((v.shares * wantUnits) / v.underlying, 0n, v.maxRedeem ?? v.shares)
-        : 0n;
+  const m: VaultConfirmModel = deriveVaultConfirm(v, input, {
+    grossApyBps: AAVE_SUPPLY_APY_BPS,
+    capNoun,
+  });
 
-  const redeemAssetsOut =
-    v.shares !== undefined && v.shares > 0n && v.underlying !== undefined
-      ? (v.underlying * redeemShares) / v.shares
-      : 0n;
-
-  // ── live derived figures ───────────────────────────────────────────────────
-  const framing = v.netApy(AAVE_SUPPLY_APY_BPS);
-  const netPct = framing.netApyPct;
-  const feePctInt = Math.round(framing.feeBps / 100);
   const capRaw = perUserCapRaw(v.chainId);
+  const { dec, vaultName, shareSymbol } = m;
 
-  const depositShares = v.previewDepositShares ?? 0n;
-  const usedAfter = (v.underlying ?? 0n) + wantUnits;
-  const remaining = (v.underlying ?? 0n) - redeemAssetsOut;
-
-  // ── gating ─────────────────────────────────────────────────────────────────
-  const paused = v.paused === true;
-  const overBalance = v.usdcBalance !== undefined && wantUnits > v.usdcBalance;
-  const overCap = v.maxDeposit !== undefined && wantUnits > v.maxDeposit;
-  const depositReady =
-    v.isConnected && v.isDeployed && wantUnits > 0n && !paused && !overBalance && !overCap;
-  const depositLabel = !v.isConnected
-    ? "Connect your wallet"
-    : !v.isDeployed
-      ? "Switch to Base Sepolia"
-      : wantUnits <= 0n
-        ? "Enter an amount"
-        : paused
-          ? "Deposits are paused"
-          : overBalance
-            ? "Insufficient USDC balance"
-            : overCap
-              ? `Above your ${capNoun}`
-              : "Review deposit";
-
-  // Withdraw: NEVER gated on beta/whitelist (N2). Only a connected wallet + a real,
-  // redeemable position (the on-chain vault re-checks and never pause/cap-gates exits).
-  const hasPosition = (v.shares ?? 0n) > 0n;
-  const overRedeem = v.maxRedeem !== undefined && redeemShares > v.maxRedeem;
-  const withdrawReady =
-    v.isConnected && v.isDeployed && hasPosition && redeemShares > 0n && !overRedeem;
-  const withdrawLabel = !v.isConnected
-    ? "Connect your wallet"
-    : !v.isDeployed
-      ? "Switch to Base Sepolia"
-      : !hasPosition
-        ? "No position to withdraw"
-        : redeemShares <= 0n
-          ? "Enter an amount"
-          : overRedeem
-            ? "Above your available liquidity"
-            : "Review withdrawal";
-
-  const ready = isDep ? depositReady : withdrawReady;
-  const label = isDep ? depositLabel : withdrawLabel;
-
-  // ── the REAL execution config handed to ConfirmFlow (meaningful only when `ready`) ──
+  // ── the REAL execution config handed to ConfirmFlow (meaningful only when `ready`). The rows/guards
+  //    come from the pure model; only the amount-formatted (`fmt`/`money`) cells + the branded JSX
+  //    fragments are assembled here — the launch vault renders exactly as before. ──
   const onchain: OnchainConfirm = isDep
     ? {
-        exec: {
-          kind: "deposit",
-          chainId: v.chainId as number,
-          vault: v.vault as Address,
-          usdc: v.usdcAddress as Address,
-          account: v.account as Address,
-          assets: wantUnits,
-          needsApprove: v.needsApproval(wantUnits),
-          onDone: v.refetch,
-        },
+        exec: m.depositExec,
         sub: (
           <>
-            You&rsquo;re depositing {fmt(toNum(wantUnits))} USDC into the Aave Yield Vault. You&rsquo;ll receive ≈{" "}
-            {fmt(toNum(depositShares, DECIMALS), 1)} spvUSDC.
+            You&rsquo;re depositing {fmt(toNum(wantUnits, dec))} USDC into the {vaultName}. You&rsquo;ll receive ≈{" "}
+            {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
+            {m.subYieldNote}
           </>
         ),
         bc: [
-          ["USDC out", `−${fmt(toNum(wantUnits))} USDC`, "--loss"],
-          ["spvUSDC in", `+${fmt(toNum(depositShares, DECIMALS), 1)} spvUSDC`, "--gain"],
+          ["USDC out", `−${fmt(toNum(wantUnits, dec))} USDC`, "--loss"],
+          [`${shareSymbol} in`, `+${fmt(toNum(m.depositShares, dec), 1)} ${shareSymbol}`, "--gain"],
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this deposit", "0% — none", "--gain"],
-          ["Performance fee", `${feePctInt}% of yield (over HWM)`, ""],
-          ["Net APY on new shares", `${netPct.toFixed(2)}%`, ""],
+          m.feeRow,
+          m.netApyRow,
         ],
         guards: [
           <>Within your beta cap ({money(toNum(capRaw), 0)})</>,
           "Slippage under your max (0.5%)",
-          "Allowlisted protocol — Aave v3 (Base)",
+          m.venueGuard,
         ],
         okBody: (
           <>
-            Your USDC is now earning in the Aave Yield Vault — you deposited {fmt(toNum(wantUnits))} USDC for ≈{" "}
-            {fmt(toNum(depositShares, DECIMALS), 1)} spvUSDC.
+            Your USDC is now earning in the {vaultName} — you deposited {fmt(toNum(wantUnits, dec))} USDC for ≈{" "}
+            {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
           </>
         ),
       }
     : {
-        exec: {
-          kind: "withdraw",
-          chainId: v.chainId as number,
-          vault: v.vault as Address,
-          account: v.account as Address,
-          shares: redeemShares,
-          onDone: v.refetch,
-        },
-        sub: <>You&rsquo;re withdrawing {fmt(toNum(redeemAssetsOut))} USDC from the Aave Yield Vault to your wallet.</>,
+        exec: m.withdrawExec,
+        sub: (
+          <>
+            You&rsquo;re withdrawing {fmt(toNum(m.redeemAssetsOut, dec))} USDC from the {vaultName} to your wallet.
+          </>
+        ),
         bc: [
-          ["spvUSDC redeemed", `−${fmt(toNum(redeemShares, DECIMALS), 1)} spvUSDC`, "--loss"],
-          ["USDC in", `+${fmt(toNum(redeemAssetsOut))} USDC`, "--gain"],
+          [`${shareSymbol} redeemed`, `−${fmt(toNum(m.redeemShares, dec), 1)} ${shareSymbol}`, "--loss"],
+          ["USDC in", `+${fmt(toNum(m.redeemAssetsOut, dec))} USDC`, "--gain"],
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this withdrawal", "0% — none", "--gain"],
         ],
-        guards: ["Redeemed to your own wallet", "Withdrawals are never paused or capped (N2)"],
-        okBody: <>{money(toNum(redeemAssetsOut))} is back in your wallet.</>,
+        guards: ["Redeemed to your own wallet", m.withdrawGuardN2],
+        okBody: <>{money(toNum(m.redeemAssetsOut, dec))} is back in your wallet.</>,
       };
 
   return {
     v,
     wantUnits,
-    depositShares,
-    redeemShares,
-    redeemAssetsOut,
+    depositShares: m.depositShares,
+    redeemShares: m.redeemShares,
+    redeemAssetsOut: m.redeemAssetsOut,
     capRaw,
-    netPct,
-    feePctInt,
-    usedAfter,
-    remaining,
-    ready,
-    label,
+    netPct: m.netPct,
+    feePctInt: m.feePctInt,
+    usedAfter: m.usedAfter,
+    remaining: m.remaining,
+    ready: m.ready,
+    label: m.label,
     onchain,
   };
 }

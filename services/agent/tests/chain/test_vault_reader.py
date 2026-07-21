@@ -21,7 +21,11 @@ import pytest
 from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode
 
+from sparkpoint_agent.chain.vault_factory import VaultFactoryChain
 from sparkpoint_agent.chain.vault_reader import (
+    _ERC4626_CORE_METHODS,
+    _REQUIRED_METHODS,
+    _SPARKPOINT_EXTRA_METHODS,
     HttpxJsonRpcTransport,
     VaultReader,
     VaultUnavailable,
@@ -69,6 +73,102 @@ def test_registry_has_known_selector_and_is_view_only() -> None:
     # Non-custody: state-changing methods are NOT registered (cannot be encoded here).
     for mutating in ("deposit", "mint", "redeem", "withdraw", "approve", "transfer", "accrueFee"):
         assert mutating not in methods
+
+
+# ── T027: the ERC-4626 reader method SPLIT (010 data-model §2) ────────────────────
+
+
+def test_required_methods_split_core_plus_extras() -> None:
+    # The SparkPoint superset is EXACTLY core | extras (back-compat drift guard, unchanged posture).
+    assert _REQUIRED_METHODS == _ERC4626_CORE_METHODS | _SPARKPOINT_EXTRA_METHODS
+    # core and extras are DISJOINT namespaces.
+    assert _ERC4626_CORE_METHODS.isdisjoint(_SPARKPOINT_EXTRA_METHODS)
+    # The core is the standard EIP-4626 (+ERC-20) surface a generic Morpho vault must expose.
+    core_sample = {"asset", "totalAssets", "decimals", "convertToAssets", "maxWithdraw"}
+    assert core_sample <= _ERC4626_CORE_METHODS
+    # The extras are the SparkPoint-only fee/pause/HWM views — NOT part of a generic 4626 vault.
+    assert _SPARKPOINT_EXTRA_METHODS == {
+        "paused",
+        "performanceFeeBps",
+        "highWaterMark",
+        "feeRecipient",
+    }
+
+
+def test_erc4626_mode_requires_core_only_fee_pause_optional() -> None:
+    # abiKind='erc4626' validates ONLY the core: a generic vault missing paused/fee/HWM is still
+    # readable (fail-OPEN for extras) — those SparkPoint views are simply absent for external ones.
+    for extra in _SPARKPOINT_EXTRA_METHODS:
+        assert extra not in _ERC4626_CORE_METHODS
+    core = load_vault_methods("erc4626")
+    superset = load_vault_methods("sparkpoint")
+    # Both load off the SparkPoint artifact (which exposes the superset), so the returned registry
+    # is identical; the modes differ only in which method set the drift guard requires.
+    assert _ERC4626_CORE_METHODS <= core.keys()
+    assert _REQUIRED_METHODS <= superset.keys()
+    # Still view/pure-only in BOTH modes — no state-changing selector for ANY vault (non-custody).
+    for mutating in ("deposit", "redeem", "withdraw", "approve"):
+        assert mutating not in core
+        assert mutating not in superset
+
+
+def test_unknown_abi_kind_rejected() -> None:
+    with pytest.raises(ValueError):
+        load_vault_methods("erc777")
+
+
+async def test_wrapper_read_with_sparkpoint_abikind_round_trip() -> None:
+    # A SparkPointMorphoVault WRAPPER registers abiKind='sparkpoint' (it exposes the full superset),
+    # so it reads through the SAME split reader with no ABI change — its fee/pause/HWM + 4626 views
+    # all round-trip exactly as the launch vault's do.
+    m = load_vault_methods("sparkpoint")
+    results = {
+        m["performanceFeeBps"].selector: _word(abi_encode(["uint16"], [1000])),
+        m["paused"].selector: _word(abi_encode(["bool"], [False])),
+        m["asset"].selector: _word(abi_encode(["address"], [_OWNER])),
+        m["totalAssets"].selector: _word(abi_encode(["uint256"], [7_000_000])),
+    }
+    wrapper = VaultReader(
+        vault_address=_VAULT, transport=RecordingTransport(results), abi_kind="sparkpoint"
+    )
+    assert await wrapper.performance_fee_bps() == 1000
+    assert await wrapper.paused() is False
+    assert await wrapper.asset() == _OWNER
+    assert await wrapper.total_assets() == 7_000_000
+
+
+# ── T027: wrapper provenance — render ONLY when factory.isSparkPointVault attests (fail-closed) ──
+
+
+def _factory(results: dict[str, str], *, factory: str | None = _VAULT) -> VaultFactoryChain:
+    return VaultFactoryChain(factory_address=factory, transport=RecordingTransport(results))
+
+
+async def test_wrapper_provenance_attested_renders() -> None:
+    # factory.isSparkPointVault(wrapper) == true ⇒ the wrapper row is trusted and rendered.
+    from sparkpoint_agent.chain.vault_factory import _FACTORY_ARTIFACT, _load_registry
+
+    sel = _load_registry(_FACTORY_ARTIFACT)["isSparkPointVault"].selector
+    factory = _factory({sel: _word(abi_encode(["bool"], [True]))})
+    assert await factory.is_sparkpoint_vault(_OWNER) is True
+
+
+async def test_wrapper_provenance_unverified_is_refused() -> None:
+    # An address the factory does NOT attest ⇒ isSparkPointVault false ⇒ refused (not rendered).
+    from sparkpoint_agent.chain.vault_factory import _FACTORY_ARTIFACT, _load_registry
+
+    sel = _load_registry(_FACTORY_ARTIFACT)["isSparkPointVault"].selector
+    factory = _factory({sel: _word(abi_encode(["bool"], [False]))})
+    assert await factory.is_sparkpoint_vault(_OWNER) is False
+
+
+async def test_wrapper_provenance_no_factory_fails_closed() -> None:
+    # No factory on this chain ⇒ provenance cannot be attested ⇒ fail-closed VaultUnavailable
+    # (never a fabricated "trusted" verdict).
+    factory = _factory({}, factory=None)
+    with pytest.raises(VaultUnavailable) as exc:
+        await factory.is_sparkpoint_vault(_OWNER)
+    assert exc.value.reason is VaultUnavailableReason.NOT_DEPLOYED
 
 
 # ── Encode/decode round-trips through the real codec ─────────────────────────────

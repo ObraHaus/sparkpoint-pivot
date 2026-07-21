@@ -240,7 +240,7 @@ read half isn't yet). whats-new client entry deferred to Phase 4 (admin-only unt
 
 ---
 
-## Phase 4 → User Story 5 — App user-signed deposit/withdraw into a branded wrapper (Priority: P3)
+## Phase 4 → User Story 5 — App user-signed deposit/withdraw into a branded wrapper (Priority: P3) ✅ PLUMBING DONE 2026-07-21
 
 **Goal**: users deposit/withdraw into a branded wrapper via the SAME confirm gate + universal-swap tx
 patterns; the wrapper appears in the 010 registry/reader automatically; the double-fee + Morpho-not-Aave
@@ -279,8 +279,18 @@ disclosure is honest.
 - [ ] T033 [P] [US5] (BLOCKED by T001) Living docs: `CHANGELOG.md` + `whats-new.json` ("Deposit into branded
       vaults") + the in-app `/changelog` double-fee disclosure copy.
 
-**Checkpoint**: a wrapper is deposit/withdrawable in-app via the confirm gate; it lists automatically in the
-010 reader; the double-fee + non-Aave yield is disclosed honestly; N2 holds.
+**Checkpoint**: ✅ PLUMBING DONE 2026-07-21 (T027–T032) — the reader-split (agent) + the web multi-vault lib
+(`useVault`/`useVaultConfirm`/`useExecuteVaultTx`/`exit`/`derive`) are in place: a wrapper is
+deposit/withdrawable through the SAME user-signed confirm gate, the double-fee + Morpho-not-Aave yield is
+disclosed honestly (no fabricated Aave APY for a wrapper), deposit **fail-closes on factory provenance**
+while withdraw stays always-open (N2), and the policy engine is untouched (Protocol/Asset enums byte-identical,
+user-signed outside the engine like 007). Agent `pytest` **513** (+7); web **50** (+13); typecheck/lint/build
+clean; launch Aave vault byte-identical; two adversarial reviews → hardening applied.
+**⚠ NOT user-visible yet** — no UI selects a wrapper (the deposit/portfolio screens still pass only the launch
+vault). REMAINING to make it usable: a **vault picker** wiring a wrapper into `_amount-screen`/portfolio
+(+ the client-facing whats-new "Deposit into branded vaults", deferred until then). POLISH (T034 e2e, **T035
+mandatory pre-mainnet contract audit + slither**, T036 alpha honest-state matrix, T037 parity-CI confirm,
+T038 non-custody self-review) also remain.
 
 ---
 

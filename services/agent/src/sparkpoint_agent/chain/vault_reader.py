@@ -77,29 +77,63 @@ class VaultUnavailable(Exception):
 _ABI_PATH_ENV = "SPARKPOINT_VAULT_ABI_PATH"
 _ARTIFACT_REL_PARTS = ("contracts", "out", "SparkPointVault.sol", "SparkPointVault.json")
 
-# The read methods this client exposes (view/pure only). Load fails closed if the
-# compiled ABI is missing any of them (drift guard).
-_REQUIRED_METHODS: frozenset[str] = frozenset(
+# The read methods this client exposes (view/pure only), SPLIT per specs/010-universal-vaults
+# data-model.md §2 so a generic ERC-4626 vault (a curated Morpho vault, QuickNode-Earn) can be
+# read with the standard subset while a SparkPoint(-branded wrapper) vault still requires its full
+# superset. Every method here is view/pure — it is structurally impossible to encode a
+# state-changing (deposit/withdraw/approve/…) call for ANY vault through this client (non-custody).
+
+# The EIP-4626 (+ ERC-20) standard read surface every registered vault must expose.
+_ERC4626_CORE_METHODS: frozenset[str] = frozenset(
     {
+        "asset",
+        "totalAssets",
+        "totalSupply",
+        "decimals",
+        "balanceOf",
+        "convertToAssets",
+        "convertToShares",
+        "maxDeposit",
+        "maxMint",
+        "maxWithdraw",
+        "maxRedeem",
         "previewDeposit",
         "previewMint",
         "previewWithdraw",
         "previewRedeem",
-        "convertToAssets",
-        "convertToShares",
-        "maxDeposit",
-        "maxWithdraw",
-        "maxRedeem",
-        "totalAssets",
-        "totalSupply",
+    }
+)
+
+# The SparkPoint-only extras (fee/pause/HWM). NOT part of a generic ERC-4626 vault — a
+# SparkPointMorphoVault WRAPPER exposes them too (it registers ``abiKind='sparkpoint'``).
+_SPARKPOINT_EXTRA_METHODS: frozenset[str] = frozenset(
+    {
         "paused",
         "performanceFeeBps",
         "highWaterMark",
         "feeRecipient",
-        "asset",
-        "balanceOf",
     }
 )
+
+# Back-compat: the existing name stays the SparkPoint superset (core | extras). This is the
+# drift guard for ``abiKind='sparkpoint'`` — a SparkPoint (launch or branded-wrapper) vault MUST
+# expose every method; the load fails CLOSED if the compiled ABI is missing any (a build misconfig).
+_REQUIRED_METHODS: frozenset[str] = _ERC4626_CORE_METHODS | _SPARKPOINT_EXTRA_METHODS
+
+# The two supported reader modes (data-model §2). ``sparkpoint`` requires the superset (fail-CLOSED
+# on drift, unchanged); ``erc4626`` requires only the core (a missing core method ⇒ that vault is
+# "unavailable", fail-OPEN — the app degrades, it does not crash; extras are simply absent).
+_ABI_KINDS: frozenset[str] = frozenset({"sparkpoint", "erc4626"})
+
+
+def _required_methods_for(abi_kind: str) -> frozenset[str]:
+    """The method set a given ``abiKind`` mode must find in the compiled ABI (data-model §2).
+
+    ``sparkpoint`` ⇒ the full SparkPoint superset; ``erc4626`` ⇒ the generic-4626 core only.
+    """
+    if abi_kind not in _ABI_KINDS:
+        raise ValueError(f"unknown abiKind {abi_kind!r} (expected one of {sorted(_ABI_KINDS)})")
+    return _ERC4626_CORE_METHODS if abi_kind == "erc4626" else _REQUIRED_METHODS
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,14 +170,23 @@ def _find_artifact() -> Path:
     )
 
 
-@lru_cache(maxsize=1)
-def load_vault_methods() -> dict[str, VaultMethod]:
+@lru_cache(maxsize=len(_ABI_KINDS))
+def load_vault_methods(abi_kind: str = "sparkpoint") -> dict[str, VaultMethod]:
     """Parse the artifact into a view/pure method registry (selector + types).
 
     Only ``view``/``pure`` functions are included, so a state-changing selector can never
-    be built through this client (non-custody). Fails closed if any ``_REQUIRED_METHODS``
-    entry is absent from the compiled ABI (drift guard).
+    be built through this client (non-custody), for a SparkPoint vault OR a generic ERC-4626 one.
+
+    The ``abi_kind`` mode selects the drift-guard method set (data-model §2):
+
+      - ``sparkpoint`` (default) requires the full :data:`_REQUIRED_METHODS` superset and fails
+        CLOSED with a :class:`RuntimeError` when the compiled ABI is missing any (a build misconfig,
+        distinct from an operational :class:`VaultUnavailable`); the launch-vault posture unchanged.
+      - ``erc4626`` requires only :data:`_ERC4626_CORE_METHODS`; a missing CORE method fails OPEN
+        with :class:`VaultUnavailable` so a single hostile/degenerate external vault is marked
+        "unavailable" rather than crashing the app. The SparkPoint extras are simply absent.
     """
+    required = _required_methods_for(abi_kind)
     data = json.loads(_find_artifact().read_text())
     abi = data["abi"]
     method_ids = data.get("methodIdentifiers", {})
@@ -168,8 +211,23 @@ def load_vault_methods() -> dict[str, VaultMethod]:
             signature=signature,
         )
 
-    missing = sorted(_REQUIRED_METHODS - registry.keys())
+    missing = sorted(required - registry.keys())
     if missing:
+        if abi_kind == "erc4626":
+            # FOLLOW-UP (010): this fail-OPEN core-only branch is groundwork. Today
+            # ``_find_artifact`` resolves the SparkPoint SUPERSET artifact for BOTH modes, so the
+            # erc4626 core is always a present subset — this branch is effectively unreachable
+            # until 010 lands per-external-vault ABI resolution (a real generic ERC-4626 vault's
+            # OWN artifact, which may genuinely lack a core method). Then it degrades that one
+            # vault to "unavailable" instead of crashing. No behavior change here now.
+            #
+            # Fail-OPEN, per-vault: a generic ERC-4626 vault missing a core method is "unavailable",
+            # never a fabricated value and never a crash (data-model §2).
+            raise VaultUnavailable(
+                VaultUnavailableReason.NOT_DEPLOYED,
+                f"vault ABI is missing required ERC-4626 core methods: {missing}",
+            )
+        # Fail-CLOSED drift guard for the SparkPoint superset (unchanged).
         raise RuntimeError(
             f"compiled SparkPointVault ABI is missing required view methods: {missing}"
         )
@@ -270,9 +328,19 @@ class VaultReader:
     unreachable — see :class:`VaultUnavailableReason` for the endpoint's error mapping.
     """
 
-    def __init__(self, *, vault_address: str | None, transport: JsonRpcTransport) -> None:
+    def __init__(
+        self,
+        *,
+        vault_address: str | None,
+        transport: JsonRpcTransport,
+        abi_kind: str = "sparkpoint",
+    ) -> None:
         self._vault = vault_address.lower() if vault_address else None
         self._transport = transport
+        # Which method set the reader validates + encodes against (data-model §2). The launch Aave
+        # vault AND a SparkPoint-branded Morpho WRAPPER are both ``sparkpoint`` (they expose the
+        # superset). A generic external ERC-4626 vault is read with ``erc4626`` (core only).
+        self._abi_kind = abi_kind if abi_kind in _ABI_KINDS else "sparkpoint"
 
     @classmethod
     def from_config(
@@ -280,12 +348,15 @@ class VaultReader:
         config: AgentConfig,
         *,
         transport: JsonRpcTransport | None = None,
+        abi_kind: str = "sparkpoint",
     ) -> VaultReader:
         """Build a reader from :class:`AgentConfig`.
 
         The vault address may be ``None`` (undeployed) — the reader still constructs, and
         each read fails closed with NOT_DEPLOYED. If no transport is injected and no RPC
-        url is configured, construction fails closed with RPC_UNREACHABLE.
+        url is configured, construction fails closed with RPC_UNREACHABLE. ``abi_kind`` defaults
+        to ``sparkpoint`` (the launch vault / a branded wrapper); pass ``erc4626`` to read a
+        generic external ERC-4626 vault with the standard-subset drift guard.
         """
         if transport is None:
             if not config.rpc_url:
@@ -294,7 +365,9 @@ class VaultReader:
                     "no RPC url configured for the vault read surface.",
                 )
             transport = HttpxJsonRpcTransport(config.rpc_url)
-        return cls(vault_address=config.vault_address, transport=transport)
+        return cls(
+            vault_address=config.vault_address, transport=transport, abi_kind=abi_kind
+        )
 
     async def _read(self, method_name: str, args: Sequence[Any]) -> Any:
         """eth_call one view method against the vault; return its first decoded output."""
@@ -308,7 +381,7 @@ class VaultReader:
     async def _read_at(self, to: str, method_name: str, args: Sequence[Any]) -> Any:
         """eth_call one loaded view method against an arbitrary ``to`` (the vault, or its
         underlying ERC-20 for idle-balance reads). Same fail-closed decode as :meth:`_read`."""
-        method = load_vault_methods()[method_name]
+        method = load_vault_methods(self._abi_kind)[method_name]
         data = method.selector + eth_abi.encode(list(method.input_types), list(args)).hex()
         result = await self._transport.call(
             "eth_call", [{"to": to.lower(), "data": data}, "latest"]

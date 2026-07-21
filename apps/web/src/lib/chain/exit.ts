@@ -64,29 +64,35 @@ export function vaultAddressFor(chainId: number): Address | undefined {
  * position) instead of throwing, so the page always renders a clear next step. A
  * genuine RPC failure propagates (the caller shows a retry — the chain is the only
  * dependency and the user can also act via cast/BaseScan directly).
+ *
+ * Multi-vault (011): pass an explicit `vault` to run the escape hatch against a branded
+ * SparkPointMorphoVault WRAPPER — it exposes the same ERC-4626 `balanceOf`/`maxRedeem`/`previewRedeem`/
+ * `redeem` surface, so the withdraw-always path works identically (its `maxRedeem` is clamped to live
+ * Morpho liquidity — the N2 escape hatch under partial liquidity). OMITTED ⇒ the launch Aave vault.
  */
 export async function readExitState(
   client: PublicClient,
   chainId: number,
   owner: Address,
+  vault?: Address,
 ): Promise<ExitState | ExitUnavailable> {
-  const vault = vaultAddressFor(chainId);
-  if (vault === undefined) return { kind: "vault_not_deployed", chainId };
+  const resolved = vault ?? vaultAddressFor(chainId);
+  if (resolved === undefined) return { kind: "vault_not_deployed", chainId };
 
   const [shares, redeemableShares, asset, depositsPaused] = await Promise.all([
-    client.readContract({ address: vault, abi: sparkPointVaultAbi, functionName: "balanceOf", args: [owner] }),
-    client.readContract({ address: vault, abi: sparkPointVaultAbi, functionName: "maxRedeem", args: [owner] }),
-    client.readContract({ address: vault, abi: sparkPointVaultAbi, functionName: "asset" }),
-    client.readContract({ address: vault, abi: sparkPointVaultAbi, functionName: "paused" }),
+    client.readContract({ address: resolved, abi: sparkPointVaultAbi, functionName: "balanceOf", args: [owner] }),
+    client.readContract({ address: resolved, abi: sparkPointVaultAbi, functionName: "maxRedeem", args: [owner] }),
+    client.readContract({ address: resolved, abi: sparkPointVaultAbi, functionName: "asset" }),
+    client.readContract({ address: resolved, abi: sparkPointVaultAbi, functionName: "paused" }),
   ]);
 
-  if (shares === 0n) return { kind: "no_position", chainId, vault };
+  if (shares === 0n) return { kind: "no_position", chainId, vault: resolved };
 
   const redeemableAssets =
     redeemableShares === 0n
       ? 0n
       : await client.readContract({
-          address: vault,
+          address: resolved,
           abi: sparkPointVaultAbi,
           functionName: "previewRedeem",
           args: [redeemableShares],
@@ -94,7 +100,7 @@ export async function readExitState(
 
   return {
     chainId,
-    vault,
+    vault: resolved,
     asset,
     shares,
     redeemableShares,
