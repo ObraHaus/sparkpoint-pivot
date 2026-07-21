@@ -191,6 +191,18 @@ def test_grant_and_revoke_are_audited(ctx: tuple[TestClient, _FakeLimits]) -> No
     assert [a[0] for a in store.audit] == ["grant", "revoke"]
 
 
+def test_grant_default_tier_is_rejected(ctx: tuple[TestClient, _FakeLimits]) -> None:
+    # Free is the default — every wallet resolves to it, so it is not grantable (use revoke).
+    client, store = ctx
+    r = client.post(
+        "/admin/limits/tiers/assign",
+        headers=_headers(ADMIN),
+        json={"address": USER, "tier": "free"},
+    )
+    assert r.status_code == 400
+    assert USER.lower() not in store.assignments  # no redundant default-tier row written
+
+
 def test_grant_unknown_tier_is_400(ctx: tuple[TestClient, _FakeLimits]) -> None:
     client, _ = ctx
     r = client.post(

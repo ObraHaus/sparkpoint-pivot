@@ -31,6 +31,26 @@ model_list:
       api_base: https://openrouter.ai/api/v1
       weight: 1
 
+  # Premium alias (feature 008, US4) — cheap PAID models for premium-tier turns, a clear step up from
+  # the free open models. Mirrors the free alias's primary+fallback shape: DeepSeek V4 Flash is the
+  # primary (weight 4; ~$0.094/$0.188 per Mtok, 1M ctx — sharp reasoning + clean JSON); Qwen 3.5
+  # Flash is the same-tier fallback (weight 1; ~$0.065/$0.26, 1M ctx) that absorbs cooldowns when the
+  # primary 429s. If the WHOLE premium group fails (e.g. the OpenRouter account is out of credit) the
+  # router FALLS BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so premium
+  # degrades to free quality instead of erroring. Both paid models need OpenRouter credit to serve.
+  - model_name: sparkpoint-chat-premium
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 4
+  - model_name: sparkpoint-chat-premium
+    litellm_params:
+      model: openrouter/qwen/qwen3.5-flash-02-23
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 1
+
 litellm_settings:
   drop_params: true          # tolerate provider-specific param differences
   set_verbose: false         # never verbose-log request bodies (could carry prompt content)
@@ -42,6 +62,9 @@ router_settings:
   num_retries: 3
   allowed_fails: 1
   cooldown_time: 30          # park a 429'd deployment for 30s, serve from the other
+  # Premium degrades to the free alias on ANY failure of the paid model (e.g. out of credit) — so
+  # a premium user never gets an error just because the paid model is unavailable.
+  fallbacks: [{"sparkpoint-chat-premium": ["sparkpoint-chat"]}]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY   # admin/root key; server-side only, never shipped to a client

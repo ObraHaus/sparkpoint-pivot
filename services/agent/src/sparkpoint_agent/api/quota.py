@@ -29,6 +29,7 @@ from typing import Annotated, Any, Literal, cast
 from fastapi import Depends
 
 from ..db import Database, LimitsStore, get_database
+from ..llm.client import set_model_alias
 from ..llm.resilience import set_priority
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
@@ -121,6 +122,9 @@ async def check_and_consume(store: LimitsStore, owner: str, metric: Metric) -> L
         # Tier the LLM-limiter queue budget for this request (US4 priority compute): premium waits
         # the full budget, free degrades first under contention. Read by llm/resilience.slot().
         set_priority(int(tier_def.get("priorityWeight", 1)))
+        # Route this request to the tier's gateway model alias (premium may use a better model).
+        # Read by the gateway transport; unset/empty falls back to the default alias.
+        set_model_alias(str(tier_def.get("modelAlias") or "") or None)
         limit = int(tier_def[_LIMIT_FIELD[metric]])
         ws = window_start()
         used_before = await store.get_usage(owner, metric, ws)
