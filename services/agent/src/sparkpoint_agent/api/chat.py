@@ -62,6 +62,7 @@ from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..persona import get_persona
 from .errors import ApiError, ErrorCode
+from .quota import require_within_quota
 from .recommendations import (
     _build_chain_context,
     _read_gate_inputs,
@@ -432,7 +433,7 @@ async def _event_stream(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(require_within_quota("chat"))])
 async def chat(
     body: ChatRequest,
     account: Annotated[AccountContext, Depends(get_account)],
