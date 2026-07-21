@@ -41,6 +41,7 @@ from ..db.mandates import MandateStore, MandateWrite, PgMandateStore
 from ..llm import AsyncClaudeClient
 from ..persona import get_persona
 from .errors import ApiError, ErrorCode
+from .quota import require_within_quota
 from .security import AccountContext
 
 router = APIRouter(tags=["mandate"])
@@ -204,7 +205,7 @@ def _sse(event: str, data: dict[str, Any]) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/onboarding/turn")
+@router.post("/onboarding/turn", dependencies=[Depends(require_within_quota("onboarding"))])
 async def onboarding_turn(
     body: OnboardingTurnRequest,
     account: Annotated[AccountContext, Depends(get_account)],

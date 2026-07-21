@@ -79,7 +79,7 @@ export const NAVMETA: Record<NavKey, [string, string]> = {
   system: ["System", "shield"],
   killswitch: ["Kill-switch", "pause"],
   stake: ["Stakeholder", "coins"],
-  cfg: ["Config", "settings"],
+  cfg: ["Limits & Tiers", "settings"],
   audit: ["Audit log", "book"],
 };
 

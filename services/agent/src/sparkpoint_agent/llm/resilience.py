@@ -46,6 +46,7 @@ SDK error, so the classifier stays trivially testable with hand-rolled fakes.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import random
 import time
@@ -67,6 +68,33 @@ RETRYABLE_STATUS: frozenset[int] = frozenset({429, 502, 503, 504, 529})
 # Global limiter defaults — 1–2 in-flight Anthropic calls, a bounded queue wait.
 DEFAULT_MAX_INFLIGHT = 2
 DEFAULT_QUEUE_TIMEOUT_S = 30.0
+
+# Priority-weighted queueing (feature 008, US4 — "priority compute"). Priority == the caller's
+# tier priority_weight (free=1, premium≥3). A lower-priority (free) caller gets a SHORTER queue
+# budget, so under contention it hits LlmBusyError first (degrades to UPSTREAM_UNAVAILABLE) while
+# a higher-priority (premium) caller waits the FULL budget and wins the freed slot. Never a funds
+# path — this only paces advisory LLM calls (N2).
+FREE_PRIORITY = 1
+FREE_QUEUE_FRACTION = 0.5
+
+_PRIORITY: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "sparkpoint_llm_priority", default=FREE_PRIORITY
+)
+
+
+def set_priority(priority: int) -> None:
+    """Set the current request's LLM priority (its tier's priority_weight), read by the limiter.
+
+    Set once at the API boundary (the quota dependency). asyncio task-context isolation keeps it
+    per-request — a ``set`` mutates only this request task's context copy, never another's — so no
+    cross-request leak and no reset needed. Defaults to free when unset (fail-closed to lower).
+    """
+    _PRIORITY.set(priority)
+
+
+def current_priority() -> int:
+    return _PRIORITY.get()
+
 
 _MODULE_RNG = random.Random()  # noqa: S311 — jitter spread, not a cryptographic use
 
@@ -194,19 +222,27 @@ class Limiter:
         return state[1]
 
     @asynccontextmanager
-    async def slot(self) -> AsyncIterator[None]:
+    async def slot(self, *, priority: int | None = None) -> AsyncIterator[None]:
         """Hold one in-flight permit for the duration of the block; fail closed on queue timeout.
 
         The bounded ``queue_timeout_s`` means a saturated limiter never blocks a request
         forever — it raises :class:`LlmBusyError`, which the DAG degrades to
         ``UPSTREAM_UNAVAILABLE`` (fail-closed, nothing signed).
+
+        ``priority`` (default: the request's :func:`current_priority`) tiers the queue budget: a
+        free caller (``≤ FREE_PRIORITY``) waits only ``FREE_QUEUE_FRACTION`` of the budget and so
+        times out first under contention, leaving the freed permit for a waiting premium caller.
         """
         sem = self._semaphore()
+        prio = current_priority() if priority is None else priority
+        timeout = self.queue_timeout_s
+        if timeout is not None and prio <= FREE_PRIORITY:
+            timeout = timeout * FREE_QUEUE_FRACTION
         try:
-            if self.queue_timeout_s is None:
+            if timeout is None:
                 await sem.acquire()
             else:
-                await asyncio.wait_for(sem.acquire(), timeout=self.queue_timeout_s)
+                await asyncio.wait_for(sem.acquire(), timeout=timeout)
         except TimeoutError as exc:
             raise LlmBusyError(
                 "assistant is busy (concurrency limit); no request was sent"
@@ -231,6 +267,7 @@ async def call_with_resilience[T](
     *,
     policy: RetryPolicy | None = None,
     limiter: Limiter | None = None,
+    priority: int | None = None,
     rng: random.Random | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -252,7 +289,7 @@ async def call_with_resilience[T](
         attempt += 1
         last_exc: Exception | None = None
         # The permit is held ONLY around the call itself — released before any backoff sleep.
-        async with limiter.slot():
+        async with limiter.slot(priority=priority):
             try:
                 return await factory()
             except Exception as exc:  # noqa: BLE001 — classify, then re-raise or retry

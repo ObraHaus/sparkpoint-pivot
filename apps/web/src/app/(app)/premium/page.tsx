@@ -9,6 +9,7 @@
  * (docs/design-handover/showcase/screens/premium.js). Markup, classes, and copy verbatim.
  */
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -26,6 +27,98 @@ const FEATURES: [string, string, string][] = [
   ["Advanced analytics & alerts", "—", "Included"],
   ["Scoped auto-rebalance", "—", "Higher caps"],
 ];
+
+interface SelfUsageMetric {
+  metric: string;
+  used: number;
+  limit: number;
+  remaining: number;
+}
+interface SelfUsage {
+  configured: boolean;
+  tier?: string;
+  resetAt?: string;
+  metrics?: SelfUsageMetric[];
+}
+
+const METRIC_LABEL: Record<string, string> = {
+  chat: "AI chat turns",
+  recs: "Strategy recommendations",
+};
+
+/**
+ * "Your usage this period" — a calm, informational read of the signed-in wallet's own allowance
+ * (feature 008, US6), from the self-scoped `/usage/self`. Never nags: it only shows what's used,
+ * renders nothing until real data is available, and never blocks anything.
+ */
+function UsageThisPeriod() {
+  const [usage, setUsage] = useState<SelfUsage | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch("/api/agent/usage/self", {
+          headers: { "x-chain-id": "84532" },
+          cache: "no-store",
+        });
+        if (r.ok && alive) setUsage((await r.json()) as SelfUsage);
+      } catch {
+        /* advisory only — never surface an error here */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const shown = (usage?.metrics ?? []).filter((m) => m.metric in METRIC_LABEL);
+  if (!usage?.configured || shown.length === 0) return null;
+
+  return (
+    <div className="card card-pad">
+      <div className="card-hd">
+        <span className="t">Your usage this period</span>
+        <span className="lbl">
+          {usage.tier} tier
+          {usage.resetAt ? ` · resets ${new Date(usage.resetAt).toLocaleDateString()}` : ""}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
+        {shown.map((m) => {
+          const pct = m.limit > 0 ? Math.min(100, Math.round((m.used / m.limit) * 100)) : 0;
+          return (
+            <div key={m.metric}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 12.5,
+                  marginBottom: 4,
+                }}
+              >
+                <span>{METRIC_LABEL[m.metric]}</span>
+                <span className="tnum" style={{ color: "var(--muted-foreground)" }}>
+                  {m.used} / {m.limit}
+                </span>
+              </div>
+              <div style={{ height: 8, borderRadius: 6, background: "var(--border-soft)" }}>
+                <div
+                  style={{
+                    width: `${pct}%`,
+                    height: "100%",
+                    borderRadius: 6,
+                    background: pct >= 100 ? "var(--caution)" : "var(--primary)",
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function Page() {
   const router = useRouter();
@@ -77,6 +170,8 @@ export default function Page() {
           </button>
         </div>
       </div>
+
+      <UsageThisPeriod />
 
       <div className="card card-pad">
         <div className="card-hd">
