@@ -86,7 +86,7 @@ feature does not exist.
 
 ---
 
-## Phase 1 → User Story 2 — `SparkPointMorphoVault` template + non-custody re-proof (Priority: P1)
+## Phase 1 → User Story 2 — `SparkPointMorphoVault` template + non-custody re-proof (Priority: P1) ✅ DONE 2026-07-21
 
 **Goal**: a branded, single-purpose, non-upgradeable ERC-4626 wrapper over ONE curated Morpho vault, with
 Foundry unit/fuzz/fork/invariant tests re-proving N1/N2/N5 under NON-rebasing shares + partial Morpho
@@ -130,8 +130,10 @@ withdrawal liquidity.
 - [ ] T012 [P] [US2] (BLOCKED by T001) Living docs: `CHANGELOG.md` bullet ("feat(contracts):
       SparkPointMorphoVault template") + `DEVELOPMENT.md` note on the non-rebasing wrapper.
 
-**Checkpoint**: the template compiles + all Foundry suites green; N1/N2/N5 re-proven under non-rebasing +
-partial liquidity. No factory yet.
+**Checkpoint**: ✅ DONE 2026-07-21 — template compiles + all Foundry suites green (**191 passed / 0 failed /
+3 skipped**; 171 pre-existing unchanged; fork test env-gated); N1/N2/N5 re-proven under non-rebasing +
+partial liquidity; both adversarial custody reviews **SOUND** (3 minor defense-in-depth items deferred to
+the mainnet-audit gate — see `checklists/phase-1-wrapper-template.md`). No factory yet (Phase 2).
 
 ---
 

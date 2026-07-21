@@ -52,6 +52,15 @@
 - [ ] CHK025 `forge build` + the **full** contracts suite green (existing 171 + new); N1/N2/N5 re-proven under non-rebasing + partial liquidity (Phase-1 checkpoint).
 - [ ] CHK026 Living docs updated in the same change: `CHANGELOG.md` bullet ("feat(contracts): SparkPointMorphoVault template") + `DEVELOPMENT.md` note on the non-rebasing wrapper (T012). No new env var undocumented.
 
+## Phase-1 status — ✅ IMPLEMENTED + GREEN (2026-07-21)
+
+All 26 checks above are satisfied: `forge build` clean, **191 passed / 0 failed / 3 skipped** (the 171 pre-existing tests unchanged; +20 new Morpho tests; the fork test skips without RPC). Files: `ISparkPointMorphoVault.sol`, `SparkPointMorphoVault.sol`, `MockMorphoVault` (in `test/mocks/Mocks.sol`), `MorphoVaultTestBase.sol`, `test/{fuzz/MorphoVault4626,invariant/MorphoVaultNonCustody,fork/MorphoVaultFork}.t.sol`, extended `AssertNonCustody.s.sol`. Two independent adversarial custody reviews (N1–N5 lens + accounting/rounding/liquidity lens) returned **SOUND** — no critical or major findings.
+
+**3 minor defense-in-depth findings — considered, deferred to the mainnet-audit gate** (each matches an established pattern in the audited base `SparkPointVault`, so kept for clone fidelity + the curated-vault trust model):
+- Constructor grants `type(uint256).max` USDC allowance to the immutable `morphoVault` (mirrors the base's Aave `forceApprove(max)`). Safe under the curated-allowlist trust; surface as an explicit Trust-Center assumption. Optional: per-deposit exact approvals for defense against a curated-vault compromise.
+- No `ReentrancyGuard` on deposit/withdraw (the base vault has none; USDC is non-reentrant and Morpho is curated/vetted). Optional: add `nonReentrant` in the hardening pass.
+- `require(got == assets, "PARTIAL")` is strict `==` (mirrors the base). A benign over-delivering wrapped vault would revert that exact-amount exit (user can still exit a smaller amount — N2 intact). Optional: relax to `>=` if ever wrapping non-strict vaults.
+
 ## Notes
 
 - Curated-allowlist gating, the factory, admin manage, and app deposit/withdraw are **Phases 2–4** — NOT this checklist. Phase 1 is the template + its tests only (no factory yet).
