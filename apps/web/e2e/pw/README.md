@@ -41,3 +41,26 @@ running server instead). The SIWE specs `test.skip` when `PW_TEST_PRIVKEY` is un
 suite runs anywhere. The test wallet must be on the agent's **beta** allowlist for the admit check.
 
 > Never point `PW_TEST_PRIVKEY` at a wallet holding real funds — it's a throwaway testnet key.
+
+## Universal-swap specs (feature 007)
+
+- **swap-universal.spec.ts** (injected wallet, no broadcast): `/swap` resolves a pasted custom token
+  on-chain + badges it unverified + refuses a non-contract; a live ETH→USDC quote carries the 0.20%
+  routing fee + a route; and the in-chat swap card renders (agent proposes → Review → routing fee).
+- **real-swap.spec.ts** + **broadcasting-wallet.ts** — **GATED, FUNDED, REAL on-chain**: signs AND
+  broadcasts a genuine ETH→USDC swap (moves testnet funds). `broadcasting-wallet.ts` backs
+  `window.ethereum` with a Node viem walletClient (signs + sends `eth_sendTransaction`; other RPC methods
+  proxied), so the app's real user-signed swap runs headless. Skipped unless `PW_REAL_SWAP=1` + a funded
+  `PW_TEST_PRIVKEY`, so it never runs in normal CI.
+
+  ```bash
+  export PW_BASE_URL=https://alpha.sparkpoint.io PW_NO_SERVER=1
+  export PW_REAL_SWAP=1 PW_TEST_PRIVKEY=<0x… funded testnet key>
+  export PW_SWAP_CHAIN=84532        # or 46630 (Robinhood)
+  export PW_SWAP_SURFACE=swap       # or chat
+  export PW_SWAP_AMOUNT=0.0003
+  pnpm --filter @sparkpoint/web exec playwright test e2e/pw/real-swap.spec.ts
+  ```
+
+  Validated all four combos (Base Sepolia + Robinhood × /swap + chat) — each tx confirmed on-chain and
+  collected the 0.20% routing fee to the recipient.
