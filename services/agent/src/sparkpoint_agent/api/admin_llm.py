@@ -14,7 +14,10 @@ never mutates gateway config and never touches custody.
 
 from __future__ import annotations
 
+import calendar
 import os
+from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import httpx
@@ -209,37 +212,11 @@ def _as_rows(payload: Any) -> list[Any]:
     return []
 
 
-def _alias_deployments(model_info: Any) -> list[dict[str, Any]]:
-    """The deployments serving the chat alias: ``[{id, model_name, upstream, rpm}]`` (scrubbed).
-
-    Handles both /model/info shapes LiteLLM emits — ``{"data": [...]}`` and a bare list — via
-    :func:`_as_rows`, so the delete guardrail can't be defeated by the bare-list variant.
-    """
-    alias = _alias()
-    out: list[dict[str, Any]] = []
-    for item in _as_rows(model_info):
-        if not isinstance(item, dict) or str(item.get("model_name") or "") != alias:
-            continue
-        raw_info = item.get("model_info")
-        info = raw_info if isinstance(raw_info, dict) else {}
-        raw_params = item.get("litellm_params")
-        params = raw_params if isinstance(raw_params, dict) else {}
-        out.append(
-            {
-                "id": str(info.get("id") or item.get("id") or ""),
-                "model_name": alias,
-                "upstream": str(params.get("model") or ""),
-                "rpm": params.get("rpm"),
-            }
-        )
-    return out
-
-
 def _all_deployments(model_info: Any) -> list[dict[str, Any]]:
-    """Every deployment the gateway serves, across ALL aliases (id, model_name, upstream, rpm).
+    """Every deployment the gateway serves, across ALL aliases (id, name, upstream, rpm, cost).
 
-    Scrubbed. Unlike :func:`_alias_deployments` (scoped to the chat alias for the delete
-    guardrail), this powers the read view so every alias — e.g. a premium alias — is visible."""
+    Scrubbed. Powers the read view + the per-alias delete guardrail, so every alias — e.g. a premium
+    alias — is visible and independently protected from being stranded."""
     out: list[dict[str, Any]] = []
     for item in _as_rows(model_info):
         if not isinstance(item, dict):
@@ -257,45 +234,103 @@ def _all_deployments(model_info: Any) -> list[dict[str, Any]]:
                 "model_name": name,
                 "upstream": str(params.get("model") or ""),
                 "rpm": params.get("rpm"),
+                "inputCostPerM": _cost_per_m(
+                    info.get("input_cost_per_token") or params.get("input_cost_per_token")
+                ),
+                "outputCostPerM": _cost_per_m(
+                    info.get("output_cost_per_token") or params.get("output_cost_per_token")
+                ),
             }
         )
     return out
+
+
+def _cost_per_m(raw: Any) -> float | None:
+    """A per-token cost (USD) as USD per 1M tokens, or ``None`` (0 stays 0 = free/unknown)."""
+    if raw is None:
+        return None
+    try:
+        return round(float(raw) * 1_000_000, 6)
+    except (TypeError, ValueError):
+        return None
 
 
 @router.get("/admin/llm/stats")
 async def admin_llm_stats(
     admin: Annotated[AccountContext, Depends(require_admin)],
 ) -> dict[str, Any]:
-    """Spend/usage aggregates (admin-key required). Degrades to ``adminConfigured:false``."""
+    """Spend/usage aggregates (admin-key required). Degrades to ``adminConfigured:false``.
+
+    By-model + monthly figures are aggregated from ``/spend/logs`` (the non-Enterprise per-call
+    feed; ``/global/spend/report`` is Enterprise-gated), so they reflect a recent window of calls.
+    The all-time total is ``/global/spend``; the current key spend/budget is ``/key/info``.
+    """
     admin_gw = _admin_gateway()
     if admin_gw is None:
         return _unconfigured()
     root, key = admin_gw
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
     async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
         spend = await _admin_get(client, root, "/global/spend", key)
-        report = await _admin_get(client, root, "/global/spend/report", key)
+        logs = await _admin_get(client, root, "/spend/logs?limit=1000", key)
         key_info = await _admin_get(client, root, "/key/info", key)
     total = spend.get("spend") if isinstance(spend, dict) else None
+    month_to_date, by_model = _aggregate_logs(logs, month_start)
+    day = now.day
+    projected = round(month_to_date / day * days_in_month, 4) if day and month_to_date else None
+    key_parsed = _parse_key_info(key_info)
+    budget_used_pct = None
+    if key_parsed:
+        mb, sp = key_parsed.get("max_budget"), key_parsed.get("spend")
+        if isinstance(mb, int | float) and mb > 0 and isinstance(sp, int | float):
+            budget_used_pct = round(sp / mb * 100, 1)
     return {
         "configured": True,
         "adminConfigured": True,
         "total_spend": total,
-        "by_model": _parse_spend_by_model(report),
-        "key": _parse_key_info(key_info),
+        "by_model": by_model,
+        "monthToDate": round(month_to_date, 4),
+        "projectedMonthly": projected,
+        "spendPerDay": round(month_to_date / day, 4) if day and month_to_date else None,
+        "budgetUsedPct": budget_used_pct,
+        "key": key_parsed,
     }
 
 
-def _parse_spend_by_model(report: Any) -> list[dict[str, Any]]:
-    """Best-effort ``[{model, spend}]`` from a /global/spend/report response (already scrubbed)."""
-    out: list[dict[str, Any]] = []
-    for r in _as_rows(report):
+def _parse_ts(raw: Any) -> datetime | None:
+    """Parse a LiteLLM ISO timestamp (``…Z`` or offset) into an aware datetime, or ``None``."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _aggregate_logs(logs: Any, since: datetime) -> tuple[float, list[dict[str, Any]]]:
+    """Sum ``/spend/logs`` spend since ``since``, grouped by model (desc). NO prompt content."""
+    by_model: dict[str, float] = defaultdict(float)
+    total = 0.0
+    for r in _as_rows(logs):
         if not isinstance(r, dict):
             continue
-        model = r.get("model") or r.get("model_name")
-        spend = r.get("spend") or r.get("total_spend")
-        if model is not None:
-            out.append({"model": str(model), "spend": spend})
-    return out
+        ts = _parse_ts(r.get("startTime") or r.get("startedAt"))
+        if ts is not None and ts < since:
+            continue
+        raw_spend = r.get("spend")
+        if not isinstance(raw_spend, int | float):
+            continue
+        model = str(r.get("model") or "unknown")
+        by_model[model] += float(raw_spend)
+        total += float(raw_spend)
+    ranked = [
+        {"model": m, "spend": round(s, 6)}
+        for m, s in sorted(by_model.items(), key=lambda kv: -kv[1])
+    ]
+    return total, ranked
 
 
 @router.get("/admin/llm/activity")
@@ -364,11 +399,19 @@ async def admin_llm_config(
 
 
 class ModelAdd(BaseModel):
-    """``POST /admin/llm/config/model`` — add a deployment to the chat alias group."""
+    """``POST /admin/llm/config/model`` — add a deployment to a chat alias group.
+
+    ``alias`` targets which model group the deployment joins (default: the primary chat alias), so
+    a premium alias is managed just like the default. Optional per-M costs set LiteLLM's own
+    accounting so spend + projections are accurate for models it doesn't price itself.
+    """
 
     upstream_model: str = Field(min_length=1)  # e.g. "openrouter/google/gemma-4-31b-it:free"
+    alias: str | None = None  # target model group; defaults to the primary chat alias
     api_base: str | None = None
     rpm: int | None = Field(default=None, ge=1)
+    input_cost_per_m: float | None = Field(default=None, ge=0)  # USD per 1M input tokens
+    output_cost_per_m: float | None = Field(default=None, ge=0)  # USD per 1M output tokens
 
 
 class ModelDelete(BaseModel):
@@ -394,12 +437,17 @@ async def admin_llm_add_model(
     """Add a deployment behind the chat alias (config write). Audit-logged. POST, not PUT, because
     the same-origin BFF proxies only GET/POST. Requires the gateway to persist model config."""
     root, key = _require_admin_gateway()
+    alias = (body.alias or _alias()).strip()
     params: dict[str, Any] = {"model": body.upstream_model.strip()}
     if body.api_base:
         params["api_base"] = body.api_base.strip()
     if body.rpm is not None:
         params["rpm"] = body.rpm
-    payload: dict[str, Any] = {"model_name": _alias(), "litellm_params": params}
+    if body.input_cost_per_m is not None:
+        params["input_cost_per_token"] = body.input_cost_per_m / 1_000_000
+    if body.output_cost_per_m is not None:
+        params["output_cost_per_token"] = body.output_cost_per_m / 1_000_000
+    payload: dict[str, Any] = {"model_name": alias, "litellm_params": params}
     async with httpx.AsyncClient(timeout=_WRITE_TIMEOUT_S) as client:
         status, resp = await _admin_post(client, root, "/model/new", key, payload)
     if status is None or status >= 300:
@@ -407,17 +455,22 @@ async def admin_llm_add_model(
         raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, _persist_hint(resp) or default_msg)
     await _audit_store().record(
         "model_add",
-        _alias(),
+        alias,
         admin.owner,
-        {"upstream": body.upstream_model.strip(), "rpm": body.rpm},
+        {"upstream": body.upstream_model.strip(), "rpm": body.rpm, "alias": alias},
     )
     # Allow-listed response (not a raw upstream echo): only the known-clean, admin-supplied fields.
     # This avoids leaking any credential-bearing field the upstream might echo that the deny-list
     # scrub didn't anticipate (e.g. userinfo/query embedded in api_base).
     return {
         "ok": True,
-        "alias": _alias(),
-        "deployment": {"upstream": body.upstream_model.strip(), "rpm": body.rpm},
+        "alias": alias,
+        "deployment": {
+            "upstream": body.upstream_model.strip(),
+            "rpm": body.rpm,
+            "inputCostPerM": body.input_cost_per_m,
+            "outputCostPerM": body.output_cost_per_m,
+        },
     }
 
 
@@ -443,28 +496,109 @@ async def admin_llm_delete_model(
             ErrorCode.UPSTREAM_UNAVAILABLE,
             "Couldn't read the current deployments; refusing the delete to avoid stranding chat.",
         )
-    alias_ids = {d["id"] for d in _alias_deployments(model_info) if d["id"]}
-    # Fail CLOSED on an unconfirmable state: a well-formed 200 /model/info with ZERO parseable alias
-    # deployments means we can't see the chat backends at all (renamed alias / changed shape /
-    # parse gap) — refuse rather than delete blind (B5).
-    if not alias_ids:
+    all_deps = _all_deployments(model_info)
+    target_dep = next((d for d in all_deps if d.get("id") == target), None)
+    # Fail CLOSED on an unconfirmable state: if we can't find the target (renamed alias / changed
+    # shape / parse gap) we refuse rather than delete blind (B5).
+    if target_dep is None:
         raise ApiError(
             ErrorCode.UPSTREAM_UNAVAILABLE,
-            f"Couldn't confirm any '{_alias()}' deployment from the gateway; refusing the delete.",
+            "Couldn't find that deployment in the gateway; refusing the delete.",
         )
-    # Fail CLOSED: require a confirmed surviving backend for the alias after this delete.
-    if target in alias_ids and len(alias_ids - {target}) < 1:
+    talias = str(target_dep.get("model_name") or "")
+    # Per-ALIAS guardrail: require a confirmed surviving backend for THIS deployment's alias — so a
+    # premium alias can't be stranded any more than the chat default can.
+    sibling_ids = {d["id"] for d in all_deps if d.get("model_name") == talias and d.get("id")}
+    if len(sibling_ids - {target}) < 1:
         raise ApiError(
             ErrorCode.VALIDATION_ERROR,
-            f"Refusing to delete the last '{_alias()}' deployment — chat would have no backend.",
+            f"Refusing to delete the last '{talias}' deployment — that alias would have none.",
             http_status=409,
         )
     async with httpx.AsyncClient(timeout=_WRITE_TIMEOUT_S) as client:
         status, _resp = await _admin_post(client, root, "/model/delete", key, {"id": target})
     if status is None or status >= 300:
         raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, "The gateway rejected the model delete.")
-    await _audit_store().record("model_delete", target, admin.owner, {"alias": _alias()})
+    await _audit_store().record("model_delete", target, admin.owner, {"alias": talias})
     return {"ok": True, "deleted": target}  # allow-listed response — no raw upstream echo
+
+
+@router.get("/admin/llm/openrouter/price")
+async def admin_llm_openrouter_price(
+    model: str,
+    admin: Annotated[AccountContext, Depends(require_admin)],
+) -> dict[str, Any]:
+    """Look up a model's CURRENT OpenRouter price (USD per 1M tokens) to pre-fill the add form.
+
+    Admin-gated. Reads OpenRouter's public models list (no key). Best-effort: ``{found: false}`` if
+    the model/price can't be resolved (the operator can still type the price manually).
+    """
+    mid = model.strip()
+    if mid.startswith("openrouter/"):
+        mid = mid[len("openrouter/") :]
+    async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+        data = await _get_json(client, "https://openrouter.ai/api/v1/models", {})
+    for m in _as_rows(data):
+        if not isinstance(m, dict) or str(m.get("id")) != mid:
+            continue
+        raw_pricing = m.get("pricing")
+        pricing = raw_pricing if isinstance(raw_pricing, dict) else {}
+        try:
+            pin = float(pricing.get("prompt", 0) or 0) * 1e6
+            pout = float(pricing.get("completion", 0) or 0) * 1e6
+        except (TypeError, ValueError):
+            return {"found": False, "model": mid}
+        return {
+            "found": True,
+            "model": mid,
+            "inputCostPerM": round(pin, 6),
+            "outputCostPerM": round(pout, 6),
+        }
+    return {"found": False, "model": mid}
+
+
+class KeyBudget(BaseModel):
+    """``POST /admin/llm/key/config`` — the virtual key's spend budget + rate limits."""
+
+    max_budget: float | None = Field(default=None, ge=0)  # USD ceiling per budget period
+    budget_duration: str | None = None  # reset period, e.g. "1d", "7d", "30d"
+    rpm_limit: int | None = Field(default=None, ge=0)
+    tpm_limit: int | None = Field(default=None, ge=0)
+
+
+def _virtual_key() -> str | None:
+    return (os.getenv("LITELLM_API_KEY") or "").strip() or None
+
+
+@router.post("/admin/llm/key/config")
+async def admin_llm_key_config(
+    body: KeyBudget, admin: Annotated[AccountContext, Depends(require_admin)]
+) -> dict[str, Any]:
+    """Update the virtual key's budget + rate limits via LiteLLM ``/key/update``. Admin-gated,
+    audited. This is the gateway abuse-ceiling control: a hard spend cap + rpm/tpm on the one key
+    that fronts all inference. NO key material is logged."""
+    root, key = _require_admin_gateway()
+    vkey = _virtual_key()
+    if not vkey:
+        raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, "The virtual key isn't configured.")
+    fields = {
+        "max_budget": body.max_budget,
+        "budget_duration": body.budget_duration,
+        "rpm_limit": body.rpm_limit,
+        "tpm_limit": body.tpm_limit,
+    }
+    changes = {k: v for k, v in fields.items() if v is not None}
+    if not changes:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, "No budget/limit fields provided.")
+    async with httpx.AsyncClient(timeout=_WRITE_TIMEOUT_S) as client:
+        status, resp = await _admin_post(client, root, "/key/update", key, {"key": vkey, **changes})
+    if status is None or status >= 300:
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            _persist_hint(resp) or "The gateway rejected the key update.",
+        )
+    await _audit_store().record("config_update", "virtual-key", admin.owner, changes)
+    return {"ok": True, "updated": changes}
 
 
 async def _admin_post(
