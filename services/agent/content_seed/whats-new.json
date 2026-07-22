@@ -5,12 +5,12 @@
       "slug": "curated-vaults-foundation",
       "type": "changelog",
       "tag": "New",
-      "title": "Groundwork for more vault choices",
-      "body": "We've been building the foundation for offering more than one yield vault — a small, hand-picked set that our team vets before it's ever offered. Two things never change: before any deposit, the app checks that the vault is one we've verified, and you can always withdraw your funds, on your own, no matter what. There's nothing new to click yet — the picker to choose between vaults is coming next — but the safety rails are already in place.",
-      "cta_label": "About the vault",
+      "title": "Choose your vault",
+      "body": "You can now pick which vault to use on the Vault page — starting with our conservative launch vault plus a hand-picked option that routes to Morpho. Your choice carries through to deposit and withdraw. Two things never change: before any deposit, the app checks the vault is one we've verified (you'll see a ✓), and you can always withdraw your funds yourself, no matter what. Where a vault's yield rate isn't measured yet, we show a dash rather than a made-up number. (The second option is currently a testnet demo vault.)",
+      "cta_label": "Open the vault",
       "cta_href": "/vault",
-      "published_at": "2026-07-21",
-      "active": false
+      "published_at": "2026-07-22",
+      "active": true
     },
     {
       "slug": "fair-ai-limits",

@@ -15,8 +15,8 @@
  * indexer-sourced estimates (no pure-RPC source), so they stay as the design's estimate.
  */
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatUnits } from "viem";
 import { useAccount, useBalance } from "wagmi";
 import { Icon } from "@/lib/icons";
@@ -25,12 +25,25 @@ import { money, fmt } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { useVault } from "@/lib/chain/useVault";
+import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
+import { VaultPicker } from "@/components/ui/VaultPicker";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
 import { StatusTag } from "@/components/ui/status-tag";
 
 const DECIMALS = 6;
+
+/** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
+function safeAddresses(chainId: number | undefined) {
+  if (chainId === undefined) return undefined;
+  try {
+    return getAddresses(chainId);
+  } catch {
+    return undefined;
+  }
+}
 
 /** Aave USDC supply-rate estimate (bps) — see the file header (the FEE applied is live). */
 const AAVE_SUPPLY_APY_BPS = 430;
@@ -74,14 +87,32 @@ function apyPath(vals: number[], W: number, H: number) {
 
 const HIST_RANGES = ["7d", "30d", "90d"];
 
-export default function Page() {
+function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const router = useRouter();
   const [hist, setHist] = useState("30d");
   const { isConnected, chainId } = useAccount();
 
+  // Multi-vault selection (011): the picker stores the chosen vault in `?vault=<address>` (absent ⇒ the
+  // launch Aave vault — the byte-identical default). Options come from the STATIC address-book SoT for the
+  // display chain; a wrapper-less chain yields launch-only and the picker renders nothing.
+  const bookChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  const book = safeAddresses(bookChainId);
+  const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
+  const sel = resolveSelectedVault(options, selectedParam);
+  const isWrapper = sel.kind === "morpho_wrapper";
+  const depositHref = toHref("vault/deposit") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
+  const withdrawHref = toHref("vault/withdraw") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
+
   // Connected → follow the wallet's chain (account-scoped reads work). Disconnected → read
-  // the deployed Base Sepolia vault so the vault-global figures aren't blank pre-connect.
-  const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
+  // the deployed Base Sepolia vault so the vault-global figures aren't blank pre-connect. The selected
+  // vault (launch by default) is threaded in; for launch, kind/label equal useVault's own defaults so
+  // the read + render stay byte-identical to before.
+  const v = useVault({
+    chainId: isConnected ? undefined : DISPLAY_CHAIN_ID,
+    vaultAddress: sel.vaultAddress,
+    kind: sel.kind,
+    label: sel.label,
+  });
 
   // §B3 — the vault is BASE-ONLY. On a connected chain without it (e.g. Robinhood testnet 46630)
   // useVault reports `vault_not_deployed`; surface an honest banner + disable the vault actions,
@@ -104,8 +135,8 @@ export default function Page() {
     <div className="page page-wide">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Aave Yield Vault <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={["Net APY is illustrative until an Aave feed is wired", "Cost basis / PnL need the on-chain event index"]} /></h1>
-          <div className="sub">Conservative, capital-preservation-first yield on USDC · Base</div>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>{v.label} <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={[isWrapper ? "Net APY feed not yet wired — shown as —" : "Net APY is illustrative until an Aave feed is wired", "Cost basis / PnL need the on-chain event index"]} /></h1>
+          <div className="sub">{isWrapper ? "Branded Morpho-wrapper vault · yield routed via Morpho · Base" : "Conservative, capital-preservation-first yield on USDC · Base"}</div>
         </div>
         <div className="actions">
           <RiskChip tier={1} />
@@ -113,7 +144,7 @@ export default function Page() {
             className="btn btn-outline btn-md"
             disabled={wrongNetwork}
             title={wrongNetwork ? "The vault is on Base — switch to Base Sepolia to manage it" : undefined}
-            onClick={() => router.push(toHref("vault/withdraw"))}
+            onClick={() => router.push(withdrawHref)}
           >
             <Icon name="door" size={16} /> Withdraw
           </button>
@@ -121,12 +152,17 @@ export default function Page() {
             className="btn btn-primary btn-md"
             disabled={wrongNetwork}
             title={wrongNetwork ? "The vault is on Base — switch to Base Sepolia to deposit" : undefined}
-            onClick={() => router.push(toHref("vault/deposit"))}
+            onClick={() => router.push(depositHref)}
           >
             Review deposit
           </button>
         </div>
       </div>
+      {options.length > 1 && (
+        <div style={{ marginBottom: 14 }}>
+          <VaultPicker options={options} selected={sel} />
+        </div>
+      )}
       {wrongNetwork && (
         <div
           style={{
@@ -177,46 +213,70 @@ export default function Page() {
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
             <div style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-.02em" }} className="tnum">
-              {netPct.toFixed(2)}%
+              {isWrapper ? "—" : `${netPct.toFixed(2)}%`}
             </div>
             <div className="muted" style={{ fontSize: 13, marginBottom: 7 }}>
-              net APY · estimate
+              {isWrapper ? "net APY · not yet available" : "net APY · estimate"}
             </div>
           </div>
-          <div className="apybreak" style={{ marginTop: 16 }}>
-            <div className="br">
-              <span className="muted">Aave supply rate</span>
-              <span className="tnum">{supplyPct.toFixed(2)}%</span>
-            </div>
-            <div className="br">
-              <span className="muted">
-                Performance fee · {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
-              </span>
-              <span className="tnum">−{(supplyPct - netPct).toFixed(2)}%</span>
-            </div>
-            <div className="divider" style={{ margin: "4px 0" }} />
-            <div className="br" style={{ fontWeight: 600 }}>
-              <span>Net APY</span>
-              <span className="tnum">{netPct.toFixed(2)}%</span>
-            </div>
-          </div>
-          <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-            Estimates, not guarantees. Rates change; historical and current only — no projections.
-          </div>
-          <div className="divider" />
-          <div className="card-hd">
-            <span className="t">APY history</span>
-            <div className="seg">
-              {HIST_RANGES.map((r) => (
-                <button key={r} className={r === hist ? "active" : ""} onClick={() => setHist(r)}>
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <svg width="100%" height="80" viewBox="0 0 520 80" preserveAspectRatio="none">
-            <path d={apyPath(data.apyHist, 520, 80)} fill="none" stroke="var(--info)" strokeWidth="2" />
-          </svg>
+          {isWrapper ? (
+            <>
+              <div className="apybreak" style={{ marginTop: 16 }}>
+                <div className="br">
+                  <span className="muted">Yield source</span>
+                  <span className="tnum">Morpho (external)</span>
+                </div>
+                <div className="br">
+                  <span className="muted">
+                    Fee · SparkPoint {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
+                  </span>
+                  <span className="tnum" style={{ fontSize: 12 }}>+ Morpho curator fee</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+                Routes pooled USDC into a curated Morpho vault — yield is Morpho&apos;s, not Aave&apos;s, and the
+                SparkPoint performance fee stacks on Morpho&apos;s native curator fee. No live APY feed yet, so
+                it&apos;s shown as &ldquo;—&rdquo; — never an invented number.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="apybreak" style={{ marginTop: 16 }}>
+                <div className="br">
+                  <span className="muted">Aave supply rate</span>
+                  <span className="tnum">{supplyPct.toFixed(2)}%</span>
+                </div>
+                <div className="br">
+                  <span className="muted">
+                    Performance fee · {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
+                  </span>
+                  <span className="tnum">−{(supplyPct - netPct).toFixed(2)}%</span>
+                </div>
+                <div className="divider" style={{ margin: "4px 0" }} />
+                <div className="br" style={{ fontWeight: 600 }}>
+                  <span>Net APY</span>
+                  <span className="tnum">{netPct.toFixed(2)}%</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+                Estimates, not guarantees. Rates change; historical and current only — no projections.
+              </div>
+              <div className="divider" />
+              <div className="card-hd">
+                <span className="t">APY history</span>
+                <div className="seg">
+                  {HIST_RANGES.map((r) => (
+                    <button key={r} className={r === hist ? "active" : ""} onClick={() => setHist(r)}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <svg width="100%" height="80" viewBox="0 0 520 80" preserveAspectRatio="none">
+                <path d={apyPath(data.apyHist, 520, 80)} fill="none" stroke="var(--info)" strokeWidth="2" />
+              </svg>
+            </>
+          )}
         </div>
         <div className="card card-pad">
           <div className="card-hd">
@@ -226,7 +286,9 @@ export default function Page() {
             <span className="k">Shares held</span>
             <span className="v tnum">{v.shares !== undefined ? fmt(toNum(v.shares, DECIMALS), 4) : "—"}</span>
             <span className="muted" style={{ fontSize: 11 }}>
-              spvUSDC ≈ {v.underlying !== undefined ? money(toNum(v.underlying)) : "—"}
+              {/* Match the confirm gate's share-symbol convention (generic "shares" for a wrapper) so the
+                  same token isn't named two ways across the overview → deposit/confirm flow. */}
+              {isWrapper ? "shares" : "spvUSDC"} ≈ {v.underlying !== undefined ? money(toNum(v.underlying)) : "—"}
             </span>
           </div>
           <div className="preview-row">
@@ -240,30 +302,68 @@ export default function Page() {
             <span className="muted">Idle USDC available</span>
             <span className="tnum">{v.usdcBalance !== undefined ? money(toNum(v.usdcBalance)) : "—"}</span>
           </div>
-          <div className="divider" />
-          <div className="card-hd">
-            <span className="lbl">Your {capNoun}</span>
-            <span className="tnum" style={{ fontSize: 12 }}>
-              {money(toNum(usedRaw), 0)} / {money(toNum(capRaw), 0)}
-            </span>
-          </div>
-          <div className="capmeter">
-            <i style={{ width: `${capPct}%` }} />
-          </div>
-          <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 8 }}>
-            {(100 - capPct).toFixed(0)}% of your {capNoun} remaining. You can always withdraw, regardless of caps.
-          </div>
-          <div className="divider" />
-          <div style={{ display: "flex", gap: 8 }}>
-            <span className="pill ghosty" style={{ cursor: "default" }}>
-              <Icon name="shieldcheck" size={13} /> Audited
-            </span>
-            <span className="pill ghosty" style={{ cursor: "default" }}>
-              <Icon name="lock" size={13} /> Non-upgradeable
-            </span>
-          </div>
+          {isWrapper ? (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+                This vault enforces its own on-chain deposit cap, set at deploy. You can always withdraw your
+                full balance, regardless of caps or pause.
+              </div>
+              <div className="divider" />
+              <div style={{ display: "flex", gap: 8 }}>
+                <span className="pill ghosty" style={{ cursor: "default" }}>
+                  <Icon name="lock" size={13} /> Non-upgradeable
+                </span>
+                <span className="pill ghosty" style={{ cursor: "default" }}>
+                  <Icon name="door" size={13} /> Withdraw anytime
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="divider" />
+              <div className="card-hd">
+                <span className="lbl">Your {capNoun}</span>
+                <span className="tnum" style={{ fontSize: 12 }}>
+                  {money(toNum(usedRaw), 0)} / {money(toNum(capRaw), 0)}
+                </span>
+              </div>
+              <div className="capmeter">
+                <i style={{ width: `${capPct}%` }} />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 8 }}>
+                {(100 - capPct).toFixed(0)}% of your {capNoun} remaining. You can always withdraw, regardless of caps.
+              </div>
+              <div className="divider" />
+              <div style={{ display: "flex", gap: 8 }}>
+                <span className="pill ghosty" style={{ cursor: "default" }}>
+                  <Icon name="shieldcheck" size={13} /> Audited
+                </span>
+                <span className="pill ghosty" style={{ cursor: "default" }}>
+                  <Icon name="lock" size={13} /> Non-upgradeable
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Reads the `?vault=` selection client-side; isolated so the Suspense fallback can SSR the shell. */
+function VaultOverviewLive() {
+  const selectedParam = useSearchParams().get("vault");
+  return <VaultOverview selectedParam={selectedParam} />;
+}
+
+export default function Page() {
+  // `useSearchParams` bails the reading subtree to the client. The fallback renders the LAUNCH shell
+  // (selectedParam = null) so a cold load's first paint keeps the server-rendered vault shell instead of
+  // blanking — and for the default (no `?vault`) the fallback and the live render are identical.
+  return (
+    <Suspense fallback={<VaultOverview selectedParam={null} />}>
+      <VaultOverviewLive />
+    </Suspense>
   );
 }

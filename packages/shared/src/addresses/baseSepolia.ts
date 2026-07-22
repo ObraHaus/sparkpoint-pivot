@@ -62,4 +62,20 @@ export const baseSepolia: AddressBook = {
   vault: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
   capRegistry: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
   killSwitch: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
+
+  // ── Feature 011 wrapper-vault factory (deployed 2026-07-22 via DeployMorphoWrapperFactory) ──
+  // The factory address is REQUIRED for wrapper provenance: useVault reads factory.isSparkPointVault
+  // for a `morpho_wrapper`, and without it the read is disabled ⇒ every wrapper deposit fail-closes to
+  // "Unverified vault". `sparkPointWrappers` is a display list for the picker (attested on-chain live).
+  sparkPointVaultFactory: "0x2774D4b0Af206b8F489BF1db9d8FAFbB17D36D8b",
+  sparkPointWrappers: [
+    {
+      // TESTNET DEMO wrapper — wraps a MockMorphoVault (NOT a real Morpho vault; see
+      // contracts/deployments/84532/testnet-wrapper-notes.md). Gives the alpha picker a real 2nd vault.
+      address: "0xff0a43FA397a90c1277C96A783e1171e1efbE9BB",
+      label: "SparkPoint Morpho USDC",
+      symbol: "spMORPHO",
+      morphoVault: "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
+    },
+  ],
 };

@@ -135,6 +135,25 @@ export interface AddressBook {
    * (e.g. Base Sepolia, where Morpho has no ready curated vaults with real TVL/liquidity).
    */
   readonly curatedMorphoVaults?: readonly Address[];
+  /**
+   * Deployed `SparkPointMorphoVault` wrapper INSTANCES (feature 011) live on this chain — a curated
+   * DISPLAY list that powers the app's vault picker. Distinct from {@link curatedMorphoVaults} (the
+   * UNDERLYING Morpho targets a factory may wrap): these are SparkPoint's OWN branded wrapper
+   * addresses. **NOT** policy `TargetRef`s. Undefined/empty ⇒ launch vault only (byte-identical).
+   */
+  readonly sparkPointWrappers?: readonly SparkPointWrapper[];
+}
+
+/**
+ * A deployed branded Morpho-wrapper vault instance (feature 011) — one display entry for the vault
+ * picker. `address` is the `SparkPointMorphoVault`; `morphoVault` is its immutable underlying target
+ * (informational — the app reads `morphoVault()` live). **NOT** a policy `TargetRef`.
+ */
+export interface SparkPointWrapper {
+  readonly address: Address;
+  readonly label: string;
+  readonly symbol?: string;
+  readonly morphoVault?: Address;
 }
 
 /**

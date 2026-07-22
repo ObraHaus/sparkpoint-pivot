@@ -4,8 +4,9 @@
  * Faithful port of the design's `vault/withdraw` screen (screens/vault.js, `amountScreen`).
  */
 
-import { AmountScreen } from "../_amount-screen";
+import { AmountScreenRoute } from "../_amount-screen";
 
 export default function Page() {
-  return <AmountScreen mode="withdraw" />;
+  // AmountScreenRoute owns the `?vault=` read + its Suspense boundary (fallback SSRs the launch shell).
+  return <AmountScreenRoute mode="withdraw" />;
 }
