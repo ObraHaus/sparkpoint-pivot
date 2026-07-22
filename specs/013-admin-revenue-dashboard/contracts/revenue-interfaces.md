@@ -75,7 +75,10 @@ async function loadRevenue(): Promise<RevenueSummary> {
 }
 // loaded / loadErr / busy state (useCallback refresh + useEffect on mount) — the admin/gateway page pattern.
 // DELETE: import { revByStream, ... } from "@/components/admin/data"  and the inline "Sample data" pill.
-// KEEP VERBATIM: import { StackedBars, Trajectory, DualArea, Composed, Kpi, LegendStreams } from "@/components/admin/charts"
+// Import all six presentational primitives from charts.tsx. NOTE: Kpi + LegendStreams currently live in
+// components/admin/data.tsx and MUST be relocated into charts.tsx first (they are primitives, not mock data),
+// so revenue/page.tsx reads NOTHING from data.tsx (SC-001/FR-003):
+// import { StackedBars, Trajectory, DualArea, Composed, Kpi, LegendStreams } from "@/components/admin/charts"
 //   — they take plain number[] / {x,...}[] + a computed max; wiring real series = "fetch, compute max, pass in".
 ```
 

@@ -29,8 +29,8 @@ Fixed on-chain facts (Base Sepolia 84532):
 ## Apply the migration
 
 **None.** This feature introduces **no migration** and no new table (D9/FR-015). The latest migration on disk
-remains `0015_limits.sql`. (The parallel 012/013 work is claiming provisional `0016`/`0017` — those numbers
-are provisional and must be reconciled with the 010/011 work before applying; 014 claims none.) The only
+is `0016_vault_factory.sql` (feature 011, on develop). (The 012/013 work uses the next-free `0017`/`0018` (feature 011 holds `0016_vault_factory`) — those numbers
+are the next free numbers (011's 0016 has merged to develop); 014 claims none.) The only
 persisted change is config: the Safe address in the address book + the non-key `FEE_WALLET_ADDRESS` agent
 constant; admin-revenue balances are live on-chain reads.
 
@@ -138,4 +138,4 @@ withdraw-always untouched, no key committed.
 - `DEVELOPMENT.md` — the new `FEE_WALLET_ADDRESS` env var + the `feeTreasury` address-book field.
 - `DEPLOYMENT.md` — the Safe creation + the Timelock `schedule`/`execute` ceremony (tx hashes, salt, before/after recipient — FR-016).
 - `COOLIFY.md` — the 46630 web redeploy (the constant change is not "done" until web ships).
-- `MIGRATIONS.md` — **no new migration** (latest remains `0015_limits`); record explicitly that 014 adds none.
+- `MIGRATIONS.md` — **no new migration** (latest is `0016_vault_factory`); record explicitly that 014 adds none.

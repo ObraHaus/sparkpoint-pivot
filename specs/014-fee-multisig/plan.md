@@ -49,7 +49,7 @@ Safe SDK.
 
 **Storage**: **None new.** No migration, no table. The Safe address lives in `packages/shared/src/addresses/`
 (TypeScript, per-network) and in the agent's non-key config as `FEE_WALLET_ADDRESS`. Admin-revenue balances
-are live on-chain reads, not persisted. (Latest migration on disk remains `0015_limits.sql`; this feature
+are live on-chain reads, not persisted. (Latest migration on disk is `0016_vault_factory.sql` (feature 011, on develop); this feature
 adds none.)
 
 **Testing**: Foundry test asserting the ceremony semantics on a fork — a direct EOA `setFeeRecipient` reverts
@@ -158,7 +158,7 @@ contracts/                            # NO change — no contract edit, no redep
 Living docs: CHANGELOG.md · DEVELOPMENT.md (FEE_WALLET_ADDRESS + feeTreasury address-book field) ·
 DEPLOYMENT.md (the Safe creation + the Timelock schedule/execute ceremony, tx hashes) ·
 COOLIFY.md (46630 web redeploy) · services/agent/content_seed/whats-new.json (client-facing entry) ·
-MIGRATIONS.md (NO new migration — latest remains 0015_limits)
+MIGRATIONS.md (NO new migration — latest is 0016_vault_factory)
 ```
 
 **Structure Decision**: Web-application layout (Next.js frontend + Python agent + unchanged contracts), with

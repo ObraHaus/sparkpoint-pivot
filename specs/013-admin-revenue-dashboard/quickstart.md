@@ -18,9 +18,9 @@ cd services/agent
 PGCLIENTENCODING=UTF8 uv run --group migrations yoyo apply --batch --database "$DATABASE_URL" ./migrations
 ```
 
-`0017_swap_fee_events.sql` creates the idempotent `swap_fee_events` ledger and seeds a `(network, stream='swap_fee')` row in the existing `indexer_cursors` (0001). Update `MIGRATIONS.md` (Develop → 0017) in the same change. **Apply before the agent boots** (the boot indexer loop is best-effort/fail-open — a missing table degrades the swap stream to `configured:false`, never a crash).
+`0018_swap_fee_events.sql` creates the idempotent `swap_fee_events` ledger and seeds a `(network, stream='swap_fee')` row in the existing `indexer_cursors` (0001). Update `MIGRATIONS.md` (Develop → 0018) in the same change. **Apply before the agent boots** (the boot indexer loop is best-effort/fail-open — a missing table degrades the swap stream to `configured:false`, never a crash).
 
-> **The `0017` number is provisional.** Specs 010/011 are being built in a parallel agent and may claim `0016`/`0017` first — **reconcile with the 010/011 work before applying and use the next free sequential number.** The perf stream reads the existing `fee_events` (0002); the membership stream reads feature 012's `payments` (its provisional `0016`) — neither is created here.
+> **The `0018` number is the next free sequential number.** Feature 011 has merged `0016_vault_factory` to develop; this is the next free sequential number — **confirm it is still free at apply time.** The perf stream reads the existing `fee_events` (0002); the membership stream reads feature 012's `payments` (its next-free `0017`) — neither is created here.
 
 ## Run
 
@@ -60,8 +60,8 @@ Cover: swap-fee `Transfer` decode + idempotent `(network_id, tx_hash, log_index)
 
 ## Living docs to update (same change)
 
-- `CHANGELOG.md` — `## [Unreleased]` bullets (new `swap_fee_events` table + `0017` migration, the swap-fee indexer, the `/admin/revenue/summary` endpoint, the rebuilt Revenue page + multisig card).
+- `CHANGELOG.md` — `## [Unreleased]` bullets (new `swap_fee_events` table + `0018` migration, the swap-fee indexer, the `/admin/revenue/summary` endpoint, the rebuilt Revenue page + multisig card).
 - `services/agent/content_seed/whats-new.json` — a client-facing entry per shipped phase (stable slug), e.g. "Revenue is now real, per stream" — semi-technical, makes clear the numbers changed from sample to on-chain even though the page looks similar.
-- `MIGRATIONS.md` — record `0017` applied per environment (bump the Develop level + add the per-migration row); **reconcile the number with the parallel 010/011 work first.**
+- `MIGRATIONS.md` — record `0018` applied per environment (bump the Develop level + add the per-migration row); **confirm the number is still free at apply time (feature 011 merged `0016_vault_factory`).**
 - `DEVELOPMENT.md` — the new non-key display constants: the swap **router** + **fee-recipient set** + **vault-deploy block** per network. (The Safe address for the balances card is feature 014's `FEE_WALLET_ADDRESS`.)
 - `DEPLOYMENT.md` / `COOLIFY.md` — the swap-fee indexer background loop (the same operational shape as the vault-flow indexer) and its RPC/env requirements.

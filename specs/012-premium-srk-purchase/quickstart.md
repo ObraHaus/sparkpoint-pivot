@@ -34,10 +34,10 @@ cd services/agent
 PGCLIENTENCODING=UTF8 uv run --group migrations yoyo apply --batch --database "$DATABASE_URL" ./migrations
 ```
 
-`0016_subscriptions.sql` adds `payments` (`UNIQUE(network_id, tx_hash)`), `subscriptions`, and
-`wallet_tier.expires_at`. **The migration number is provisional — reconcile with the parallel 010/011 work
+`0017_subscriptions.sql` adds `payments` (`UNIQUE(network_id, tx_hash)`), `subscriptions`, and
+`wallet_tier.expires_at`. **The migration number is the next free sequential number — confirm it is still free at apply time (011 already merged its 0016)
 before applying; use the next free sequential number.** No `wallet_tier.source` ALTER is needed (`'srk'` is
-already in the `0015` CHECK). Update `MIGRATIONS.md` (Develop → 0016, provisional) in the same change. **Apply
+already in the `0015` CHECK). Update `MIGRATIONS.md` (Develop → 0017) in the same change. **Apply
 before the agent boots** (an un-applied table degrades silently). Set the billing env (read directly, not
 through `AgentConfig`): `SRK_ADDRESS_84532`, `PREMIUM_PRICE_SRK` (flat **500 SRK/month** in base units),
 `PREMIUM_TREASURY_ADDRESS`, `PREMIUM_MIN_CONFIRMATIONS`.
@@ -117,8 +117,8 @@ balance/price reads + "SRK unavailable" honest-degrade.
 
 ## Living docs to update (same change)
 
-- `CHANGELOG.md` — `## [Unreleased]` bullets (new SRK token + deploy script, `0016` migration, `payments`/`subscriptions`/`wallet_tier.expires_at`, `/subscription/verify` endpoint + verifier, expiry-aware resolve, real pay surface).
+- `CHANGELOG.md` — `## [Unreleased]` bullets (new SRK token + deploy script, `0017` migration, `payments`/`subscriptions`/`wallet_tier.expires_at`, `/subscription/verify` endpoint + verifier, expiry-aware resolve, real pay surface).
 - `services/agent/content_seed/whats-new.json` — a client-facing entry with a **stable slug** ("Buy Premium with SRK"), backdated via `published_at` so the timeline reads honestly.
-- `MIGRATIONS.md` — record `0016` applied per environment (**note the provisional number — reconcile with 010/011**).
+- `MIGRATIONS.md` — record `0017` applied per environment (**note the next-free number — confirm it is still free at apply time (011 already merged 0016)**).
 - `DEVELOPMENT.md` — the new env vars (`SRK_ADDRESS_84532`, `PREMIUM_PRICE_SRK`, `PREMIUM_TREASURY_ADDRESS`, `PREMIUM_MIN_CONFIRMATIONS`) + the `srk` / `premiumTreasury` address-book fields.
 - `DEPLOYMENT.md` / `COOLIFY.md` — the SRK deploy step + the agent billing env on the alpha.

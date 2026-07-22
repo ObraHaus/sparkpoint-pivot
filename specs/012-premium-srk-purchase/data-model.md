@@ -1,7 +1,6 @@
 # Data Model: Premium Purchase via SRK (Phase 1)
 
-One new forward-only migration (`services/agent/migrations/0016_subscriptions.sql` — **number is provisional;
-reconcile with the parallel 010/011 work before applying; use the next free sequential number**) adds two
+One new forward-only migration (`services/agent/migrations/0017_subscriptions.sql` — `0016_vault_factory` is the latest on develop (feature 011), so `0017` is the next free number — confirm it is still free when you create the file) adds two
 Postgres tables plus one column, on top of the on-chain SRK token, the two address-book fields, and the in-app
 verify/grant wire shapes. Field notes call out the invariants tests must enforce. The DB shapes copy the live
 `0015` conventions (lowercased-wallet `TEXT` keys, on-chain rows carry `network_id … REFERENCES networks(id)`
@@ -55,7 +54,7 @@ Base-Sepolia-only in this increment — both fields resolve on 84532 only; on 84
 `premiumTreasury` is a **plain payment recipient** with no fund-movement authority over user funds (N5, FR-019);
 if it is a multisig it is still a plain recipient, never the immutable vault guardian.
 
-## payments (new — `services/agent/migrations/0016_subscriptions.sql`)
+## payments (new — `services/agent/migrations/0017_subscriptions.sql`)
 
 The append-only ledger of verified on-chain premium payments. Its **`UNIQUE(network_id, tx_hash)`** is the
 authoritative anti-replay control (**not** the BFF `Idempotency-Key`, which only dedupes identical retries —
@@ -78,7 +77,7 @@ violation aborts the grant (a resubmitted hash grants zero additional times — 
 recorded for a payment that passed full verification (status success, ≥ N confirmations, correct token, correct
 recipient, `value ≥ PREMIUM_PRICE_SRK`); no key material and no message content is stored.
 
-## subscriptions (new — `services/agent/migrations/0016_subscriptions.sql`)
+## subscriptions (new — `services/agent/migrations/0017_subscriptions.sql`)
 
 The append-only membership-window history / audit source of record — **not** the resolution source (that is
 `wallet_tier`, see below). One row per granted or renewed period.
@@ -99,7 +98,7 @@ mutate a prior one) so the paid-time history reads honestly; every row traces to
 `expires_at` here is the **history** of what was granted, while the live resolution reads `wallet_tier.expires_at`
 — the two are written together in the same transaction, so they never drift.
 
-## wallet_tier.expires_at (altered — `services/agent/migrations/0016_subscriptions.sql`)
+## wallet_tier.expires_at (altered — `services/agent/migrations/0017_subscriptions.sql`)
 
 The one column that turns 008's existence-only tier resolution into a time-boxed one. Added to the existing
 `0015` `wallet_tier` table; **`wallet_tier` stays the single hot-path resolution source**.

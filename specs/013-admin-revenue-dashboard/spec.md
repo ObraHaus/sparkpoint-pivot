@@ -168,7 +168,7 @@ An operator sees, from live on-chain reads, the current balances held by the fee
 
 ### Key Entities *(include if feature involves data)*
 
-- **Swap Fee Event** (new — `services/agent/migrations/0017_swap_fee_events.sql`): an append-only, idempotent record of one collected swap routing fee — `network_id`, `tx_hash`, `log_index` (unique together), block number/time, output token address + decimals, and fee value in base units. Attribution key = `from == router`.
+- **Swap Fee Event** (new — `services/agent/migrations/0018_swap_fee_events.sql`): an append-only, idempotent record of one collected swap routing fee — `network_id`, `tx_hash`, `log_index` (unique together), block number/time, output token address + decimals, and fee value in base units. Attribution key = `from == router`.
 - **Indexer Cursor** (existing — migration 0001 `indexer_cursors`): gains a `(network, stream='swap_fee')` row tracking the last finalized block the swap-fee indexer has processed.
 - **Fee Event** (existing — migration 0002 `fee_events`): the performance-fee ledger already aggregated by `FeeIndexer.revenue_summary`; read-only source for the perf stream.
 - **Payment** (feature 012 — `payments`): verified SRK membership payments; read-only source for the membership stream, summed by period.

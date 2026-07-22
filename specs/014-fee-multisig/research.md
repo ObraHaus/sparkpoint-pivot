@@ -121,7 +121,7 @@ config constant `FEE_WALLET_ADDRESS`. Introduce no database migration and no per
 admin-revenue Safe balances are live on-chain reads (feature 013's card).
 
 **Rationale**: The only new data is a single public address — config, not schema. Latest migration on disk is
-`0015_limits.sql`; this feature adds none, so it stays out of the 0016/0017 numbering that the parallel
+`0015_limits.sql`; this feature adds none, so it stays out of the 0017/0018 numbering that the parallel
 012/013 work is claiming. Balances are inherently live (the whole point is to show real accrual), so a
 persisted mirror would only add drift risk against Principle III. **Alternatives rejected**: a
 `fee_treasury`/balance-snapshot table (unneeded persistence, drift risk, a migration for one address); baking

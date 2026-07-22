@@ -54,7 +54,7 @@ Decisions and rationale grounding the plan. Sources: a direct code read of `apps
 
 **Decision**: The membership stream sums 012's `payments` table by period, counting only verified payments, and returns `configured:false` when the table does not exist — so 013 ships independently of 012.
 
-**Rationale**: 012 owns the `payments` ledger (its migration, provisional `0016`). 013 must not block on 012 landing; the try/except-to-`configured:false` pattern (from `admin_usage.py`) lets the stream be live-or-absent cleanly. Counting only verified payments avoids crediting a pending/unverified submission as revenue (Principle III). Rejected: deriving membership from the swap indexer (wrong ledger, double-count risk — see D7); a hard 012 dependency (blocks independent shipping).
+**Rationale**: 012 owns the `payments` ledger (its migration, next-free `0017`). 013 must not block on 012 landing; the try/except-to-`configured:false` pattern (from `admin_usage.py`) lets the stream be live-or-absent cleanly. Counting only verified payments avoids crediting a pending/unverified submission as revenue (Principle III). Rejected: deriving membership from the swap indexer (wrong ledger, double-count risk — see D7); a hard 012 dependency (blocks independent shipping).
 
 ## D10 — Aggregation endpoint mirrors `admin_usage.py`: `GET /admin/revenue/summary`, admin-gated, per-stream try/except
 
@@ -64,7 +64,7 @@ Decisions and rationale grounding the plan. Sources: a direct code read of `apps
 
 ## D11 — Web page swaps the mock import for a live fetch; keep `charts.tsx` primitives verbatim
 
-**Decision**: `admin/revenue/page.tsx` replaces `import { revByStream, … } from "@/components/admin/data"` with `fetch("/api/agent/admin/revenue/summary", { headers: { "x-chain-id": "84532" }, cache: "no-store" })` + `loaded/loadErr/busy` state, and drops the "Sample data" pill per-stream. The `StackedBars/Trajectory/DualArea/Composed/Kpi/LegendStreams` primitives are unchanged (they take plain `number[]`/`{x,…}[]` + a computed `max`).
+**Decision**: `admin/revenue/page.tsx` replaces `import { revByStream, … } from "@/components/admin/data"` with `fetch("/api/agent/admin/revenue/summary", { headers: { "x-chain-id": "84532" }, cache: "no-store" })` + `loaded/loadErr/busy` state, and drops the "Sample data" pill per-stream. The `StackedBars/Trajectory/DualArea/Composed` primitives are unchanged; `Kpi` + `LegendStreams` are relocated from `data.tsx` into `charts.tsx` (presentational, not mock data) so the page reads nothing from `data.tsx` (SC-001). All take plain `number[]`/`{x,…}[]` + a computed `max`.
 
 **Rationale**: `admin/system/page.tsx` already proves the intended split — importing `charts.tsx` (primitives) is fine; importing `data.tsx` (the mock series) is what makes a page fake. `admin/gateway/page.tsx` is the closest precedent: real BFF fetch + hand-built charts + `cache:"no-store"` + honest-degrade copy. Wiring real series is just "fetch, compute max, pass in" — no chart change. Rejected: rewriting the charts (unnecessary); a client-supplied identity (the BFF injects `x-owner` from the session — the client sends only `x-chain-id`).
 
@@ -82,9 +82,9 @@ Decisions and rationale grounding the plan. Sources: a direct code read of `apps
 
 ## D14 — Ship the swap-fee ledger first (Phase 0/A), then the page (Phase B) — recipient-cutover aware
 
-**Decision**: The indexer + `0017` land before the page rebuild, and the swap indexer's `to`-recipient filter is a **configurable set** so that when feature 014 moves the fee recipient to the Safe, the filter can union the old EOA and the new Safe across the cutover block.
+**Decision**: The indexer + `0018` land before the page rebuild, and the swap indexer's `to`-recipient filter is a **configurable set** so that when feature 014 moves the fee recipient to the Safe, the filter can union the old EOA and the new Safe across the cutover block.
 
-**Rationale**: The ledger must be backfilling before the dashboard can show a real swap number; landing the migration + indexer first (Phase 0/A) means Phase B's page immediately has data. Feature 014 will re-point the vault `feeRecipient` (via the Timelock) and the `robinhoodTestnet.ts` constant; a single-address `to` filter would drop the stream at the cutover block, so making it a set future-proofs the indexer without building 014 here. The migration `0017` **number is provisional — reconcile with the parallel 010/011 work before applying; use the next free sequential number.** Rejected: hard-coding one recipient (breaks at the 014 cutover); building 014's recipient move here (out of scope).
+**Rationale**: The ledger must be backfilling before the dashboard can show a real swap number; landing the migration + indexer first (Phase 0/A) means Phase B's page immediately has data. Feature 014 will re-point the vault `feeRecipient` (via the Timelock) and the `robinhoodTestnet.ts` constant; a single-address `to` filter would drop the stream at the cutover block, so making it a set future-proofs the indexer without building 014 here. The migration `0018` **number is the next free sequential number — confirm it is still the next free sequential number at apply time (feature 011 merged `0016_vault_factory` to develop 2026-07-22).** Rejected: hard-coding one recipient (breaks at the 014 cutover); building 014's recipient move here (out of scope).
 
 ## Adversarial review notes (recorded)
 

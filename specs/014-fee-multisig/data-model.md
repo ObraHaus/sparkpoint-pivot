@@ -7,9 +7,9 @@ invariants tests + the ceremony verification must enforce. The address-book shap
 `swapFeeRecipient` convention (a plain optional `Address` field, explicitly **not** a policy `TargetRef`);
 the agent constant copies the `SPARKPOINT_VAULT_ADDRESS` env → `AgentConfig` normalization convention.
 
-> Latest migration on disk remains `0015_limits.sql`; this feature adds none. (Provisional migration
-> numbers are moving in parallel: 012 is working `0016_subscriptions.sql` and 013 `0017_swap_fee_events.sql`
-> — those numbers are provisional and must be reconciled with the 010/011 work before applying; use the
+> Latest migration on disk is `0016_vault_factory.sql` (feature 011, on develop); this feature adds none. (For reference, the parallel migration
+> numbers are moving in parallel: 012 is working `0017_subscriptions.sql` and 013 `0018_swap_fee_events.sql`
+> — those numbers must be confirmed as still free at apply time; use the
 > next free sequential number. **014 claims no number at all.**)
 
 ## Fee Treasury Safe — address of record (config — `packages/shared/src/addresses/baseSepolia.ts` + optional `types.ts`)

@@ -19,7 +19,7 @@ PREMIUM_MIN_CONFIRMATIONS`, and an ERC-20 `Transfer` log where `address == SRK`,
 `from == account.owner` (the server-scoped buyer, **never** a body field), and `value ≥ PREMIUM_PRICE_SRK`
 (compared in **base units** — there is no USD oracle).
 
-Verified payments are recorded in a new forward-only migration **`0016_subscriptions.sql`**: a `payments`
+Verified payments are recorded in a new forward-only migration **`0017_subscriptions.sql`**: a `payments`
 ledger whose **`UNIQUE(network_id, tx_hash)`** is the anti-replay control (not the BFF `Idempotency-Key`), a
 `subscriptions` window table, and a new nullable **`wallet_tier.expires_at`**. The grant reuses the 008
 `LimitsStore.assign(wallet, "premium", source='srk')` (`srk` is already in the `0015` CHECK — no ALTER), and
@@ -50,9 +50,8 @@ confirm-gate wiring).
 `writeContractAsync`, `waitForTransactionReceipt`) on the web. Reuses 008's `LimitsStore` and `require_admin`
 patterns and 007's `useExecuteSwapTx` two-leg shape. **No new runtime dependency.**
 
-**Storage**: Postgres (agent-owned) — one new migration `services/agent/migrations/0016_subscriptions.sql`
-(`payments`, `subscriptions`, `wallet_tier.expires_at`). *Migration number is **provisional** — reconcile
-with the parallel 010/011 work before applying; use the next free sequential number.* No key material stored;
+**Storage**: Postgres (agent-owned) — one new migration `services/agent/migrations/0017_subscriptions.sql`
+(`payments`, `subscriptions`, `wallet_tier.expires_at`). *Migration `0017` is the next free number — `0016_vault_factory` (feature 011) is the latest on develop; confirm it is still free when you create the file.* No key material stored;
 RPC DSN passed at apply time. On-chain SRK/treasury addresses live in `packages/shared/src/addresses/`.
 
 **Testing**: Foundry unit **and fuzz** tests for the SRK token (supply, decimals, transfer/approve invariants)
@@ -145,7 +144,7 @@ packages/shared/src/addresses/
 └── baseSepolia.ts              # fill in the deployed SRK address + premiumTreasury (014 Safe if present, else deployer EOA)
 
 services/agent/migrations/
-└── 0016_subscriptions.sql      # NEW (number PROVISIONAL — reconcile with 010/011 first) — payments (UNIQUE(network_id,tx_hash)), subscriptions, ALTER wallet_tier ADD expires_at
+└── 0017_subscriptions.sql      # NEW (0017 — feature 011 holds 0016; confirm next-free at apply time) — payments (UNIQUE(network_id,tx_hash)), subscriptions, ALTER wallet_tier ADD expires_at
 
 services/agent/src/sparkpoint_agent/
 ├── chain/payment_verifier.py   # NEW — keyless: HttpxLogsRpc.call("eth_getTransactionReceipt",[txHash]) + eth_blockNumber + _addr_from_topic; ERC20_TRANSFER_TOPIC0; assert status/confirmations/token/to/from/value
@@ -162,7 +161,7 @@ apps/web/src/
 ├── components/screens/…/ConfirmFlow.tsx + OnchainConfirmFlow  # generalize past deposit|withdraw for the already-whitelisted "premium" intent OR add an inline confirm modeled on inline-swap-confirm.tsx; sign gated behind a fail-closed pre-sign check
 └── lib/agent/…                 # typed client call to POST /api/agent/subscription/verify {txHash}
 
-Living docs: CHANGELOG.md · MIGRATIONS.md (0016 apply record, provisional number) · DEVELOPMENT.md (SRK_ADDRESS_84532,
+Living docs: CHANGELOG.md · MIGRATIONS.md (0017 apply record) · DEVELOPMENT.md (SRK_ADDRESS_84532,
 PREMIUM_PRICE_SRK, PREMIUM_TREASURY_ADDRESS, PREMIUM_MIN_CONFIRMATIONS + the srk/premiumTreasury address-book fields) ·
 DEPLOYMENT.md/COOLIFY.md (SRK deploy + agent env) · services/agent/content_seed/whats-new.json (client-facing entry, stable slug)
 ```
@@ -189,8 +188,8 @@ Each phase is independently shippable to `develop` and honest at its own boundar
   tests + `DeploySRK.s.sol`; deploy to Base Sepolia; add `srk?`/`premiumTreasury?` to the address-book
   `types.ts` and fill `baseSepolia.ts` (treasury = 014 Safe if present, else deployer EOA + cutover note).
   Nothing grants yet.
-- **Phase A → US1 (🎯 MVP).** Migration `0016_subscriptions.sql` (payments/subscriptions/`expires_at`, number
-  provisional — reconcile with 010/011) applied with `PGCLIENTENCODING=UTF8` before agent boot; `db/subscriptions.py`;
+- **Phase A → US1 (🎯 MVP).** Migration `0017_subscriptions.sql` (payments/subscriptions/`expires_at`, number
+  working — confirm it is still free at apply time (011 already merged 0016)) applied with `PGCLIENTENCODING=UTF8` before agent boot; `db/subscriptions.py`;
   `chain/payment_verifier.py`; `api/subscription.py` `POST /subscription/verify`; grant via
   `LimitsStore.assign(..., source='srk', expires_at=now+1mo)`. A valid payment → premium for a month, resolved
   on the next turn. Buy-and-grant is a viable MVP.

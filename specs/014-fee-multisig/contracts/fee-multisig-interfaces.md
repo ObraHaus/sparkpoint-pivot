@@ -119,10 +119,10 @@ permissions view represents the Safe's power over user funds as **nil** — prov
 no fund-movement path) — not asserted copy (Principle III, N5); the withdraw-always exit path is unaffected
 by the fact that the recipient is now a multisig (FR-013, N2, SC-004).
 
-## 7. Admin-revenue Safe balance card (live read, fed by feature 013) — `apps/web/src/app/admin/revenue/…`
+## 7. Admin-revenue Safe balance card (live read; owned by feature 013) — `apps/web/src/components/admin/revenue-multisig.tsx`
 
 ```text
-Input:  AgentConfig.fee_wallet_address (the Safe)  →  live eth_getBalance + ERC20 balanceOf (existing RPC transport)
+Input:  getAddresses(chainId).feeTreasury (client-side address book; 014 sets it, kept in sync with agent FEE_WALLET_ADDRESS)  ->  live eth_getBalance + ERC20 balanceOf (viem PublicClient)
 Output: SafeBalanceCard { configured, address, native, tokens[] }   // see data-model.md
         configured:false ⇒ honest "cannot load"; real zero ⇒ real zero; NEVER a fabricated/sample figure.
 ```

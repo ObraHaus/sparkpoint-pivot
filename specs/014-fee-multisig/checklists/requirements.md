@@ -63,6 +63,6 @@
 - Deferred to plan.md / research.md (the HOW): the exact Timelock `schedule`→wait→`execute` encoding + salt
   + operation-id verification, the address-book `feeTreasury` field, the non-key `FEE_WALLET_ADDRESS` agent
   constant, the swap-fee fallback mechanics, and the Foundry fork test locking the ceremony semantics.
-- **No new migration** — the latest on disk remains `0015_limits.sql`; 014 adds none (the parallel 012/013
-  work is claiming provisional `0016`/`0017`, to be reconciled with the 010/011 work before applying).
+- **No new migration** — the latest on disk is `0016_vault_factory.sql` (feature 011, on develop); 014 adds none (the parallel 012/013
+  uses the next-free `0017`/`0018` (feature 011 holds `0016_vault_factory`)).
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`. (None.)

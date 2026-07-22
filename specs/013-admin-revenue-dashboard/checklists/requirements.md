@@ -33,7 +33,7 @@
 
 - Validation passed on first iteration (2026-07-21). The spec keeps HOW out of scope — no
   table names, endpoints, framework names, migration numbers, or the specific indexer seam;
-  those are deferred to plan.md (which names `0017_swap_fee_events.sql`, `api/admin_revenue.py`,
+  those are deferred to plan.md (which names `0018_swap_fee_events.sql`, `api/admin_revenue.py`,
   `data/swap_fee_indexer.py`, and the `charts.tsx` reuse).
 - The seven pivotal design decisions were pre-resolved with the operator and recorded in the
   `## Clarifications` (Session 2026-07-21) section, so no `[NEEDS CLARIFICATION]` markers remain:
@@ -59,9 +59,9 @@
     snapshot table); one new table, one cursor row, one endpoint; networks stay 8453 / 84532 / 46630.
 - **Cross-feature reads (recorded):** the membership stream reads feature 012's `payments` and the
   multisig card reads feature 014's Safe address; 013 owns neither and honest-degrades when either is
-  absent, so it ships independently to `develop`. The migration `0017_swap_fee_events.sql` **number is
-  provisional — reconcile with the parallel 010/011 work before applying; use the next free sequential
+  absent, so it ships independently to `develop`. The migration `0018_swap_fee_events.sql` **number is
+  working — confirm it is still free at apply time (011 already merged its 0016) before applying; use the next free sequential
   number.**
-- Deferred to plan.md (the HOW): the swap-fee indexer + `0017` ledger + cursor, the aggregation
+- Deferred to plan.md (the HOW): the swap-fee indexer + `0018` ledger + cursor, the aggregation
   endpoint, the perf/membership wiring, the rebuilt page's fetch/state, and the live-read balances card.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`. (None.)

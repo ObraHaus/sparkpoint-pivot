@@ -61,6 +61,6 @@
     funds or touches the deterministic policy + user-sign path.
 - Deferred to plan.md / research.md (the HOW): the SRK contract + deploy script, the address-book
   fields, the verify endpoint + keyless verifier, the payments/subscriptions tables + migration
-  number (provisional — reconcile with the parallel 010/011 work), the expiry-aware tier-resolve
+  number (working — confirm it is still free at apply time (011 already merged its 0016)), the expiry-aware tier-resolve
   change, and the pay-surface + confirm-gate wiring.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`. (None.)
