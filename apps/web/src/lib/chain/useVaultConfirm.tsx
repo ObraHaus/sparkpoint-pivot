@@ -63,6 +63,14 @@ export interface VaultConfirmState {
   readonly capRaw: bigint;
   readonly netPct: number;
   readonly feePctInt: number;
+  /** Honest display name for the selected vault (launch label, an attested wrapper's on-chain label, or generic "vault"). */
+  readonly vaultName: string;
+  /** Share-token symbol for copy ("spvUSDC" launch; generic "shares" for a wrapper). */
+  readonly shareSymbol: string;
+  /** Honest Net-APY text: the launch figure, or "—" for a wrapper (no fabricated APY). */
+  readonly netApyText: string;
+  /** True when the selected vault is a branded Morpho wrapper (drives honest copy). */
+  readonly isWrapper: boolean;
   readonly usedAfter: bigint;
   readonly remaining: bigint;
   /** Deposit: connected+deployed+within cap/balance+not paused+(attested wrapper). Withdraw: connected+position+redeemable (never cap/pause/provenance-gated). */
@@ -156,6 +164,10 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
     capRaw,
     netPct: m.netPct,
     feePctInt: m.feePctInt,
+    vaultName,
+    shareSymbol,
+    netApyText: m.netApyText,
+    isWrapper: m.isWrapper,
     usedAfter: m.usedAfter,
     remaining: m.remaining,
     ready: m.ready,

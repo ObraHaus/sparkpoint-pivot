@@ -21,6 +21,8 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
+import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { usePortfolioView } from "@/lib/agent/useAgent";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
@@ -28,6 +30,16 @@ import "@/components/screens/portfolio.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors vault/page). */
 const DISPLAY_CHAIN_ID = 84532;
+
+/** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
+function safeAddresses(chainId: number | undefined) {
+  if (chainId === undefined) return undefined;
+  try {
+    return getAddresses(chainId);
+  } catch {
+    return undefined;
+  }
+}
 const RANGES = ["1D", "1W", "1M", "1Y", "All"];
 const DASH = "—";
 
@@ -63,10 +75,31 @@ export default function Page() {
 
   const { isConnected, chainId } = useAccount();
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
+  // Single curated wrapper (011): ONE fixed top-level read (hooks-safe — a growing list would need a
+  // child-component-per-wrapper). A held wrapper renders as an `ext:<addr>` portfolio row; launch-only
+  // users (no wrapper shares) yield `wrappers: []` → derivePortfolio is byte-identical to before.
+  const wrapper0 = safeAddresses(isConnected ? chainId : DISPLAY_CHAIN_ID)?.sparkPointWrappers?.[0];
+  const w0 = useVault({
+    chainId: isConnected ? undefined : DISPLAY_CHAIN_ID,
+    vaultAddress: wrapper0?.address,
+    kind: wrapper0 ? "morpho_wrapper" : "aave_launch",
+  });
   // Native ETH on the connected chain (useBalance defaults to the wallet's chain; disabled off-wallet).
   const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
+  const wrapperRow = wrapper0
+    ? toWrapperPositionInput(wrapper0, {
+        underlying: w0.underlying,
+        shares: w0.shares,
+        decimals: w0.assetDecimals,
+        assetIsUsdc:
+          w0.asset !== undefined &&
+          w0.usdcAddress !== undefined &&
+          w0.asset.toLowerCase() === w0.usdcAddress.toLowerCase(),
+      })
+    : null;
   const d = derivePortfolio({
     underlying: v.underlying, usdcBalance: v.usdcBalance, shares: v.shares, ethWei: eth.data?.value,
+    wrappers: wrapperRow ? [wrapperRow] : [],
   });
 
   // Mode — what the user's LIVE state actually is. A CONNECTED-but-not-live state (loading /

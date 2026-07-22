@@ -15,12 +15,13 @@
  * everyone, always (non-custody law, N2: withdraw-is-sacred).
  */
 
-import { AmountScreen } from "../_amount-screen";
+import { AmountScreenRoute } from "../_amount-screen";
 import { BetaGate } from "@/components/BetaGate";
 import { useBeta } from "@/lib/auth/whitelist";
 
 export default function Page() {
   const { canTransact } = useBeta();
   if (!canTransact) return <BetaGate />;
-  return <AmountScreen mode="deposit" />;
+  // AmountScreenRoute owns the `?vault=` read + its Suspense boundary (fallback SSRs the launch shell).
+  return <AmountScreenRoute mode="deposit" />;
 }

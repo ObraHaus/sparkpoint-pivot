@@ -18,7 +18,8 @@
   "pnpm": {
     "overrides": {
       "ws": ">=8.21.0",
-      "postcss": ">=8.5.10"
+      "postcss": ">=8.5.10",
+      "sharp": ">=0.35.3"
     },
     "onlyBuiltDependencies": [
       "sharp",

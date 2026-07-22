@@ -14,7 +14,7 @@ import { localFork } from "./localFork";
 import { robinhoodTestnet } from "./robinhoodTestnet";
 import { type Address, type AddressBook, TARGET_REF_FIELD } from "./types";
 
-export type { Address, AddressBook, Network } from "./types";
+export type { Address, AddressBook, Network, SparkPointWrapper } from "./types";
 export { TARGET_REF_FIELD } from "./types";
 export { base } from "./base";
 export { baseSepolia } from "./baseSepolia";
