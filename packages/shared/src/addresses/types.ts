@@ -102,6 +102,12 @@ export interface AddressBook {
    * `TargetRef` / parity impact. A user-signed transfer target only; it holds no authority over user funds.
    */
   readonly premiumTreasury?: Address;
+  /**
+   * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
+   * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
+   * A PLAIN optional field, NOT a policy `TargetRef`. A plain holder — zero fund-movement power (N5).
+   */
+  readonly feeTreasury?: Address;
 
   /* ── ERC-20 tokens ── */
   /** Canonical USDC the app treats as `Asset.USDC` on this chain (== reserveUsdc where the Aave market uses it). */

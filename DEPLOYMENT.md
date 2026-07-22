@@ -81,6 +81,12 @@ Resolve any findings in the Defender console / via its MCP server before merging
 
 > **Smart-contract gates (planned).** When contracts land, PRs touching `contracts/` should additionally be green on `forge test`, gas snapshots, and Tenderly simulation, and follow the non-custody invariant checks from the constitution (N1–N5). Audited contract addresses are recorded in the release notes when deployed to Base.
 
+### Base Sepolia on-chain record — feature 012/014 (2026-07-22)
+
+- **SRK test token** (`SparkPointTestToken`): `0x2dF90304126560F01Dd6EafB508B69c033dFeD52` — deploy tx `0x94459d7a789b466c3d55d10497c10ca2bf62bad6cd684737adf8d8aa3321a504` (fixed 1e9 supply → deployer; no mint/faucet).
+- **Fee-treasury Safe** (Gnosis Safe v1.4.1, 2-of-3): `0xCB135893C84876aab9E10792b56e5bEa91dc578f` — deploy tx `0x014bd9d2ec9607ee7d3b305e489f84d3a468ee57b7cdf55fab96c9c9f0d3bf56`. Owners: deployer `0xA71e…5c30` + `0x867E…5fEb` + `0x122D…05Ed`; threshold 2. Signer keys in `.claude/testnet-wallets.txt` (testnet only).
+- **Fee-recipient cutover** (Timelock `0x0A21…d720`, `setFeeRecipient(Safe)`): schedule tx `0x99c737d4beebde52bbe65a90cfeb2c9832b3292904510770ef492e975f9b3c1b` → (60s delay) → execute tx `0x9d38d4e789917756ccee45a8510dcf901fa7d14e15c92522781ed740b089bac8`. `vault.feeRecipient()` == the Safe (perf fee + Base swap fee now route to the multisig).
+
 ### Deterministic contract addresses (CREATE2)
 
 `contracts/script/DeploySepolia.s.sol` deploys the core (`SparkPointVault` + `CapRegistry` + `KillSwitch` + `AaveV3Adapter` + `TimelockController`) via **`CREATE2` with a fixed salt** — `keccak256("sparkpoint-core-v1")`. The deployed address is a pure function of **(deployer, salt, init-code)**, so:
