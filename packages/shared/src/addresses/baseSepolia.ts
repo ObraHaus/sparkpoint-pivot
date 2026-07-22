@@ -78,4 +78,12 @@ export const baseSepolia: AddressBook = {
       morphoVault: "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
     },
   ],
+
+  // ── Premium / SRK (feature 012) — Base-Sepolia only ──
+  // `srk` is filled by script/DeploySRK.s.sol at deploy time; undefined ⇒ the pay surface shows an
+  // honest "SRK unavailable on this network" state rather than a fabricated value.
+  srk: undefined,
+  // The disclosed recipient of SRK Premium payments. Currently the deployer EOA (== the live fee
+  // recipient 0xA71e…5c30); feature 014 re-points this to the multisig Safe at cutover.
+  premiumTreasury: "0xA71e24359A6cb7A939aae2d62dD12b6256365c30",
 };

@@ -24,6 +24,7 @@ from .mandates import (
     row_to_record,
 )
 from .pool import Database, get_database
+from .subscriptions import PaymentAlreadyRecorded, SubscriptionStore
 
 __all__ = [
     "ADMIN_ROLE",
@@ -38,7 +39,9 @@ __all__ = [
     "MandateRecord",
     "MandateStore",
     "MandateWrite",
+    "PaymentAlreadyRecorded",
     "PgMandateStore",
+    "SubscriptionStore",
     "get_database",
     "parse_allowlist_env",
     "row_to_record",

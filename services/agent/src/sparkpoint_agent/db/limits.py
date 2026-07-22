@@ -41,11 +41,15 @@ _UPDATE_TIER_SQL = (
     "updated_by=$9, updated_at=now() WHERE tier=$1"
 )
 
-_RESOLVE_SQL = "SELECT tier FROM wallet_tier WHERE address = $1"
+_RESOLVE_SQL = (
+    "SELECT tier FROM wallet_tier WHERE address = $1 "
+    "AND (expires_at IS NULL OR expires_at > now())"
+)
 _ASSIGN_SQL = (
-    "INSERT INTO wallet_tier (address, tier, source, assigned_by) VALUES ($1, $2, $3, $4) "
+    "INSERT INTO wallet_tier (address, tier, source, assigned_by, expires_at) "
+    "VALUES ($1, $2, $3, $4, $5) "
     "ON CONFLICT (address) DO UPDATE SET tier = excluded.tier, source = excluded.source, "
-    "assigned_by = excluded.assigned_by, assigned_at = now()"
+    "assigned_by = excluded.assigned_by, expires_at = excluded.expires_at, assigned_at = now()"
 )
 _SEED_ASSIGN_SQL = (
     "INSERT INTO wallet_tier (address, tier, source, assigned_by) "
@@ -205,15 +209,31 @@ class LimitsStore:
         return await self.default_tier()
 
     async def assign(
-        self, address: str, tier: str, *, actor: str | None, source: str = "admin"
+        self,
+        address: str,
+        tier: str,
+        *,
+        actor: str | None,
+        source: str = "admin",
+        expires_at: datetime | None = None,
     ) -> None:
         addr = _norm(address)
         t = tier.strip().lower()
         act = _norm(actor) or None
         async with self.db.acquire() as conn, conn.transaction():
-            await conn.execute(_ASSIGN_SQL, addr, t, source, act)
+            await conn.execute(_ASSIGN_SQL, addr, t, source, act, expires_at)
             await conn.execute(
-                _AUDIT_SQL, "grant", addr, act, json.dumps({"tier": t, "source": source})
+                _AUDIT_SQL,
+                "grant",
+                addr,
+                act,
+                json.dumps(
+                    {
+                        "tier": t,
+                        "source": source,
+                        "expires_at": expires_at.isoformat() if expires_at else None,
+                    }
+                ),
             )
 
     async def revoke(self, address: str, *, actor: str | None) -> None:
