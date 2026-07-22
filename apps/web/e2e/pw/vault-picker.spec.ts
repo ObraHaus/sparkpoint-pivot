@@ -1,0 +1,100 @@
+import { expect, test, type Page } from "@playwright/test";
+import type { Hex } from "viem";
+import { installInjectedWallet } from "./injected-wallet";
+
+/**
+ * Feature 011 vault-picker e2e (browser, fake injected wallet → SIWE → session). Exercises the LIVE
+ * deployed picker on `PW_BASE_URL` (run against alpha with PW_BASE_URL=https://alpha.sparkpoint.io +
+ * PW_NO_SERVER=1). Read-only: the injected wallet signs only SIWE `personal_sign` — it CANNOT send a
+ * transaction (eth_sendTransaction throws), so nothing here deposits/withdraws for real.
+ *
+ * Needs a beta-allowlisted PW_TEST_PRIVKEY connected on Base Sepolia (84532, where the demo wrapper
+ * lives). The deployer key holds spMORPHO shares, so the portfolio row assertion is meaningful.
+ */
+
+const PRIV = process.env.PW_TEST_PRIVKEY as Hex | undefined;
+const WRAPPER = "0xff0a43FA397a90c1277C96A783e1171e1efbE9BB";
+
+/** Complete the SIWE sign-in on /verify; resolves once the wallet is admitted ("You're in."). */
+async function signIn(page: Page): Promise<void> {
+  await page.goto("/verify", { waitUntil: "networkidle" });
+  const signLink = page.locator("a:has-text('Sign in with wallet')");
+  await signLink.waitFor({ state: "visible", timeout: 20_000 });
+  await signLink.click();
+  await expect(page.locator("#vtitle")).toHaveText("You're in.", { timeout: 30_000 });
+}
+
+test.describe("011 vault picker (live)", () => {
+  test.skip(!PRIV, "PW_TEST_PRIVKEY not set (a beta-allowlisted test wallet key on 84532)");
+
+  test.beforeEach(async ({ page }) => {
+    await installInjectedWallet(page, { privateKey: PRIV!, chainId: 84532 });
+    await signIn(page);
+  });
+
+  test("launch default: picker offers both vaults; the launch overview is unchanged", async ({ page }) => {
+    await page.goto("/vault", { waitUntil: "domcontentloaded" });
+    await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
+
+    // The segmented picker shows both options.
+    const picker = page.getByRole("tablist", { name: "Select vault" });
+    await expect(picker).toBeVisible({ timeout: 20_000 });
+    await expect(picker.getByRole("tab", { name: /Aave Yield Vault/ })).toBeVisible();
+    await expect(picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ })).toBeVisible();
+
+    // Default selection = the launch Aave vault: its title + its Aave APY breakdown render (honest %,
+    // NOT a wrapper "—"/Morpho venue).
+    await expect(page.getByRole("heading", { name: /Aave Yield Vault/ })).toBeVisible();
+    await expect(page.getByText("Aave supply rate")).toBeVisible();
+    await expect(page.getByText("Morpho (external)")).toHaveCount(0);
+  });
+
+  test("select the wrapper: honest wrapper overview (no fabricated APY, Morpho venue, ✓ badge)", async ({ page }) => {
+    await page.goto("/vault", { waitUntil: "domcontentloaded" });
+    const picker = page.getByRole("tablist", { name: "Select vault" });
+    await expect(picker).toBeVisible({ timeout: 20_000 });
+
+    await picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ }).click();
+
+    // Selection is stored in the URL so it survives navigation + is shareable.
+    await expect(page).toHaveURL(new RegExp(`[?&]vault=${WRAPPER}`, "i"), { timeout: 15_000 });
+
+    // The overview switches to the wrapper: its label as the title, the honest Morpho venue, and NO
+    // fabricated APY (the big Net-APY number is "—", never an Aave rate).
+    await expect(page.getByRole("heading", { name: /SparkPoint Morpho USDC/ })).toBeVisible();
+    await expect(page.getByText("Morpho (external)")).toBeVisible();
+    await expect(page.getByText("net APY · not yet available")).toBeVisible();
+    await expect(page.getByText("Aave supply rate")).toHaveCount(0);
+
+    // The wrapper option carries a live-attestation ✓ badge (factory.isSparkPointVault === true).
+    await expect(picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ })).toContainText("✓");
+  });
+
+  test("wrapper deposit screen: threads the selection + honest copy", async ({ page }) => {
+    await page.goto(`/vault/deposit?vault=${WRAPPER}`, { waitUntil: "domcontentloaded" });
+    await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
+    // Deposit is beta-gated; the deployer is beta-allowlisted, so the amount screen renders (not BetaGate).
+    await expect(page.getByRole("heading", { name: /Deposit USDC/ })).toBeVisible({ timeout: 20_000 });
+    // Honest wrapper framing: routes into the wrapper via Morpho, net APY "—" (never an Aave estimate).
+    await expect(page.getByText(/Into SparkPoint Morpho USDC/)).toBeVisible();
+    await expect(page.getByText(/yield via Morpho/)).toBeVisible();
+  });
+
+  test("wrapper withdraw screen renders (never provenance/beta-gated — N2)", async ({ page }) => {
+    await page.goto(`/vault/withdraw?vault=${WRAPPER}`, { waitUntil: "domcontentloaded" });
+    await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
+    await expect(page.getByRole("heading", { name: /^Withdraw$/ })).toBeVisible({ timeout: 20_000 });
+    // The withdraw route is NOT beta-gated (no BetaGate) and is reachable for the wrapper.
+    await expect(page.getByText("Withdraw anytime — even if Sparky is offline")).toBeVisible();
+  });
+
+  test("portfolio shows the held wrapper as an external Morpho position", async ({ page }) => {
+    await page.goto("/portfolio", { waitUntil: "domcontentloaded" });
+    await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
+    // The connected (deployer) wallet holds spMORPHO shares → the wrapper renders as its own row,
+    // labelled + tagged Morpho. (If shares ever read 0, this asserts the honest no-row path instead.)
+    const row = page.getByText("SparkPoint Morpho USDC");
+    await expect(row.first()).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByText(/· Morpho/).first()).toBeVisible();
+  });
+});

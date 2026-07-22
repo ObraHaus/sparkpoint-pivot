@@ -73,15 +73,15 @@ def _find_artifact(rel_parts: tuple[str, ...]) -> Path:
     """Resolve a contract artifact. Resolution order (first hit wins):
 
     1. ``SPARKPOINT_ARTIFACTS_DIR`` override (a forge ``out/`` dir), if set.
-    2. the repo's freshly-built ``contracts/out/…`` (present after ``forge build`` — local dev).
-    3. the committed slim ``{abi, methodIdentifiers}`` export at
-       ``packages/shared/src/abis/<Contract>.abi.json``.
+    2. the repo's freshly-built ``contracts/out/…`` (after ``forge build`` — local dev).
+    3. the VENDORED export inside the agent image: ``chain/abi/<Contract>.abi.json`` (a sibling
+       dir of this module the Dockerfile ``COPY src`` bakes in — the RUNTIME source of truth, since
+       the image has no ``contracts/out`` or ``packages/shared``).
+    4. the repo committed export ``packages/shared/src/abis/<Contract>.abi.json`` (CI / local).
 
-    Step 3 is what lets **agent CI need no** ``forge build`` — it mirrors the ``vault_reader``
-    ``SPARKPOINT_VAULT_ABI_PATH`` committed export, but resolves by walking to the shared
-    ``abis/`` dir so no per-artifact env var is needed. Only ``abi`` + ``methodIdentifiers`` are
-    ever read (no bytecode — ``predictVaultAddress`` is an on-chain ``eth_call``), so the slim
-    export is a complete substitute for the full forge artifact here. Fails loudly if none hit.
+    Steps 3-4 let the agent (image or CI) need no ``forge build`` — mirroring ``vault_reader``'s
+    ``SPARKPOINT_VAULT_ABI_PATH`` export. Only ``abi`` + ``methodIdentifiers`` are read (no bytecode
+    — ``predictVaultAddress`` is an ``eth_call``), so a slim export fully substitutes. Loud if none.
     """
     override = os.getenv("SPARKPOINT_ARTIFACTS_DIR")
     if override:
@@ -92,8 +92,12 @@ def _find_artifact(rel_parts: tuple[str, ...]) -> Path:
         candidate = parent.joinpath(*rel_parts)
         if candidate.is_file():
             return candidate
-    # Committed slim export fallback: contracts/out/<C>.sol/<C>.json -> <C>.abi.json in shared/abis.
     contract_abi = rel_parts[-1].removesuffix(".json") + ".abi.json"
+    # Vendored copy shipped inside the agent image (sibling `abi/` dir next to this module).
+    vendored = Path(__file__).resolve().parent / "abi" / contract_abi
+    if vendored.is_file():
+        return vendored
+    # Repo committed slim export (CI / local without a build).
     for parent in Path(__file__).resolve().parents:
         candidate = parent.joinpath("packages", "shared", "src", "abis", contract_abi)
         if candidate.is_file():
