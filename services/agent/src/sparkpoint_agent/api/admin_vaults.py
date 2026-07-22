@@ -29,6 +29,7 @@ withdraw/exit path.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import secrets
@@ -45,6 +46,8 @@ from ..db.vault_factory import VaultFactoryStore
 from .allowlist import require_admin
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin-vaults"])
 
@@ -135,8 +138,8 @@ async def _maybe_promote(
     vault_address = str(row["vault_address"])
     try:
         attested = await chain.is_sparkpoint_vault(vault_address)
-    except VaultUnavailable:
-        return row  # RPC down / factory undeployed → stay pending (never fabricate a promotion).
+    except Exception:  # RPC down / factory undeployed / ABI issue → stay pending (never fabricate).
+        return row
     if not attested:
         return row
     await store.mark_wrapper_live(vault_address, admin_chain_id)
@@ -217,7 +220,8 @@ async def list_vaults(
         try:
             on_chain_registry = await chain.vaults()
             owner = await chain.owner()
-        except VaultUnavailable:
+        except Exception:  # RPC/ABI/decode hiccup — degrade to DB-only, never 500 the whole list.
+            logger.warning("admin/vaults: factory read failed; degrading to DB-only", exc_info=True)
             on_chain_registry = None
 
     enriched: list[dict[str, Any]] = []
@@ -228,7 +232,12 @@ async def list_vaults(
         if chain is not None and row.get("chain_id") == admin.chain_id:
             try:
                 state = await chain.wrapper_state(str(row["vault_address"]))
-            except VaultUnavailable:
+            except Exception:  # fail closed → chainState: null (never a fabricated value).
+                logger.warning(
+                    "admin/vaults: wrapper_state read failed for %s",
+                    row.get("vault_address"),
+                    exc_info=True,
+                )
                 state = None
         enriched.append({**row, "chainState": state})
 
