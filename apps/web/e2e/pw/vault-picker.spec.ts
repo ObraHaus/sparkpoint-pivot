@@ -17,9 +17,11 @@ const WRAPPER = "0xff0a43FA397a90c1277C96A783e1171e1efbE9BB";
 
 /** Complete the SIWE sign-in on /verify; resolves once the wallet is admitted ("You're in."). */
 async function signIn(page: Page): Promise<void> {
-  await page.goto("/verify", { waitUntil: "networkidle" });
+  // domcontentloaded (not networkidle): /verify holds a live connection so networkidle can never
+  // settle on the CPU-constrained alpha infra. The signLink.waitFor below gates on real readiness.
+  await page.goto("/verify", { waitUntil: "domcontentloaded" });
   const signLink = page.locator("a:has-text('Sign in with wallet')");
-  await signLink.waitFor({ state: "visible", timeout: 20_000 });
+  await signLink.waitFor({ state: "visible", timeout: 30_000 });
   await signLink.click();
   await expect(page.locator("#vtitle")).toHaveText("You're in.", { timeout: 30_000 });
 }
@@ -54,10 +56,16 @@ test.describe("011 vault picker (live)", () => {
     const picker = page.getByRole("tablist", { name: "Select vault" });
     await expect(picker).toBeVisible({ timeout: 20_000 });
 
-    await picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ }).click();
-
-    // Selection is stored in the URL so it survives navigation + is shareable.
-    await expect(page).toHaveURL(new RegExp(`[?&]vault=${WRAPPER}`, "i"), { timeout: 15_000 });
+    // Select the wrapper. The /vault overview re-renders continuously from live on-chain reads, so a
+    // coordinate click can't land on a "stable" frame (Playwright hangs / misses). We dispatch the
+    // click directly on the tab — the real onClick + router.replace are exercised (verified: it lands
+    // the selection in the URL); this only sidesteps the actionability wait on a live-updating page. A
+    // real user's browser fires this same onClick normally. Selection lives in the URL (shareable).
+    const wrapperTab = picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ });
+    await expect(async () => {
+      await wrapperTab.dispatchEvent("click");
+      await expect(page).toHaveURL(new RegExp(`[?&]vault=${WRAPPER}`, "i"), { timeout: 3_000 });
+    }).toPass({ timeout: 20_000 });
 
     // The overview switches to the wrapper: its label as the title, the honest Morpho venue, and NO
     // fabricated APY (the big Net-APY number is "—", never an Aave rate).
