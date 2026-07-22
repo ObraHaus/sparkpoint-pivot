@@ -41,6 +41,7 @@ async def usage_self(
         tier = await store.resolve_tier(owner)
         tier_def = await store.get_tier(tier)
         ws = window_start()
+        expiry = await store.resolve_expiry(owner)
         metrics = []
         for metric, field in _METRICS.items():
             limit = int(tier_def[field]) if tier_def else 0
@@ -51,6 +52,7 @@ async def usage_self(
         return {
             "configured": tier_def is not None,
             "tier": tier,
+            "expiresAt": expiry.isoformat() if expiry else None,
             "resetAt": (ws + timedelta(days=1)).isoformat(),
             "metrics": metrics,
         }

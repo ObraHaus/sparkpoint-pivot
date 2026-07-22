@@ -41,6 +41,9 @@ class _FakeLimits:
             raise RuntimeError("db down")
         return "premium" if self.tier_def and self.tier_def.get("premium") else "free"
 
+    async def resolve_expiry(self, owner: str) -> object | None:
+        return None
+
     async def get_tier(self, tier: str) -> dict[str, Any] | None:
         return self.tier_def
 

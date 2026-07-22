@@ -45,6 +45,10 @@ _RESOLVE_SQL = (
     "SELECT tier FROM wallet_tier WHERE address = $1 "
     "AND (expires_at IS NULL OR expires_at > now())"
 )
+_EXPIRY_SQL = (
+    "SELECT expires_at FROM wallet_tier WHERE address = $1 "
+    "AND (expires_at IS NULL OR expires_at > now())"
+)
 _ASSIGN_SQL = (
     "INSERT INTO wallet_tier (address, tier, source, assigned_by, expires_at) "
     "VALUES ($1, $2, $3, $4, $5) "
@@ -207,6 +211,10 @@ class LimitsStore:
         if tier:
             return str(tier)
         return await self.default_tier()
+
+    async def resolve_expiry(self, address: str) -> datetime | None:
+        """The wallet's current (future) tier expiry, or None (non-expiring / no grant)."""
+        return await self.db.fetchval(_EXPIRY_SQL, _norm(address))
 
     async def assign(
         self,
