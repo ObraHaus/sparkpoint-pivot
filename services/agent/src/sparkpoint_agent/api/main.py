@@ -58,9 +58,9 @@ from .middleware import RequestContextMiddleware
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
+from .subscription import router as subscription_router
 from .tips import router as tips_router
 from .usage import router as usage_router
-from .subscription import router as subscription_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
 

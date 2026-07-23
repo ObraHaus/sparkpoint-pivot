@@ -214,7 +214,8 @@ class LimitsStore:
 
     async def resolve_expiry(self, address: str) -> datetime | None:
         """The wallet's current (future) tier expiry, or None (non-expiring / no grant)."""
-        return await self.db.fetchval(_EXPIRY_SQL, _norm(address))
+        expiry: datetime | None = await self.db.fetchval(_EXPIRY_SQL, _norm(address))
+        return expiry
 
     async def assign(
         self,
