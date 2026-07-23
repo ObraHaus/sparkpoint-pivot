@@ -477,6 +477,18 @@ def get_dry_runner() -> DryRunner:
     return _default_dry_runner
 
 
+def _require_rpc_url(config: AgentConfig) -> str:
+    """The chain's RPC url, or fail CLOSED (``UPSTREAM_UNAVAILABLE``) when none is configured — the
+    dry-run cannot run without a real RPC, and we never fabricate a pass. (The vault reader is built
+    from the same config, so a successful ``asset()`` read already implies this holds; the guard
+    also narrows the Optional for the type checker.)"""
+    if config.rpc_url is None:
+        raise VaultUnavailable(
+            VaultUnavailableReason.RPC_UNREACHABLE, "no RPC configured for this chain"
+        )
+    return config.rpc_url
+
+
 def _build_sim_request(
     *, chain_id: int, sender: str, vault: str, data: str, action: ActionType
 ) -> SimulationRequest:
@@ -544,7 +556,7 @@ async def simulate_deposit(
             data=_encode_deposit(assets, receiver),
             action=ActionType.VAULT_DEPOSIT,
         ),
-        chain_config.rpc_url,
+        _require_rpc_url(chain_config),
     )
     return VaultSimulateResponse(
         kind="deposit",
@@ -590,7 +602,7 @@ async def simulate_withdraw(
             data=_encode_redeem(shares, account.account, account.account),
             action=ActionType.VAULT_REDEEM,
         ),
-        chain_config.rpc_url,
+        _require_rpc_url(chain_config),
     )
     return VaultSimulateResponse(
         kind="withdraw",
