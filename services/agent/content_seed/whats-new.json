@@ -4,7 +4,7 @@
     {
       "slug": "your-outcome-log-is-real-now",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "Improved",
       "title": "Your Outcome Log now shows real results",
       "body": "The Outcome Log now lists your real realized results — one row per withdrawal, wins and losses alike, each linking to its on-chain transaction as proof. Every figure is computed from your own deposits and withdrawals; when your on-chain history can't be fully reconciled we show an honest empty state instead of a guess. These are position-level results — not yet tied to the specific recommendation that caused them.",
       "cta_label": "Open Outcome Log",
@@ -15,7 +15,7 @@
     {
       "slug": "a-real-dry-run-before-you-sign",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "We now dry-run your deposit before you sign",
       "body": "Before you sign a vault deposit, we run a real on-chain dry-run of the exact transaction — so if it would fail, we tell you why and disable signing instead of letting you waste gas on a doomed transaction. Withdrawals are untouched: the dry-run there is advisory only and never blocks your exit. And if you still need to approve USDC first, we say so plainly rather than showing a scary error.",
       "cta_label": "Go to the vault",
@@ -26,7 +26,7 @@
     {
       "slug": "real-realized-pnl",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "Improved",
       "title": "Your portfolio now shows realized profit — correctly",
       "body": "Your portfolio and position detail now show a real realized-PnL figure (profit you booked on past withdrawals) plus a corrected unrealized figure, both derived from your on-chain deposits and withdrawals. Cost basis is now the average cost of the shares you still hold. When the on-chain history can't be fully reconciled, we show 'pending' rather than a guess.",
       "cta_label": "Open portfolio",
@@ -59,7 +59,7 @@
     {
       "slug": "see-which-protocols-the-ai-can-use",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "See exactly which protocols the AI can touch",
       "body": "The Trust Center now lists the closed set of on-chain venues Sparky is allowed to route into — on this network, just Aave v3 — each with its real contract address and a block-explorer link. The AI can call nothing outside this audited allowlist, and it's read straight from the on-chain policy.",
       "cta_label": "Open Trust Center",
