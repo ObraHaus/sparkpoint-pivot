@@ -48,6 +48,9 @@ export interface RecView {
   signable: boolean;
   best: boolean;
   citations: RecCitation[];
+  /** True ⇔ the wire carried a measured `projectedApyBps` (a real yield, possibly ~0 on testnet).
+   * false ⇒ no yield figure at all → the card reads "no yield (cash)" rather than a fabricated %. */
+  apyKnown: boolean;
 }
 
 /** Parse the wire `citations` array fail-closed: drop malformed rows, default optionals. */
@@ -91,5 +94,6 @@ export function toRecView(r: RecommendationDto, i: number): RecView {
     signable: r.policy?.status === "approved",
     best: i === 0,
     citations: parseCitations(r.citations),
+    apyKnown: typeof r.projectedApyBps === "number",
   };
 }

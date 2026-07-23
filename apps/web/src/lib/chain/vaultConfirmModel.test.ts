@@ -54,7 +54,7 @@ function makeView(o: Partial<VaultConfirmView> = {}): VaultConfirmView {
   };
 }
 
-const CTX = { grossApyBps: 430, capNoun: "beta cap" } as const;
+const CTX = { grossApyBps: 430, testnet: false, capNoun: "beta cap" } as const;
 const DEP: VaultConfirmInput = { mode: "deposit", assets: 1_000_000n };
 
 // ── the LAUNCH vault path stays Aave, signable, with the real net APY (unchanged) ──
@@ -116,6 +116,17 @@ test("wrapper Net APY is unavailable ('—'), never the Aave figure; launch show
 
   const launch = deriveVaultConfirm(makeView(), DEP, CTX);
   assert.ok(launch.netApyText.includes("%"));
+});
+
+// ── 017: honest live-APY labels — "—" when the gross read is null; "≈0% (testnet)" at ~0 ──
+test("net APY is '—' when the live Aave read is unavailable (gross null), never fabricated", () => {
+  const m = deriveVaultConfirm(makeView(), DEP, { grossApyBps: null, testnet: true, capNoun: "beta cap" });
+  assert.equal(m.netApyText, "—");
+});
+
+test("net APY reads '≈0% (testnet)' when the live rate is ~0 on testnet", () => {
+  const m = deriveVaultConfirm(makeView(), DEP, { grossApyBps: 0, testnet: true, capNoun: "beta cap" });
+  assert.equal(m.netApyText, "≈0% (testnet)");
 });
 
 // ── provenance fail-close (fix 1/7): unattested ⇒ deposit blocked + identity suppressed;

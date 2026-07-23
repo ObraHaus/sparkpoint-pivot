@@ -14,6 +14,7 @@ import { capNoun } from "@/lib/stage";
 import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
+import { StatusTag } from "@/components/ui/status-tag";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 
 /** Card action callbacks — the chat screen wires these to its thread state. */
@@ -43,6 +44,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
       <div className="ch">
         <span className="rank">Best fit · #1 vs your goal</span>
         <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+        <StatusTag variant="mock" title={"Example figures — connect for live recommendations with the real Aave rate."} />
       </div>
       <div className="cthesis">
         Aave&apos;s USDC rate is <b>4.3%</b>. After our <b>10% performance fee on yield</b> that&apos;s{" "}

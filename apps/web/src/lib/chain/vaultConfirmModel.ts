@@ -89,8 +89,11 @@ export type VaultConfirmView = Pick<
 
 /** Extra inputs the hook computes (policy/stage live behind `@sparkpoint`/`@/` — kept out of this pure core). */
 export interface VaultConfirmContext {
-  /** Gross (pre-fee) yield rate to frame the net APY from (bps). */
-  readonly grossApyBps: number;
+  /** LIVE gross (pre-fee) Aave supply rate to frame the net APY from (bps); `null` ⇒ unreadable →
+   * netApyText is "—" (honest, never a fabricated figure). */
+  readonly grossApyBps: number | null;
+  /** True on Base Sepolia / Robinhood testnet → a ~0 rate reads "≈0% (testnet)". */
+  readonly testnet: boolean;
   /** The stage's cap noun ("beta cap"/…) for the over-cap CTA label. */
   readonly capNoun: string;
 }
@@ -199,9 +202,12 @@ export function deriveVaultConfirm(
       : 0n;
 
   // ── live derived figures ───────────────────────────────────────────────────
-  const framing: NetApyFraming = v.netApy(ctx.grossApyBps);
-  const netPct = framing.netApyPct;
-  const feePctInt = Math.round(framing.feeBps / 100);
+  // feeBps is gross-independent, so netApy(0) still gives the live fee even when the gross rate is
+  // unreadable; `framing` is null ONLY when the gross read failed → netApyText renders "—" (honest).
+  const feeFraming: NetApyFraming = v.netApy(ctx.grossApyBps ?? 0);
+  const framing: NetApyFraming | null = ctx.grossApyBps === null ? null : feeFraming;
+  const netPct = framing?.netApyPct ?? 0;
+  const feePctInt = Math.round(feeFraming.feeBps / 100);
   const depositShares = v.previewDepositShares ?? 0n;
   const usedAfter = (v.underlying ?? 0n) + wantUnits;
   const remaining = (v.underlying ?? 0n) - redeemAssetsOut;
@@ -266,7 +272,17 @@ export function deriveVaultConfirm(
     : ["Performance fee", `${feePctInt}% of yield (over HWM)`, ""];
   // Honest APY (III): never frame a wrapper with the hardcoded Aave rate — show "—" until the
   // 010 market-data feed supplies the real net-of-both-fees APY (a separate, not-yet-built follow-up).
-  const netApyText = isWrapper ? "—" : `${netPct.toFixed(2)}%`;
+  // Honest net APY: "—" for a wrapper or an unreadable gross; "≈0% (testnet)" when the live rate is
+  // ~0; else the real net-of-fee %. Never the old fabricated 3.87%.
+  const _ZERO_APY_BPS = 5;
+  const netApyText =
+    isWrapper || framing === null
+      ? "—"
+      : framing.netApyBps <= _ZERO_APY_BPS
+        ? ctx.testnet
+          ? "≈0% (testnet)"
+          : "≈0%"
+        : `${netPct.toFixed(2)}%`;
   const netApyRow: [string, string, string] = ["Net APY on new shares", netApyText, ""];
   // The 0% management/AUM fee, stated explicitly alongside the profit-only performance fee
   // (§3.7: "0% management, entry, and exit"). Identical launch + wrapper — never an AUM fee.

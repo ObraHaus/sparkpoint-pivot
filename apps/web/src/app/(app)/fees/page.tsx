@@ -24,24 +24,6 @@ const VAULT_CHAIN = 84532;
 const EXPLORER = "https://sepolia.basescan.org";
 const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
-/** Yield-vs-revenue bars (mirrors the design's `honestyBars`). */
-function HonestyBars() {
-  const months = ["Feb", "Mar", "Apr", "May", "Jun"];
-  const yld = [40, 72, 95, 120, 150];
-  const rev = [0, 1.2, 0.6, 1.4, 0.4];
-  return (
-    <>
-      {months.map((m, i) => (
-        <div className="hbar" key={m}>
-          <div className="rev" style={{ height: rev[i] * 4 }} />
-          <div className="yield" style={{ height: yld[i] * 0.7 }} />
-          <span className="hx">{m}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
 export default function Page() {
   const router = useRouter();
   const addrs = getAddresses(VAULT_CHAIN);
@@ -67,8 +49,8 @@ export default function Page() {
             Fees &amp; how we make money
             <StatusTag
               variant="partial"
-              works={["Fee params (performance fee, recipient) read live from the vault", "0% deposit/withdraw fee is structural (ERC-4626)"]}
-              pending={["The yield-vs-revenue chart is illustrative", "\"Fees paid so far\" needs the on-chain event index"]}
+              works={["Fee params (performance fee, recipient) read live from the vault", "0% deposit/withdraw fee is structural (ERC-4626)", "Fee terms shown are the live on-chain performance fee — no fabricated figures"]}
+              pending={["No per-wallet \"fees paid\" figure — the fee is share dilution to a shared recipient, so a truthful personal number isn't indexed"]}
             />
           </h1>
           <div className="fees-lede">
@@ -209,24 +191,20 @@ export default function Page() {
       <div className="card honesty">
         <div className="card-hd">
           <span className="t">We only earn when you earn</span>
-          <span className="lbl">your yield vs our revenue · last 5 months</span>
+          <StatusTag variant={readsLive ? "live" : "partial"} label={readsLive ? "Live fee read" : "Reading…"} />
         </div>
-        <div style={{ display: "flex", gap: 18, fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--brand-cyan)" }} />
-            Yield earned for you
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--muted-foreground)", opacity: 0.5 }} />
-            Fees you paid us
-          </span>
+        <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
+          SparkPoint charges{" "}
+          <b style={{ color: "var(--foreground)" }}>{perfFeePct !== undefined ? `${perfFeePct}%` : "—"}</b> of your{" "}
+          <b>profit above your high-water mark</b> — profit-only, read live from the vault. There is{" "}
+          <b>0%</b> on your principal and <b>0%</b> to deposit or withdraw (structural to the ERC-4626 vault,
+          not a promise). If your value dips and recovers, you pay nothing until you&apos;re back above your
+          previous high.
         </div>
-        <div className="hbars">
-          <HonestyBars />
-        </div>
-        <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 10 }}>
-          Historical, net-of-everything — no projections. You&apos;ve paid{" "}
-          <b style={{ color: "var(--foreground)" }}>$0.00</b> in fees so far (vault-only).
+        <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
+          <Icon name="info" size={12} /> We don&apos;t show a per-wallet &ldquo;fees paid&rdquo; figure: the fee is
+          realized as share dilution to a shared recipient, so a truthful personal number isn&apos;t indexed. We&apos;d
+          rather show nothing than a fabricated one.
         </div>
       </div>
 
