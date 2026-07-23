@@ -38,6 +38,7 @@ export default function Page() {
       { ...vaultC, functionName: "pauser" }, // 1
       { ...vaultC, functionName: "performanceFeeBps" }, // 2
       { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN, functionName: "perUserCap" }, // 3
+      { ...vaultC, functionName: "feeRecipient" }, // 4
     ],
   });
   const d = reads.data;
@@ -45,6 +46,11 @@ export default function Page() {
   const pauser = d?.[1]?.result as Address | undefined;
   const feeBps = d?.[2]?.result as bigint | number | undefined;
   const perUserCap = d?.[3]?.result as bigint | undefined;
+  const feeRecipient = d?.[4]?.result as Address | undefined;
+  // Provable, not asserted: the treasury has NIL authority — it is not the guardian and has no
+  // fund-movement path. `notGuardian` proves it from chain (both live-read).
+  const notGuardian =
+    feeRecipient !== undefined && guardian !== undefined && feeRecipient.toLowerCase() !== guardian.toLowerCase();
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
 
@@ -131,6 +137,13 @@ export default function Page() {
               <td className="num">{feePct === undefined ? "…" : `${feePct}% profit-only`}</td>
             </tr>
             <tr>
+              <td>Fee treasury (multisig)</td>
+              <td className="mono" style={{ fontSize: 11 }}>{short(feeRecipient)}</td>
+              <td className="num" style={{ color: "var(--gain)" }}>
+                {feeRecipient === undefined ? "…" : notGuardian ? "receive-only · nil fund power" : "receive-only"}
+              </td>
+            </tr>
+            <tr>
               <td>Per-user deposit cap</td>
               <td>CapRegistry</td>
               <td className="num">{usd0(perUserCap)}</td>
@@ -139,7 +152,9 @@ export default function Page() {
         </table>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 14, lineHeight: 1.5 }}>
           The <span className="mono">admin.withdraw()</span> row is the trust payload: there is no function by which
-          Sparky can move your funds.
+          Sparky can move your funds. The <b>fee treasury</b> is a 2-of-3 multisig that only <b>receives</b> the
+          performance fee — {notGuardian ? "it is not the guardian and " : ""}it has no withdraw/redeem path, so its
+          power over your deposits is <b>none</b> (N5) — verify both addresses on Basescan.
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>

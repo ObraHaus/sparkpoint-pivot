@@ -13,14 +13,38 @@ import pytest
 from sparkpoint_agent.config import (
     ALLOWED_ENV_KEYS,
     DEFAULT_CHAIN_ID,
+    FEE_WALLET_ADDRESS_ENV,
     AgentConfig,
     ConfigError,
+    _assert_no_key_material,
 )
 
 _SIM = "http://fork.local:8545"
 _SEPOLIA = "http://sepolia.local:8545"
 _OVERRIDE = "http://override.local:8545"
 _VAULT = "0xABCDef0000000000000000000000000000001234"
+_SAFE = "0xCB135893C84876aab9E10792b56e5bEa91dc578f"
+
+
+def test_fee_wallet_address_normalized_onto_config() -> None:
+    cfg = AgentConfig.from_env({"FEE_WALLET_ADDRESS": _SAFE, "SIM_FORK_RPC_URL": _SIM})
+    assert cfg.fee_wallet_address == _SAFE.lower()
+
+
+def test_fee_wallet_address_absent_is_none() -> None:
+    cfg = AgentConfig.from_env({"SIM_FORK_RPC_URL": _SIM})
+    assert cfg.fee_wallet_address is None
+
+
+def test_malformed_fee_wallet_address_fails_closed() -> None:
+    # Like SPARKPOINT_VAULT_ADDRESS: a bad value fails loudly, never silently resolves.
+    with pytest.raises(ConfigError):
+        AgentConfig.from_env({"FEE_WALLET_ADDRESS": "0xnothex", "SIM_FORK_RPC_URL": _SIM})
+
+
+def test_fee_wallet_env_is_allowlisted_and_keyless() -> None:
+    assert FEE_WALLET_ADDRESS_ENV in ALLOWED_ENV_KEYS
+    _assert_no_key_material()  # the read allowlist still carries no key-bearing name (N1/N3)
 
 
 def test_defaults_chain_id_when_unset() -> None:

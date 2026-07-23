@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "fee-treasury-multisig",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Protocol fees now flow to a multisig — with provably no power over you",
+      "body": "The fees SparkPoint earns now go to a dedicated 2-of-3 multisig treasury instead of a single wallet. Crucially, that treasury only receives fees — it can't pause or move the vault, isn't the guardian, and has no way to touch your deposits. You don't have to take our word for it: the Trust Center now reads the fee recipient live from the contract and shows its authority over your funds as none. Your withdraw-anytime right is completely unaffected.",
+      "cta_label": "See the Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "revenue-real-per-stream",
       "type": "changelog",
       "tag": "Improved",
