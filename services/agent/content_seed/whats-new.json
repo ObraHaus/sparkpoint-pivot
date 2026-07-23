@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "real-wallet-and-clearer-examples",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Your real wallet in onboarding, and clearer example labels",
+      "body": "Onboarding now shows your actual connected wallet address instead of a placeholder, and any example figures in the walkthrough are clearly marked as examples — while your real numbers (APY, balances) are read live on-chain. Part of our 'provable, not promised' commitment: we would rather show nothing than a number that is not real.",
+      "cta_label": "Open the vault",
+      "cta_href": "/vault",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "your-outcome-log-is-real-now",
       "type": "changelog",
       "tag": "Improved",

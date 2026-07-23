@@ -72,22 +72,9 @@ let UID = 0;
 const nextId = () => ++UID;
 
 /** The primed first message after onboarding (chat.js render bootstrap). */
-function primedThread(): Turn[] {
-  return [
-    {
-      id: nextId(),
-      kind: "ai",
-      text: (
-        <>
-          Your plan: <b>lower risk (1/5)</b> — capital-preservation-first, steady USDC yield. Tell me what you&apos;d
-          like to do, or try one of the suggestions below.
-        </>
-      ),
-    },
-  ];
-}
-
-/** The cold-start greeting (chat.js "New chat" handler). */
+/** The cold-start greeting (chat.js "New chat" handler). Also the DEFAULT opening: we never
+ * assert a hardcoded plan (the user's REAL mandate is shown live in the right-rail card + via
+ * useMandate) — a neutral greeting is honest; a fabricated "Your plan: lower risk (1/5)" is not. */
 function coldThread(): Turn[] {
   return [
     {
@@ -113,7 +100,7 @@ export default function ChatPage() {
   const { client: agentClient, online } = useAgentClient();
   const convRef = useRef<string | undefined>(undefined);
 
-  const [turns, setTurns] = useState<Turn[]>(primedThread);
+  const [turns, setTurns] = useState<Turn[]>(coldThread);
   // First load shows the same starter suggestions as "New chat" (EMPTY_CHIPS).
   const [chips, setChips] = useState<string[]>(EMPTY_CHIPS);
   // Persisted per-wallet chat history (B1): the user's real saved threads.

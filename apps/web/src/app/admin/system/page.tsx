@@ -145,14 +145,20 @@ export default function Page() {
         <div className="chartcard span2">
           <div className="ch">
             <span className="ct">Kill-switch status</span>
-            <span className="pill info">
+            <a className="pill info" href="/admin/killswitch" style={{ textDecoration: "none" }}>
               <span className="led" />
-              Pause-only · inactive
-            </span>
+              Pause-only · read live on Kill-switch →
+            </a>
           </div>
           <div className="statusrow">
-            <span className="muted">Current state</span>
-            <span>Deposits live · withdrawals always open</span>
+            <span className="muted">Withdrawals</span>
+            <span>Always open — un-pausable by design (N2)</span>
+          </div>
+          <div className="statusrow">
+            <span className="muted">Deposit pause state</span>
+            <a href="/admin/killswitch" style={{ color: "var(--primary)" }}>
+              Read live on the Kill-switch page →
+            </a>
           </div>
           <div className="statusrow">
             <span className="muted">Guardian (on-chain)</span>

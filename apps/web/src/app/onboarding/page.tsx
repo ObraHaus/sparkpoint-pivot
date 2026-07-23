@@ -15,6 +15,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { useOnboarding } from "@/lib/agent/useAgent";
 import { buildMandateDraft } from "@/lib/agent/mandateDraft";
 
@@ -53,6 +54,9 @@ function openProveIt() {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  // The REAL connected wallet (onboarding runs post-SIWE-connect) — never a hardcoded placeholder.
+  const { address } = useAccount();
+  const walletShort = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
   const [stepIndex, setStepIndex] = useState(0); // 0..8
   const [answers, setAnswers] = useState<Answers>({
     experience: null,
@@ -153,7 +157,7 @@ export default function OnboardingPage() {
       {/* conversation */}
       <div className="stage" id="stage">
         <div className="stream" id="stream">
-          {renderStream(stepIndex, answers, set, whyOpen, setWhyOpen)}
+          {renderStream(stepIndex, answers, set, whyOpen, setWhyOpen, walletShort)}
         </div>
       </div>
 
@@ -320,6 +324,7 @@ function renderStream(
   set: (patch: Partial<Answers>) => void,
   whyOpen: boolean,
   setWhyOpen: (v: boolean) => void,
+  walletShort: string | null,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -368,11 +373,17 @@ function renderStream(
           <UserTurn text="Get started" />
           <AiTurn>
             <div className="ai-text">
-              You&apos;re connected —{" "}
-              <span className="mono" style={{ color: "var(--foreground)" }}>
-                0x12…ab
-              </span>{" "}
-              on Base.
+              {walletShort ? (
+                <>
+                  You&apos;re connected —{" "}
+                  <span className="mono" style={{ color: "var(--foreground)" }}>
+                    {walletShort}
+                  </span>
+                  .
+                </>
+              ) : (
+                <>You&apos;re connected — your wallet&apos;s ready.</>
+              )}
             </div>
             <div className="tip">
               <span className="tico">
@@ -638,6 +649,16 @@ function renderStream(
               <div className="rechead">
                 <span className="rankbadge">Best fit · #1 vs your goal</span>
                 <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+                <span
+                  className="badge"
+                  style={{
+                    background: "var(--caution-subtle, color-mix(in srgb,var(--caution) 12%,transparent))",
+                    color: "var(--caution)",
+                    borderColor: "color-mix(in srgb,var(--caution) 30%,transparent)",
+                  }}
+                >
+                  Example — not a live quote
+                </span>
               </div>
               <div className="recthesis">
                 Move your idle USDC into the <b>Aave Yield Vault</b>. It fits your plan — lower risk,
@@ -647,16 +668,10 @@ function renderStream(
                 <div className="recapy">
                   <span className="big tnum">
                     4.3%
-                    <span className="cite" id="apycite">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 12l2 2 4-4" />
-                        <circle cx="12" cy="12" r="9" />
-                      </svg>
-                      Based on Aave · 2m
-                    </span>
+                    <span className="cite" id="apycite">Example</span>
                   </span>
                   <span className="lbl">
-                    net APY · <span className="estnote">estimate · see breakdown</span>
+                    net APY · <span className="estnote">example figure — your live rate is read on-chain on the vault</span>
                   </span>
                 </div>
                 <div>
@@ -684,7 +699,8 @@ function renderStream(
                 </div>
               </div>
               <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "14px" }}>
-                Estimates, not guarantees. · 4.3% Aave supply rate − 0% Sparky fee
+                Example figures for this walkthrough — your real, on-chain APY (net of Sparky&apos;s 0% fee on
+                principal) is shown live on the vault.
               </div>
               <div className="recact">
                 <button className="btn btn-primary btn-md" type="button">

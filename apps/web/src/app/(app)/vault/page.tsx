@@ -20,7 +20,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatUnits } from "viem";
 import { useAccount, useBalance } from "wagmi";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
 import { money, fmt } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
@@ -63,25 +62,6 @@ function perUserCapRaw(chainId: number | undefined): bigint {
   } catch {
     return 0n;
   }
-}
-
-/** APY-history line path (mirrors the design's `apyPath`). */
-function apyPath(vals: number[], W: number, H: number) {
-  const min = Math.min(...vals) - 0.1,
-    max = Math.max(...vals) + 0.1,
-    r = max - min || 1,
-    p = 6;
-  return (
-    "M" +
-    vals
-      .map(
-        (val, i) =>
-          (p + (i / (vals.length - 1)) * (W - p * 2)).toFixed(1) +
-          " " +
-          (p + (1 - (val - min) / r) * (H - p * 2)).toFixed(1),
-      )
-      .join(" L")
-  );
 }
 
 const HIST_RANGES = ["7d", "30d", "90d"];
@@ -281,17 +261,12 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
                   </div>
                 )}
               </div>
-              {/* No live pure-RPC APY-history source exists — never synthesize one. Real chart only
-                  off testnet with a live rate; else an honest note (mock history would contradict ≈0%). */}
-              {grossApyBps !== null && !testnet ? (
-                <svg width="100%" height="80" viewBox="0 0 520 80" preserveAspectRatio="none">
-                  <path d={apyPath(data.apyHist, 520, 80)} fill="none" stroke="var(--info)" strokeWidth="2" />
-                </svg>
-              ) : (
-                <div style={{ fontSize: 12, color: "var(--muted-foreground)", padding: "8px 0" }}>
-                  History unavailable on testnet.
-                </div>
-              )}
+              {/* No live pure-RPC APY-history source exists on ANY chain, so we never draw a curve —
+                  a synthesized/mock history would present a fabricated trend as real. Honest note only;
+                  the current rate above IS read live on-chain. */}
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", padding: "8px 0" }}>
+                APY history isn&apos;t indexed yet — the current rate above is read live on-chain.
+              </div>
             </>
           )}
         </div>
