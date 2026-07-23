@@ -24,6 +24,7 @@ import { money, fmt } from "@/lib/utils";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { useVault, type UseVaultResult } from "@/lib/chain/useVault";
 import { capNoun } from "@/lib/stage";
+import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import {
   deriveVaultConfirm,
   toNum,
@@ -43,8 +44,6 @@ export type { VaultConfirmInput };
  * an off-chain estimate. A wrapper is NEVER framed with this figure — its Net APY renders "—"
  * (honest; the real net-of-both-fees APY is a 010 market-data follow-up).
  */
-const AAVE_SUPPLY_APY_BPS = 430;
-
 /** Per-user beta cap (raw USDC base units) for a chain; fail-closed to 0 on unsupported. */
 function perUserCapRaw(chainId: number | undefined): bigint {
   if (chainId === undefined) return 0n;
@@ -98,8 +97,12 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
     label: input.label,
   });
 
+  // 017 — the LIVE Aave USDC supply rate (bps), read on-chain; null when unreadable (→ "—").
+  const grossApyBps = useAaveSupplyApyBps(v.chainId);
+  const testnet = v.chainId === 84532 || v.chainId === 46630;
   const m: VaultConfirmModel = deriveVaultConfirm(v, input, {
-    grossApyBps: AAVE_SUPPLY_APY_BPS,
+    grossApyBps,
+    testnet,
     capNoun,
   });
 

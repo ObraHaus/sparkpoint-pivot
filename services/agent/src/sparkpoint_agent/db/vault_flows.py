@@ -76,16 +76,16 @@ class PgVaultFlowStore:
     async def set_cursor(self, network_id: str, block: int) -> None:
         await self.db.execute(_SET_CURSOR, network_id, block)
 
-    async def upsert_flows(
-        self, network_id: str, flows: Sequence[VaultFlow]
-    ) -> int:
+    async def upsert_flows(self, network_id: str, flows: Sequence[VaultFlow]) -> int:
         written = 0
         async with self.db.acquire() as conn, conn.transaction():
             for f in flows:
                 decoded = json.dumps(
                     {
-                        "kind": f.kind, "owner": f.owner,
-                        "assets": str(f.assets), "shares": str(f.shares),
+                        "kind": f.kind,
+                        "owner": f.owner,
+                        "assets": str(f.assets),
+                        "shares": str(f.shares),
                     }
                 )
                 status = await conn.execute(
@@ -133,6 +133,62 @@ class FlowRow:
     tx_hash: str  # 0x… hex
 
 
+@dataclass(frozen=True)
+class BasisResult:
+    """Moving-average cost-basis PnL over a position's COMPLETE indexed flow history (USDC 6-dp).
+
+    realized = Σ over withdrawals of (assets_received − avg cost of the shares redeemed);
+    remaining_cost_basis = average cost of the shares STILL held;
+    reconstructed_shares = Σ deposit.shares − Σ withdraw.shares. ``reconciles`` is True iff that
+    equals the on-chain share balance — i.e. the indexed history is COMPLETE (no gap, no share
+    transfer). Callers surface the figures ONLY when ``reconciles`` (else honest null). Coherent:
+    realized + (value − remaining_cost_basis) == lifetime PnL == value + Σwithdrawn − Σdeposited.
+    """
+
+    realized: int
+    remaining_cost_basis: int
+    reconstructed_shares: int
+    reconciles: bool
+
+
+def replay_basis(flows: Sequence[FlowRow], current_shares: int) -> BasisResult | None:
+    """Average-cost replay → realized PnL + remaining cost basis (exact integer math, never float).
+
+    Deposits add USDC cost (assets, at $1 par) and shares; each withdrawal realizes
+    (assets_received − avg_cost × shares_redeemed) and removes that cost pro-rata (redeemed cost
+    rounds DOWN, mirroring the vault's own rounding — sub-unit dust is bounded by the withdrawal
+    count). None on no history. Never raises on a partial history: a withdrawal that would over-draw
+    the reconstructed share balance flips ``reconciles`` False (caller shows null), never crashes.
+    """
+    if not flows:
+        return None
+    ordered = sorted(flows, key=lambda f: (f.block_number, f.log_index))
+    cost = 0  # USDC cost basis of currently-held shares (6-dp base units)
+    held = 0  # reconstructed shares held
+    realized = 0  # cumulative realized PnL (signed USDC base units)
+    intact = True  # False once a withdrawal over-draws the reconstructed share balance (a gap)
+    for f in ordered:
+        if f.kind == "deposit":
+            cost += f.assets
+            held += f.shares
+            continue
+        # withdraw
+        if f.shares <= 0 or f.shares > held:
+            intact = False  # a gap: a withdraw precedes its funding deposit in the indexed set
+            held -= f.shares
+            continue
+        redeemed_cost = cost * f.shares // held
+        realized += f.assets - redeemed_cost
+        cost -= redeemed_cost
+        held -= f.shares
+    return BasisResult(
+        realized=realized,
+        remaining_cost_basis=max(0, cost),
+        reconstructed_shares=held,
+        reconciles=intact and held == current_shares,
+    )
+
+
 @dataclass
 class VaultFlowReader:
     """Reads the indexed flows to derive a user's cost basis (drives GET /portfolio PnL)."""
@@ -144,7 +200,8 @@ class VaultFlowReader:
         if row is None:
             return CostBasis(0, 0, 0)
         return CostBasis(
-            deposited=int(row["deposited"]), withdrawn=int(row["withdrawn"]),
+            deposited=int(row["deposited"]),
+            withdrawn=int(row["withdrawn"]),
             event_count=int(row["n"]),
         )
 

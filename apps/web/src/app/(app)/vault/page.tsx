@@ -27,6 +27,8 @@ import { toHref } from "@/lib/nav";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { useVault } from "@/lib/chain/useVault";
+import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
+import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import { VaultPicker } from "@/components/ui/VaultPicker";
 import { capNoun } from "@/lib/stage";
@@ -44,9 +46,6 @@ function safeAddresses(chainId: number | undefined) {
     return undefined;
   }
 }
-
-/** Aave USDC supply-rate estimate (bps) — see the file header (the FEE applied is live). */
-const AAVE_SUPPLY_APY_BPS = 430;
 
 /** The chain whose live vault the dashboard reads before a wallet connects (Base Sepolia). */
 const DISPLAY_CHAIN_ID = 84532;
@@ -122,10 +121,14 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
   const ethBalance = eth.data?.value !== undefined ? Number(formatUnits(eth.data.value, 18)) : undefined;
 
-  const framing = v.netApy(AAVE_SUPPLY_APY_BPS);
-  const netPct = framing.netApyPct;
-  const supplyPct = AAVE_SUPPLY_APY_BPS / 100;
-  const feePctInt = Math.round(framing.feeBps / 100);
+  // 017 — the LIVE Aave USDC supply APY (bps), read on-chain; null when unreadable / off Aave.
+  // On testnet the rate is ~0 → honest "≈0% (testnet)"; never the old fabricated 4.3%/3.87%.
+  const grossApyBps = useAaveSupplyApyBps(v.chainId);
+  const testnet = v.chainId === 84532 || v.chainId === 46630;
+  const framing = grossApyBps === null ? null : v.netApy(grossApyBps);
+  const netPct = framing?.netApyPct ?? 0;
+  const supplyPct = (grossApyBps ?? 0) / 100;
+  const feePctInt = Math.round((framing?.feeBps ?? v.netApy(0).feeBps) / 100);
 
   // Live CapRegistry per-user cap (US1); fall back to the compile-time policy mirror only when the
   // on-chain read is unresolved / CapRegistry isn't deployed on this chain — never a fabricated cap.
@@ -137,7 +140,7 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
     <div className="page page-wide">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>{v.label} <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={[isWrapper ? "Net APY feed not yet wired — shown as —" : "Net APY is illustrative until an Aave feed is wired", "Cost basis / PnL need the on-chain event index"]} /></h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>{v.label} <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={[isWrapper ? "Net APY feed not yet wired — shown as —" : "Net APY reflects the live Aave supply rate (≈0% on testnet)"]} /></h1>
           <div className="sub">{isWrapper ? "Branded Morpho-wrapper vault · yield routed via Morpho · Base" : "Conservative, capital-preservation-first yield on USDC · Base"}</div>
         </div>
         <div className="actions">
@@ -215,7 +218,7 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
             <div style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-.02em" }} className="tnum">
-              {isWrapper ? "—" : `${netPct.toFixed(2)}%`}
+              {isWrapper ? "—" : apyLabel(framing?.netApyBps ?? null, { testnet })}
             </div>
             <div className="muted" style={{ fontSize: 13, marginBottom: 7 }}>
               {isWrapper ? "net APY · not yet available" : "net APY · estimate"}
@@ -246,18 +249,20 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
               <div className="apybreak" style={{ marginTop: 16 }}>
                 <div className="br">
                   <span className="muted">Aave supply rate</span>
-                  <span className="tnum">{supplyPct.toFixed(2)}%</span>
+                  <span className="tnum">{apyLabel(grossApyBps, { testnet })}</span>
                 </div>
                 <div className="br">
                   <span className="muted">
                     Performance fee · {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
                   </span>
-                  <span className="tnum">−{(supplyPct - netPct).toFixed(2)}%</span>
+                  <span className="tnum">
+                    {grossApyBps !== null && grossApyBps > ZERO_APY_BPS ? `−${(supplyPct - netPct).toFixed(2)}%` : "—"}
+                  </span>
                 </div>
                 <div className="divider" style={{ margin: "4px 0" }} />
                 <div className="br" style={{ fontWeight: 600 }}>
                   <span>Net APY</span>
-                  <span className="tnum">{netPct.toFixed(2)}%</span>
+                  <span className="tnum">{apyLabel(framing?.netApyBps ?? null, { testnet })}</span>
                 </div>
               </div>
               <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
@@ -266,17 +271,27 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
               <div className="divider" />
               <div className="card-hd">
                 <span className="t">APY history</span>
-                <div className="seg">
-                  {HIST_RANGES.map((r) => (
-                    <button key={r} className={r === hist ? "active" : ""} onClick={() => setHist(r)}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                {grossApyBps !== null && !testnet && (
+                  <div className="seg">
+                    {HIST_RANGES.map((r) => (
+                      <button key={r} className={r === hist ? "active" : ""} onClick={() => setHist(r)}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <svg width="100%" height="80" viewBox="0 0 520 80" preserveAspectRatio="none">
-                <path d={apyPath(data.apyHist, 520, 80)} fill="none" stroke="var(--info)" strokeWidth="2" />
-              </svg>
+              {/* No live pure-RPC APY-history source exists — never synthesize one. Real chart only
+                  off testnet with a live rate; else an honest note (mock history would contradict ≈0%). */}
+              {grossApyBps !== null && !testnet ? (
+                <svg width="100%" height="80" viewBox="0 0 520 80" preserveAspectRatio="none">
+                  <path d={apyPath(data.apyHist, 520, 80)} fill="none" stroke="var(--info)" strokeWidth="2" />
+                </svg>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--muted-foreground)", padding: "8px 0" }}>
+                  History unavailable on testnet.
+                </div>
+              )}
             </>
           )}
         </div>

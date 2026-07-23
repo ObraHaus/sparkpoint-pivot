@@ -28,6 +28,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAgentClient, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
 import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
+import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -92,6 +93,7 @@ interface PortfolioPositionDto {
   positionId?: string;
   costBasisUsd?: string | null;
   unrealizedPnlUsd?: string | null;
+  realizedPnlUsd?: string | null;
 }
 
 interface PortfolioResponse {
@@ -105,11 +107,9 @@ interface PortfolioResponse {
   };
 }
 
-/** Per-position derived figures from the §B2 on-chain flow index. `undefined` ⇒ not indexed yet. */
-export interface PositionPnl {
-  costBasisUsd?: number;
-  unrealizedPnlUsd?: number;
-}
+/** Per-position derived figures from the §B2 on-chain flow index (`undefined` ⇒ not indexed yet).
+ * The shape + pure mapping live in `portfolioPnl.ts` (dependency-free, unit-tested). */
+export type { PositionPnl };
 
 /**
  * A DISPLAY view over `GET /portfolio`, mapped into the exact values the mock
@@ -125,7 +125,9 @@ export interface PortfolioView {
   pnl?: { abs: number; pct: number };
   /** Aggregate unrealized PnL in USD (indexed cost basis vs current value); `undefined` if unindexed. */
   unrealizedUsd?: number;
-  /** Per-position cost basis + unrealized PnL, keyed by positionId (e.g. `"vault"`). */
+  /** Aggregate REALIZED PnL in USD (Σ gains on past withdrawals, §017); `undefined` if unindexed. */
+  realizedUsd?: number;
+  /** Per-position cost basis + realized/unrealized PnL, keyed by positionId (e.g. `"vault"`). */
   positionPnl: Record<string, PositionPnl>;
   /** Timestamped position-value history for the net-worth chart (`t` = ms epoch, `v` = USD).
    * Real, derived from the indexed flows; empty when nothing is indexed (honest — never mock). */
@@ -148,39 +150,18 @@ export function usePortfolioView(): PortfolioView | null {
   if (!d) return null;
 
   const netWorth = numeric(d.netWorthUsd);
-  const rawSeries = Array.isArray(d.pnl?.series)
-    ? d.pnl!.series.map((p) => numeric(p?.valueUsd)).filter((n): n is number => n !== undefined)
-    : undefined;
-  const series = rawSeries && rawSeries.length >= 2 ? rawSeries : undefined;
-
-  let pnl: { abs: number; pct: number } | undefined;
-  if (series) {
-    const first = series[0];
-    const last = series[series.length - 1];
-    const abs = last - first;
-    const pct = first > 0 ? Math.round((abs / first) * 10000) / 100 : 0;
-    pnl = { abs: Math.round(abs * 100) / 100, pct };
-  }
-
-  // Timestamped value history (for the net-worth chart + range selector).
-  const history = Array.isArray(d.pnl?.series)
-    ? d.pnl!.series
-        .map((p) => ({ t: Date.parse(p?.ts ?? ""), v: numeric(p?.valueUsd) }))
-        .filter((p): p is { t: number; v: number } => !Number.isNaN(p.t) && p.v !== undefined)
-    : [];
-
-  // §B2 derived figures. `numeric(null)` ⇒ undefined, so an unindexed value stays "pending".
-  const unrealizedUsd = numeric(d.pnl?.unrealizedUsd);
-  const positionPnl: Record<string, PositionPnl> = {};
-  for (const p of d.positions ?? []) {
-    if (!p?.positionId) continue;
-    positionPnl[p.positionId] = {
-      costBasisUsd: numeric(p.costBasisUsd),
-      unrealizedPnlUsd: numeric(p.unrealizedPnlUsd),
-    };
-  }
-
-  return { netWorth, series, pnl, unrealizedUsd, positionPnl, history, stale: d.stale === true };
+  // Derived PnL (series/history/realized/unrealized/per-position) via the pure, unit-tested mapper.
+  const v = toPortfolioPnl(d.pnl, d.positions);
+  return {
+    netWorth,
+    series: v.series,
+    pnl: v.pnl,
+    unrealizedUsd: v.unrealizedUsd,
+    realizedUsd: v.realizedUsd,
+    positionPnl: v.positionPnl,
+    history: v.history,
+    stale: d.stale === true,
+  };
 }
 
 /* ── GET /portfolio/positions/{id} — transaction history (§tx) ─────────────── */

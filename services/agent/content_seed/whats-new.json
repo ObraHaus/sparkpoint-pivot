@@ -2,6 +2,39 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "real-realized-pnl",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Your portfolio now shows realized profit — correctly",
+      "body": "Your portfolio and position detail now show a real realized-PnL figure (profit you booked on past withdrawals) plus a corrected unrealized figure, both derived from your on-chain deposits and withdrawals. Cost basis is now the average cost of the shares you still hold. When the on-chain history can't be fully reconciled, we show 'pending' rather than a guess.",
+      "cta_label": "Open portfolio",
+      "cta_href": "/portfolio",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "live-aave-apy",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "APY now reads the live on-chain Aave rate",
+      "body": "The vault, the deposit confirmation, and recommendation cards now show the net APY computed from the live Aave supply rate read on-chain — no more placeholder number. On the current testnet, where the rate is effectively zero, it honestly shows '≈0% (testnet)', and '—' if the rate can't be read.",
+      "cta_label": "Open the vault",
+      "cta_href": "/vault",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "honest-fees-panel",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A more honest fees page",
+      "body": "The Fees page no longer shows an illustrative revenue chart or a placeholder 'fees paid' number. It now states the live, on-chain performance-fee terms and explains plainly that we don't show a per-wallet fees-paid figure because the fee is share dilution to a shared recipient — we'd rather show nothing than a fabricated number.",
+      "cta_label": "How fees work",
+      "cta_href": "/fees",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "see-which-protocols-the-ai-can-use",
       "type": "changelog",
       "tag": "Added",

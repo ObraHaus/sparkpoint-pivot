@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { RiskChip } from "@/components/ui/risk-chip";
@@ -34,6 +35,7 @@ const MOCK_RECS: RecView[] = data.recs.map((r, i) => ({
   signable: r.apy > 0,
   best: i === 0,
   citations: [],
+  apyKnown: r.apy > 0, // a genuine 0-APY cash mock still reads "no yield (cash)"
 }));
 
 export default function Page() {
@@ -42,6 +44,8 @@ export default function Page() {
 
   // Live GET /recommendations (§3.4) ranked vs. the mandate; mock fallback offline.
   // Each card is signable ONLY when policy-approved (RecView.signable ⟺ isSignable).
+  const { chainId } = useAccount();
+  const testnet = chainId === 84532 || chainId === 46630;
   const liveRecs = useRecommendationsView();
   const recs = liveRecs ?? MOCK_RECS;
   // useRecommendationsView returns null offline (→ MOCK_RECS) and [] when live-but-nothing-clears.
@@ -104,19 +108,28 @@ export default function Page() {
           <div className="st">{r.title}</div>
           <div className="sd">{r.thesis}</div>
           <div className="smetrics">
-            {r.apy > 0 ? (
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 600 }} className="tnum">
-                  {r.apy}%
-                </div>
-                <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>net APY · estimate</div>
-              </div>
-            ) : (
+            {!r.apyKnown ? (
               <div>
                 <div style={{ fontSize: 22, fontWeight: 600 }} className="tnum">
                   —
                 </div>
                 <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>no yield (cash)</div>
+              </div>
+            ) : r.apy * 100 <= 5 /* ZERO_APY_BPS */ ? (
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 600 }} className="tnum">
+                  ≈0%
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                  net APY · {testnet ? "≈0% (testnet)" : "≈0%"}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 600 }} className="tnum">
+                  {r.apy}%
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>net APY · estimate</div>
               </div>
             )}
             <RiskChip tier={r.risk} />

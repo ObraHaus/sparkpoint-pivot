@@ -77,7 +77,9 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   const agentLive = live && !!agent && !agent.stale;
   const costBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
   const unrealizedPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
-  const hasIndexedPnl = costBasisUsd !== undefined || unrealizedPnlUsd !== undefined;
+  const realizedPnlUsd = agentLive ? agent.positionPnl["vault"]?.realizedPnlUsd : undefined;
+  const hasIndexedPnl =
+    costBasisUsd !== undefined || unrealizedPnlUsd !== undefined || realizedPnlUsd !== undefined;
   // §tx: the indexed Deposit/Withdraw history — trusted only when LIVE + not stale. Distinguish a
   // still-loading / failed fetch from a CONFIRMED-empty history (don't mislabel the former).
   const txLive = live && !!txView && !txView.stale;
@@ -141,7 +143,7 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
             <div className="stat">
               <span className="k">Cost basis</span>
               <span className="v tnum">{costBasisUsd !== undefined ? money(costBasisUsd) : "—"}</span>
-              <span className="muted" style={{ fontSize: 11 }}>net deposited (indexed on-chain)</span>
+              <span className="muted" style={{ fontSize: 11 }}>avg cost of held shares (indexed)</span>
             </div>
             <div className="stat">
               <span className="k">Unrealized PnL</span>
@@ -151,6 +153,15 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
                 {unrealizedPnlUsd !== undefined ? `${unrealizedPnlUsd >= 0 ? "+" : "−"}${money(Math.abs(unrealizedPnlUsd))}` : "—"}
               </span>
               <span className="muted" style={{ fontSize: 11 }}>value − cost basis</span>
+            </div>
+            <div className="stat">
+              <span className="k">Realized PnL</span>
+              <span
+                className={`v tnum ${realizedPnlUsd !== undefined ? (realizedPnlUsd > 0 ? "delta up" : realizedPnlUsd < 0 ? "delta down" : "delta flat") : ""}`}
+              >
+                {realizedPnlUsd !== undefined ? `${realizedPnlUsd >= 0 ? "+" : "−"}${money(Math.abs(realizedPnlUsd))}` : "—"}
+              </span>
+              <span className="muted" style={{ fontSize: 11 }}>gains on past withdrawals</span>
             </div>
           </div>
         ) : (

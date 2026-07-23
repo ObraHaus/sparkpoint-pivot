@@ -33,6 +33,7 @@ test("toRecView maps live rationale, net APY, signable, and Obsidian citations",
   assert.equal(v.citations.length, 1);
   assert.equal(v.citations[0].provider, "Aave v3 Yield Basics");
   assert.equal(v.citations[0].url, undefined); // omitted on the wire ⇒ undefined
+  assert.equal(v.apyKnown, true);
 });
 
 test("toRecView: non-approved policy is inert; missing fields degrade safely", () => {
@@ -42,6 +43,12 @@ test("toRecView: non-approved policy is inert; missing fields degrade safely", (
   assert.equal(v.apy, 0);
   assert.equal(v.thesis, "");
   assert.deepEqual(v.citations, []);
+  assert.equal(v.apyKnown, false); // no projectedApyBps on the wire → "no yield (cash)"
+});
+
+test("apyKnown is true for a measured 0 APY (testnet), false when the field is absent", () => {
+  assert.equal(toRecView({ projectedApyBps: 0 }, 0).apyKnown, true); // ≈0% (testnet), not "no yield"
+  assert.equal(toRecView({}, 0).apyKnown, false);
 });
 
 test("parseCitations: drops malformed rows, keeps url, defaults optionals", () => {
