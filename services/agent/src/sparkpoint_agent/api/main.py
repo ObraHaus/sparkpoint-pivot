@@ -38,6 +38,7 @@ from .admin_knowledge import router as admin_knowledge_router
 from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
+from .admin_revenue import router as admin_revenue_router
 from .admin_uptime import router as admin_uptime_router
 from .admin_usage import router as admin_usage_router
 from .admin_vaults import router as admin_vaults_router
@@ -236,6 +237,75 @@ async def _index_vault_flows_loop() -> None:
             raise
 
 
+# Feature 013 per-network DISPLAY constants — read outside AgentConfig (like PREMIUM_ALLOWLIST),
+# overridable by env. The fee-recipient SET unions the pre-014 deployer EOA + the post-014
+# fee-treasury Safe so the cumulative honestly counts fees to BOTH from inception (D14).
+_DEFAULT_SWAP_ROUTER_84532 = "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4"
+_DEFAULT_FEE_RECIPIENTS_84532 = (
+    "0xA71e24359A6cb7A939aae2d62dD12b6256365c30,0xCB135893C84876aab9E10792b56e5bEa91dc578f"
+)
+
+
+async def _index_swap_fees_loop() -> None:
+    """Feature 013 background indexer: record the swap router's fee ``Transfer``s (from == router,
+    to ∈ the fee-recipient set) into ``swap_fee_events`` so ``/admin/revenue`` shows the REAL
+    0.20% routing-fee take. Off the request path, fail-open, never withdraw (N2).
+    No-op when the RPC isn't configured.
+    """
+    from ..config import AgentConfig
+    from ..data.log_source import HttpxLogsRpc
+    from ..data.swap_fee_indexer import SwapFeeIndexer
+    from ..db.swap_fees import PgSwapFeeEventStore
+
+    try:
+        config = AgentConfig.from_env()
+    except Exception:
+        return
+    log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
+    if not log_rpc:
+        return
+    router = (os.getenv("SWAP_ROUTER_84532") or _DEFAULT_SWAP_ROUTER_84532).lower()
+    recipients_raw = os.getenv("SWAP_FEE_RECIPIENTS_84532") or _DEFAULT_FEE_RECIPIENTS_84532
+    recipients = frozenset(a.strip().lower() for a in recipients_raw.split(",") if a.strip())
+    if not router or not recipients:
+        return
+    try:
+        start_block = int(
+            os.getenv("SWAP_FEE_FROM_BLOCK") or os.getenv("VAULT_INDEX_FROM_BLOCK", "0") or "0"
+        )
+    except ValueError:
+        start_block = 0
+    kwargs: dict[str, int] = {}
+    try:
+        raw_window = os.getenv("VAULT_INDEX_WINDOW")
+        if raw_window:
+            kwargs["window"] = int(raw_window)
+    except ValueError:
+        pass
+    indexer = SwapFeeIndexer(
+        transport=HttpxLogsRpc(log_rpc),
+        store=PgSwapFeeEventStore(get_database()),
+        router=router,
+        recipients=recipients,
+        network_id="base",
+        start_block=start_block,
+        **kwargs,
+    )
+    while True:
+        try:
+            result = await indexer.index_once()
+            if result.inserted:
+                logger.info("swap_fees_indexed added=%d", result.inserted)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("swap_fee_index_error (degrading; revenue stays incomplete)")
+        try:
+            await asyncio.sleep(_INDEX_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own the process-wide asyncpg pool lifecycle (connect on startup / close on shutdown).
@@ -252,6 +322,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     db = None
     index_task: asyncio.Task[None] | None = None
+    swap_fee_task: asyncio.Task[None] | None = None
     try:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
@@ -268,6 +339,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
+        # Feature 013: background swap-fee indexer (router fee Transfers → swap_fee_events → the
+        # real /admin/revenue swap stream). Best-effort, off the request path; never withdraw (N2).
+        swap_fee_task = asyncio.create_task(_index_swap_fees_loop())
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -277,6 +351,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if index_task is not None:
             index_task.cancel()
+        if swap_fee_task is not None:
+            swap_fee_task.cancel()
         if db is not None:
             try:
                 await asyncio.wait_for(db.disconnect(), timeout=_DB_DISCONNECT_TIMEOUT_S)
@@ -375,6 +451,7 @@ app.include_router(admin_uptime_router)
 app.include_router(admin_limits_router)
 # Feature 008 admin usage/limits monitoring (/admin/usage/*) — admin-gated, masked, honest-degrade.
 app.include_router(admin_usage_router)
+app.include_router(admin_revenue_router)
 # Feature 008 self-scoped usage read (/usage/self) — a wallet reads its OWN allowance (not admin).
 app.include_router(usage_router)
 # Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the

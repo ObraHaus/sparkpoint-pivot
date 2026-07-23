@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "revenue-real-per-stream",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Revenue is now real, per stream",
+      "body": "Our internal revenue view is no longer a sample — it now reads live, on-chain figures for each way SparkPoint earns: the 0.20% swap routing fee, the 10% vault performance fee (only ever on gains, never your principal), and SRK membership. Each stream is honest about itself: if a source isn't wired up yet we show nothing rather than a made-up number, and a genuine zero shows as zero. We also show the fee treasury multisig's live balances with a plain statement of what it can and can't do — it only receives fees and has no power over your funds.",
+      "cta_label": "How we make money",
+      "cta_href": "/fees",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "real-srk-pay-screen",
       "type": "changelog",
       "tag": "New",

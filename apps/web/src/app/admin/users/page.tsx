@@ -6,8 +6,8 @@
  * SparkPoint Admin.html. No fund-action column — observe-only.
  */
 
-import { STREAM } from "@/components/admin/charts";
-import { data, Kpi } from "@/components/admin/data";
+import { STREAM, Kpi } from "@/components/admin/charts";
+import { data } from "@/components/admin/data";
 import { Funnel, RiskDist } from "@/components/admin/funnels";
 
 const TOP: [string, string, string, string, string, string][] = [
