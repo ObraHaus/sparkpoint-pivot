@@ -18,6 +18,7 @@ non-admin — SC-010). DISPLAY-ONLY; never the withdraw/exit path (N2, FR-020).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -30,8 +31,25 @@ from .security import AccountContext
 
 router = APIRouter(tags=["admin-revenue"])
 
-#: The networks-table mirror id both Base chains map to (only 'base' is seeded).
-_NETWORK_ID = "base"
+
+@dataclass(frozen=True)
+class _Net:
+    """A revenue network: which streams apply. Base has the vault + Premium; 46630 = swap only."""
+
+    network_id: str
+    chain_id: int
+    label: str
+    has_vault: bool
+    has_membership: bool
+
+
+#: The networks revenue is reported for, in order. `base` = Base Sepolia on develop (84532);
+#: `robinhood` (46630) has NO vault + NO Premium, so only its swap-routing fee is a revenue stream —
+#: its perf/premium honest-degrade to `configured:false` (not-applicable), never a fabricated zero.
+_NETWORKS: tuple[_Net, ...] = (
+    _Net("base", 84532, "Base Sepolia", has_vault=True, has_membership=True),
+    _Net("robinhood", 46630, "Robinhood Testnet", has_vault=False, has_membership=False),
+)
 
 _SWAP_NATIVE_ETH_DISCLOSURE = (
     "Native-ETH-out swaps take the fee via unwrapWETH9WithFee, which emits no ERC-20 Transfer "
@@ -65,9 +83,9 @@ def _stream(
     }
 
 
-async def _swap_stream(db: Any) -> dict[str, Any]:
+async def _swap_stream(db: Any, network_id: str) -> dict[str, Any]:
     try:
-        summary = await PgSwapFeeEventStore(db).revenue_summary(_NETWORK_ID, period="month")
+        summary = await PgSwapFeeEventStore(db).revenue_summary(network_id, period="month")
         disclosures = [_SWAP_NATIVE_ETH_DISCLOSURE]
         if summary.distinct_token_decimals > 1:
             disclosures.append(_SWAP_MIXED_DENOM_DISCLOSURE)
@@ -85,12 +103,12 @@ async def _swap_stream(db: Any) -> dict[str, Any]:
         return _stream(False)
 
 
-async def _perf_stream(db: Any, vault: str | None) -> dict[str, Any]:
+async def _perf_stream(db: Any, vault: str | None, network_id: str) -> dict[str, Any]:
     try:
         if not vault:
             return _stream(False)
         summary = await FeeIndexer(PgFeeEventStore(db)).revenue_summary(
-            _NETWORK_ID, vault, period="month"
+            network_id, vault, period="month"
         )
         return _stream(
             True,
@@ -109,7 +127,7 @@ async def _perf_stream(db: Any, vault: str | None) -> dict[str, Any]:
         return _stream(False)
 
 
-async def _premium_stream(db: Any) -> dict[str, Any]:
+async def _premium_stream(db: Any, network_id: str) -> dict[str, Any]:
     try:
         rows = await db.fetch(
             """
@@ -121,7 +139,7 @@ async def _premium_stream(db: Any) -> dict[str, Any]:
             GROUP BY 1
             ORDER BY 1
             """,
-            _NETWORK_ID,
+            network_id,
         )
         periods = [
             {"periodStart": r["period_start"].date().isoformat(), "valueRaw": str(int(r["total"]))}
@@ -160,10 +178,30 @@ async def revenue_summary(
     db: Annotated[Any, Depends(get_revenue_database)],
     vault: Annotated[str | None, Depends(get_perf_vault_address)],
 ) -> dict[str, Any]:
-    """Real revenue by stream (swap/perf/premium), each honest about its state (admin-gated)."""
-    return {
-        "swap": await _swap_stream(db),
-        "perf": await _perf_stream(db, vault),
-        "premium": await _premium_stream(db),
-        "networkId": _NETWORK_ID,
-    }
+    """Real revenue by NETWORK, then by stream — each honest about its own state (admin-gated).
+
+    A stream that does not apply to a network (perf/premium on 46630) is `configured:false`, NOT a
+    fabricated zero; swap fees are attributed by `network_id` so a Base fee is never counted on
+    Robinhood or vice-versa. No cross-network total is emitted (streams are in different tokens).
+    """
+    networks: list[dict[str, Any]] = []
+    for net in _NETWORKS:
+        networks.append(
+            {
+                "networkId": net.network_id,
+                "chainId": net.chain_id,
+                "label": net.label,
+                "swap": await _swap_stream(db, net.network_id),
+                "perf": (
+                    await _perf_stream(db, vault, net.network_id)
+                    if net.has_vault
+                    else _stream(False)
+                ),
+                "premium": (
+                    await _premium_stream(db, net.network_id)
+                    if net.has_membership
+                    else _stream(False)
+                ),
+            }
+        )
+    return {"networks": networks}

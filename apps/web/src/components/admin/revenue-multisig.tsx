@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * Admin → Revenue — the treasury multisig balances card (feature 013 US5 / 014 N5).
+ * Admin → Revenue — the treasury multisig balances card (feature 013 US5 / 014 N5), per network.
  *
- * Live-reads the fee-treasury Safe's holdings — native ETH (`getBalance`) + relevant ERC-20
- * `balanceOf` — on render, at a single block, consistent with a block explorer. PERSISTS NOTHING
- * (no indexer, no migration, no snapshot). Honest-degrades to "unavailable" when feature 014 has not
- * supplied the Safe address. States the Safe's ACTUAL on-chain power — a plain recipient with nil
- * authority over user funds (N5) — proving it rather than asserting it.
+ * Live-reads the fee-treasury Safe's holdings on a GIVEN chain — native (`getBalance`) + relevant
+ * ERC-20 `balanceOf` — on render, at a single block, consistent with a block explorer. PERSISTS
+ * NOTHING (no indexer, no migration, no snapshot). The Safe is deployed at the SAME address on every
+ * network, but holds different balances per chain, so this renders once per network. Honest-degrades
+ * to "unavailable" when no Safe is configured for the chain. States the Safe's ACTUAL on-chain power
+ * — a plain recipient with nil authority over user funds (N5) — proving it, not asserting it.
  */
 
 import { useEffect, useState } from "react";
@@ -15,9 +16,10 @@ import { type Address, erc20Abi, formatUnits } from "viem";
 import { useAccount } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { getPublicClient } from "@/lib/chain/clients";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 
-const VAULT_CHAIN = 84532;
+const DEFAULT_CHAIN = 84532;
 
 type Tok = { symbol: string; address: Address; decimals: number };
 type Bal = { symbol: string; decimals: number; balance: bigint };
@@ -39,11 +41,12 @@ function BalRow({ symbol, text }: { symbol: string; text: string }) {
   );
 }
 
-export function RevenueMultisig() {
-  const { chainId } = useAccount();
-  const cid = chainId ?? VAULT_CHAIN;
+export function RevenueMultisig({ chainId: chainIdProp }: { chainId?: number } = {}) {
+  const { chainId: connectedChainId } = useAccount();
+  const cid = chainIdProp ?? connectedChainId ?? DEFAULT_CHAIN;
   const addrs = addressBookFor(cid);
   const safe = addrs?.feeTreasury as Address | undefined;
+  const explorerUrl = explorerAddressUrl(cid, safe);
 
   const [native, setNative] = useState<bigint | null>(null);
   const [tokens, setTokens] = useState<Bal[]>([]);
@@ -54,7 +57,7 @@ export function RevenueMultisig() {
     if (!safe || !addrs) return;
     let alive = true;
     const toks: Tok[] = [];
-    if (addrs.usdc) toks.push({ symbol: "USDC", address: addrs.usdc as Address, decimals: 6 });
+    if (addrs.usdc) toks.push({ symbol: "USDC", address: addrs.usdc as Address, decimals: cid === 46630 ? 18 : 6 });
     if (addrs.srk) toks.push({ symbol: "SRK", address: addrs.srk as Address, decimals: 18 });
     void (async () => {
       try {
@@ -94,19 +97,21 @@ export function RevenueMultisig() {
 
   const fmt = (v: bigint, d: number, max: number) =>
     Number(formatUnits(v, d)).toLocaleString(undefined, { maximumFractionDigits: max });
+  const shortAddr = `${safe.slice(0, 6)}…${safe.slice(-4)}`;
 
   return (
     <div className="chartcard">
       <div className="ch">
         <span className="ct">Fee treasury (multisig)</span>
-        <a
-          href={`https://sepolia.basescan.org/address/${safe}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "var(--primary)", fontSize: 11 }}
-        >
-          {safe.slice(0, 6)}…{safe.slice(-4)} ↗
-        </a>
+        {explorerUrl ? (
+          <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", fontSize: 11 }}>
+            {shortAddr} ↗
+          </a>
+        ) : (
+          <span className="mono" style={{ fontSize: 11, color: "var(--muted-foreground)" }} title={safe}>
+            {shortAddr}
+          </span>
+        )}
       </div>
       {err ? (
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 8 }}>
@@ -116,7 +121,7 @@ export function RevenueMultisig() {
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 8 }}>Reading balances…</div>
       ) : (
         <div style={{ marginTop: 6 }}>
-          <BalRow symbol="ETH" text={native != null ? fmt(native, 18, 5) : "—"} />
+          <BalRow symbol="Native" text={native != null ? fmt(native, 18, 5) : "—"} />
           {tokens.map((t) => (
             <BalRow key={t.symbol} symbol={t.symbol} text={fmt(t.balance, t.decimals, 2)} />
           ))}
@@ -125,8 +130,9 @@ export function RevenueMultisig() {
       <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 10, display: "flex", gap: 6 }}>
         <Icon name="info" size={12} />
         <span>
-          A 2-of-3 Safe that only <b style={{ color: "var(--foreground)" }}>receives</b> fees. It has no power over
-          user funds — it can&apos;t pause or move the vault, and can&apos;t withdraw anyone&apos;s deposit (N5).
+          A 2-of-3 Safe (same address on every network) that only <b style={{ color: "var(--foreground)" }}>receives</b>{" "}
+          fees. It has no power over user funds — it can&apos;t pause or move the vault, and can&apos;t withdraw
+          anyone&apos;s deposit (N5).
         </span>
       </div>
     </div>

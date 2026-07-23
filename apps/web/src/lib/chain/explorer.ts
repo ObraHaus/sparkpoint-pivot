@@ -27,3 +27,13 @@ export function explorerTxUrl(chainId: number | undefined, hash: Hex | undefined
   const root = EXPLORER_ROOT[chainId];
   return root === undefined ? undefined : `${root}/tx/${hash}`;
 }
+
+/** The explorer URL for an address, or `undefined` when the chain/address can't be linked. */
+export function explorerAddressUrl(
+  chainId: number | undefined,
+  address: string | undefined,
+): string | undefined {
+  if (chainId === undefined || !address) return undefined;
+  const root = EXPLORER_ROOT[chainId];
+  return root === undefined ? undefined : `${root}/address/${address}`;
+}

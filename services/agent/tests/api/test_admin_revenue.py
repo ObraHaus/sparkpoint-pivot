@@ -1,14 +1,14 @@
 # ruff: noqa: S101, S105  (pytest asserts; the token is a test fixture, not a secret)
-"""Feature 013 — the real admin revenue endpoint (api/admin_revenue.py).
+"""Feature 013/014 — the real admin revenue endpoint (api/admin_revenue.py), multi-network.
 
-Assert the honest-per-stream contract:
+Assert the honest-per-network, honest-per-stream contract:
   - a NON-admin gets 404 (indistinguishable from a missing route — SC-010);
-  - the shape is {swap, perf, premium, networkId}, each with its own `configured`;
-  - one dead source degrades ONLY its own stream (SC-002 / D1);
-  - a live-but-EMPTY swap stream is a REAL 0 with configured:true (distinct from configured:false);
-  - values are base-unit STRINGS — no USD fabricated (D13);
-  - the perf stream EXACTLY equals FeeIndexer.revenue_summary over the same rows (parity — SC-006);
-  - membership sums verified payment rows; configured:false when the table is absent.
+  - the shape is {networks: [{networkId, chainId, label, swap, perf, premium}, ...]};
+  - swap fees are attributed BY network_id — a Base fee is never counted on Robinhood or vice-versa;
+  - a stream not applicable to a network (perf/premium on 46630) is configured:false, not a zero;
+  - one dead source degrades ONLY its stream; a live-but-EMPTY swap is a real 0 (configured:true);
+  - values are base-unit STRINGS — no USD fabricated;
+  - the base perf stream EXACTLY equals FeeIndexer.revenue_summary over the same rows (SC-006).
 """
 
 from __future__ import annotations
@@ -86,6 +86,10 @@ def _premium_row(*, total: int, n: int = 1) -> dict[str, Any]:
     return {"period_start": WHEN, "total": str(total), "n": n}
 
 
+def _net(body: dict[str, Any], network_id: str) -> dict[str, Any]:
+    return next(n for n in body["networks"] if n["networkId"] == network_id)
+
+
 class _FakeAdmin:
     def __init__(self, admins: set[str]) -> None:
         self.admins = admins
@@ -95,17 +99,18 @@ class _FakeAdmin:
 
 
 class _FakeDb:
-    """Routes .fetch by the SQL's target table so each stream is driven independently."""
+    """Routes .fetch by SQL target table. Swap rows are keyed by network_id (arg $1) so the test can
+    give Base and Robinhood DIFFERENT swap fees and prove they never cross-count."""
 
     def __init__(
         self,
         *,
-        swap: list[dict[str, Any]] | None = None,
+        swap: dict[str, list[dict[str, Any]]] | None = None,
         perf: list[dict[str, Any]] | None = None,
         premium: list[dict[str, Any]] | None = None,
         fail: set[str] | None = None,
     ) -> None:
-        self.swap = swap or []
+        self.swap = swap or {}
         self.perf = perf or []
         self.premium = premium or []
         self.fail = fail or set()
@@ -114,7 +119,7 @@ class _FakeDb:
         if "FROM swap_fee_events" in query:
             if "swap" in self.fail:
                 raise RuntimeError("swap ledger down")
-            return self.swap
+            return self.swap.get(str(args[0]), [])
         if "FROM fee_events" in query:
             if "perf" in self.fail:
                 raise RuntimeError("fee ledger down")
@@ -148,90 +153,124 @@ def test_non_admin_gets_404(make_client: Any) -> None:
     assert client.get("/admin/revenue/summary", headers=_headers(STRANGER)).status_code == 404
 
 
-def test_shape_and_base_unit_strings(make_client: Any) -> None:
+def test_shape_is_per_network(make_client: Any) -> None:
     client = make_client(
         _FakeDb(
-            swap=[_swap_row(value=40_000), _swap_row(value=60_000, block=91)],
+            swap={"base": [_swap_row(value=100_000)]},
             perf=[_perf_row(fee_shares=1_234, yield_realized=12_340, block=80)],
             premium=[_premium_row(total=500 * 10**18)],
         )
     )
     body = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()
-    assert set(body) == {"swap", "perf", "premium", "networkId"}
-    assert body["networkId"] == "base"
+    assert set(body) == {"networks"}
+    ids = {n["networkId"] for n in body["networks"]}
+    assert ids == {"base", "robinhood"}
+    base = _net(body, "base")
+    assert base["chainId"] == 84532 and base["label"] == "Base Sepolia"
     for key in ("swap", "perf", "premium"):
-        s = body[key]
+        s = base[key]
         assert set(s) == {"configured", "cumulativeRaw", "tokenDecimals", "periods", "disclosures"}
         assert isinstance(s["cumulativeRaw"], str)  # base-unit string, never a fabricated USD float
-    assert body["swap"]["cumulativeRaw"] == "100000"  # 40k + 60k base units
-    assert body["swap"]["tokenDecimals"] == 6
-    assert body["premium"]["cumulativeRaw"] == str(500 * 10**18)
-    assert body["premium"]["tokenDecimals"] == 18
+    assert _net(body, "robinhood")["chainId"] == 46630
+
+
+def test_swap_attributed_per_network_no_cross_count(make_client: Any) -> None:
+    client = make_client(
+        _FakeDb(
+            swap={
+                "base": [_swap_row(value=40_000), _swap_row(value=60_000, block=91)],
+                "robinhood": [_swap_row(value=7, decimals=18)],
+            }
+        )
+    )
+    body = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()
+    assert _net(body, "base")["swap"]["cumulativeRaw"] == "100000"  # only Base's fees
+    assert _net(body, "robinhood")["swap"]["cumulativeRaw"] == "7"  # only Robinhood's, never summed
+    assert _net(body, "robinhood")["swap"]["tokenDecimals"] == 18  # 46630 USDC is 18-dp
+
+
+def test_robinhood_perf_premium_not_applicable(make_client: Any) -> None:
+    # Even with perf/premium rows, 46630 has no vault + no Premium → configured:false, not a zero.
+    client = make_client(
+        _FakeDb(
+            swap={"robinhood": [_swap_row(value=5, decimals=18)]},
+            perf=[_perf_row(fee_shares=9, yield_realized=90, block=80)],
+            premium=[_premium_row(total=42)],
+        )
+    )
+    rh = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "robinhood")
+    assert rh["swap"]["configured"] is True
+    assert rh["perf"]["configured"] is False
+    assert rh["premium"]["configured"] is False
 
 
 def test_one_dead_source_degrades_only_itself(make_client: Any) -> None:
     client = make_client(
         _FakeDb(
-            swap=[_swap_row(value=40_000)],
+            swap={"base": [_swap_row(value=40_000)]},
             perf=[_perf_row(fee_shares=10, yield_realized=100, block=80)],
             premium=[_premium_row(total=7)],
             fail={"swap"},
         )
     )
     body = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()
-    assert body["swap"]["configured"] is False
-    assert body["perf"]["configured"] is True  # unaffected
-    assert body["premium"]["configured"] is True  # unaffected
+    assert _net(body, "base")["swap"]["configured"] is False  # swap source dead
+    assert _net(body, "base")["perf"]["configured"] is True  # unaffected
+    assert _net(body, "base")["premium"]["configured"] is True  # unaffected
 
 
 def test_live_but_empty_swap_is_a_real_zero(make_client: Any) -> None:
-    client = make_client(_FakeDb(swap=[]))
-    swap = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()["swap"]
+    client = make_client(_FakeDb(swap={"base": []}))
+    swap = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "base")[
+        "swap"
+    ]
     assert swap["configured"] is True  # a REAL zero, not configured:false
     assert swap["cumulativeRaw"] == "0"
     assert swap["periods"] == []
 
 
 def test_swap_discloses_native_eth_undercount_when_configured(make_client: Any) -> None:
-    client = make_client(_FakeDb(swap=[_swap_row(value=1)]))
-    swap = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()["swap"]
-    assert any(
-        "Native-ETH" in d for d in swap["disclosures"]
-    )  # SC-005 — logs-only never shown as complete
+    client = make_client(_FakeDb(swap={"base": [_swap_row(value=1)]}))
+    swap = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "base")[
+        "swap"
+    ]
+    assert any("Native-ETH" in d for d in swap["disclosures"])  # SC-005
 
 
-def test_perf_stream_matches_fee_indexer_exactly(make_client: Any) -> None:
+def test_base_perf_stream_matches_fee_indexer_exactly(make_client: Any) -> None:
     perf_rows = [
         _perf_row(fee_shares=1_000, yield_realized=10_000, block=80, log_index=0),
         _perf_row(fee_shares=2_500, yield_realized=25_000, block=81, log_index=0),
     ]
     db = _FakeDb(perf=perf_rows)
     client = make_client(db)
-    perf = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()["perf"]
+    perf = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "base")[
+        "perf"
+    ]
 
     async def _expected() -> Any:
         return await FeeIndexer(PgFeeEventStore(db)).revenue_summary("base", VAULT, period="month")
 
     summary = asyncio.run(_expected())
     assert perf["configured"] is True
-    assert perf["cumulativeRaw"] == str(
-        summary.cumulative_fee_shares_minted_raw
-    )  # no divergent re-derivation
+    assert perf["cumulativeRaw"] == str(summary.cumulative_fee_shares_minted_raw)
     assert [int(p["valueRaw"]) for p in perf["periods"]] == [
         b.fee_shares_minted_raw for b in summary.periods
     ]
 
 
-def test_perf_unconfigured_when_no_vault(make_client: Any) -> None:
+def test_base_perf_unconfigured_when_no_vault(make_client: Any) -> None:
     client = make_client(
         _FakeDb(perf=[_perf_row(fee_shares=1, yield_realized=1, block=1)]), vault=None
     )
-    perf = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()["perf"]
+    perf = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "base")[
+        "perf"
+    ]
     assert perf["configured"] is False  # honest-degrade, never a zero-as-real
 
 
 def test_membership_absent_table_degrades_only_premium(make_client: Any) -> None:
-    client = make_client(_FakeDb(swap=[_swap_row(value=5)], premium=[], fail={"premium"}))
-    body = client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json()
-    assert body["premium"]["configured"] is False  # 012 not landed → configured:false (D9)
-    assert body["swap"]["configured"] is True  # unaffected
+    client = make_client(_FakeDb(swap={"base": [_swap_row(value=5)]}, premium=[], fail={"premium"}))
+    base = _net(client.get("/admin/revenue/summary", headers=_headers(ADMIN)).json(), "base")
+    assert base["premium"]["configured"] is False  # 012 not landed → configured:false (D9)
+    assert base["swap"]["configured"] is True  # unaffected

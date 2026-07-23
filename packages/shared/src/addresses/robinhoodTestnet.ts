@@ -47,13 +47,18 @@ export const robinhoodTestnet: AddressBook = {
   uniswapV3QuoterV2: "0x231606c321A99DE81e28fE48B07a93F1ba49e713",
   uniswapV3Factory: "0x911b4000D3422F482F4062a913885f7b035382Df",
 
-  // §fee (007) — routing-fee treasury. Robinhood has NO vault, so there is no vault `feeRecipient()` to
-  // fall back to; without this the swap would be fee-free here. Set to the SparkPoint deployer EOA — the
-  // SAME address the Base Sepolia vault's `feeRecipient()` resolves to (0xA71e…5c30, verified on-chain) —
-  // so the 0.20% routing fee is collected on 46630 too. Synthra exposes `sweepTokenWithFee` +
-  // `unwrapWETH9WithFee` + `exactInput`/`quoteExactInput` (verified on-chain 2026-07-20), so the fee is
-  // taken IN the user-signed swap exactly like Base. EOAs are chain-agnostic (same key, same address).
-  swapFeeRecipient: "0xA71e24359A6cb7A939aae2d62dD12b6256365c30",
+  // §fee (007/014) — routing-fee treasury. Robinhood has NO vault, so there is no vault `feeRecipient()`
+  // to follow; this is a hard constant (moving it is an address-book edit + a web redeploy, no Timelock).
+  // Feature 014: re-pointed from the deployer EOA to the **2-of-3 fee-treasury Safe**, deployed at the
+  // SAME address on 46630 as on Base Sepolia (`0xCB13…578f`; canonical Safe v1.4.1 factory/singleton are
+  // present on 46630, so replaying the identical `createProxyWithNonce` gives the identical CREATE2
+  // address — one treasury address across every network). Synthra exposes `sweepTokenWithFee` +
+  // `unwrapWETH9WithFee`, so the 0.20% fee is taken IN the user-signed swap and swept to the Safe.
+  swapFeeRecipient: "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
+
+  // The fee-treasury Safe (address of record) — same 2-of-3 Safe as Base Sepolia, same address (N5:
+  // a plain recipient with nil power over user funds). Mirrors `baseSepolia.ts` `feeTreasury`.
+  feeTreasury: "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
 
   // ── ERC-20 tokens — Robinhood-testnet WETH + USDC (the Synthra WETH/USDC pool pair). NOTE: this
   // testnet's "USDC" is 18-decimals (not 6) — swapTokens() pins USDC decimals per-chain. ──

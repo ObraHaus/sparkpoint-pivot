@@ -19,7 +19,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from fastapi import FastAPI, Header
@@ -101,6 +101,7 @@ async def _llm_ready() -> bool:
         ok = False
     _llm_probe.update(ts=now, ok=ok)
     return ok
+
 
 # Startup must NEVER block on the DB: asyncpg.create_pool can hang for its full connect
 # timeout (~tens of seconds) if the DB is unreachable at boot, which stalls uvicorn startup
@@ -237,19 +238,71 @@ async def _index_vault_flows_loop() -> None:
             raise
 
 
-# Feature 013 per-network DISPLAY constants — read outside AgentConfig (like PREMIUM_ALLOWLIST),
-# overridable by env. The fee-recipient SET unions the pre-014 deployer EOA + the post-014
-# fee-treasury Safe so the cumulative honestly counts fees to BOTH from inception (D14).
+# Feature 013/014 per-network DISPLAY constants — read outside AgentConfig (like PREMIUM_ALLOWLIST),
+# overridable by env. Each fee-recipient SET unions the pre-014 deployer EOA + the post-014
+# fee-treasury Safe (deployed at the SAME address on both chains) so the cumulative honestly counts
+# fees to BOTH from inception (D14).
 _DEFAULT_SWAP_ROUTER_84532 = "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4"
-_DEFAULT_FEE_RECIPIENTS_84532 = (
+_DEFAULT_SWAP_ROUTER_46630 = "0x3Ce954107b1A675826B33bF23060Dd655e3758fE"
+_DEFAULT_FEE_RECIPIENTS = (
     "0xA71e24359A6cb7A939aae2d62dD12b6256365c30,0xCB135893C84876aab9E10792b56e5bEa91dc578f"
+)
+_ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
+# 46630 has ~0.3s blocks (head ~92M+) and NO vault-flow indexer to borrow a floor from, so the
+# swap-fee loop must NOT default to a genesis scan (it would show a false "real zero" for a long
+# backfill). Floor to ~when Robinhood swaps went live (2026-07-16, block ~90.5M) unless
+# SWAP_FEE_FROM_BLOCK_46630 overrides. Base borrows VAULT_INDEX_FROM_BLOCK (already set for the live
+# vault-flows indexer), so its floor default is 0 (the env supplies the real one).
+_ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
+
+# One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
+# `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
+# when none is set (never genesis for 46630).
+_SWAP_FEE_NETWORKS: tuple[dict[str, Any], ...] = (
+    {
+        "network_id": "base",
+        "router_env": "SWAP_ROUTER_84532",
+        "router_default": _DEFAULT_SWAP_ROUTER_84532,
+        "recipients_env": "SWAP_FEE_RECIPIENTS_84532",
+        "recipients_default": _DEFAULT_FEE_RECIPIENTS,
+        "rpc_env": "VAULT_INDEX_RPC_URL",
+        "rpc_fallback": None,
+        "from_block_envs": (
+            "SWAP_FEE_FROM_BLOCK_84532",
+            "SWAP_FEE_FROM_BLOCK",
+            "VAULT_INDEX_FROM_BLOCK",
+        ),
+        "from_block_default": 0,
+    },
+    {
+        "network_id": "robinhood",
+        "router_env": "SWAP_ROUTER_46630",
+        "router_default": _DEFAULT_SWAP_ROUTER_46630,
+        "recipients_env": "SWAP_FEE_RECIPIENTS_46630",
+        "recipients_default": _DEFAULT_FEE_RECIPIENTS,
+        "rpc_env": "ROBINHOOD_INDEX_RPC_URL",
+        "rpc_fallback": _ROBINHOOD_PUBLIC_RPC,
+        "from_block_envs": ("SWAP_FEE_FROM_BLOCK_46630",),
+        "from_block_default": _ROBINHOOD_SWAP_INCEPTION_BLOCK,
+    },
 )
 
 
-async def _index_swap_fees_loop() -> None:
-    """Feature 013 background indexer: record the swap router's fee ``Transfer``s (from == router,
-    to ∈ the fee-recipient set) into ``swap_fee_events`` so ``/admin/revenue`` shows the REAL
-    0.20% routing-fee take. Off the request path, fail-open, never withdraw (N2).
+def _resolve_start_block(from_block_envs: tuple[str, ...], default: int) -> int:
+    for env_key in from_block_envs:
+        raw = os.getenv(env_key)
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                return default
+    return default
+
+
+async def _index_swap_fees_loop(net: dict[str, Any]) -> None:
+    """Feature 013/014 swap-fee indexer for ONE network: record the router's fee ``Transfer``s
+    (from == router, to ∈ the recipient set) into ``swap_fee_events`` so ``/admin/revenue`` shows
+    the REAL 0.20% routing-fee take per network. Off the request path, fail-open, never withdraw.
     No-op when the RPC isn't configured.
     """
     from ..config import AgentConfig
@@ -261,20 +314,14 @@ async def _index_swap_fees_loop() -> None:
         config = AgentConfig.from_env()
     except Exception:
         return
-    log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
+    log_rpc = os.getenv(net["rpc_env"]) or net.get("rpc_fallback") or config.rpc_url
     if not log_rpc:
         return
-    router = (os.getenv("SWAP_ROUTER_84532") or _DEFAULT_SWAP_ROUTER_84532).lower()
-    recipients_raw = os.getenv("SWAP_FEE_RECIPIENTS_84532") or _DEFAULT_FEE_RECIPIENTS_84532
+    router = (os.getenv(net["router_env"]) or net["router_default"]).lower()
+    recipients_raw = os.getenv(net["recipients_env"]) or net["recipients_default"]
     recipients = frozenset(a.strip().lower() for a in recipients_raw.split(",") if a.strip())
     if not router or not recipients:
         return
-    try:
-        start_block = int(
-            os.getenv("SWAP_FEE_FROM_BLOCK") or os.getenv("VAULT_INDEX_FROM_BLOCK", "0") or "0"
-        )
-    except ValueError:
-        start_block = 0
     kwargs: dict[str, int] = {}
     try:
         raw_window = os.getenv("VAULT_INDEX_WINDOW")
@@ -287,19 +334,21 @@ async def _index_swap_fees_loop() -> None:
         store=PgSwapFeeEventStore(get_database()),
         router=router,
         recipients=recipients,
-        network_id="base",
-        start_block=start_block,
+        network_id=net["network_id"],
+        start_block=_resolve_start_block(net["from_block_envs"], net["from_block_default"]),
         **kwargs,
     )
     while True:
         try:
             result = await indexer.index_once()
             if result.inserted:
-                logger.info("swap_fees_indexed added=%d", result.inserted)
+                logger.info(
+                    "swap_fees_indexed network=%s added=%d", net["network_id"], result.inserted
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.warning("swap_fee_index_error (degrading; revenue stays incomplete)")
+            logger.warning("swap_fee_index_error network=%s (degrading)", net["network_id"])
         try:
             await asyncio.sleep(_INDEX_INTERVAL_S)
         except asyncio.CancelledError:
@@ -322,7 +371,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     db = None
     index_task: asyncio.Task[None] | None = None
-    swap_fee_task: asyncio.Task[None] | None = None
+    swap_fee_tasks: list[asyncio.Task[None]] = []
     try:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
@@ -339,9 +388,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
-        # Feature 013: background swap-fee indexer (router fee Transfers → swap_fee_events → the
-        # real /admin/revenue swap stream). Best-effort, off the request path; never withdraw (N2).
-        swap_fee_task = asyncio.create_task(_index_swap_fees_loop())
+        # Feature 013/014: one background swap-fee indexer per network (router fee Transfers →
+        # swap_fee_events → the real per-network /admin/revenue swap stream). Best-effort, off the
+        # request path; never withdraw (N2).
+        swap_fee_tasks = [
+            asyncio.create_task(_index_swap_fees_loop(net)) for net in _SWAP_FEE_NETWORKS
+        ]
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -351,8 +403,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if index_task is not None:
             index_task.cancel()
-        if swap_fee_task is not None:
-            swap_fee_task.cancel()
+        for task in swap_fee_tasks:
+            task.cancel()
         if db is not None:
             try:
                 await asyncio.wait_for(db.disconnect(), timeout=_DB_DISCONNECT_TIMEOUT_S)

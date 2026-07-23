@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "revenue-goes-multi-network",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Revenue is now shown per network",
+      "body": "Our revenue view now covers every network we support — Base and Robinhood testnet — each shown separately so figures are never mixed across chains (they're in different tokens). We also stood up our fee-treasury multisig on Robinhood testnet at the exact same address as on Base, and pointed the Robinhood swap fee to it — so on every network the fees flow to the same 2-of-3 Safe that only receives and has no power over your funds.",
+      "cta_label": "How we make money",
+      "cta_href": "/fees",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "fee-treasury-multisig",
       "type": "changelog",
       "tag": "New",
