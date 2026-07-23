@@ -94,21 +94,14 @@ export default function Page() {
     args: owner ? [owner] : undefined,
     query: { enabled: isConnected && !!srk && !!owner, refetchInterval: 15_000 },
   });
-  const alloRead = useReadContract({
-    address: srk,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: owner && treasury ? [owner, treasury] : undefined,
-    query: { enabled: isConnected && !!srk && !!owner && !!treasury },
-  });
 
+  // A plain `transfer` needs no allowance, so there is deliberately no allowance read / approve leg.
   const pay = derivePremiumPayState({
     srk,
     treasury,
     balance: balRead.data as bigint | undefined,
-    allowance: alloRead.data as bigint | undefined,
   });
-  const { balance, low, needsApprove, balanceKnown } = pay;
+  const { balance, low, balanceKnown } = pay;
   const balanceStr = balanceKnown ? Number(formatUnits(balance, 18)).toLocaleString() : "…";
 
   const [verify, setVerify] = useState<VerifyState>({ kind: "idle" });
@@ -122,7 +115,7 @@ export default function Page() {
 
   const exec: PremiumPayExec | undefined =
     configured && owner && srk && treasury && chainId
-      ? { chainId, srk, treasury, account: owner, amount: PREMIUM_PRICE_SRK_BASE, needsApprove, onDone: onPaid }
+      ? { chainId, srk, treasury, account: owner, amount: PREMIUM_PRICE_SRK_BASE, onDone: onPaid }
       : undefined;
 
   const ctrl = useExecutePremiumTx(exec);
@@ -130,13 +123,11 @@ export default function Page() {
   // A signed-in wallet is required to read balance and sign; keep the sign action fail-closed.
   const canSign = configured && isConnected && !!owner && !low && !ctrl.isBusy && verify.kind === "idle";
   const busyLabel =
-    ctrl.stage === "approve"
-      ? "Approve in your wallet…"
-      : ctrl.stage === "pay"
-        ? "Confirm the payment…"
-        : verify.kind === "verifying"
-          ? "Verifying on-chain — granting Premium…"
-          : "Review & sign";
+    ctrl.stage === "pay"
+      ? "Confirm the payment…"
+      : verify.kind === "verifying"
+        ? "Verifying on-chain — granting Premium…"
+        : "Review & sign";
 
   return (
     <div className="page page-narrow">
@@ -261,9 +252,9 @@ export default function Page() {
           ) : (
             <>
               <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "14px 0" }}>
-                You&apos;ll sign {needsApprove ? <><b style={{ color: "var(--foreground)" }}>approve</b> + </> : null}
-                <b style={{ color: "var(--foreground)" }}>pay</b> — a plain SRK transfer to the disclosed treasury.
-                Non-custodial: you are the sole signer, we never pull your funds.
+                You&apos;ll sign a <b style={{ color: "var(--foreground)" }}>single payment</b> — a plain SRK transfer to
+                the disclosed treasury. Non-custodial: you are the sole signer, and it leaves{" "}
+                <b style={{ color: "var(--foreground)" }}>no standing approval</b> — we never pull your funds.
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button

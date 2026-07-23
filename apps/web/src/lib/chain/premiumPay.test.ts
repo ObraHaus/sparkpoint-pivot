@@ -31,30 +31,12 @@ test("balance not yet read ⇒ balanceKnown false and no low-balance claim", () 
   assert.equal(s.balance, 0n);
 });
 
-test("approve leg only when allowance < price", () => {
-  const under = derivePremiumPayState({
-    srk: SRK,
-    treasury: TREASURY,
-    balance: PREMIUM_PRICE_SRK_BASE,
-    allowance: PREMIUM_PRICE_SRK_BASE - 1n,
-  });
-  assert.equal(under.needsApprove, true);
-
-  const exact = derivePremiumPayState({
-    srk: SRK,
-    treasury: TREASURY,
-    balance: PREMIUM_PRICE_SRK_BASE,
-    allowance: PREMIUM_PRICE_SRK_BASE,
-  });
-  assert.equal(exact.needsApprove, false);
-
-  const over = derivePremiumPayState({
-    srk: SRK,
-    treasury: TREASURY,
-    balance: PREMIUM_PRICE_SRK_BASE,
-    allowance: PREMIUM_PRICE_SRK_BASE * 2n,
-  });
-  assert.equal(over.needsApprove, false);
+test("no allowance is involved — the payment is a single plain transfer (SC-007)", () => {
+  // The state exposes no `needsApprove`/`allowance`: a self-transfer needs no approval, so the flow
+  // never presents an approve leg and grants no standing pull-approval to the treasury.
+  const s = derivePremiumPayState({ srk: SRK, treasury: TREASURY, balance: PREMIUM_PRICE_SRK_BASE });
+  assert.equal("needsApprove" in s, false);
+  assert.equal("allowance" in s, false);
 });
 
 test("low + shortfall computed from real balance vs price", () => {
