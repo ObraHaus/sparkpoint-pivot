@@ -11,10 +11,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
-import { StatusTag } from "@/components/ui/status-tag";
 
 const FEATURES: [string, string, string][] = [
   ["AI chat assistant", "Full", "Full"],
@@ -126,7 +126,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Premium <StatusTag variant="mock" title={"Preview — SRK-paid Premium and its payment flow aren’t live yet."} /></h1>
+          <h1>Premium</h1>
           <div className="sub">Optional advanced AI, paid in SRK. The free tier is fully capable.</div>
         </div>
       </div>
@@ -155,7 +155,8 @@ export default function Page() {
             Premium
           </div>
           <div className="pp tnum">
-            500 SRK<span style={{ fontSize: 14, color: "var(--muted-foreground)", fontWeight: 500 }}> /mo</span>
+            {PREMIUM_PRICE_SRK_WHOLE.toString()} SRK
+            <span style={{ fontSize: 14, color: "var(--muted-foreground)", fontWeight: 500 }}> /mo</span>
           </div>
           <div className="psub">≈ $12.00 / month · cancel anytime</div>
           <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>

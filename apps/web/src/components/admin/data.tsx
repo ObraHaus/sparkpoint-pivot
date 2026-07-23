@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * Admin panel mock dataset + shared KPI tile. The admin panel uses its own local
- * numbers (a separate dataset from the main app), inlined verbatim from
- * docs/design-handover/showcase/SparkPoint Admin.html.
+ * Admin panel mock dataset. The admin panel uses its own local numbers (a separate dataset from
+ * the main app), inlined verbatim from docs/design-handover/showcase/SparkPoint Admin.html.
+ *
+ * NOTE (feature 013): the presentational `Kpi` / `LegendStreams` primitives now live in
+ * `./charts` (they are chart primitives, not mock data). The real `/admin/revenue` reads NOTHING
+ * from this module — only screens still on mock data do.
  */
 
-import type { ReactNode } from "react";
-import { STREAM, Sparkline } from "./charts";
-
-/** revByStream — monthly revenue by stream (source: revByStream). */
+/** revByStream — monthly revenue by stream (source: revByStream). MOCK — the real revenue page
+ *  reads GET /admin/revenue/summary instead. */
 export const revByStream: { x: string; swap: number; premium: number; perf: number; srk: number }[] = [
   { x: "Jan", swap: 420, premium: 1200, perf: 0, srk: 0 },
   { x: "Feb", swap: 680, premium: 1850, perf: 300, srk: 120 },
@@ -26,64 +27,3 @@ export const data = {
   revSpark: [1.6, 3.2, 5.1, 7.4, 10.3, 13.9],
   mrrSpark: [1.6, 2.5, 3.3, 4.3, 5.6, 6.9],
 };
-
-/** KPI tile — faithful port of the source `kpi()` builder. */
-export function Kpi({
-  label,
-  val,
-  spark,
-  sparkColor,
-  delta,
-  deltaCls,
-  ai = false,
-}: {
-  label: ReactNode;
-  val: ReactNode;
-  spark: number[];
-  sparkColor: string;
-  delta: ReactNode;
-  deltaCls: "up" | "down" | "flat";
-  ai?: boolean;
-}) {
-  return (
-    <div className="kpi">
-      <div className="k">
-        {ai ? <span className="aimark" /> : null}
-        {label}
-      </div>
-      <div className="v tnum">{val}</div>
-      <div className="foot">
-        <Sparkline vals={spark} color={sparkColor} />
-        <span className={`delta ${deltaCls}`}>{delta}</span>
-      </div>
-    </div>
-  );
-}
-
-/** revenue-stream legend — faithful port of `legendStreams(withProj)`. */
-export function LegendStreams({ withProj }: { withProj: boolean }) {
-  return (
-    <div className="legend">
-      <span>
-        <i style={{ background: STREAM.swap }} />
-        Swap fee
-      </span>
-      <span>
-        <i style={{ background: STREAM.premium }} />
-        Premium
-      </span>
-      {withProj ? (
-        <>
-          <span>
-            <i style={{ background: STREAM.perf }} />
-            Perf fee
-          </span>
-          <span style={{ color: STREAM.srk }}>
-            <i className="dash" style={{ color: STREAM.srk }} />
-            SRK <span className="estbadge">EST</span>
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-}

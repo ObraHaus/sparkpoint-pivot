@@ -8,8 +8,8 @@
  */
 
 import { Icon } from "@/lib/icons";
-import { STREAM, Composed, Trajectory, DivergeBars, DualArea } from "@/components/admin/charts";
-import { data, Kpi } from "@/components/admin/data";
+import { STREAM, Composed, Trajectory, DivergeBars, DualArea, Kpi } from "@/components/admin/charts";
+import { data } from "@/components/admin/data";
 
 export default function Page() {
   return (

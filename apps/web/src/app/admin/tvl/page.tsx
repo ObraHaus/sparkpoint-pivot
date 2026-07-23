@@ -7,8 +7,8 @@
  */
 
 import { Icon } from "@/lib/icons";
-import { STREAM, DivergeBars, Composed } from "@/components/admin/charts";
-import { data, Kpi } from "@/components/admin/data";
+import { STREAM, DivergeBars, Composed, Kpi } from "@/components/admin/charts";
+import { data } from "@/components/admin/data";
 
 export default function Page() {
   return (

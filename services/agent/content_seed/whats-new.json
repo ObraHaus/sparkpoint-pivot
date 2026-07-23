@@ -2,6 +2,39 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "fee-treasury-multisig",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Protocol fees now flow to a multisig — with provably no power over you",
+      "body": "The fees SparkPoint earns now go to a dedicated 2-of-3 multisig treasury instead of a single wallet. Crucially, that treasury only receives fees — it can't pause or move the vault, isn't the guardian, and has no way to touch your deposits. You don't have to take our word for it: the Trust Center now reads the fee recipient live from the contract and shows its authority over your funds as none. Your withdraw-anytime right is completely unaffected.",
+      "cta_label": "See the Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "revenue-real-per-stream",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Revenue is now real, per stream",
+      "body": "Our internal revenue view is no longer a sample — it now reads live, on-chain figures for each way SparkPoint earns: the 0.20% swap routing fee, the 10% vault performance fee (only ever on gains, never your principal), and SRK membership. Each stream is honest about itself: if a source isn't wired up yet we show nothing rather than a made-up number, and a genuine zero shows as zero. We also show the fee treasury multisig's live balances with a plain statement of what it can and can't do — it only receives fees and has no power over your funds.",
+      "cta_label": "How we make money",
+      "cta_href": "/fees",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "real-srk-pay-screen",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Buy Premium with SRK",
+      "body": "You can now upgrade to Premium right in the app, paid in SRK. The Premium page shows your real SRK balance and the monthly price, and when you upgrade you sign the payment yourself — it goes straight to our disclosed treasury address, and we never move your funds for you. Once the payment confirms on-chain, Premium switches on automatically and shows when it renews. As always this is completely optional: the assistant, the vault, deposits, yield, swaps, and withdraw-anytime stay free and are never gated by Premium.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "curated-vaults-foundation",
       "type": "changelog",
       "tag": "New",

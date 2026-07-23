@@ -33,10 +33,10 @@ A task-group / phase is "done" only when:
 
 **Purpose**: land the additive, address-only plumbing so every later phase resolves the treasury from one place. Ships alone; the field is unset and the constant is `None`, so nothing changes on-chain or in the UI.
 
-- [ ] T001 [SETUP] `packages/shared/src/addresses/types.ts` — add a **plain optional** `readonly feeTreasury?: Address` field to `AddressBook` (mirrors `swapFeeRecipient`; explicitly **NOT** a `TargetRef` / no `TARGET_REF_FIELD`, no parity/drift impact) per data-model.md.
-- [ ] T002 [P] [SETUP] `services/agent/tests/config/test_config.py` — write first (fails until T003): a well-formed `FEE_WALLET_ADDRESS` normalizes onto `AgentConfig.fee_wallet_address`; a malformed value fails closed at load (like `SPARKPOINT_VAULT_ADDRESS`); an absent value yields `None`; `_assert_no_key_material()` still passes (contracts §5).
-- [ ] T003 [SETUP] `services/agent/src/sparkpoint_agent/config.py` — add `FEE_WALLET_ADDRESS_ENV = "FEE_WALLET_ADDRESS"`; in `from_env()` resolve `fee_wallet_address = _normalize_address(raw, FEE_WALLET_ADDRESS_ENV) if raw else None` (public address only, `_ADDRESS_RE = ^0x[0-9a-fA-F]{40}$`, copies the `SPARKPOINT_VAULT_ADDRESS` convention) (depends on T002).
-- [ ] T004 [P] [SETUP] `CHANGELOG.md` `## [Unreleased]` bullet: "feat(config): non-key `FEE_WALLET_ADDRESS` + `feeTreasury` address-book field (fee-treasury address of record)".
+- [x] T001 [SETUP] `packages/shared/src/addresses/types.ts` — add a **plain optional** `readonly feeTreasury?: Address` field to `AddressBook` (mirrors `swapFeeRecipient`; explicitly **NOT** a `TargetRef` / no `TARGET_REF_FIELD`, no parity/drift impact) per data-model.md.
+- [x] T002 [P] [SETUP] `services/agent/tests/config/test_config.py` — write first (fails until T003): a well-formed `FEE_WALLET_ADDRESS` normalizes onto `AgentConfig.fee_wallet_address`; a malformed value fails closed at load (like `SPARKPOINT_VAULT_ADDRESS`); an absent value yields `None`; `_assert_no_key_material()` still passes (contracts §5).
+- [x] T003 [SETUP] `services/agent/src/sparkpoint_agent/config.py` — add `FEE_WALLET_ADDRESS_ENV = "FEE_WALLET_ADDRESS"`; in `from_env()` resolve `fee_wallet_address = _normalize_address(raw, FEE_WALLET_ADDRESS_ENV) if raw else None` (public address only, `_ADDRESS_RE = ^0x[0-9a-fA-F]{40}$`, copies the `SPARKPOINT_VAULT_ADDRESS` convention) (depends on T002).
+- [x] T004 [P] [SETUP] `CHANGELOG.md` `## [Unreleased]` bullet: "feat(config): non-key `FEE_WALLET_ADDRESS` + `feeTreasury` address-book field (fee-treasury address of record)".
 
 **Checkpoint**: `feeTreasury?` type field + `FEE_WALLET_ADDRESS` normalization exist and are green; both unset/`None`; no Safe, no fee moved, no UI change.
 
@@ -50,16 +50,16 @@ A task-group / phase is "done" only when:
 
 ### Tests for US1 (write first, ensure they fail)
 
-- [ ] T005 [P] [US1] `packages/shared/src/addresses/feeTreasury.test.ts` — `getAddresses(84532).feeTreasury` resolves a **single** canonical Safe address; **no** code path resolves two different fee-treasury addresses for a network (FR-002); the field is a plain `Address` with no key material (FR-003) (fails until T008).
+- [x] T005 [P] [US1] `packages/shared/src/addresses/feeTreasury.test.ts` — `getAddresses(84532).feeTreasury` resolves a **single** canonical Safe address; **no** code path resolves two different fee-treasury addresses for a network (FR-002); the field is a plain `Address` with no key material (FR-003) (fails until T008).
 
 ### Implementation for US1
 
-- [ ] T006 [US1] **Operator action** — create the **2-of-3 Safe** on Base Sepolia via `app.safe.global` (New Safe → Base Sepolia → owners `0xA71e24359A6cb7A939aae2d62dD12b6256365c30` (deployer) + `0x867ED872388D9fB613892E0a73c696c2207E5fEb` + `0x122DAB67a798179304CFEe0CD143b121E7A805Ed`, threshold 2). **No** Safe SDK / Foundry. Capture the Safe address as `$SAFE`; record its creation in `DEPLOYMENT.md`. ⚠️ Confirm before any on-chain action.
-- [ ] T007 [P] [US1] Repo-hygiene scan — `git grep -nE '(PRIVATE_KEY|BEGIN [A-Z ]*PRIVATE KEY|mnemonic|seed phrase)' -- . ':!*.md'` returns clean; confirm the two new signer keys live only at `/home/hello/project/.claude/testnet-wallets.txt` (`0600`, outside the repo) — never committed (FR-003, SC-006).
-- [ ] T008 [US1] `packages/shared/src/addresses/baseSepolia.ts` — record `feeTreasury: "$SAFE"` (address of record only; it does **not** itself move the vault fee — that is US2) (depends on T001/T006).
-- [ ] T009 [US1] Set `FEE_WALLET_ADDRESS=$SAFE` in the `services/agent` dev/staging env and document it in `DEVELOPMENT.md` (public address only) (depends on T003/T006).
-- [ ] T010 [P] [US1] Verify no-op-on-chain (US1 acceptance #4): accrue a fee before US2 and confirm it still lands on the current recipient `0xA71e…5c30` — recording the address alone moves no money.
-- [ ] T011 [P] [US1] Living docs: `CHANGELOG.md` bullet + `services/agent/content_seed/whats-new.json` client entry ("Your protocol fees now flow to a 2-of-3 multisig treasury") + `DEVELOPMENT.md` `feeTreasury` field.
+- [x] T006 [US1] **Operator action** — create the **2-of-3 Safe** on Base Sepolia via `app.safe.global` (New Safe → Base Sepolia → owners `0xA71e24359A6cb7A939aae2d62dD12b6256365c30` (deployer) + `0x867ED872388D9fB613892E0a73c696c2207E5fEb` + `0x122DAB67a798179304CFEe0CD143b121E7A805Ed`, threshold 2). **No** Safe SDK / Foundry. Capture the Safe address as `$SAFE`; record its creation in `DEPLOYMENT.md`. ⚠️ Confirm before any on-chain action.
+- [x] T007 [P] [US1] Repo-hygiene scan — `git grep -nE '(PRIVATE_KEY|BEGIN [A-Z ]*PRIVATE KEY|mnemonic|seed phrase)' -- . ':!*.md'` returns clean; confirm the two new signer keys live only at `/home/hello/project/.claude/testnet-wallets.txt` (`0600`, outside the repo) — never committed (FR-003, SC-006).
+- [x] T008 [US1] `packages/shared/src/addresses/baseSepolia.ts` — record `feeTreasury: "$SAFE"` (address of record only; it does **not** itself move the vault fee — that is US2) (depends on T001/T006).
+- [x] T009 [US1] Set `FEE_WALLET_ADDRESS=$SAFE` in the `services/agent` dev/staging env and document it in `DEVELOPMENT.md` (public address only) (depends on T003/T006).
+- [x] T010 [P] [US1] Verify no-op-on-chain (US1 acceptance #4): accrue a fee before US2 and confirm it still lands on the current recipient `0xA71e…5c30` — recording the address alone moves no money.
+- [x] T011 [P] [US1] Living docs: `CHANGELOG.md` bullet + `services/agent/content_seed/whats-new.json` client entry ("Your protocol fees now flow to a 2-of-3 multisig treasury") + `DEVELOPMENT.md` `feeTreasury` field.
 
 **Checkpoint**: one canonical Safe address resolves through the address book **and** the agent config; no signer key committed; no fee flow changed yet.
 
@@ -78,12 +78,12 @@ A task-group / phase is "done" only when:
 
 ### Implementation for US2
 
-- [ ] T014 [US2] **On-chain, as PROPOSER** — encode `DATA = cast calldata "setFeeRecipient(address)" $SAFE`; pick a **fresh** `SALT`; `schedule(target=VAULT 0x15D269…47f2, value=0, data=DATA, predecessor=0x0, salt=SALT, delay=60)` on `TimelockController 0x0A21A9B4c2cd2d6a68EC828188826B673572d720` (quickstart §Run step 3). ⚠️ Confirm before any on-chain action (depends on T008).
-- [ ] T015 [US2] **Verify BEFORE execute (D12/FR-005)** — re-derive `opId = hashOperation(VAULT,0,DATA,0x0,SALT)`, assert `isOperationPending(opId)`, and re-check the encoded selector + `$SAFE` argument in `DATA` before proceeding (depends on T014).
-- [ ] T016 [US2] **On-chain, as EXECUTOR** — after `>= minDelay`, `execute(VAULT,0,DATA,0x0,SALT)`; confirm settlement by a **live** `feeRecipient() == $SAFE` read at sufficient depth (never the execute receipt alone — testnet reorg) and by the `FeeRecipientUpdated` event (FR-008, D12) (depends on T015).
-- [ ] T017 [US2] On-chain post-cutover assertion — `cast call VAULT "feeRecipient()(address)" == $SAFE`, and confirm the **vault address + guardian are unchanged** vs `contracts/deployments/84532/addresses.json` (SC-002, FR-006) (depends on T016).
-- [ ] T018 [P] [US2] Verify a Base-Sepolia swap now routes its fee to the Safe **automatically** via the `swapFeeRecipient ?? vault.feeRecipient()` fallback, with **no** address-book change (FR-007) (depends on T016).
-- [ ] T019 [P] [US2] Living docs: `DEPLOYMENT.md` ceremony record (schedule/execute tx hashes, the salt, before/after recipient — FR-016) + `CHANGELOG.md` bullet.
+- [x] T014 [US2] **On-chain, as PROPOSER** — encode `DATA = cast calldata "setFeeRecipient(address)" $SAFE`; pick a **fresh** `SALT`; `schedule(target=VAULT 0x15D269…47f2, value=0, data=DATA, predecessor=0x0, salt=SALT, delay=60)` on `TimelockController 0x0A21A9B4c2cd2d6a68EC828188826B673572d720` (quickstart §Run step 3). ⚠️ Confirm before any on-chain action (depends on T008).
+- [x] T015 [US2] **Verify BEFORE execute (D12/FR-005)** — re-derive `opId = hashOperation(VAULT,0,DATA,0x0,SALT)`, assert `isOperationPending(opId)`, and re-check the encoded selector + `$SAFE` argument in `DATA` before proceeding (depends on T014).
+- [x] T016 [US2] **On-chain, as EXECUTOR** — after `>= minDelay`, `execute(VAULT,0,DATA,0x0,SALT)`; confirm settlement by a **live** `feeRecipient() == $SAFE` read at sufficient depth (never the execute receipt alone — testnet reorg) and by the `FeeRecipientUpdated` event (FR-008, D12) (depends on T015).
+- [x] T017 [US2] On-chain post-cutover assertion — `cast call VAULT "feeRecipient()(address)" == $SAFE`, and confirm the **vault address + guardian are unchanged** vs `contracts/deployments/84532/addresses.json` (SC-002, FR-006) (depends on T016).
+- [x] T018 [P] [US2] Verify a Base-Sepolia swap now routes its fee to the Safe **automatically** via the `swapFeeRecipient ?? vault.feeRecipient()` fallback, with **no** address-book change (FR-007) (depends on T016).
+- [x] T019 [P] [US2] Living docs: `DEPLOYMENT.md` ceremony record (schedule/execute tx hashes, the salt, before/after recipient — FR-016) + `CHANGELOG.md` bullet.
 
 **Checkpoint**: `feeRecipient() == Safe` via the Timelock; the Base swap fee follows automatically; no redeploy; the immutable guardian is untouched.
 
@@ -122,10 +122,10 @@ A task-group / phase is "done" only when:
 
 ### Implementation for US4
 
-- [ ] T026 [US4] `apps/web/src/app/(app)/trust/permissions/page.tsx` — surface the fee treasury's exact (nil) authority over user funds, **derived from chain** (guardian != Safe; no fund-movement path ⇒ power = NONE) — provable, not asserted copy (FR-012, Principle III / N5).
-- [ ] T027 [P] [US4] `apps/web/src/app/(app)/fees/page.tsx` — copy may note the treasury is now a multisig, but the **data source is unchanged** (still reads `vault.feeRecipient()` live); confirm `apps/web/src/components/NonCustodyBadge.tsx` needs **no** change (already live-reads).
-- [ ] T028 [P] [US4] Confirm the withdraw-always exit path is untouched (`apps/web/src/app/(app)/trust/exit/page.tsx`) — no limit, delay, or authority introduced by this feature touches it; the Safe cannot block, delay, or capture an exit (FR-013, N2, SC-004).
-- [ ] T029 [P] [US4] Living docs: `services/agent/content_seed/whats-new.json` ("Provably no power over your funds — verify it on the Trust Center") + `CHANGELOG.md` bullet.
+- [x] T026 [US4] `apps/web/src/app/(app)/trust/permissions/page.tsx` — surface the fee treasury's exact (nil) authority over user funds, **derived from chain** (guardian != Safe; no fund-movement path ⇒ power = NONE) — provable, not asserted copy (FR-012, Principle III / N5).
+- [x] T027 [P] [US4] `apps/web/src/app/(app)/fees/page.tsx` — copy may note the treasury is now a multisig, but the **data source is unchanged** (still reads `vault.feeRecipient()` live); confirm `apps/web/src/components/NonCustodyBadge.tsx` needs **no** change (already live-reads).
+- [x] T028 [P] [US4] Confirm the withdraw-always exit path is untouched (`apps/web/src/app/(app)/trust/exit/page.tsx`) — no limit, delay, or authority introduced by this feature touches it; the Safe cannot block, delay, or capture an exit (FR-013, N2, SC-004).
+- [x] T029 [P] [US4] Living docs: `services/agent/content_seed/whats-new.json` ("Provably no power over your funds — verify it on the Trust Center") + `CHANGELOG.md` bullet.
 
 **Checkpoint**: the Trust Center proves the Safe's nil power from chain; the fees page reflects the Safe live; the exit path is demonstrably unaffected.
 
@@ -143,7 +143,7 @@ A task-group / phase is "done" only when:
 
 ### Implementation for US5
 
-- [ ] T031 [US5] Confirm feature 013's admin-revenue Safe-balance card (`apps/web/src/components/admin/revenue-multisig.tsx`) resolves the Safe **client-side** via `getAddresses(chainId).feeTreasury` (the address-of-record 014 sets, kept in sync with the agent `FEE_WALLET_ADDRESS`) and renders `SafeBalanceCard { configured, address, native, tokens[] }` from the live `eth_getBalance` + ERC20 `balanceOf` reads; 014 supplies the address, 013 owns the card (depends on T006/T009).
+- [x] T031 [US5] Confirm feature 013's admin-revenue Safe-balance card (`apps/web/src/components/admin/revenue-multisig.tsx`) resolves the Safe **client-side** via `getAddresses(chainId).feeTreasury` (the address-of-record 014 sets, kept in sync with the agent `FEE_WALLET_ADDRESS`) and renders `SafeBalanceCard { configured, address, native, tokens[] }` from the live `eth_getBalance` + ERC20 `balanceOf` reads; 014 supplies the address, 013 owns the card (depends on T006/T009).
 - [ ] T032 [P] [US5] Honest-degrade path — when the RPC read is unavailable, render `configured:false` "cannot load" (never a fabricated/sample figure); a real zero balance renders as a real zero (FR-014, US5 acceptance #2/#3).
 - [ ] T033 [P] [US5] Living docs: `CHANGELOG.md` bullet (admin-only ⇒ no whats-new client entry).
 

@@ -36,6 +36,7 @@ from .policy import SUPPORTED_CHAIN_IDS
 DATABASE_URL_ENV = "DATABASE_URL"
 CHAIN_ID_ENV = "CHAIN_ID"
 VAULT_ADDRESS_ENV = "SPARKPOINT_VAULT_ADDRESS"
+FEE_WALLET_ADDRESS_ENV = "FEE_WALLET_ADDRESS"  # 014 — fee-treasury Safe address of record (PUBLIC)
 RPC_URL_ENV = "SPARKPOINT_RPC_URL"  # explicit override; wins over the chain-specific vars
 SIM_FORK_RPC_URL_ENV = "SIM_FORK_RPC_URL"
 BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
@@ -55,6 +56,7 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         DATABASE_URL_ENV,
         CHAIN_ID_ENV,
         VAULT_ADDRESS_ENV,
+        FEE_WALLET_ADDRESS_ENV,
         RPC_URL_ENV,
         SIM_FORK_RPC_URL_ENV,
         BASE_SEPOLIA_RPC_URL_ENV,
@@ -141,6 +143,9 @@ class AgentConfig:
     rpc_url: str | None
     vault_address: str | None  # None ⇒ vault not deployed on this chain (fail-closed)
     database_url: str | None
+    # 014 — the fee-treasury Safe (address of record). PUBLIC, non-key; where protocol fees land.
+    # Informational only: the agent never moves funds, so this is display/audit, never a fund path.
+    fee_wallet_address: str | None = None
 
     @property
     def vault_deployed(self) -> bool:
@@ -201,11 +206,17 @@ class AgentConfig:
             _normalize_address(raw_vault, VAULT_ADDRESS_ENV) if raw_vault else None
         )
 
+        raw_fee = source.get(FEE_WALLET_ADDRESS_ENV)
+        fee_wallet_address = (
+            _normalize_address(raw_fee, FEE_WALLET_ADDRESS_ENV) if raw_fee else None
+        )
+
         return cls(
             chain_id=chain_id,
             rpc_url=_resolve_rpc_url(source, chain_id),
             vault_address=vault_address,
             database_url=source.get(DATABASE_URL_ENV) or None,
+            fee_wallet_address=fee_wallet_address,
         )
 
     def for_chain(self, chain_id: int) -> AgentConfig:

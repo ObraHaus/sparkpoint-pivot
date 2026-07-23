@@ -25,6 +25,14 @@ from .mandates import (
 )
 from .pool import Database, get_database
 from .subscriptions import PaymentAlreadyRecorded, SubscriptionStore
+from .swap_fees import (
+    PgSwapFeeEventStore,
+    SwapFeeEvent,
+    SwapFeeEventStore,
+    SwapFeePeriodBucket,
+    SwapFeeRevenueSummary,
+    summarize_swap_fees,
+)
 
 __all__ = [
     "ADMIN_ROLE",
@@ -41,8 +49,14 @@ __all__ = [
     "MandateWrite",
     "PaymentAlreadyRecorded",
     "PgMandateStore",
+    "PgSwapFeeEventStore",
     "SubscriptionStore",
+    "SwapFeeEvent",
+    "SwapFeeEventStore",
+    "SwapFeePeriodBucket",
+    "SwapFeeRevenueSummary",
     "get_database",
+    "summarize_swap_fees",
     "parse_allowlist_env",
     "row_to_record",
 ]

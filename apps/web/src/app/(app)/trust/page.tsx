@@ -70,6 +70,7 @@ export default function Page() {
       { ...vaultC, functionName: "totalAssets" }, // 4
       { ...capC, functionName: "perUserCap" }, // 5
       { ...capC, functionName: "vaultCap" }, // 6
+      { ...vaultC, functionName: "feeRecipient" }, // 7
     ],
   });
 
@@ -81,6 +82,7 @@ export default function Page() {
   const tvl = d?.[4]?.result as bigint | undefined;
   const perUserCap = d?.[5]?.result as bigint | undefined;
   const vaultCap = d?.[6]?.result as bigint | undefined;
+  const feeRecipient = d?.[7]?.result as Address | undefined;
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
 
@@ -169,6 +171,12 @@ export default function Page() {
             <AddrRow label="Cap registry" addr={capReg} />
             <AddrRow label="Guardian (timelock)" addr={guardian} />
             <AddrRow label="Pauser" addr={pauser} />
+            <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
+            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+              <Icon name="info" size={12} /> Protocol fees flow to a <b>2-of-3 multisig</b> that only{" "}
+              <b>receives</b>. It isn&apos;t the guardian, can&apos;t pause or move the vault, and has{" "}
+              <b>no power over your deposits</b> (N5) — read live from <span className="mono">feeRecipient()</span>.
+            </div>
           </div>
         </div>
       </div>

@@ -6,8 +6,8 @@
  */
 
 import { Icon } from "@/lib/icons";
-import { STREAM, StackedBars, Composed } from "@/components/admin/charts";
-import { data, Kpi, LegendStreams, revByStream } from "@/components/admin/data";
+import { STREAM, StackedBars, Composed, Kpi, LegendStreams } from "@/components/admin/charts";
+import { data, revByStream } from "@/components/admin/data";
 
 export default function Page() {
   return (
