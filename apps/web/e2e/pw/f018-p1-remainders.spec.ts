@@ -45,24 +45,17 @@ test.describe("018 P1 remainders", () => {
     expect(deadLinks).toBe(0);
   });
 
-  test("US2: vault deposit confirm surfaces a real pre-sign dry-run row", async ({ page }) => {
+  test("US2: the deposit confirm gate surfaces a real pre-sign dry-run row", async ({ page }) => {
     await installInjectedWallet(page, { privateKey: PRIV! });
     await signIn(page);
-    await page.goto("/vault", { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2500);
-    // Best-effort: enter a small deposit amount and open the confirm gate.
-    const amount = page.locator("input[inputmode='decimal'], input[type='number'], input[placeholder*='0.0']").first();
-    if ((await amount.count()) === 0) {
-      test.skip(true, "amount input not found on this build/layout");
-    }
-    await amount.fill("1");
-    const review = page.locator("button:has-text('Review'), button:has-text('Deposit')").first();
-    await review.click({ timeout: 10_000 }).catch(() => undefined);
-    await page.waitForTimeout(4000);
+    // Same live-intent confirm route the P0 gate test drives.
+    await page.goto("/confirm/deposit?assets=1000000", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("body")).toBeVisible();
+    await page.waitForTimeout(4000); // let the pre-sign checks render
     const body = await page.locator("body").innerText();
-    // The dry-run row copy must appear (passed / dry-running / would-revert / approve-first) — proving
-    // the new eth_call pre-sign signal is wired, not the old cosmetic simulation.
-    const hasDryRun = /Dry-run|Dry-running|dry-run|would revert|Approve first/i.test(body);
+    // The new eth_call dry-run row must be wired into the gate — one of its states appears
+    // (dry-running / passed / would-revert / approve-first). Not the old cosmetic setTimeout sim.
+    const hasDryRun = /Dry-run|Dry-running|would revert|Approve first/i.test(body);
     expect(hasDryRun).toBeTruthy();
   });
 });
