@@ -23,9 +23,11 @@
 
 import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createAgentClient, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
+import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
+import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -242,17 +244,9 @@ export function usePositionTransactions(): PositionTxView | null {
 
 /* ── GET /recommendations (§3.4) ───────────────────────────────────────────── */
 
-interface RecommendationDto {
-  recId?: string;
-  rank?: number;
-  title?: string;
-  rationale?: string;
-  protocol?: string;
-  projectedApyBps?: number;
-  grossApyBps?: number;
-  performanceFeeBps?: number;
-  policy?: { status?: string };
-}
+// `RecommendationDto`, `RecView`, `RecCitation`, and the pure `toRecView` mapper live in
+// `recView.ts` (dependency-free, unit-tested). Re-exported below so existing imports hold.
+export type { RecView, RecCitation } from "@/lib/agent/recView";
 
 interface RecommendationsResponse {
   recommendations?: RecommendationDto[];
@@ -265,20 +259,6 @@ interface RecommendationsResponse {
  * SOLE gate on the actionable "Review this move" affordance; a rejected/unknown
  * rec renders inert (the non-actionable branch), never a sign path.
  */
-export interface RecView {
-  id: string;
-  rankLabel: string;
-  title: string;
-  thesis: string;
-  /** Net (projected) APY %, 0 ⇒ rendered as "no yield (cash)". */
-  apy: number;
-  /** Risk tier for the RiskChip (only the lower-risk Aave vault is live today). */
-  risk: number;
-  fit: string;
-  signable: boolean;
-  best: boolean;
-}
-
 export function useRecommendationsView(): RecView[] | null {
   const { client, online, identity } = useAgentClient();
   const query = useQuery({
@@ -294,21 +274,7 @@ export function useRecommendationsView(): RecView[] | null {
   const recs = query.data?.recommendations;
   if (!Array.isArray(recs)) return null;
 
-  return recs.map((r, i): RecView => {
-    const isTop = r.rank === 1 || i === 0;
-    return {
-      id: r.recId ?? `rec_${i}`,
-      rankLabel: isTop ? "Best fit · #1 vs your goal" : `#${r.rank ?? i + 1} vs your goal`,
-      title: r.title ?? "Strategy",
-      thesis: r.rationale ?? "",
-      apy: typeof r.projectedApyBps === "number" ? r.projectedApyBps / 100 : 0,
-      risk: 1,
-      fit: isTop ? "Fits your plan: lower risk, steady yield." : "Conservative, capital-preservation-first.",
-      // Non-custody: signable ⟺ the deterministic policy approved it (§2.7).
-      signable: r.policy?.status === "approved",
-      best: i === 0,
-    };
-  });
+  return recs.map((r, i) => toRecView(r, i));
 }
 
 /* ── POST /onboarding/turn + POST /mandate (§3.1) ──────────────────────────── */
@@ -340,6 +306,7 @@ export interface OnboardingDriver {
 
 export function useOnboarding(): OnboardingDriver {
   const { client, online, identity } = useAgentClient();
+  const queryClient = useQueryClient();
 
   const runReview = useCallback(
     async (draft: MandateDraft, selections: Record<string, unknown>): Promise<MandateDraft | null> => {
@@ -379,13 +346,64 @@ export function useOnboarding(): OnboardingDriver {
           // Caller-owned, stable per user+version so a retry de-dupes (§1.3).
           idempotencyKey: `mandate-${identity?.account ?? "anon"}-v${mandate.version}`,
         });
-        return res?.mandate ?? null;
+        // Instant reflect: the settings tab / chat rail / portfolio drift read `useMandate`
+        // (["agent","mandate"]); invalidate so a freshly-saved plan shows without a remount.
+        void queryClient.invalidateQueries({ queryKey: ["agent", "mandate"] });
+        // `client.request` throws on a non-2xx, so reaching here means the POST SUCCEEDED. Return
+        // the echoed mandate when present, else the response object itself (still truthy) — a
+        // success whose body omits `mandate` must NOT surface as a false "Try again" (US1 AC2).
+        return res?.mandate ?? res ?? { ok: true };
       } catch {
         return null;
       }
     },
-    [client, identity],
+    [client, identity, queryClient],
   );
 
   return { online, runReview, confirmMandate };
 }
+
+/* ── GET /mandate (§3.1) — the user's real persisted plan ───────────────────── */
+
+interface MandateResponse {
+  mandate?: MandateWire | null;
+}
+
+/**
+ * The mandate surface state. Honest, non-collapsing states (mirrors the loaded/isLoading/
+ * isError discipline of `usePositionTransactions`): `disconnected` (no wallet — the BFF is
+ * session-gated), `loading`, `error`, `empty` (loaded, none persisted yet), and `ready`
+ * with the mapped view. The three mandate renders (settings tab, chat rail, portfolio
+ * drift) branch on `status` — no more hardcoded tier-1 mock.
+ */
+export type MandateState =
+  | { status: "disconnected" }
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "empty" }
+  | { status: "ready"; mandate: MandateView };
+
+/**
+ * Read the user's active mandate via `GET /agent/mandate` (§3.1). Owner is derived
+ * server-side from the verified SIWE session in the BFF — the browser never asserts it. A
+ * GET carries no body, so the BFF's GET forward handles it. Advisory only (non-custody).
+ */
+export function useMandate(): MandateState {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "mandate", identity?.account, identity?.chainId],
+    enabled: online,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) => client!.request<MandateResponse>("/mandate", { signal }),
+  });
+
+  if (!online) return { status: "disconnected" };
+  if (query.isLoading) return { status: "loading" };
+  if (query.isError) return { status: "error" };
+  const view = mandateView(query.data?.mandate);
+  return view ? { status: "ready", mandate: view } : { status: "empty" };
+}
+
+/** Re-export the pure drift helper so screens import mandate wiring from one place. */
+export { mandateDrift, type DriftStatus };

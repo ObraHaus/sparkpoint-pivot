@@ -71,6 +71,7 @@ test("launch deposit: Aave copy, no Morpho/STACKS, signable, real net APY", () =
   assert.equal(m.venueGuard, "Allowlisted protocol — Aave v3 (Base)");
   assert.equal(m.netApyText, "3.87%");
   assert.equal(m.netApyRow[1], "3.87%");
+  assert.deepEqual(m.managementFeeRow, ["Management fee", "0% — none", "--gain"]);
   const blob = [m.feeRow.join(" "), m.venueGuard, m.subYieldNote].join(" ");
   assert.ok(!blob.includes("Morpho"), "launch never mentions Morpho");
   assert.ok(!blob.includes("STACKS"), "launch has no stacked-fee disclosure");
@@ -174,4 +175,29 @@ test("launch withdraw keeps the plain N2 wording", () => {
   assert.equal(wd.withdrawReady, true);
   assert.equal(wd.withdrawGuardN2, "Withdrawals are never paused or capped (N2)");
   assert.ok(!wd.withdrawGuardN2.includes("Morpho"));
+});
+
+// ── the launch withdraw receipt discloses the profit-only accrued fee, live %, no Morpho, no $ ──
+test("launch withdraw: accrued-fee note is profit-only, live %, no Morpho, no fabricated $", () => {
+  const view = makeView({ shares: 3_000_000n, underlying: 3_000_000n, maxRedeem: 3_000_000n });
+  const wd = deriveVaultConfirm(view, { mode: "withdraw", assets: 1_000_000n }, CTX);
+  assert.match(wd.withdrawFeeNote, /^Accrued performance fee: 10% of profit over your high-water mark/);
+  assert.ok(wd.withdrawFeeNote.includes("0% to withdraw"));
+  assert.ok(wd.withdrawFeeNote.includes("0% on your principal"));
+  assert.ok(!wd.withdrawFeeNote.includes("Morpho"));
+  assert.ok(!/\$/.test(wd.withdrawFeeNote), "no fabricated dollar figure");
+});
+
+// ── an attested wrapper withdraw note discloses the stacked Morpho curator fee ──
+test("attested wrapper withdraw: accrued-fee note discloses the stacked Morpho curator fee", () => {
+  const view = makeView({
+    kind: "morpho_wrapper",
+    factoryVerified: true,
+    vault: WRAPPER,
+    shares: 3_000_000n,
+    underlying: 3_000_000n,
+    maxRedeem: 3_000_000n,
+  });
+  const wd = deriveVaultConfirm(view, { mode: "withdraw", assets: 1_000_000n }, CTX);
+  assert.ok(wd.withdrawFeeNote.includes("stacks on Morpho's curator fee"));
 });

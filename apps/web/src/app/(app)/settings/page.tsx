@@ -19,6 +19,7 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 import { StatusTag } from "@/components/ui/status-tag";
+import { useMandate } from "@/lib/agent/useAgent";
 
 type Tab = "account" | "mandate" | "notifications" | "appearance" | "security";
 
@@ -42,6 +43,85 @@ const NOTIF_LABELS = [
 function Switch({ defaultOn = false }: { defaultOn?: boolean }) {
   const [on, setOn] = useState(defaultOn);
   return <button className={"switch" + (on ? " on" : "")} onClick={() => setOn((v) => !v)} />;
+}
+
+/** The Mandate tab — the user's REAL persisted plan (GET /agent/mandate), with honest
+ * loading / empty / disconnected states. Replaces the former hardcoded tier-1 mock. */
+function MandateTab() {
+  const mandate = useMandate();
+
+  if (mandate.status === "disconnected" || mandate.status === "loading") {
+    return (
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Your plan</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            {mandate.status === "loading" ? "Loading your plan…" : "Connect your wallet to see your mandate."}
+          </div>
+        </div>
+        <span className="muted">—</span>
+      </div>
+    );
+  }
+
+  if (mandate.status === "error") {
+    return (
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Your plan</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>Couldn’t load your mandate just now.</div>
+        </div>
+        <Link className="btn btn-outline btn-md" href="/onboarding">Review plan</Link>
+      </div>
+    );
+  }
+
+  if (mandate.status === "empty") {
+    return (
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>No plan yet</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>Set your risk &amp; goals so recommendations fit you.</div>
+        </div>
+        <Link className="btn btn-primary btn-md" href="/onboarding">Set up mandate</Link>
+      </div>
+    );
+  }
+
+  const m = mandate.mandate;
+  return (
+    <>
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Risk tier</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>{m.riskLabel} · {m.tier}/5 · {m.riskBlurb}</div>
+        </div>
+        <RiskChip tier={m.tier} />
+      </div>
+      <div className="setrow">
+        <div><div style={{ fontWeight: 600 }}>Goal</div></div>
+        <span>{m.goal}</span>
+      </div>
+      <div className="setrow">
+        <div><div style={{ fontWeight: 600 }}>Timeline</div></div>
+        <span>{m.timeline}</span>
+      </div>
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Max slippage</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>The most price movement a move may accept.</div>
+        </div>
+        <span>{m.maxSlippageBps !== undefined ? `${(m.maxSlippageBps / 100).toFixed(2)}%` : "—"}</span>
+      </div>
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Edit your plan</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>Re-runs the review &amp; confirm steps.</div>
+        </div>
+        <Link className="btn btn-primary btn-md" href="/onboarding">Edit mandate</Link>
+      </div>
+    </>
+  );
 }
 
 export default function Page() {
@@ -120,42 +200,7 @@ export default function Page() {
           </>
         )}
 
-        {tab === "mandate" && (
-          <>
-            <div className="setrow">
-              <div>
-                <div style={{ fontWeight: 600 }}>Risk tier</div>
-                <div className="muted" style={{ fontSize: 12.5 }}>
-                  Lower · 1/5 · capital-preservation-first
-                </div>
-              </div>
-              <RiskChip tier={1} />
-            </div>
-            <div className="setrow">
-              <div>
-                <div style={{ fontWeight: 600 }}>Goal</div>
-              </div>
-              <span>Steady USDC yield</span>
-            </div>
-            <div className="setrow">
-              <div>
-                <div style={{ fontWeight: 600 }}>Timeline</div>
-              </div>
-              <span>1–3 years</span>
-            </div>
-            <div className="setrow">
-              <div>
-                <div style={{ fontWeight: 600 }}>Edit your plan</div>
-                <div className="muted" style={{ fontSize: 12.5 }}>
-                  Re-runs the review &amp; confirm steps.
-                </div>
-              </div>
-              <Link className="btn btn-primary btn-md" href="/onboarding">
-                Edit mandate
-              </Link>
-            </div>
-          </>
-        )}
+        {tab === "mandate" && <MandateTab />}
 
         {tab === "notifications" &&
           NOTIF_LABELS.map((l, i) => (

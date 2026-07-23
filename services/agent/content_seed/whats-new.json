@@ -2,6 +2,50 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "your-plan-is-saved-and-shown",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Your plan is now saved exactly as you set it",
+      "body": "When you finish onboarding, Sparky now saves the exact goal, risk level, and time horizon you chose — before, it could quietly fall back to a default. You'll also see your real plan in Settings, the chat sidebar, and your portfolio, with a clear Saving/❯ retry state when you confirm.",
+      "cta_label": "View your plan",
+      "cta_href": "/settings",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "recs-show-their-reasoning-and-sources",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Recommendations now show their reasoning and sources",
+      "body": "Every strategy suggestion now explains itself in plain language under “Why this?” and shows the sources it drew on, so you can see the thinking behind a move — not just the number.",
+      "cta_label": "See recommendations",
+      "cta_href": "/strategies",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "clearer-fees-before-you-sign",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Clearer fee terms before you deposit",
+      "body": "The deposit screen now spells out our fee in full every time you sign — 10% of yield only, above a high-water mark, 0% on your principal and 0% management fee — and your withdrawal receipt restates it. We only earn when you earn.",
+      "cta_label": "How fees work",
+      "cta_href": "/fees",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "live-deposit-caps",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Deposit caps now read live from the chain",
+      "body": "The per-user, total, and vault deposit caps you see are now read directly from the on-chain cap registry, so the number always matches what the contract actually enforces.",
+      "cta_label": "Open the vault",
+      "cta_href": "/vault",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "revenue-goes-multi-network",
       "type": "changelog",
       "tag": "Improved",

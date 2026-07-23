@@ -35,7 +35,7 @@ import {
   CiteBody,
   type CardActions,
 } from "@/components/screens/chat/cards";
-import { useAgentClient, usePortfolioView } from "@/lib/agent/useAgent";
+import { useAgentClient, usePortfolioView, useMandate } from "@/lib/agent/useAgent";
 import { parseCard, type ChatCard } from "@/lib/agent/cards";
 import { AgentApiError } from "@/lib/agent/client";
 import { useAccount, useBalance } from "wagmi";
@@ -171,6 +171,7 @@ export default function ChatPage() {
   const railLive = railConnected && railVault.isDeployed && !railLoading && !railError && !railWrongNetwork;
   const railPreview = !railConnected;
   const railAgent = usePortfolioView();
+  const mandate = useMandate();
   const railUnrealized = railLive && railAgent && !railAgent.stale ? railAgent.unrealizedUsd : undefined;
   const railNetWorth = railLoading
     ? "…"
@@ -672,15 +673,34 @@ export default function ChatPage() {
       <aside className="ctx">
         <div className="ctx-card">
           <div className="ck">Your mandate</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-            <RiskChip tier={1} />
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-            Steady USDC yield · capital-preservation-first.{" "}
-            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => go("settings")}>
-              Edit
-            </a>
-          </div>
+          {mandate.status === "ready" ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+                <RiskChip tier={mandate.mandate.tier} />
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+                {mandate.mandate.goal} · {mandate.mandate.riskBlurb}.{" "}
+                <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => go("settings")}>
+                  Edit
+                </a>
+              </div>
+            </>
+          ) : mandate.status === "empty" ? (
+            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+              No plan yet.{" "}
+              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => go("onboarding")}>
+                Set one up
+              </a>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+              {mandate.status === "loading"
+                ? "Loading your plan…"
+                : mandate.status === "disconnected"
+                  ? "Connect to see your plan."
+                  : "Plan unavailable right now."}
+            </div>
+          )}
         </div>
         <div className="ctx-card">
           <div className="ck">Portfolio</div>

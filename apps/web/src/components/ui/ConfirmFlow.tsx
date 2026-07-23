@@ -57,6 +57,10 @@ export interface OnchainConfirm {
   readonly guards: React.ReactNode[];
   /** Live success-receipt body (shown only after a REAL on-chain confirmation). */
   readonly okBody: React.ReactNode;
+  /** Verbatim canonical performance-fee disclosure — deposit-only; rendered in the confirm reveal. */
+  readonly disclosure?: React.ReactNode;
+  /** Accrued-performance-fee line — shown in the success receipt (withdraw). */
+  readonly receiptFeeLine?: React.ReactNode;
 }
 
 /** Shared chrome per intent (title / header badge / back + cancel routes). */
@@ -325,6 +329,19 @@ function OnchainConfirmFlow({
         >
           {onchain.okBody}
         </div>
+        {onchain.receiptFeeLine && (
+          <div
+            style={{
+              fontSize: inline ? 12 : 12.5,
+              color: "var(--muted-foreground)",
+              lineHeight: 1.5,
+              maxWidth: 380,
+              margin: "0 auto 12px",
+            }}
+          >
+            {onchain.receiptFeeLine}
+          </div>
+        )}
         <a
           className="cite"
           {...(txUrl ? { href: txUrl, target: "_blank", rel: "noopener noreferrer" } : {})}
@@ -464,6 +481,25 @@ function OnchainConfirmFlow({
               {copy.ctrl}
             </div>
           </div>
+
+          {onchain.disclosure && (
+            <div className="cf-sec cf-reveal" style={{ animationDelay: "300ms" }}>
+              <div className="cf-lbl">Fees</div>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--muted-foreground)",
+                  lineHeight: 1.55,
+                  padding: "10px 12px",
+                  background: "var(--background)",
+                  border: "1px solid var(--border-soft)",
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                {onchain.disclosure}
+              </div>
+            </div>
+          )}
         </>
       )}
 

@@ -16,13 +16,13 @@
  * mirror.ts `describeCaps`/`capUtilization`.
  */
 
-import type { PolicyCaps } from "@sparkpoint/shared/policy";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
-import { capUtilization, describeCaps, POLICY_MIRROR_DISCLAIMER } from "@/lib/policy/mirror";
+import { capUtilization, describeCaps, formatTokenAmount, POLICY_MIRROR_DISCLAIMER } from "@/lib/policy/mirror";
+import { liveCapRawFor, type TvlCapKey, type LiveVaultCaps } from "@/lib/policy/liveCaps";
 import "@/components/screens/vault.css";
 
-/** The TVL-relevant caps this meter can render (session caps are not TVL meters). */
-export type TvlCapKey = Extract<keyof PolicyCaps, "perUserTvl" | "totalProtocol" | "vaultDeposit">;
+/** The TVL-relevant caps this meter can render (session caps are not TVL meters). Re-exported for callers. */
+export type { TvlCapKey };
 
 const DEFAULT_CAPS: readonly TvlCapKey[] = ["perUserTvl", "totalProtocol", "vaultDeposit"];
 
@@ -37,6 +37,12 @@ export interface CapsMeterProps {
   readonly caps?: readonly TvlCapKey[];
   /** Render the policy-mirror disclaimer footnote (default true). */
   readonly showDisclaimer?: boolean;
+  /**
+   * Live CapRegistry caps (US1) from `useVault` — the on-chain governance-settable per-user / total /
+   * vault caps. Where a value is present it OVERRIDES the compile-time policy-mirror cap for that meter;
+   * where absent (unresolved / CapRegistry not deployed) the mirror is used (honest, versioned fallback).
+   */
+  readonly liveCaps?: LiveVaultCaps;
 }
 
 /** Live "used" value for a cap key — `undefined` while loading / when disconnected (per-user). */
@@ -56,6 +62,7 @@ export function CapsMeter({
   userPosition,
   caps = DEFAULT_CAPS,
   showDisclaimer = true,
+  liveCaps,
 }: CapsMeterProps) {
   // getPolicyConstants is fail-closed (throws on unsupported chain). Callers only mount
   // this for a deployed vault (a supported chain); guard anyway so a bad chainId renders
@@ -73,8 +80,14 @@ export function CapsMeter({
     <div>
       {caps.map((key) => {
         const meta = labelByKey.get(key);
-        const cap = constants.caps[key];
+        const mirrorCap = constants.caps[key];
         if (meta === undefined) return null;
+
+        // US1 — prefer the LIVE CapRegistry cap for this meter; fall back to the policy-mirror
+        // TokenAmount when the on-chain read is unresolved / CapRegistry isn't deployed.
+        const liveRaw = liveCaps ? liveCapRawFor(key, liveCaps) : undefined;
+        const cap = liveRaw !== undefined ? { ...mirrorCap, amount: liveRaw } : mirrorCap;
+        const capDisplay = formatTokenAmount(cap).display;
 
         const used = usedFor(key, totalAssets, userPosition);
         // capUtilization is display-only ratio math; only call it once the live "used" is known.
@@ -88,7 +101,7 @@ export function CapsMeter({
                 {meta.label}
               </span>
               <span className="tnum" style={{ fontSize: 12 }}>
-                {used === undefined ? "—" : m?.used} / {meta.value.display}
+                {used === undefined ? "—" : m?.used} / {capDisplay}
               </span>
             </div>
             <div className="capmeter">
