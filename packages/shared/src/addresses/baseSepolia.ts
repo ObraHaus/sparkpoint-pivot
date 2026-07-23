@@ -78,4 +78,15 @@ export const baseSepolia: AddressBook = {
       morphoVault: "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
     },
   ],
+
+  // ── Premium / SRK (feature 012) — Base-Sepolia only ──
+  // `srk` is filled by script/DeploySRK.s.sol at deploy time; undefined ⇒ the pay surface shows an
+  // honest "SRK unavailable on this network" state rather than a fabricated value.
+  srk: "0x2dF90304126560F01Dd6EafB508B69c033dFeD52",
+  // ── Fee treasury Safe (feature 014, 2-of-3, deployed 2026-07-22: deployer + 0x867E + 0x122D) ──
+  // The dedicated multisig that receives all protocol fees. The vault's on-chain feeRecipient() was
+  // re-pointed here via the Timelock, so the perf fee AND the Base-Sepolia swap fee (which falls back
+  // to feeRecipient()) both land on the Safe. SRK Premium payments are disclosed to the same Safe.
+  feeTreasury: "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
+  premiumTreasury: "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
 };

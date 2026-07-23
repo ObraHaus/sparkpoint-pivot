@@ -10,5 +10,7 @@
   "SparkPointVaultFactory": "0x2774D4b0Af206b8F489BF1db9d8FAFbB17D36D8b",
   "SparkPointMorphoVault": "0xff0a43FA397a90c1277C96A783e1171e1efbE9BB",
   "MorphoWrapperTimelock": "0xE7b9FfB970A38E686Efb7188290148EB3f8255B5",
-  "MockMorphoVault_testnetDemo": "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420"
+  "MockMorphoVault_testnetDemo": "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
+  "SRK": "0x2dF90304126560F01Dd6EafB508B69c033dFeD52",
+  "feeTreasurySafe": "0xCB135893C84876aab9E10792b56e5bEa91dc578f"
 }

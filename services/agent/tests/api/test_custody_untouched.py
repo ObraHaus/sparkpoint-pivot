@@ -47,3 +47,10 @@ def test_no_funds_path_route_is_metered() -> None:
     forbidden = ("vault", "exit", "withdraw", "redeem", "trust", "build-tx", "portfolio")
     offenders = sorted(p for p in metered if any(marker in p for marker in forbidden))
     assert offenders == []  # N2: no compute limit on any funds/custody path
+
+
+def test_subscription_verify_is_present_but_never_metered_or_custody() -> None:
+    """Feature 012: the SRK-purchase verify endpoint is neither metered nor a funds path."""
+    all_paths = {r.path for r in _iter_api_routes(app.routes)}
+    assert "/subscription/verify" in all_paths  # it exists
+    assert "/subscription/verify" not in _quota_paths()  # NOT metered (N2)

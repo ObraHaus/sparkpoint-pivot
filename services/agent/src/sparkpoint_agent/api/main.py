@@ -58,6 +58,7 @@ from .middleware import RequestContextMiddleware
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
+from .subscription import router as subscription_router
 from .tips import router as tips_router
 from .usage import router as usage_router
 from .vault import router as vault_router
@@ -343,6 +344,7 @@ app.add_exception_handler(Exception, internal_error_handler)
 
 # §3.7 vault deposit/withdraw quote endpoints (READ/PREVIEW only; withdraw never gated, N2).
 app.include_router(vault_router)
+app.include_router(subscription_router)
 # §3.2 chat surface — SSE stream of policy-stamped ChatBlocks; NEVER returns a signable bundle.
 app.include_router(chat_router)
 # §3.1 onboarding + mandate — chat onboarding (SSE, terminal mandate_draft) + versioned

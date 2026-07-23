@@ -90,6 +90,25 @@ export interface AddressBook {
    */
   readonly swapFeeRecipient?: Address;
 
+  /**
+   * §premium (012) — the SRK utility-token venue on this chain (Premium is paid in SRK). A PLAIN optional
+   * field (NOT a policy `TargetRef`): where unset, the pay surface shows an honest "unavailable" state
+   * rather than a fabricated value. Base-Sepolia-only for now (the vault + Premium live on 84532).
+   */
+  readonly srk?: Address;
+  /**
+   * §premium (012) — the disclosed recipient of SRK Premium payments on this chain (the feature-014 fee
+   * Safe where it exists, else the deployer EOA with a recorded cutover note). PLAIN optional field, no
+   * `TargetRef` / parity impact. A user-signed transfer target only; it holds no authority over user funds.
+   */
+  readonly premiumTreasury?: Address;
+  /**
+   * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
+   * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
+   * A PLAIN optional field, NOT a policy `TargetRef`. A plain holder — zero fund-movement power (N5).
+   */
+  readonly feeTreasury?: Address;
+
   /* ── ERC-20 tokens ── */
   /** Canonical USDC the app treats as `Asset.USDC` on this chain (== reserveUsdc where the Aave market uses it). */
   readonly usdc: Address;
