@@ -40,7 +40,14 @@ from pydantic import BaseModel
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
 from ..db import get_database
-from ..db.vault_flows import BasisResult, FlowRow, VaultFlowReader, replay_basis
+from ..db.vault_flows import (
+    BasisResult,
+    FlowRow,
+    OutcomeReplay,
+    VaultFlowReader,
+    replay_basis,
+    replay_outcomes,
+)
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
@@ -473,6 +480,109 @@ async def get_portfolio(
                 lastBlock=position.block if not position.stale else None,
             )
         ],
+    )
+
+
+class OutcomeRow(BaseModel):
+    """§018/US5 — one realized WITHDRAWAL in the outcomes ledger. Every figure is real (from the
+    indexed flows' exact average-cost replay); ``txHash`` is the withdrawal's own on-chain proof.
+    Position-level: NOT linked to the specific advice that caused it."""
+
+    realizedUsd: str  # signed USD (2dp) realized on this withdrawal
+    kind: str  # 'gain' | 'loss' | 'flat' (by the sign of the exact realized integer)
+    amountUsd: str  # USDC assets received in this withdrawal ($1 par)
+    txHash: str  # the withdrawal transaction — verifiable on-chain proof
+    blockNumber: int
+    tsApprox: str  # APPROX age from block height (onchain_events carries no time)
+
+
+class OutcomesResponse(BaseModel):
+    """§018/US5 ``GET /outcomes`` 200 body — the realized-outcomes ledger.
+
+    ``outcomes`` is populated ONLY when ``reconciles`` (the reconstructed share history is complete
+    and untransferred); otherwise it is ``[]`` with ``reconciles = false`` — an honest empty state,
+    never a partial-history guess. Wins and losses are shown equally (no survivorship). Advisory
+    read: a chain/index outage degrades to ``stale`` + empty, never a hard error."""
+
+    asOfBlock: int
+    asOf: str
+    stale: bool
+    reconciles: bool
+    netRealizedUsd: str | None  # Σ realized (null when not reconciled)
+    wins: int
+    losses: int
+    outcomes: list[OutcomeRow]
+
+
+@router.get("/outcomes", response_model=OutcomesResponse)
+async def get_outcomes(
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+) -> OutcomesResponse:
+    """The realized-outcomes ledger — one real row per withdrawal (§018/US5, agent-service-api §3.3
+    family). Reprojects the SAME indexed Deposit/Withdraw flows the portfolio uses (feature 017),
+    replaying average cost to realize ``assets − avg-cost of shares redeemed`` per withdrawal, each
+    stamped with its own tx as proof. Rows are returned ONLY when the reconstructed shares reconcile
+    to the on-chain balance (complete, untransferred history) — else an honest empty ledger. Losses
+    are shown as plainly as gains. Pure read/derive: no key, no fund move, no chain write (N1–N5).
+    A chain/index outage DEGRADES to ``stale`` + empty (never a hard error, never a fabricated row).
+    """
+    position = await _read_vault_position(reader, account)
+
+    # Fetch the COMPLETE flow history whenever the vault read is live — INDEPENDENT of whether the
+    # user still holds shares (a fully-exited user still has realized outcomes to show). Fail-open
+    # ([] → honest empty). The replay reconstructs from zero, so it needs all flows (high bound).
+    replay: OutcomeReplay | None = None
+    if not position.stale and config.vault_address:
+        try:
+            hist = await flows.list_flows(
+                _network_id(account.chain_id),
+                config.vault_address,
+                account.account,
+                limit=_SERIES_MAX_FLOWS,
+            )
+        except Exception:
+            hist = []
+        replay = replay_outcomes(hist, position.shares)
+
+    reconciles = bool(replay and replay.reconciles)
+    rows: list[OutcomeRow] = []
+    wins = 0
+    losses = 0
+    net_realized: str | None = None
+    if reconciles and replay is not None:
+        total = 0
+        # Newest-first for display (the ledger reads most-recent-outcome-first).
+        for o in sorted(replay.outcomes, key=lambda x: (x.block_number, x.log_index), reverse=True):
+            kind = "gain" if o.realized > 0 else "loss" if o.realized < 0 else "flat"
+            if o.realized > 0:
+                wins += 1
+            elif o.realized < 0:
+                losses += 1
+            rows.append(
+                OutcomeRow(
+                    realizedUsd=_usd_signed(o.realized),
+                    kind=kind,
+                    amountUsd=_usd_from_usdc(o.assets_received),
+                    txHash=o.tx_hash,
+                    blockNumber=o.block_number,
+                    tsApprox=_approx_ts_iso(position.block, o.block_number),
+                )
+            )
+            total += o.realized
+        net_realized = _usd_signed(total)
+
+    return OutcomesResponse(
+        asOfBlock=position.block,
+        asOf=_now_iso(),
+        stale=position.stale,
+        reconciles=reconciles,
+        netRealizedUsd=net_realized,
+        wins=wins,
+        losses=losses,
+        outcomes=rows,
     )
 
 

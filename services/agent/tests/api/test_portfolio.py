@@ -487,3 +487,93 @@ def test_position_detail_degrades_to_stale_shell(client: TestClient) -> None:
     assert body["stale"] is True
     assert body["position"]["positionId"] == "vault"
     assert body["position"]["valueUsd"] == "0.00"
+
+
+# ── GET /outcomes (§018/US5 — realized-outcomes ledger) ──────────────────────────
+
+
+def test_outcomes_reconciled_gain_row(client: TestClient) -> None:
+    # deposit 100M shares/100M @ pps1 → withdraw 50M shares for 60M assets => realized +10M.
+    _use(
+        FakePortfolioReader(balance=50_000_000, block=100),
+        flows=[_dep(100_000_000, 100_000_000, 10), _wd(60_000_000, 50_000_000, 20)],
+    )
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["reconciles"] is True
+    assert body["netRealizedUsd"] == "10.00"
+    assert body["wins"] == 1 and body["losses"] == 0
+    assert len(body["outcomes"]) == 1
+    row = body["outcomes"][0]
+    assert row["realizedUsd"] == "10.00"
+    assert row["kind"] == "gain"
+    assert row["amountUsd"] == "60.00"
+    assert row["txHash"] == "0xw"  # the withdrawal's own tx = its on-chain proof
+
+
+def test_outcomes_reconciled_loss_row(client: TestClient) -> None:
+    # withdraw 50M shares (cost 50M) for only 40M assets => realized −10M (a loss, shown plainly).
+    _use(
+        FakePortfolioReader(balance=50_000_000, block=100),
+        flows=[_dep(100_000_000, 100_000_000, 10), _wd(40_000_000, 50_000_000, 20)],
+    )
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["reconciles"] is True
+    assert body["netRealizedUsd"] == "-10.00"
+    assert body["wins"] == 0 and body["losses"] == 1
+    assert body["outcomes"][0]["kind"] == "loss"
+    assert body["outcomes"][0]["realizedUsd"] == "-10.00"
+
+
+def test_outcomes_multi_withdrawal_newest_first(client: TestClient) -> None:
+    # wd1 @block20: +10M gain; wd2 @block30 burns the rest for 20M (cost 50M) => −30M loss.
+    _use(
+        FakePortfolioReader(balance=0, block=100),
+        flows=[
+            _dep(100_000_000, 100_000_000, 10),
+            _wd(60_000_000, 50_000_000, 20),
+            _wd(20_000_000, 50_000_000, 30),
+        ],
+    )
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["reconciles"] is True  # fully exited (held 0 == balance 0)
+    assert body["wins"] == 1 and body["losses"] == 1
+    assert body["netRealizedUsd"] == "-20.00"
+    # Newest-first: the block-30 loss precedes the block-20 gain.
+    assert [o["kind"] for o in body["outcomes"]] == ["loss", "gain"]
+
+
+def test_outcomes_unreconciled_is_empty_and_honest(client: TestClient) -> None:
+    # The on-chain balance (999) doesn't match the reconstructed shares (50M) → no partial guess.
+    _use(
+        FakePortfolioReader(balance=999, block=100),
+        flows=[_dep(100_000_000, 100_000_000, 10), _wd(60_000_000, 50_000_000, 20)],
+    )
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["reconciles"] is False
+    assert body["outcomes"] == []
+    assert body["netRealizedUsd"] is None
+    assert body["wins"] == 0 and body["losses"] == 0
+
+
+def test_outcomes_deposits_only_reconciles_but_empty(client: TestClient) -> None:
+    _use(
+        FakePortfolioReader(balance=100_000_000, block=100),
+        flows=[_dep(100_000_000, 100_000_000, 10)],
+    )
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["reconciles"] is True  # complete history, just no withdrawals yet
+    assert body["outcomes"] == []
+    assert body["netRealizedUsd"] == "0.00"
+
+
+def test_outcomes_stale_vault_degrades_to_empty(client: TestClient) -> None:
+    _use(VaultReader(vault_address=None, transport=ExplodingTransport()))
+    body = client.get("/outcomes", headers=GOOD_HEADERS).json()
+    assert body["stale"] is True
+    assert body["reconciles"] is False
+    assert body["outcomes"] == []
+
+
+def test_outcomes_requires_auth(client: TestClient) -> None:
+    _use(FakePortfolioReader(balance=50_000_000))
+    assert client.get("/outcomes").status_code in (401, 403)

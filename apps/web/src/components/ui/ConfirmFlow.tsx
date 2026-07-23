@@ -372,6 +372,32 @@ function OnchainConfirmFlow({
     preview.quoteStatus === "ok" ? "ok" : preview.quoteStatus === "error" || preview.wouldBreach ? "error" : "loading";
   const previewStep: PreviewRowStatus =
     preview.previewStatus === "ok" ? "ok" : preview.previewStatus === "error" ? "error" : "loading";
+  // §018/US2 — the pre-sign dry-run row (a real eth_call of the mutating calldata). On DEPOSIT it
+  // mirrors the gate: a predicted revert is an error that ALSO disables Sign (saves gas). On
+  // WITHDRAW it is advisory only — show a pass when clean, else stay "checking"; never an error row,
+  // never gating the exit (N2).
+  const dryRunStep: PreviewRowStatus =
+    intent === "deposit"
+      ? preview.approvalRequired
+        ? "loading"
+        : preview.willRevert
+          ? "error"
+          : preview.simStatus === "ok"
+            ? "ok"
+            : "loading"
+      : preview.simStatus === "ok" && !preview.willRevert
+        ? "ok"
+        : "loading";
+  const gasHuman = ((): string | undefined => {
+    if (!preview.gasEstimate) return undefined;
+    try {
+      const n = Number(BigInt(preview.gasEstimate));
+      if (!Number.isFinite(n) || n <= 0) return undefined;
+      return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+    } catch {
+      return undefined;
+    }
+  })();
 
   return (
     <Frame mount={mount} backLabel={chrome.backLabel} onBack={onBack}>
@@ -402,6 +428,24 @@ function OnchainConfirmFlow({
             loading={intent === "deposit" ? "Simulating on-chain (ERC-4626)" : "Simulating your redemption (ERC-4626)"}
             done={intent === "deposit" ? "Simulated on-chain" : "Redemption simulated"}
             error="On-chain preview failed"
+          />
+          <PreviewStep
+            status={dryRunStep}
+            loading={
+              preview.approvalRequired
+                ? "Approve first — we'll dry-run the deposit after approval"
+                : intent === "deposit"
+                  ? "Dry-running the deposit (eth_call)"
+                  : "Dry-running your redemption (eth_call)"
+            }
+            done={
+              intent === "deposit"
+                ? gasHuman
+                  ? `Deposit dry-run passed · ~${gasHuman} gas`
+                  : "Deposit dry-run passed"
+                : "Redemption dry-run passed"
+            }
+            error="This would revert on-chain — nothing to sign"
           />
           {showReveal && (
             <div className="simbar pass">

@@ -2,6 +2,28 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "your-outcome-log-is-real-now",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Your Outcome Log now shows real results",
+      "body": "The Outcome Log now lists your real realized results — one row per withdrawal, wins and losses alike, each linking to its on-chain transaction as proof. Every figure is computed from your own deposits and withdrawals; when your on-chain history can't be fully reconciled we show an honest empty state instead of a guess. These are position-level results — not yet tied to the specific recommendation that caused them.",
+      "cta_label": "Open Outcome Log",
+      "cta_href": "/outcomes",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "a-real-dry-run-before-you-sign",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "We now dry-run your deposit before you sign",
+      "body": "Before you sign a vault deposit, we run a real on-chain dry-run of the exact transaction — so if it would fail, we tell you why and disable signing instead of letting you waste gas on a doomed transaction. Withdrawals are untouched: the dry-run there is advisory only and never blocks your exit. And if you still need to approve USDC first, we say so plainly rather than showing a scary error.",
+      "cta_label": "Go to the vault",
+      "cta_href": "/vault",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "real-realized-pnl",
       "type": "changelog",
       "tag": "Added",

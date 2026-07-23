@@ -9,7 +9,7 @@ Per-wave headless sessions + the watchdog read `wave-state.json`; this file is t
 - **Gate C — WAITING (Phase 3+):** mainnet. Requires the recorded internal security audit + hardening sign-off (T103). **Never autonomous.**
 
 ## Phase-3 deferrals
-The intentionally-descoped Phase-3 items (US6 automation, Base↔Sui bridge/Sui, Aerodrome, real Morpho + 010 APY feed, notifications, admin analytics, US5 outcomes, US2 sim/build REST + direct Aave v3) — with why, their honest in-app state, and each build gate — are the register in [`docs/phase-3-deferred.md`](../phase-3-deferred.md). Mainnet items also clear **Gate C**.
+The intentionally-descoped Phase-3 items (US6 automation, Base↔Sui bridge/Sui, Aerodrome, real Morpho + 010 APY feed, notifications, admin analytics, US5 outcomes, US2 sim/build REST + direct Aave v3) — with why, their honest in-app state, and each build gate — are the register in [`docs/phase-3-deferred.md`](../phase-3-deferred.md). Mainnet items also clear **Gate C**. **Update (018 — P1 remainders):** the honest slices of **US5** (a real per-withdrawal `/outcomes` ledger) and **US2** (a real pre-sign `eth_call` dry-run on the vault path) were pulled forward and shipped; the heavier parts (per-advice attribution; `/build-tx` IntentBundle + submit relay + 0021 migration; Aerodrome swap sim; direct Aave) stay deferred — SC-010 (per-rec) and SC-002 (swaps) remain UNMET. See the register.
 
 ## Autonomy boundaries (enforced)
 - Git on `develop` + `feature/*` is autonomous; `main`/`master` push+merge, mainnet broadcast, `cast send` to mainnet, and force-push are **hard-denied** by `.claude/hooks/guard-dangerous.sh` (PreToolUse, tested 22/22) + permission deny rules.
