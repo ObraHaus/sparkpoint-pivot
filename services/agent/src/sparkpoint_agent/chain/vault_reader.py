@@ -483,6 +483,18 @@ class VaultReader:
         isn't in the vault. Fail-closed (``VaultUnavailable``) like every other read."""
         return int(await self._read_at(token, "balanceOf", [_normalize_address(owner)]))
 
+    async def token_allowance(self, token: str, owner: str, spender: str) -> int:
+        """ERC-20 ``allowance(owner, spender)`` on an arbitrary ``token`` (e.g. the vault's
+        underlying USDC) → raw base units. Used by the §018/US2 deposit dry-run to tell a
+        "just needs approval" state apart from a genuine revert (a deposit ``eth_call`` reverts
+        on ``transferFrom`` when allowance < amount — not a real problem). Fail-closed
+        (``VaultUnavailable``) like every other read; view-only, never custody."""
+        return int(
+            await self._read_at(
+                token, "allowance", [_normalize_address(owner), _normalize_address(spender)]
+            )
+        )
+
     async def native_balance(self, owner: str) -> int:
         """eth_getBalance(owner) → the owner's NATIVE coin balance in wei (ETH on Base / Robinhood
         testnet). Powers the wallet's native holding on chains without a vault. Fail-closed

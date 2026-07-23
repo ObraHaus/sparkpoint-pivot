@@ -29,6 +29,7 @@ import { createAgentClient, type AgentClient, type AgentIdentity } from "@/lib/a
 import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
+import { toOutcomesView, type OutcomesResponseDto, type OutcomesView } from "@/lib/agent/outcomesView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -216,6 +217,42 @@ export function usePositionTransactions(): PositionTxView | null {
   return {
     txs,
     stale: d?.stale === true,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    loaded: query.isSuccess && d !== undefined,
+    refetch: () => void query.refetch(),
+  };
+}
+
+/* ── GET /outcomes (§018/US5 — realized-outcomes ledger) ───────────────────── */
+
+/** The realized-outcomes ledger view + fetch state. `null` when offline. A confirmed-but-empty
+ * ledger (`loaded && view.rows.length === 0`) — whether because nothing has been withdrawn or the
+ * history doesn't reconcile — is distinct from still-loading/failed, so the page can show an honest
+ * empty/pending state rather than a fabricated number. Re-exports the pure {@link OutcomesView}. */
+export type { OutcomesView } from "@/lib/agent/outcomesView";
+
+export interface OutcomesState {
+  view: OutcomesView;
+  isLoading: boolean;
+  isError: boolean;
+  loaded: boolean;
+  refetch: () => void;
+}
+
+export function useOutcomes(): OutcomesState | null {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "outcomes", identity?.account, identity?.chainId],
+    enabled: online,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) => client!.request<OutcomesResponseDto>("/outcomes", { signal }),
+  });
+  if (!online) return null;
+  const d = query.data;
+  return {
+    view: toOutcomesView(d),
     isLoading: query.isLoading,
     isError: query.isError,
     loaded: query.isSuccess && d !== undefined,

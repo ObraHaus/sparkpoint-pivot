@@ -26,16 +26,20 @@ Non-custody invariants enforced here
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Annotated
 
+import eth_abi
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
 from ..config import AgentConfig
 from ..policy import CAPS, GOVERNANCE
+from ..policy.enums import ActionType, ReasonCode
+from ..sim import SimulationRequest, SimulationResult, SimulatorUnavailableError, ViemEthCallChecker
 from .errors import ApiError, ErrorCode, ErrorReason, new_request_id, render_api_error
 from .security import AccountContext
 
@@ -71,6 +75,13 @@ _EXIT_HATCH_URL = "/exit"
 
 # The profit-only fee is charged only on realized yield above the high-water mark.
 _FEE_BASE = "realized_yield_above_hwm"
+
+# §018/US2 — the REAL mutating ERC-4626 calldata selectors for the pre-sign dry-run. These are
+# the 4-byte function selectors of the vault's state-changing entrypoints (verified against the
+# compiled artifact's methodIdentifiers + policy/constants.py; a parity test pins them). We encode
+# this calldata ONLY to eth_call-dry-run it — never to sign or submit (N1/N3).
+_DEPOSIT_SELECTOR = "0x6e553f65"  # deposit(uint256 assets, address receiver)
+_REDEEM_SELECTOR = "0xba087652"  # redeem(uint256 shares, address receiver, address owner)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +405,211 @@ async def quote_withdraw(
         exitHatchUrl=_EXIT_HATCH_URL,
         asOfBlock=block,
         stale=False,
+    )
+
+
+class VaultSimulateResponse(BaseModel):
+    """§018/US2 ``POST /vault/simulate/{deposit,withdraw}`` 200 body — the read-only pre-sign
+    dry-run envelope. Mirrors ``packages/shared`` ``VaultSimulateResponseSchema`` byte-for-byte
+    (``extra="forbid"``, camelCase). Wraps the canonical :class:`SimulationResult` from the
+    ``viem_eth_call`` dry-run of the REAL mutating calldata, plus two honesty signals:
+
+    - ``approvalRequired`` — DEPOSIT only: the live USDC allowance to the vault is below the
+      amount, so the deposit ``eth_call`` would revert on ``transferFrom`` for a reason that is
+      NOT a real problem → we DEFER the dry-run (``simulation = null``) and say "approve first".
+    - ``sharesOut``/``assetsOut`` — the deterministic ERC-4626 ``previewDeposit``/``previewRedeem``
+      read straight from chain (the ``viem_eth_call`` leg diffs no balances, so the sim's own
+      ``sharesOut``/``assetsOut`` stay null — these envelope fields carry the real amount).
+
+    Non-custody: eth_call + eth_estimateGas trace only — never signs/submits, and the withdraw
+    dry-run is advisory (it can never gate the exit, N2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str  # "deposit" | "withdraw"
+    approvalRequired: bool
+    simulation: SimulationResult | None
+    sharesOut: str | None
+    assetsOut: str | None
+
+
+def _encode_deposit(assets: int, receiver: str) -> str:
+    """ABI-encode ``deposit(uint256 assets, address receiver)`` calldata (for eth_call ONLY)."""
+    return _DEPOSIT_SELECTOR + eth_abi.encode(["uint256", "address"], [assets, receiver]).hex()
+
+
+def _encode_redeem(shares: int, receiver: str, owner: str) -> str:
+    """ABI-encode ``redeem(uint256 shares, address receiver, address owner)`` (eth_call ONLY)."""
+    return _REDEEM_SELECTOR + eth_abi.encode(
+        ["uint256", "address", "address"], [shares, receiver, owner]
+    ).hex()
+
+
+# The pre-sign dry-run runner: (request, rpc_url) → SimulationResult. Injected so tests can supply
+# a fake without a live RPC; the default runs the real fork-free viem_eth_call check.
+DryRunner = Callable[[SimulationRequest, str], Awaitable[SimulationResult]]
+
+
+async def _default_dry_runner(request: SimulationRequest, rpc_url: str) -> SimulationResult:
+    """Run the fork-free ``viem_eth_call`` dry-run — a real revert/return check + gas estimate.
+    A transport/RPC failure fails CLOSED to the canonical ``UPSTREAM_UNAVAILABLE`` envelope (never a
+    fabricated "passed")."""
+    try:
+        async with ViemEthCallChecker(rpc_url) as checker:
+            return await checker.check(request)
+    except SimulatorUnavailableError as exc:
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            "The simulation RPC is unreachable; the pre-trade dry-run is temporarily unavailable.",
+            reasons=[ErrorReason(ReasonCode.SIM_UNAVAILABLE.value, str(exc))],
+        ) from exc
+
+
+def get_sim_config() -> AgentConfig:
+    """Process config for the §018/US2 simulate endpoints (vault address + RPC). Overridden in
+    tests. Scoped per request chain by the endpoint via ``for_chain``."""
+    return AgentConfig.from_env()
+
+
+def get_dry_runner() -> DryRunner:
+    """The pre-sign dry-run runner (viem_eth_call). Overridden in tests with a fake that returns a
+    preset :class:`SimulationResult` (or raises to exercise the fail-closed path)."""
+    return _default_dry_runner
+
+
+def _require_rpc_url(config: AgentConfig) -> str:
+    """The chain's RPC url, or fail CLOSED (``UPSTREAM_UNAVAILABLE``) when none is configured — the
+    dry-run cannot run without a real RPC, and we never fabricate a pass. (The vault reader is built
+    from the same config, so a successful ``asset()`` read already implies this holds; the guard
+    also narrows the Optional for the type checker.)"""
+    if config.rpc_url is None:
+        raise VaultUnavailable(
+            VaultUnavailableReason.RPC_UNREACHABLE, "no RPC configured for this chain"
+        )
+    return config.rpc_url
+
+
+def _build_sim_request(
+    *, chain_id: int, sender: str, vault: str, data: str, action: ActionType
+) -> SimulationRequest:
+    """The unsigned eth_call to dry-run (never signed/submitted — N1/N3)."""
+    return SimulationRequest(
+        chain_id=chain_id,
+        sender=sender,
+        to=vault,
+        data=data,
+        value=0,
+        op_type="eoa_call",
+        action=action,
+    )
+
+
+@router.post("/vault/simulate/deposit", response_model=VaultSimulateResponse)
+async def simulate_deposit(
+    body: VaultQuoteRequest,
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_sim_config)],
+    dry_run: Annotated[DryRunner, Depends(get_dry_runner)],
+) -> VaultSimulateResponse:
+    """Read-only pre-sign dry-run of the REAL ``deposit(assets, receiver)`` calldata (§018/US2).
+
+    Reads the user's live USDC allowance first: when it is below the amount the deposit would
+    revert on ``transferFrom`` for a non-problem reason, so we DEFER the dry-run and return
+    ``approvalRequired = true`` (never a spurious "would revert"). Otherwise we ``eth_call``-
+    dry-run the actual deposit and return ``willRevert`` + decoded reason + real gas. The
+    expected shares (``sharesOut``) are the on-chain ``previewDeposit``. Fails closed to
+    ``SIMULATION_UNAVAILABLE``/``UPSTREAM_UNAVAILABLE`` on an undeployed vault / unreachable RPC —
+    never a fabricated pass. This eth_call trace holds no key and moves no funds (N1/N3)."""
+    chain_config = config.for_chain(account.chain_id)
+    # asset() fails closed (VaultUnavailable → SIMULATION_UNAVAILABLE) when the vault is undeployed,
+    # so a vault address is proven present before we read it for the calldata `to`.
+    usdc = await reader.asset()
+    vault = chain_config.require_vault_address()
+    receiver = account.account
+
+    # Resolve to the asset amount (for the calldata) + the expected shares (for display).
+    if body.by is QuoteBy.ASSETS:
+        assets = body.amount_int
+        shares = await reader.preview_deposit(assets)
+    else:  # by == shares — assets needed to mint the requested shares (rounds UP)
+        shares = body.amount_int
+        assets = await reader.preview_mint(shares)
+
+    # Allowance gate: a deposit eth_call reverts on transferFrom when allowance < assets — that is
+    # "approve first", NOT a real revert. Defer the dry-run and say so honestly (no false fail).
+    allowance = await reader.token_allowance(usdc, account.account, vault)
+    if allowance < assets:
+        return VaultSimulateResponse(
+            kind="deposit",
+            approvalRequired=True,
+            simulation=None,
+            sharesOut=str(shares),
+            assetsOut=None,
+        )
+
+    sim = await dry_run(
+        _build_sim_request(
+            chain_id=account.chain_id,
+            sender=account.account,
+            vault=vault,
+            data=_encode_deposit(assets, receiver),
+            action=ActionType.VAULT_DEPOSIT,
+        ),
+        _require_rpc_url(chain_config),
+    )
+    return VaultSimulateResponse(
+        kind="deposit",
+        approvalRequired=False,
+        simulation=sim,
+        sharesOut=str(shares),
+        assetsOut=None,
+    )
+
+
+@router.post("/vault/simulate/withdraw", response_model=VaultSimulateResponse)
+async def simulate_withdraw(
+    body: VaultQuoteRequest,
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    config: Annotated[AgentConfig, Depends(get_sim_config)],
+    dry_run: Annotated[DryRunner, Depends(get_dry_runner)],
+) -> VaultSimulateResponse:
+    """Read-only pre-sign dry-run of the REAL ``redeem(shares, receiver, owner)`` (§018/US2).
+
+    ADVISORY ONLY — this NEVER gates the exit (N2): the web confirm gate treats a withdraw
+    dry-run as informational and keeps Sign / the on-chain escape hatch open regardless of the
+    verdict or a sim outage. No allowance is needed (the user burns their own shares). Returns
+    ``willRevert`` + decoded reason + real gas; the expected assets (``assetsOut``) are the
+    on-chain ``previewRedeem`` (already net of fee-share dilution). Fails closed on an undeployed
+    vault / unreachable RPC — never a fabricated pass."""
+    chain_config = config.for_chain(account.chain_id)
+    # A view read first: fails closed (VaultUnavailable) on an undeployed vault before any encode.
+    if body.by is QuoteBy.SHARES:
+        shares = body.amount_int
+        assets = await reader.preview_redeem(shares)
+    else:  # by == assets — shares to burn to withdraw the requested assets (rounds UP)
+        assets = body.amount_int
+        shares = await reader.preview_withdraw(assets)
+    vault = chain_config.require_vault_address()
+
+    sim = await dry_run(
+        _build_sim_request(
+            chain_id=account.chain_id,
+            sender=account.account,
+            vault=vault,
+            # redeem(shares, receiver=owner, owner) — recipient forced to the user's own account.
+            data=_encode_redeem(shares, account.account, account.account),
+            action=ActionType.VAULT_REDEEM,
+        ),
+        _require_rpc_url(chain_config),
+    )
+    return VaultSimulateResponse(
+        kind="withdraw",
+        approvalRequired=False,
+        simulation=sim,
+        sharesOut=None,
+        assetsOut=str(assets),
     )
 
 

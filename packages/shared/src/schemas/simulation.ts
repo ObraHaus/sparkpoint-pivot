@@ -79,3 +79,32 @@ export const SimulationResultSchema = z
   })
   .strict();
 export type SimulationResult = z.infer<typeof SimulationResultSchema>;
+
+/**
+ * §018/US2 — the read-only pre-sign dry-run envelope returned by
+ * `POST /vault/simulate/{deposit,withdraw}`. It wraps the canonical
+ * {@link SimulationResultSchema} produced by the `viem_eth_call` dry-run of the REAL
+ * mutating ERC-4626 calldata, plus two honesty signals the bare sim can't carry:
+ *
+ *  - `approvalRequired` — DEPOSIT only. When the user's live USDC allowance to the vault
+ *    is below the deposit amount, the deposit `eth_call` would revert on `transferFrom`
+ *    for a reason that is NOT a real problem — so we DEFER the dry-run (`simulation = null`)
+ *    and tell the user to approve first, rather than showing a spurious "would revert".
+ *  - `sharesOut` / `assetsOut` — the deterministic ERC-4626 `previewDeposit` / `previewRedeem`
+ *    read straight from chain (the `viem_eth_call` leg diffs no balances, so it leaves the
+ *    sim's own `sharesOut`/`assetsOut` null — these envelope fields carry the real amount).
+ *
+ * `.strict()` closed wire; the Python model mirrors it byte-for-byte (agent api/vault.py).
+ * Non-custody: this is an eth_call + eth_estimateGas trace only — it NEVER signs, submits,
+ * or gates the withdraw/exit path (N2); the withdraw dry-run is advisory only.
+ */
+export const VaultSimulateResponseSchema = z
+  .object({
+    kind: z.enum(["deposit", "withdraw"]),
+    approvalRequired: z.boolean(),
+    simulation: SimulationResultSchema.nullable(),
+    sharesOut: UintAmountSchema.nullable(),
+    assetsOut: UintAmountSchema.nullable(),
+  })
+  .strict();
+export type VaultSimulateResponse = z.infer<typeof VaultSimulateResponseSchema>;

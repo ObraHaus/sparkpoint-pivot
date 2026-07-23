@@ -189,6 +189,81 @@ def replay_basis(flows: Sequence[FlowRow], current_shares: int) -> BasisResult |
     )
 
 
+@dataclass(frozen=True)
+class RealizedOutcome:
+    """One realized WITHDRAWAL — the atom of the §018/US5 outcomes ledger (USDC 6-dp).
+
+    ``realized = assets_received − avg cost of the shares redeemed`` at the moment of THIS
+    withdrawal (exact integer average-cost, mirroring :func:`replay_basis`). ``tx_hash`` is the
+    withdrawal's own on-chain transaction — its verifiable proof. Position-level, NOT linked to a
+    specific recommendation.
+    """
+
+    tx_hash: str
+    block_number: int
+    log_index: int
+    assets_received: int  # USDC base units withdrawn in this event
+    shares_redeemed: int
+    realized: int  # signed USDC base units: assets_received − redeemed cost basis
+
+
+@dataclass(frozen=True)
+class OutcomeReplay:
+    """The per-withdrawal realized-outcomes ledger over a position's COMPLETE indexed history.
+
+    ``outcomes`` is one :class:`RealizedOutcome` per withdrawal, in on-chain execution order.
+    ``reconciles`` is True iff the reconstructed share balance equals the on-chain balance (a
+    complete, untransferred history) — the caller surfaces the ledger ONLY when it reconciles
+    (else an honest empty state, never a partial-history guess). Same gate as
+    :class:`BasisResult`; ``Σ outcome.realized == BasisResult.realized`` for the same flows.
+    """
+
+    outcomes: tuple[RealizedOutcome, ...]
+    reconciles: bool
+
+
+def replay_outcomes(flows: Sequence[FlowRow], current_shares: int) -> OutcomeReplay | None:
+    """Average-cost replay → one realized outcome per withdrawal (exact integer math, never float).
+
+    Same algorithm as :func:`replay_basis` — deposits add USDC cost + shares; each withdrawal
+    realizes ``assets_received − avg_cost × shares_redeemed`` (redeemed cost rounds DOWN, mirroring
+    the vault) — but RETAINS each withdrawal as its own row (with its ``tx_hash``) instead of only
+    the running sum. None on no history. Never raises on a partial history: a withdrawal that would
+    over-draw the reconstructed share balance flips ``reconciles`` False (caller shows empty).
+    """
+    if not flows:
+        return None
+    ordered = sorted(flows, key=lambda f: (f.block_number, f.log_index))
+    cost = 0  # USDC cost basis of currently-held shares (6-dp base units)
+    held = 0  # reconstructed shares held
+    intact = True  # False once a withdrawal over-draws the reconstructed share balance (a gap)
+    outcomes: list[RealizedOutcome] = []
+    for f in ordered:
+        if f.kind == "deposit":
+            cost += f.assets
+            held += f.shares
+            continue
+        # withdraw
+        if f.shares <= 0 or f.shares > held:
+            intact = False  # a gap: a withdraw precedes its funding deposit in the indexed set
+            held -= f.shares
+            continue
+        redeemed_cost = cost * f.shares // held
+        outcomes.append(
+            RealizedOutcome(
+                tx_hash=f.tx_hash,
+                block_number=f.block_number,
+                log_index=f.log_index,
+                assets_received=f.assets,
+                shares_redeemed=f.shares,
+                realized=f.assets - redeemed_cost,
+            )
+        )
+        cost -= redeemed_cost
+        held -= f.shares
+    return OutcomeReplay(outcomes=tuple(outcomes), reconciles=intact and held == current_shares)
+
+
 @dataclass
 class VaultFlowReader:
     """Reads the indexed flows to derive a user's cost basis (drives GET /portfolio PnL)."""

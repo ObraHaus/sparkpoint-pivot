@@ -48,6 +48,18 @@ interface DepositQuoteLite {
   stale?: boolean;
 }
 
+/** Minimal shape read from the §018/US2 `/vault/simulate/*` dry-run (defensive — validated loosely).
+ * Mirrors `VaultSimulateResponse` from `@sparkpoint/shared/schemas`. */
+interface VaultSimulateLite {
+  approvalRequired?: boolean;
+  simulation?: {
+    willRevert?: boolean;
+    revertReason?: string | null;
+    gas?: { estimate?: string };
+    asOfBlock?: number;
+  } | null;
+}
+
 export interface ConfirmPreview {
   /** Aggregate gate. `ok` ⇒ safe to enable Sign; `error` ⇒ FAIL CLOSED (hide Sign). */
   readonly status: PreviewStatus;
@@ -55,8 +67,20 @@ export interface ConfirmPreview {
   readonly quoteStatus: PreviewStatus;
   /** Direct-RPC `previewDeposit`/`previewRedeem` health. */
   readonly previewStatus: PreviewStatus;
+  /** §018/US2 pre-sign dry-run (`/vault/simulate/*`) health. Advisory on withdraw (never gates, N2). */
+  readonly simStatus: PreviewStatus;
   /** True when the deposit quote reports the policy caps would be breached (blocks Sign). */
   readonly wouldBreach: boolean;
+  /** True when the dry-run predicts the tx would REVERT. On deposit this blocks Sign; on withdraw
+   * it is advisory only (surfaced, never gating — the exit is sacred, N2). */
+  readonly willRevert: boolean;
+  /** Deposit only: the live USDC allowance is below the amount, so the dry-run was deferred — the
+   * user must approve first. NOT a revert and NOT a hard block (the deposit flow approves first). */
+  readonly approvalRequired: boolean;
+  /** The decoded revert reason from the dry-run, when it predicts a revert. */
+  readonly revertReason: string | undefined;
+  /** The real `eth_estimateGas` (hex) from a passing dry-run, when available. */
+  readonly gasEstimate: string | undefined;
   /** Short, human reason when `status === "error"` (rendered in the confirm gate). */
   readonly error: string | undefined;
   /** The verbatim fee disclosure from the deposit quote, when present (§3.7). */
@@ -161,6 +185,50 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
           ? "loading"
           : "ok";
 
+  // ── 3. §018/US2 pre-sign dry-run via the BFF — an eth_call of the REAL mutating calldata ──
+  // Advisory-additional: on DEPOSIT a positive revert prediction blocks Sign (saves the user gas);
+  // on WITHDRAW it is informational only and NEVER gates the exit (N2). A sim outage does NOT block
+  // deposits either — only a *positive* `willRevert` does — so an advisory RPC hiccup can't strand a
+  // user. `approvalRequired` (allowance < amount) is surfaced honestly, not a revert.
+  const simEnabled = quoteEnabled;
+  const simQuery = useQuery({
+    queryKey: [
+      "agent",
+      "vault-simulate",
+      exec?.kind,
+      exec?.chainId,
+      exec?.account,
+      amountArg?.toString() ?? null,
+    ],
+    enabled: simEnabled,
+    retry: false,
+    staleTime: 15_000,
+    queryFn: ({ signal }) =>
+      client!.request<VaultSimulateLite>(`/vault/simulate/${exec!.kind}`, {
+        method: "POST",
+        body:
+          exec!.kind === "deposit"
+            ? { by: "assets", amount: exec!.assets.toString() }
+            : { by: "shares", amount: exec!.shares.toString() },
+        signal,
+      }),
+  });
+
+  const simData = simQuery.data;
+  const willRevert = simData?.simulation?.willRevert === true;
+  const approvalRequired = isDeposit && simData?.approvalRequired === true;
+  const revertReason = simData?.simulation?.revertReason ?? undefined;
+  const gasEstimate = simData?.simulation?.gas?.estimate;
+
+  const simStatus: PreviewStatus =
+    exec === undefined || !simEnabled
+      ? "idle"
+      : simQuery.isError
+        ? "error"
+        : simQuery.data === undefined
+          ? "loading"
+          : "ok";
+
   // ── aggregate gate ──
   let status: PreviewStatus;
   let error: string | undefined;
@@ -177,7 +245,9 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
     status = previewStatus === "loading" ? "loading" : "error";
     if (status === "error") error = "Wrong network for this transaction — switch, then retry.";
   } else if (isDeposit) {
-    // DEPOSIT is gated on BOTH the quote and the preview (deposits are cap/pause-gated).
+    // DEPOSIT is gated on the quote + the preview (deposits are cap/pause-gated), PLUS a positive
+    // pre-sign dry-run revert (§018/US2). A sim outage does NOT block (advisory) — but we wait for
+    // the dry-run to RESOLVE before enabling Sign so a predicted revert is never missed.
     if (wouldBreach) {
       status = "error";
       error = "This deposit would exceed your policy cap — nothing to sign.";
@@ -186,16 +256,33 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
       error = quoteQuery.error
         ? shortMessage(quoteQuery.error, "Couldn't verify this deposit with Sparky — can't sign safely.")
         : "Couldn't verify this deposit with Sparky — can't sign safely.";
-    } else if (previewStatus === "ok" && quoteStatus === "ok") {
+    } else if (willRevert) {
+      status = "error";
+      error = revertReason
+        ? `This deposit would revert on-chain: ${revertReason}`
+        : "This deposit would revert on-chain — nothing to sign.";
+    } else if (previewStatus === "ok" && quoteStatus === "ok" && simStatus !== "loading") {
       status = "ok";
     } else {
       status = "loading";
     }
   } else {
-    // WITHDRAW (N2): gated ONLY on the on-chain preview. The quote is informational —
-    // a quote failure must never block an exit.
+    // WITHDRAW (N2): gated ONLY on the on-chain preview. The quote AND the dry-run are informational
+    // — neither a quote failure nor a sim verdict/outage may ever block an exit.
     status = previewStatus === "ok" ? "ok" : "loading";
   }
 
-  return { status, quoteStatus, previewStatus, wouldBreach, error, disclosure };
+  return {
+    status,
+    quoteStatus,
+    previewStatus,
+    simStatus,
+    wouldBreach,
+    willRevert,
+    approvalRequired,
+    revertReason,
+    gasEstimate,
+    error,
+    disclosure,
+  };
 }

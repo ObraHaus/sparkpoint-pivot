@@ -20,8 +20,8 @@ pending its increment*, not a shipped-Base-equivalent proof.
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
 | 5 | Notifications backend | `StatusTag mock` "not wired to a live feed" | Event/index backend + delivery channel |
 | 6 | Admin stake/TVL/users analytics | "Sample data" pill | Analytics/indexer backend |
-| 7 | US5 outcome logging | `StatusTag mock` "outcome index isn't built" | On-chain event indexer + rec→tx join |
-| 8 | US2 deterministic sim REST + direct Aave v3 | No `/build-tx` / `/simulate` route; client-side sim only | Server sim/build/submit REST + migration |
+| 7 | US5 outcome logging | **PARTIAL (018):** real per-withdrawal ledger (`GET /outcomes`); per-**advice** attribution still deferred | Persisted recs + `intent_action_id` + IntentLog/attribution worker |
+| 8 | US2 deterministic sim REST + direct Aave v3 | **PARTIAL (018):** real pre-sign `eth_call` dry-run on the vault (`/vault/simulate/*`); `/build-tx` chokepoint + swaps still deferred | `/build-tx` IntentBundle + ExecutionDrawer + submit relay + 0021 migration; Aerodrome sim; direct Aave |
 
 ---
 
@@ -92,27 +92,35 @@ pending its increment*, not a shipped-Base-equivalent proof.
 - **Gate to build:** an analytics/indexer backend (TVL/stake/user rollups); replace the pill with live reads.
 - **Tracking:** `docs/admin-panel/`.
 
-### 7. US5 — outcome logging
-- **Why deferred:** the on-chain outcome/event index that would label each acted-on recommendation
-  with its realized PnL is not built (constitution III requires outcome logging at launch).
-- **Current state / disclosure:** `StatusTag mock` "Preview — the on-chain outcome/event index isn't
-  built yet." (`apps/web/src/app/(app)/outcomes/page.tsx`); table renders mock data.
-- **Gate to build:** an on-chain event indexer + a recommendation→tx join, so each rec is labeled
-  with realized PnL over time.
-- **Tracking:** `specs/001-sparkpoint-pivot-mvp` (US5); constitution III.
+### 7. US5 — outcome logging — **PARTIAL (shipped in 018)**
+- **Shipped in 018:** a REAL position-level realized-outcomes **ledger**. `GET /outcomes` reprojects
+  the already-indexed Deposit/Withdraw flows (feature 017's `replay_basis`) into one row per realized
+  withdrawal — realized USD (win/loss/flat, exact average-cost), each stamped with its own tx as
+  on-chain proof — returned ONLY when the share history reconciles (else an honest empty state). The
+  `/outcomes` page is **de-mocked** (the fabricated −$27.86 / fake tx links are gone).
+- **Still deferred:** the per-**recommendation** attribution LINK (FR-039/SC-010 — "100% of acted-on
+  recs logged + PnL-updated per rec"). It needs persisted recommendations + an `intent_action_id`
+  minted at proposal time + an IntentLog/heuristic attribution worker, which structurally depend on
+  US2's execution-persistence spine. **SC-010 remains UNMET;** the ledger is honestly labeled
+  "position-level — not yet linked to the specific advice."
+- **Gate to build:** the recommendation store + `intent_action_id` + attribution worker (with US2's
+  execution tables).
+- **Tracking:** `specs/018-p1-remainders` (US3), `specs/001-sparkpoint-pivot-mvp` (US5); constitution III.
 
-### 8. US2 — deterministic simulation REST + direct Aave v3
-- **Why deferred:** the agent exposes **no** `/build-tx` or `/simulate` REST route
-  (`services/agent/src/sparkpoint_agent/api/main.py`). Pre-trade sim is done **client-side** in the
-  confirm flow against the vault ABI; the server-side deterministic sim/build/submit REST + its
-  migration were descoped. Direct Aave v3 deposit/withdraw (USDC + ETH, outside the ERC-4626 vault)
-  is also not built — only the vault path exists.
-- **Current state / disclosure:** the confirm gate is real (`apps/web/src/app/(app)/confirm/[intent]`,
-  `ConfirmFlow`) but runs locally; no signable bundle is materialized by the agent. No user-facing
-  "mock" here — the gap is an unbuilt REST surface, recorded in this register + `wave-state.json` P3.
-- **Gate to build:** implement the server sim/build/submit endpoints + migration; add direct Aave v3
-  deposit/withdraw. The simulation-before-sign guarantee (constitution "Simulation before sign") must hold.
-- **Tracking:** `specs/001-sparkpoint-pivot-mvp` (US2).
+### 8. US2 — deterministic simulation — **PARTIAL (shipped in 018)** + direct Aave v3 (deferred)
+- **Shipped in 018:** a REAL pre-sign **dry-run** on the vault path. `POST /vault/simulate/{deposit,
+  withdraw}` `eth_call`-dry-runs the ACTUAL mutating ERC-4626 calldata (via the already-built
+  `viem_eth_call` checker) and returns `willRevert` + decoded reason + real `eth_estimateGas`; the
+  confirm gate surfaces it as a third fail-closed signal — a predicted **deposit** revert disables
+  Sign (saves gas), a **withdraw** dry-run is advisory and NEVER gates the exit (N2). Deposit reads
+  the live allowance first so a pre-approval state is an honest "approve first", not a false revert.
+- **Still deferred:** the full `/build-tx` **IntentBundle** chokepoint + `ExecutionDrawer` + the
+  `POST /submit-signed-tx` relay + the **0021 execution** persistence (intent_bundles /
+  simulation_results / executions); full Anvil mainnet-fork balance-delta/slippage; **Aerodrome swap**
+  simulation; and **direct Aave v3** deposit/withdraw. **SC-002 remains UNMET for swaps.**
+- **Gate to build:** the `/build-tx` chokepoint + submit relay + 0021 migration; the fork sim;
+  Aerodrome adapter/sim; direct Aave. The simulation-before-sign guarantee holds on the vault path today.
+- **Tracking:** `specs/018-p1-remainders` (US2), `specs/001-sparkpoint-pivot-mvp` (US2).
 
 ---
 

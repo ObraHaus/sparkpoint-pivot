@@ -212,8 +212,8 @@
         "Real Morpho wrapper + 010 APY feed (mainnet)",
         "Notifications backend",
         "Admin stake/tvl/users analytics",
-        "US5 outcome logging",
-        "US2 deterministic sim REST + direct Aave v3"
+        "US5 outcome logging — PARTIAL (018: real per-withdrawal /outcomes ledger shipped; per-advice attribution still deferred, SC-010 unmet)",
+        "US2 deterministic sim — PARTIAL (018: real pre-sign eth_call dry-run on the vault path shipped; /build-tx IntentBundle + submit relay + 0021 migration + Aerodrome swap sim + direct Aave still deferred, SC-002 unmet for swaps)"
       ]
     }
   ],
