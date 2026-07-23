@@ -23,6 +23,7 @@ export type NavKey =
   | "updates"
   | "tips"
   | "uptime"
+  | "diagnostics"
   | "tvl"
   | "vaults"
   | "revenue"
@@ -42,12 +43,12 @@ export interface RoleDef {
 export const ROLES: Record<RoleKey, RoleDef> = {
   super: {
     label: "Super-Admin",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "diagnostics", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   ops: {
     label: "Ops / Internal",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "diagnostics", "tvl", "vaults", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
     home: "overview",
   },
   stake: {
@@ -75,6 +76,7 @@ export const NAVMETA: Record<NavKey, [string, string]> = {
   updates: ["Updates", "bell"],
   tips: ["Tips", "info"],
   uptime: ["Uptime", "activity"],
+  diagnostics: ["Diagnostics", "flask"],
   tvl: ["TVL / Vault", "vault"],
   vaults: ["Vaults", "vault"],
   revenue: ["Revenue", "portfolio"],
@@ -96,6 +98,7 @@ export const NAV_HREF: Record<NavKey, string> = {
   updates: "/admin/updates",
   tips: "/admin/tips",
   uptime: "/admin/uptime",
+  diagnostics: "/admin/diagnostics",
   tvl: "/admin/tvl",
   vaults: "/admin/vaults",
   revenue: "/admin/revenue",
