@@ -121,6 +121,7 @@ export default function Page() {
   const agent = usePortfolioView();
   const agentLive = live && !!agent && !agent.stale;
   const netUnrealizedUsd = agentLive ? agent.unrealizedUsd : undefined;
+  const netRealizedUsd = agentLive ? agent.realizedUsd : undefined;
   const vaultPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
   const vaultCostBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
 
@@ -234,14 +235,23 @@ export default function Page() {
                   className={`delta ${netUnrealizedUsd > 0 ? "up" : netUnrealizedUsd < 0 ? "down" : "flat"}`}
                   style={{ fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}
                   title={vaultCostBasisUsd !== undefined
-                    ? `Unrealized PnL vs your ${money(vaultCostBasisUsd)} net deposited — indexed from on-chain deposits & withdrawals.`
-                    : "Unrealized PnL = current value − net deposited, indexed from on-chain deposits & withdrawals."}
+                    ? `Unrealized PnL = current value − the ${money(vaultCostBasisUsd)} avg cost of your held shares (indexed on-chain).`
+                    : "Unrealized PnL = current value − the avg cost of your held shares (indexed on-chain)."}
                 >
                   {netUnrealizedUsd >= 0 ? "+" : "−"}{money(Math.abs(netUnrealizedUsd))} unrealized
                   <span className="pill" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", color: "var(--muted-foreground)" }}>indexed</span>
                 </span>
               ) : (
                 <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
+              )}
+              {netRealizedUsd !== undefined && netRealizedUsd !== 0 && (
+                <span
+                  className={`delta ${netRealizedUsd > 0 ? "up" : "down"}`}
+                  style={{ fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}
+                  title="Realized PnL = gains booked on your past withdrawals (indexed on-chain)."
+                >
+                  {netRealizedUsd >= 0 ? "+" : "−"}{money(Math.abs(netRealizedUsd))} realized
+                </span>
               )}
             </div>
           ) : preview ? (
@@ -417,7 +427,7 @@ export default function Page() {
                     {p.key === "vault" && vaultPnlUsd !== undefined ? (
                       <td
                         className="num tnum"
-                        title={vaultCostBasisUsd !== undefined ? `Cost basis ${money(vaultCostBasisUsd)} (net deposited, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
+                        title={vaultCostBasisUsd !== undefined ? `Cost basis ${money(vaultCostBasisUsd)} (avg cost of held shares, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
                       >
                         {/* .delta is display:inline-flex — it must live in an inner <span>, NOT on the
                             <td> (that would override display:table-cell and break the column grid). */}

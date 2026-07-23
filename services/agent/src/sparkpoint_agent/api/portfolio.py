@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
 from ..db import get_database
-from ..db.vault_flows import CostBasis, FlowRow, VaultFlowReader
+from ..db.vault_flows import BasisResult, FlowRow, VaultFlowReader, replay_basis
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
@@ -50,6 +50,7 @@ from .vault import get_account, get_vault_reader
 def get_vault_flow_reader() -> VaultFlowReader:
     """The indexed vault-flow reader (cost basis for PnL). Overridden in tests."""
     return VaultFlowReader(get_database())
+
 
 router = APIRouter(tags=["portfolio"])
 
@@ -88,6 +89,7 @@ class PositionDetail(BaseModel):
     priceSource: str
     costBasisUsd: str | None = None
     unrealizedPnlUsd: str | None = None
+    realizedPnlUsd: str | None = None
     riskTier: str | None = None
 
 
@@ -245,13 +247,13 @@ def _to_event(flow: FlowRow, head_block: int) -> OnchainEvent:
 
 
 def _value_series(flows: list[FlowRow], position: _VaultPosition) -> list[PnlSeriesPoint]:
-    """The vault position VALUE over time (§history) — REAL, derived from the indexed flows + the
-    current on-chain value, no sampler/backfill/oracle:
-
-    Each Deposit/Withdraw implies the vault's price-per-share AT its block (``assets / shares``),
-    and at any block ALL of a user's shares are worth that same pps — so the position value at flow
-    ``i`` is ``cumulative_shares(after i) x pps(i)``. The final point is the live value. Sparse
-    (one point per flow + now) but never fabricated; timestamps are APPROX from block height.
+    """The vault position VALUE over time (§history) — REAL, from the indexed flows' implied pps
+    (assets/shares) + the live value. Denser but never fabricated: at each flow we emit TWO real
+    marks — (1) the shares held BEFORE the flow, valued at THIS block's implied pps (mark-to-market
+    of the standing position), then (2) the post-flow value at the same pps. The pair makes a
+    deposit/withdraw render as a STEP (honest) rather than a diagonal that reads as gradual growth,
+    and (1) captures any yield drift since the previous flow. No sampler/interpolation/oracle;
+    timestamps are APPROX from block height.
     """
     if not flows:
         return []
@@ -261,15 +263,16 @@ def _value_series(flows: list[FlowRow], position: _VaultPosition) -> list[PnlSer
     cumulative = 0
     points: list[PnlSeriesPoint] = []
     for f in ordered:
+        ts = _approx_ts_iso(position.block, f.block_number)
+        # (1) PRE-event re-mark of the standing position at this block's pps (skip the first flow —
+        #     nothing is held yet). Real: held shares × on-chain-implied assets/share.
+        if cumulative > 0 and f.shares > 0:
+            pre = cumulative * f.assets // f.shares
+            points.append(PnlSeriesPoint(ts=ts, valueUsd=_usd_from_usdc(max(0, pre))))
+        # (2) apply the flow, then the POST-event value at the same implied pps.
         cumulative += f.shares if f.kind == "deposit" else -f.shares
-        # pps(block) implied by the event = assets per share; value = shares held x pps.
         value = cumulative * f.assets // f.shares if f.shares > 0 and cumulative > 0 else 0
-        points.append(
-            PnlSeriesPoint(
-                ts=_approx_ts_iso(position.block, f.block_number),
-                valueUsd=_usd_from_usdc(max(0, value)),
-            )
-        )
+        points.append(PnlSeriesPoint(ts=ts, valueUsd=_usd_from_usdc(max(0, value))))
     # The live on-chain value now (convertToAssets of the current shares).
     points.append(PnlSeriesPoint(ts=_now_iso(), valueUsd=_usd_from_usdc(position.underlying)))
     return points
@@ -327,20 +330,25 @@ async def _read_vault_position(reader: VaultReader, account: AccountContext) -> 
     )
 
 
-def _pnl_usd(position: _VaultPosition, basis: CostBasis | None) -> tuple[str | None, str | None]:
-    """(costBasisUsd, unrealizedPnlUsd) from the INDEXED flows, or (None, None) when no flow is
-    indexed yet (honest null, never a fabricated figure). Cost basis = Σ deposits − Σ withdrawals;
-    unrealized PnL = current value (convertToAssets) − cost basis. Both signed USD at $1 par."""
-    if basis is None or not basis.has_history:
-        return None, None
-    net = basis.net_deposited
-    return _usd_signed(net), _usd_signed(position.underlying - net)
+def _pnl_usd(
+    position: _VaultPosition, basis: BasisResult | None
+) -> tuple[str | None, str | None, str | None]:
+    """(costBasisUsd, unrealizedPnlUsd, realizedUsd) from the COMPLETE indexed flows, else all None
+    (honest — never fabricated, and never a partial-history guess). costBasis = average cost of the
+    shares HELD NOW; unrealized = current value − that basis; realized = Σ realized gains on past
+    withdrawals. realized + unrealized == the position's lifetime PnL. Surfaced ONLY when the
+    reconstructed share count reconciles to the on-chain balance (a complete, untransferred set).
+    """
+    if basis is None or not basis.reconciles:
+        return None, None, None
+    cost = basis.remaining_cost_basis
+    return _usd_signed(cost), _usd_signed(position.underlying - cost), _usd_signed(basis.realized)
 
 
-def _position_detail(position: _VaultPosition, basis: CostBasis | None = None) -> PositionDetail:
-    """Map a held vault position to the §3.3 ``PositionDetail``, with cost-basis/PnL from the
-    indexed on-chain flows when available (else null — never faked)."""
-    cost_basis_usd, unrealized_pnl_usd = _pnl_usd(position, basis)
+def _position_detail(position: _VaultPosition, basis: BasisResult | None = None) -> PositionDetail:
+    """Map a held vault position to the §3.3 ``PositionDetail``, with cost-basis/realized/unrealized
+    PnL from the indexed on-chain flows when the history reconciles (else null — never faked)."""
+    cost_basis_usd, unrealized_pnl_usd, realized_pnl_usd = _pnl_usd(position, basis)
     return PositionDetail(
         positionId=_VAULT_POSITION_ID,
         venue="vault",
@@ -352,6 +360,7 @@ def _position_detail(position: _VaultPosition, basis: CostBasis | None = None) -
         priceSource="onchain",
         costBasisUsd=cost_basis_usd,
         unrealizedPnlUsd=unrealized_pnl_usd,
+        realizedPnlUsd=realized_pnl_usd,
         riskTier=_VAULT_RISK_TIER,
     )
 
@@ -410,27 +419,14 @@ async def get_portfolio(
         # (non-custody). Fail-open to null, exactly like the cost-basis read below.
         native_wei = None
 
-    # Cost basis from the indexed flows — fail-open (a missing/unindexed value → null PnL, honest).
-    basis: CostBasis | None = None
-    if not position.stale and config.vault_address:
-        try:
-            basis = await flows.cost_basis(
-                _network_id(account.chain_id), config.vault_address, account.account
-            )
-        except Exception:
-            basis = None
-
-    positions: list[PositionDetail] = []
-    if "positions" in sections and position.held:
-        positions.append(_position_detail(position, basis))
-
-    # §history value series — real net-worth (position value) over time from the indexed flows.
-    # Fail-open ([] on any error / no flows), so a missing index degrades to the honest empty chart.
-    # NB: the series reconstructs cumulative shares FROM ZERO, so it needs the COMPLETE flow history
-    # (a truncated fetch that drops the oldest deposits would silently understate the whole curve) —
-    # hence the high bound (effectively all flows for any real user; one vault position per user).
+    # Full indexed flow history (one vault position per user ⇒ effectively "all"), fetched ONCE and
+    # reused for BOTH the average-cost PnL and the value series. Fail-open ([] → honest null / []).
+    # NB: the replay reconstructs cumulative shares/cost FROM ZERO, so it needs the COMPLETE history
+    # (a truncated fetch dropping the oldest deposits would silently understate everything) — hence
+    # the high bound (effectively all flows for any real user; one vault position per user).
+    basis: BasisResult | None = None
     value_series: list[PnlSeriesPoint] = []
-    if "pnl" in sections and position.held and config.vault_address:
+    if not position.stale and position.held and config.vault_address:
         try:
             hist = await flows.list_flows(
                 _network_id(account.chain_id),
@@ -438,16 +434,22 @@ async def get_portfolio(
                 account.account,
                 limit=_SERIES_MAX_FLOWS,
             )
-            value_series = _value_series(hist, position)
         except Exception:
-            value_series = []
+            hist = []
+        basis = replay_basis(hist, position.shares)
+        if "pnl" in sections:
+            value_series = _value_series(hist, position)
+
+    positions: list[PositionDetail] = []
+    if "positions" in sections and position.held:
+        positions.append(_position_detail(position, basis))
 
     # Net worth = vault value + idle wallet USDC (both USDC at $1 par). A degraded read → "0.00".
     vault_value = position.underlying if position.held else 0
     net_worth = "0.00" if position.stale else _usd_from_usdc(vault_value + position.idle)
     idle_usdc = "0.00" if position.stale else _usd_from_usdc(position.idle)
     status = "stale" if position.stale else "ok"
-    _, unrealized = _pnl_usd(position, basis) if position.held else (None, None)
+    _cost, unrealized, realized = _pnl_usd(position, basis) if position.held else (None, None, None)
 
     return PortfolioResponse(
         asOfBlock=position.block,
@@ -459,8 +461,9 @@ async def get_portfolio(
         positions=positions,
         allocation=_allocation(position) if "allocation" in sections else None,
         pnl=(
-            Pnl(series=value_series, realizedUsd=None, unrealizedUsd=unrealized)
-            if "pnl" in sections else None
+            Pnl(series=value_series, realizedUsd=realized, unrealizedUsd=unrealized)
+            if "pnl" in sections
+            else None
         ),
         risk=_risk(position) if "risk" in sections else None,
         dataSources=[
@@ -507,20 +510,21 @@ async def get_position(
             reasons=[ErrorReason("NOT_FOUND", "zero vault shares")],
         )
 
-    # Cost basis + transaction history from indexed flows — fail-open (missing → null/[], honest).
-    basis: CostBasis | None = None
+    # Full indexed flow history (fetched ONCE) → the average-cost basis (needs the COMPLETE history)
+    # + the newest rows for the tx list. Fail-open (missing → null PnL / [] history, honest).
+    _TX_DISPLAY_LIMIT = 50  # preserve the current tx-list cap (newest-first)
+    basis: BasisResult | None = None
     events: list[OnchainEvent] = []
     if not position.stale and position.held and config.vault_address:
         network_id = _network_id(account.chain_id)
         try:
-            basis = await flows.cost_basis(network_id, config.vault_address, account.account)
+            rows = await flows.list_flows(
+                network_id, config.vault_address, account.account, limit=_SERIES_MAX_FLOWS
+            )
         except Exception:
-            basis = None
-        try:
-            rows = await flows.list_flows(network_id, config.vault_address, account.account)
-            events = [_to_event(f, position.block) for f in rows]
-        except Exception:
-            events = []
+            rows = []
+        basis = replay_basis(rows, position.shares)
+        events = [_to_event(f, position.block) for f in rows[:_TX_DISPLAY_LIMIT]]
 
     detail = (
         _position_detail(position, basis)

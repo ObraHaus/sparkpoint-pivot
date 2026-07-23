@@ -46,6 +46,8 @@ from ..agents.literacy import Literacy
 from ..agents.planner import Planner
 from ..agents.recommender import Recommender
 from ..chain import VaultReader, VaultUnavailable
+from ..chain.aave_rate import AavePoolReader
+from ..chain.vault_reader import HttpxJsonRpcTransport
 from ..config import AgentConfig
 from ..coordinator import (
     ChainContext,
@@ -271,13 +273,40 @@ async def _read_gate_inputs(
     return caps, fee_bps, False
 
 
+async def _read_aave_gross_bps(config: AgentConfig) -> int | None:
+    """Live Aave USDC supply APY (bps), best-effort. Honest ``None`` when the RPC / Aave pool /
+    reserve env is unconfigured or the read fails — never fabricated, never raises (a degraded
+    APY must not 503 the recommendation). On testnet the rate is ~0 → returns ~0 bps (honest)."""
+    if not (config.rpc_url and config.aave_pool_address and config.aave_reserve_usdc_address):
+        return None
+    try:
+        reader = AavePoolReader(
+            pool_address=config.aave_pool_address,
+            transport=HttpxJsonRpcTransport(config.rpc_url),
+        )
+        return await reader.supply_apy_bps(config.aave_reserve_usdc_address)
+    except VaultUnavailable:
+        return None
+
+
 def _build_chain_context(
-    account: AccountContext, config: AgentConfig, caps: CapHeadroom, fee_bps: int, stale: bool
+    account: AccountContext,
+    config: AgentConfig,
+    caps: CapHeadroom,
+    fee_bps: int,
+    stale: bool,
+    gross_bps: int | None = None,
 ) -> ChainContext:
-    """Assemble the per-request ``ChainContext`` the gate reads (headers scope reads only, §1.2)."""
+    """Assemble the per-request ``ChainContext`` the gate reads (headers scope reads only, §1.2).
+
+    ``gross_bps`` is the live Aave USDC supply APY (bps); default ``None`` keeps callers that don't
+    read the rate (e.g. the chat context provider) unchanged and honest (no fabricated APY).
+    """
     resolved_targets: dict[str, str] = {}
     if config.vault_address:
         resolved_targets[_VAULT_TARGET_REF] = config.vault_address
+    # Net-of-perf-fee projection from the live gross Aave rate; None stays None (honest, no feed).
+    projected = None if gross_bps is None else round(gross_bps * (10_000 - fee_bps) / 10_000)
     return ChainContext(
         chain_id=account.chain_id,
         user_account=account.account,
@@ -285,10 +314,10 @@ def _build_chain_context(
         resolved_targets=resolved_targets,
         caps=caps,
         data_stale=stale,
-        # No live Aave APY feed is wired → gross/projected are null (never fabricated); the
-        # profit-only fee rate is read from chain (or its governed default when degraded).
+        # Live Aave USDC supply APY (gross) net-of-perf-fee (projected); both None when the feed is
+        # unconfigured/unreadable (honest, never fabricated). Profit-only fee is read from chain.
         market=MarketData(
-            gross_apy_bps=None, projected_apy_bps=None, performance_fee_bps=fee_bps
+            gross_apy_bps=gross_bps, projected_apy_bps=projected, performance_fee_bps=fee_bps
         ),
     )
 
@@ -373,7 +402,9 @@ async def _compute(
     strategy view meanwhile). Genuine (non-upstream) errors propagate unchanged → 500.
     """
     caps, fee_bps, stale = await _read_gate_inputs(reader, account)
-    chain = _build_chain_context(account, config, caps, fee_bps, stale)
+    # best-effort live Aave rate; None when unconfigured
+    gross_bps = await _read_aave_gross_bps(config)
+    chain = _build_chain_context(account, config, caps, fee_bps, stale, gross_bps=gross_bps)
     dag = _build_dag(llm, mandate_provider, stale=stale)
     try:
         result = await dag.run_recommendations(chain, limit=limit)
@@ -418,9 +449,7 @@ async def get_recommendations(
     ``REFUSAL``. A cleared-but-empty result (nothing passes the gate) is a valid ``200``
     with no recommendations (FR-016 — the renderer shows nothing uncleared).
     """
-    result, items = await _compute(
-        account, reader, config, llm, mandate_provider, limit=limit
-    )
+    result, items = await _compute(account, reader, config, llm, mandate_provider, limit=limit)
     _raise_if_unavailable(result)
     return RecommendationsResponse(
         policyVersion=result.policy_version,
@@ -439,7 +468,7 @@ async def get_recommendation_detail(
     llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
     mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
 ) -> RecommendationDetailResponse:
-    """"Why this?" detail + a comparison against neighboring ranks (§3.4).
+    """ "Why this?" detail + a comparison against neighboring ranks (§3.4).
 
     Recompute-and-match: the strategy-keyed ``recId`` round-trips, so recomputing the cleared
     set and matching by id needs no rec store. An unknown id — or one that no longer clears
