@@ -10,12 +10,17 @@
  */
 
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { SparkMark } from "@/lib/icons";
 import { ThemeToggle } from "@/components/screens/ThemeToggle";
 import "@/components/screens/onboarding.css";
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  // The REAL connected wallet (onboarding runs post-connect) — never a hardcoded placeholder.
+  const { address } = useAccount();
+  const walletShort = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Wallet";
+  const walletFull = address ? `${address.slice(0, 10)}…${address.slice(-8)}` : "Wallet connected";
 
   return (
     <div className="ob" id="ob">
@@ -55,8 +60,8 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
             </span>
           </span>
           <span className="pill pill-wallet">
-            <span className="mono ob-wallet-short">0x12…ab</span>
-            <span className="mono ob-wallet-full">0x12A4…b9Ef</span>
+            <span className="mono ob-wallet-short">{walletShort}</span>
+            <span className="mono ob-wallet-full">{walletFull}</span>
           </span>
         </span>
         <button

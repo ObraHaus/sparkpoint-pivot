@@ -134,7 +134,8 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
         ],
         guards: [
           <>Within your beta cap ({money(toNum(capRaw), 0)})</>,
-          "Slippage under your max (0.5%)",
+          // (No slippage guard: an ERC-4626 supply deposit has no slippage to bound — showing a
+          // fabricated "under your max 0.5%" check would present an unverified limit as passed.)
           m.venueGuard,
         ],
         okBody: (
