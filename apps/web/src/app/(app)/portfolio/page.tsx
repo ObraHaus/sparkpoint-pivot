@@ -23,7 +23,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
-import { usePortfolioView } from "@/lib/agent/useAgent";
+import { usePortfolioView, useMandate, mandateDrift } from "@/lib/agent/useAgent";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
@@ -123,6 +123,14 @@ export default function Page() {
   const netUnrealizedUsd = agentLive ? agent.unrealizedUsd : undefined;
   const vaultPnlUsd = agentLive ? agent.positionPnl["vault"]?.unrealizedPnlUsd : undefined;
   const vaultCostBasisUsd = agentLive ? agent.positionPnl["vault"]?.costBasisUsd : undefined;
+
+  // Drift vs the user's real mandate (GET /agent/mandate). The only live strategy is the tier-1
+  // Aave vault, so the realized tier is 1 when invested, else cash (0). A mandate only NARROWS
+  // allowed risk, so realized ≤ mandate tier is on-plan; only exceeding it drifts.
+  const mandate = useMandate();
+  const targetTier = mandate.status === "ready" ? mandate.mandate.tier : undefined;
+  const realizedTier = live ? (d.vaultValue > 0 ? 1 : 0) : undefined;
+  const drift = mandateDrift(targetTier, realizedTier);
 
   // §history — REAL position-value series from the agent's on-chain flow index. The range selector
   // filters the time window; if the window has <2 points (sparse testnet data) we fall back to the
@@ -302,7 +310,22 @@ export default function Page() {
           </div>
           <div className="rp-row">
             <span className="muted">Drift vs your plan</span>
-            <span className="muted" style={{ fontWeight: 600 }}>— <Note text="needs your plan" title="Drift compares your live mix to your mandate; the mandate link isn't wired here yet." /></span>
+            {mandate.status === "ready" && live ? (
+              drift === "above_plan" ? (
+                <span style={{ fontWeight: 600, color: "var(--caution)" }}>
+                  Above your plan{" "}
+                  <Note text="higher risk" title={`Your live holdings sit above your ${mandate.mandate.riskLabel.toLowerCase()} (${mandate.mandate.tier}/5) mandate ceiling.`} />
+                </span>
+              ) : (
+                <span style={{ fontWeight: 600, color: "var(--gain)" }} title={`Within your ${mandate.mandate.riskLabel.toLowerCase()} (${mandate.mandate.tier}/5) mandate. Risk-tier drift only; idle cash under-earns your yield goal.`}>
+                  On plan
+                </span>
+              )
+            ) : mandate.status === "empty" ? (
+              <span className="muted" style={{ fontWeight: 600 }}>— <Note text="no plan yet" title="Set a mandate to compare your live mix against it." /></span>
+            ) : (
+              <span className="muted" style={{ fontWeight: 600 }}>— <Note text={mandate.status === "disconnected" ? "connect to compare" : "needs your position"} title="Drift compares your live mix to your mandate." /></span>
+            )}
           </div>
           <div className="rp-row">
             <span className="muted">Concentration</span>

@@ -33,6 +33,7 @@ const MOCK_RECS: RecView[] = data.recs.map((r, i) => ({
   // Offline parity: the mock's actionable branch is exactly `apy > 0`.
   signable: r.apy > 0,
   best: i === 0,
+  citations: [],
 }));
 
 export default function Page() {
@@ -43,7 +44,8 @@ export default function Page() {
   // Each card is signable ONLY when policy-approved (RecView.signable ⟺ isSignable).
   const liveRecs = useRecommendationsView();
   const recs = liveRecs ?? MOCK_RECS;
-  const usingMock = liveRecs === undefined; // offline / not-yet-loaded → showing the mock fallback
+  // useRecommendationsView returns null offline (→ MOCK_RECS) and [] when live-but-nothing-clears.
+  const usingMock = liveRecs === null;
 
   return (
     <div className="page page-narrow">
@@ -119,6 +121,16 @@ export default function Page() {
             )}
             <RiskChip tier={r.risk} />
             <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", maxWidth: 200 }}>{r.fit}</div>
+            {!usingMock && r.citations.length > 0 && (
+              <span
+                className="cite"
+                onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))}
+                style={{ cursor: "pointer" }}
+              >
+                <Icon name="check" size={10} /> {r.citations.length}{" "}
+                {r.citations.length === 1 ? "source" : "sources"}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginBottom: 14 }}>
             Estimates, not guarantees.
@@ -138,10 +150,37 @@ export default function Page() {
             </button>
           </div>
           <div className={"whybd" + (open[i] ? " open" : "")}>
-            Ranked against your mandate (lower risk, capital-preservation-first, steady yield).{" "}
-            {r.best
-              ? `Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your ${capNoun} and slippage guardrails.`
-              : "A conservative posture — less earning, more flexibility. Honest tradeoff, shown so you can choose."}
+            {usingMock ? (
+              <>
+                Ranked against your mandate (lower risk, capital-preservation-first, steady yield).{" "}
+                {r.best
+                  ? `Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your ${capNoun} and slippage guardrails.`
+                  : "A conservative posture — less earning, more flexibility. Honest tradeoff, shown so you can choose."}
+              </>
+            ) : (
+              <>
+                {r.thesis ||
+                  "Ranked against your mandate (lower risk, capital-preservation-first, steady yield)."}
+                {r.citations.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontWeight: 600, color: "var(--foreground)", marginBottom: 4 }}>Sources</div>
+                    {r.citations.slice(0, 3).map((c, ci) => (
+                      <div key={ci}>
+                        {c.provider} · {c.field}: {c.value}
+                        {c.url ? (
+                          <>
+                            {" "}
+                            <a className="cite" href={c.url} target="_blank" rel="noreferrer">
+                              View source <Icon name="ext" size={10} />
+                            </a>
+                          </>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       ))}

@@ -15,7 +15,8 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useOnboarding, type MandateDraft } from "@/lib/agent/useAgent";
+import { useOnboarding } from "@/lib/agent/useAgent";
+import { buildMandateDraft } from "@/lib/agent/mandateDraft";
 
 /** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
 const STEP_LABELS = ["Connect", "Experience", "Goal", "Timeline", "Risk", "Your plan"] as const;
@@ -35,49 +36,8 @@ interface Answers {
   riskTier: number;
 }
 
-/**
- * Map the locally-collected onboarding answers into the confirmed-mandate body
- * (§3.1 `mandate_draft`) + the `selections` the /onboarding/turn step machine takes.
- * The mandate is advisory config — persisting it never authorizes moving funds.
- */
-function buildMandateDraft(a: Answers): { mandate: MandateDraft; selections: Record<string, unknown> } {
-  const tier = a.riskTier || 1;
-  const riskProfile = tier <= 2 ? "conservative" : tier <= 3 ? "moderate" : "aggressive";
-  const goalKind = a.goal?.toLowerCase().includes("yield")
-    ? "steady_yield"
-    : a.goal?.toLowerCase().includes("grow")
-      ? "grow_savings"
-      : a.goal?.toLowerCase().includes("aggressive")
-        ? "aggressive_growth"
-        : "reach_target";
-  const horizonMonths = a.timeline?.includes("< 1")
-    ? 6
-    : a.timeline?.includes("3+")
-      ? 48
-      : a.timeline?.includes("1")
-        ? 24
-        : 12;
-  return {
-    mandate: {
-      goals: [{ kind: goalKind, label: a.goal ?? "Steady USDC yield" }],
-      riskProfile,
-      riskParams: {
-        maxSlippageBps: 50,
-        drawdownTolerance: tier <= 2 ? "low" : tier <= 3 ? "medium" : "high",
-        horizonMonths,
-      },
-      summaryText: `${TIER_NAMES[tier]} (${tier}/5), capital-preservation-first.`,
-      version: 1,
-    },
-    selections: {
-      experience: a.experience,
-      goal: a.goal,
-      timeline: a.timeline,
-      scenario: a.riskAns,
-      riskTier: tier,
-    },
-  };
-}
+/** Persist lifecycle for the confirmed mandate (POST /mandate). */
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 /**
  * Opens the "What Sparky can & can't do" prove-it sheet (Trust Center).
@@ -106,16 +66,27 @@ export default function OnboardingPage() {
   const go = (n: number) => setStepIndex(n);
   const set = (patch: Partial<Answers>) => setAnswers((a) => ({ ...a, ...patch }));
 
-  // Confirm the plan → drive POST /onboarding/turn (review) then POST /mandate.
-  // Best-effort + non-blocking: offline (no base URL / wallet) it no-ops, and any
-  // failure never blocks the flow (the local step machine stays the source of UI).
+  // Confirm the plan → persist the LOCAL draft (the exact mandate the user just saw)
+  // via POST /mandate. Awaited, with an explicit success/error state — no fire-and-forget
+  // and no silent offline no-op. We deliberately do NOT round-trip through the server's
+  // default recompute (it drops the goal/tier/timeline the user chose — US3 AC2).
   const onboarding = useOnboarding();
-  const confirmPlan = useCallback(() => {
-    if (!onboarding.online) return;
-    const { mandate, selections } = buildMandateDraft(answers);
-    void onboarding
-      .runReview(mandate, selections)
-      .then((serverDraft) => onboarding.confirmMandate(serverDraft ?? mandate));
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const confirmPlan = useCallback(async (): Promise<boolean> => {
+    const mandate = buildMandateDraft(answers);
+    if (!onboarding.online) {
+      // No connected wallet ⇒ nothing to scope the mandate to. Surface it; never pretend.
+      setSaveState("error");
+      return false;
+    }
+    setSaveState("saving");
+    const saved = await onboarding.confirmMandate(mandate);
+    if (saved) {
+      setSaveState("saved");
+      return true;
+    }
+    setSaveState("error");
+    return false;
   }, [onboarding, answers]);
 
   // ---------- stepper ----------
@@ -189,7 +160,7 @@ export default function OnboardingPage() {
       {/* sticky dock */}
       <div className="dock">
         <div className="dockinner" id="dock">
-          {renderDock(stepIndex, answers, go, router.push, confirmPlan)}
+          {renderDock(stepIndex, answers, go, router.push, confirmPlan, saveState)}
         </div>
       </div>
     </>
@@ -739,8 +710,9 @@ function renderStream(
             </div>
             <div className="t-h1">Your plan is set.</div>
             <div className="t-base" style={{ color: "var(--muted-foreground)", maxWidth: "420px" }}>
-              Lower risk (1/5), steady USDC yield. The AI will suggest; you approve and sign. Change any of this anytime
-              in Settings.
+              {TIER_NAMES[answers.riskTier || 1]} ({answers.riskTier || 1}/5),{" "}
+              {(answers.goal ?? "steady USDC yield").toLowerCase()}. The AI will suggest; you approve and sign. Change
+              any of this anytime in Settings.
             </div>
           </div>
         </div>
@@ -757,7 +729,8 @@ function renderDock(
   answers: Answers,
   go: (n: number) => void,
   push: (href: string) => void,
-  confirmPlan: () => void,
+  confirmPlan: () => Promise<boolean>,
+  saveState: SaveState,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -819,7 +792,11 @@ function renderDock(
     case 6:
       return (
         <>
-          <span className="hint">You can change this anytime in Settings.</span>
+          <span className="hint">
+            {saveState === "error"
+              ? "Couldn't save your plan — check your connection and try again."
+              : "You can change this anytime in Settings."}
+          </span>
           <button
             className="btn btn-outline btn-lg"
             type="button"
@@ -831,12 +808,13 @@ function renderDock(
             className="btn btn-primary btn-lg"
             id="pcta"
             type="button"
-            onClick={() => {
-              confirmPlan();
-              go(7);
+            disabled={saveState === "saving"}
+            onClick={async () => {
+              const ok = await confirmPlan();
+              if (ok) go(7);
             }}
           >
-            Set my plan
+            {saveState === "saving" ? "Saving…" : saveState === "error" ? "Try again" : "Set my plan"}
           </button>
         </>
       );
