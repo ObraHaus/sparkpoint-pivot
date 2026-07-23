@@ -53,6 +53,7 @@ from .errors import (
     internal_error_handler,
     validation_error_handler,
 )
+from .execution import router as execution_router
 from .idempotency import IdempotencyStore
 from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
@@ -485,6 +486,14 @@ app.include_router(portfolio_router)
 # §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
 # surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
 app.include_router(recommendations_router)
+# §3.5/§3.6 execution spine (feature 019 US2) — the SINGLE signing chokepoint. /build-tx
+# materializes
+# an unsigned IntentBundle (recipient forced to the user, signature always null); /simulate
+# refreshes
+# it; /submit-signed-tx relays a user-signed payload (byte-matched) + records the execution; GET
+# polls
+# status. The service signs nothing (N1/N3); the withdraw/exit path is never gated (N2).
+app.include_router(execution_router)
 # §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
 # management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
 app.include_router(allowlist_router)

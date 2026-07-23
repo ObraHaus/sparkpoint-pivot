@@ -77,13 +77,20 @@ export const IntentBundleSchema = z
     steps: z.array(IntentStepSchema).min(1),
     /** Present (unsigned) for opType=userop; null/omitted for a pure eoa_call bundle. */
     userOp: PackedUserOperationSchema.nullable().default(null),
-    simulation: SimulationResultSchema,
+    /**
+     * The pre-trade preview (§2.3). NULLABLE for the exit path only (N2, feature 019): a
+     * withdraw/redeem MUST build even when the simulator is unavailable, so its `simulation`
+     * may be null. It is NEVER null on an approved INFLOW (VR-X2: an approved deposit references
+     * a passing sim). The ExecutionDrawer renders it when present and keeps the exit ungated.
+     */
+    simulation: SimulationResultSchema.nullable(),
     /** approved=true here — a rejected verdict never ships a bundle (§2.4). */
     policyVerdict: PolicyVerdictSchema,
     guardrailChecklist: z.array(GuardrailCheckSchema),
     rationale: z.string(),
     citations: z.array(CitationSchema),
-    recommendationId: z.string().optional(),
+    /** Link to the originating recommendation (outcome attribution, US5); null when unattributed. */
+    recommendationId: z.string().nullable().default(null),
     policyVersion: PolicyVersionSchema,
     /** Short-lived; a stale bundle must be rebuilt (§2.1). */
     expiresAt: IsoDateTimeSchema,
