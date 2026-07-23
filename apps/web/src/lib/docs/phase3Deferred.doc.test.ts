@@ -37,7 +37,9 @@ test("every repo path the register cites still exists (rename → doc update)", 
 });
 
 test("wave-state.json P3 entry lists the 8 deferred items and stays valid JSON", () => {
-  const ws = JSON.parse(readFileSync(path.join(ROOT, "docs/orchestration/wave-state.json"), "utf8"));
+  const ws = JSON.parse(readFileSync(path.join(ROOT, "docs/orchestration/wave-state.json"), "utf8")) as {
+    waves?: Array<{ id?: string; deferred_register?: string; deferred_items?: unknown[] }>;
+  };
   const p3 = (ws.waves ?? []).find((w) => w.id === "P3");
   assert.ok(p3, "wave-state must have a P3 wave");
   assert.equal(p3.deferred_register, "docs/phase-3-deferred.md");
