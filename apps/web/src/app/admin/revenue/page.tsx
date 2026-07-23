@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Admin → Revenue ★ — the REAL revenue dashboard (feature 013). Reads
- * GET /admin/revenue/summary (three on-chain streams, each honest about its own state) and renders
- * each stream's real cumulative + per-period series in its own units. It reads NOTHING from
+ * Admin → Revenue ★ — the REAL revenue dashboard (feature 013/014), MULTI-NETWORK. Reads
+ * GET /admin/revenue/summary ({ networks: [...] }) and renders each network's streams in its own
+ * section, each stream honest about its own state, in its own units. It reads NOTHING from
  * `components/admin/data.tsx` (no `$13.9K`/`$82.8K` mock literal), shows a per-stream
- * "not instrumented" state when a source is `configured:false`, and honest-degrades to a plain
- * "cannot load" when the fetch fails (never a reversion to a mock series). Provable, not promised.
+ * "not tracked" state when a source is off / not applicable to that network, and honest-degrades to
+ * a plain "cannot load" when the fetch fails. Swap fees are attributed per network (never
+ * cross-counted). No cross-network total is shown — streams are in different tokens.
  */
 
 import { useEffect, useState } from "react";
@@ -22,11 +23,16 @@ interface StreamSeries {
   periods: { periodStart: string; valueRaw: string }[];
   disclosures: string[];
 }
-interface RevenueSummary {
+interface NetworkRevenue {
+  networkId: string;
+  chainId: number;
+  label: string;
   swap: StreamSeries;
   perf: StreamSeries;
   premium: StreamSeries;
-  networkId: string;
+}
+interface RevenueSummary {
+  networks: NetworkRevenue[];
 }
 
 const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -62,10 +68,10 @@ function StreamCard({
       <div className="chartcard">
         <div className="ch">
           <span className="ct">{title}</span>
-          <span className="pill">not instrumented</span>
+          <span className="pill">not tracked</span>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 8 }}>
-          This stream isn&apos;t instrumented yet — no data source. We show nothing rather than a made-up number.
+          Not tracked on this network — no data source. We show nothing rather than a made-up number.
         </div>
       </div>
     );
@@ -102,6 +108,25 @@ function StreamCard({
           <span>{d}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function NetworkSection({ net }: { net: NetworkRevenue }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div className="ch" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <span className="ct" style={{ fontSize: 15 }}>
+          {net.label}
+        </span>
+        <span className="pill">chain {net.chainId}</span>
+      </div>
+      <div className="grid2">
+        <StreamCard title="Swap routing fee (0.20%)" unit="USDC" color={STREAM.swap} stream={net.swap} />
+        <StreamCard title="Vault performance fee (10%)" unit="spkUSDC" color={STREAM.perf} stream={net.perf} />
+        <StreamCard title="SRK membership" unit="SRK" color={STREAM.premium} stream={net.premium} />
+        <RevenueMultisig chainId={net.chainId} />
+      </div>
     </div>
   );
 }
@@ -145,8 +170,8 @@ export default function Page() {
         <div>
           <h1>Revenue ★</h1>
           <div className="sub">
-            Real revenue by stream — on-chain, per source. No projections; a source with no feed shows nothing, not a
-            guess.
+            Real revenue by network, then by stream — on-chain, per source. No projections; a source with no feed
+            shows nothing, not a guess.
           </div>
         </div>
         <button
@@ -163,7 +188,7 @@ export default function Page() {
       <div className="infobanner">
         <Icon name="info" size={16} />
         <span>
-          Every figure is summed from a real on-chain ledger in base units.{" "}
+          Every figure is summed from a real on-chain ledger in base units, attributed to its network.{" "}
           <b style={{ color: "var(--foreground)" }}>We only earn when you earn</b> — never on your principal, never by
           taking custody.
         </span>
@@ -182,14 +207,7 @@ export default function Page() {
           Loading real revenue…
         </div>
       ) : (
-        <>
-          <div className="grid2">
-            <StreamCard title="Swap routing fee (0.20%)" unit="USDC" color={STREAM.swap} stream={summary.swap} />
-            <StreamCard title="Vault performance fee (10%)" unit="spkUSDC" color={STREAM.perf} stream={summary.perf} />
-            <StreamCard title="SRK membership" unit="SRK" color={STREAM.premium} stream={summary.premium} />
-            <RevenueMultisig />
-          </div>
-        </>
+        summary.networks.map((net) => <NetworkSection key={net.networkId} net={net} />)
       )}
     </>
   );
