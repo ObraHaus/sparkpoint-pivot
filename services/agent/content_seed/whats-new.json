@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "real-srk-pay-screen",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Buy Premium with SRK",
+      "body": "You can now upgrade to Premium right in the app, paid in SRK. The Premium page shows your real SRK balance and the monthly price, and when you upgrade you sign the payment yourself — it goes straight to our disclosed treasury address, and we never move your funds for you. Once the payment confirms on-chain, Premium switches on automatically and shows when it renews. As always this is completely optional: the assistant, the vault, deposits, yield, swaps, and withdraw-anytime stay free and are never gated by Premium.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "curated-vaults-foundation",
       "type": "changelog",
       "tag": "New",
