@@ -8,6 +8,9 @@ Per-wave headless sessions + the watchdog read `wave-state.json`; this file is t
 - **Gate B — WAITING:** MVP STOP-AND-VALIDATE. Clears when the §09 GO checklist is green **and** the withdraw-always drill (redeem offline + `paused()==true`, funded with Aave-reserve USDC) is physically performed on Base Sepolia.
 - **Gate C — WAITING (Phase 3+):** mainnet. Requires the recorded internal security audit + hardening sign-off (T103). **Never autonomous.**
 
+## Phase-3 deferrals
+The intentionally-descoped Phase-3 items (US6 automation, Base↔Sui bridge/Sui, Aerodrome, real Morpho + 010 APY feed, notifications, admin analytics, US5 outcomes, US2 sim/build REST + direct Aave v3) — with why, their honest in-app state, and each build gate — are the register in [`docs/phase-3-deferred.md`](../phase-3-deferred.md). Mainnet items also clear **Gate C**.
+
 ## Autonomy boundaries (enforced)
 - Git on `develop` + `feature/*` is autonomous; `main`/`master` push+merge, mainnet broadcast, `cast send` to mainnet, and force-push are **hard-denied** by `.claude/hooks/guard-dangerous.sh` (PreToolUse, tested 22/22) + permission deny rules.
 - Every human gate = a `wave-state.json` write + `coder_report_task state=failure` + this log.

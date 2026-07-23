@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (016 — Phase-3 register + P1 quick wins)
+- **Trust Center "Whitelisted protocols" card.** `/trust` now shows the closed set of external on-chain venues the agent may route into — derived live from the policy allowlist SoT joined to the address book (`getPolicyConstants(chainId).allowlist` × `resolveTargetRef`), **no hardcoded address**. On Base Sepolia that is Aave v3 Pool (Supply · Withdraw) with a Basescan link; the vault (already in "Contracts & roles") and the Morpho mock wrapper are excluded (Principle III), and the card hides when the join is empty. New pure `lib/policy/whitelistedProtocols.ts` (+5 tests).
+- **Per-device settings persistence.** `/settings` notification toggles + display prefs (density, reduce-motion) now persist to localStorage via the existing `useLocalState`, and **Compact density + Reduce-motion actually apply app-wide** (stamped as `data-density`/`data-reduced-motion` on `<html>` by a new `PrefsEffect`). New dependency-free `lib/settings/prefs.ts` coerces partial/corrupt blobs to a complete object (+5 tests). The Settings StatusTag now honestly separates saved-prefs from unwired delivery.
+- **`docs/phase-3-deferred.md`** — a canonical Phase-3 descope register (8 deferred items, each with why / honest in-app state + disclosure ref / build gate / tracking), cross-linked from `known-limitations.md`, `GATES.md`, `architecture-as-built.md`, and the `wave-state.json` P3 entry. An anti-rot `node:test` (`src/lib/docs/phase3Deferred.doc.test.ts`) guards the cited paths + JSON validity.
+
+### Changed (016)
+- **Honest badge on the notifications bell drawer** — the bell drawer (opened on every app page) now carries the same "Preview data" StatusTag as the `/notifications` page, so its showcase rows never read as real events.
+- **De-faked admin sample-data provenance** — the `/admin` home + `/admin/tvl` charts no longer claim a live pipeline/freshness ("RPC + subgraph · 42s ago") under their "Sample data" pill; the footers now read a static "sample data".
+
 ### Added (015 — P0 alpha fixes)
 - **The real mandate is now shown in-app (US3).** New `useMandate()` reader (`GET /agent/mandate`, session-scoped owner via the BFF, honest disconnected/loading/error/empty/ready states) + a pure `lib/agent/mandate.ts` view/drift mapper. Wired the **Settings → Mandate** tab (now incl. a real Max-slippage row), the **chat right-rail "Your mandate"** card, and the **portfolio "Drift vs your plan"** row to the real persisted mandate — replacing the hardcoded tier-1 mock. A successful onboarding save now invalidates the mandate query so the new plan reflects immediately.
 - **Recommendation cards explain themselves (US5 AC1).** New pure `lib/agent/recView.ts` carries the recommender's real `citations`; `/strategies` renders the **live model rationale** in the "Why this?" expander and a **"N source(s)" citation chip** (up to 3 provider·field:value rows, with a "View source" link when a citation has a url). The agent already returned both — the wire data was being dropped.

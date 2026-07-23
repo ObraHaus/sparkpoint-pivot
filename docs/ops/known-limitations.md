@@ -3,6 +3,9 @@
 Honest, current-state caveats for the deployed develop stack. Each is intentional/tracked, not
 a silent gap. Update in the same change that resolves one.
 
+> Deferred (not-yet-built) features and the gate to build each are tracked separately in
+> [`docs/phase-3-deferred.md`](../phase-3-deferred.md).
+
 ## LLM gateway (Phase A)
 
 - **`readyz.llm` is process-liveness only.** The check GETs the gateway's `/health/liveliness`
