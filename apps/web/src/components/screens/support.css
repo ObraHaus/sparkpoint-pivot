@@ -9,3 +9,8 @@
 .learn-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:.15s;}
 .learn-card:hover{border-color:var(--primary);}
 @media(max-width:1023px){.learn-grid{grid-template-columns:1fr;}}
+
+/* Compact density (settings → Appearance) — device-local, stamped as data-density on <html> by
+   PrefsEffect (feature 016). Tightens the shared row/card rhythm used across the app. */
+:root[data-density="compact"] .setrow{padding:10px 0;}
+:root[data-density="compact"] .card-pad{padding:14px;}

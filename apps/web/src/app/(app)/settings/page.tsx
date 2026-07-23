@@ -20,6 +20,8 @@ import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useMandate } from "@/lib/agent/useAgent";
+import { useNotifPrefs, useDisplayPrefs } from "@/lib/settings/usePrefs";
+import type { NotifKey } from "@/lib/settings/prefs";
 
 type Tab = "account" | "mandate" | "notifications" | "appearance" | "security";
 
@@ -31,18 +33,25 @@ const SETTABS: [Tab, string][] = [
   ["security", "Security"],
 ];
 
-const NOTIF_LABELS = [
-  "Transaction results",
-  "Rate changes & recommendations",
-  "Caps near limit",
-  "Session-key expiry",
-  "Outcome updates",
+const NOTIF_ROWS: { key: NotifKey; label: string }[] = [
+  { key: "txResults", label: "Transaction results" },
+  { key: "rateChanges", label: "Rate changes & recommendations" },
+  { key: "capsNearLimit", label: "Caps near limit" },
+  { key: "sessionKeyExpiry", label: "Session-key expiry" },
+  { key: "outcomeUpdates", label: "Outcome updates" },
 ];
 
-/** A standalone toggle switch mirroring the design's `.switch` with `[data-sw]` toggle behavior. */
-function Switch({ defaultOn = false }: { defaultOn?: boolean }) {
-  const [on, setOn] = useState(defaultOn);
-  return <button className={"switch" + (on ? " on" : "")} onClick={() => setOn((v) => !v)} />;
+/** A controlled toggle mirroring the design's `.switch`. */
+function Switch({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      className={"switch" + (on ? " on" : "")}
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+    />
+  );
 }
 
 /** The Mandate tab — the user's REAL persisted plan (GET /agent/mandate), with honest
@@ -129,7 +138,8 @@ export default function Page() {
   const { resolvedTheme, setTheme } = useTheme();
   const { wallet, disconnectWallet } = useNetwork();
   const [tab, setTab] = useState<Tab>("account");
-  const [density, setDensity] = useState<"Comfortable" | "Compact">("Comfortable");
+  const { prefs: notif, setNotif } = useNotifPrefs();
+  const { prefs: display, setDensity, setReducedMotion } = useDisplayPrefs();
 
   const isLight = resolvedTheme === "light";
 
@@ -137,7 +147,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations"]} pending={["Notification / display preferences aren’t persisted yet"]} /></h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "Notification & display preferences are saved on this device", "Compact density and reduce-motion apply across the app"]} pending={["Notification delivery (email / push) isn’t wired yet — toggles record your intent"]} /></h1>
         </div>
         <button
           className="btn btn-ghost btn-md"
@@ -202,13 +212,21 @@ export default function Page() {
 
         {tab === "mandate" && <MandateTab />}
 
-        {tab === "notifications" &&
-          NOTIF_LABELS.map((l, i) => (
-            <div className="setrow" key={l}>
-              <div style={{ fontWeight: 600 }}>{l}</div>
-              <Switch defaultOn={i < 3} />
+        {tab === "notifications" && (
+          <>
+            {NOTIF_ROWS.map(({ key, label }) => (
+              <div className="setrow" key={key}>
+                <div style={{ fontWeight: 600 }}>{label}</div>
+                <Switch on={notif[key]} onChange={(v) => setNotif(key, v)} />
+              </div>
+            ))}
+            <div className="setrow">
+              <div className="muted" style={{ fontSize: 12.5 }}>
+                Saved on this device. Delivery (email / push) isn’t live in alpha — these set what you’ll get once it is.
+              </div>
             </div>
-          ))}
+          </>
+        )}
 
         {tab === "appearance" && (
           <>
@@ -234,24 +252,27 @@ export default function Page() {
               </div>
               <div className="seg">
                 <button
-                  className={density === "Comfortable" ? "active" : ""}
-                  onClick={() => setDensity("Comfortable")}
+                  className={display.density === "comfortable" ? "active" : ""}
+                  onClick={() => setDensity("comfortable")}
                 >
                   Comfortable
                 </button>
-                <button className={density === "Compact" ? "active" : ""} onClick={() => setDensity("Compact")}>
+                <button
+                  className={display.density === "compact" ? "active" : ""}
+                  onClick={() => setDensity("compact")}
+                >
                   Compact
                 </button>
               </div>
             </div>
             <div className="setrow">
               <div>
-                <div style={{ fontWeight: 600 }}>Reduced motion</div>
+                <div style={{ fontWeight: 600 }}>Reduce motion</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
-                  Follows your system setting.
+                  Fewer transitions &amp; animations on this device.
                 </div>
               </div>
-              <Switch />
+              <Switch on={display.reducedMotion} onChange={setReducedMotion} />
             </div>
           </>
         )}
