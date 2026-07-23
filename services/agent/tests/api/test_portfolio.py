@@ -30,9 +30,7 @@ VAULT = "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2"
 class _FakeFlowReader:
     """In-memory cost-basis + flow-list reader (no DB)."""
 
-    def __init__(
-        self, basis: CostBasis | None = None, flows: list[FlowRow] | None = None
-    ) -> None:
+    def __init__(self, basis: CostBasis | None = None, flows: list[FlowRow] | None = None) -> None:
         self._basis = basis or CostBasis(0, 0, 0)
         self._flows = flows or []
 
@@ -44,7 +42,31 @@ class _FakeFlowReader:
     ) -> list[FlowRow]:
         return self._flows[:limit]
 
+
 _WAD = 10**18
+
+
+def _dep(assets: int, shares: int, block: int, log: int = 0) -> FlowRow:
+    return FlowRow(
+        kind="deposit",
+        assets=assets,
+        shares=shares,
+        block_number=block,
+        log_index=log,
+        tx_hash="0xd",
+    )
+
+
+def _wd(assets: int, shares: int, block: int, log: int = 0) -> FlowRow:
+    return FlowRow(
+        kind="withdraw",
+        assets=assets,
+        shares=shares,
+        block_number=block,
+        log_index=log,
+        tx_hash="0xw",
+    )
+
 
 TOKEN = "test-web-tier-token"
 USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
@@ -162,19 +184,55 @@ def test_portfolio_returns_enriched_position(client: TestClient) -> None:
     assert sources[0]["lastBlock"] == 42
 
 
+_PPS_1_2 = 1_200_000_000_000_000_000  # pps 1.2 (18-dp) — 250M shares → 300M underlying
+
+
 def test_portfolio_pnl_from_indexed_cost_basis(client: TestClient) -> None:
-    # Position worth 300 USDC, cost basis = 250 deposited − 0 withdrawn → unrealized PnL = +50.
-    _use(FakePortfolioReader(balance=300_000_000, block=42), basis=CostBasis(250_000_000, 0, 3))
+    # Deposit 250 USDC for 250M shares (pps 1); pps rises to 1.2 → value 300, avg cost 250,
+    # unrealized +50, realized 0 (no withdrawals yet). Reconstructed shares == balance → reconciles.
+    _use(
+        FakePortfolioReader(balance=250_000_000, pps=_PPS_1_2, block=42),
+        flows=[_dep(250_000_000, 250_000_000, 10)],
+    )
     body = client.get("/portfolio", headers=GOOD_HEADERS).json()
     pos = body["positions"][0]
     assert pos["costBasisUsd"] == "250.00"
     assert pos["unrealizedPnlUsd"] == "50.00"
+    assert pos["realizedPnlUsd"] == "0.00"
     assert body["pnl"]["unrealizedUsd"] == "50.00"
+    assert body["pnl"]["realizedUsd"] == "0.00"
+
+
+def test_portfolio_realized_pnl_from_withdrawal(client: TestClient) -> None:
+    # Deposit 100 (100M shares @pps1), pps→1.2, withdraw 60 (redeem 50M shares). Held 50M shares
+    # worth 60 (avg cost 50 → unrealized +10); realized on the withdrawal +10. Sum == lifetime PnL.
+    _use(
+        FakePortfolioReader(balance=50_000_000, pps=_PPS_1_2, block=42),
+        flows=[_dep(100_000_000, 100_000_000, 10), _wd(60_000_000, 50_000_000, 20)],
+    )
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    assert body["pnl"]["realizedUsd"] == "10.00"
+    assert body["pnl"]["unrealizedUsd"] == "10.00"
+    assert body["positions"][0]["costBasisUsd"] == "50.00"
+
+
+def test_portfolio_pnl_null_when_history_incomplete(client: TestClient) -> None:
+    # Indexed flows reconstruct 100M shares but the on-chain balance is 150M (a newer, un-indexed
+    # deposit) → history does not reconcile → all PnL null (honest, never a partial-history guess).
+    _use(
+        FakePortfolioReader(balance=150_000_000, pps=_WAD),
+        flows=[_dep(100_000_000, 100_000_000, 10)],
+    )
+    body = client.get("/portfolio", headers=GOOD_HEADERS).json()
+    assert body["positions"][0]["costBasisUsd"] is None
+    assert body["positions"][0]["realizedPnlUsd"] is None
+    assert body["pnl"]["unrealizedUsd"] is None
+    assert body["pnl"]["realizedUsd"] is None
 
 
 def test_portfolio_pnl_null_when_no_flows_indexed(client: TestClient) -> None:
-    # No indexed flows (event_count 0) → cost basis + PnL are null (honest), never fabricated.
-    _use(FakePortfolioReader(balance=300_000_000), basis=CostBasis(0, 0, 0))
+    # No indexed flows → cost basis + PnL are null (honest), never fabricated.
+    _use(FakePortfolioReader(balance=300_000_000), flows=[])
     body = client.get("/portfolio", headers=GOOD_HEADERS).json()
     assert body["positions"][0]["costBasisUsd"] is None
     assert body["positions"][0]["unrealizedPnlUsd"] is None
@@ -278,10 +336,22 @@ def test_position_detail_lists_indexed_transactions(client: TestClient) -> None:
     # §tx: the indexed Deposit/Withdraw flows surface as onchainEvents (newest first), USD-valued,
     # with the exact block + tx hash and an APPROXIMATE age from block height.
     flows = [
-        FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
-                log_index=0, tx_hash="0x" + "ab" * 32),
-        FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
-                log_index=0, tx_hash="0x" + "cd" * 32),
+        FlowRow(
+            kind="deposit",
+            assets=250_000_000,
+            shares=125_000_000,
+            block_number=44_248_630,
+            log_index=0,
+            tx_hash="0x" + "ab" * 32,
+        ),
+        FlowRow(
+            kind="withdraw",
+            assets=100_000_001,
+            shares=100_000_000,
+            block_number=44_136_012,
+            log_index=0,
+            tx_hash="0x" + "cd" * 32,
+        ),
     ]
     _use(FakePortfolioReader(balance=125_000_000, block=44_251_000), flows=flows)
     body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
@@ -308,18 +378,38 @@ def test_portfolio_value_history_series_from_flows(client: TestClient) -> None:
     # (assets/shares) + the current value. deposit 100 (pps 1) → withdraw all → deposit 250 (pps 2)
     # → now (250 held). Values: 100 → 0 → 250 → 250.
     flows = [
-        FlowRow(kind="deposit", assets=100_000_000, shares=100_000_000, block_number=44_135_823,
-                log_index=0, tx_hash="0x" + "11" * 32),
-        FlowRow(kind="withdraw", assets=100_000_001, shares=100_000_000, block_number=44_136_012,
-                log_index=0, tx_hash="0x" + "22" * 32),
-        FlowRow(kind="deposit", assets=250_000_000, shares=125_000_000, block_number=44_248_630,
-                log_index=0, tx_hash="0x" + "33" * 32),
+        FlowRow(
+            kind="deposit",
+            assets=100_000_000,
+            shares=100_000_000,
+            block_number=44_135_823,
+            log_index=0,
+            tx_hash="0x" + "11" * 32,
+        ),
+        FlowRow(
+            kind="withdraw",
+            assets=100_000_001,
+            shares=100_000_000,
+            block_number=44_136_012,
+            log_index=0,
+            tx_hash="0x" + "22" * 32,
+        ),
+        FlowRow(
+            kind="deposit",
+            assets=250_000_000,
+            shares=125_000_000,
+            block_number=44_248_630,
+            log_index=0,
+            tx_hash="0x" + "33" * 32,
+        ),
     ]
     # pps == 2e18 so convertToAssets(125M shares) == 250M (matches the last deposit's implied pps).
     _use(FakePortfolioReader(balance=125_000_000, pps=2 * _WAD, block=44_251_000), flows=flows)
     body = client.get("/portfolio", headers=GOOD_HEADERS).json()
     series = body["pnl"]["series"]
-    assert [p["valueUsd"] for p in series] == ["100.00", "0.00", "250.00", "250.00"]
+    # Densified with a real PRE-event re-mark before each flow (skipped on the first, nothing held):
+    # deposit→100, [pre-withdraw re-mark 100], withdraw→0, deposit→250, now→250.
+    assert [p["valueUsd"] for p in series] == ["100.00", "100.00", "0.00", "250.00", "250.00"]
     assert all(p["ts"] for p in series)  # every point carries a (approx) timestamp
 
 
@@ -327,18 +417,32 @@ def test_portfolio_value_history_respects_intra_block_order(client: TestClient) 
     # Same-block deposit (log_index 2) THEN withdraw (log_index 5), returned in the WRONG order.
     # The series must still replay in (block, log_index) order: deposit→100, withdraw→0.
     flows = [
-        FlowRow(kind="withdraw", assets=100_000_000, shares=100_000_000, block_number=500,
-                log_index=5, tx_hash="0x" + "bb" * 32),
-        FlowRow(kind="deposit", assets=100_000_000, shares=100_000_000, block_number=500,
-                log_index=2, tx_hash="0x" + "aa" * 32),
+        FlowRow(
+            kind="withdraw",
+            assets=100_000_000,
+            shares=100_000_000,
+            block_number=500,
+            log_index=5,
+            tx_hash="0x" + "bb" * 32,
+        ),
+        FlowRow(
+            kind="deposit",
+            assets=100_000_000,
+            shares=100_000_000,
+            block_number=500,
+            log_index=2,
+            tx_hash="0x" + "aa" * 32,
+        ),
     ]
     # balance=1 so the position is still "held" (the series needs position.held).
     _use(FakePortfolioReader(balance=1, pps=_WAD, block=600), flows=flows)
     body = client.get("/portfolio", headers=GOOD_HEADERS).json()
     vals = [p["valueUsd"] for p in body["pnl"]["series"]]
-    # deposit first (100), withdraw second (0), then the live now-point (~0).
+    # (block, log_index) order: deposit→100 (no pre-mark on the first flow), then the withdraw's
+    # pre-event re-mark (100), then post-withdraw→0 — deposit effect strictly before the withdraw's.
     assert vals[0] == "100.00"
-    assert vals[1] == "0.00"
+    assert vals[1] == "100.00"
+    assert vals[2] == "0.00"
 
 
 def test_portfolio_value_history_empty_when_no_flows(client: TestClient) -> None:
@@ -348,11 +452,16 @@ def test_portfolio_value_history_empty_when_no_flows(client: TestClient) -> None
 
 
 def test_position_detail_surfaces_indexed_pnl(client: TestClient) -> None:
-    # Detail view must match the list view: 300 held − 250 basis → cost "250.00", PnL "50.00".
-    _use(FakePortfolioReader(balance=300_000_000, block=99), basis=CostBasis(250_000_000, 0, 3))
+    # Detail view must match the list view: deposit 250 (pps 1), pps→1.2 → value 300, avg cost 250,
+    # unrealized "50.00", realized "0.00" (no withdrawals).
+    _use(
+        FakePortfolioReader(balance=250_000_000, pps=_PPS_1_2, block=99),
+        flows=[_dep(250_000_000, 250_000_000, 10)],
+    )
     body = client.get("/portfolio/positions/vault", headers=GOOD_HEADERS).json()
     assert body["position"]["costBasisUsd"] == "250.00"
     assert body["position"]["unrealizedPnlUsd"] == "50.00"
+    assert body["position"]["realizedPnlUsd"] == "0.00"
 
 
 def test_position_detail_unknown_id_is_not_found(client: TestClient) -> None:

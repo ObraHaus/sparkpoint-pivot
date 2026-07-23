@@ -41,6 +41,12 @@ RPC_URL_ENV = "SPARKPOINT_RPC_URL"  # explicit override; wins over the chain-spe
 SIM_FORK_RPC_URL_ENV = "SIM_FORK_RPC_URL"
 BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
 ROBINHOOD_RPC_URL_ENV = "ROBINHOOD_RPC_URL"  # §B3 Robinhood testnet (46630); keyless public default
+AAVE_POOL_ADDRESS_ENV = (
+    "AAVE_POOL_ADDRESS"  # 017 — Aave v3 Pool for the live USDC supply-APY read (PUBLIC)
+)
+AAVE_RESERVE_USDC_ADDRESS_ENV = (
+    "AAVE_RESERVE_USDC_ADDRESS"  # 017 — the reserve asset for getReserveData (PUBLIC)
+)
 
 # §B3 — the keyless public Robinhood testnet RPC, used when ROBINHOOD_RPC_URL is unset. The chain
 # has no official Aave/USDC (vault stays Base-only); powers read-only chat + wallet balance only.
@@ -61,6 +67,8 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         SIM_FORK_RPC_URL_ENV,
         BASE_SEPOLIA_RPC_URL_ENV,
         ROBINHOOD_RPC_URL_ENV,
+        AAVE_POOL_ADDRESS_ENV,
+        AAVE_RESERVE_USDC_ADDRESS_ENV,
     }
 )
 
@@ -146,6 +154,10 @@ class AgentConfig:
     # 014 — the fee-treasury Safe (address of record). PUBLIC, non-key; where protocol fees land.
     # Informational only: the agent never moves funds, so this is display/audit, never a fund path.
     fee_wallet_address: str | None = None
+    # 017 — Aave v3 Pool + the reserve asset (USDC) for the live supply-APY read. PUBLIC, non-key,
+    # view-only. Unset ⇒ the recommender's APY stays None (honest legacy behavior, no fabrication).
+    aave_pool_address: str | None = None
+    aave_reserve_usdc_address: str | None = None
 
     @property
     def vault_deployed(self) -> bool:
@@ -202,13 +214,22 @@ class AgentConfig:
             )
 
         raw_vault = source.get(VAULT_ADDRESS_ENV)
-        vault_address = (
-            _normalize_address(raw_vault, VAULT_ADDRESS_ENV) if raw_vault else None
-        )
+        vault_address = _normalize_address(raw_vault, VAULT_ADDRESS_ENV) if raw_vault else None
 
         raw_fee = source.get(FEE_WALLET_ADDRESS_ENV)
         fee_wallet_address = (
             _normalize_address(raw_fee, FEE_WALLET_ADDRESS_ENV) if raw_fee else None
+        )
+
+        raw_aave_pool = source.get(AAVE_POOL_ADDRESS_ENV)
+        aave_pool_address = (
+            _normalize_address(raw_aave_pool, AAVE_POOL_ADDRESS_ENV) if raw_aave_pool else None
+        )
+        raw_aave_reserve = source.get(AAVE_RESERVE_USDC_ADDRESS_ENV)
+        aave_reserve_usdc_address = (
+            _normalize_address(raw_aave_reserve, AAVE_RESERVE_USDC_ADDRESS_ENV)
+            if raw_aave_reserve
+            else None
         )
 
         return cls(
@@ -217,6 +238,8 @@ class AgentConfig:
             vault_address=vault_address,
             database_url=source.get(DATABASE_URL_ENV) or None,
             fee_wallet_address=fee_wallet_address,
+            aave_pool_address=aave_pool_address,
+            aave_reserve_usdc_address=aave_reserve_usdc_address,
         )
 
     def for_chain(self, chain_id: int) -> AgentConfig:
