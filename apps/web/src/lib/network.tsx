@@ -75,6 +75,9 @@ interface NetworkContextValue {
   chainId?: number;
   /** True iff connected to Base or Base Sepolia. */
   onSupportedChain: boolean;
+  /** Connected but the connection hasn't SETTLED yet (connecting/reconnecting) — chainId is not yet
+   * trustworthy, so a consumer must NOT scream "wrong network" during this window. */
+  networkSettling: boolean;
   /** Basescan base URL for the active chain (defaults to Base Sepolia when off-network). */
   explorerBase: string;
   /** Kept for compatibility; only "base" is selectable (Sui is a fast-follow). */
@@ -92,7 +95,7 @@ interface NetworkContextValue {
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, status } = useAccount();
   const { disconnectAsync } = useDisconnect();
   const { switchChain } = useSwitchChain();
 
@@ -150,6 +153,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       isConnected,
       chainId,
       onSupportedChain,
+      networkSettling: isConnected && status !== "connected",
       explorerBase: (chainId && EXPLORER[chainId]) || EXPLORER[PREFERRED_CHAIN.id],
       setActiveNetwork: () => undefined,
       switchableNetworks: SWITCHABLE,
@@ -157,7 +161,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       switchToBase,
       disconnectWallet,
     };
-  }, [address, chainId, isConnected, switchToChain, switchToBase, disconnectWallet]);
+  }, [address, chainId, isConnected, status, switchToChain, switchToBase, disconnectWallet]);
 
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
 }

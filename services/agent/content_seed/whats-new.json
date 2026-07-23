@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "supported-network-check-more-reliable",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Fixed a false “switch network” message when signing in",
+      "body": "If your wallet was already on Base Sepolia or Robinhood Testnet, the sign-in screen could still say “wrong network” while your wallet was reconnecting — with no way forward. It now waits for your wallet to settle before deciding, adds in-app “Switch to Base Sepolia” and “Use Robinhood Testnet” buttons so you can fix it in one click, and no longer sends you back to the connect screen mid-reconnect.",
+      "cta_label": "Continue sign-in",
+      "cta_href": "/verify",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "your-plan-is-saved-and-shown",
       "type": "changelog",
       "tag": "Fixed",

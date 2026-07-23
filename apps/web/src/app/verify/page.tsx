@@ -13,8 +13,11 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
+import { baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import { Icon } from "@/lib/icons";
 import { useSession, useSiweLogin } from "@/lib/auth/useSiwe";
+import { useNetwork } from "@/lib/network";
+import { captureNetworkDiagnostic } from "@/lib/debug/networkBeacon";
 import { PubTop } from "@/components/screens/PubTop";
 import { stageCopy } from "@/lib/stage";
 import "@/components/screens/public.css";
@@ -28,37 +31,67 @@ const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 
 export default function VerifyPage() {
   const router = useRouter();
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, status, connector } = useAccount();
   const { session, refresh } = useSession();
   const { login, pending, error } = useSiweLogin();
+  const { switchToChain } = useNetwork();
 
   const onSupported = chainId !== undefined && SIGNIN_CHAINS.has(chainId);
+  // wagmi's `useAccount().chainId` is a pass-through: it is `undefined` while connecting/reconnecting
+  // (and briefly after a wallet-side switch) even though a persisted `isConnected` is already truthy.
+  // Only ASSERT "wrong network" once the connection has SETTLED (status === "connected") — otherwise a
+  // perfectly-supported wallet flashes a scary dead-end during the reconnect/hydration window. Until
+  // then the gate shows a neutral "checking…" state instead.
+  const wrongNetwork = isConnected && status === "connected" && chainId !== undefined && !onSupported;
   const signedIn = session != null; // null|undefined → not signed in / loading
   const betaOk = signedIn && session.beta;
   const done = betaOk;
   const blocked = signedIn && !session.beta;
   const needsSignIn = isConnected && onSupported && session === null;
 
+  // Snapshot the real wallet/network state for the developer capture (see networkBeacon).
+  const diagSnap = useCallback(
+    () => ({ chainId, status, isConnected, connectorId: connector?.id, connectorName: connector?.name, address }),
+    [chainId, status, isConnected, connector, address],
+  );
+
   const handleSignIn = useCallback(async () => {
     if (!address || !chainId) return;
+    // Capture on every explicit sign-in attempt too, so "have them log in again" is a reliable
+    // incident-capture gesture even when the gate briefly showed supported.
+    void captureNetworkDiagnostic("signin-attempt", diagSnap());
     const result = await login(address, chainId);
     if (result) await refresh();
-  }, [address, chainId, login, refresh]);
+  }, [address, chainId, diagSnap, login, refresh]);
 
-  // Nothing to verify without a connected wallet — return to the real connect step.
+  // Nothing to verify without a wallet — return to connect. Keyed on `disconnected` (NOT `!isConnected`)
+  // so a wallet still reconnecting isn't bounced off /verify mid-hydration.
   useEffect(() => {
-    if (!isConnected) {
+    if (status === "disconnected") {
       const t = setTimeout(() => router.push("/connect"), 1200);
       return () => clearTimeout(t);
     }
-  }, [isConnected, router]);
+  }, [status, router]);
+
+  // Auto-capture ONE diagnostic when the gate genuinely settles on an unsupported chain — our window
+  // into an otherwise unreproducible report (wallet's real eth_chainId vs the chainId wagmi surfaced,
+  // plus which injected wallet is bound). Guarded to `wrongNetwork`, so it never fires during settling.
+  useEffect(() => {
+    if (wrongNetwork) void captureNetworkDiagnostic("off-network", diagSnap());
+  }, [wrongNetwork, diagSnap]);
 
   const steps: { label: string; ok: boolean; value?: string }[] = [
     { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
     {
       label: "On a supported network",
       ok: onSupported,
-      value: onSupported ? (CHAIN_LABEL[chainId!] ?? "supported") : isConnected ? "wrong network" : undefined,
+      value: onSupported
+        ? (CHAIN_LABEL[chainId!] ?? "supported")
+        : wrongNetwork
+          ? "wrong network"
+          : isConnected
+            ? "checking…"
+            : undefined,
     },
     {
       label: "Signed in (SIWE)",
@@ -76,7 +109,7 @@ export default function VerifyPage() {
 
   const title = !isConnected
     ? "Connect a wallet first"
-    : !onSupported
+    : wrongNetwork
       ? "Switch to a supported network"
       : done
         ? "You're in."
@@ -87,7 +120,7 @@ export default function VerifyPage() {
             : "Checking your access…";
   const subtitle = !isConnected
     ? "Taking you back to connect your wallet…"
-    : !onSupported
+    : wrongNetwork
       ? "Switch your wallet to Base Sepolia or Robinhood Testnet to continue."
       : done
         ? "Let's build your plan — it takes about 3 minutes."
@@ -107,7 +140,7 @@ export default function VerifyPage() {
               <span style={{ color: "var(--gain)" }}>
                 <Icon name="check" size={30} stroke={2.5} />
               </span>
-            ) : blocked || (isConnected && !onSupported) ? (
+            ) : blocked || wrongNetwork ? (
               <span style={{ color: "var(--caution)" }}>
                 <Icon name="info" size={28} />
               </span>
@@ -165,6 +198,30 @@ export default function VerifyPage() {
             </p>
           )}
           <div id="vcta">
+            {wrongNetwork && (
+              <>
+                {/* The escape hatch the gate previously lacked entirely. Both chains are registered in
+                    wagmiConfig, so switchChain also adds an unknown chain AND forces wagmi to re-read the
+                    live chainId — self-healing a stale/mis-bound read as well as switching a genuinely
+                    off-network wallet. Either lands in SIGNIN_CHAINS → straight into the sign-in step. */}
+                <a
+                  className="btn btn-primary btn-lg"
+                  onClick={() => switchToChain(baseSepolia.id)}
+                  style={{ marginTop: "18px", display: "inline-flex", cursor: "pointer" }}
+                >
+                  Switch to Base Sepolia
+                </a>
+                <div style={{ marginTop: "10px" }}>
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => switchToChain(robinhoodTestnet.id)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    Use Robinhood Testnet
+                  </a>
+                </div>
+              </>
+            )}
             {needsSignIn && (
               <a
                 className="btn btn-primary btn-lg"
