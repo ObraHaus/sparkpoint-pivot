@@ -10,10 +10,12 @@ import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
 
 export function TopBar({ active }: { active: string }) {
-  const { network, wallet, isConnected, onSupportedChain, chainId } = useNetwork();
+  const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
   const ov = useOverlay();
   const unread = data.notifications.filter((n) => n.unread).length;
-  const wrongNetwork = isConnected && !onSupportedChain;
+  // Don't scream "wrong network" while the connection is still settling (reconnect/hydration) — the
+  // chainId isn't trustworthy yet. Only flag it once settled on a genuinely unsupported chain.
+  const wrongNetwork = isConnected && !onSupportedChain && !networkSettling;
 
   return (
     <div className="topbar">
@@ -31,11 +33,11 @@ export function TopBar({ active }: { active: string }) {
         </span>
         <span
           className="pill netPill"
-          title={wrongNetwork ? "Switch to a supported network" : "Switch network"}
+          title={networkSettling ? "Checking network…" : wrongNetwork ? "Switch to a supported network" : "Switch network"}
           onClick={ov.openNetworkMenu}
         >
           <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
-          <span>{wrongNetwork ? "Switch network" : network.name}</span>
+          <span>{networkSettling ? "Checking…" : wrongNetwork ? "Switch network" : network.name}</span>
           <Icon name="chevd" size={12} />
         </span>
         <span className="pill walletPill" onClick={ov.openWalletMenu}>

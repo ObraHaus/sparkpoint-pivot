@@ -24,6 +24,17 @@
       "active": true
     },
     {
+      "slug": "supported-network-check-more-reliable",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Fixed a false “switch network” message when signing in",
+      "body": "If your wallet was already on Base Sepolia or Robinhood Testnet, the sign-in screen could still say “wrong network” while your wallet was reconnecting — with no way forward. It now waits for your wallet to settle before deciding, adds in-app “Switch to Base Sepolia” and “Use Robinhood Testnet” buttons so you can fix it in one click, and no longer sends you back to the connect screen mid-reconnect.",
+      "cta_label": "Continue sign-in",
+      "cta_href": "/verify",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "your-plan-is-saved-and-shown",
       "type": "changelog",
       "tag": "Fixed",

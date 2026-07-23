@@ -32,6 +32,9 @@ const ALLOW_EXACT = new Set([
   // Feature 006: the release-id read must return JSON even on a LOCKED (landing-only) deploy,
   // not a 307 to /coming-soon (the poller no-ops on a redirect/HTML).
   "/api/version",
+  // Network-gate incident capture — must accept the beacon even on a LOCKED deploy (log-only,
+  // no auth/DB). On UNLOCKED/develop it's already reachable via INFRA_PREFIX; this is parity.
+  "/api/debug/network",
 ]);
 const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
 
