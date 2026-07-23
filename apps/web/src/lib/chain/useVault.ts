@@ -28,7 +28,7 @@
 import { useCallback } from "react";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { erc20Abi, type Address } from "viem";
-import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
+import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { vaultAddressFor } from "@/lib/chain/exit";
@@ -186,6 +186,12 @@ export interface UseVaultResult {
   readonly feeRecipient: Address | undefined;
   /** The vault's live `asset()` (should equal `usdcAddress`; surfaced for reconciliation). */
   readonly asset: Address | undefined;
+  /** LIVE CapRegistry `perUserCap()` (raw USDC base units) — the on-chain per-user TVL cap (G2). Fallback: policy mirror. */
+  readonly perUserCap: bigint | undefined;
+  /** LIVE CapRegistry `totalCap()` — the aggregate protocol TVL cap. */
+  readonly totalCap: bigint | undefined;
+  /** LIVE CapRegistry `vaultCap()` — the max total assets the vault accepts. */
+  readonly vaultCap: bigint | undefined;
 
   // ── account-scoped reads (require a connected/`account` wallet) ───────────
   /** `balanceOf(account)` — the owner's vault shares (spvUSDC). */
@@ -246,6 +252,16 @@ function factoryAddressFor(chainId: number | undefined): Address | undefined {
   }
 }
 
+/** `CapRegistry` address (G2) from the SoT registry — `undefined` where not deployed. */
+function capRegistryAddressFor(chainId: number | undefined): Address | undefined {
+  if (chainId === undefined) return undefined;
+  try {
+    return getAddresses(chainId).capRegistry;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The live vault view. All reads are wagmi/react-query direct-RPC reads targeting
  * the resolved chain's transport — no agent, no backend, no custody. See file docs.
@@ -267,6 +283,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const vault = options.vaultAddress ?? launchVault;
   const usdcAddress = usdcAddressFor(chainId);
   const factoryAddress = chainId === undefined ? undefined : factoryAddressFor(chainId);
+  const capRegistryAddress = chainId === undefined ? undefined : capRegistryAddressFor(chainId);
 
   const unavailable: VaultUnavailable | null =
     chainId === undefined
@@ -305,6 +322,26 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const highWaterMark = globalReads.data?.[4]?.result as bigint | undefined;
   const feeRecipient = globalReads.data?.[5]?.result as Address | undefined;
   const asset = globalReads.data?.[6]?.result as Address | undefined;
+
+  // ── live CapRegistry caps (US1) ───────────────────────────────────────────
+  // The governance-settable per-user / total / vault caps, read DIRECTLY on-chain from the bounded
+  // CapRegistry (G2) so the caps meter reflects a live `setPerUserCap` instead of the compile-time
+  // policy mirror. Its OWN address + ABI (a different contract than the vault). Fail-soft: `undefined`
+  // until resolved / where CapRegistry isn't deployed — consumers fall back to the versioned policy
+  // mirror (never a fabricated cap). Deliberately kept OUT of the isLoading/isError aggregate so a
+  // cap-read hiccup degrades to the mirror rather than faulting the whole live view.
+  const capReads = useReadContracts({
+    allowFailure: true,
+    contracts: [
+      { address: capRegistryAddress as Address, abi: capRegistryAbi, chainId: readChainId, functionName: "perUserCap" },
+      { address: capRegistryAddress as Address, abi: capRegistryAbi, chainId: readChainId, functionName: "totalCap" },
+      { address: capRegistryAddress as Address, abi: capRegistryAbi, chainId: readChainId, functionName: "vaultCap" },
+    ],
+    query: { enabled: enabledGlobal && capRegistryAddress !== undefined },
+  });
+  const perUserCap = capReads.data?.[0]?.result as bigint | undefined;
+  const totalCap = capReads.data?.[1]?.result as bigint | undefined;
+  const vaultCap = capReads.data?.[2]?.result as bigint | undefined;
 
   // ── account-scoped batch (owner's position + limits) ─────────────────────
   const accountReads = useReadContracts({
@@ -452,6 +489,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     void decimalsRead.refetch();
     void wrapperReads.refetch();
     void provenanceRead.refetch();
+    void capReads.refetch();
   }, [
     globalReads,
     accountReads,
@@ -462,6 +500,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     decimalsRead,
     wrapperReads,
     provenanceRead,
+    capReads,
   ]);
 
   // ── derived helpers ──────────────────────────────────────────────────────
@@ -512,6 +551,9 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     highWaterMark,
     feeRecipient,
     asset,
+    perUserCap,
+    totalCap,
+    vaultCap,
     shares,
     underlying,
     maxDeposit,

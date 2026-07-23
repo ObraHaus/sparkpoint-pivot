@@ -31,6 +31,7 @@ import {
   type VaultConfirmModel,
 } from "@/lib/chain/vaultConfirmModel";
 import type { OnchainConfirm } from "@/components/ui/ConfirmFlow";
+import { PERFORMANCE_FEE_DISCLOSURE } from "@/lib/policy/feeCopy";
 
 // Re-exported for the existing call sites (`_amount-screen.tsx` imports `toNum` from here).
 export { toNum };
@@ -102,7 +103,8 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
     capNoun,
   });
 
-  const capRaw = perUserCapRaw(v.chainId);
+  // Live CapRegistry per-user cap (US1) for the confirm-guard label; policy-mirror fallback.
+  const capRaw = v.perUserCap ?? perUserCapRaw(v.chainId);
   const { dec, vaultName, shareSymbol } = m;
 
   // ── the REAL execution config handed to ConfirmFlow (meaningful only when `ready`). The rows/guards
@@ -124,6 +126,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this deposit", "0% — none", "--gain"],
           m.feeRow,
+          m.managementFeeRow,
           m.netApyRow,
         ],
         guards: [
@@ -137,6 +140,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
             {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
           </>
         ),
+        disclosure: PERFORMANCE_FEE_DISCLOSURE,
       }
     : {
         exec: m.withdrawExec,
@@ -153,6 +157,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
         ],
         guards: ["Redeemed to your own wallet", m.withdrawGuardN2],
         okBody: <>{money(toNum(m.redeemAssetsOut, dec))} is back in your wallet.</>,
+        receiptFeeLine: m.withdrawFeeNote,
       };
 
   return {

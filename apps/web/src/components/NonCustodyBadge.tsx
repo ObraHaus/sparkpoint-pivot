@@ -29,14 +29,14 @@ import { stageCopy } from "@/lib/stage";
 import { formatBps } from "@/lib/policy/mirror";
 import { useVault } from "@/lib/chain/useVault";
 import { CapsMeter } from "@/components/CapsMeter";
+import { PERFORMANCE_FEE_DISCLOSURE } from "@/lib/policy/feeCopy";
 
 /**
- * The canonical pre-deposit / receipt fee disclosure — rendered VERBATIM
- * (agent-service-api.md §3.7 `POST /vault/quote/deposit` → `performanceFee.disclosure`).
+ * Re-exported for existing consumers; the canonical string now lives in the dependency-free
+ * `@/lib/policy/feeCopy` so the deposit confirm gate (a lib hook) can reuse it without a
+ * lib→component import. Rendered VERBATIM (agent-service-api.md §3.7).
  */
-export const PERFORMANCE_FEE_DISCLOSURE =
-  "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on your " +
-  "principal. We only earn when you earn — never on your principal, never by taking custody.";
+export { PERFORMANCE_FEE_DISCLOSURE };
 
 const WAD = 1_000_000_000_000_000_000n;
 
@@ -174,7 +174,12 @@ export function NonCustodyBadge({ chainId }: NonCustodyBadgeProps) {
         <span className="lbl">{stageCopy.label} caps</span>
       </div>
       {v.isDeployed && v.chainId !== undefined ? (
-        <CapsMeter chainId={v.chainId} totalAssets={v.totalAssets} userPosition={v.underlying} />
+        <CapsMeter
+          chainId={v.chainId}
+          totalAssets={v.totalAssets}
+          userPosition={v.underlying}
+          liveCaps={{ perUserCap: v.perUserCap, totalCap: v.totalCap, vaultCap: v.vaultCap }}
+        />
       ) : (
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
           Live on-chain verification isn&rsquo;t available on this network yet — the vault is deployed on Base Sepolia.

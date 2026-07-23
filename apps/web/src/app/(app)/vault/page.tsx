@@ -127,7 +127,9 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const supplyPct = AAVE_SUPPLY_APY_BPS / 100;
   const feePctInt = Math.round(framing.feeBps / 100);
 
-  const capRaw = perUserCapRaw(v.chainId);
+  // Live CapRegistry per-user cap (US1); fall back to the compile-time policy mirror only when the
+  // on-chain read is unresolved / CapRegistry isn't deployed on this chain — never a fabricated cap.
+  const capRaw = v.perUserCap ?? perUserCapRaw(v.chainId);
   const usedRaw = v.underlying ?? 0n;
   const capPct = capRaw > 0n ? Math.min((toNum(usedRaw) / toNum(capRaw)) * 100, 100) : 0;
 

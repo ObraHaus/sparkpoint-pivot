@@ -133,6 +133,10 @@ export interface VaultConfirmModel {
   readonly subYieldNote: string;
   /** Deposit balance-change row for the performance fee — stacked double-fee disclosure for a wrapper. */
   readonly feeRow: [string, string, string];
+  /** Deposit row making the 0% management/AUM fee explicit (SparkPoint never charges management fees). */
+  readonly managementFeeRow: [string, string, string];
+  /** Withdraw receipt line: profit-only fee, over HWM, already reflected in the returned amount; 0% to exit. */
+  readonly withdrawFeeNote: string;
   /** Deposit balance-change row for the net APY — "—" for a wrapper (never a fabricated Aave figure). */
   readonly netApyRow: [string, string, string];
   /** Deposit guardrail: the honest yield venue (Aave for launch, Morpho for a wrapper). */
@@ -264,6 +268,15 @@ export function deriveVaultConfirm(
   // 010 market-data feed supplies the real net-of-both-fees APY (a separate, not-yet-built follow-up).
   const netApyText = isWrapper ? "—" : `${netPct.toFixed(2)}%`;
   const netApyRow: [string, string, string] = ["Net APY on new shares", netApyText, ""];
+  // The 0% management/AUM fee, stated explicitly alongside the profit-only performance fee
+  // (§3.7: "0% management, entry, and exit"). Identical launch + wrapper — never an AUM fee.
+  const managementFeeRow: [string, string, string] = ["Management fee", "0% — none", "--gain"];
+  // Withdraw receipt disclosure: the profit-only fee is taken as share dilution over the
+  // high-water mark and is ALREADY reflected in the assets returned — nothing extra is withheld
+  // to exit (N2). Keyed to the LIVE fee %, never a fabricated dollar figure.
+  const withdrawFeeNote = isWrapper
+    ? `Accrued performance fee: ${feePctInt}% of profit over your high-water mark — already reflected in your share price (stacks on Morpho's curator fee). 0% to withdraw, 0% on your principal.`
+    : `Accrued performance fee: ${feePctInt}% of profit over your high-water mark — already reflected in your share price. 0% to withdraw, 0% on your principal.`;
   const venueGuard = isWrapper
     ? "Yield source — Morpho (external), not Aave"
     : "Allowlisted protocol — Aave v3 (Base)";
@@ -317,6 +330,8 @@ export function deriveVaultConfirm(
     label,
     subYieldNote,
     feeRow,
+    managementFeeRow,
+    withdrawFeeNote,
     netApyRow,
     venueGuard,
     withdrawGuardN2,
