@@ -20,8 +20,8 @@ pending its increment*, not a shipped-Base-equivalent proof.
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
 | 5 | Notifications backend | `StatusTag mock` "not wired to a live feed" | Event/index backend + delivery channel |
 | 6 | Admin stake/TVL/users analytics | "Sample data" pill | Analytics/indexer backend |
-| 7 | US5 outcome logging | **PARTIAL (018):** real per-withdrawal ledger (`GET /outcomes`); per-**advice** attribution still deferred | Persisted recs + `intent_action_id` + IntentLog/attribution worker |
-| 8 | US2 deterministic sim REST + direct Aave v3 | **PARTIAL (018):** real pre-sign `eth_call` dry-run on the vault (`/vault/simulate/*`); `/build-tx` chokepoint + swaps still deferred | `/build-tx` IntentBundle + ExecutionDrawer + submit relay + 0021 migration; Aerodrome sim; direct Aave |
+| 7 | US5 outcome logging | **PARTIAL (018 + 019):** real per-withdrawal ledger (`GET /outcomes`); the `intent_action_id` attribution anchor now EXISTS (019 `intent_bundles.id`) — per-**advice** attribution still needs the rec store + worker | Persisted recs + IntentLog/heuristic attribution worker (the `intent_action_id` is shipped) |
+| 8 | US2 `/build-tx` chokepoint + ExecutionDrawer + direct Aave v3 | **PARTIAL (018 + 019):** the `/build-tx` IntentBundle chokepoint + `/simulate` + `/submit-signed-tx` relay + status + `0021` execution persistence SHIPPED (019, backend); the web **ExecutionDrawer** UI + Aerodrome swap sim + direct Aave still deferred | Web ExecutionDrawer (next increment); Anvil-fork balance-delta/slippage sim; Aerodrome adapter/sim; direct Aave v3 |
 
 ---
 
@@ -98,29 +98,37 @@ pending its increment*, not a shipped-Base-equivalent proof.
   withdrawal — realized USD (win/loss/flat, exact average-cost), each stamped with its own tx as
   on-chain proof — returned ONLY when the share history reconciles (else an honest empty state). The
   `/outcomes` page is **de-mocked** (the fabricated −$27.86 / fake tx links are gone).
+- **Progress in 019:** US2's execution-persistence spine shipped, so the `intent_action_id` the
+  attribution link hangs off now EXISTS — it is `intent_bundles.id`, minted at build time and carried
+  on every bundle + optionally linked to a `recommendationId`.
 - **Still deferred:** the per-**recommendation** attribution LINK (FR-039/SC-010 — "100% of acted-on
-  recs logged + PnL-updated per rec"). It needs persisted recommendations + an `intent_action_id`
-  minted at proposal time + an IntentLog/heuristic attribution worker, which structurally depend on
-  US2's execution-persistence spine. **SC-010 remains UNMET;** the ledger is honestly labeled
-  "position-level — not yet linked to the specific advice."
-- **Gate to build:** the recommendation store + `intent_action_id` + attribution worker (with US2's
-  execution tables).
+  recs logged + PnL-updated per rec"). It still needs **persisted recommendations** (the rec store is
+  not built — rec ids are ephemeral today) + an IntentLog/heuristic attribution **worker** that joins
+  an acted-on rec → its `intent_bundles`/`executions` → the realized `/outcomes` row. **SC-010 remains
+  UNMET;** the ledger is honestly labeled "position-level — not yet linked to the specific advice."
+- **Gate to build:** the recommendation store + the attribution worker (the `intent_action_id` +
+  execution tables from 019 are now in place).
 - **Tracking:** `specs/018-p1-remainders` (US3), `specs/001-sparkpoint-pivot-mvp` (US5); constitution III.
 
-### 8. US2 — deterministic simulation — **PARTIAL (shipped in 018)** + direct Aave v3 (deferred)
+### 8. US2 — execution spine — **PARTIAL (shipped in 018 + 019)** + web drawer / swaps / direct Aave (deferred)
 - **Shipped in 018:** a REAL pre-sign **dry-run** on the vault path. `POST /vault/simulate/{deposit,
-  withdraw}` `eth_call`-dry-runs the ACTUAL mutating ERC-4626 calldata (via the already-built
-  `viem_eth_call` checker) and returns `willRevert` + decoded reason + real `eth_estimateGas`; the
-  confirm gate surfaces it as a third fail-closed signal — a predicted **deposit** revert disables
-  Sign (saves gas), a **withdraw** dry-run is advisory and NEVER gates the exit (N2). Deposit reads
-  the live allowance first so a pre-approval state is an honest "approve first", not a false revert.
-- **Still deferred:** the full `/build-tx` **IntentBundle** chokepoint + `ExecutionDrawer` + the
-  `POST /submit-signed-tx` relay + the **0021 execution** persistence (intent_bundles /
-  simulation_results / executions); full Anvil mainnet-fork balance-delta/slippage; **Aerodrome swap**
-  simulation; and **direct Aave v3** deposit/withdraw. **SC-002 remains UNMET for swaps.**
-- **Gate to build:** the `/build-tx` chokepoint + submit relay + 0021 migration; the fork sim;
-  Aerodrome adapter/sim; direct Aave. The simulation-before-sign guarantee holds on the vault path today.
-- **Tracking:** `specs/018-p1-remainders` (US2), `specs/001-sparkpoint-pivot-mvp` (US2).
+  withdraw}` `eth_call`-dry-runs the ACTUAL mutating ERC-4626 calldata and returns `willRevert` +
+  decoded reason + real `eth_estimateGas`; the confirm gate surfaces it as a third fail-closed signal
+  (a **withdraw** dry-run is advisory and NEVER gates the exit, N2).
+- **Shipped in 019 (the backend chokepoint):** the full `/build-tx` **IntentBundle** chokepoint +
+  `POST /simulate` refresh + `POST /submit-signed-tx` relay (byte-matched, VR-X1) + `GET
+  /submit-signed-tx/{intentId}` status + the **`0021` execution** persistence (`intent_bundles` /
+  `simulation_results` / `executions`). An AI-proposed **vault** action (deposit/withdraw/redeem,
+  `eoa_call`, `per_action`) now becomes a signable, simulated, policy-approved bundle — recipient
+  forced to the user (N1), `signature` always null (N3), the exit never gated (N2), fail-closed with
+  reasons + no bundle on rejection. `intent_bundles.id` is the `intent_action_id` (unblocks US5, row 7).
+- **Still deferred:** the web **ExecutionDrawer** single-signing UI (the next increment — signs the
+  server bundle verbatim for the byte-match, SC-005); full Anvil mainnet-fork balance-delta/slippage
+  sim; **Aerodrome swap** simulation (mainnet-only); and **direct Aave v3** deposit/withdraw. **SC-002
+  remains UNMET for swaps.**
+- **Gate to build:** the web ExecutionDrawer (next); the fork sim; Aerodrome adapter/sim; direct Aave.
+  The simulation-before-sign + single-signing-chokepoint guarantees hold on the vault backend today.
+- **Tracking:** `specs/019-us2-execution-spine`, `specs/018-p1-remainders` (US2), `specs/001-sparkpoint-pivot-mvp` (US2).
 
 ---
 

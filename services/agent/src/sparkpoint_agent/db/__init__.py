@@ -15,6 +15,8 @@ from .allowlist import (
 )
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .content_entries import ContentEntryStore
+from .executions import ExecutionRow, ExecutionStore
+from .intent_bundles import BundleInsert, BundleRow, IntentBundleStore
 from .limits import DEFAULT_TIER, LimitsStore
 from .mandates import (
     MandateRecord,
@@ -24,6 +26,7 @@ from .mandates import (
     row_to_record,
 )
 from .pool import Database, get_database
+from .simulations import SimulationInsert, SimulationRow, SimulationStore
 from .subscriptions import PaymentAlreadyRecorded, SubscriptionStore
 from .swap_fees import (
     PgSwapFeeEventStore,
@@ -40,8 +43,13 @@ __all__ = [
     "DATABASE_URL_ENV",
     "DEFAULT_TIER",
     "AllowlistStore",
+    "BundleInsert",
+    "BundleRow",
     "ContentEntryStore",
     "Database",
+    "ExecutionRow",
+    "ExecutionStore",
+    "IntentBundleStore",
     "LimitsStore",
     "DatabaseConfig",
     "MandateRecord",
@@ -50,6 +58,9 @@ __all__ = [
     "PaymentAlreadyRecorded",
     "PgMandateStore",
     "PgSwapFeeEventStore",
+    "SimulationInsert",
+    "SimulationRow",
+    "SimulationStore",
     "SubscriptionStore",
     "SwapFeeEvent",
     "SwapFeeEventStore",
