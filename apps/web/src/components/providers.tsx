@@ -9,6 +9,7 @@ import { NetworkProvider } from "@/lib/network";
 import { OverlayProvider } from "@/components/overlays/OverlayProvider";
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WhatsNewModal } from "@/components/shell/WhatsNewModal";
+import { PrefsEffect } from "@/components/PrefsEffect";
 import { useSession } from "@/lib/auth/useSiwe";
 
 /**
@@ -48,6 +49,8 @@ export function Providers({ children }: { children: ReactNode }) {
               <WhatsNewModal />
               {/* Keep the session bound to the live wallet on every route (see SessionWalletBinder). */}
               <SessionWalletBinder />
+              {/* Feature 016 — mirror device-local display prefs (density, reduce-motion) onto <html>. */}
+              <PrefsEffect />
             </OverlayProvider>
           </NetworkProvider>
         </QueryClientProvider>

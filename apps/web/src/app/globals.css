@@ -411,3 +411,15 @@ button{font-family:inherit;}
   .seg{flex-wrap:wrap;}
 }
 @media (min-width:1024px){ .only-mobile{display:none!important;} }
+
+/* Reduce motion (settings → Appearance) — device-local override, stamped as data-reduced-motion on
+   <html> by PrefsEffect (feature 016). Kills CSS transitions/animations. The landing WebGL has its
+   own reduced-motion path (NewEraLanding) and is intentionally NOT governed here. */
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after{
+  animation-duration:.001ms !important;
+  animation-iteration-count:1 !important;
+  transition-duration:.001ms !important;
+  scroll-behavior:auto !important;
+}

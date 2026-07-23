@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
+import { StatusTag } from "@/components/ui/status-tag";
 import { data } from "@/lib/mock-data";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
@@ -314,6 +315,9 @@ function ProveItBody({ go }: { go: (r: string) => void }) {
 function NotificationsBody() {
   return (
     <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <StatusTag variant="mock" title={"Preview — notifications aren’t wired to a live feed yet."} />
+      </div>
       {data.notifications.map((n, i) => (
         <div className="proveitem" key={i} style={{ opacity: n.unread ? 1 : 0.7 }}>
           <span className="pi-ico" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>

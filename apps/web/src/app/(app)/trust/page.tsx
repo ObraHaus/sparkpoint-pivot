@@ -15,15 +15,28 @@ import { useRouter } from "next/navigation";
 import { useReadContracts } from "wagmi";
 import { formatUnits, type Address } from "viem";
 import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
-import { getAddresses } from "@sparkpoint/shared/addresses";
+import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
+import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { Icon, type IconName } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { stageCopy } from "@/lib/stage";
+import { whitelistedProtocols, actionLabel } from "@/lib/policy/whitelistedProtocols";
 import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
 const VAULT_CHAIN = 84532;
 const EXPLORER = "https://sepolia.basescan.org";
+
+/**
+ * The closed set of EXTERNAL on-chain venues the agent may route funds into (G5), derived from the
+ * policy allowlist SoT joined to the address book. Vault entries are excluded (the vault itself is
+ * shown in "Contracts & roles"); Aerodrome is already stripped by getPolicyConstants as undeployed
+ * on 84532. On Base Sepolia this is exactly Aave v3 Pool — no address hardcoded (Principle III).
+ */
+const WHITELISTED = whitelistedProtocols(
+  getPolicyConstants(VAULT_CHAIN).allowlist,
+  (ref) => resolveTargetRef(VAULT_CHAIN, ref),
+).filter((p) => p.targetRef !== "sparkpoint_vault");
 
 const GUARANTEES: [IconName, string, string][] = [
   ["shieldcheck", "No admin withdrawal", "We have no code path to send your funds anywhere but back to you — not us, not anyone."],
@@ -178,6 +191,38 @@ export default function Page() {
               <b>no power over your deposits</b> (N5) — read live from <span className="mono">feeRecipient()</span>.
             </div>
           </div>
+          {WHITELISTED.length > 0 && (
+            <div className="card card-pad">
+              <div className="card-hd">
+                <span className="t">Whitelisted protocols</span>
+                <span className="lbl">closed allowlist · G5</span>
+              </div>
+              {WHITELISTED.map((p) => (
+                <div className="statusrow" key={p.targetRef}>
+                  <span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{p.label}</span>
+                    <span className="muted" style={{ fontSize: 11.5, marginLeft: 8 }}>
+                      {p.actions.map(actionLabel).join(" · ")}
+                    </span>
+                  </span>
+                  <a
+                    className="mono"
+                    style={{ fontSize: 12, color: "var(--primary)" }}
+                    href={`${EXPLORER}/address/${p.address}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {short(p.address)} <Icon name="ext" size={11} />
+                  </a>
+                </div>
+              ))}
+              <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                <Icon name="info" size={12} /> The agent can call <b>only</b> these audited, allowlisted
+                contracts — a closed set enforced on-chain (G5). Anything else is unreachable; your deposits
+                and withdrawals always settle to your own account.
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="card card-pad" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
