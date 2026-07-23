@@ -13,7 +13,7 @@
  * in this panel can move user funds; the kill-switch is propose-and-sign only.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Icon, SparkMark } from "@/lib/icons";
@@ -27,6 +27,13 @@ import {
   type RoleKey,
   type NavKey,
 } from "./role-context";
+
+// Stable `useSyncExternalStore` args for a hydration-safe "is mounted on the client" flag: the store
+// never changes (no-op subscribe), the client snapshot is `true`, the server/hydration snapshot is
+// `false`. Module-scoped so their identities are stable across renders.
+const _subscribeNoop = (): (() => void) => () => {};
+const _snapshotTrue = (): boolean => true;
+const _snapshotFalse = (): boolean => false;
 
 function NavItem({ nav, active, onNav }: { nav: NavKey; active: boolean; onNav: () => void }) {
   const [label, icon] = NAVMETA[nav];
@@ -147,9 +154,14 @@ function Shell({ children }: { children: ReactNode }) {
   // Dismissible scaffold notice — once closed, the panel matches the design 1:1.
   const [bannerOpen, setBannerOpen] = useState(true);
 
-  // next-themes leaves resolvedTheme undefined until hydration, so this defaults
-  // to the source's dark theme (moon / "Dark mode") with no flash and no mount flag.
-  const isLight = resolvedTheme === "light";
+  // Mount guard (fixes a shell-wide React #418 hydration mismatch): next-themes resolves the real
+  // theme from <html> BEFORE React hydrates, so reading `resolvedTheme` during the first client
+  // render differs from the SSR default (undefined → dark) and throws a text mismatch on the toggle
+  // label. `useSyncExternalStore` returns the server snapshot (false) through hydration, then the
+  // client snapshot (true) after — hydration-safe, and no setState-in-effect. The real theme applies
+  // post-mount (one clean re-render, no flash of wrong content).
+  const mounted = useSyncExternalStore(_subscribeNoop, _snapshotTrue, _snapshotFalse);
+  const isLight = mounted && resolvedTheme === "light";
 
   const r = ROLES[role];
   const primary = r.nav.filter((n) => !["cfg", "audit"].includes(n));
