@@ -94,6 +94,9 @@ On-chain (Base Sepolia 84532): vault `0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
 
 ## Inert / illustrative (marked in-app, NOT live)
 
+> The Phase-3 build gate for each not-yet-live surface below is tracked in
+> [`docs/phase-3-deferred.md`](phase-3-deferred.md).
+
 - **ERC-4337 account + PolicyModule (US6)** are undeployed — `/trust/permissions` says so; automation grants don't exist.
 - **Admin panels** overview/users/tvl/stake/revenue/config show **"Sample data"** badges (no analytics/TVL/revenue backend); live-honest: gateway, allowlist, killswitch, system, audit.
 - **Portfolio** allocation/positions/risk + the position-detail page are **"Sample data"**; only net worth reads live (agent, with a "Preview data" badge when disconnected).

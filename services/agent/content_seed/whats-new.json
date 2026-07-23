@@ -2,6 +2,28 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "see-which-protocols-the-ai-can-use",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "See exactly which protocols the AI can touch",
+      "body": "The Trust Center now lists the closed set of on-chain venues Sparky is allowed to route into — on this network, just Aave v3 — each with its real contract address and a block-explorer link. The AI can call nothing outside this audited allowlist, and it's read straight from the on-chain policy.",
+      "cta_label": "Open Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
+      "slug": "your-settings-now-stick",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Your settings now stick",
+      "body": "Notification toggles and display preferences are saved on your device, so they survive a reload — and Compact density and Reduce-motion now actually apply across the app. (Notification delivery itself isn't live yet; the toggles record what you'll get once it is.)",
+      "cta_label": "Open settings",
+      "cta_href": "/settings",
+      "published_at": "2026-07-23",
+      "active": true
+    },
+    {
       "slug": "supported-network-check-more-reliable",
       "type": "changelog",
       "tag": "Fixed",

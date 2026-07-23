@@ -203,7 +203,18 @@
     {
       "id": "P3",
       "title": "Phase 3: US6, Trust Center, bridge, hardening",
-      "status": "pending"
+      "status": "pending",
+      "deferred_register": "docs/phase-3-deferred.md",
+      "deferred_items": [
+        "US6 session-key automation (PolicyModule undeployed)",
+        "Base<->Sui bridge + Sui network",
+        "Aerodrome swaps (Base mainnet)",
+        "Real Morpho wrapper + 010 APY feed (mainnet)",
+        "Notifications backend",
+        "Admin stake/tvl/users analytics",
+        "US5 outcome logging",
+        "US2 deterministic sim REST + direct Aave v3"
+      ]
     }
   ],
   "gate_wait_queue": [

@@ -43,7 +43,7 @@ export default function Page() {
         <div className="chartcard span2">
           <div className="ch">
             <span className="ct">Growth at a glance</span>
-            <span className="prov">RPC + materialized · 42s ago</span>
+            <span className="prov">sample data</span>
           </div>
           <div className="legend">
             <span>
@@ -66,7 +66,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Revenue snapshot</span>
-            <span className="prov">computed · 03:00</span>
+            <span className="prov">sample data</span>
           </div>
           <LegendStreams withProj />
           <StackedBars data={revByStream} keys={["swap", "premium", "perf", "srk"]} max={9000} opts={{ H: 200 }} />
@@ -74,7 +74,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Activity — daily executions</span>
-            <span className="prov">indexer · 42s ago</span>
+            <span className="prov">sample data</span>
           </div>
           <div className="legend">
             <span>

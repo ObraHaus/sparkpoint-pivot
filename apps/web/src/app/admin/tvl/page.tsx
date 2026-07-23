@@ -39,7 +39,7 @@ export default function Page() {
         <div className="chartcard span2">
           <div className="ch">
             <span className="ct">Deposits / withdrawals &amp; net flow</span>
-            <span className="prov">RPC + subgraph · 42s ago</span>
+            <span className="prov">sample data</span>
           </div>
           <div className="legend">
             <span>
@@ -60,7 +60,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">TVL over time</span>
-            <span className="prov">materialized</span>
+            <span className="prov">sample data</span>
           </div>
           {/* source replaces STREAM.srk with "transparent" to hide the secondary line */}
           <Composed
