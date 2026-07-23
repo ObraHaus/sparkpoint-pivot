@@ -57,21 +57,27 @@ function StreamCard({
   unit,
   color,
   stream,
+  notApplicable = false,
 }: {
   title: string;
   unit: string;
   color: string;
   stream: StreamSeries;
+  /** true ⇒ this stream structurally doesn't exist on this network (e.g. no vault / no Premium on
+   *  46630) — distinct from a source that's momentarily unavailable. */
+  notApplicable?: boolean;
 }) {
   if (!stream.configured) {
     return (
       <div className="chartcard">
         <div className="ch">
           <span className="ct">{title}</span>
-          <span className="pill">not tracked</span>
+          <span className="pill">{notApplicable ? "n/a here" : "unavailable"}</span>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 8 }}>
-          Not tracked on this network — no data source. We show nothing rather than a made-up number.
+          {notApplicable
+            ? "Not applicable on this network — there's no such source here (e.g. no vault / no Premium). We never show a made-up number."
+            : "Source momentarily unavailable — no data right now. We show nothing rather than a guess; Refresh to retry."}
         </div>
       </div>
     );
@@ -123,8 +129,20 @@ function NetworkSection({ net }: { net: NetworkRevenue }) {
       </div>
       <div className="grid2">
         <StreamCard title="Swap routing fee (0.20%)" unit="USDC" color={STREAM.swap} stream={net.swap} />
-        <StreamCard title="Vault performance fee (10%)" unit="spkUSDC" color={STREAM.perf} stream={net.perf} />
-        <StreamCard title="SRK membership" unit="SRK" color={STREAM.premium} stream={net.premium} />
+        <StreamCard
+          title="Vault performance fee (10%)"
+          unit="spkUSDC"
+          color={STREAM.perf}
+          stream={net.perf}
+          notApplicable={net.networkId !== "base"}
+        />
+        <StreamCard
+          title="SRK membership"
+          unit="SRK"
+          color={STREAM.premium}
+          stream={net.premium}
+          notApplicable={net.networkId !== "base"}
+        />
         <RevenueMultisig chainId={net.chainId} />
       </div>
     </div>

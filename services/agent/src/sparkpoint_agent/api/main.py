@@ -248,9 +248,16 @@ _DEFAULT_FEE_RECIPIENTS = (
     "0xA71e24359A6cb7A939aae2d62dD12b6256365c30,0xCB135893C84876aab9E10792b56e5bEa91dc578f"
 )
 _ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
+# 46630 has ~0.3s blocks (head ~92M+) and NO vault-flow indexer to borrow a floor from, so the
+# swap-fee loop must NOT default to a genesis scan (it would show a false "real zero" for a long
+# backfill). Floor to ~when Robinhood swaps went live (2026-07-16, block ~90.5M) unless
+# SWAP_FEE_FROM_BLOCK_46630 overrides. Base borrows VAULT_INDEX_FROM_BLOCK (already set for the live
+# vault-flows indexer), so its floor default is 0 (the env supplies the real one).
+_ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
 
 # One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
-# `from_block_envs` are tried in order (first non-empty wins) for the inception backfill floor.
+# `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
+# when none is set (never genesis for 46630).
 _SWAP_FEE_NETWORKS: tuple[dict[str, Any], ...] = (
     {
         "network_id": "base",
@@ -265,6 +272,7 @@ _SWAP_FEE_NETWORKS: tuple[dict[str, Any], ...] = (
             "SWAP_FEE_FROM_BLOCK",
             "VAULT_INDEX_FROM_BLOCK",
         ),
+        "from_block_default": 0,
     },
     {
         "network_id": "robinhood",
@@ -275,19 +283,20 @@ _SWAP_FEE_NETWORKS: tuple[dict[str, Any], ...] = (
         "rpc_env": "ROBINHOOD_INDEX_RPC_URL",
         "rpc_fallback": _ROBINHOOD_PUBLIC_RPC,
         "from_block_envs": ("SWAP_FEE_FROM_BLOCK_46630",),
+        "from_block_default": _ROBINHOOD_SWAP_INCEPTION_BLOCK,
     },
 )
 
 
-def _resolve_start_block(from_block_envs: tuple[str, ...]) -> int:
+def _resolve_start_block(from_block_envs: tuple[str, ...], default: int) -> int:
     for env_key in from_block_envs:
         raw = os.getenv(env_key)
         if raw:
             try:
                 return int(raw)
             except ValueError:
-                return 0
-    return 0
+                return default
+    return default
 
 
 async def _index_swap_fees_loop(net: dict[str, Any]) -> None:
@@ -326,7 +335,7 @@ async def _index_swap_fees_loop(net: dict[str, Any]) -> None:
         router=router,
         recipients=recipients,
         network_id=net["network_id"],
-        start_block=_resolve_start_block(net["from_block_envs"]),
+        start_block=_resolve_start_block(net["from_block_envs"], net["from_block_default"]),
         **kwargs,
     )
     while True:

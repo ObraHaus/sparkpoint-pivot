@@ -16,15 +16,10 @@ import { type Address, erc20Abi, formatUnits } from "viem";
 import { useAccount } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { getPublicClient } from "@/lib/chain/clients";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 
 const DEFAULT_CHAIN = 84532;
-
-/** Block explorers per chain (address view). Undefined ⇒ show the address without a (wrong) link. */
-const EXPLORER: Record<number, string | undefined> = {
-  84532: "https://sepolia.basescan.org",
-  46630: undefined,
-};
 
 type Tok = { symbol: string; address: Address; decimals: number };
 type Bal = { symbol: string; decimals: number; balance: bigint };
@@ -51,7 +46,7 @@ export function RevenueMultisig({ chainId: chainIdProp }: { chainId?: number } =
   const cid = chainIdProp ?? connectedChainId ?? DEFAULT_CHAIN;
   const addrs = addressBookFor(cid);
   const safe = addrs?.feeTreasury as Address | undefined;
-  const explorer = EXPLORER[cid];
+  const explorerUrl = explorerAddressUrl(cid, safe);
 
   const [native, setNative] = useState<bigint | null>(null);
   const [tokens, setTokens] = useState<Bal[]>([]);
@@ -108,8 +103,8 @@ export function RevenueMultisig({ chainId: chainIdProp }: { chainId?: number } =
     <div className="chartcard">
       <div className="ch">
         <span className="ct">Fee treasury (multisig)</span>
-        {explorer ? (
-          <a href={`${explorer}/address/${safe}`} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", fontSize: 11 }}>
+        {explorerUrl ? (
+          <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ color: "var(--primary)", fontSize: 11 }}>
             {shortAddr} ↗
           </a>
         ) : (
