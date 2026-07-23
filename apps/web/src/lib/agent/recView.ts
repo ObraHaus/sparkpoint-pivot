@@ -59,6 +59,10 @@ export function parseCitations(raw: unknown): RecCitation[] {
     const o = c as Record<string, unknown>;
     // provider + value are the load-bearing display fields; a row missing either is unusable.
     if (typeof o.provider !== "string" || typeof o.value !== "string") continue;
+    // The url is rendered as an anchor href — allowlist http(s): ONLY. A `javascript:`/`data:`
+    // url passes `typeof === "string"` (and even `new URL()`), so gate the scheme here to
+    // close a DOM-XSS vector if a citation source is ever attacker-influenceable.
+    const url = typeof o.url === "string" && /^https?:\/\//i.test(o.url.trim()) ? o.url : undefined;
     out.push({
       provider: o.provider,
       endpoint: typeof o.endpoint === "string" ? o.endpoint : "",
@@ -66,7 +70,7 @@ export function parseCitations(raw: unknown): RecCitation[] {
       value: o.value,
       asOf: typeof o.asOf === "string" ? o.asOf : "",
       stale: o.stale === true,
-      ...(typeof o.url === "string" ? { url: o.url } : {}),
+      ...(url ? { url } : {}),
     });
   }
   return out;

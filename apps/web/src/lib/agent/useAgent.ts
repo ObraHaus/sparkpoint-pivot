@@ -349,7 +349,10 @@ export function useOnboarding(): OnboardingDriver {
         // Instant reflect: the settings tab / chat rail / portfolio drift read `useMandate`
         // (["agent","mandate"]); invalidate so a freshly-saved plan shows without a remount.
         void queryClient.invalidateQueries({ queryKey: ["agent", "mandate"] });
-        return res?.mandate ?? null;
+        // `client.request` throws on a non-2xx, so reaching here means the POST SUCCEEDED. Return
+        // the echoed mandate when present, else the response object itself (still truthy) — a
+        // success whose body omits `mandate` must NOT surface as a false "Try again" (US1 AC2).
+        return res?.mandate ?? res ?? { ok: true };
       } catch {
         return null;
       }

@@ -63,3 +63,18 @@ test("parseCitations: non-array input yields empty list", () => {
   assert.deepEqual(parseCitations(undefined), []);
   assert.deepEqual(parseCitations("nope"), []);
 });
+
+test("parseCitations: only http(s) urls survive — javascript:/data: are dropped (XSS guard)", () => {
+  const rows = parseCitations([
+    { provider: "A", value: "v", url: "javascript:alert(1)" },
+    { provider: "B", value: "v", url: "data:text/html,<script>x</script>" },
+    { provider: "C", value: "v", url: "  HTTPS://basescan.org/tx/0x1  " },
+    { provider: "D", value: "v", url: "http://example.com" },
+    { provider: "E", value: "v", url: "ftp://x" },
+  ]);
+  assert.equal(rows[0].url, undefined); // javascript: dropped
+  assert.equal(rows[1].url, undefined); // data: dropped
+  assert.equal(rows[2].url, "  HTTPS://basescan.org/tx/0x1  "); // https (case/space tolerant) kept
+  assert.equal(rows[3].url, "http://example.com");
+  assert.equal(rows[4].url, undefined); // ftp: dropped
+});
