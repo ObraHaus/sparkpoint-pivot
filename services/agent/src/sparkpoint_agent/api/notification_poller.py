@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -109,19 +110,33 @@ async def poll_rate(reader: AavePoolReader, asset: str, store: NotificationEvent
         logger.warning("notif_poll_rate_skipped (rate read degraded)")
 
 
+def _cleared_kinds(items: Iterable[object]) -> list[str]:
+    """The sorted set of distinct strategy KINDS across a wallet's cleared recommendations.
+
+    Keying the new-rec signal on this (not the LLM-ranked TOP rec) is what makes it STABLE: the
+    recommender's candidate ORDER — which one is "top" — is LLM-generated and jitters run-to-run
+    (the US5/T010 finding), while the SET of policy-cleared kinds is deterministic. Dropping the
+    suggested amount too means a balance tick never spams. So we notify on a genuinely new KIND of
+    opportunity, never on cosmetic reordering.
+    """
+    kinds = {str(getattr(it, "strategyKind", "")) for it in items}
+    return sorted(k for k in kinds if k)
+
+
 async def poll_new_recs(db: Database, config: AgentConfig, store: NotificationEventStore) -> None:
-    """Re-score each active-mandate wallet; emit "new recommendation" when its TOP rec changes.
+    """Re-score each active-mandate wallet; emit "new recommendation" when a NEW kind clears.
 
     Costs one recommender (LLM) call per wallet — gated by ``NOTIF_POLLER_NEWRECS`` (default on) and
-    bounded to ``_NEWREC_WALLET_CAP`` wallets per run. Fully fail-open per wallet: a mandate/LLM/RPC
-    failure for one wallet is logged and skipped, never affecting the others or the other signals.
+    bounded to ``_NEWREC_WALLET_CAP`` per run. The trigger is the sorted SET of cleared kinds
+    (see :func:`_cleared_kinds`), so LLM ranking/amount jitter can't produce a false alert; we emit
+    only when a kind appears that wasn't there last tick. A monotonic ``num`` seq keys each emit
+    uniquely (a kind that leaves then returns re-notifies). Fully fail-open per wallet.
     """
     if not _env_on("NOTIF_POLLER_NEWRECS"):
         return
     # Lazy imports (heavy; also keeps the api→api dependency inside the fn, like the indexer loop).
     from ..chain import VaultReader
     from ..db.mandates import PgMandateStore
-    from ..db.recommendations import dedupe_key
     from ..llm import AsyncClaudeClient
     from .recommendations import _compute, _network_id, _StoreMandateProvider
     from .security import AccountContext
@@ -143,26 +158,33 @@ async def poll_new_recs(db: Database, config: AgentConfig, store: NotificationEv
     for owner in owners:
         try:
             account = AccountContext(account=owner, owner=owner, chain_id=config.chain_id)
-            result, items = await _compute(account, reader, config, llm, provider, limit=1)
-            if not items:
-                continue
-            top = items[0]
-            snapshot = {k: v for k, v in top.proposedAction.items() if k != "recommendationId"}
-            key = dedupe_key(owner, top.strategyKind, snapshot, result.policy_version)
+            _result, items = await _compute(account, reader, config, llm, provider, limit=25)
+            kinds = _cleared_kinds(items)
+            if not kinds:
+                continue  # nothing cleared policy → nothing to notify (don't baseline an empty set)
+            new_txt = "|".join(kinds)
             state_key = f"newrec:{owner.lower()}"
             st = await store.get_state(state_key)
-            if st is None:
-                # First observation for this wallet: record the baseline, don't notify prior advice.
-                await store.set_state(state_key, txt=key)
+            seq = st.num if (st and st.num is not None) else 0
+            if st is None or not st.txt:
+                # First observation for this wallet: baseline the kind set, don't notify old advice.
+                await store.set_state(state_key, num=seq, txt=new_txt)
                 continue
-            if st.txt != key:
+            old_kinds = set(st.txt.split("|"))
+            added = set(kinds) - old_kinds
+            if added:
+                seq += 1
                 await store.emit(
                     wallet=owner, category="rateChanges", type="new_recommendation",
                     title="A new recommendation for you",
-                    body=f"{top.title} — review it in Strategies.",
-                    icon="spark", href="/strategies", dedupe_key=f"newrec:{owner.lower()}:{key}",
+                    body="A new opportunity matched to your goals is ready — see Strategies.",
+                    icon="spark", href="/strategies", dedupe_key=f"newrec:{owner.lower()}:{seq}",
                 )
-                await store.set_state(state_key, txt=key)
+                await store.set_state(state_key, num=seq, txt=new_txt)
+            elif new_txt != st.txt:
+                # The kind set changed only by a REMOVAL → update the baseline silently (never tell
+                # a wallet it has *fewer* opportunities).
+                await store.set_state(state_key, num=seq, txt=new_txt)
         except Exception:  # noqa: BLE001 — one wallet's failure never affects the others (fail-open)
             logger.warning("notif_poll_newrecs_wallet_skipped")
 

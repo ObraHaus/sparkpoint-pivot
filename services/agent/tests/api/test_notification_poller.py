@@ -167,7 +167,7 @@ async def test_rate_fail_open_on_degraded_read() -> None:
     assert store.emits == []
 
 
-# ── new recommendation: baseline, then emit only when the TOP rec content changes ────
+# ── new recommendation: keyed on the stable SET of cleared strategy kinds ────────────
 
 
 @dataclass
@@ -177,13 +177,13 @@ class _FakeItem:
     proposedAction: dict[str, Any]
 
 
-@dataclass
-class _FakeResult:
-    policy_version: str
+def _item(kind: str, amount: str = "100") -> _FakeItem:
+    return _FakeItem(kind, f"{kind} advice", {"type": "vault_deposit", "amount": amount})
 
 
-def _patch_newrec_deps(monkeypatch: pytest.MonkeyPatch, items_per_call: list[_FakeItem]) -> None:
-    """Stub the heavy collaborators poll_new_recs lazily imports, feeding one TOP item per call."""
+def _patch_newrec_deps(monkeypatch: pytest.MonkeyPatch, item_lists: list[list[_FakeItem]]) -> None:
+    """Stub the heavy collaborators poll_new_recs lazily imports, feeding one rec-LIST per call (the
+    recommender returns the full cleared set — order is deliberately not meaningful to the detector)."""
 
     class _FakeMandateStore:
         def __init__(self, db: Any) -> None:
@@ -205,9 +205,9 @@ def _patch_newrec_deps(monkeypatch: pytest.MonkeyPatch, items_per_call: list[_Fa
     calls = {"n": 0}
 
     async def _fake_compute(account: Any, reader: Any, config: Any, llm: Any, provider: Any, *, limit: int):  # noqa: ARG001, ANN202
-        i = min(calls["n"], len(items_per_call) - 1)
+        i = min(calls["n"], len(item_lists) - 1)
         calls["n"] += 1
-        return _FakeResult("v1"), [items_per_call[i]]
+        return object(), list(item_lists[i])
 
     monkeypatch.setattr("sparkpoint_agent.db.mandates.PgMandateStore", _FakeMandateStore)
     monkeypatch.setattr("sparkpoint_agent.chain.VaultReader", _FakeVaultReaderCls)
@@ -216,33 +216,81 @@ def _patch_newrec_deps(monkeypatch: pytest.MonkeyPatch, items_per_call: list[_Fa
 
 
 _CONFIG = AgentConfig(chain_id=8453, rpc_url=None, vault_address=None, database_url=None)
+_OWNER = "0xOWNER0000000000000000000000000000000001"
 
 
-async def test_new_recs_baseline_then_emit_on_change_and_dedupe(monkeypatch: pytest.MonkeyPatch) -> None:
-    a = _FakeItem("vault_yield", "Move idle USDC to the vault", {"type": "vault_deposit", "amount": "100"})
-    b = _FakeItem("vault_yield", "Move more USDC to the vault", {"type": "vault_deposit", "amount": "250"})
-    _patch_newrec_deps(monkeypatch, [a, b, b])
+async def test_new_recs_emits_only_when_a_new_kind_appears(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_newrec_deps(
+        monkeypatch,
+        [
+            [_item("vault_yield")],  # baseline: {vault_yield}
+            [_item("aerodrome_swap"), _item("vault_yield")],  # +aerodrome_swap → emit (order irrelevant)
+            [_item("vault_yield"), _item("aerodrome_swap")],  # same set, reordered → NO emit
+        ],
+    )
     store = StatefulStore()
-
-    # First run for this wallet = silent baseline (never notify the advice it already had).
     await poller.poll_new_recs(None, _CONFIG, store)
-    assert store.emits == []
-    # The wallet's TOP recommendation changed → one "new recommendation" event.
+    assert store.emits == []  # baseline
     await poller.poll_new_recs(None, _CONFIG, store)
     assert len(store.emits) == 1
     ev = store.emits[0]
     assert ev["type"] == "new_recommendation"
-    assert ev["wallet"] == "0xOWNER0000000000000000000000000000000001"
-    assert "Move more USDC" in ev["body"]
-    # Unchanged next tick → no re-emit.
+    assert ev["wallet"] == _OWNER
+    assert ev["dedupe_key"] == f"newrec:{_OWNER.lower()}:1"
+    await poller.poll_new_recs(None, _CONFIG, store)  # reordered same set
+    assert len(store.emits) == 1  # NOT re-fired by ranking jitter — the whole point of the fix
+
+
+async def test_new_recs_ranking_and_amount_jitter_never_fires(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The live-caught bug: the LLM re-orders the same recs and tweaks the suggested amount every tick.
+    # Neither is a real change, so the detector must stay silent after the baseline.
+    _patch_newrec_deps(
+        monkeypatch,
+        [
+            [_item("vault_yield", "100"), _item("aerodrome_swap", "50")],
+            [_item("aerodrome_swap", "55"), _item("vault_yield", "120")],  # reordered + amounts moved
+            [_item("vault_yield", "130"), _item("aerodrome_swap", "60")],
+        ],
+    )
+    store = StatefulStore()
+    for _ in range(3):
+        await poller.poll_new_recs(None, _CONFIG, store)
+    assert store.emits == []  # no false positive across three jittery ticks
+
+
+async def test_new_recs_removal_is_silent_then_reappearance_re_notifies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_newrec_deps(
+        monkeypatch,
+        [
+            [_item("vault_yield"), _item("aerodrome_swap")],  # baseline {swap, vault}
+            [_item("vault_yield")],  # aerodrome_swap left → silent baseline update, NO emit
+            [_item("vault_yield"), _item("aerodrome_swap")],  # swap returns → re-notify (seq 1)
+        ],
+    )
+    store = StatefulStore()
+    await poller.poll_new_recs(None, _CONFIG, store)
+    await poller.poll_new_recs(None, _CONFIG, store)
+    assert store.emits == []  # a removal never notifies "fewer opportunities"
     await poller.poll_new_recs(None, _CONFIG, store)
     assert len(store.emits) == 1
+    assert store.emits[0]["dedupe_key"] == f"newrec:{_OWNER.lower()}:1"
+
+
+async def test_new_recs_empty_cleared_set_never_baselines_or_emits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_newrec_deps(monkeypatch, [[]])  # nothing cleared policy
+    store = StatefulStore()
+    await poller.poll_new_recs(None, _CONFIG, store)
+    assert store.emits == []
+    assert "newrec:" + _OWNER.lower() not in store._state  # no baseline written for an empty set
 
 
 async def test_new_recs_gated_off_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOTIF_POLLER_NEWRECS", "false")
-    a = _FakeItem("vault_yield", "x", {"type": "vault_deposit", "amount": "1"})
-    _patch_newrec_deps(monkeypatch, [a, a])
+    _patch_newrec_deps(monkeypatch, [[_item("vault_yield")], [_item("aerodrome_swap")]])
     store = StatefulStore()
     await poller.poll_new_recs(None, _CONFIG, store)
     await poller.poll_new_recs(None, _CONFIG, store)
@@ -250,7 +298,7 @@ async def test_new_recs_gated_off_by_env(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 async def test_new_recs_per_wallet_fail_open(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_newrec_deps(monkeypatch, [_FakeItem("vault_yield", "x", {"type": "vault_deposit"})])
+    _patch_newrec_deps(monkeypatch, [[_item("vault_yield")]])
 
     async def _boom(*args: Any, **kwargs: Any):  # noqa: ANN202
         raise RuntimeError("model down for this wallet")

@@ -87,7 +87,8 @@ pending its increment*, not a shipped-Base-equivalent proof.
   emit one real, deduped event per genuine crossing: **vault near capacity** (live `total_assets` vs the
   deposit cap ≥ 90%), **Aave rate moved** (live supply APY ≥ 25 bps from the last-notified level), and a
   proactive **new recommendation for you** (per active-mandate wallet, re-scores the real recommender and
-  emits when the TOP advice's content `dedupe_key` changes; one LLM call/wallet, bounded + gated by
+  emits when the sorted SET of policy-cleared strategy KINDS gains a new kind — deterministic, so LLM
+  rank/amount jitter never fires a false alert; one LLM call/wallet, bounded + gated by
   `NOTIF_POLLER_NEWRECS`). First observation per signal is a silent baseline; every detector is fail-open
   and off the request path (N2). No web change — the phase-1 feed renders the new categories/icons as-is.
 - **Still deferred — session-key-expiry alert:** the `sessionKeyExpiry` NotifKey has no source until US6
