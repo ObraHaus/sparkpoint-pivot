@@ -119,11 +119,15 @@ pending its increment*, not a shipped-Base-equivalent proof.
   by id; idempotent by content; `/recommendations/{recId}` recomputes + re-keys through the store to
   resolve the UUID. **FAIL-OPEN** (a store outage degrades to the ephemeral id, never 503s). Live-
   validated end-to-end (surfaced UUID → build → rec `acted` + linked bundle). +2 agent tests.
-- **Still deferred (US5 follow-ups):** (a) an optional **heuristic-match worker** for the
+- **Shipped in 020 (drawer retry-on-409, PR #95):** the ExecutionDrawer relay to `/submit-signed-tx`
+  now fires **only after the receipt confirms** (the tx is retrievable on-chain, matching #91) and
+  **retries a `409 DATA_STALE`** with a bounded backoff + one stable idempotency key, so a briefly-
+  lagging real tx self-correlates without user action — never double-recording (agent caches only 2xx;
+  `executions.UNIQUE(intent_bundle_id)` backstop) and never blocking the sign/exit flow (N2). +6 web tests.
+- **Still deferred (US5 follow-ups — Phase 3):** (a) an optional **heuristic-match worker** for the
   legacy/unlinked path (the explicit `intent_log` path needs no worker); (b) a persisted
-  `outcome_logs` table (outcomes are computed LIVE from chain today, which meets the AC). The only
-  remaining WEB item is a small ExecutionDrawer **retry-on-409** robustness (self-correlate a lagging
-  relay) — tracked in the spec, not a Phase-3 defer.
+  `outcome_logs` table (outcomes are computed LIVE from chain today, which meets the AC). **The US5 /
+  feature-020 attribution workstream is otherwise COMPLETE + live.**
 - **Tracking:** `specs/020-us5-per-advice-attribution` (US5); `specs/018-p1-remainders` (US3); constitution III.
 
 ### 8. US2 — execution spine — **PARTIAL (shipped in 018 + 019)** + web drawer / swaps / direct Aave (deferred)

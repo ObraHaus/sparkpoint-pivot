@@ -212,7 +212,7 @@
         "Real Morpho wrapper + 010 APY feed (mainnet)",
         "Notifications backend",
         "Admin stake/tvl/users analytics",
-        "US5 outcome logging — SHIPPED (020): backend spine A (rec store 0022 + /build-tx writes intent_bundles.recommendation_id + FIFO per-deposit-lot replay + /outcomes recommendations[] + GET /outcomes/{recId}; intent_log link, SC-010 met) + web 'by recommendation' surface B (PR #92) + persist-at-surface T010 (PR #93: durable UUID recId on /recommendations, idempotent, fail-open; full round-trip live-validated). Only a small ExecutionDrawer retry-on-409 remains; heuristic path + outcome_logs table deferred to Phase 3",
+        "US5 outcome logging — SHIPPED (020): backend spine A (rec store 0022 + /build-tx writes intent_bundles.recommendation_id + FIFO per-deposit-lot replay + /outcomes recommendations[] + GET /outcomes/{recId}; intent_log link, SC-010 met) + web 'by recommendation' surface B (PR #92) + persist-at-surface T010 (PR #93: durable UUID recId on /recommendations, idempotent, fail-open; full round-trip live-validated) + drawer retry-on-409 (PR #95: relay fires after receipt confirms + retries 409 DATA_STALE with a stable idempotency key, N2-safe). WORKSTREAM COMPLETE; only a heuristic path + outcome_logs table deferred to Phase 3",
         "US2 execution spine — SUBSTANTIALLY DONE (018: real pre-sign eth_call dry-run; 019: the /build-tx IntentBundle chokepoint + /simulate + /submit-signed-tx relay + status + 0021 persistence AND the web ExecutionDrawer single-signing UI all SHIPPED; only the Aerodrome swap sim + direct Aave + the richer Anvil-fork sim remain, SC-002 unmet for swaps)"
       ]
     }
