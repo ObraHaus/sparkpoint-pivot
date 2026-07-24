@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (CI — changelog gate hardened, no more skip loophole)
+- **A PR that changes product source can no longer skip the changelog requirement.** The
+  `changelog-required` gate previously honored the `skip-changelog` label / `[skip changelog]` PR-body
+  marker **before** checking whether product source changed — so a real feature could ship with a stale
+  in-app `/changelog` by opting out (this is exactly how the 019 backend increment initially shipped
+  with no in-app entry, caught in review). The gate now honors the escape hatch **only** when NO
+  user-facing product source changed (`apps/web/src` / `services/agent/src`, tests/types/stories
+  excluded) — i.e. docs / CI / test / chore PRs. Any PR touching product code MUST update **both**
+  `CHANGELOG.md` **and** `services/agent/content_seed/whats-new.json`; a present skip marker is logged
+  as ignored. Verified against 5 scenarios (product+skip → fail; product+both → pass; docs+skip → pass;
+  test-only → pass; product+CHANGELOG-only → fail). Aligns the gate with the standing rule (CLAUDE.md):
+  "SparkPoint has TWO changelogs and BOTH must stay current at all times — treat drift as a defect."
+
 ### Added (019 — US2 execution spine: the web ExecutionDrawer, single-signing UI)
 - **You can now review and sign an AI-suggested vault move in one place — the ExecutionDrawer.** This completes the US2 single signing chokepoint on the front end (the backend `/build-tx` chokepoint shipped in the previous 019 increment). Tapping **"Review this move"** on an APPROVED vault recommendation/action in chat now opens a new drawer (`apps/web/src/components/execution/ExecutionDrawer.tsx`) that: calls `POST /build-tx` (via the typed `AgentClient`, which fail-closes any signature-bearing body — the build body carries none), renders the server `IntentBundle` (the **guardrail checklist**, the simulated **balance changes**, the plain-language **rationale**, and the custody/fee disclosure), and — crucially — **signs the server-issued calldata VERBATIM** via wagmi `useSendTransaction` (`{to,data,value}`, no client re-encode), so the byte-match the `/submit-signed-tx` relay asserts holds (SC-005). It confirms on the connected wallet's own RPC (`waitForTransactionReceipt` — never the agent, N2 independence) and fires a **best-effort** relay to `POST /submit-signed-tx` (a raw fetch, since the typed client refuses `signed` bodies) so the agent records the `executions` row + can correlate the outcome. Non-custody throughout: the recipient is always your own wallet, the service holds no key and signs nothing (N1/N3); an EXIT bundle stays signable even when its advisory sim is null (N2); a policy-rejected action shows the reasons and **no** Sign button (fail-closed, VR-X3); a deposit that needs a first-time USDC approval shows an honest "approve in the Vault" path rather than a scary error. Force-refresh is held while a signature is in flight (`useHoldCriticalOp`).
 - **Scope + safety of the mount.** Only chat **vault** actions (deposit/withdraw/redeem) route to the ExecutionDrawer; **swaps** keep the existing inline Uniswap confirm, and the **vault-screen manual flow** + the direct **`/exit`** hatch are untouched (FR-025). The web BFF needed **zero** new files (the catch-all `/api/agent/[...path]` already proxies the routes).

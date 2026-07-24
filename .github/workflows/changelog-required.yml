@@ -2,8 +2,13 @@ name: changelog-required
 # Feature 006 (US4): a USER-FACING change must update BOTH changelogs, so the force-refresh never
 # shows a blank /changelog ~60s after a deploy and the version signal is never orphaned. Run-ALWAYS
 # (no `paths:` filter — a path-skipped required check stays perpetually pending and is invisible to
-# `gh pr checks`); the diff is computed inside the job. Escape hatch for infra-only PRs: the
-# `skip-changelog` label OR an anchored `[skip changelog]` marker in the PR body (both auditable).
+# `gh pr checks`); the diff is computed inside the job.
+#
+# HARDENED (2026-07-24): the `skip-changelog` label / `[skip changelog]` PR-body marker is honored
+# ONLY when NO user-facing product source changed (docs / CI / tests / chore PRs). A PR that changes
+# `apps/web/src` or `services/agent/src` can NEVER skip — both changelogs are REQUIRED. This closes the
+# loophole where a real feature could ship with a stale in-app /changelog by opting out (CLAUDE.md:
+# "SparkPoint has TWO changelogs and BOTH must stay current at all times — treat drift as a defect").
 on:
   pull_request:
     branches: [develop]
@@ -24,35 +29,44 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -e
-          # Escape hatch: infra-only PRs opt out explicitly (auditable).
-          case ",${LABELS}," in *,skip-changelog,*) echo "skip-changelog label present — gate skipped."; exit 0 ;; esac
-          # Anchored marker so an incidental mention (e.g. "did NOT use [skip changelog]") can't bypass.
-          if printf '%s' "$PR_BODY" | grep -qiE '(^|[[:space:]])\[skip changelog\]([[:space:]]|$)'; then
-            echo "[skip changelog] marker in the PR body — gate skipped."; exit 0
-          fi
-
           # Three-dot: scope to the PR's real delta vs the merge-base, not develop's current tip.
           CHANGED="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
           # User-facing product source, excluding tests / stories / type-only decls (no user-visible change).
           PRODUCT="$(printf '%s\n' "$CHANGED" \
             | grep -E '^(apps/web/src/|services/agent/src/)' \
             | grep -vE '(\.test\.|\.spec\.|\.stories\.|__tests__/|\.d\.ts$)' || true)"
+
+          has_skip_label() { case ",${LABELS}," in *,skip-changelog,*) return 0 ;; *) return 1 ;; esac; }
+          has_skip_marker() {
+            # Anchored marker so an incidental mention (e.g. "did NOT use [skip changelog]") can't bypass.
+            printf '%s' "$PR_BODY" | grep -qiE '(^|[[:space:]])\[skip changelog\]([[:space:]]|$)'
+          }
+
           if [ -z "$PRODUCT" ]; then
+            # Non-product PR (docs / CI / tests / chore): the escape hatch applies here, and is moot
+            # otherwise (no product change ⇒ no changelog required anyway).
+            if has_skip_label; then echo "skip-changelog label present (no product source changed) — gate skipped."; exit 0; fi
+            if has_skip_marker; then echo "[skip changelog] marker present (no product source changed) — gate skipped."; exit 0; fi
             echo "No user-facing product source changed (tests/types/stories excluded) — changelog not required."
             exit 0
           fi
+
           echo "User-facing source changed:"; printf '%s\n' "$PRODUCT" | sed 's/^/  /'
+          # A product-source PR MUST update both changelogs — the escape hatch does NOT apply here.
+          if has_skip_label || has_skip_marker; then
+            echo "::warning::skip-changelog is IGNORED for a PR that changes product source — both changelogs are still required (hardened 2026-07-24)."
+          fi
 
           fail=0
           # (1) CHANGELOG.md must gain added content (a dev bullet, normally under ## [Unreleased]).
           ADDS="$(git diff -U0 "$BASE_SHA...$HEAD_SHA" -- CHANGELOG.md | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
           if [ -z "$ADDS" ]; then
-            echo "::error::CHANGELOG.md has no added lines — add a bullet under '## [Unreleased]' (or apply the skip-changelog label for an infra-only change)."
+            echo "::error::CHANGELOG.md has no added lines — add a bullet under '## [Unreleased]'. A product-source PR cannot skip this; for a genuinely non-user-visible internal change, add a one-line Fixed/Improved bullet."
             fail=1
           fi
           # (2) The committed client changelog source must be updated for user-facing changes.
           if ! printf '%s\n' "$CHANGED" | grep -qE '^services/agent/content_seed/whats-new\.json$'; then
-            echo "::error::services/agent/content_seed/whats-new.json not updated — add a client-facing entry (or apply the skip-changelog label for an infra-only change)."
+            echo "::error::services/agent/content_seed/whats-new.json not updated — add a client-facing entry. If the change isn't visually obvious, add an honest 'behind-the-scenes' entry (CLAUDE.md: BOTH changelogs stay current)."
             fail=1
           fi
           if [ "$fail" = 0 ]; then echo "Both changelog surfaces updated — gate green."; else exit 1; fi
