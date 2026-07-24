@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "notifications-are-live",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Your notifications are real now — no more sample data",
+      "body": "The bell (top right) and the Notifications page now show your REAL activity instead of sample data. Each notification is derived from what actually happened on-chain — a deposit or withdrawal confirming, a realized win or loss on a position, or a transaction that reverted — never a made-up alert. The unread count is real, and your category toggles in Settings → Notifications now actually filter what you see. Alerts that watch for a change over time (the vault filling up, a rate moving) are coming in a follow-up; email / push delivery and session-key alerts come later too.",
+      "cta_label": "Open Notifications",
+      "cta_href": "/notifications",
+      "published_at": "2026-07-24T18:00:00Z",
+      "active": true
+    },
+    {
       "slug": "reliable-outcome-correlation-after-signing",
       "type": "changelog",
       "tag": "Improved",

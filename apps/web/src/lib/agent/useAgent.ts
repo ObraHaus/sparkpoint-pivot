@@ -37,6 +37,11 @@ import {
   type RecommendationOutcomeDetailDto,
   type RecommendationOutcomeDetailView,
 } from "@/lib/agent/outcomesView";
+import {
+  toNotificationsView,
+  type NotificationsResponseDto,
+  type NotificationsView,
+} from "@/lib/agent/notificationsView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -313,6 +318,65 @@ export function useOutcomeDetail(recId: string | null): OutcomeDetailState | nul
     isError: query.isError,
     errorCode: err instanceof AgentApiError ? err.code : undefined,
   };
+}
+
+/* ── GET /notifications + POST /notifications/read (§3.11 — real in-app feed) ── */
+
+/** The real notifications feed view + fetch state. `null` when offline. Re-exports {@link NotificationsView}. */
+export type { NotificationView, NotificationsView } from "@/lib/agent/notificationsView";
+
+export interface NotificationsState {
+  view: NotificationsView;
+  isLoading: boolean;
+  isError: boolean;
+  loaded: boolean;
+  refetch: () => void;
+}
+
+/**
+ * The user's real in-app notifications (§3.11) — derived server-side from indexed on-chain activity,
+ * never a mock. `null` when offline (the bell shows no count, honestly). The category preferences are
+ * applied by the caller (the on-device `NotifKey` toggles), so the badge + drawer match the settings.
+ */
+export function useNotifications(): NotificationsState | null {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "notifications", identity?.account, identity?.chainId],
+    enabled: online,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) => client!.request<NotificationsResponseDto>("/notifications", { signal }),
+  });
+  if (!online) return null;
+  const d = query.data;
+  return {
+    // Relative-time labels need the current wall clock; this display-only impurity is intentional.
+    // eslint-disable-next-line react-hooks/purity
+    view: toNotificationsView(d, Date.now()),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    loaded: query.isSuccess && d !== undefined,
+    refetch: () => void query.refetch(),
+  };
+}
+
+/**
+ * Advance the read cursor (mark the currently-shown feed read) — called when the bell drawer or the
+ * /notifications page opens. Best-effort: it invalidates the feed so the unread badge clears, and
+ * NEVER throws (an advisory write; a failure just leaves the badge). No-op when offline.
+ */
+export function useMarkNotificationsRead(): () => void {
+  const { client, online } = useAgentClient();
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    if (!online || !client) return;
+    void client
+      .request("/notifications/read", { method: "POST", body: {} })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["agent", "notifications"] }))
+      .catch(() => {
+        /* advisory: the badge just won't clear this time (N2) */
+      });
+  }, [client, online, queryClient]);
 }
 
 /* ── GET /recommendations (§3.4) ───────────────────────────────────────────── */

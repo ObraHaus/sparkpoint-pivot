@@ -4,7 +4,9 @@ import Link from "next/link";
 import { Icon, SparkMark } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
 import { NetworkLogo } from "@/components/ui/NetworkLogo";
-import { data } from "@/lib/mock-data";
+import { useNotifications } from "@/lib/agent/useAgent";
+import { filterByPrefs, unreadCountOf } from "@/lib/agent/notificationsView";
+import { useNotifPrefs } from "@/lib/settings/usePrefs";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
@@ -12,7 +14,11 @@ import { StageBadge } from "@/components/ui/stage-badge";
 export function TopBar({ active }: { active: string }) {
   const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
   const ov = useOverlay();
-  const unread = data.notifications.filter((n) => n.unread).length;
+  // The bell badge = the REAL unread count (§3.11), after the user's on-device category filter. 0
+  // (no badge) when offline or all-read — honest, never a hardcoded number.
+  const notif = useNotifications();
+  const { prefs: notifPrefs } = useNotifPrefs();
+  const unread = notif ? unreadCountOf(filterByPrefs(notif.view.items, notifPrefs)) : 0;
   // Don't scream "wrong network" while the connection is still settling (reconnect/hydration) — the
   // chainId isn't trustworthy yet. Only flag it once settled on a genuinely unsupported chain.
   const wrongNetwork = isConnected && !onSupportedChain && !networkSettling;
