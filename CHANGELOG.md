@@ -57,6 +57,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     `lib/admin/useVaultStats.ts` (the shared live-reads hook); `Kpi` gains an optional sparkline so a live
     single-value tile omits a fabricated trend.
 
+### Fixed (021 phase 2 — new-recommendation alert made deterministic; no LLM-jitter false positives)
+- **Live-caught in first-boot validation:** the proactive new-recommendation poller keyed off the
+  recommender's *top* rec, but the recommender's candidate ordering is LLM-generated and jitters
+  run-to-run (the US5/T010 finding), so re-scoring the same wallet twice produced two different keys
+  and fired a spurious "new recommendation." Re-keyed on the **sorted SET of policy-cleared strategy
+  kinds** (deterministic; the suggested amount is dropped too), so the alert fires only when a
+  genuinely new *kind* of opportunity clears — never on reordering or a balance tick. A monotonic seq
+  keys each emit (a kind that leaves then returns re-notifies); a removal updates the baseline
+  silently. This also makes overlapping poll passes idempotent (stable key + `UNIQUE(dedupe_key)`).
+  +4 poller tests (incl. an explicit ranking/amount-jitter regression). No migration, no web change.
+
 ### Added (021 phase 2 — proactive notifications: caps-near-limit, Aave-rate moves, new recommendations)
 - **The bell now also surfaces the three signals it couldn't before — a vault filling up, an Aave rate
   move, and a fresh recommendation for you — each a real, provable event, never a fabricated alert.**
