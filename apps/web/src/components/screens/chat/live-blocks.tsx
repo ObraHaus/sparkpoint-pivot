@@ -63,6 +63,28 @@ function inlineIntentFor(action: ProposedAction): InlineIntent {
   }
 }
 
+/**
+ * Route an APPROVED action from a rec/action block: vault moves (deposit/withdraw/redeem) go to the
+ * server-materialized ExecutionDrawer — the single signing chokepoint (feature 019 US2), which builds
+ * one policy-approved IntentBundle and has you sign the server calldata verbatim. Swaps and anything
+ * else keep the existing inline confirm (Uniswap / honest placeholder). The vault-SCREEN manual flow
+ * and the /exit hatch are untouched.
+ */
+const VAULT_ACTIONS: ReadonlySet<string> = new Set([
+  "vault_deposit",
+  "vault_withdraw",
+  "vault_redeem",
+]);
+
+function openAction(
+  action: ProposedAction,
+  onReview: (intent: InlineIntent) => void,
+  onSign: (action: ProposedAction) => void,
+): void {
+  if (VAULT_ACTIONS.has(action.type)) onSign(action);
+  else onReview(inlineIntentFor(action));
+}
+
 const REJECTED_FALLBACK =
   "This suggestion isn't cleared by your guardrails, so it can't be acted on.";
 
@@ -112,15 +134,17 @@ export interface LiveBlocksProps {
   error?: string;
   /** Open the chat's inline confirm for a signable proposed action (with its live amount). */
   onReview: (intent: InlineIntent) => void;
+  /** Open the ExecutionDrawer (server IntentBundle chokepoint) for an approved VAULT action. */
+  onSign: (action: ProposedAction) => void;
   /** Open the citation source sheet. */
   onCite: () => void;
 }
 
-export function LiveBlocks({ cards, streaming, error, onReview, onCite }: LiveBlocksProps) {
+export function LiveBlocks({ cards, streaming, error, onReview, onSign, onCite }: LiveBlocksProps) {
   return (
     <>
       {cards.map((card, i) => (
-        <LiveBlock key={i} card={card} onReview={onReview} onCite={onCite} />
+        <LiveBlock key={i} card={card} onReview={onReview} onSign={onSign} onCite={onCite} />
       ))}
       {streaming && (
         <div className="think">
@@ -138,10 +162,12 @@ export function LiveBlocks({ cards, streaming, error, onReview, onCite }: LiveBl
 function LiveBlock({
   card,
   onReview,
+  onSign,
   onCite,
 }: {
   card: ChatCard;
   onReview: (intent: InlineIntent) => void;
+  onSign: (action: ProposedAction) => void;
   onCite: () => void;
 }) {
   // Fail-closed: an unvalidated / malformed block renders inert, never actionable.
@@ -182,7 +208,7 @@ function LiveBlock({
             <div className="cact">
               <button
                 className="btn btn-primary btn-md"
-                onClick={() => onReview(inlineIntentFor(block.proposedAction))}
+                onClick={() => openAction(block.proposedAction, onReview, onSign)}
               >
                 {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
               </button>
@@ -211,7 +237,7 @@ function LiveBlock({
               <div className="cact">
                 <button
                   className="btn btn-primary btn-md"
-                  onClick={() => onReview(inlineIntentFor(block.proposedAction))}
+                  onClick={() => openAction(block.proposedAction, onReview, onSign)}
                 >
                   {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
                 </button>

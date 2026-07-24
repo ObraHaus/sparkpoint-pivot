@@ -24,6 +24,8 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
 import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
+import { ExecutionDrawer } from "@/components/execution/ExecutionDrawer";
+import type { ProposedAction } from "@sparkpoint/shared/schemas";
 import {
   RecCard,
   SnapshotCard,
@@ -54,6 +56,8 @@ type Turn =
   | { id: number; kind: "ai"; text: React.ReactNode; card?: CardKind }
   | { id: number; kind: "thinking"; steps: ThinkStep[]; then: () => void }
   | { id: number; kind: "inline"; intent: InlineIntent }
+  // The single signing chokepoint for an approved AI-proposed VAULT action (feature 019 US2).
+  | { id: number; kind: "sign"; action: ProposedAction }
   // A LIVE `/chat` turn: streamed, fail-closed ChatBlocks from the agent service.
   | { id: number; kind: "live"; cards: ChatCard[]; streaming: boolean; error?: string };
 
@@ -182,6 +186,9 @@ export default function ChatPage() {
   }, []);
   const pushInline = useCallback((intent: InlineIntent) => {
     setTurns((t) => [...t, { id: nextId(), kind: "inline", intent }]);
+  }, []);
+  const pushSign = useCallback((action: ProposedAction) => {
+    setTurns((t) => [...t, { id: nextId(), kind: "sign", action }]);
   }, []);
   const think = useCallback((steps: ThinkStep[], then: () => void) => {
     setTurns((t) => [...t, { id: nextId(), kind: "thinking", steps, then }]);
@@ -595,6 +602,17 @@ export default function ChatPage() {
                   </AiFrame>
                 );
               }
+              if (turn.kind === "sign") {
+                return (
+                  <AiFrame key={turn.id}>
+                    <div className="ctext">
+                      Here&apos;s the full preview — review every change and sign right here.{" "}
+                      <b>Nothing moves until you sign.</b>
+                    </div>
+                    <ExecutionDrawer action={turn.action} />
+                  </AiFrame>
+                );
+              }
               if (turn.kind === "live") {
                 return (
                   <AiFrame key={turn.id}>
@@ -603,6 +621,7 @@ export default function ChatPage() {
                       streaming={turn.streaming}
                       error={turn.error}
                       onReview={pushInline}
+                      onSign={pushSign}
                       onCite={openCite}
                     />
                   </AiFrame>
