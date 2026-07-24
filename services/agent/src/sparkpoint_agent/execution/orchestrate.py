@@ -280,9 +280,14 @@ async def build_tx(
 ) -> IntentBundle:
     """Materialize an unsigned ``IntentBundle`` for a proposed vault action (§3.5), fail-closed."""
     if req.execMode != "per_action":
+        # US6: the ERC-4337 session-key stack is deployed + proven live on Base Sepolia
+        # (a mode-0x01 UserOp passed the Alchemy bundler's ERC-7562 tracer + executed on-chain) and
+        # the bundler client (execution/bundler.py) is ready. The remaining increment is the
+        # automated-move userOp builder + a CLIENT session-signer (the service never holds the key,
+        # N3); until that lands the spine refuses a session-key move here honestly, never faked.
         raise ApiError(
             ErrorCode.VALIDATION_ERROR,
-            "Only per-action signing is available on this network (session keys arrive with US6).",
+            "Session-key automated moves are not wired into the spine yet (grant/revoke is live).",
             reasons=[ErrorReason("VALIDATION_ERROR", "execMode must be per_action")],
         )
 
@@ -490,10 +495,13 @@ async def submit_signed(
     step0 = bundle.steps[0]
 
     if signed.opType == "userop":
-        # US6 path: an eoa_call bundle carries no userOp, so a userOp submission cannot match it.
+        # US6 path: submission via the bundler (execution/bundler.py — proven live on Base Sepolia)
+        # will land here once build_tx emits a session-key userOp bundle + a client session-signer
+        # exists. Today's bundles are all eoa_call (no userOp to match), so a userOp submission is
+        # refused honestly rather than mis-recorded against an eoa bundle.
         raise ApiError(
             ErrorCode.VALIDATION_ERROR,
-            "userOp submission is not available on this network yet (per-action eoa signing only).",
+            "Session-key userOp submission is not wired into the spine yet (grant/revoke is live).",
             reasons=[ErrorReason("VALIDATION_ERROR", "bundle is an eoa_call bundle")],
         )
 
