@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security (019/020 — /submit-signed-tx verifies the relayed tx before recording it)
+- **A signed-transaction relay is now recorded only after it's verified on-chain.** `POST /submit-signed-tx`
+  previously byte-matched the relayed `txHash` against the issued bundle **best-effort** — and *skipped*
+  the check entirely when the tx wasn't retrievable, recording the execution anyway
+  (`orchestrate.submit_signed`). A bogus, mistaken, or not-yet-propagated `txHash` therefore created a
+  **phantom `executions` row** that could mis-attribute a US5 outcome (surfaced during the SC-010
+  live-validation, when a client mistakenly relayed a log-topic hash instead of the tx hash). The relay
+  now **requires** the tx to be retrievable on-chain **and** to byte-match the issued step before it
+  records anything: a hash we can't retrieve (after a short bounded retry that absorbs RPC propagation
+  lag — the drawer relays only *after* the wallet confirms the receipt) returns a **retryable
+  `DATA_STALE`** with **no row**; an RPC outage while verifying returns a retryable `UPSTREAM_UNAVAILABLE`;
+  a byte-mismatch stays `VALIDATION_ERROR`. Non-custody preserved (N2): rejecting the correlation relay
+  never gates the user's funds — the transaction is on-chain regardless, and the client re-relays once it
+  propagates. +2 agent tests (714 total); the replay-dedup test now verifies through a retrievable tx. No
+  migration; takes effect on the agent redeploy.
+
 ### Added (020 — US5 per-advice attribution: the backend attribution spine)
 - **Every AI recommendation you act on is now linked to its real on-chain outcome.** This closes the
   credibility loop (FR-039/040/041, SC-010): you can see whether a past suggestion actually performed,
