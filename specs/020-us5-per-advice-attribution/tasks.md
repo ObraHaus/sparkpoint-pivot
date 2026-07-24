@@ -33,7 +33,7 @@ endpoints + tests; live-validatable via API — SC-007), **B = web surface**. Ta
 ## Phase 1: Setup
 
 - [ ] T001 Create `services/agent/migrations/0022_recommendations.sql` skeleton (banner + N1/N2/N5 non-custody note + `PGCLIENTENCODING=UTF8`).
-- [ ] T002 [P] Confirm no other consumer breaks when `recId` changes to a UUID (grep web for `recId`/`recommendationId` usage; note the round-trip is opaque string pass-through).
+- [X] T002 [P] Confirm no other consumer breaks when `recId` changes to a UUID (grep web for `recId`/`recommendationId` usage; note the round-trip is opaque string pass-through). **DONE:** consumers treat `recId`/`recommendationId` as an opaque round-trip string (`recView.ts` `id`, ExecutionDrawer relay, `/build-tx`); no strategy-key parsing.
 
 ## Phase 2: Foundational (BLOCKS all user stories)
 
@@ -50,7 +50,7 @@ endpoints + tests; live-validatable via API — SC-007), **B = web surface**. Ta
 **Goal**: a surfaced rec is persisted; acting on it links `intent_bundles.recommendation_id` + advances the rec to executed.
 **Independent test**: quickstart steps 1–3 (surface → row upserted, recId=UUID; build → link written + status acted; confirm → executed + attribution_method).
 
-- [ ] T010 [US2] `api/recommendations.py`: at surface, upsert each cleared rec (full snapshot) via `RecommendationStore`; set `recId` = persisted UUID + `proposedAction.recommendationId` = it; fail-open to the ephemeral id on a store outage. Update `GET /recommendations/{recId}` to a store read (UUID) with `NOT_FOUND`.
+- [X] T010 [US2] `api/recommendations.py`: at surface, upsert each cleared rec (full snapshot) via `RecommendationStore`; set `recId` = persisted UUID + `proposedAction.recommendationId` = it; fail-open to the ephemeral id on a store outage. Update `GET /recommendations/{recId}` to a store read (UUID) with `NOT_FOUND`. **DONE:** `_persist_recids` upserts each cleared rec (clean `{type,asset,decimals,amount}` snapshot, recommendationId stripped → stable dedupe) + rewrites `recId`/`proposedAction.recommendationId` to the UUID; fail-open per-item (never 503s). Detail is recompute+re-key-then-match (keeps live citations/comparison a bare store read would drop) resolving the durable UUID; unknown → `NOT_FOUND`. +2 tests (idempotent + fail-open); 716 agent tests green.
 - [ ] T011 [US2] `execution/orchestrate.py` `build_tx`: resolve-or-create the persisted rec from `req.action.recommendationId` + the action; WRITE `intent_bundles.recommendation_id = <UUID>` (fix orchestrate.py:137 `None`); set the wire `IntentBundle.recommendationId = <UUID>`; `mark_status(acted)`. Unknown/absent id → unlinked (honest).
 - [ ] T012 [US2] `execution/orchestrate.py` `submit_signed` + `submission_status`: on record/confirm, `mark_status(executed)` for the linked rec + write `executions.attribution_method='intent_log'`. Never gate anything (N2).
 - [ ] T013 [P] [US2] `services/agent/tests/api/test_build_tx_reclink.py`: build with a known recId → `intent_bundles.recommendation_id` written + wire recommendationId echoes it + rec status `acted`; build with an unknown/absent id → unlinked (recommendation_id None), no error; submit/confirm → status `executed` + attribution_method `intent_log`.

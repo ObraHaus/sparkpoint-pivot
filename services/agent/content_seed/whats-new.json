@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "durable-recommendation-identity",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Every AI suggestion now gets a durable, trackable identity",
+      "body": "A small under-the-hood improvement to the credibility loop. The moment the AI shows you a suggestion, we now give it a durable identity — so if you act on it later, we can reliably tie it back to the exact advice you saw and the outcome it produced. Nothing changes in what you see; it just makes the 'did this advice actually pay off?' tracking more robust. And if our advice records are ever briefly unavailable, your recommendations still load as normal — this is an advisory index that never touches your funds.",
+      "cta_label": "Open Outcomes",
+      "cta_href": "/outcomes",
+      "published_at": "2026-07-24T16:00:00Z",
+      "active": true
+    },
+    {
       "slug": "by-recommendation-outcomes-view",
       "type": "changelog",
       "tag": "New",

@@ -23,14 +23,19 @@ fail-closed layers before anything reaches the wire:
 
 So a recommendation on the wire is, by construction, both whitelisted AND policy-approved.
 
-Statelessness + degradation
----------------------------
-Recommendations are computed statelessly (no rec store yet): the ``recId`` is a deterministic
-function of the strategy kind, so ``GET /recommendations/{recId}`` is a recompute-and-match
-(and the id round-trips to ``/build-tx`` as ``proposedAction.recommendationId``). ``NOT_FOUND``
-maps a missing mandate to an onboarding prompt (§3.4); ``REFUSAL`` maps a model refusal. A
-chain outage while reading the gate's cap headroom marks the data ``stale`` — which fails the
-gate's freshness step closed, so nothing unverified is surfaced.
+Persist-at-surface + degradation (US5 T010)
+-------------------------------------------
+Each cleared recommendation is persisted at surface time via the :class:`RecommendationStore`,
+so the ``recId`` is a **durable UUID** that round-trips to ``/build-tx`` as
+``proposedAction.recommendationId`` and links the acted-on advice to its on-chain outcome
+(FR-002/FR-039). Persistence is **fail-open**: a store outage leaves the ephemeral strategy-keyed
+id (``rec_<kind>``) and never 503s this advisory read (non-custody — an off-chain advice index,
+never on the funds path). ``GET /recommendations/{recId}`` recomputes the cleared set, re-keys it
+through the same idempotent store, and matches by id — so the durable UUID resolves while the live
+"why this?" citations + neighbor comparison are preserved (a bare store read would drop them).
+``NOT_FOUND`` maps a missing mandate to an onboarding prompt (§3.4) and an unknown/no-longer-cleared
+id; ``REFUSAL`` maps a model refusal. A chain outage while reading the gate's cap headroom marks the
+data ``stale`` — which fails the gate's freshness step closed, so nothing unverified is surfaced.
 """
 
 from __future__ import annotations
@@ -59,7 +64,9 @@ from ..coordinator import (
     RecommendationBlock,
     RecommendationsResult,
 )
+from ..db import RecommendationStore, get_database
 from ..db.mandates import MandateStore
+from ..db.recommendations import RecInsert
 from ..knowledge import default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeError, LlmBusyError, status_code
 from ..persona import get_persona
@@ -236,6 +243,16 @@ def get_mandate_provider(
     return _StoreMandateProvider(store)
 
 
+def get_rec_store() -> RecommendationStore:
+    """The recommendation store for persist-at-surface (US5 T010). Overridden in tests.
+
+    Resolution is lazy (the DB pool is already resolved for the mandate read on this route), and all
+    writes are wrapped fail-open (:func:`_persist_recids`), so a store outage never 503s this
+    advisory read — it degrades to the ephemeral id (an off-chain index, non-custody).
+    """
+    return RecommendationStore(get_database())
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Gate-input reads + DAG assembly.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -341,12 +358,13 @@ def _build_dag(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Block → §3.4 wire mapping (stateless, strategy-keyed recId).
+# Block → §3.4 wire mapping. recId is persisted at surface (US5 T010); the strategy-keyed
+# id below is the FAIL-OPEN fallback used only when the store is unavailable.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _rec_id(strategy_kind: str) -> str:
-    """A deterministic, strategy-keyed rec id so the detail lookup is a stateless recompute."""
+    """The ephemeral strategy-keyed fallback rec id (used only when persist fails open)."""
     return f"rec_{strategy_kind}"
 
 
@@ -354,8 +372,9 @@ def _to_item(block: RecommendationBlock, chain: ChainContext, *, stale: bool) ->
     """Map a policy-cleared :class:`RecommendationBlock` to the §3.4 wire item.
 
     The APY/fee figures are the request-level READ market data on the ``ChainContext``
-    (null + best-effort here — no live feed), never the model's. The ``recId`` is
-    strategy-keyed and pinned into ``proposedAction.recommendationId`` so it round-trips.
+    (null + best-effort here — no live feed), never the model's. The ``recId`` starts as the
+    strategy-keyed fallback and is upgraded to the durable persisted UUID by
+    :func:`_persist_recids` (here and in ``proposedAction.recommendationId``, so it round-trips).
     """
     strategy_kind = str(block.proposed_action["type"])
     rec_id = _rec_id(strategy_kind)
@@ -381,6 +400,49 @@ def _to_item(block: RecommendationBlock, chain: ChainContext, *, stale: bool) ->
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+async def _persist_recids(
+    rec_store: RecommendationStore | None,
+    account: AccountContext,
+    result: RecommendationsResult,
+    items: list[RecommendationItem],
+) -> None:
+    """Persist each surfaced recommendation and upgrade its ``recId`` to the durable UUID (T010).
+
+    Upserts one snapshot per cleared rec (idempotent by content ``dedupe_key`` → re-surfacing the
+    same advice keeps ONE row + the SAME id, FR-002), then rewrites the item's ``recId`` and
+    ``proposedAction.recommendationId`` to that UUID so it round-trips to ``/build-tx`` (FR-039).
+    The stored snapshot is the proposedAction WITHOUT the injected ``recommendationId`` (a self-
+    referential key would be circular) — matching the ``/build-tx`` resolve-by-id path.
+
+    FAIL-OPEN (non-custody — an off-chain advice index, never the funds path): no store, or a
+    per-item store error, leaves that item's ephemeral strategy-keyed id. ``/recommendations`` must
+    never 503 on an advisory-index outage.
+    """
+    if rec_store is None:
+        return
+    mandate_version = str(result.mandate_version) if result.mandate_version is not None else None
+    for item in items:
+        snapshot = {k: v for k, v in item.proposedAction.items() if k != "recommendationId"}
+        try:
+            rec_id = await rec_store.upsert(
+                RecInsert(
+                    wallet=account.account,
+                    strategy_kind=item.strategyKind,
+                    title=item.title,
+                    proposed_action=snapshot,
+                    policy_version=result.policy_version,
+                    rationale=item.rationale,
+                    rank=item.rank,
+                    mandate_version=mandate_version,
+                )
+            )
+        except Exception:  # noqa: BLE001, S112 — advisory index: ANY store error degrades fail-open
+            continue
+        rid = str(rec_id)
+        item.recId = rid
+        item.proposedAction = {**snapshot, "recommendationId": rid}
 
 
 async def _compute(
@@ -438,8 +500,9 @@ async def get_recommendations(
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
     mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+    rec_store: Annotated[RecommendationStore, Depends(get_rec_store)],
     limit: Annotated[int, Query(ge=1, le=25)] = 5,
-    refresh: Annotated[bool, Query()] = False,  # noqa: ARG001 — stateless; always recomputes
+    refresh: Annotated[bool, Query()] = False,  # noqa: ARG001 — always recomputes (persist is idempotent)
 ) -> RecommendationsResponse:
     """Ranked strategies vs. the mandate — whitelist + policy-cleared ONLY (§3.4, FR-016).
 
@@ -447,10 +510,12 @@ async def get_recommendations(
     LLM-free policy gate), so every surfaced recommendation is both whitelisted and
     policy-approved. No mandate → ``NOT_FOUND`` (prompt onboarding); a model refusal →
     ``REFUSAL``. A cleared-but-empty result (nothing passes the gate) is a valid ``200``
-    with no recommendations (FR-016 — the renderer shows nothing uncleared).
+    with no recommendations (FR-016 — the renderer shows nothing uncleared). Each cleared
+    rec is persisted (US5 T010) so its ``recId`` is a durable UUID (fail-open to the ephemeral id).
     """
     result, items = await _compute(account, reader, config, llm, mandate_provider, limit=limit)
     _raise_if_unavailable(result)
+    await _persist_recids(rec_store, account, result, items)
     return RecommendationsResponse(
         policyVersion=result.policy_version,
         mandateVersion=_mandate_version(result),
@@ -467,18 +532,21 @@ async def get_recommendation_detail(
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
     mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+    rec_store: Annotated[RecommendationStore, Depends(get_rec_store)],
 ) -> RecommendationDetailResponse:
     """ "Why this?" detail + a comparison against neighboring ranks (§3.4).
 
-    Recompute-and-match: the strategy-keyed ``recId`` round-trips, so recomputing the cleared
-    set and matching by id needs no rec store. An unknown id — or one that no longer clears
-    the gate — is ``NOT_FOUND``. Only whitelisted + policy-cleared strategies are ever
-    matchable (FR-016).
+    Recompute-then-resolve (US5 T010): recompute the cleared set, re-key it through the same
+    idempotent store (so the durable UUID ``recId`` resolves), and match by id — while keeping the
+    live citations + neighbor comparison a bare store read would drop. An unknown id — or one no
+    longer clearing the gate — is ``NOT_FOUND``. Only whitelisted + policy-cleared strategies are
+    matchable (FR-016). A store outage degrades to the ephemeral strategy-keyed id (fail-open).
     """
     result, items = await _compute(
         account, reader, config, llm, mandate_provider, limit=_DETAIL_LIMIT
     )
     _raise_if_unavailable(result)
+    await _persist_recids(rec_store, account, result, items)
 
     match = next((item for item in items if item.recId == rec_id), None)
     if match is None:
