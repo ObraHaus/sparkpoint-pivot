@@ -147,7 +147,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "Notification & display preferences are saved on this device", "Compact density and reduce-motion apply across the app"]} pending={["Notification delivery (email / push) isn’t wired yet — toggles record your intent"]} /></h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "In-app notifications are live — these category toggles filter your real notifications feed", "Display preferences are saved on this device; compact density and reduce-motion apply across the app"]} pending={["Only email / push DELIVERY of notifications isn’t wired yet (in-app is live); session-key alerts arrive once automation ships"]} /></h1>
         </div>
         <button
           className="btn btn-ghost btn-md"

@@ -58,6 +58,7 @@ from .idempotency import IdempotencyStore
 from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
 from .network_diagnostics import router as network_diagnostics_router
+from .notifications import router as notifications_router
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
@@ -486,6 +487,9 @@ app.include_router(portfolio_router)
 # §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
 # surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
 app.include_router(recommendations_router)
+# §3.11 notifications (feature 021) — the real in-app feed, DERIVED live from indexed flows/
+# executions/outcomes (never fabricated). Advisory read + a per-user read cursor; off the exit path.
+app.include_router(notifications_router)
 # §3.5/§3.6 execution spine (feature 019 US2) — the SINGLE signing chokepoint. /build-tx
 # materializes
 # an unsigned IntentBundle (recipient forced to the user, signature always null); /simulate
