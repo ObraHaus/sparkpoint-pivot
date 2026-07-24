@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (in-app /changelog — newest entry now always on top)
+- **A new in-app `/changelog` entry now reliably appears at the top.** The changelog read ordered by
+  `published_at DESC` with **no stable secondary sort**, so entries sharing a day — common, since the
+  seed/admin often set a **date-only** value that ties a whole day at midnight — came back in an
+  unstable order, and a freshly-added same-day entry could land **mid-list** instead of on top.
+  Proven on live data (17 entries tied at `2026-07-23`; a newly-inserted tied entry did **not** lead
+  under the old query, and did under the fix). Added a stable `, id DESC` tiebreak (`id` is
+  `bigserial` ⇒ monotonic insertion order ⇒ newest-added leads within a date) to the changelog,
+  announcement, and admin-list queries in `db/content_entries.py`; a regression test pins the
+  tiebreak. No migration; takes effect on the agent redeploy.
+
 ### Added (019 — US2 execution spine: the web ExecutionDrawer, single-signing UI)
 - **You can now review and sign an AI-suggested vault move in one place — the ExecutionDrawer.** This completes the US2 single signing chokepoint on the front end (the backend `/build-tx` chokepoint shipped in the previous 019 increment). Tapping **"Review this move"** on an APPROVED vault recommendation/action in chat now opens a new drawer (`apps/web/src/components/execution/ExecutionDrawer.tsx`) that: calls `POST /build-tx` (via the typed `AgentClient`, which fail-closes any signature-bearing body — the build body carries none), renders the server `IntentBundle` (the **guardrail checklist**, the simulated **balance changes**, the plain-language **rationale**, and the custody/fee disclosure), and — crucially — **signs the server-issued calldata VERBATIM** via wagmi `useSendTransaction` (`{to,data,value}`, no client re-encode), so the byte-match the `/submit-signed-tx` relay asserts holds (SC-005). It confirms on the connected wallet's own RPC (`waitForTransactionReceipt` — never the agent, N2 independence) and fires a **best-effort** relay to `POST /submit-signed-tx` (a raw fetch, since the typed client refuses `signed` bodies) so the agent records the `executions` row + can correlate the outcome. Non-custody throughout: the recipient is always your own wallet, the service holds no key and signs nothing (N1/N3); an EXIT bundle stays signable even when its advisory sim is null (N2); a policy-rejected action shows the reasons and **no** Sign button (fail-closed, VR-X3); a deposit that needs a first-time USDC approval shows an honest "approve in the Vault" path rather than a scary error. Force-refresh is held while a signature is in flight (`useHoldCriticalOp`).
 - **Scope + safety of the mount.** Only chat **vault** actions (deposit/withdraw/redeem) route to the ExecutionDrawer; **swaps** keep the existing inline Uniswap confirm, and the **vault-screen manual flow** + the direct **`/exit`** hatch are untouched (FR-025). The web BFF needed **zero** new files (the catch-all `/api/agent/[...path]` already proxies the routes).
