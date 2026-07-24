@@ -64,8 +64,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `intent_bundles.recommendation_id` + `executions.attribution_method` columns). Spec Kit
   `specs/020-us5-per-advice-attribution`. **Deferred to a US5 follow-up:** persist-at-surface so
   `GET /recommendations` returns the durable UUID `recId` (today it stays strategy-keyed; the acted path
-  still links + logs a clean snapshot, so SC-010 holds), and the web "By recommendation" outcomes surface
-  (increment B).
+  still links + logs a clean snapshot, so SC-010 holds). *(The web "By recommendation" outcomes surface —
+  increment B — shipped separately below.)*
+
+### Added (020 — US5 web surface: the "By recommendation" outcomes view, increment B)
+- **The Outcomes page now shows how each AI recommendation you acted on actually performed.** This is the
+  user-facing finish of the credibility loop (FR-039/040/041): the agent surfaces built in increment A
+  (`GET /outcomes` `recommendations[]` + `GET /outcomes/{recId}`) are now consumed in the app.
+  - **"By recommendation" section** (`apps/web/src/app/(app)/outcomes/page.tsx`, `lib/agent/outcomesView.ts`).
+    One row per acted-on recommendation: its title, realized + unrealized PnL (each coloured by its own
+    sign), entry cost, a win/loss/open/flat label, and a link to the exact **acted transaction** on
+    Basescan. Each row carries an honest provenance line — *"Linked to the transaction you signed"* —
+    shown **only** when `attributionMethod === "intent_log"`, never inferred. A blended lot is labelled
+    **"Shared position"** (your share of a position across ≥2 deposits), never a fabricated split.
+  - **Per-recommendation detail** (`GET /outcomes/{recId}` via the new `useOutcomeDetail` hook). Expanding
+    a row lazily fetches the recommendation's stored rationale + proposed action and its live realized
+    APY (shown only for a fully-closed lot — an honest `—` while open, never extrapolated). A degraded
+    read surfaces the honest `DATA_STALE` copy ("still syncing on-chain"), never a fabricated figure.
+  - **Honesty:** the pure mapper renders only the agent's real signed USD strings; a zero-magnitude
+    value (even a wire `"-0.00"`) renders flat, not a red loss. The blanket *"position-level — not yet
+    linked to the specific advice"* caveat is **retired**; the honest position-level caveat is kept where
+    it still applies — on the **"All withdrawals"** ledger (a withdrawal spanning lots isn't split
+    per-recommendation). Read/derive only — never on the exit path (N2).
+- **Tests / gates.** +14 web unit tests on the pure mapper (`outcomesView.test.ts`: recommendations
+  parsing, shared/loss/`-0.00`/non-`intent_log` labelling, `reconciles=false` drops recommendations,
+  the detail view's realized-APY formatting + open→null, exact base-unit scaling of the proposed-action
+  amount against the REAL `{type,decimals,amount}` wire, and the defensive missing-label/recId/figure
+  branches). `typecheck:test` + `lint` + `build` + 140 web unit tests all green. No migration; web-only
+  change (takes effect on the web redeploy).
 
 ### Fixed (in-app /changelog — newest entry now always on top)
 - **A new in-app `/changelog` entry now reliably appears at the top.** The changelog read ordered by

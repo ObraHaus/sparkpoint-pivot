@@ -25,11 +25,18 @@ import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createAgentClient, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
+import { createAgentClient, AgentApiError, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
 import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
-import { toOutcomesView, type OutcomesResponseDto, type OutcomesView } from "@/lib/agent/outcomesView";
+import {
+  toOutcomesView,
+  toOutcomeDetailView,
+  type OutcomesResponseDto,
+  type OutcomesView,
+  type RecommendationOutcomeDetailDto,
+  type RecommendationOutcomeDetailView,
+} from "@/lib/agent/outcomesView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -257,6 +264,54 @@ export function useOutcomes(): OutcomesState | null {
     isError: query.isError,
     loaded: query.isSuccess && d !== undefined,
     refetch: () => void query.refetch(),
+  };
+}
+
+/* ── GET /outcomes/{recId} (§020/US5 — one recommendation's outcome detail) ─── */
+
+/** The per-recommendation view + row are pure; re-exported so the /outcomes page consumes one type. */
+export type {
+  RecommendationOutcomeView,
+  RecommendationOutcomeDetailView,
+  OutcomeKind,
+  OutcomeLabel,
+} from "@/lib/agent/outcomesView";
+
+/** One acted-on recommendation's live outcome detail + fetch state. `null` when offline or no recId. */
+export interface OutcomeDetailState {
+  view: RecommendationOutcomeDetailView | null;
+  isLoading: boolean;
+  isError: boolean;
+  /** The agent error code when the fetch failed (e.g. `DATA_STALE` while syncing, `NOT_FOUND`). */
+  errorCode?: string;
+}
+
+/**
+ * The full outcome detail for one acted-on recommendation (`GET /outcomes/{recId}`) — its stored
+ * rationale + proposed action, and its LIVE realized/unrealized PnL and realized APY. Advisory read
+ * (no key, no fund move — never on the exit path, N2): a degraded chain read surfaces as an honest
+ * `DATA_STALE` code the caller can explain, never a fabricated figure. `null` when offline or no
+ * `recId` is requested (so the caller can lazily fetch only the expanded row).
+ */
+export function useOutcomeDetail(recId: string | null): OutcomeDetailState | null {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "outcome-detail", recId, identity?.account, identity?.chainId],
+    enabled: online && !!recId,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) =>
+      client!.request<RecommendationOutcomeDetailDto>(`/outcomes/${encodeURIComponent(recId!)}`, {
+        signal,
+      }),
+  });
+  if (!online || !recId) return null;
+  const err = query.error;
+  return {
+    view: toOutcomeDetailView(query.data),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    errorCode: err instanceof AgentApiError ? err.code : undefined,
   };
 }
 

@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "by-recommendation-outcomes-view",
+      "type": "changelog",
+      "tag": "New",
+      "title": "See which AI suggestions actually paid off — in your Outcomes",
+      "body": "Your Outcomes page now has a 'By recommendation' view. Each AI suggestion you acted on is listed with what it actually did — how much you put in, your realized and unrealized gains or losses, and a win / loss / open label — traced to the exact transaction you signed. Open any one to see why the AI suggested it, plus its annualized return once the position is closed. Every figure is reconstructed live from the blockchain and the vault's share price — never a stored or made-up number; a deposit blended with others is honestly labelled as your share, not a pretend split. Losses show as plainly as wins.",
+      "cta_label": "Open Outcomes",
+      "cta_href": "/outcomes",
+      "published_at": "2026-07-24T15:00:00Z",
+      "active": true
+    },
+    {
       "slug": "safer-transaction-confirmation",
       "type": "changelog",
       "tag": "Improved",
