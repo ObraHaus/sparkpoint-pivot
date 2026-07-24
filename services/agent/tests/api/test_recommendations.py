@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,15 +28,25 @@ from sparkpoint_agent.api.recommendations import (
     get_agent_config,
     get_llm_client,
     get_mandate_provider,
+    get_rec_store,
 )
 from sparkpoint_agent.api.vault import get_vault_reader
 from sparkpoint_agent.chain import VaultReader
 from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.coordinator import ChainContext, MandateView
+from sparkpoint_agent.db.recommendations import RecInsert, dedupe_key
 from sparkpoint_agent.llm import AsyncClaudeClient, AuthMode, LlmBusyError
 from sparkpoint_agent.policy import CAPS
 
 _WAD = 10**18
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        UUID(value)
+    except (ValueError, TypeError):
+        return False
+    return True
 
 TOKEN = "test-web-tier-token"
 VAULT = "0x3333333333333333333333333333333333333333"
@@ -151,6 +162,31 @@ class FakeMandateProvider:
         return self._view
 
 
+class FakeRecStore:
+    """In-memory :class:`RecommendationStore` double for persist-at-surface (US5 T010).
+
+    Assigns a STABLE UUID per content ``dedupe_key`` (so re-surfacing the same advice keeps one id,
+    idempotent). ``fail=True`` raises on upsert to exercise the fail-open degrade to the ephemeral id.
+    Only ``upsert`` is exercised by the §3.4 endpoints.
+    """
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self._by_key: dict[str, UUID] = {}
+        self.by_id: dict[UUID, RecInsert] = {}
+        self._fail = fail
+
+    async def upsert(self, rec: RecInsert) -> UUID:
+        if self._fail:
+            raise RuntimeError("store down")
+        key = dedupe_key(rec.wallet, rec.strategy_kind, rec.proposed_action, rec.policy_version)
+        rid = self._by_key.get(key)
+        if rid is None:
+            rid = uuid4()
+            self._by_key[key] = rid
+        self.by_id[rid] = rec
+        return rid
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
@@ -164,14 +200,22 @@ def _wire(
     llm: AsyncClaudeClient | None = None,
     mandate: MandateView | None = _DEFAULT_MANDATE,
     vault_address: str | None = VAULT,
-) -> None:
-    """Override the four injection seams with deterministic fakes."""
+    rec_store: FakeRecStore | None = None,
+) -> FakeRecStore:
+    """Override the injection seams with deterministic fakes; return the (single) rec store.
+
+    The rec store is a single instance shared across every request in the test, so a persisted
+    durable recId round-trips from ``GET /recommendations`` to ``GET /recommendations/{recId}``.
+    """
+    store = rec_store if rec_store is not None else FakeRecStore()
     app.dependency_overrides[get_vault_reader] = lambda: reader or FakeCapReader()
     app.dependency_overrides[get_llm_client] = lambda: llm or _llm(json.dumps(RANKING))
     app.dependency_overrides[get_mandate_provider] = lambda: FakeMandateProvider(mandate)
+    app.dependency_overrides[get_rec_store] = lambda: store
     app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
         chain_id=8453, rpc_url=None, vault_address=vault_address, database_url=None
     )
+    return store
 
 
 # ── GET /recommendations ────────────────────────────────────────────────────────────
@@ -191,13 +235,37 @@ def test_recommendations_surfaces_ranked_whitelisted_cleared(client: TestClient)
     assert all(r["policy"]["status"] == "approved" for r in recs)
     assert all(r["protocol"] in {"aave_v3", "aerodrome"} for r in recs)
     assert {r["strategyKind"] for r in recs} == {"vault_deposit", "aave_supply"}
-    # Strategy-keyed, deterministic recIds round-trip into proposedAction.recommendationId.
-    assert [r["recId"] for r in recs] == ["rec_vault_deposit", "rec_aave_supply"]
-    assert recs[0]["proposedAction"]["recommendationId"] == "rec_vault_deposit"
+    # Persist-at-surface (US5 T010): recIds are durable UUIDs, distinct, pinned into proposedAction.
+    rec_ids = [r["recId"] for r in recs]
+    assert all(_is_uuid(rid) for rid in rec_ids)
+    assert len(set(rec_ids)) == 2
+    assert all(r["proposedAction"]["recommendationId"] == r["recId"] for r in recs)
     # APY figures are READ data (no live feed → null, never fabricated); fee is the vault's.
     assert recs[0]["grossApyBps"] is None
     assert recs[0]["projectedApyBps"] is None
     assert recs[0]["performanceFeeBps"] == 1000
+
+
+def test_recids_persisted_and_idempotent(client: TestClient) -> None:
+    """Persist-at-surface: re-surfacing the same advice keeps ONE durable row + the SAME recId."""
+    store = _wire()
+    first = client.get("/recommendations", headers=GOOD_HEADERS).json()["recommendations"]
+    second = client.get("/recommendations", headers=GOOD_HEADERS).json()["recommendations"]
+    ids1 = [r["recId"] for r in first]
+    ids2 = [r["recId"] for r in second]
+    assert all(_is_uuid(i) for i in ids1)
+    assert ids1 == ids2  # idempotent by dedupe_key — no new rows on re-surface
+    assert len(store.by_id) == 2  # exactly two persisted rows across two calls, not four
+
+
+def test_recids_fail_open_to_strategy_keyed_on_store_outage(client: TestClient) -> None:
+    """A store outage must NOT 503 this advisory read — it degrades to the ephemeral strategy id."""
+    _wire(rec_store=FakeRecStore(fail=True))
+    resp = client.get("/recommendations", headers=GOOD_HEADERS)
+    assert resp.status_code == 200
+    recs = resp.json()["recommendations"]
+    assert [r["recId"] for r in recs] == ["rec_vault_deposit", "rec_aave_supply"]
+    assert recs[0]["proposedAction"]["recommendationId"] == "rec_vault_deposit"
 
 
 def test_over_cap_headroom_filters_all_out(client: TestClient) -> None:
@@ -276,15 +344,20 @@ def test_only_aave_when_vault_undeployed(client: TestClient) -> None:
 
 def test_recommendation_detail_why_this_and_compare(client: TestClient) -> None:
     _wire()
-    resp = client.get("/recommendations/rec_vault_deposit", headers=GOOD_HEADERS)
+    # Persist-at-surface: fetch the listing first to learn the durable UUID recId, then resolve it.
+    listing = client.get("/recommendations", headers=GOOD_HEADERS).json()["recommendations"]
+    rid = next(r["recId"] for r in listing if r["strategyKind"] == "vault_deposit")
+    assert _is_uuid(rid)
+    resp = client.get(f"/recommendations/{rid}", headers=GOOD_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["recommendation"]["recId"] == "rec_vault_deposit"
+    assert body["recommendation"]["recId"] == rid  # the durable UUID resolves (recompute + re-key)
     assert body["whyThis"] == body["recommendation"]["rationale"]
     # Comparison lists the neighboring cleared strategy (aave_supply), not the subject itself.
     kinds = {c["strategyKind"] for c in body["comparison"]}
     assert kinds == {"aave_supply"}
-    assert all(c["recId"] != "rec_vault_deposit" for c in body["comparison"])
+    assert all(c["recId"] != rid for c in body["comparison"])
+    assert all(_is_uuid(c["recId"]) for c in body["comparison"])
 
 
 def test_recommendation_detail_unknown_is_not_found(client: TestClient) -> None:

@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (020 — US5 persist-at-surface: `GET /recommendations` returns a durable `recId`)
+- **A recommendation now has a durable identity the moment it's shown — not just after you act on it.**
+  `GET /recommendations` previously returned a strategy-keyed `recId` (`rec_vault_deposit`), so the
+  advice was ephemeral until `/build-tx` reconstructed a snapshot. It now **persists each cleared
+  recommendation at surface time** via `RecommendationStore` and returns its **durable UUID** as the
+  `recId` (pinned into `proposedAction.recommendationId`), so the exact advice a user saw round-trips
+  to `/build-tx` and links to its on-chain outcome (FR-002/FR-039, US5). Upsert is idempotent by
+  content `dedupe_key` — re-surfacing the same advice keeps one row and the same id. `GET
+  /recommendations/{recId}` now recomputes + re-keys through the same store and resolves the durable
+  UUID (keeping the live "why this?" citations + neighbour comparison a bare store read would drop).
+  **FAIL-OPEN (non-custody):** a store outage degrades to the ephemeral strategy-keyed id and never
+  503s this advisory read — the recommendation index is off-chain and never on the funds/exit path
+  (N1–N5). Wire-contract change: `recId` is now a UUID (opaque string, round-trips unchanged). +2
+  agent tests (`test_recommendations.py`: idempotent persistence + fail-open degrade), 716 total;
+  `ruff` + `mypy --strict` + `pytest` green. No migration (reuses the `0022` table).
+
 ### Security (019/020 — /submit-signed-tx verifies the relayed tx before recording it)
 - **A signed-transaction relay is now recorded only after it's verified on-chain.** `POST /submit-signed-tx`
   previously byte-matched the relayed `txHash` against the issued bundle **best-effort** — and *skipped*
