@@ -10,6 +10,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (admin — real user-analytics: the Users + Stakeholder pages go live, not sample)
+- **The last mock dashboards are wired to real data.** After the money-view sweep, the two remaining
+  sample pages (`/admin/users`, `/admin/stake`) are now computed live from the app's own tables via a
+  new admin-gated endpoint `GET /admin/users/analytics` — no fabricated numbers, honest zeros on a
+  sparse testnet, wallets pseudonymized (`user_<4hex>`, never a full address). **No migration** (a
+  read-only aggregate over existing tables); honest-degrades to `{configured:false}` on any DB error.
+  - **Real sources:** `users` + `onboarding_state` → total users + a cumulative onboarding funnel;
+    `mandates` (latest confirmed / user) → the risk-tier mix; `onchain_events` → per-owner net-deposited
+    (the top-depositors leaderboard) + activation; `usage_counters` → DAU/MAU; `subscriptions` → active
+    premium; `recommendations` (acted/executed) → recs accepted.
+  - **Users page** now shows live total users / stickiness / onboarding completion / activation, the real
+    funnel + risk-tier bars, and a pseudonymized leaderboard — the misleading `mandates`/`computed`
+    provenance pills are gone because the data now genuinely IS those sources.
+  - **Stakeholder page** headline KPIs are real (live TVL + users + depositors + premium); the forward
+    growth/revenue charts stay clearly labelled illustrative projections (no honest USD run-rate exists
+    on a test-token testnet, so none is fabricated).
+  - The now-dead `components/admin/data.tsx` mock module is deleted (nothing reads it anymore).
+  - New `db/analytics.py` (pure `build_funnel` + `pseudonymize` + the aggregate store) + `admin_analytics.py`
+    router. **+6 agent tests (733 total)**; `ruff` + `mypy --strict` + web `typecheck:test` + `lint` green.
+
 ### Changed (admin — the operator "money view" is now live on-chain, and mock dashboards stop pretending)
 - **The admin panel's analytics surfaces no longer fabricate numbers — the money-view reads the real chain.**
   A page-by-page gap audit found the operator console's *control plane* genuinely real (allowlist, caps,

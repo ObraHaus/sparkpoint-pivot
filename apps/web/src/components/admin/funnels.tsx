@@ -1,30 +1,33 @@
 "use client";
 
 /**
- * Funnel + risk-distribution bar widgets, shared by the Users and Usage screens.
- * Faithful 1:1 port of `funnel()` and `riskDist()` in SparkPoint Admin.html.
+ * Funnel + risk-distribution bar widgets for the admin Users screen — now driven by REAL data from
+ * `GET /admin/users/analytics` (was a 1:1 port of the hardcoded design mock). Presentational only.
  */
 
 import { STREAM } from "./charts";
 
-/** funnel() — onboarding / recommendation funnel bars. */
-export function Funnel() {
-  const steps: [string, number][] = [
-    ["Prospective", 3240],
-    ["Wallet connected", 2680],
-    ["Account ready", 2310],
-    ["Mandated", 1980],
-    ["Active", 1420],
-  ];
-  const max = steps[0][1];
+export interface FunnelStep {
+  step: string;
+  count: number;
+}
+export interface RiskTier {
+  tier: string;
+  count: number;
+  pct: number;
+}
+
+/** Onboarding funnel bars — cumulative counts (each step ⊇ the next), from the analytics endpoint. */
+export function Funnel({ steps }: { steps: FunnelStep[] }) {
+  const max = steps[0]?.count || 1;
   return (
     <div style={{ marginTop: 8 }}>
       {steps.map((s, i) => (
-        <div key={s[0]} style={{ marginBottom: 9 }}>
+        <div key={s.step} style={{ marginBottom: 9 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-            <span>{s[0]}</span>
+            <span>{s.step}</span>
             <span className="tnum" style={{ color: "var(--muted-foreground)" }}>
-              {s[1].toLocaleString()} · {((s[1] / max) * 100).toFixed(0)}%
+              {s.count.toLocaleString()} · {((s.count / max) * 100).toFixed(0)}%
             </span>
           </div>
           <div style={{ height: 18, borderRadius: 5, background: "var(--muted)" }}>
@@ -32,8 +35,8 @@ export function Funnel() {
               style={{
                 height: "100%",
                 borderRadius: 5,
-                width: `${(s[1] / max) * 100}%`,
-                background: i === 3 ? "var(--caution)" : STREAM.swap,
+                width: `${(s.count / max) * 100}%`,
+                background: i === steps.length - 2 ? "var(--caution)" : STREAM.swap,
               }}
             />
           </div>
@@ -43,27 +46,40 @@ export function Funnel() {
   );
 }
 
-/** riskDist() — risk-tier distribution bars. */
-export function RiskDist() {
-  const tiers: [string, string, number][] = [
-    ["Risk 1 · Lower", "--risk-1", 62],
-    ["Risk 2 · Low", "--risk-2", 26],
-    ["Risk 3 · Moderate", "--risk-3", 9],
-    ["Risk 4", "--risk-4", 3],
-  ];
+/** risk_tier enum → [display label, CSS colour var]. Unknown tiers fall back to risk-4. */
+const RISK_META: Record<string, [string, string]> = {
+  conservative: ["Conservative", "--risk-1"],
+  moderate: ["Moderate", "--risk-2"],
+  growth: ["Growth", "--risk-3"],
+};
+
+/** Risk-tier distribution bars — from each user's latest CONFIRMED mandate. */
+export function RiskDist({ tiers }: { tiers: RiskTier[] }) {
+  if (tiers.length === 0) {
+    return (
+      <div className="muted" style={{ marginTop: 8, fontSize: 13, padding: "10px 2px" }}>
+        No confirmed mandates yet.
+      </div>
+    );
+  }
   return (
     <div style={{ marginTop: 8 }}>
-      {tiers.map((t) => (
-        <div key={t[0]} style={{ marginBottom: 9 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-            <span>{t[0]}</span>
-            <span className="tnum">{t[2]}%</span>
+      {tiers.map((t) => {
+        const [label, color] = RISK_META[t.tier] ?? [t.tier, "--risk-4"];
+        return (
+          <div key={t.tier} style={{ marginBottom: 9 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+              <span>{label}</span>
+              <span className="tnum">
+                {t.pct}% · {t.count}
+              </span>
+            </div>
+            <div style={{ height: 18, borderRadius: 5, background: "var(--muted)" }}>
+              <div style={{ height: "100%", borderRadius: 5, width: `${t.pct}%`, background: `var(${color})` }} />
+            </div>
           </div>
-          <div style={{ height: 18, borderRadius: 5, background: "var(--muted)" }}>
-            <div style={{ height: "100%", borderRadius: 5, width: `${t[2]}%`, background: `var(${t[1]})` }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

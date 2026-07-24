@@ -34,6 +34,7 @@ from ..db.limits import LimitsStore
 from ..db.persona_notes import PersonaNoteStore
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
+from .admin_analytics import router as admin_analytics_router
 from .admin_knowledge import router as admin_knowledge_router
 from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
@@ -518,6 +519,9 @@ app.include_router(admin_limits_router)
 # Feature 008 admin usage/limits monitoring (/admin/usage/*) — admin-gated, masked, honest-degrade.
 app.include_router(admin_usage_router)
 app.include_router(admin_revenue_router)
+# Admin user-analytics (/admin/users/analytics) — REAL cohort metrics (funnel, risk mix, activation,
+# DAU/MAU, leaderboard, premium) from our own tables; admin-gated, pseudonymized, honest-degrade.
+app.include_router(admin_analytics_router)
 # Feature 008 self-scoped usage read (/usage/self) — a wallet reads its OWN allowance (not admin).
 app.include_router(usage_router)
 # Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the
