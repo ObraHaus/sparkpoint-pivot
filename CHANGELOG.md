@@ -50,9 +50,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   bundler rejection is surfaced verbatim (never a faked success). `GET /submit-signed-tx/{id}`
   resolves the bundler's UserOp receipt (pending → confirmed/failed). N2: a bundler outage is a
   retryable degrade, never a gate on the user's funds. No new migration (reuses the `signing_mode`
-  enum + `userop_hash`/`exec_mode` columns pre-provisioned in `0021`). The remaining piece is the web
-  client-side session-signer that auto-signs the built UserOp for a hands-off move (the service never
-  holds the key, N3) — the whole mechanism is now proven end-to-end on the agent.
+  enum + `userop_hash`/`exec_mode` columns pre-provisioned in `0021`).
+- **Web client-side session-signer — US6 is now closed end-to-end.** An approved, in-scope vault move
+  can execute with **no per-move wallet signature**: the browser holds the client-generated session
+  key and signs the agent-built UserOp itself. New `apps/web/src/lib/automation/`: `sessionSigner.ts`
+  (computes the canonical EntryPoint-v0.7 `userOpHash` via viem and forms the **66-byte mode-0x01,
+  EIP-191** signature the on-chain `SparkPointAccount` expects — its `userOpHash` is **byte-verified
+  against the deployed EntryPoint on Base Sepolia**, so no AA24 drift); `sessionKeyStore.ts` (the key
+  is **AES-GCM encrypted in IndexedDB** under a wrapping key derived from a **one-time-per-session**
+  wallet unlock signature — a stolen snapshot alone can't sign; the service never holds the key, N3);
+  `coverage.ts` (client eligibility vs the live grant's allowlist/caps, mirroring the on-chain
+  `SessionScopeLib`); `useSessionExecute.ts` (unlock → build → session-sign → relay → poll status).
+  A **"Let Sparky do it"** CTA appears on an approved rec **only** when a live in-scope grant + the
+  on-device key both exist, beside the always-present per-action "Review this move". **Revoke is now
+  fully client-buildable** (`revokeSessionKey` calldata encoded in-browser) so the sacred exit (N2)
+  works even if SparkPoint is entirely offline, and revoke/expiry **wipes** the local key. The Trust
+  Center's automation row now reflects the **real** grant (last `data.sessionKey` mock retired).
+- **Gate C holds:** "hands-off" means **no signature, not no human** — every automated move is still
+  an explicit click. No background/autonomous execution path exists; testnet (Base Sepolia) + vault
+  deposit/redeem only; mainnet stays behind the recorded audit. Web-only increment — no agent change,
+  no new migration. 188 web unit tests (signer round-trip + hash regression pin, encrypted-store
+  round-trip + SSR-safety, eligibility, revoke-calldata parity, submit/poll retry) + tsc + lint + build.
 
 ### Changed (trust — list more contracts, honestly scoped)
 - **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory

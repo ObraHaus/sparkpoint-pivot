@@ -24,7 +24,14 @@ import {
   useInvalidateSessionKeys,
   type SessionKeyGrant,
 } from "@/lib/automation/useSessionKey";
-import { bpsToPercent, expiryCountdown, formatUsdcBaseUnits, selectorLabel } from "@/lib/automation/scope";
+import {
+  bpsToPercent,
+  buildRevokeTx,
+  expiryCountdown,
+  formatUsdcBaseUnits,
+  selectorLabel,
+} from "@/lib/automation/scope";
+import { hasSessionKey, wipeSessionKey } from "@/lib/automation/sessionKeyStore";
 
 const VAULT_CHAIN = 84532;
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
@@ -43,7 +50,7 @@ const SAFE: [string, string][] = [
 
 export default function Page() {
   const router = useRouter();
-  const { active, online, isLoading, loaded, isError } = useSessionKeys();
+  const { active, account, online, isLoading, loaded, isError } = useSessionKeys();
 
   return (
     <div className="page page-narrow">
@@ -65,7 +72,7 @@ export default function Page() {
           Reading your session keys from chain…
         </div>
       ) : active ? (
-        <GrantCard grant={active} />
+        <GrantCard grant={active} account={account} />
       ) : (
         <EmptyCard error={online && isError} onGrant={() => router.push(toHref("automation/grant"))} />
       )}
@@ -113,7 +120,7 @@ function EmptyCard({ error, onGrant }: { error: boolean; onGrant: () => void }) 
 }
 
 /** The live grant: its scope, caps, spend, slippage, an expiry countdown, and instant revoke. */
-function GrantCard({ grant }: { grant: SessionKeyGrant }) {
+function GrantCard({ grant, account }: { grant: SessionKeyGrant; account?: string }) {
   // The countdown needs the wall clock; hold it in state (+ interval) so render stays pure (lint).
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -124,9 +131,28 @@ function GrantCard({ grant }: { grant: SessionKeyGrant }) {
   const revoke = useRevokeBuilder();
   const tx = useSessionKeyTx();
   const invalidate = useInvalidateSessionKeys();
+
+  // Whether the session key is stored on THIS device (⇒ hands-off moves can sign here).
+  const [keyPresent, setKeyPresent] = useState<boolean | null>(null);
+  const sessionAddress = grant.sessionKey;
   useEffect(() => {
-    if (tx.isDone) invalidate();
-  }, [tx.isDone, invalidate]);
+    let alive = true;
+    const check = async (): Promise<boolean> =>
+      account ? hasSessionKey({ chainId: VAULT_CHAIN, account, sessionAddress }) : false;
+    void check().then((p) => {
+      if (alive) setKeyPresent(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [account, sessionAddress]);
+
+  useEffect(() => {
+    if (!tx.isDone) return;
+    invalidate();
+    // Revoke confirmed → wipe the local key (a consequence of the sacred exit, never a gate on it).
+    if (account) void wipeSessionKey({ chainId: VAULT_CHAIN, account, sessionAddress }).then(() => setKeyPresent(false));
+  }, [tx.isDone, invalidate, account, sessionAddress]);
 
   const vault = (() => {
     try {
@@ -149,8 +175,16 @@ function GrantCard({ grant }: { grant: SessionKeyGrant }) {
 
   const busy = revoke.building || tx.isBusy;
   async function onRevoke() {
-    const built = await revoke.build(grant.sessionKey);
+    // Prefer the CLIENT-built revoke (the sacred exit works even if SparkPoint is offline, N2); only
+    // fall back to the server builder if the account address isn't known yet. Both are user-signed.
+    const local = buildRevokeTx(account, grant.sessionKey, VAULT_CHAIN);
+    const built = local ?? (await revoke.build(grant.sessionKey));
     if (built) tx.send(built);
+  }
+
+  async function onDisableHandsOff() {
+    if (account) await wipeSessionKey({ chainId: VAULT_CHAIN, account, sessionAddress });
+    setKeyPresent(false);
   }
 
   const rows: [string, React.ReactNode][] = [
@@ -207,6 +241,36 @@ function GrantCard({ grant }: { grant: SessionKeyGrant }) {
         </div>
       ) : (
         <>
+          {/* Hands-off (on-device) status: the key is per-browser, so say plainly whether it's here. */}
+          {keyPresent === true ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "10px 12px",
+                marginBottom: 12,
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--info-subtle)",
+                fontSize: 12.5,
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--gain)" }}>
+                <Icon name="check" size={14} /> Hands-off signing is on in this browser.
+              </span>
+              <button className="qlink" onClick={() => void onDisableHandsOff()} style={{ fontSize: 12 }}>
+                Turn off here
+              </button>
+            </div>
+          ) : keyPresent === false ? (
+            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginBottom: 12, lineHeight: 1.5 }}>
+              Hands-off signing isn’t set up in this browser — you’ll sign each move manually here. The grant is still
+              live; you can enable hands-off by re-granting on this device.
+            </div>
+          ) : null}
+
           <button className="btn btn-outline btn-md" disabled={busy} onClick={() => void onRevoke()} style={{ width: "100%" }}>
             {tx.stage === "signing"
               ? "Confirm in your wallet…"
