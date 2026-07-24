@@ -5,11 +5,11 @@
       "slug": "secure-signing-pipeline-for-ai-vault-moves",
       "type": "changelog",
       "tag": "New",
-      "title": "A secure, single place to sign AI-suggested vault moves",
-      "body": "We shipped the core pipeline that turns an AI-suggested vault move into one safety-checked transaction that you sign yourself. Before anything can be signed, every proposed action now passes our deterministic policy engine and a real on-chain dry-run, the recipient is always forced to your own wallet, and SparkPoint never holds your keys or signs for you. Withdrawals stay exempt — they are never blocked by a check, a pause, or a fee. This is a behind-the-scenes safety milestone; the in-app 'review and sign' screen that surfaces it is coming next.",
+      "title": "Review and sign AI-suggested vault moves — right in chat",
+      "body": "You can now act on an AI-suggested vault move in one place, right in the chat. When you tap 'Review this move' on a suggestion, we build a single safety-checked transaction — run through our deterministic policy engine and a real on-chain dry-run — show you every guardrail and every balance change, and let you sign it from your own wallet. The recipient is always your own wallet, SparkPoint never holds your keys or signs for you, and withdrawals are never blocked by a check, a pause, or a fee. Nothing moves until you sign.",
       "cta_label": "See your permissions",
       "cta_href": "/trust",
-      "published_at": "2026-07-23T23:59:00Z",
+      "published_at": "2026-07-24T00:01:00Z",
       "active": true
     },
     {

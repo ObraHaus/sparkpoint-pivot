@@ -21,7 +21,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 | 5 | Notifications backend | `StatusTag mock` "not wired to a live feed" | Event/index backend + delivery channel |
 | 6 | Admin stake/TVL/users analytics | "Sample data" pill | Analytics/indexer backend |
 | 7 | US5 outcome logging | **PARTIAL (018 + 019):** real per-withdrawal ledger (`GET /outcomes`); the `intent_action_id` attribution anchor now EXISTS (019 `intent_bundles.id`) — per-**advice** attribution still needs the rec store + worker | Persisted recs + IntentLog/heuristic attribution worker (the `intent_action_id` is shipped) |
-| 8 | US2 `/build-tx` chokepoint + ExecutionDrawer + direct Aave v3 | **PARTIAL (018 + 019):** the `/build-tx` IntentBundle chokepoint + `/simulate` + `/submit-signed-tx` relay + status + `0021` execution persistence SHIPPED (019, backend); the web **ExecutionDrawer** UI + Aerodrome swap sim + direct Aave still deferred | Web ExecutionDrawer (next increment); Anvil-fork balance-delta/slippage sim; Aerodrome adapter/sim; direct Aave v3 |
+| 8 | US2 swap sim + direct Aave v3 | **SUBSTANTIALLY DONE (018 + 019):** the `/build-tx` chokepoint + `/simulate` + `/submit-signed-tx` relay + status + `0021` persistence **AND** the web **ExecutionDrawer** single-signing UI all SHIPPED; only the Aerodrome swap sim + direct Aave + the richer Anvil-fork sim remain | Anvil-fork balance-delta/slippage sim; Aerodrome adapter/sim (mainnet); direct Aave v3 |
 
 ---
 
@@ -122,12 +122,18 @@ pending its increment*, not a shipped-Base-equivalent proof.
   `eoa_call`, `per_action`) now becomes a signable, simulated, policy-approved bundle — recipient
   forced to the user (N1), `signature` always null (N3), the exit never gated (N2), fail-closed with
   reasons + no bundle on rejection. `intent_bundles.id` is the `intent_action_id` (unblocks US5, row 7).
-- **Still deferred:** the web **ExecutionDrawer** single-signing UI (the next increment — signs the
-  server bundle verbatim for the byte-match, SC-005); full Anvil mainnet-fork balance-delta/slippage
-  sim; **Aerodrome swap** simulation (mainnet-only); and **direct Aave v3** deposit/withdraw. **SC-002
-  remains UNMET for swaps.**
-- **Gate to build:** the web ExecutionDrawer (next); the fork sim; Aerodrome adapter/sim; direct Aave.
-  The simulation-before-sign + single-signing-chokepoint guarantees hold on the vault backend today.
+- **Shipped in 019 (the web ExecutionDrawer):** the front-end single-signing chokepoint. An APPROVED
+  chat vault recommendation opens `apps/web/src/components/execution/ExecutionDrawer.tsx`, which calls
+  `/build-tx`, renders the guardrail checklist + simulated balance changes + rationale, and signs the
+  server `steps[0]` calldata **verbatim** via wagmi `useSendTransaction` (the byte-match, SC-005),
+  confirming on the wallet's own RPC (N2 independence) + a best-effort `/submit-signed-tx` relay for
+  correlation. Fail-closed (no Sign on a rejection); N2 exit stays signable with a null sim; the
+  vault-screen manual flow + `/exit` are untouched.
+- **Still deferred:** the full Anvil mainnet-fork balance-delta/slippage sim; **Aerodrome swap**
+  simulation (mainnet-only); and **direct Aave v3** deposit/withdraw. **SC-002 remains UNMET for swaps.**
+- **Gate to build:** the fork sim; Aerodrome adapter/sim (mainnet); direct Aave. The
+  simulation-before-sign + single-signing-chokepoint guarantees now hold end-to-end (backend + UI) on
+  the vault path.
 - **Tracking:** `specs/019-us2-execution-spine`, `specs/018-p1-remainders` (US2), `specs/001-sparkpoint-pivot-mvp` (US2).
 
 ---
