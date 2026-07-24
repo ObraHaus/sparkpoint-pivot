@@ -6,9 +6,12 @@
  * Signs the bundle's `steps[0]` calldata VERBATIM via wagmi `useSendTransaction` (`{to,data,value}` —
  * NO re-encode, so the /submit-signed-tx byte-match holds, SC-005), confirms on the connected
  * transport's own client (`waitForTransactionReceipt` — direct RPC, never the agent; N2 independence),
- * and fires a BEST-EFFORT relay to `POST /submit-signed-tx` so the agent can record the execution +
- * correlate the outcome. The relay is a raw fetch because the typed `AgentClient` refuses a body with
- * a `signed` field; it never blocks the user, and the direct receipt is the source of truth.
+ * and — ONLY after the receipt confirms (the tx is now retrievable on-chain, matching the #91
+ * verify-before-record) — fires a BEST-EFFORT relay to `POST /submit-signed-tx` so the agent can
+ * record the execution + correlate the outcome. The relay retries a `409 DATA_STALE` (the agent's RPC
+ * hasn't seen the tx yet) with a bounded backoff so a briefly-lagging real tx still correlates without
+ * user action. It's a raw fetch (the typed `AgentClient` refuses a body with a `signed` field), never
+ * blocks the user, and never relays a reverted tx — the direct receipt is the source of truth.
  *
  * The service holds no key and signs nothing — the user is the sole signer (N1/N3).
  */
@@ -19,7 +22,7 @@ import type { Hex } from "viem";
 
 import { wagmiConfig } from "@/lib/wagmi";
 import type { IntentBundle } from "@sparkpoint/shared/schemas";
-import { stepToTx } from "./executionModel";
+import { relayWithRetry, stepToTx } from "./executionModel";
 
 type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
 
@@ -40,21 +43,41 @@ function shortError(err: unknown): string {
   return msg.length > 140 ? `${msg.slice(0, 137)}…` : msg;
 }
 
-/** Best-effort relay for outcome correlation (§3.6). Never throws into the sign flow. */
+/** Bounded retry so a briefly-lagging real tx self-correlates; each `post` also absorbs the agent's
+ * own ~3s internal wait (`_await_relayed_tx`) before it degrades to a retryable 409. */
+const RELAY_POLICY = { maxAttempts: 3, backoffMs: 1500 };
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Best-effort relay for outcome correlation (§3.6). Retries a `409 DATA_STALE` (tx not yet visible to
+ * the agent's RPC) with a bounded backoff, using ONE stable idempotency key across the retries. Never
+ * throws into the sign flow — the direct receipt is the source of truth (N2 independence).
+ */
 async function relaySubmit(intentId: string, txHash: Hex, chainId: number): Promise<void> {
-  try {
-    await fetch("/api/agent/submit-signed-tx", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-chain-id": String(chainId),
-        "idempotency-key": crypto.randomUUID(),
+  await relayWithRetry(
+    {
+      newKey: () => crypto.randomUUID(),
+      sleep,
+      post: async (idempotencyKey) => {
+        try {
+          const res = await fetch("/api/agent/submit-signed-tx", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-chain-id": String(chainId),
+              "idempotency-key": idempotencyKey,
+            },
+            body: JSON.stringify({ intentId, signed: { opType: "eoa_call", txHash } }),
+          });
+          return res.status;
+        } catch {
+          return 0; // network error — best-effort; the direct receipt is the source of truth (N2)
+        }
       },
-      body: JSON.stringify({ intentId, signed: { opType: "eoa_call", txHash } }),
-    });
-  } catch {
-    // best-effort: the direct receipt is the source of truth (N2 independence)
-  }
+    },
+    RELAY_POLICY,
+  );
 }
 
 export function useExecutionSign(bundle: IntentBundle | null): SignController {
@@ -84,7 +107,6 @@ export function useExecutionSign(bundle: IntentBundle | null): SignController {
           chainId,
         });
         setTxHash(hash);
-        void relaySubmit(b.id, hash, chainId); // best-effort correlation; does not block
         setStage("confirming");
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
         if (receipt.status === "reverted") {
@@ -93,6 +115,12 @@ export function useExecutionSign(bundle: IntentBundle | null): SignController {
           return;
         }
         setStage("done");
+        // Relay ONLY after the receipt confirms — the tx is now retrievable on-chain, so the agent
+        // can verify + record it (§3.6/#91), and a reverted tx is never recorded as an execution.
+        // Best-effort with a bounded retry-on-409; fire-and-forget, never blocks the done state. The
+        // `.catch` is belt-and-suspenders: relaySubmit already swallows all errors (N2), so this can't
+        // fire — it just guarantees the "never throws into the sign flow" contract can never regress.
+        void relaySubmit(b.id, hash, chainId).catch(() => {});
       } catch (err) {
         setStage("error");
         setError(shortError(err));
