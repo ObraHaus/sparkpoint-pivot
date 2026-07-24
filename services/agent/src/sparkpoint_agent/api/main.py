@@ -62,6 +62,7 @@ from .notifications import router as notifications_router
 from .portfolio import router as portfolio_router
 from .recommendations import router as recommendations_router
 from .security import has_valid_s2s
+from .sessions import router as sessions_router
 from .subscription import router as subscription_router
 from .tips import router as tips_router
 from .usage import router as usage_router
@@ -498,6 +499,7 @@ app.include_router(notifications_router)
 # polls
 # status. The service signs nothing (N1/N3); the withdraw/exit path is never gated (N2).
 app.include_router(execution_router)
+app.include_router(sessions_router)
 # §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
 # management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
 app.include_router(allowlist_router)

@@ -28,6 +28,7 @@ from .mandates import (
 from .notification_reads import NotificationReadStore, ReadCursor
 from .pool import Database, get_database
 from .recommendations import RecInsert, RecommendationStore, RecRow
+from .session_keys import SessionKeyRow, SessionKeyStore
 from .simulations import SimulationInsert, SimulationRow, SimulationStore
 from .subscriptions import PaymentAlreadyRecorded, SubscriptionStore
 from .swap_fees import (
@@ -51,6 +52,8 @@ __all__ = [
     "Database",
     "ExecutionRow",
     "ExecutionStore",
+    "SessionKeyRow",
+    "SessionKeyStore",
     "IntentBundleStore",
     "LimitsStore",
     "DatabaseConfig",
