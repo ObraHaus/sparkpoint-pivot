@@ -18,6 +18,7 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
+import { useSessionKeys } from "@/lib/automation/useSessionKey";
 
 const VAULT_CHAIN = 84532;
 const EXPLORER = "https://sepolia.basescan.org";
@@ -26,6 +27,9 @@ const usd0 = (v?: bigint) => (v === undefined ? "…" : `$${Math.round(Number(fo
 
 export default function Page() {
   const router = useRouter();
+  // The user's live session-key grant (if any) — so this page reflects real automation, not a stale
+  // "not deployed" claim. Advisory read; `active` is null when offline/loading (honest, never faked).
+  const { active: activeGrant } = useSessionKeys();
   const addrs = getAddresses(VAULT_CHAIN);
   const vault = addrs.vault as Address | undefined;
   const capReg = addrs.capRegistry as Address | undefined;
@@ -85,17 +89,39 @@ export default function Page() {
         </div>
       </div>
 
-      <div
-        className="infobanner"
-        style={{ marginBottom: 16, background: "var(--info-subtle, var(--surface-2))", borderColor: "var(--border-soft)" }}
-      >
-        <Icon name="info" size={16} />
-        <span>
-          <b style={{ color: "var(--foreground)" }}>No automation grants exist yet.</b> Scoped, revocable session-key
-          automation (US6 — a custom ERC-4337 account governed by an on-chain PolicyModule) ships in <b>Phase 3</b>;
-          the PolicyModule is not deployed. Today, <b>only you</b> can move funds — Sparky holds no on-chain grant.
-        </span>
-      </div>
+      {activeGrant ? (
+        <div
+          className="infobanner"
+          style={{ marginBottom: 16, background: "var(--gain-subtle, var(--surface-2))", borderColor: "color-mix(in srgb, var(--gain) 30%, transparent)" }}
+        >
+          <Icon name="zap" size={16} />
+          <span>
+            <b style={{ color: "var(--foreground)" }}>A scoped session key is active.</b> You granted Sparky a
+            capped, time-boxed key (ERC-4337 account governed by the on-chain PolicyModule) — it can only touch its
+            allowlisted targets under your caps, and you can{" "}
+            <a className="qlink" style={{ display: "inline-flex" }} onClick={() => router.push(toHref("automation"))}>
+              manage or revoke it instantly
+            </a>
+            . You alone can move funds out.
+          </span>
+        </div>
+      ) : (
+        <div
+          className="infobanner"
+          style={{ marginBottom: 16, background: "var(--info-subtle, var(--surface-2))", borderColor: "var(--border-soft)" }}
+        >
+          <Icon name="info" size={16} />
+          <span>
+            <b style={{ color: "var(--foreground)" }}>No automation grant is active.</b> Scoped, revocable
+            session-key automation (US6 — a custom ERC-4337 account governed by an on-chain PolicyModule) is
+            available; you haven’t granted one, so today <b>only you</b> can move funds. You can{" "}
+            <a className="qlink" style={{ display: "inline-flex" }} onClick={() => router.push(toHref("automation"))}>
+              grant a scoped, capped, revocable key
+            </a>{" "}
+            whenever you choose.
+          </span>
+        </div>
+      )}
 
       <div className="card card-pad">
         <div className="card-hd">
