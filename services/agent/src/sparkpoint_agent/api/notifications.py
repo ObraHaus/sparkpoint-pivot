@@ -274,9 +274,15 @@ async def get_notifications(
     if replay is not None and replay.reconciles:
         derived.extend(_outcome_notif(o, position.block) for o in replay.outcomes)
 
-    # Newest-first, capped.
+    # Newest-first, capped. Reserve the poller EVENTS (caps / rate / new-rec, id "evt:*") so a burst
+    # of vault-flow rows can't bury an unread alert out of the capped window (which would also
+    # under-count the badge); fill the remaining slots with the newest non-event rows.
     derived.sort(key=lambda d: d[0], reverse=True)
-    derived = derived[:_FEED_LIMIT]
+    evt_rows = [d for d in derived if d[2].id.startswith("evt:")]
+    other_rows = [d for d in derived if not d[2].id.startswith("evt:")]
+    kept = evt_rows + other_rows[: max(0, _FEED_LIMIT - len(evt_rows))]
+    kept.sort(key=lambda d: d[0], reverse=True)
+    derived = kept[:_FEED_LIMIT]
 
     # Unread vs the per-user read cursor (fail-open: no cursor / outage ⇒ treat all as unread). A
     # chain event (block is not None) is read once its block <= last_read_block — a STABLE key that

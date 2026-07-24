@@ -83,6 +83,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     `lib/admin/useVaultStats.ts` (the shared live-reads hook); `Kpi` gains an optional sparkline so a live
     single-value tile omits a fabricated trend.
 
+### Fixed (021 phase 2 — poller hardening from an adversarial review: anti-spam, idempotency, coverage)
+- A 16-agent adversarial review (find → verify → refute) of the shipped poller surfaced several
+  verified robustness gaps; all fixed in one pass (no migration, no web behavior change):
+  - **Caps hysteresis (was: protocol-wide spam).** `poll_caps` re-armed the instant fill dropped below
+    90%, so a vault hovering at ~90% with ordinary deposit/withdraw churn re-fired the *protocol-wide*
+    "vault nearing capacity" alert to every user each up-crossing. Now the episode only re-arms after
+    fill falls below **85%** (a hysteresis band), and the first observation is a **silent baseline**
+    (never alert an already-full vault on a crossing the poller never witnessed) — consistent with the
+    rate/new-rec detectors.
+  - **Overlapping-poll idempotency.** A fast redeploy could briefly run two poll passes against the
+    shared DB; the non-atomic read-modify-write on `poller_state` could regress a seq counter (dropping
+    a real emit) or double-insert a rate alert. `poll_once` now takes a **Postgres advisory lock** so
+    only one pass runs at a time; a pass that can't take it skips the tick. The rate dedupe key also
+    dropped its volatile bps suffix (keys on the seq alone, like the other two detectors).
+  - **New-rec wallet coverage.** The per-tick LLM cap re-scored only the 20 newest-mandated wallets
+    with a stable ordering, permanently starving any wallet past the cap. Added a **rotation cursor**
+    (`list_active_owners(offset=…)`) so every active-mandate wallet is covered across ticks.
+  - **Feed reservation.** A user with >50 recent vault flows could bury an older *unread* poller event
+    out of the capped feed window (and under-count the badge). `GET /notifications` now **reserves the
+    edge-triggered events** before truncation so a caps/rate/new-rec alert always surfaces.
+  - Documented the latent owner-vs-account key divergence that will need account-awareness when
+    ERC-4337 smart accounts (US6) land. +4 poller/feed tests (752 agent tests green).
+
 ### Fixed (021 phase 2 — new-recommendation alert made deterministic; no LLM-jitter false positives)
 - **Live-caught in first-boot validation:** the proactive new-recommendation poller keyed off the
   recommender's *top* rec, but the recommender's candidate ordering is LLM-generated and jitters

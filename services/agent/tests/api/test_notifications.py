@@ -333,6 +333,24 @@ def test_event_unread_keyed_by_read_cursor(client: TestClient) -> None:
     assert body["unreadCount"] == 1
 
 
+def test_events_survive_truncation_amid_a_flood_of_flows(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A heavy user with many newer vault flows must not bury an older unread poller event out of the
+    # capped window (which would also under-count the badge). Events are reserved before truncation.
+    monkeypatch.setattr("sparkpoint_agent.api.notifications._FEED_LIMIT", 3)
+    flows = [
+        FlowRow(kind="deposit", assets=_1M, shares=_1M, block_number=900 + i, log_index=0, tx_hash=f"0xf{i}")
+        for i in range(5)
+    ]
+    old_event = _event(created_at=datetime(2020, 1, 1, tzinfo=UTC))  # far older than every flow
+    _wire(reader=FakeReader(shares=5 * _1M, block=1000), flows=flows, events=[old_event])
+    body = client.get("/notifications", headers=GOOD_HEADERS).json()
+    types = [n["type"] for n in body["notifications"]]
+    assert "vault_near_capacity" in types  # the old event survived despite 5 newer flows
+    assert len(body["notifications"]) == 3  # still capped at _FEED_LIMIT
+
+
 # ── POST /notifications/read ────────────────────────────────────────────────────────
 
 

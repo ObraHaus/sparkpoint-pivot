@@ -114,6 +114,35 @@ async def test_caps_uncapped_vault_never_alerts() -> None:
     assert store.emits == []
 
 
+async def test_caps_hysteresis_holds_through_boundary_churn() -> None:
+    # The medium-severity fix: ordinary deposit/withdraw churn oscillating around the 90% line must
+    # NOT re-fire the protocol-wide alert. The episode only re-arms after fill falls below 85%.
+    store = StatefulStore()
+    await poller.poll_caps(FakeVaultReader(500_000), store)  # baseline (50%)
+    await poller.poll_caps(FakeVaultReader(910_000), store)  # 91% → emit near:1
+    assert len(store.emits) == 1
+    await poller.poll_caps(FakeVaultReader(880_000), store)  # 88% (in the 85–90 band) → hold, no emit
+    await poller.poll_caps(FakeVaultReader(915_000), store)  # 91.5% → still armed → no emit
+    await poller.poll_caps(FakeVaultReader(905_000), store)  # 90.5% → still armed → no emit
+    assert len(store.emits) == 1  # boundary churn produced ZERO extra alerts
+    await poller.poll_caps(FakeVaultReader(840_000), store)  # 84% (< 85%) → re-arm silently
+    await poller.poll_caps(FakeVaultReader(920_000), store)  # 92% → emit near:2
+    assert len(store.emits) == 2
+    assert store.emits[1]["dedupe_key"] == "cap:vault:near:2"
+
+
+async def test_caps_first_observation_already_full_is_silent() -> None:
+    # A fresh deploy against an already-full vault must NOT alert on first sight (silent baseline),
+    # consistent with poll_rate / poll_new_recs — but it must still ARM so a later crossing fires.
+    store = StatefulStore()
+    await poller.poll_caps(FakeVaultReader(920_000), store)  # first sight at 92% → baseline, no emit
+    assert store.emits == []
+    await poller.poll_caps(FakeVaultReader(800_000), store)  # 80% → re-arm (proves it baselined armed)
+    await poller.poll_caps(FakeVaultReader(910_000), store)  # 91% → emit near:1
+    assert len(store.emits) == 1
+    assert store.emits[0]["dedupe_key"] == "cap:vault:near:1"
+
+
 async def test_caps_fail_open_on_degraded_read() -> None:
     store = StatefulStore()
     await poller.poll_caps(RaisingVaultReader(), store)  # must not raise
@@ -136,14 +165,14 @@ async def test_rate_baseline_then_emit_only_on_a_large_enough_move() -> None:
     await poller.poll_rate(FakeAave(460), asset, store)  # 30 bps from 430
     assert len(store.emits) == 1
     assert store.emits[0]["type"] == "rate_moved"
-    assert store.emits[0]["dedupe_key"] == "rate:aave:1:460"
+    assert store.emits[0]["dedupe_key"] == "rate:aave:1"
     # New level is 460; a further 10-bps wiggle stays quiet.
     await poller.poll_rate(FakeAave(470), asset, store)
     assert len(store.emits) == 1
     # A 30-bps drop from 460 fires again (monotonic seq ⇒ a fresh, unique dedupe key).
     await poller.poll_rate(FakeAave(430), asset, store)
     assert len(store.emits) == 2
-    assert store.emits[1]["dedupe_key"] == "rate:aave:2:430"
+    assert store.emits[1]["dedupe_key"] == "rate:aave:2"
 
 
 async def test_rate_re_crossing_to_a_prior_value_still_notifies() -> None:
@@ -156,9 +185,7 @@ async def test_rate_re_crossing_to_a_prior_value_still_notifies() -> None:
     await poller.poll_rate(FakeAave(430), asset, store)  # -30 → emit seq 2
     await poller.poll_rate(FakeAave(460), asset, store)  # +30 back to 460 → MUST emit (seq 3), not drop
     assert len(store.emits) == 3
-    assert [e["dedupe_key"] for e in store.emits] == [
-        "rate:aave:1:460", "rate:aave:2:430", "rate:aave:3:460"
-    ]
+    assert [e["dedupe_key"] for e in store.emits] == ["rate:aave:1", "rate:aave:2", "rate:aave:3"]
 
 
 async def test_rate_fail_open_on_degraded_read() -> None:
@@ -189,8 +216,10 @@ def _patch_newrec_deps(monkeypatch: pytest.MonkeyPatch, item_lists: list[list[_F
         def __init__(self, db: Any) -> None:
             self._db = db
 
-        async def list_active_owners(self, *, network_id: str, limit: int) -> list[str]:  # noqa: ARG002
-            return ["0xOWNER0000000000000000000000000000000001"]
+        async def list_active_owners(  # noqa: ARG002
+            self, *, network_id: str, limit: int, offset: int = 0
+        ) -> list[str]:
+            return [] if offset else ["0xOWNER0000000000000000000000000000000001"]
 
     class _FakeVaultReaderCls:
         @classmethod
@@ -307,3 +336,47 @@ async def test_new_recs_per_wallet_fail_open(monkeypatch: pytest.MonkeyPatch) ->
     store = StatefulStore()
     await poller.poll_new_recs(None, _CONFIG, store)  # must not raise
     assert store.emits == []
+
+
+async def test_new_recs_rotates_through_all_wallets_no_starvation(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With more active-mandate wallets than the per-tick cap, the cursor must page through ALL of them
+    # across ticks (a fixed LIMIT + stable ORDER BY alone would starve the wallets past the cap).
+    monkeypatch.setattr(poller, "_NEWREC_WALLET_CAP", 2)
+    owners = ["0xAAA", "0xBBB", "0xCCC"]  # 3 wallets, cap 2 → needs 2 ticks to cover all
+
+    class _RotatingMandateStore:
+        def __init__(self, db: Any) -> None:
+            self._db = db
+
+        async def list_active_owners(  # noqa: ARG002
+            self, *, network_id: str, limit: int, offset: int = 0
+        ) -> list[str]:
+            return owners[offset : offset + limit]
+
+    class _FakeVaultReaderCls:
+        @classmethod
+        def from_config(cls, config: Any) -> _FakeVaultReaderCls:  # noqa: ARG003
+            return cls()
+
+    class _FakeLLM:
+        @classmethod
+        def from_env(cls) -> _FakeLLM:
+            return cls()
+
+    scored: list[str] = []
+
+    async def _fake_compute(account: Any, *a: Any, **k: Any):  # noqa: ANN202, ARG001
+        scored.append(account.account)
+        return object(), [_item("vault_yield")]
+
+    monkeypatch.setattr("sparkpoint_agent.db.mandates.PgMandateStore", _RotatingMandateStore)
+    monkeypatch.setattr("sparkpoint_agent.chain.VaultReader", _FakeVaultReaderCls)
+    monkeypatch.setattr("sparkpoint_agent.llm.AsyncClaudeClient", _FakeLLM)
+    monkeypatch.setattr("sparkpoint_agent.api.recommendations._compute", _fake_compute)
+
+    store = StatefulStore()
+    await poller.poll_new_recs(None, _CONFIG, store)  # tick 1: offset 0 → AAA, BBB
+    await poller.poll_new_recs(None, _CONFIG, store)  # tick 2: offset 2 → CCC (short page ⇒ wrap)
+    await poller.poll_new_recs(None, _CONFIG, store)  # tick 3: offset 0 → AAA, BBB again
+    assert scored[:3] == ["0xAAA", "0xBBB", "0xCCC"]  # all covered within 2 ticks — no starvation
+    assert scored[3:5] == ["0xAAA", "0xBBB"]  # then it wraps
