@@ -36,9 +36,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("sparkpoint_agent.api.notification_poller")
 
-_CAP_NEAR_BPS = 9_000  # >= 90% of the deposit cap → "near capacity"
-_RATE_MOVE_BPS = 25  # a >= 0.25% APY move from the last observation is notify-worthy
+_CAP_NEAR_BPS = 9_000  # >= 90% of the deposit cap → "near capacity" (arm the alert)
+_CAP_REARM_BPS = 8_500  # must fall below 85% before the alert re-arms (hysteresis vs boundary spam)
+_RATE_MOVE_BPS = 25  # a >= 0.25% APY move from the last-notified level is notify-worthy
 _NEWREC_WALLET_CAP = 20  # bound the per-run LLM cost (wallets re-scored per tick)
+_POLL_LOCK_KEY = 210_240_021  # pg advisory-lock id: serialize poll_once across overlapping polls
 
 
 def _env_on(name: str, default: str = "true") -> bool:
@@ -62,23 +64,36 @@ async def poll_caps(reader: VaultReader, store: NotificationEventStore) -> None:
 
     Fill = live ``totalAssets`` / the vault's on-chain ``depositCap`` (the SAME ratio the admin TVL
     utilization uses) — NOT the policy per-action guardrail. An uncapped vault (cap 0) never "near".
+
+    Hysteresis: once armed (≥90%), the episode only ENDS when fill falls below ``_CAP_REARM_BPS``
+    (85%), so ordinary deposit/withdraw churn around the 90% line can't re-fire the protocol-wide
+    alert. First observation is a silent baseline (never alert an already-full vault on a crossing
+    the poller never witnessed) — consistent with poll_rate / poll_new_recs.
     """
     try:
         cap = int(await reader.deposit_cap())
         fill = _fill_bps(int(await reader.total_assets()), cap)
-        near = fill >= _CAP_NEAR_BPS
         st = await store.get_state("cap:vault")
-        was_near = bool(st and st.num == 1)
         seq = int(st.txt) if (st and st.txt and st.txt.isdigit()) else 0
-        if near and not was_near:
-            seq += 1
+        if st is None:
+            # Silent baseline: record whether we START inside the band, never emit on first sight.
+            start = 1 if fill >= _CAP_NEAR_BPS else 0
+            await store.set_state("cap:vault", num=start, txt=str(seq))
+            return
+        was_near = st.num == 1
+        if not was_near and fill >= _CAP_NEAR_BPS:
+            seq += 1  # crossed UP into the band → one alert for this episode
             await store.emit(
                 category="capsNearLimit", type="vault_near_capacity",
                 title="Vault nearing capacity",
                 body=f"The vault is {fill // 100}% full — new deposits may be capped soon.",
                 icon="alert", href="/vault", dedupe_key=f"cap:vault:near:{seq}",
             )
-        await store.set_state("cap:vault", num=(1 if near else 0), txt=str(seq))
+            await store.set_state("cap:vault", num=1, txt=str(seq))
+        elif was_near and fill < _CAP_REARM_BPS:
+            # Dropped clear of the hysteresis band → episode ends, re-arm silently.
+            await store.set_state("cap:vault", num=0, txt=str(seq))
+        # else: inside the 85–90% hysteresis zone, or still ≥90% → hold state, no emit, no churn.
     except Exception:  # noqa: BLE001 — advisory poller; a read failure just skips this signal
         logger.warning("notif_poll_caps_skipped (chain/store degraded)")
 
@@ -103,7 +118,7 @@ async def poll_rate(reader: AavePoolReader, asset: str, store: NotificationEvent
                 category="rateChanges", type="rate_moved",
                 title="Aave USDC rate moved",
                 body=f"The Aave USDC supply rate moved {direction} {_pct_from_bps(new_bps)}%.",
-                icon="activity", href="/strategies", dedupe_key=f"rate:aave:{seq}:{new_bps}",
+                icon="activity", href="/strategies", dedupe_key=f"rate:aave:{seq}",
             )
             await store.set_state("rate:aave", num=new_bps, txt=str(seq))
     except Exception:  # noqa: BLE001 — advisory poller; a degraded rate read just skips this signal
@@ -143,11 +158,24 @@ async def poll_new_recs(db: Database, config: AgentConfig, store: NotificationEv
 
     try:
         mandate_store = PgMandateStore(db)
+        network_id = _network_id(config.chain_id)
+        # Rotate through ALL active-mandate wallets across ticks (a stable ORDER BY + a fixed LIMIT
+        # would permanently starve wallets past the cap). The cursor is a plain offset in the state.
+        cur = await store.get_state("newrec:cursor")
+        offset = cur.num if (cur and cur.num is not None and cur.num > 0) else 0
         owners = await mandate_store.list_active_owners(
-            network_id=_network_id(config.chain_id), limit=_NEWREC_WALLET_CAP
+            network_id=network_id, limit=_NEWREC_WALLET_CAP, offset=offset
         )
+        if not owners and offset > 0:
+            offset = 0  # ran past the end → wrap to the front this tick
+            owners = await mandate_store.list_active_owners(
+                network_id=network_id, limit=_NEWREC_WALLET_CAP, offset=0
+            )
         if not owners:
             return
+        # Advance the cursor: a short page means we reached the end → wrap next tick.
+        next_offset = 0 if len(owners) < _NEWREC_WALLET_CAP else offset + len(owners)
+        await store.set_state("newrec:cursor", num=next_offset)
         reader = VaultReader.from_config(config)
         llm = AsyncClaudeClient.from_env()
         provider = _StoreMandateProvider(mandate_store)
@@ -157,6 +185,10 @@ async def poll_new_recs(db: Database, config: AgentConfig, store: NotificationEv
 
     for owner in owners:
         try:
+            # EOA-direct mode: account == owner (the connected EOA holds the position). The emit
+            # keys the event on `owner` and the feed queries by `account.account`; they coincide
+            # today. When ERC-4337 smart accounts land (US6), account != owner — the whole re-score
+            # + emit key must become account-aware then (see docs/phase-3-deferred / US6 handover).
             account = AccountContext(account=owner, owner=owner, chain_id=config.chain_id)
             _result, items = await _compute(account, reader, config, llm, provider, limit=25)
             kinds = _cleared_kinds(items)
@@ -189,9 +221,31 @@ async def poll_new_recs(db: Database, config: AgentConfig, store: NotificationEv
             logger.warning("notif_poll_newrecs_wallet_skipped")
 
 
-async def poll_once() -> None:
-    """Run all three detectors once (fail-open). Called by the background loop in ``main.py``."""
+async def _run_detectors(config: AgentConfig, db: Database, store: NotificationEventStore) -> None:
     from ..chain import VaultReader
+
+    reader = VaultReader.from_config(config)
+    await poll_caps(reader, store)
+    if config.rpc_url and config.aave_pool_address and config.aave_reserve_usdc_address:
+        from ..chain.aave_rate import AavePoolReader
+        from ..chain.vault_reader import HttpxJsonRpcTransport
+
+        aave = AavePoolReader(
+            pool_address=config.aave_pool_address,
+            transport=HttpxJsonRpcTransport(config.rpc_url),
+        )
+        await poll_rate(aave, config.aave_reserve_usdc_address, store)
+    await poll_new_recs(db, config, store)
+
+
+async def poll_once() -> None:
+    """Run all three detectors once (fail-open). Called by the background loop in ``main.py``.
+
+    Guarded by a Postgres advisory lock so two overlapping poll passes (e.g. an old container
+    mid-poll while a redeploy boots a new one) can't run the read-modify-write on ``poller_state``
+    concurrently — which could regress a seq counter and drop a real emit, or double-insert. A pass
+    that can't take the lock simply skips this tick (it'll poll on the next one).
+    """
     from ..config import AgentConfig
     from ..db import NotificationEventStore, get_database
 
@@ -203,16 +257,15 @@ async def poll_once() -> None:
         return  # no vault/RPC configured on this deployment → nothing to poll
     db = get_database()
     store = NotificationEventStore(db)
-    reader = VaultReader.from_config(config)
-
-    await poll_caps(reader, store)
-    if config.aave_pool_address and config.aave_reserve_usdc_address:
-        from ..chain.aave_rate import AavePoolReader
-        from ..chain.vault_reader import HttpxJsonRpcTransport
-
-        aave = AavePoolReader(
-            pool_address=config.aave_pool_address,
-            transport=HttpxJsonRpcTransport(config.rpc_url),
-        )
-        await poll_rate(aave, config.aave_reserve_usdc_address, store)
-    await poll_new_recs(db, config, store)
+    try:
+        async with db.acquire() as conn:
+            got = await conn.fetchval("SELECT pg_try_advisory_lock($1)", _POLL_LOCK_KEY)
+            if not got:
+                logger.info("notif_poll_skipped (another poll holds the lock)")
+                return
+            try:
+                await _run_detectors(config, db, store)
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock($1)", _POLL_LOCK_KEY)
+    except Exception:  # noqa: BLE001 — advisory; a pool/lock failure just skips this tick (fail-open)
+        logger.warning("notif_poll_once_skipped (db/lock degraded)")
