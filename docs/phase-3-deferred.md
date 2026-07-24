@@ -92,7 +92,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 - **Gate to build:** an analytics/indexer backend (TVL/stake/user rollups); replace the pill with live reads.
 - **Tracking:** `docs/admin-panel/`.
 
-### 7. US5 — outcome logging — **BACKEND ATTRIBUTION SPINE BUILT (020, increment A); web + surface-persist remain**
+### 7. US5 — outcome logging — **SHIPPED (020: backend spine A + web surface B + persist-at-surface T010); only a heuristic path + a persisted outcome table remain deferred**
 - **Shipped in 018:** a REAL position-level realized-outcomes **ledger**. `GET /outcomes` reprojects
   the already-indexed Deposit/Withdraw flows (feature 017's `replay_basis`) into one row per realized
   withdrawal — realized USD (win/loss/flat, exact average-cost), each stamped with its own tx as
@@ -108,12 +108,22 @@ pending its increment*, not a shipped-Base-equivalent proof.
   live outcome (entry/realized/unrealized/label/realized-APY, `shared` when blended). Everything
   reconstructable from chain; honest `DATA_STALE`/empty on an unreconcilable history. +47 tests.
   **SC-010 is met on the acted path** (every acted-on rec that submits + indexes generates an outcome).
-- **Still deferred (US5 follow-ups):** (a) **persist-at-surface** so `GET /recommendations` returns the
-  durable UUID `recId` and `GET /recommendations/{recId}` is a store read (today the wire `recId` stays
-  strategy-keyed; the acted path still links + logs a clean snapshot, so SC-010 holds); (b) the **web
-  "By recommendation" outcomes surface** (increment B — `outcomesView.ts` + `/outcomes/page.tsx`, retiring
-  the "position-level — not yet linked" caveat); (c) an optional heuristic-match worker for the
-  legacy/unlinked path (the explicit `intent_log` path needs no worker).
+- **Shipped in 020 (increment B — web surface, PR #92):** the **"By recommendation"** outcomes view
+  (`outcomesView.ts` + `/outcomes/page.tsx` + `useOutcomeDetail`) consumes the `recommendations[]` +
+  `/outcomes/{recId}` surfaces — realized/unrealized PnL, win/loss/open label, acted-tx proof, honest
+  `intent_log` provenance + "Shared position" badge. The blanket "position-level — not yet linked"
+  caveat is retired (kept only on the position-level withdrawal ledger). +14 web tests.
+- **Shipped in 020 (persist-at-surface — T010, PR #93):** `GET /recommendations` now persists each
+  cleared rec and returns a **durable UUID** `recId` (was strategy-keyed), pinned into
+  `proposedAction.recommendationId` so the surfaced advice round-trips to `/build-tx` and resolves
+  by id; idempotent by content; `/recommendations/{recId}` recomputes + re-keys through the store to
+  resolve the UUID. **FAIL-OPEN** (a store outage degrades to the ephemeral id, never 503s). Live-
+  validated end-to-end (surfaced UUID → build → rec `acted` + linked bundle). +2 agent tests.
+- **Still deferred (US5 follow-ups):** (a) an optional **heuristic-match worker** for the
+  legacy/unlinked path (the explicit `intent_log` path needs no worker); (b) a persisted
+  `outcome_logs` table (outcomes are computed LIVE from chain today, which meets the AC). The only
+  remaining WEB item is a small ExecutionDrawer **retry-on-409** robustness (self-correlate a lagging
+  relay) — tracked in the spec, not a Phase-3 defer.
 - **Tracking:** `specs/020-us5-per-advice-attribution` (US5); `specs/018-p1-remainders` (US3); constitution III.
 
 ### 8. US2 — execution spine — **PARTIAL (shipped in 018 + 019)** + web drawer / swaps / direct Aave (deferred)
