@@ -20,7 +20,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
 | 5 | Notifications backend | `StatusTag mock` "not wired to a live feed" | Event/index backend + delivery channel |
 | 6 | Admin stake/TVL/users analytics | "Sample data" pill | Analytics/indexer backend |
-| 7 | US5 outcome logging | **PARTIAL (018 + 019):** real per-withdrawal ledger (`GET /outcomes`); the `intent_action_id` attribution anchor now EXISTS (019 `intent_bundles.id`) — per-**advice** attribution still needs the rec store + worker | Persisted recs + IntentLog/heuristic attribution worker (the `intent_action_id` is shipped) |
+| 7 | US5 outcome logging | **BACKEND SPINE BUILT (020-A):** rec store (`0022`) + `/build-tx` writes `intent_bundles.recommendation_id` + FIFO per-deposit-lot `/outcomes` `recommendations[]` + `GET /outcomes/{recId}` — `intent_log` link, SC-010 met on the acted path | Web "By recommendation" surface (increment B) + persist-at-surface (durable UUID `recId` on `/recommendations`) |
 | 8 | US2 swap sim + direct Aave v3 | **SUBSTANTIALLY DONE (018 + 019):** the `/build-tx` chokepoint + `/simulate` + `/submit-signed-tx` relay + status + `0021` persistence **AND** the web **ExecutionDrawer** single-signing UI all SHIPPED; only the Aerodrome swap sim + direct Aave + the richer Anvil-fork sim remain | Anvil-fork balance-delta/slippage sim; Aerodrome adapter/sim (mainnet); direct Aave v3 |
 
 ---
@@ -92,23 +92,29 @@ pending its increment*, not a shipped-Base-equivalent proof.
 - **Gate to build:** an analytics/indexer backend (TVL/stake/user rollups); replace the pill with live reads.
 - **Tracking:** `docs/admin-panel/`.
 
-### 7. US5 — outcome logging — **PARTIAL (shipped in 018)**
+### 7. US5 — outcome logging — **BACKEND ATTRIBUTION SPINE BUILT (020, increment A); web + surface-persist remain**
 - **Shipped in 018:** a REAL position-level realized-outcomes **ledger**. `GET /outcomes` reprojects
   the already-indexed Deposit/Withdraw flows (feature 017's `replay_basis`) into one row per realized
   withdrawal — realized USD (win/loss/flat, exact average-cost), each stamped with its own tx as
   on-chain proof — returned ONLY when the share history reconciles (else an honest empty state). The
   `/outcomes` page is **de-mocked** (the fabricated −$27.86 / fake tx links are gone).
-- **Progress in 019:** US2's execution-persistence spine shipped, so the `intent_action_id` the
-  attribution link hangs off now EXISTS — it is `intent_bundles.id`, minted at build time and carried
-  on every bundle + optionally linked to a `recommendationId`.
-- **Still deferred:** the per-**recommendation** attribution LINK (FR-039/SC-010 — "100% of acted-on
-  recs logged + PnL-updated per rec"). It still needs **persisted recommendations** (the rec store is
-  not built — rec ids are ephemeral today) + an IntentLog/heuristic attribution **worker** that joins
-  an acted-on rec → its `intent_bundles`/`executions` → the realized `/outcomes` row. **SC-010 remains
-  UNMET;** the ledger is honestly labeled "position-level — not yet linked to the specific advice."
-- **Gate to build:** the recommendation store + the attribution worker (the `intent_action_id` +
-  execution tables from 019 are now in place).
-- **Tracking:** `specs/018-p1-remainders` (US3), `specs/001-sparkpoint-pivot-mvp` (US5); constitution III.
+- **Shipped in 020 (increment A — agent backend):** the per-**recommendation** attribution LINK is now
+  BUILT. Migration `0022_recommendations` + `db/recommendations.py` persist a durable advice SNAPSHOT
+  (UUID `id` = the wire `recId`, content-deduped). `POST /build-tx` resolves the `recommendationId` and
+  WRITES `intent_bundles.recommendation_id` (the hardcoded `None` is fixed), advancing the rec
+  `surfaced → acted` and linking `intent_log` (the explicit build→sign→execution chain, no heuristic).
+  A new FIFO **per-deposit-lot** replay (`replay_lots`) marks each acted-on deposit to market;
+  `GET /outcomes` gained a `recommendations[]` array and a new `GET /outcomes/{recId}` returns one rec's
+  live outcome (entry/realized/unrealized/label/realized-APY, `shared` when blended). Everything
+  reconstructable from chain; honest `DATA_STALE`/empty on an unreconcilable history. +47 tests.
+  **SC-010 is met on the acted path** (every acted-on rec that submits + indexes generates an outcome).
+- **Still deferred (US5 follow-ups):** (a) **persist-at-surface** so `GET /recommendations` returns the
+  durable UUID `recId` and `GET /recommendations/{recId}` is a store read (today the wire `recId` stays
+  strategy-keyed; the acted path still links + logs a clean snapshot, so SC-010 holds); (b) the **web
+  "By recommendation" outcomes surface** (increment B — `outcomesView.ts` + `/outcomes/page.tsx`, retiring
+  the "position-level — not yet linked" caveat); (c) an optional heuristic-match worker for the
+  legacy/unlinked path (the explicit `intent_log` path needs no worker).
+- **Tracking:** `specs/020-us5-per-advice-attribution` (US5); `specs/018-p1-remainders` (US3); constitution III.
 
 ### 8. US2 — execution spine — **PARTIAL (shipped in 018 + 019)** + web drawer / swaps / direct Aave (deferred)
 - **Shipped in 018:** a REAL pre-sign **dry-run** on the vault path. `POST /vault/simulate/{deposit,

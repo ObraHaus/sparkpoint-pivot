@@ -212,7 +212,7 @@
         "Real Morpho wrapper + 010 APY feed (mainnet)",
         "Notifications backend",
         "Admin stake/tvl/users analytics",
-        "US5 outcome logging — PARTIAL (018: real per-withdrawal /outcomes ledger shipped; 019: the intent_action_id attribution anchor now exists as intent_bundles.id; per-advice attribution still needs a rec store + worker, SC-010 unmet)",
+        "US5 outcome logging — BACKEND SPINE BUILT (020-A): rec store (0022) + /build-tx writes intent_bundles.recommendation_id + FIFO per-deposit-lot replay + /outcomes recommendations[] + GET /outcomes/{recId}; intent_log link, SC-010 met on the acted path. Remaining: web 'by recommendation' surface (increment B) + persist-at-surface (durable UUID recId on /recommendations)",
         "US2 execution spine — SUBSTANTIALLY DONE (018: real pre-sign eth_call dry-run; 019: the /build-tx IntentBundle chokepoint + /simulate + /submit-signed-tx relay + status + 0021 persistence AND the web ExecutionDrawer single-signing UI all SHIPPED; only the Aerodrome swap sim + direct Aave + the richer Anvil-fork sim remain, SC-002 unmet for swaps)"
       ]
     }

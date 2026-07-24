@@ -21,8 +21,23 @@ from uuid import UUID
 
 from ..api.errors import ApiError, ErrorCode, ErrorReason
 from ..api.security import AccountContext
-from ..db import BundleInsert, ExecutionStore, IntentBundleStore, SimulationInsert
-from ..policy import Action, ActionType, Direction, PolicyVerdict, ReasonCode, evaluate
+from ..db import (
+    BundleInsert,
+    ExecutionStore,
+    IntentBundleStore,
+    RecInsert,
+    RecommendationStore,
+    SimulationInsert,
+)
+from ..policy import (
+    POLICY_VERSION,
+    Action,
+    ActionType,
+    Direction,
+    PolicyVerdict,
+    ReasonCode,
+    evaluate,
+)
 from ..policy.constants import ACTION_DIRECTION
 from ..sim import SimulationRequest, SimulationResult
 from . import rpc
@@ -113,6 +128,19 @@ def _rationale(atype: ActionType) -> str:
     )
 
 
+# Human-friendly titles for a MINIMAL rec reconstructed from an acted-on action (US5) — clean, not
+# the raw enum. A rich advice snapshot (persist-at-surface, a US5 follow-up) would supersede this.
+_ACTED_TITLES: dict[ActionType, str] = {
+    ActionType.VAULT_DEPOSIT: "Deposit into the SparkPoint vault",
+    ActionType.VAULT_WITHDRAW: "Withdraw from the SparkPoint vault",
+    ActionType.VAULT_REDEEM: "Redeem SparkPoint vault shares",
+}
+
+
+def _acted_title(atype: ActionType) -> str:
+    return _ACTED_TITLES.get(atype, atype.value.replace("_", " ").capitalize())
+
+
 def _reasons_json(verdict: PolicyVerdict) -> list[dict[str, Any]]:
     return [{"code": r.value, "message": reason_message(r)} for r in verdict.reasons]
 
@@ -124,6 +152,7 @@ def _bundle_insert(
     verdict_status: str,
     verdict: PolicyVerdict,
     expires: datetime,
+    recommendation_id: UUID | None = None,
 ) -> BundleInsert:
     return BundleInsert(
         smart_account_address=account.account,
@@ -134,7 +163,55 @@ def _bundle_insert(
         policy_version=verdict.policy_version,
         policy_reasons=_reasons_json(verdict),
         expires_at=expires,
-        recommendation_id=None,  # recommendationId is a string tag, not a UUID FK (data-model R5)
+        # US5 (feature 020): the resolved persisted recommendation UUID (was always None) — the
+        # FR-039 link. None when the action carried no rec or the rec store is unavailable.
+        recommendation_id=recommendation_id,
+    )
+
+
+async def _resolve_rec(
+    rec_store: RecommendationStore | None,
+    account: AccountContext,
+    req: BuildTxRequest,
+    action: Action,
+    usdc: str,
+) -> UUID | None:
+    """Resolve the wire recommendationId to a persisted rec UUID (US5 FR-002/FR-003).
+
+    If it is a known persisted rec → use it. Otherwise (a chat ephemeral id / legacy tag / absent
+    when the user still acted via a rec) → upsert a MINIMAL rec from the action so the acted-on
+    advice is still logged + linked (SC-010). Returns None only with no rec store (fail-open).
+    """
+    if rec_store is None:
+        return None
+    wire_id = req.action.recommendationId
+    if wire_id:
+        try:
+            existing = await rec_store.get(UUID(wire_id))
+        except ValueError:
+            existing = None
+        if existing is not None and existing.wallet.lower() == account.account.lower():
+            return existing.id
+        # a wire id was supplied but does not resolve → fall through to a minimal snapshot
+    else:
+        # no recommendationId ⇒ a user-initiated action, not acting on advice → unattributed.
+        return None
+    snapshot = proposed_action_wire(
+        action_type=action.action_type.value,
+        asset=usdc,
+        decimals=action.decimals,
+        amount=action.amount,
+        recommendation_id=None,
+    )
+    return await rec_store.upsert(
+        RecInsert(
+            wallet=account.account,
+            strategy_kind=action.action_type.value,
+            title=_acted_title(action.action_type),
+            proposed_action=snapshot,
+            policy_version=POLICY_VERSION,
+            rationale=_rationale(action.action_type),
+        )
     )
 
 
@@ -198,6 +275,7 @@ async def build_tx(
     rpc_url: str,
     dry_run: DryRunner,
     bundle_store: IntentBundleStore,
+    rec_store: RecommendationStore | None = None,
 ) -> IntentBundle:
     """Materialize an unsigned ``IntentBundle`` for a proposed vault action (§3.5), fail-closed."""
     if req.execMode != "per_action":
@@ -221,6 +299,11 @@ async def build_tx(
 
     steps = build_steps(action, chain_id=account.chain_id)
     is_exit = ACTION_DIRECTION[action.action_type] is Direction.EXIT
+
+    # 1b. US5 (feature 020): resolve the acted-on recommendation → its persisted UUID (the FR-039
+    # link). None when the action carried no recommendation (a user-initiated action, unattributed).
+    rec_id = await _resolve_rec(rec_store, account, req, action, usdc)
+    rec_id_str = str(rec_id) if rec_id is not None else req.action.recommendationId
 
     # 2. Deposit needs sufficient allowance (else the dry-run reverts on transferFrom — approve
     # first).
@@ -266,7 +349,7 @@ async def build_tx(
         asset=usdc,
         decimals=action.decimals,
         amount=action.amount,
-        recommendation_id=req.action.recommendationId,
+        recommendation_id=rec_id_str,
     )
     now = datetime.now(UTC)
     expires = now + timedelta(seconds=_BUNDLE_TTL_SECONDS)
@@ -274,8 +357,10 @@ async def build_tx(
     # 5. Gate — a rejected verdict persists a bundle row (audit) and returns reasons + NO bundle.
     if not verdict.is_signable:
         await bundle_store.persist_bundle(
-            _bundle_insert(account, action, steps, "rejected", verdict, expires)
+            _bundle_insert(account, action, steps, "rejected", verdict, expires, rec_id)
         )
+        if rec_store is not None and rec_id is not None:
+            await rec_store.mark_status(rec_id, "rejected")
         code = verdict.reasons[0]
         raise ApiError(
             _reason_to_error(code),
@@ -290,7 +375,9 @@ async def build_tx(
 
     # 6. Approved — persist sim + bundle (VR-X2), or the bundle alone for an approved exit with no
     # sim (N2).
-    bundle_row = _bundle_insert(account, action, steps, "approved", verdict, expires)
+    bundle_row = _bundle_insert(account, action, steps, "approved", verdict, expires, rec_id)
+    if rec_store is not None and rec_id is not None:
+        await rec_store.mark_status(rec_id, "acted")
     if sim is None:
         intent_id = await bundle_store.persist_bundle(bundle_row)
     else:
@@ -318,7 +405,7 @@ async def build_tx(
         guardrailChecklist=to_guardrail_checklist(verdict),
         rationale=_rationale(action.action_type),
         citations=[],
-        recommendationId=req.action.recommendationId,
+        recommendationId=rec_id_str,
         policyVersion=verdict.policy_version,
         expiresAt=_iso(expires),
     )

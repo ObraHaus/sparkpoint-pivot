@@ -32,26 +32,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
-from ..db import get_database
+from ..db import RecommendationStore, get_database
 from ..db.vault_flows import (
     BasisResult,
     FlowRow,
+    Lot,
+    LotReplay,
     OutcomeReplay,
     VaultFlowReader,
     replay_basis,
+    replay_lots,
     replay_outcomes,
 )
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
 from .vault import get_account, get_vault_reader
+
+
+def get_rec_store() -> RecommendationStore:
+    """The recommendations store (US5 — per-advice attribution). Overridden in tests."""
+    return RecommendationStore(get_database())
 
 
 def get_vault_flow_reader() -> VaultFlowReader:
@@ -512,6 +521,88 @@ class OutcomesResponse(BaseModel):
     wins: int
     losses: int
     outcomes: list[OutcomeRow]
+    # §020/US5 — one row per ACTED-ON recommendation (the credibility loop), populated only when the
+    # history reconciles. Empty when there is no acted-on advice or the history can't be reconciled.
+    recommendations: list[RecommendationOutcomeRow] = []
+
+
+class RecommendationOutcomeRow(BaseModel):
+    """§020/US5 — one acted-on recommendation's outcome (the deposit it caused, marked to market).
+
+    Position-lot attributed via the explicit build→sign link (``attributionMethod='intent_log'``);
+    every figure is reconstructable from chain. ``shared`` = the position is blended across ≥2
+    deposit lots (an honest share of a shared position, never a fabricated split)."""
+
+    recId: str
+    title: str
+    strategyKind: str
+    actedTxHash: str  # the deposit tx — on-chain proof of acting on the advice
+    entryBlock: int
+    entryUsd: str  # this rec's deposit cost
+    realizedUsd: str  # FIFO-realized on this rec's lot (signed)
+    unrealizedUsd: str  # current mark of the lot's remaining shares − remaining cost (signed)
+    label: str  # open | win | loss | flat
+    attributionMethod: str  # 'intent_log' (explicit link)
+    shared: bool
+    reconstructable: bool
+
+
+class RecommendationOutcomeResponse(BaseModel):
+    """§020/US5 ``GET /outcomes/{recId}`` 200 body — one recommendation's outcome detail."""
+
+    recId: str
+    title: str
+    rationale: str
+    strategyKind: str
+    proposedAction: dict[str, Any]
+    status: str
+    actedTxHash: str
+    entryBlock: int
+    entryUsd: str
+    realizedUsd: str
+    unrealizedUsd: str
+    realizedApyBps: int | None
+    label: str
+    attributionMethod: str
+    shared: bool
+    reconstructable: bool
+    asOfBlock: int
+
+
+def _lot_label(lot: Lot) -> str:
+    """open while shares remain; else win/loss/flat by the realized sign (honest, chain-derived)."""
+    if lot.shares_remaining > 0:
+        return "open"
+    return "win" if lot.realized > 0 else "loss" if lot.realized < 0 else "flat"
+
+
+def _lot_for_tx(lots: tuple[Lot, ...], deposit_tx: str) -> Lot | None:
+    want = deposit_tx.lower()
+    for lot in lots:
+        if lot.deposit_tx.lower() == want:
+            return lot
+    return None
+
+
+_SECONDS_PER_YEAR = 365 * 24 * 60 * 60  # 31_536_000 — annualization base for realized APY
+
+
+def _realized_apy_bps(lot: Lot) -> int | None:
+    """Annualized REALIZED return for a CLOSED lot (bps), or None while open/flat (contract §020).
+
+    ``realized / entry_cost`` annualized over the lot's on-chain holding period (entry→exit block at
+    Base's ~2s cadence). Computed ONLY for a fully-realized lot (no shares left) with a non-zero
+    realized — an open or flat lot has no realized APY to claim (honest null, not an extrapolation).
+    Reconstructable from chain: entry_block, exit_block, entry_cost, realized are all on-chain-set.
+    """
+    if lot.shares_remaining > 0 or lot.realized == 0 or lot.entry_cost <= 0:
+        return None
+    held_blocks = lot.exit_block - lot.entry_block
+    if held_blocks <= 0:
+        return None
+    held_seconds = held_blocks * _BASE_BLOCK_SECONDS
+    apy = (lot.realized / lot.entry_cost) * (_SECONDS_PER_YEAR / held_seconds)
+    return round(apy * 10_000)
 
 
 @router.get("/outcomes", response_model=OutcomesResponse)
@@ -520,6 +611,7 @@ async def get_outcomes(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
+    rec_store: Annotated[RecommendationStore, Depends(get_rec_store)],
 ) -> OutcomesResponse:
     """The realized-outcomes ledger — one real row per withdrawal (§018/US5, agent-service-api §3.3
     family). Reprojects the SAME indexed Deposit/Withdraw flows the portfolio uses (feature 017),
@@ -535,6 +627,7 @@ async def get_outcomes(
     # user still holds shares (a fully-exited user still has realized outcomes to show). Fail-open
     # ([] → honest empty). The replay reconstructs from zero, so it needs all flows (high bound).
     replay: OutcomeReplay | None = None
+    hist: list[FlowRow] = []
     if not position.stale and config.vault_address:
         try:
             hist = await flows.list_flows(
@@ -574,6 +667,39 @@ async def get_outcomes(
             total += o.realized
         net_realized = _usd_signed(total)
 
+    # §020/US5 — one row per ACTED-ON recommendation (the credibility loop). Per-deposit-lot (FIFO)
+    # attribution, keyed by the deposit tx of the rec's linked execution; live-computed, not cached.
+    rec_rows: list[RecommendationOutcomeRow] = []
+    if reconciles:
+        current_value = await reader.convert_to_assets(position.shares) if position.shares else 0
+        lot_replay: LotReplay | None = replay_lots(hist, position.shares, current_value)
+        if lot_replay is not None and lot_replay.reconciles:
+            by_tx = {lot.deposit_tx.lower(): lot for lot in lot_replay.lots}
+            try:
+                acted = await rec_store.list_acted(account.account)
+            except Exception:
+                acted = []
+            for a in acted:
+                lot = by_tx.get(a.deposit_tx.lower())
+                if lot is None:
+                    continue  # the rec's deposit isn't indexed yet → no outcome to show
+                rec_rows.append(
+                    RecommendationOutcomeRow(
+                        recId=str(a.rec_id),
+                        title=a.title,
+                        strategyKind=a.strategy_kind,
+                        actedTxHash=a.deposit_tx,
+                        entryBlock=lot.entry_block,
+                        entryUsd=_usd_from_usdc(lot.entry_cost),
+                        realizedUsd=_usd_signed(lot.realized),
+                        unrealizedUsd=_usd_signed(lot.unrealized),
+                        label=_lot_label(lot),
+                        attributionMethod="intent_log",
+                        shared=lot.shared,
+                        reconstructable=True,
+                    )
+                )
+
     return OutcomesResponse(
         asOfBlock=position.block,
         asOf=_now_iso(),
@@ -583,6 +709,110 @@ async def get_outcomes(
         wins=wins,
         losses=losses,
         outcomes=rows,
+        recommendations=rec_rows,
+    )
+
+
+@router.get("/outcomes/{rec_id}", response_model=RecommendationOutcomeResponse)
+async def get_outcome_detail(
+    rec_id: str,
+    account: Annotated[AccountContext, Depends(get_account)],
+    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
+    config: Annotated[AgentConfig, Depends(get_agent_config)],
+    rec_store: Annotated[RecommendationStore, Depends(get_rec_store)],
+) -> RecommendationOutcomeResponse:
+    """§020/US5 ``GET /outcomes/{recId}`` — one recommendation's outcome: its stored snapshot, the
+    deposit tx that proves it was acted on, and that deposit's LIVE realized+unrealized PnL (FIFO
+    lot-attributed against later withdrawals; ``intent_log`` = the explicit build→sign→exec link).
+
+    ``NOT_FOUND`` for an unknown rec, another wallet's rec, or one never acted on. A degraded chain
+    read or an unreconstructable share history DEGRADES to ``DATA_STALE`` (honest) — never a
+    fabricated figure. Read/derive only: no key, no fund move/write; exit never gated (N2).
+    """
+    try:
+        rid = UUID(rec_id)
+    except ValueError as exc:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "Unknown recommendation.",
+            reasons=[ErrorReason("NOT_FOUND", "recId is not a recommendation id")],
+        ) from exc
+
+    rec = await rec_store.get(rid)
+    if rec is None or rec.wallet.lower() != account.account.lower():
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "Unknown recommendation.",
+            reasons=[ErrorReason("NOT_FOUND", "no such recommendation for this wallet")],
+        )
+
+    # The explicit link: rec → its linked bundle → the submitted execution's deposit tx. No tx ⇒ the
+    # advice was surfaced but never acted on — nothing to mark to market yet.
+    deposit_tx = await rec_store.deposit_tx_for(rid)
+    if deposit_tx is None:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "This recommendation hasn't been acted on yet.",
+            reasons=[ErrorReason("NOT_FOUND", "no linked execution")],
+        )
+
+    position = await _read_vault_position(reader, account)
+    if position.stale or not config.vault_address:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "On-chain history is temporarily unavailable — try again shortly.",
+            reasons=[ErrorReason("DATA_STALE", "vault read degraded")],
+        )
+    try:
+        hist = await flows.list_flows(
+            _network_id(account.chain_id),
+            config.vault_address,
+            account.account,
+            limit=_SERIES_MAX_FLOWS,
+        )
+    except Exception as exc:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "On-chain history is temporarily unavailable — try again shortly.",
+            reasons=[ErrorReason("DATA_STALE", "flow index unreachable")],
+        ) from exc
+
+    current_value = await reader.convert_to_assets(position.shares) if position.shares else 0
+    lot_replay = replay_lots(hist, position.shares, current_value)
+    if lot_replay is None or not lot_replay.reconciles:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "Your on-chain share history can't be reconciled yet — figures withheld until it can.",
+            reasons=[ErrorReason("DATA_STALE", "share history does not reconcile")],
+        )
+
+    lot = _lot_for_tx(lot_replay.lots, deposit_tx)
+    if lot is None:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "This recommendation's deposit isn't indexed yet — check back shortly.",
+            reasons=[ErrorReason("DATA_STALE", "deposit tx not yet in the flow index")],
+        )
+
+    return RecommendationOutcomeResponse(
+        recId=str(rec.id),
+        title=rec.title,
+        rationale=rec.rationale,
+        strategyKind=rec.strategy_kind,
+        proposedAction=rec.proposed_action,
+        status="executed",  # derived from reality — the deposit is on-chain AND indexed
+        actedTxHash=deposit_tx,
+        entryBlock=lot.entry_block,
+        entryUsd=_usd_from_usdc(lot.entry_cost),
+        realizedUsd=_usd_signed(lot.realized),
+        unrealizedUsd=_usd_signed(lot.unrealized),
+        realizedApyBps=_realized_apy_bps(lot),
+        label=_lot_label(lot),
+        attributionMethod="intent_log",
+        shared=lot.shared,
+        reconstructable=True,
+        asOfBlock=position.block,
     )
 
 

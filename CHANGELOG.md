@@ -10,6 +10,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (020 — US5 per-advice attribution: the backend attribution spine)
+- **Every AI recommendation you act on is now linked to its real on-chain outcome.** This closes the
+  credibility loop (FR-039/040/041, SC-010): you can see whether a past suggestion actually performed,
+  proven from chain — never a fabricated number. Before this, the chain was broken at both ends —
+  recommendations were ephemeral and `intent_bundles.recommendation_id` was hardcoded `None`
+  (`orchestrate.py`), so nothing tied advice to what it did.
+  - **Durable recommendation store (migration `0022_recommendations.sql` + `db/recommendations.py`).**
+    A new `recommendations` table persists a recommendation SNAPSHOT (title, rationale, proposed action,
+    rank, the mandate + policy version it was scored against, wallet, lifecycle status), deduped by a
+    content `dedupe_key` (`sha256(wallet|kind|action|policy_version)`) so re-surfacing the same advice
+    upserts ONE row. Its UUID `id` is the durable `recId`. Off-chain advice index only — no key, no
+    signature, never on the withdraw/exit path (N1/N2/N3/N5); losing it degrades attribution, never custody.
+  - **The 019 execution spine now writes the link.** `POST /build-tx` resolves the `recommendationId` to
+    the persisted rec and writes `intent_bundles.recommendation_id` (fixing the hardcoded `None`); the rec
+    advances `surfaced → acted` at build and is derivable as `executed` once the deposit is indexed. An
+    unknown/chat id upserts a minimal (but clean, human-titled) snapshot so the acted-on advice is still
+    logged + linked. A rejected build still records the attribution for audit (VR-X3). The link is
+    `intent_log` only — the explicit, on-chain-anchored build→sign→execution chain, never a heuristic.
+  - **Per-recommendation outcomes, computed LIVE from chain.** New FIFO **per-deposit-lot** replay
+    (`replay_lots` in `db/vault_flows.py`) attributes each deposit's realized (against later withdrawals)
+    + unrealized (marked to the live share price) PnL, a realized-APY figure (annualized over the lot's
+    on-chain holding period; `null` while open/flat), and a label (open/win/loss/flat) — every figure
+    reconstructable from the indexed flows + on-chain share price. A position blended across ≥2 deposits
+    is honestly labeled `shared` (its share of a shared position), never a fabricated exact split.
+  - **Surfaced.** `GET /outcomes` now carries a `recommendations[]` array (one row per acted-on rec,
+    each with `attributionMethod: "intent_log"`), and a new **`GET /outcomes/{recId}`** returns one
+    recommendation's outcome detail (its snapshot, the deposit tx it caused, its live PnL). Both reconcile
+    the reconstructed share history to the on-chain balance before showing anything — an unreconcilable
+    or degraded read returns an honest `DATA_STALE`/empty, never a guess. Pure read/derive; withdrawals
+    stay ungated (N2).
+- **Tests / gates.** +47 agent tests (712 total): `replay_lots` FIFO/shared/reconcile/coherence-vs-`replay_basis`,
+  the `RecommendationStore` (dedupe determinism, upsert wire args, forward-only status, attribution joins),
+  the `/outcomes` + `/outcomes/{recId}` surfaces (win/open/shared/NOT_FOUND/DATA_STALE), and the build-tx
+  rec-link (known-rec → `acted`, unknown → minimal snapshot, unattributed, rejected-still-records). `ruff` +
+  `mypy --strict` + `pytest` all green. Migration `0022` is additive (reuses the 019/`0021`
+  `intent_bundles.recommendation_id` + `executions.attribution_method` columns). Spec Kit
+  `specs/020-us5-per-advice-attribution`. **Deferred to a US5 follow-up:** persist-at-surface so
+  `GET /recommendations` returns the durable UUID `recId` (today it stays strategy-keyed; the acted path
+  still links + logs a clean snapshot, so SC-010 holds), and the web "By recommendation" outcomes surface
+  (increment B).
+
 ### Fixed (in-app /changelog — newest entry now always on top)
 - **A new in-app `/changelog` entry now reliably appears at the top.** The changelog read ordered by
   `published_at DESC` with **no stable secondary sort**, so entries sharing a day — common, since the

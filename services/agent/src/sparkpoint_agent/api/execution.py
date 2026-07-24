@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends
 
 from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
 from ..config import AgentConfig
-from ..db import ExecutionStore, IntentBundleStore, get_database
+from ..db import ExecutionStore, IntentBundleStore, RecommendationStore, get_database
 from ..execution import orchestrate
 from ..execution.models import (
     BuildTxRequest,
@@ -52,6 +52,11 @@ def get_exec_store() -> ExecutionStore:
     return ExecutionStore(get_database())
 
 
+def get_rec_store() -> RecommendationStore:
+    """The recommendations store (US5 — links an acted rec to its bundle; overridable in tests)."""
+    return RecommendationStore(get_database())
+
+
 def _rpc_url(config: AgentConfig) -> str:
     """The chain's RPC url, or fail CLOSED (UPSTREAM_UNAVAILABLE) — never a fabricated status."""
     if config.rpc_url is None:
@@ -69,12 +74,14 @@ async def build_transaction(
     config: Annotated[AgentConfig, Depends(get_sim_config)],
     dry_run: Annotated[DryRunner, Depends(get_dry_runner)],
     bundle_store: Annotated[IntentBundleStore, Depends(get_bundle_store)],
+    rec_store: Annotated[RecommendationStore, Depends(get_rec_store)],
 ) -> BuildTxResponse:
     """Materialize an unsigned IntentBundle for a proposed vault action (§3.5), fail-closed.
 
     Proves the vault is deployed (``asset()`` → VaultUnavailable/NOT_DEPLOYED fails closed) BEFORE
     building any calldata, then runs decode → build → simulate → assemble → pure evaluate → gate →
-    persist. On any policy failure it returns the §1.5 envelope with reasons and NO bundle.
+    persist. On any policy failure it returns the §1.5 envelope with reasons and NO bundle. When the
+    action carries a recommendationId, the resolved rec is linked to the bundle (US5/FR-039).
     """
     chain_config = config.for_chain(account.chain_id)
     usdc = await reader.asset()
@@ -88,6 +95,7 @@ async def build_transaction(
         rpc_url=_rpc_url(chain_config),
         dry_run=dry_run,
         bundle_store=bundle_store,
+        rec_store=rec_store,
     )
     return BuildTxResponse(intentBundle=bundle)
 
