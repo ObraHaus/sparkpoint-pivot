@@ -82,9 +82,9 @@ endpoints + tests; live-validatable via API — SC-007), **B = web surface**. Ta
 
 ## Phase 7: Web — the "By recommendation" surface
 
-- [ ] T021 [P] `apps/web/src/lib/agent/outcomesView.ts`: extend the DTO/view with `recommendations[]` (recId, title, actedTxHash, entry/realized/unrealized text, label, shared, attributionMethod) + pure formatting; keep the honest empty/`can't reconcile` states.
-- [ ] T022 `apps/web/src/app/(app)/outcomes/page.tsx`: render a "By recommendation" section (title + acted-tx proof link + realized/unrealized PnL + win/loss/open label); retire the "not yet linked to the specific advice" caveat where a link exists, keep it (honest) for the position-level ledger.
-- [ ] T023 [P] `apps/web/src/lib/agent/outcomesView.test.ts`: the view parses recommendations[]; shared/unattributed labels render; empty/degraded states hold.
+- [X] T021 [P] `apps/web/src/lib/agent/outcomesView.ts`: extend the DTO/view with `recommendations[]` (recId, title, actedTxHash, entry/realized/unrealized text, label, shared, attributionMethod) + pure formatting; keep the honest empty/`can't reconcile` states. **DONE (increment B):** added `RecommendationOutcomeDto`/`RecommendationOutcomeDetailDto` + `toRecommendationOutcome`/`toOutcomeDetailView`; `-0.00`→flat; `intent_log`-only attribution label; recommendations mirror the `reconciles` gate.
+- [X] T022 `apps/web/src/app/(app)/outcomes/page.tsx`: render a "By recommendation" section (title + acted-tx proof link + realized/unrealized PnL + win/loss/open label); retire the "not yet linked to the specific advice" caveat where a link exists, keep it (honest) for the position-level ledger. **DONE:** "By recommendation" section + lazy per-rec detail (`useOutcomeDetail` → `GET /outcomes/{recId}`: rationale + realized APY); "Shared position" honest badge; blanket caveat retired, kept on the "All withdrawals" ledger.
+- [X] T023 [P] `apps/web/src/lib/agent/outcomesView.test.ts`: the view parses recommendations[]; shared/unattributed labels render; empty/degraded states hold. **DONE:** +11 unit tests (137 web total green).
 
 ## Phase 8: Polish, Housekeeping & Ship
 
