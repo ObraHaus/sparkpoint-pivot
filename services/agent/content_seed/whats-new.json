@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "secure-signing-pipeline-for-ai-vault-moves",
+      "type": "changelog",
+      "tag": "New",
+      "title": "A secure, single place to sign AI-suggested vault moves",
+      "body": "We shipped the core pipeline that turns an AI-suggested vault move into one safety-checked transaction that you sign yourself. Before anything can be signed, every proposed action now passes our deterministic policy engine and a real on-chain dry-run, the recipient is always forced to your own wallet, and SparkPoint never holds your keys or signs for you. Withdrawals stay exempt — they are never blocked by a check, a pause, or a fee. This is a behind-the-scenes safety milestone; the in-app 'review and sign' screen that surfaces it is coming next.",
+      "cta_label": "See your permissions",
+      "cta_href": "/trust",
+      "published_at": "2026-07-23T23:59:00Z",
+      "active": true
+    },
+    {
       "slug": "real-wallet-and-clearer-examples",
       "type": "changelog",
       "tag": "Improved",
