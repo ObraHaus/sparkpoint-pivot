@@ -13,17 +13,21 @@ The categories are the ``NotifKey`` toggles the settings page exposes, so the cl
 feed by the user's on-device preferences. ``POST /notifications/read`` advances a per-user read
 cursor (the only persisted state — migration 0023) so the unread badge is real + cross-device.
 
+  - **Session-key lifecycle** (``sessionKeyExpiry``): an *expiring-soon* / *expired* / *revoked* /
+    *spending-cap-nearly-reached* alert per scoped automation grant, derived from the `session_keys`
+    mirror (feature 022 US6). Standing conditions, so no poller is needed — derive-on-read like the
+    flows above.
+
 NON-CUSTODY (N1/N2/N3/N5): advisory READ only — no key, no signature, no fund move, never on the
 withdraw/exit path (N2). A chain/index/store outage DEGRADES to a partial or empty feed (fail-open),
-never a hard error and never a fabricated notification. Session-key-expiry, caps-near-limit and
-Aave-rate-change notifications are intentionally ABSENT here: the first needs US6 (no session keys
-exist to expire) and the latter two need a background poller (feature 021 phase 2) — none are faked.
+never a hard error and never a fabricated notification. Vault caps-near-limit and Aave-rate-change
+notifications remain ABSENT: they need a background poller (feature 021 phase 2) — none are faked.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -31,8 +35,9 @@ from pydantic import BaseModel
 
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
-from ..db import ExecutionStore, NotificationReadStore, get_database
+from ..db import ExecutionStore, NotificationReadStore, SessionKeyStore, get_database
 from ..db.executions import ExecutionRow
+from ..db.session_keys import SessionKeyRow
 from ..db.vault_flows import FlowRow, RealizedOutcome, VaultFlowReader, replay_outcomes
 from .security import AccountContext
 from .vault import get_account, get_vault_reader
@@ -72,6 +77,11 @@ def get_execution_store() -> ExecutionStore:
 def get_notif_read_store() -> NotificationReadStore:
     """The per-user read cursor (migration 0023). Overridden in tests."""
     return NotificationReadStore(get_database())
+
+
+def get_session_key_store() -> SessionKeyStore:
+    """The session-key mirror (migration 0024) — drives sessionKeyExpiry. Overridden in tests."""
+    return SessionKeyStore(get_database())
 
 
 def _network_id(chain_id: int) -> str:  # noqa: ARG001 — both Base chains fold to one mirror id
@@ -204,6 +214,49 @@ def _reverted_notif(e: ExecutionRow) -> _Derived:
     return e.updated_at, None, item  # None ⇒ unread keyed by updated_at (a real wall-clock time)
 
 
+_EXPIRING_SOON = timedelta(hours=24)  # warn when a grant is within this of its hard expiry
+_CAP_NEAR_BPS = 9000  # spent ≥ 90% of the cumulative cap → "nearly reached"
+
+
+def _session_key_notif(r: SessionKeyRow, now: datetime) -> _Derived | None:
+    """At most ONE sessionKeyExpiry notification per grant (priority: revoked > expired > expiring >
+    cap-near). Keyed by wall-clock (block=None). Every field is derived from the real `session_keys`
+    row (a mirror of the on-chain grant) — never fabricated (III). None ⇒ healthy, no alert.
+    """
+    base = f"ske:{r.session_pubkey}"
+    if r.status == "revoked" or r.revoked_tx_hash is not None:
+        return r.updated_at, None, NotificationItem(
+            id=f"{base}:revoked", category="sessionKeyExpiry", type="session_key_revoked",
+            title="Automation key revoked",
+            body="Your session key was revoked — Sparky can no longer act for you.",
+            icon="alert", tsApprox=r.updated_at.isoformat(), href="/automation", unread=False,
+        )
+    if now >= r.valid_until:
+        return r.valid_until, None, NotificationItem(
+            id=f"{base}:expired", category="sessionKeyExpiry", type="session_key_expired",
+            title="Automation key expired",
+            body="Your session key has expired. Re-authorize to keep hands-off rebalancing on.",
+            icon="clock", tsApprox=r.valid_until.isoformat(), href="/automation", unread=False,
+        )
+    if r.valid_until - now <= _EXPIRING_SOON:
+        warn_dt = r.valid_until - _EXPIRING_SOON
+        return warn_dt, None, NotificationItem(
+            id=f"{base}:expiring", category="sessionKeyExpiry", type="session_key_expiring",
+            title="Automation key expiring soon",
+            body="Your session key expires within 24 hours. Re-authorize to avoid a pause.",
+            icon="clock", tsApprox=warn_dt.isoformat(), href="/automation", unread=False,
+        )
+    if r.cumulative_cap_raw > 0 and r.spent_raw * 10_000 >= r.cumulative_cap_raw * _CAP_NEAR_BPS:
+        return r.updated_at, None, NotificationItem(
+            id=f"{base}:capnear", category="sessionKeyExpiry", type="session_key_cap_near",
+            title="Automation spending cap nearly reached",
+            body=f"Your session key has used {_usd(r.spent_raw)} of "
+            f"{_usd(r.cumulative_cap_raw)} USDC.",
+            icon="alert", tsApprox=r.updated_at.isoformat(), href="/automation", unread=False,
+        )
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -217,6 +270,7 @@ async def get_notifications(
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     exec_store: Annotated[ExecutionStore, Depends(get_execution_store)],
     read_store: Annotated[NotificationReadStore, Depends(get_notif_read_store)],
+    session_store: Annotated[SessionKeyStore, Depends(get_session_key_store)],
 ) -> NotificationsResponse:
     """The user's real in-app notifications, newest first (§3.11, feature 021).
 
@@ -249,6 +303,18 @@ async def get_notifications(
     replay = replay_outcomes(hist, position.shares) if hist else None
     if replay is not None and replay.reconciles:
         derived.extend(_outcome_notif(o, position.block) for o in replay.outcomes)
+
+    # 3. Session-key lifecycle (feature 022): expiring / expired / revoked / cap-near, from the
+    #    session_keys mirror. Standing conditions ⇒ derive-on-read, fail-open like the blocks above.
+    now = datetime.now(UTC)
+    try:
+        keys = await session_store.list_by_account(account.account)
+    except Exception:  # noqa: BLE001 — advisory; a store outage just omits these rows
+        keys = []
+    for r in keys:
+        notif = _session_key_notif(r, now)
+        if notif is not None:
+            derived.append(notif)
 
     # Newest-first, capped.
     derived.sort(key=lambda d: d[0], reverse=True)
