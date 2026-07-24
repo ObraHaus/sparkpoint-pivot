@@ -14,6 +14,7 @@ is NEVER gated by sim/quote/pause/fee and builds even with no sim (N2). The agen
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -446,6 +447,28 @@ async def re_simulate(
         raise
 
 
+# The relayed tx should be retrievable — the drawer relays only AFTER the wallet confirms the
+# receipt. A few short retries absorb RPC propagation lag before we call it not-visible (retryable).
+_TX_LOOKUP_ATTEMPTS = 4
+_TX_LOOKUP_DELAY_S = 0.75
+
+
+async def _await_relayed_tx(rpc_url: str, tx_hash: str) -> dict[str, Any] | None:
+    """Fetch the relayed tx, briefly retrying to absorb RPC propagation lag.
+
+    Returns the tx object, or None if it never appears within the budget. An RPC read failure
+    propagates (the caller maps it to a retryable UPSTREAM_UNAVAILABLE) rather than being mistaken
+    for a missing tx.
+    """
+    for attempt in range(_TX_LOOKUP_ATTEMPTS):
+        tx = await rpc.get_transaction(rpc_url, tx_hash)
+        if tx is not None:
+            return tx
+        if attempt < _TX_LOOKUP_ATTEMPTS - 1:
+            await asyncio.sleep(_TX_LOOKUP_DELAY_S)
+    return None
+
+
 async def submit_signed(
     req: SubmitSignedRequest,
     *,
@@ -453,13 +476,14 @@ async def submit_signed(
     bundle_store: IntentBundleStore,
     exec_store: ExecutionStore,
 ) -> Submission:
-    """Relay a user-signed payload (§3.6): byte-match vs the issued bundle, record a submitted row.
+    """Relay a user-signed payload (§3.6): VERIFY vs on-chain truth, then record a submitted row.
 
     The service NEVER signs or alters the payload. For the eoa_call direct-submit path a broadcast
-    ``txHash`` is the signature event (VR-X1); the byte-match is best-effort against chain truth
-    (the
-    tx's ``to``/``input`` must equal the issued step) and is guaranteed at sign time by the drawer
-    signing the server calldata verbatim (SC-005).
+    ``txHash`` is the signature event (VR-X1). We record an execution ONLY for a txHash we can
+    retrieve on-chain AND whose ``to``/``input`` byte-match the issued step (SC-005) — never for an
+    unverifiable hash, which would let a bogus/mismatched tx create a phantom execution and
+    mis-attribute a US5 outcome. N2: rejecting this correlation relay never gates the user's funds
+    (the tx is on-chain regardless); a not-yet-visible tx is a retryable degrade to re-relay.
     """
     bundle = await _load_bundle(req.intentId, bundle_store)
     signed = req.signed
@@ -481,10 +505,22 @@ async def submit_signed(
             reasons=[ErrorReason("VALIDATION_ERROR", "no signature event (txHash) supplied")],
         )
 
-    # Best-effort byte-match against chain truth (skipped only if the tx is not yet retrievable).
-    tx = await rpc.get_transaction(rpc_url, tx_hash)
-    if tx is not None:
-        _assert_byte_match(tx, step0)
+    # Verify the relayed tx EXISTS on-chain and byte-matches the issued bundle BEFORE recording it.
+    try:
+        tx = await _await_relayed_tx(rpc_url, tx_hash)
+    except Exception as exc:  # RPC unreachable — transient/retryable, nothing stored
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            "Couldn't reach the chain to verify the transaction — nothing recorded; retry shortly.",
+            reasons=[ErrorReason("UPSTREAM_UNAVAILABLE", "tx verification RPC unreachable")],
+        ) from exc
+    if tx is None:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "That transaction isn't visible on-chain yet — it may be propagating. Retry soon.",
+            reasons=[ErrorReason("DATA_STALE", "relayed txHash not retrievable on-chain")],
+        )
+    _assert_byte_match(tx, step0)
 
     await exec_store.insert_submitted(
         intent_bundle_id=UUID(bundle.id_str),

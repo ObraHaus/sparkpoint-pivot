@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "safer-transaction-confirmation",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Safer confirmation of the moves you sign",
+      "body": "We tightened how we record a transaction you've signed: we now confirm it actually exists on-chain and exactly matches the move you reviewed before we log it — instead of trusting the reference we're handed. If the transaction hasn't shown up on-chain yet, we simply ask to try again in a moment rather than record anything unverified. Your funds are never affected either way — this only makes our record of your activity provably accurate.",
+      "cta_label": "See your permissions",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T14:00:00Z",
+      "active": true
+    },
+    {
       "slug": "see-how-past-ai-suggestions-performed",
       "type": "changelog",
       "tag": "New",
