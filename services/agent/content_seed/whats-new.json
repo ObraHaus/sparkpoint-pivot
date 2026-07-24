@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "automated-moves-execution-path-wired",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The plumbing for hands-off moves now runs end-to-end",
+      "body": "A follow-on to the automation news below. Behind the scenes, an approved automated move now flows through our normal safety pipeline the exact same way a move you sign yourself does — it's decoded, the recipient is pinned to YOUR account, it's simulated, and it must pass every on-chain rule (allowlist, per-transaction and lifetime caps, slippage, expiry) — the only difference is which key signs it. Once your session key signs, we simply relay it to the network and give you a live status you can track, and we double-check the signed move matches exactly what was built before recording anything (so nothing can be swapped in under the hood). This is still test-network only and still fully bounded by the on-chain leash you hold. The one remaining piece is the in-app switch that signs these moves for you automatically — that's what turns this on for real, and it's next.",
+      "cta_label": "See automation",
+      "cta_href": "/automation",
+      "published_at": "2026-07-24T22:00:00Z",
+      "active": true
+    },
+    {
       "slug": "hands-off-automation-proven-on-testnet",
       "type": "changelog",
       "tag": "New",

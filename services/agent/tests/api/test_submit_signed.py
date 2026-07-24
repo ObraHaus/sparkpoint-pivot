@@ -20,7 +20,8 @@ from fastapi.testclient import TestClient
 from sparkpoint_agent.api.execution import get_bundle_store, get_exec_store
 from sparkpoint_agent.api.main import app
 from sparkpoint_agent.api.vault import get_sim_config
-from sparkpoint_agent.execution import orchestrate, rpc
+from sparkpoint_agent.execution import bundler, orchestrate, rpc
+from sparkpoint_agent.execution.session_userop import call_data_for
 
 TOKEN = "test-web-tier-token"
 VAULT = "0x00000000000000000000000000000000000000aa"
@@ -54,9 +55,12 @@ class FakeBundleStore:
 
 
 class FakeExecRow:
-    def __init__(self, tx_hash: str | None, status: str) -> None:
+    def __init__(
+        self, tx_hash: str | None, status: str, userop_hash: str | None = None
+    ) -> None:
         self.tx_hash = tx_hash
         self.status = status
+        self.userop_hash = userop_hash
 
 
 class FakeExecStore:
@@ -77,7 +81,12 @@ class FakeExecStore:
         if intent_bundle_id in self.rows:
             return None  # de-dup
         self.inserts += 1
-        self.rows[intent_bundle_id] = {"tx_hash": tx_hash, "status": "submitted"}
+        self.rows[intent_bundle_id] = {
+            "tx_hash": tx_hash,
+            "status": "submitted",
+            "userop_hash": userop_hash,
+            "signing_mode": signing_mode,
+        }
         return uuid4()
 
     async def update_status(self, *, intent_bundle_id: UUID, status: str, **kw: object) -> None:
@@ -87,7 +96,11 @@ class FakeExecStore:
         r = self.rows.get(intent_bundle_id)
         if r is None:
             return None
-        return FakeExecRow(tx_hash=r.get("tx_hash"), status=str(r.get("status", "submitted")))
+        return FakeExecRow(
+            tx_hash=r.get("tx_hash"),
+            status=str(r.get("status", "submitted")),
+            userop_hash=r.get("userop_hash"),
+        )
 
 
 class FakeConfig:
@@ -244,3 +257,120 @@ def test_status_pending_when_receipt_absent(
 def test_status_unknown_intent_404(client: TestClient) -> None:
     r = client.get(f"/submit-signed-tx/{uuid4()}", headers=HEADERS)
     assert r.status_code == 404
+
+
+# ── US6 (feature 022) session-key userOp submission path ─────────────────────────────────────────
+
+# The client-signed userOp MUST wrap the bundle's step in execute() and carry a signature; the
+# service relays it via the bundler and records only the userop_hash event (never a key, N3).
+_SESSION_CALLDATA = call_data_for(VAULT, "0", STEP_DATA)
+UOP_HASH = "0xf00d000000000000000000000000000000000000000000000000000000000042"
+
+
+def _userop(call_data: str = _SESSION_CALLDATA, sender: str = USER) -> dict[str, object]:
+    return {"sender": sender, "nonce": "0x0", "callData": call_data, "signature": "0xabcd"}
+
+
+def _session_body(op: dict[str, object] | None) -> dict[str, object]:
+    return {"intentId": str(INTENT), "signed": {"opType": "userop", "userOp": op}}
+
+
+def test_session_userop_matched_records_and_returns_hash(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def accept(rpc_url: str, user_op: dict[str, object], entry_point: str) -> str:
+        return UOP_HASH
+
+    monkeypatch.setattr(bundler, "send_user_op", accept)
+    r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop()))
+    assert r.status_code == 202
+    sub = r.json()["submission"]
+    assert sub["status"] == "pending"
+    assert sub["userOpHash"] == UOP_HASH and sub["txHash"] is None
+    assert sub["bundler"] == "alchemy"
+    assert exec_store.inserts == 1
+    assert exec_store.rows[INTENT]["signing_mode"] == "session_key"
+    assert exec_store.rows[INTENT]["userop_hash"] == UOP_HASH
+
+
+def test_session_userop_scope_mismatch_rejected_no_row(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a client swapping in different calldata (a different move) under this bundle's id is refused.
+    drift = call_data_for(VAULT, "0", "0xb460af94")
+
+    async def accept(rpc_url: str, user_op: dict[str, object], entry_point: str) -> str:
+        raise AssertionError("bundler must not be reached on a scope mismatch")
+
+    monkeypatch.setattr(bundler, "send_user_op", accept)
+    r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop(drift)))
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert exec_store.inserts == 0
+
+
+def test_session_userop_without_signature_rejected(
+    client: TestClient, exec_store: FakeExecStore
+) -> None:
+    unsigned = {"sender": USER, "nonce": "0x0", "callData": _SESSION_CALLDATA}
+    r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(unsigned))
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert exec_store.inserts == 0
+
+
+def test_session_userop_bundler_rejection_surfaced_no_row(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def reject(rpc_url: str, user_op: dict[str, object], entry_point: str) -> str:
+        raise bundler.BundlerError("AA23 reverted: session cap exceeded", code=-32500)
+
+    monkeypatch.setattr(bundler, "send_user_op", reject)
+    r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop()))
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert exec_store.inserts == 0
+
+
+def test_session_userop_bundler_unreachable_is_upstream_unavailable(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(rpc_url: str, user_op: dict[str, object], entry_point: str) -> str:
+        raise RuntimeError("bundler down")
+
+    monkeypatch.setattr(bundler, "send_user_op", boom)
+    r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop()))
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+    assert exec_store.inserts == 0
+
+
+def test_status_session_userop_confirmed(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a session-key row has a userop_hash and NO eth txHash yet → resolve the bundler's op receipt.
+    exec_store.rows[INTENT] = {"tx_hash": None, "status": "submitted", "userop_hash": UOP_HASH}
+
+    async def receipt(rpc_url: str, userop_hash: str) -> dict[str, object]:
+        return {"success": True, "receipt": {"transactionHash": TX, "blockNumber": "0x64"}}
+
+    monkeypatch.setattr(bundler, "get_user_op_receipt", receipt)
+    r = client.get(f"/submit-signed-tx/{INTENT}", headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "confirmed"
+    assert body["txHash"] == TX and body["blockNumber"] == 100
+    assert exec_store.rows[INTENT]["status"] == "confirmed"
+
+
+def test_status_session_userop_pending_when_unbundled(
+    client: TestClient, exec_store: FakeExecStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exec_store.rows[INTENT] = {"tx_hash": None, "status": "submitted", "userop_hash": UOP_HASH}
+
+    async def no_receipt(rpc_url: str, userop_hash: str) -> None:
+        return None
+
+    monkeypatch.setattr(bundler, "get_user_op_receipt", no_receipt)
+    r = client.get(f"/submit-signed-tx/{INTENT}", headers=HEADERS)
+    assert r.status_code == 200 and r.json()["status"] == "pending"
