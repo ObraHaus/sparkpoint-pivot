@@ -33,16 +33,19 @@ def _parse_ts(value: str | None) -> datetime | None:
 _CHANGELOG_SQL = (
     "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at "
     "FROM content_entries "
-    "WHERE type = 'changelog' AND is_active = true ORDER BY published_at DESC LIMIT $1"
+    # ``id DESC`` is a STABLE tiebreak (id = bigserial = insertion order). Same-day entries share a
+    # ``published_at`` (a date-only value ties a whole day at midnight), so the tiebreak makes the
+    # newest-added lead within a date; without it a fresh entry lands mid-list, not on top.
+    "WHERE type = 'changelog' AND is_active = true ORDER BY published_at DESC, id DESC LIMIT $1"
 )
 _ANNOUNCEMENT_SQL = (
     "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at "
     "FROM content_entries "
-    "WHERE type = 'announcement' AND is_active = true ORDER BY published_at DESC LIMIT 1"
+    "WHERE type = 'announcement' AND is_active = true ORDER BY published_at DESC, id DESC LIMIT 1"
 )
 _LIST_SQL = (
     "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at, "
-    "author FROM content_entries ORDER BY published_at DESC LIMIT $1"
+    "author FROM content_entries ORDER BY published_at DESC, id DESC LIMIT $1"
 )
 _GET_SQL = (
     "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at, "

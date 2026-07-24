@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (in-app /changelog — newest entry now always on top)
+- **A new in-app `/changelog` entry now reliably appears at the top.** The changelog read ordered by
+  `published_at DESC` with **no stable secondary sort**, so entries sharing a day — common, since the
+  seed/admin often set a **date-only** value that ties a whole day at midnight — came back in an
+  unstable order, and a freshly-added same-day entry could land **mid-list** instead of on top.
+  Proven on live data (17 entries tied at `2026-07-23`; a newly-inserted tied entry did **not** lead
+  under the old query, and did under the fix). Added a stable `, id DESC` tiebreak (`id` is
+  `bigserial` ⇒ monotonic insertion order ⇒ newest-added leads within a date) to the changelog,
+  announcement, and admin-list queries in `db/content_entries.py`; a regression test pins the
+  tiebreak. No migration; takes effect on the agent redeploy.
+
 ### Changed (CI — changelog gate hardened, no more skip loophole)
 - **A PR that changes product source can no longer skip the changelog requirement.** The
   `changelog-required` gate previously honored the `skip-changelog` label / `[skip changelog]` PR-body
