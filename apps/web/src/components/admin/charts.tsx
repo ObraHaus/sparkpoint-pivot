@@ -33,10 +33,11 @@ export function Kpi({
 }: {
   label: ReactNode;
   val: ReactNode;
-  spark: number[];
-  sparkColor: string;
-  delta: ReactNode;
-  deltaCls: "up" | "down" | "flat";
+  /** A sparkline is optional — a live single-value tile omits it rather than draw a fabricated trend. */
+  spark?: number[];
+  sparkColor?: string;
+  delta?: ReactNode;
+  deltaCls?: "up" | "down" | "flat";
   ai?: boolean;
 }) {
   return (
@@ -47,8 +48,8 @@ export function Kpi({
       </div>
       <div className="v tnum">{val}</div>
       <div className="foot">
-        <Sparkline vals={spark} color={sparkColor} />
-        <span className={`delta ${deltaCls}`}>{delta}</span>
+        {spark && spark.length ? <Sparkline vals={spark} color={sparkColor ?? STREAM.swap} /> : <span />}
+        {delta ? <span className={`delta ${deltaCls ?? "flat"}`}>{delta}</span> : null}
       </div>
     </div>
   );

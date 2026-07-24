@@ -10,6 +10,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (admin — the operator "money view" is now live on-chain, and mock dashboards stop pretending)
+- **The admin panel's analytics surfaces no longer fabricate numbers — the money-view reads the real chain.**
+  A page-by-page gap audit found the operator console's *control plane* genuinely real (allowlist, caps,
+  kill-switch, revenue, usage…) but four *dashboards* on 100% sample data — and, worse, the "TVL & vault"
+  money-view (subtitled *"on-chain truth"*) rendered a **fabricated kill-switch/guardian SAFETY state**
+  (static "Inactive"/"Healthy" not read from chain) that could mislead an operator. Fixed, **web-only, no
+  migration**:
+  - **TVL & vault** — rebuilt as a genuinely live view: TVL (`totalAssets`), deposit cap (`depositCap`), cap
+    utilization, headroom, and the **live** pause (`paused`) + guardian (`guardian`), all read on-chain from
+    the Base-Sepolia vault (same pattern as the Kill-switch page). No fabricated numbers and no fabricated
+    safety state; values still resolving render as "…", never a fake zero.
+  - **Overview** (admin home) — the fabricated $12M-TVL growth dashboard is replaced with real on-chain vault
+    KPIs + an honest launchpad into the live operator surfaces. Un-instrumented growth analytics (WAU, MRR,
+    activity) are pointed to, not faked.
+  - **Users** — two provenance pills (`computed`, `mandates`) that claimed a real source on hardcoded sample
+    widgets are corrected to `sample`.
+  - **Stakeholder** — the fabricated headline TVL is wired to the real on-chain value; the deck is clearly
+    relabelled an *illustrative projection* (banner + per-tile marks) so only the live TVL reads as live.
+  - **System** — the two "illustrative · not wired" charts (policy-engine decisions, simulation latency) are
+    removed rather than shown as fabricated series; the real `/readyz` tiles remain.
+  - **Allowlist** — adds an honest **beta-gate controls** status: whitelist = enforced; **geo-fence =
+    scaffolded, NOT enforced** (`checkGeoAllowed` is still a `return true` placeholder), so the control's true
+    state is never assumed. Real geo enforcement (jurisdiction policy + a geo-providing edge) is a Phase-4 item.
+  - New `lib/admin/vaultStats.ts` (pure, dependency-free USDC/cap formatters, +4 unit tests) +
+    `lib/admin/useVaultStats.ts` (the shared live-reads hook); `Kpi` gains an optional sparkline so a live
+    single-value tile omits a fabricated trend.
+
 ### Added (021 — real in-app notifications, end to end)
 - **The notifications bell now has a real backend — your feed is computed live from your actual
   on-chain activity, never a mock.** `GET /notifications` derives the feed from already-indexed real

@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "internal-dashboards-live-on-chain",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "More of what we show is read straight from the blockchain",
+      "body": "A behind-the-scenes integrity improvement. We swept our internal monitoring views and replaced the last placeholder sample figures with numbers read live from the blockchain — the vault's real total value locked, its deposit-cap headroom, and its live pause/guardian safety state. It reflects a rule we hold ourselves to: never show a made-up number dressed up as real. Your own dashboards are unchanged — this is about the tools we use to watch the system on your behalf.",
+      "cta_label": "Our safety model",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T18:30:00Z",
+      "active": true
+    },
+    {
       "slug": "notifications-are-live",
       "type": "changelog",
       "tag": "New",

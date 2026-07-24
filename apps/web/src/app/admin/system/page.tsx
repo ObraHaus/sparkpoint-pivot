@@ -13,7 +13,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/lib/icons";
-import { StackedBars, Composed } from "@/components/admin/charts";
 
 /** The live guardian of the deployed Base-Sepolia vault (OZ TimelockController). */
 const GUARDIAN_TIMELOCK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
@@ -111,36 +110,14 @@ export default function Page() {
       <div className="grid2">
         <div className="chartcard">
           <div className="ch">
-            <span className="ct">Policy-engine decisions</span>
-            <span className="prov">illustrative · not wired</span>
+            <span className="ct">Ops metrics</span>
+            <span className="prov">pending instrumentation</span>
           </div>
-          <div className="legend">
-            <span>
-              <i style={{ background: "var(--gain)" }} />
-              Approved
-            </span>
-            <span>
-              <i style={{ background: "var(--caution)" }} />
-              Blocked (cap/slippage)
-            </span>
+          <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
+            <Icon name="info" size={13} /> The policy-engine decision-volume and simulation-latency charts were removed
+            rather than shown as fabricated series — they are not yet wired to a metrics source. Live per-dependency
+            health is in the tiles above; the readiness probe (<span className="mono">/readyz</span>) is real.
           </div>
-          <StackedBars
-            data={["Mon", "Tue", "Wed", "Thu", "Fri"].map((d, i) => ({
-              x: d,
-              ok: [88, 92, 80, 96, 90][i],
-              block: [6, 4, 9, 3, 5][i],
-            }))}
-            keys={["ok", "block"]}
-            max={105}
-            opts={{ H: 200, colors: { ok: "var(--gain)", block: "var(--caution)" } }}
-          />
-        </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Simulation latency p50 / p95</span>
-            <span className="prov">illustrative · not wired</span>
-          </div>
-          <Composed areaV={[0.4, 0.5, 0.45, 0.6, 0.5, 0.55]} lineV={[0.9, 1.1, 1.0, 1.3, 1.1, 1.2]} amax={1.5} lmax={1.5} opts={{ H: 200 }} />
         </div>
         <div className="chartcard span2">
           <div className="ch">
