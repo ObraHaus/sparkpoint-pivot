@@ -72,10 +72,15 @@ a silent gap. Update in the same change that resolves one.
 
 ## Contracts / AA (from the Jul-16 audit — Phase 3)
 
-- **Session-key automation (US6) is undeployed.** The ERC-4337 account + PolicyModule are not on
-  chain; `/trust/permissions` says so honestly. The safe-mode bundler spike could not render a clean
-  ERC-7562 verdict on Anvil (tooling), but the tracer confirmed a `recordSpend`-in-validation
-  external-storage write to resolve before Phase-3 AA (see `contracts/script/bundler-spike/RESULT-safemode.md`).
+- **Session-key automation (US6) — blocker RESOLVED + stack deployed + proven live; product wire-up in
+  progress.** The ERC-7562 `recordSpend`-in-validation blocker is fixed (feature 022, Path A: all
+  per-session state moved into `SparkPointAccount`'s own storage). The AA stack is deployed on Base
+  Sepolia and a real session-key UserOp passed the Alchemy bundler's ERC-7562 tracer + executed
+  on-chain (`contracts/deployments/84532/session-stack.md`; N4 refuter NOT REFUTED). **Still limited
+  today:** the web `/automation` + `/trust/permissions` still show the honest `StatusTag mock` /
+  "only you can move funds" state until the grant/revoke web flow + the spine session-key submission
+  path + the `sessionKeyExpiry` notification land (in progress on `feature/US6-session-key-automation`;
+  migration `0024_session_keys` not yet applied). Mainnet stays gated on the recorded audit (Gate C).
 
 ## Web app deploys / stale clients (feature 006)
 

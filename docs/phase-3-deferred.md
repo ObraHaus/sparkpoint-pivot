@@ -14,7 +14,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 
 | # | Deferred item | Honest in-app state today | Gate/condition to build |
 |---|---|---|---|
-| 1 | US6 session-key automation | `StatusTag mock` + "only you can move funds" | PolicyModule deployed + bundler ERC-7562 verdict |
+| 1 | US6 session-key automation | **BLOCKER RESOLVED + STACK LIVE (022):** Path-A AA stack deployed on Base Sepolia + a real mode-0x01 session-key UserOp passed the Alchemy bundler's ERC-7562 tracer **and executed on-chain** (tx `0x1d1fad64…`). Web still `StatusTag mock` pending the grant-flow wire-up | Grant/revoke web flow + spine session-key submission path + `sessionKeyExpiry` notification (in progress on `feature/US6-session-key-automation`) |
 | 2 | Base↔Sui bridge + Sui network | `StatusTag mock` "Unavailable during Alpha" | Sui (Move) custody increment designed; mainnet |
 | 3 | Aerodrome swaps | Swap venue gated "mainnet only" | Base **mainnet** (no Sepolia Aerodrome) |
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
@@ -26,18 +26,27 @@ pending its increment*, not a shipped-Base-equivalent proof.
 ---
 
 ### 1. US6 — session-key automation (ERC-4337 account + PolicyModule)
-- **Why deferred:** the custom ERC-4337 account + `PolicyModule` are **undeployed** on Base Sepolia,
-  and the safe-mode bundler spike could not render a clean ERC-7562 verdict on Anvil — the tracer
-  caught a `recordSpend`-in-validation external-storage write to resolve first
-  (`contracts/script/bundler-spike/`).
-- **Current state / disclosure:** `/trust/permissions` says it plainly
-  (`apps/web/src/app/(app)/trust/permissions/page.tsx`) — "only you can move funds; Sparky holds no
-  on-chain grant"; `/automation` wears a `StatusTag mock` (`apps/web/src/app/(app)/automation/page.tsx`).
-  See also `docs/ops/known-limitations.md`.
-- **Gate to build:** deploy the AA stack (account/factory/validator/PolicyModule) + resolve the
-  in-validation spend-write via a real tracing node / hosted bundler OR move the write to the
-  account's own storage / stake the PolicyModule; then re-run the N4 refuter. Never autonomous (Gate C).
-- **Tracking:** `specs/001-sparkpoint-pivot-mvp` (US6); constitution N4 / §IV.
+- **Blocker RESOLVED (feature 022, Path A).** The `recordSpend`-in-validation external-storage write
+  was fixed by moving ALL per-session state (policy caps/expiry, monotonic `spent`, and the session's
+  `(target,selector)` allowlist snapshot) into `SparkPointAccount`'s **own** storage — so
+  `validateUserOp` reads/writes only account-own storage ([STO-010], unambiguous). `PolicyModule` is
+  now stateless; `SessionKeyValidator` a view-only mirror; `SessionScopeLib` guarantees decode parity.
+- **Deployed + PROVEN LIVE on Base Sepolia:** PolicyModule `0x55A2…8134`, SessionKeyValidator
+  `0xc4F1…Aa99`, SparkPointAccount impl `0xAF38…66C2`, AccountFactory `0x251C…dbdb` (see
+  `contracts/deployments/84532/session-stack.md`). A real mode-0x01 session-key UserOp was **accepted
+  by the Alchemy Base-Sepolia bundler** (Rundler, canonical ERC-7562 tracer, EntryPoint v0.7) and
+  **executed on-chain** — tx `0x1d1fad640ff9d9ef27ec79570e1e10367457b9c5cc0f698db8f638ead56d8f44`
+  (a scoped session key deposited 1 USDC into the vault with no per-move user signature). SC-U6-A met.
+- **Adversarially verified:** the N4 refuter returned **NOT REFUTED** across 37 attack tests
+  (`contracts/test/account/refute/RefuteN4Adversarial.t.sol`); every account invariant + refuter holds.
+- **Still in progress** (this row stays until it fully ships to alpha): the grant/revoke web flow +
+  the spine session-key submission path (`/build-tx` execMode=session_key → `/submit-signed-tx`
+  opType=userop via the bundler) + the `sessionKeyExpiry` notification. Backend foundation (migration
+  `0024_session_keys`, `SessionKeyStore`, the `SessionScope` §6 validator) is built + tested; the web
+  `/automation` still wears a `StatusTag mock` until the grant flow is wired. Never autonomous (Gate C;
+  mainnet remains gated on the recorded audit).
+- **Tracking:** `specs/022-us6-session-key-automation` + `specs/001-sparkpoint-pivot-mvp` (US6);
+  constitution N4 / §IV.
 
 ### 2. Base↔Sui bridge + Sui network
 - **Why deferred:** Sui is non-EVM (Move); it does **not** reuse the ERC-4337/4626 Base stack and is
