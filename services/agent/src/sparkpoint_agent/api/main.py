@@ -242,6 +242,30 @@ async def _index_vault_flows_loop() -> None:
             raise
 
 
+_NOTIF_POLL_INTERVAL_S = 900.0  # edge-trigger caps/rate/new-recs every ~15 min (bounded LLM cost)
+
+
+async def _notification_poller_loop() -> None:
+    """Feature 021 phase-2 background poller: emit edge-triggered notifications (vault near
+    capacity, Aave rate moved, a proactive new recommendation per wallet). Off the request path,
+    fail-open, never on the withdraw/exit path (N2). Gated by ``NOTIF_POLLER_ENABLED``."""
+    if os.getenv("NOTIF_POLLER_ENABLED", "true").strip().lower() not in {"1", "true", "yes"}:
+        return
+    from .notification_poller import poll_once
+
+    while True:
+        try:
+            await poll_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("notification_poll_error (degrading; alerts stay quiet this tick)")
+        try:
+            await asyncio.sleep(_NOTIF_POLL_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
 # Feature 013/014 per-network DISPLAY constants — read outside AgentConfig (like PREMIUM_ALLOWLIST),
 # overridable by env. Each fee-recipient SET unions the pre-014 deployer EOA + the post-014
 # fee-treasury Safe (deployed at the SAME address on both chains) so the cumulative honestly counts
@@ -375,6 +399,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     db = None
     index_task: asyncio.Task[None] | None = None
+    notif_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
     try:
         db = get_database()
@@ -398,6 +423,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         swap_fee_tasks = [
             asyncio.create_task(_index_swap_fees_loop(net)) for net in _SWAP_FEE_NETWORKS
         ]
+        # Feature 021 phase 2: background notifications poller (edge-triggered caps/rate/new-recs →
+        # notification_events). Best-effort, off the request path; never withdraw (N2). Env-gated.
+        notif_task = asyncio.create_task(_notification_poller_loop())
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -407,6 +435,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if index_task is not None:
             index_task.cancel()
+        if notif_task is not None:
+            notif_task.cancel()
         for task in swap_fee_tasks:
             task.cancel()
         if db is not None:

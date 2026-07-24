@@ -213,3 +213,16 @@ class PgMandateStore:
         """The user's active (confirmed, highest-version) mandate, or ``None`` (§3.1)."""
         row = await self.db.fetchrow(_SELECT_ACTIVE_SQL, owner_eoa, network_id)
         return row_to_record(row) if row is not None else None
+
+    async def list_active_owners(self, *, network_id: str, limit: int = 100) -> list[str]:
+        """Distinct EOAs with a confirmed mandate on a network — the wallets the proactive
+        new-recommendation poller re-scores (feature 021 ph.2). Newest-mandated first, bounded."""
+        rows = await self.db.fetch(
+            "SELECT u.eoa_address, MAX(m.confirmed_at) AS latest FROM mandates m"
+            " JOIN users u ON u.id = m.user_id"
+            " WHERE m.network_id = $1 AND m.status = 'confirmed'"
+            " GROUP BY u.eoa_address ORDER BY latest DESC NULLS LAST LIMIT $2",
+            network_id,
+            max(1, min(limit, 500)),
+        )
+        return [str(r["eoa_address"]) for r in rows]
