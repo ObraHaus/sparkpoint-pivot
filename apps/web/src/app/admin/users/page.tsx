@@ -39,14 +39,14 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Onboarding funnel</span>
-            <span className="prov">computed</span>
+            <span className="prov">sample</span>
           </div>
           <Funnel />
         </div>
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Risk-tier distribution</span>
-            <span className="prov">mandates</span>
+            <span className="prov">sample</span>
           </div>
           <RiskDist />
         </div>

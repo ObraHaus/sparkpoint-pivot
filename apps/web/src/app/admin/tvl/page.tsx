@@ -1,111 +1,152 @@
 "use client";
 
 /**
- * Admin → TVL & vault (scTvl). "The money view — onchain truth. Display-only,
- * never a gate." Faithful 1:1 port of the TVL screen in SparkPoint Admin.html.
- * Status surfaces only — no fund-moving controls.
+ * Admin → TVL & vault — the "money view", now LIVE on-chain (was 100% sample data).
+ *
+ * Every figure is read directly from the deployed Base-Sepolia `SparkPointVault`:
+ *   TVL = totalAssets(), cap = depositCap(), utilization = TVL/cap, plus the live pause + guardian.
+ * There are NO fabricated numbers and — critically — NO fabricated SAFETY state: the kill-switch and
+ * guardian tiles reflect the real chain (previously a static "Inactive"/"Healthy" that could mislead an
+ * operator). Values still resolving render as "…", never a fake zero. Display-only — never a fund gate.
  */
 
 import { Icon } from "@/lib/icons";
-import { STREAM, DivergeBars, Composed, Kpi } from "@/components/admin/charts";
-import { data } from "@/components/admin/data";
+import { Kpi } from "@/components/admin/charts";
+import { useVaultStats, VAULT_CHAIN } from "@/lib/admin/useVaultStats";
+import { formatUsdCompact, shortAddr } from "@/lib/admin/vaultStats";
 
 export default function Page() {
+  const s = useVaultStats();
+
+  const tvl = formatUsdCompact(s.tvl);
+  const cap = s.cap === undefined ? "…" : s.cap === 0n ? "No cap set" : formatUsdCompact(s.cap);
+  const headroom = s.cap === 0n ? "Unlimited" : formatUsdCompact(s.headroom);
+  const util = s.capUtilPct === null ? "—" : `${s.capUtilPct.toFixed(1)}%`;
+  const utilBar = s.capUtilPct === null ? 0 : Math.min(100, Math.max(0, s.capUtilPct));
+
+  const statusPill = !s.configured
+    ? { cls: "amber", text: "Vault not configured" }
+    : s.loading
+      ? { cls: "info", text: "Reading chain…" }
+      : { cls: "ok", text: "Live · on-chain" };
+
   return (
     <>
       <div className="pghead">
         <div>
           <h1>TVL &amp; vault</h1>
-          <div className="sub">The money view — onchain truth. Display-only, never a gate.</div>
+          <div className="sub">The money view — on-chain truth. Display-only, never a gate.</div>
         </div>
-        <span className="pill info" title="Illustrative sample data — not yet instrumented">
-          <span className="led" /> Sample data
+        <span className={`pill ${statusPill.cls}`}>
+          <span className="led" /> {statusPill.text}
         </span>
-        <div className="ctrls">
-          <div className="seg">
-            <button>7d</button>
-            <button className="on">30d</button>
-            <button>90d</button>
+      </div>
+
+      {!s.configured ? (
+        <div className="panel" style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+            <Icon name="info" size={14} /> No vault address is configured for this deployment, so there is nothing to
+            read on-chain. Figures appear here once the vault is set in the address book.
           </div>
         </div>
-      </div>
+      ) : null}
+
       <div className="band">
-        <Kpi label="Total TVL" val="$12.0M" spark={data.tvlSpark} sparkColor={STREAM.swap} delta="▲ 7.1%" deltaCls="up" />
-        <Kpi label="Net flow (30d)" val="+$1.4M" spark={[3, 4, 2, 5, 6, 4, 7]} sparkColor={STREAM.premium} delta="▲ inflow" deltaCls="up" />
-        <Kpi label="Cap utilization" val="48%" spark={[30, 34, 38, 41, 44, 46, 48]} sparkColor={STREAM.srk} delta="headroom" deltaCls="flat" />
-        <Kpi label="Trailing APY (net)" val="4.3%" spark={[4.0, 4.1, 4.05, 4.2, 4.15, 4.3]} sparkColor={STREAM.premium} delta="realized" deltaCls="flat" />
+        <Kpi label="Total TVL" val={tvl} />
+        <Kpi label="Cap utilization" val={util} />
+        <Kpi label="Vault deposit cap" val={cap} />
+        <Kpi label="Headroom remaining" val={headroom} />
       </div>
+
       <div className="grid2">
-        <div className="chartcard span2">
-          <div className="ch">
-            <span className="ct">Deposits / withdrawals &amp; net flow</span>
-            <span className="prov">sample data</span>
+        <div className="panel">
+          <div className="ch" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span className="ct">Caps &amp; utilization</span>
+            <span className="prov">live · totalAssets / depositCap</span>
           </div>
-          <div className="legend">
-            <span>
-              <i style={{ background: "var(--gain)" }} />
-              Deposits
-            </span>
-            <span>
-              <i style={{ background: "var(--loss)" }} />
-              Withdrawals
-            </span>
-            <span>
-              <i style={{ background: STREAM.swap }} />
-              Net (cumulative)
-            </span>
-          </div>
-          <DivergeBars dep={[220, 310, 180, 420, 380, 260, 510, 440]} wd={[-90, -120, -60, -140, -110, -200, -90, -130]} opts={{ H: 240 }} />
-        </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">TVL over time</span>
-            <span className="prov">sample data</span>
-          </div>
-          {/* source replaces STREAM.srk with "transparent" to hide the secondary line */}
-          <Composed
-            areaV={[7.2, 8.0, 8.8, 9.6, 10.6, 11.4, 12.0]}
-            lineV={[7.2, 8.0, 8.8, 9.6, 10.6, 11.4, 12.0]}
-            amax={13}
-            lmax={13}
-            opts={{ H: 200 }}
-            lineColor="transparent"
-          />
-        </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Withdraw-always drill &amp; kill-switch</span>
-            <span className="pill ok">
-              <span className="led" />
-              Healthy
-            </span>
+          <div style={{ margin: "4px 0 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5 }}>
+              <span className="muted">Cap utilization</span>
+              <span className="tnum">{util}</span>
+            </div>
+            <div style={{ height: 18, borderRadius: 5, background: "var(--muted)" }}>
+              <div
+                style={{
+                  height: "100%",
+                  borderRadius: 5,
+                  width: `${utilBar}%`,
+                  background: utilBar >= 90 ? "var(--caution)" : "var(--gain)",
+                  transition: "width .3s ease",
+                }}
+              />
+            </div>
           </div>
           <div className="statusrow">
-            <span className="muted">Last withdraw-always drill</span>
-            <span className="pill info">
-              <Icon name="info" size={12} /> Not yet run in this env
-            </span>
+            <span className="muted">Total value locked</span>
+            <span className="tnum" style={{ fontWeight: 600 }}>{tvl}</span>
+          </div>
+          <div className="statusrow">
+            <span className="muted">Deposit cap</span>
+            <span className="tnum">{cap}</span>
+          </div>
+          <div className="statusrow">
+            <span className="muted">Headroom remaining</span>
+            <span className="tnum">{headroom}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
+            <Icon name="info" size={13} /> Caps are enforced programmatically on-chain (ERC-4626 <span className="mono">maxDeposit</span>);
+            the operator adjusts them via the guardian <span className="mono">setCaps</span> action on the Vaults page.
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="ch" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span className="ct">Safety — live on-chain</span>
+            <span className="prov">paused() · guardian()</span>
           </div>
           <div className="statusrow">
             <span className="muted">Kill-switch (pause-only)</span>
-            <span className="pill info">
-              <Icon name="pause" size={12} /> Inactive
-            </span>
+            {s.paused === undefined ? (
+              <span className="pill info" style={{ fontSize: 10 }}>
+                <Icon name="info" size={12} /> Reading chain…
+              </span>
+            ) : s.paused ? (
+              <span className="pill amber" style={{ fontSize: 10 }}>
+                <Icon name="pause" size={12} /> Paused · deposits halted
+              </span>
+            ) : (
+              <span className="pill ok" style={{ fontSize: 10 }}>
+                <span className="led" /> Inactive · deposits open
+              </span>
+            )}
+          </div>
+          <div className="statusrow">
+            <span className="muted">User withdrawals</span>
+            <span style={{ color: "var(--gain)", fontSize: 12, fontWeight: 600 }}>Always open (N2)</span>
           </div>
           <div className="statusrow">
             <span className="muted">Guardian (live)</span>
-            <a
-              className="mono"
-              style={{ fontSize: 11, color: "var(--primary)" }}
-              href="https://sepolia.basescan.org/address/0x0A21A9B4c2cd2d6a68EC828188826B673572d720"
-              target="_blank"
-              rel="noreferrer"
-            >
-              0x0A21…d720 <Icon name="ext" size={11} />
-            </a>
+            {s.guardian ? (
+              <a
+                className="mono"
+                style={{ fontSize: 11, color: "var(--primary)" }}
+                href={`https://sepolia.basescan.org/address/${s.guardian}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {shortAddr(s.guardian)} <Icon name="ext" size={11} />
+              </a>
+            ) : (
+              <span className="muted" style={{ fontSize: 11 }}>reading…</span>
+            )}
+          </div>
+          <div className="statusrow">
+            <span className="muted">Guardian type</span>
+            <span style={{ fontWeight: 600, fontSize: 12 }}>OZ TimelockController</span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
-            <Icon name="info" size={13} /> Pause never blocks withdrawals and is a multisig action outside this panel. Status only — no controls.
+            <Icon name="info" size={13} /> A pause never blocks withdrawals and is a guardian (multisig) action performed
+            off-app. Status only — no controls on this page. Reads refresh every 30s from chain {VAULT_CHAIN}.
           </div>
         </div>
       </div>

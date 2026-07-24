@@ -180,6 +180,33 @@ export default function Page() {
 
       <div className="chartcard" style={{ marginBottom: 14 }}>
         <div className="ch">
+          <span className="ct">Beta-gate controls</span>
+          <span className="prov">§6.4</span>
+        </div>
+        <div style={{ padding: "4px 2px" }}>
+          <div className="statusrow">
+            <span>Wallet whitelist enforcement</span>
+            <span className="pill ok" style={{ fontSize: 10 }}>
+              <span className="led" /> Enforced · this page + session
+            </span>
+          </div>
+          <div className="statusrow">
+            <span>Geo-fenced frontend</span>
+            <span className="pill amber" style={{ fontSize: 10 }}>
+              <Icon name="info" size={12} /> Scaffolded · not enforced
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+            <Icon name="info" size={13} /> Geo-fencing has its UI + <span className="mono">GEO_BLOCKED</span> (451) seam wired, but the
+            jurisdiction check (<span className="mono">checkGeoAllowed</span>) is still a placeholder — no country is blocked today.
+            Real enforcement needs a jurisdiction policy + a geo-providing edge (e.g. Cloudflare), scheduled for the
+            real-money (Phase-4) gate. Surfaced here so the control&rsquo;s true state is never assumed.
+          </div>
+        </div>
+      </div>
+
+      <div className="chartcard" style={{ marginBottom: 14 }}>
+        <div className="ch">
           <span className="ct">Add a wallet</span>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "10px 4px", alignItems: "center" }}>

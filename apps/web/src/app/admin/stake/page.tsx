@@ -10,8 +10,11 @@
 import { Icon } from "@/lib/icons";
 import { STREAM, Composed, Trajectory, DivergeBars, DualArea, Kpi } from "@/components/admin/charts";
 import { data } from "@/components/admin/data";
+import { useVaultStats } from "@/lib/admin/useVaultStats";
+import { formatUsdCompact } from "@/lib/admin/vaultStats";
 
 export default function Page() {
+  const s = useVaultStats();
   return (
     <>
       <div className="pghead">
@@ -19,24 +22,35 @@ export default function Page() {
           <h1>Sparky — stakeholder overview</h1>
           <div className="sub">Where we are. Aggregate, plain-language, presentation-grade.</div>
         </div>
-        <span className="pill info" title="Illustrative sample data — not yet instrumented">
-          <span className="led" /> Sample data
+        <span className="pill info" title="A stakeholder narrative — figures other than live TVL are illustrative projections">
+          <span className="led" /> Illustrative projection
         </span>
         <button className="btn-exp">
           <Icon name="ext" size={13} /> Export PDF (audited)
         </button>
       </div>
+      <div
+        className="infobanner"
+        style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)" }}
+      >
+        <Icon name="info" size={16} />
+        <span>
+          <b style={{ color: "var(--foreground)" }}>Illustrative stakeholder deck.</b> The growth figures and charts below are
+          modelled projections, not live testnet data — pending mainnet instrumentation. The one live figure is{" "}
+          <b style={{ color: "var(--foreground)" }}>TVL</b>, read on-chain and labelled as such.
+        </span>
+      </div>
       <div className="band">
-        <Kpi label="TVL" val="$12.0M" spark={data.tvlSpark} sparkColor={STREAM.swap} delta="▲ 18% this month" deltaCls="up" />
-        <Kpi label="Total users" val="3,240" spark={data.usersSpark} sparkColor={STREAM.premium} delta="▲ 22%" deltaCls="up" />
-        <Kpi label="Cumulative revenue" val="$13.9K" spark={data.revSpark} sparkColor={STREAM.srk} delta="▲ since launch" deltaCls="up" />
-        <Kpi label="Run-rate (ARR-eq.)" val="$82.8K" spark={data.mrrSpark} sparkColor={STREAM.premium} delta="▲ 23%" deltaCls="up" />
+        <Kpi label="Live TVL (testnet)" val={formatUsdCompact(s.tvl)} />
+        <Kpi label="Total users" val="3,240" spark={data.usersSpark} sparkColor={STREAM.premium} delta="illustrative" deltaCls="flat" />
+        <Kpi label="Cumulative revenue" val="$13.9K" spark={data.revSpark} sparkColor={STREAM.srk} delta="illustrative" deltaCls="flat" />
+        <Kpi label="Run-rate (ARR-eq.)" val="$82.8K" spark={data.mrrSpark} sparkColor={STREAM.premium} delta="illustrative" deltaCls="flat" />
       </div>
       <div className="grid2">
         <div className="chartcard span2">
           <div className="ch">
             <span className="ct">Growth — money &amp; people</span>
-            <span className="prov">90d</span>
+            <span className="prov">illustrative · 90d</span>
           </div>
           <div className="legend">
             <span>
@@ -74,6 +88,7 @@ export default function Page() {
       <div className="weeornot" style={{ marginBottom: 16 }}>
         <div className="ch" style={{ marginBottom: 6 }}>
           <span className="ct">We only earn when you earn</span>
+          <span className="prov">illustrative</span>
         </div>
         <div className="legend">
           <span>

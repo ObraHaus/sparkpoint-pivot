@@ -2,14 +2,40 @@
 
 /**
  * Admin → Overview (scOverview). "How we're doing, right now, at a glance."
- * Faithful 1:1 port of the Overview screen in SparkPoint Admin.html.
+ *
+ * Was 100% sample data (a fabricated $12M-TVL growth dashboard). Now the headline tiles are LIVE
+ * on-chain vault reads, and the fabricated growth/revenue/activity charts are replaced with an honest
+ * launchpad into the real operator surfaces. Growth analytics (WAU, MRR, activity time-series) are not
+ * yet instrumented, so they are pointed to rather than faked.
  */
 
 import { Icon } from "@/lib/icons";
-import { STREAM, StackedBars, Composed, Kpi, LegendStreams } from "@/components/admin/charts";
-import { data, revByStream } from "@/components/admin/data";
+import { Kpi } from "@/components/admin/charts";
+import { useVaultStats } from "@/lib/admin/useVaultStats";
+import { formatUsdCompact } from "@/lib/admin/vaultStats";
+
+const SURFACES: { href: string; icon: string; label: string; sub: string }[] = [
+  { href: "/admin/tvl", icon: "vault", label: "TVL & vault", sub: "Live TVL, caps, pause state" },
+  { href: "/admin/revenue", icon: "portfolio", label: "Revenue", sub: "Real fees by network & stream" },
+  { href: "/admin/usage", icon: "activity", label: "Usage & limits", sub: "Per-tier AI consumption" },
+  { href: "/admin/vaults", icon: "vault", label: "Vaults", sub: "Caps & guardian actions" },
+  { href: "/admin/killswitch", icon: "pause", label: "Kill-switch", sub: "Live on-chain pause state" },
+  { href: "/admin/uptime", icon: "activity", label: "Uptime", sub: "Service monitors" },
+  { href: "/admin/diagnostics", icon: "flask", label: "Diagnostics", sub: "Network captures" },
+  { href: "/admin/system", icon: "shield", label: "System", sub: "Readiness probe" },
+];
 
 export default function Page() {
+  const s = useVaultStats();
+
+  const statusPill = !s.configured
+    ? { cls: "amber", text: "Vault not configured" }
+    : s.loading
+      ? { cls: "info", text: "Reading chain…" }
+      : { cls: "ok", text: "Live · on-chain" };
+
+  const vaultStatus = s.paused === undefined ? "…" : s.paused ? "Paused" : "Active";
+
   return (
     <>
       <div className="pghead">
@@ -17,85 +43,49 @@ export default function Page() {
           <h1>Overview</h1>
           <div className="sub">How we&apos;re doing, right now, at a glance.</div>
         </div>
-        <span className="pill info" title="Illustrative sample data — not yet instrumented">
-          <span className="led" /> Sample data
+        <span className={`pill ${statusPill.cls}`}>
+          <span className="led" /> {statusPill.text}
         </span>
-        <div className="ctrls">
-          <div className="seg">
-            <button>24h</button>
-            <button>7d</button>
-            <button className="on">30d</button>
-            <button>90d</button>
-            <button>All</button>
-          </div>
-          <button className="btn-exp">
-            <Icon name="ext" size={13} /> Export
-          </button>
-        </div>
       </div>
+
       <div className="band">
-        <Kpi label="TVL" val="$12.0M" spark={data.tvlSpark} sparkColor={STREAM.swap} delta="▲ 7.1%" deltaCls="up" />
-        <Kpi label="Active users (WAU)" val="910" spark={data.usersSpark} sparkColor={STREAM.premium} delta="▲ 19%" deltaCls="up" />
-        <Kpi label="Cumulative revenue" val="$13.9K" spark={data.revSpark} sparkColor={STREAM.srk} delta="▲ since launch" deltaCls="up" />
-        <Kpi label="MRR-equivalent" val="$6.9K" spark={data.mrrSpark} sparkColor={STREAM.premium} delta="▲ 23% MoM" deltaCls="up" />
+        <Kpi label="Total TVL" val={formatUsdCompact(s.tvl)} />
+        <Kpi label="Cap utilization" val={s.capUtilPct === null ? "—" : `${s.capUtilPct.toFixed(1)}%`} />
+        <Kpi label="Deposit cap" val={s.cap === undefined ? "…" : s.cap === 0n ? "No cap set" : formatUsdCompact(s.cap)} />
+        <Kpi label="Vault status" val={vaultStatus} />
       </div>
-      <div className="grid2">
-        <div className="chartcard span2">
-          <div className="ch">
-            <span className="ct">Growth at a glance</span>
-            <span className="prov">sample data</span>
-          </div>
-          <div className="legend">
-            <span>
-              <i style={{ background: STREAM.swap }} />
-              TVL
-            </span>
-            <span>
-              <i style={{ background: STREAM.premium }} />
-              Active users
-            </span>
-          </div>
-          <Composed
-            areaV={[7.2, 8.0, 8.8, 9.6, 10.6, 11.4, 12.0]}
-            lineV={[120, 260, 420, 560, 710, 820, 910]}
-            amax={13}
-            lmax={1000}
-            opts={{ H: 230 }}
-          />
+
+      <div className="panel">
+        <div className="ch" style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span className="ct">Live operator surfaces</span>
+          <span className="prov">jump to real data</span>
         </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Revenue snapshot</span>
-            <span className="prov">sample data</span>
-          </div>
-          <LegendStreams withProj />
-          <StackedBars data={revByStream} keys={["swap", "premium", "perf", "srk"]} max={9000} opts={{ H: 200 }} />
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))",
+          }}
+        >
+          {SURFACES.map((x) => (
+            <a
+              key={x.href}
+              href={x.href}
+              className="kpi"
+              style={{ textDecoration: "none", display: "flex", gap: 11, alignItems: "flex-start" }}
+            >
+              <Icon name={x.icon} size={18} />
+              <span>
+                <span style={{ display: "block", fontWeight: 600, fontSize: 13.5, color: "var(--foreground)" }}>{x.label}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 2 }}>{x.sub}</span>
+              </span>
+            </a>
+          ))}
         </div>
-        <div className="chartcard">
-          <div className="ch">
-            <span className="ct">Activity — daily executions</span>
-            <span className="prov">sample data</span>
-          </div>
-          <div className="legend">
-            <span>
-              <i style={{ background: "var(--gain)" }} />
-              Confirmed
-            </span>
-            <span>
-              <i style={{ background: "var(--loss)" }} />
-              Failed
-            </span>
-          </div>
-          <StackedBars
-            data={["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => ({
-              x: d,
-              ok: [42, 55, 48, 61, 70, 38, 44][i],
-              fail: [2, 1, 3, 2, 1, 0, 2][i],
-            }))}
-            keys={["ok", "fail"]}
-            max={75}
-            opts={{ H: 200, colors: { ok: "var(--gain)", fail: "var(--loss)" } }}
-          />
+        <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 14, lineHeight: 1.5 }}>
+          <Icon name="info" size={13} /> Headline tiles are live on-chain reads. Growth analytics (active users, MRR,
+          activity time-series) are not yet instrumented — they are surfaced on the pages above where the data is real,
+          rather than shown here as fabricated numbers.
         </div>
       </div>
     </>
