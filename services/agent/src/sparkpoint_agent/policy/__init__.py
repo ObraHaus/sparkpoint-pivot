@@ -52,6 +52,12 @@ from .models import (
     SessionState,
     SimulationInput,
 )
+from .session import (
+    SessionGrantVerdict,
+    SessionScope,
+    SessionScopePair,
+    evaluate_session_grant,
+)
 
 __all__ = [
     "CAPS",
@@ -78,11 +84,15 @@ __all__ = [
     "Protocol",
     "ReasonCode",
     "RiskProfile",
+    "SessionGrantVerdict",
+    "SessionScope",
+    "SessionScopePair",
     "SessionState",
     "SimulationInput",
     "build_audit_record",
     "evaluate",
     "evaluate_and_audit",
+    "evaluate_session_grant",
     "get_addresses",
     "get_policy_constants",
     "record_verdict",
