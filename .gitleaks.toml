@@ -13,7 +13,16 @@ ERC-4337 session-key ADDRESSES — 42-char 0x + 40 hex — near the literal word
 would be 66 chars (0x + 64 hex); these are 20-byte public addresses and safe to commit. gitleaks'
 `generic-api-key` heuristic mis-flags them. Scope is limited to that debug-log directory ONLY, so
 the default secret detection stays fully active everywhere else in the repo.
+
+The `regexes` entry generalizes the SAME false positive (feature 022 US6): 20-byte on-chain
+ADDRESSES (0x + EXACTLY 40 hex) sit next to the word "key" all over the session-key code
+(`SESSION_KEY = 0x…`, `sessionKeyValidator: 0x…`, the `PolicyModule` deployment record). It
+allowlists 42-char addresses ONLY — a real 64-hex private key is NOT matched (char 41 is still hex,
+so the `[^hex]|$` boundary fails), keeping key detection fully active everywhere.
 """
 paths = [
   '''contracts/script/bundler-spike/safemode-logs/.*''',
+]
+regexes = [
+  '''0x[a-fA-F0-9]{40}(?:[^a-fA-F0-9]|$)''',
 ]
