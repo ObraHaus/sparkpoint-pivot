@@ -57,6 +57,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     `lib/admin/useVaultStats.ts` (the shared live-reads hook); `Kpi` gains an optional sparkline so a live
     single-value tile omits a fabricated trend.
 
+### Added (021 phase 2 — proactive notifications: caps-near-limit, Aave-rate moves, new recommendations)
+- **The bell now also surfaces the three signals it couldn't before — a vault filling up, an Aave rate
+  move, and a fresh recommendation for you — each a real, provable event, never a fabricated alert.**
+  Phase 1 derived the feed from indexed data on read; these three watch for a *change over time*, so a
+  new background poller (`api/notification_poller.py`, ~15-min tick, env-gated `NOTIF_POLLER_ENABLED`)
+  observes each value and emits ONE real, deduped event only on a genuine crossing:
+  - **Vault near capacity** (`capsNearLimit`) — the live vault `total_assets` crosses ≥ 90% of the
+    on-chain deposit cap. One event per crossing episode (re-arms only after it leaves and re-enters).
+  - **Aave rate moved** (`rateChanges`) — the live Aave USDC supply APY moves ≥ 25 bps from the
+    last-notified level (so slow drift eventually notifies, but wiggle doesn't spam).
+  - **New recommendation for you** (`rateChanges`) — a proactive re-score of each active-mandate wallet
+    against the real recommender; emits when the top advice's content changes (one bounded LLM call per
+    wallet per tick, gated by `NOTIF_POLLER_NEWRECS`). The `sessionKeyExpiry` signal stays intentionally
+    **absent** until US6 exists (no session key to expire) — not faked.
+  - **How it's provable, not stored-and-forgotten.** Migration `0024_notification_events` adds
+    `notification_events` (one deduped row per real crossing) + `notification_poller_state` (the
+    last-seen value per signal, for edge-detection). `GET /notifications` merges these events into the
+    same phase-1 feed; the first observation of any signal is a silent baseline (existing state is never
+    replayed as if new).
+  - **Non-custody (N1–N5):** the poller is advisory only — no key, no signature, off the request path,
+    fail-open (a degraded read emits nothing, never raises), and never on the withdraw/exit path (N2).
+  - **No web change** — the phase-1 feed renders the new categories/icons as-is; the settings row was
+    already labelled "Rate changes & recommendations".
+- **Tests / gates.** +7 agent poller tests (`test_notification_poller.py`: the caps up-crossing + re-arm,
+  the rate baseline→threshold→dedupe sequence, the new-rec baseline→change→dedupe, the env gate, and
+  every fail-open path) + 3 events-in-feed tests. `ruff` + `mypy --strict` + `pytest` (737) green.
+  Migration `0024` applied to develop.
+
 ### Added (021 — real in-app notifications, end to end)
 - **The notifications bell now has a real backend — your feed is computed live from your actual
   on-chain activity, never a mock.** `GET /notifications` derives the feed from already-indexed real

@@ -443,6 +443,15 @@ class VaultReader:
         """maxRedeem(owner) → shares (withdraw quote; never cap/pause-gated, N2)."""
         return int(await self._read("maxRedeem", [_normalize_address(owner)]))
 
+    async def deposit_cap(self) -> int:
+        """depositCap() → the vault's absolute AUM ceiling in asset base units (0 ⇒ uncapped).
+
+        The whole-vault ceiling the admin TVL utilization reads (``totalAssets/depositCap``); it is
+        distinct from the ERC-4626 per-call ``maxDeposit`` headroom AND from the policy per-action
+        guardrail. Drives the "vault near capacity" notification (feature 021 phase 2).
+        """
+        return int(await self._read("depositCap", []))
+
     # ── Vault state / fee params (all public-view; provable on-chain, N5) ──
 
     async def total_assets(self) -> int:
