@@ -18,13 +18,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api.errors import ApiError, ErrorCode, ErrorReason
-from sparkpoint_agent.api.execution import get_bundle_store
+from sparkpoint_agent.api.execution import get_bundle_store, get_rec_store
 from sparkpoint_agent.api.main import app
 from sparkpoint_agent.api.vault import get_dry_runner, get_sim_config, get_vault_reader
 from sparkpoint_agent.chain import VaultUnavailable, VaultUnavailableReason
@@ -121,6 +122,31 @@ class FakeBundleStore:
         return uuid4()
 
 
+class FakeRecStore:
+    """Structural RecommendationStore stand-in (US5). Records upserts/status writes for assertions.
+
+    ``get`` returns whatever was pre-seeded (default: unknown → None, so ``_resolve_rec`` upserts a
+    minimal snapshot); ``upsert`` mints a UUID and records the RecInsert; ``mark_status`` records the
+    lifecycle write. No Postgres — the whole point is to keep /build-tx tests DB-free.
+    """
+
+    def __init__(self) -> None:
+        self.upserts: list[object] = []
+        self.statuses: list[tuple[UUID, str]] = []
+        self.seeded: dict[UUID, object] = {}
+
+    async def get(self, rec_id: UUID) -> object | None:
+        return self.seeded.get(rec_id)
+
+    async def upsert(self, rec: object) -> UUID:
+        self.upserts.append(rec)
+        rid = uuid4()
+        return rid
+
+    async def mark_status(self, rec_id: UUID, status: str) -> None:
+        self.statuses.append((rec_id, status))
+
+
 def _sim(*, will_revert: bool, reason: str | None = None, gas: str = "0x1e848") -> SimulationResult:
     return SimulationResult(
         provider="viem_eth_call",
@@ -147,9 +173,17 @@ def store() -> FakeBundleStore:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch, store: FakeBundleStore) -> Iterator[TestClient]:
+def rec_store() -> FakeRecStore:
+    return FakeRecStore()
+
+
+@pytest.fixture
+def client(
+    monkeypatch: pytest.MonkeyPatch, store: FakeBundleStore, rec_store: FakeRecStore
+) -> Iterator[TestClient]:
     monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
     app.dependency_overrides[get_bundle_store] = lambda: store
+    app.dependency_overrides[get_rec_store] = lambda: rec_store
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -352,3 +386,74 @@ def test_build_response_never_carries_a_signature(client: TestClient) -> None:
                 _no_sig(v)
 
     _no_sig(r.json())
+
+
+# ── US5 — the recommendation → bundle attribution link (feature 020, FR-039) ─────────────────────
+
+
+def _deposit_body_rec(rec_id: str, amount: str = "100000000") -> dict[str, object]:
+    return {
+        "action": {
+            "type": "vault_deposit",
+            "asset": USDC,
+            "decimals": 6,
+            "amount": amount,
+            "recommendationId": rec_id,
+        },
+        "execMode": "per_action",
+    }
+
+
+def test_build_links_a_known_recommendation_and_marks_it_acted(
+    client: TestClient, rec_store: FakeRecStore
+) -> None:
+    # A wire recommendationId that resolves to the caller's persisted rec → the bundle carries it and
+    # the rec advances to 'acted' (no new snapshot minted — the explicit FR-039 link).
+    known = uuid4()
+    rec_store.seeded[known] = SimpleNamespace(id=known, wallet=USER)
+    _wire(FakeReader(), _ok_runner())
+    r = client.post("/build-tx", headers=HEADERS, json=_deposit_body_rec(str(known)))
+    assert r.status_code == 200
+    assert r.json()["intentBundle"]["recommendationId"] == str(known)
+    assert rec_store.statuses == [(known, "acted")]
+    assert rec_store.upserts == []  # resolved an existing rec — nothing upserted
+
+
+def test_build_upserts_a_minimal_rec_when_the_wire_id_does_not_resolve(
+    client: TestClient, rec_store: FakeRecStore
+) -> None:
+    # A chat ephemeral / unknown id → a MINIMAL snapshot is upserted so the acted-on advice is still
+    # logged + linked (SC-010: 100% of acted-on recs get an outcome entry).
+    _wire(FakeReader(), _ok_runner())
+    r = client.post("/build-tx", headers=HEADERS, json=_deposit_body_rec(str(uuid4())))
+    assert r.status_code == 200
+    linked = r.json()["intentBundle"]["recommendationId"]
+    assert linked is not None
+    assert len(rec_store.upserts) == 1
+    minted = rec_store.statuses[0]
+    assert minted[1] == "acted"
+    assert UUID(linked) == minted[0]  # the bundle links the freshly-minted rec
+
+
+def test_build_without_a_recommendation_id_is_unattributed(
+    client: TestClient, rec_store: FakeRecStore
+) -> None:
+    # A user-initiated deposit (no advice) → no rec link, no snapshot, no status write (honest).
+    _wire(FakeReader(), _ok_runner())
+    r = client.post("/build-tx", headers=HEADERS, json=_deposit_body())
+    assert r.status_code == 200
+    assert r.json()["intentBundle"].get("recommendationId") is None
+    assert rec_store.upserts == [] and rec_store.statuses == []
+
+
+def test_build_rejected_action_still_records_the_attribution(
+    client: TestClient, rec_store: FakeRecStore
+) -> None:
+    # Even a rejected build links + marks the rec 'rejected' (audit trail; VR-X3 persists the row).
+    _wire(FakeReader(allowance=10**30), _ok_runner())
+    r = client.post(
+        "/build-tx", headers=HEADERS, json=_deposit_body_rec(str(uuid4()), str(_PER_USER_CAP + 1))
+    )
+    assert r.status_code == 422
+    assert len(rec_store.upserts) == 1
+    assert rec_store.statuses[0][1] == "rejected"

@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api.main import app
-from sparkpoint_agent.api.portfolio import get_vault_flow_reader
+from sparkpoint_agent.api.portfolio import get_rec_store, get_vault_flow_reader
 from sparkpoint_agent.api.recommendations import get_agent_config
 from sparkpoint_agent.api.vault import get_vault_reader
 from sparkpoint_agent.chain import VaultReader
@@ -25,6 +25,34 @@ from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.db.vault_flows import CostBasis, FlowRow
 
 VAULT = "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2"
+
+
+class _FakeRecStore:
+    """In-memory RecommendationStore stand-in (US5): seeded acted recs / snapshots, no DB.
+
+    Defaults to empty — the pre-US5 outcomes tests then see ``recommendations == []`` (no acted
+    advice), unchanged. The attribution tests seed ``acted`` (drives /outcomes rec rows) and
+    ``recs``/``deposit_tx`` (drive the /outcomes/{recId} detail read).
+    """
+
+    def __init__(
+        self,
+        acted: list[Any] | None = None,
+        recs: dict[Any, Any] | None = None,
+        deposit_tx: dict[Any, str] | None = None,
+    ) -> None:
+        self._acted = acted or []
+        self._recs = recs or {}
+        self._deposit_tx = deposit_tx or {}
+
+    async def list_acted(self, wallet: str, *, limit: int = 100) -> list[Any]:
+        return self._acted
+
+    async def get(self, rec_id: Any) -> Any | None:
+        return self._recs.get(rec_id)
+
+    async def deposit_tx_for(self, rec_id: Any) -> str | None:
+        return self._deposit_tx.get(rec_id)
 
 
 class _FakeFlowReader:
@@ -138,12 +166,18 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 
 
 def _use(
-    reader: object, *, basis: CostBasis | None = None, flows: list[FlowRow] | None = None
+    reader: object,
+    *,
+    basis: CostBasis | None = None,
+    flows: list[FlowRow] | None = None,
+    rec_store: _FakeRecStore | None = None,
 ) -> None:
     app.dependency_overrides[get_vault_reader] = lambda: reader
     # B2: the portfolio endpoint now derives PnL from indexed flows + reads the vault address from
     # config — provide in-memory fakes (no DB) so the cost-basis path is exercised without Postgres.
     app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader(basis, flows)
+    # US5: /outcomes + /outcomes/{recId} resolve acted-on recs via the store — a DB-free fake.
+    app.dependency_overrides[get_rec_store] = lambda: rec_store or _FakeRecStore()
     app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
         chain_id=84532, rpc_url=None, vault_address=VAULT, database_url=None
     )

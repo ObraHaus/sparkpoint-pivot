@@ -265,6 +265,125 @@ def replay_outcomes(flows: Sequence[FlowRow], current_shares: int) -> OutcomeRep
 
 
 @dataclass
+class _LotState:
+    """Mutable working state for one deposit lot during the FIFO replay (internal)."""
+
+    deposit_tx: str
+    entry_block: int
+    cost_total: int
+    cost_remaining: int
+    shares_remaining: int
+    realized: int
+    exit_block: int = 0  # block of the last withdrawal that consumed this lot (0 while open)
+
+
+@dataclass(frozen=True)
+class Lot:
+    """One deposit's realized+unrealized PnL — the atom of §020/US5 per-advice attribution (6-dp).
+
+    ``realized`` is FIFO-attributed from later withdrawals against THIS deposit's shares;
+    ``unrealized`` is the current mark of the lot's remaining shares minus their remaining cost.
+    ``deposit_tx`` is the on-chain deposit — the join key from a rec's linked execution to its
+    outcome. ``shared`` is True when the position is blended across ≥2 deposit lots (an honest
+    "share of a shared position", not a fabricated split).
+    """
+
+    deposit_tx: str
+    entry_block: int
+    entry_cost: int  # USDC deposited (this lot's cost basis, $1 par)
+    realized: int  # signed USDC base units, FIFO-realized on this lot
+    unrealized: int  # signed USDC base units, current mark − remaining cost
+    shares_remaining: int
+    shared: bool
+    exit_block: int = 0  # last withdrawal block that realized this lot (0 while any shares remain)
+
+
+@dataclass(frozen=True)
+class LotReplay:
+    """Per-deposit-lot FIFO attribution over a position's COMPLETE indexed history.
+
+    ``lots`` is one :class:`Lot` per deposit, in on-chain order. ``reconciles`` uses the SAME gate
+    as :class:`OutcomeReplay` (reconstructed shares == on-chain balance, no gap) — the caller
+    attributes a recommendation's outcome ONLY when it reconciles (else honest empty). ``Σ
+    lot.realized`` equals :class:`BasisResult.realized` up to bounded per-lot rounding dust.
+    """
+
+    lots: tuple[Lot, ...]
+    reconciles: bool
+
+
+def replay_lots(
+    flows: Sequence[FlowRow], current_shares: int, current_value: int
+) -> LotReplay | None:
+    """FIFO per-deposit lot replay → realized+unrealized PnL per deposit (exact integer math).
+
+    Each deposit is a lot; each withdrawal consumes lots FIFO, realizing (assets attributed to the
+    consumed shares − their cost basis) per lot (both round DOWN, mirroring the vault). A lot's
+    unrealized marks its remaining shares to the live position value (``current_value`` =
+    convertToAssets(current_shares); proportional, faithful to ERC-4626 linearity at a block). None
+    on no history; never raises on a partial history — an over-draw flips ``reconciles``.
+    """
+    if not flows:
+        return None
+    ordered = sorted(flows, key=lambda f: (f.block_number, f.log_index))
+    lots: list[_LotState] = []
+    intact = True
+    for f in ordered:
+        if f.kind == "deposit":
+            lots.append(
+                _LotState(
+                    deposit_tx=f.tx_hash,
+                    entry_block=f.block_number,
+                    cost_total=f.assets,
+                    cost_remaining=f.assets,
+                    shares_remaining=f.shares,
+                    realized=0,
+                )
+            )
+            continue
+        # withdraw — consume lots FIFO
+        if f.shares <= 0:
+            intact = False
+            continue
+        remaining = f.shares
+        for lot in lots:
+            if remaining <= 0:
+                break
+            if lot.shares_remaining <= 0:
+                continue
+            k = min(remaining, lot.shares_remaining)
+            assets_attr = f.assets * k // f.shares  # this withdrawal's assets for these k shares
+            cost_rel = lot.cost_remaining * k // lot.shares_remaining
+            lot.realized += assets_attr - cost_rel
+            lot.cost_remaining -= cost_rel
+            lot.shares_remaining -= k
+            lot.exit_block = f.block_number  # last withdrawal to realize this lot
+            remaining -= k
+        if remaining > 0:
+            intact = False  # a gap: over-drew the reconstructed share balance
+
+    shared = len(lots) > 1
+    result = tuple(
+        Lot(
+            deposit_tx=lot.deposit_tx,
+            entry_block=lot.entry_block,
+            entry_cost=lot.cost_total,
+            realized=lot.realized,
+            unrealized=(
+                (current_value * lot.shares_remaining // current_shares if current_shares else 0)
+                - lot.cost_remaining
+            ),
+            shares_remaining=lot.shares_remaining,
+            shared=shared,
+            exit_block=lot.exit_block,
+        )
+        for lot in lots
+    )
+    reconciles = intact and sum(lot.shares_remaining for lot in lots) == current_shares
+    return LotReplay(lots=result, reconciles=reconciles)
+
+
+@dataclass
 class VaultFlowReader:
     """Reads the indexed flows to derive a user's cost basis (drives GET /portfolio PnL)."""
 
