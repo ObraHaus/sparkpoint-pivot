@@ -41,7 +41,7 @@ from ..policy import (
 )
 from ..policy.constants import ACTION_DIRECTION
 from ..sim import SimulationRequest, SimulationResult
-from . import rpc
+from . import bundler, rpc
 from .assemble import assemble_context
 from .builder import build_steps
 from .decode import DecodeError, decode_action
@@ -59,6 +59,12 @@ from .serialize import (
     reason_message,
     to_guardrail_checklist,
     to_wire_verdict,
+)
+from .session_userop import (
+    ENTRYPOINT,
+    build_session_userop,
+    call_data_for,
+    signed_matches_scope,
 )
 
 #: The pre-sign dry-run runner (request, rpc_url) → SimulationResult (viem_eth_call by default).
@@ -154,6 +160,8 @@ def _bundle_insert(
     verdict: PolicyVerdict,
     expires: datetime,
     recommendation_id: UUID | None = None,
+    *,
+    is_session_key: bool = False,
 ) -> BundleInsert:
     return BundleInsert(
         smart_account_address=account.account,
@@ -167,6 +175,10 @@ def _bundle_insert(
         # US5 (feature 020): the resolved persisted recommendation UUID (was always None) — the
         # FR-039 link. None when the action carried no rec or the rec store is unavailable.
         recommendation_id=recommendation_id,
+        # US6 (feature 022): the session-key automated-move path. Both default to per-action/false;
+        # set only when the caller opts into execMode=session_key (still policy-gated, N1-pinned).
+        exec_mode="session_key" if is_session_key else "per_action_user_signature",
+        is_session_key_path=is_session_key,
     )
 
 
@@ -279,17 +291,12 @@ async def build_tx(
     rec_store: RecommendationStore | None = None,
 ) -> IntentBundle:
     """Materialize an unsigned ``IntentBundle`` for a proposed vault action (§3.5), fail-closed."""
-    if req.execMode != "per_action":
-        # US6: the ERC-4337 session-key stack is deployed + proven live on Base Sepolia
-        # (a mode-0x01 UserOp passed the Alchemy bundler's ERC-7562 tracer + executed on-chain) and
-        # the bundler client (execution/bundler.py) is ready. The remaining increment is the
-        # automated-move userOp builder + a CLIENT session-signer (the service never holds the key,
-        # N3); until that lands the spine refuses a session-key move here honestly, never faked.
-        raise ApiError(
-            ErrorCode.VALIDATION_ERROR,
-            "Session-key automated moves are not wired into the spine yet (grant/revoke is live).",
-            reasons=[ErrorReason("VALIDATION_ERROR", "execMode must be per_action")],
-        )
+    # US6 (feature 022): session-key automated moves ARE now wired. The ERC-4337 stack is deployed +
+    # proven live; on execMode=session_key we build the UNSIGNED userOp below (signature=null, N3);
+    # the CLIENT (holding the session key) signs it. Scope is still decoded, recipient-pinned (N1),
+    # simulated, and policy-gated EXACTLY as the per-action path — the session path only changes the
+    # signing envelope, never the guardrails. On-chain, validateUserOp re-enforces every bound.
+    is_session = req.execMode == "session_key"
 
     # 1. Decode (recipient PINNED to the connected user, N1).
     try:
@@ -363,7 +370,10 @@ async def build_tx(
     # 5. Gate — a rejected verdict persists a bundle row (audit) and returns reasons + NO bundle.
     if not verdict.is_signable:
         await bundle_store.persist_bundle(
-            _bundle_insert(account, action, steps, "rejected", verdict, expires, rec_id)
+            _bundle_insert(
+                account, action, steps, "rejected", verdict, expires, rec_id,
+                is_session_key=is_session,
+            )
         )
         if rec_store is not None and rec_id is not None:
             await rec_store.mark_status(rec_id, "rejected")
@@ -381,7 +391,9 @@ async def build_tx(
 
     # 6. Approved — persist sim + bundle (VR-X2), or the bundle alone for an approved exit with no
     # sim (N2).
-    bundle_row = _bundle_insert(account, action, steps, "approved", verdict, expires, rec_id)
+    bundle_row = _bundle_insert(
+        account, action, steps, "approved", verdict, expires, rec_id, is_session_key=is_session
+    )
     if rec_store is not None and rec_id is not None:
         await rec_store.mark_status(rec_id, "acted")
     if sim is None:
@@ -400,12 +412,18 @@ async def build_tx(
             ),
         )
 
+    # US6: for the session-key path, emit the UNSIGNED userOp (signature=null, N3) the client signs.
+    session_op = (
+        await build_session_userop(steps[0], sender=account.account, rpc_url=rpc_url)
+        if is_session
+        else None
+    )
     return IntentBundle(
         id=str(intent_id),
         userId=account.account,
         kind=action.action_type.value,
         steps=list(steps),
-        userOp=None,
+        userOp=session_op,
         simulation=sim,
         policyVerdict=to_wire_verdict(verdict, normalized_action=normalized, simulation=sim),
         guardrailChecklist=to_guardrail_checklist(verdict),
@@ -495,14 +513,57 @@ async def submit_signed(
     step0 = bundle.steps[0]
 
     if signed.opType == "userop":
-        # US6 path: submission via the bundler (execution/bundler.py — proven live on Base Sepolia)
-        # will land here once build_tx emits a session-key userOp bundle + a client session-signer
-        # exists. Today's bundles are all eoa_call (no userOp to match), so a userOp submission is
-        # refused honestly rather than mis-recorded against an eoa bundle.
-        raise ApiError(
-            ErrorCode.VALIDATION_ERROR,
-            "Session-key userOp submission is not wired into the spine yet (grant/revoke is live).",
-            reasons=[ErrorReason("VALIDATION_ERROR", "bundle is an eoa_call bundle")],
+        # US6 (022): the CLIENT (holding the session key) signs the built userOp; the service
+        # only RELAYS it via the bundler + records the event (never signs, N3). Match the submitted
+        # op's sender + callData to what the spine built for this bundle (SC-005) before recording,
+        # so a client can't smuggle a different move under this id; validateUserOp is the on-chain
+        # backstop. N2: a bundler outage is a retryable degrade, never a gate on the user's funds.
+        user_op = signed.userOp
+        if not isinstance(user_op, dict) or not user_op.get("signature"):
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR,
+                "A signed userOp is required for a session-key submission.",
+                reasons=[ErrorReason("VALIDATION_ERROR", "no signed userOp supplied")],
+            )
+        expected_cd = call_data_for(
+            str(step0.get("to", "")), str(step0.get("value", "0")), str(step0.get("data", ""))
+        )
+        if not signed_matches_scope(
+            user_op, sender=bundle.smart_account_address, call_data=expected_cd
+        ):
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR,
+                "The signed userOp doesn't match the built move — nothing recorded.",
+                reasons=[ErrorReason("VALIDATION_ERROR", "userOp sender/callData mismatch")],
+            )
+        # The Alchemy bundler serves eth_sendUserOperation on the SAME endpoint as the RPC.
+        try:
+            userop_hash = await bundler.send_user_op(rpc_url, user_op, ENTRYPOINT)
+        except bundler.BundlerError as exc:
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR,
+                f"The bundler rejected the session-key move: {exc.message}",
+                reasons=[ErrorReason("VALIDATION_ERROR", exc.message)],
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 — transport error is retryable; nothing stored
+            raise ApiError(
+                ErrorCode.UPSTREAM_UNAVAILABLE,
+                "Couldn't reach the bundler — nothing recorded; retry shortly.",
+                reasons=[ErrorReason("UPSTREAM_UNAVAILABLE", "bundler unreachable")],
+            ) from exc
+        await exec_store.insert_submitted(
+            intent_bundle_id=UUID(bundle.id_str),
+            smart_account_address=bundle.smart_account_address,
+            action_kind=_action_kind(ActionType(bundle.kind)),
+            signing_mode="session_key",
+            userop_hash=userop_hash,
+        )
+        return Submission(
+            intentId=req.intentId,
+            status="pending",
+            userOpHash=userop_hash,
+            txHash=None,
+            bundler="alchemy",
         )
 
     tx_hash = signed.txHash
@@ -555,6 +616,38 @@ async def submission_status(
     execu = await exec_store.get_by_intent(intent_uuid)
     if execu is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No submission recorded for this intent.")
+
+    # US6 (feature 022) session-key path: no eth txHash yet — resolve the bundler's userOp receipt.
+    if not execu.tx_hash and execu.userop_hash:
+        uo = await bundler.get_user_op_receipt(rpc_url, execu.userop_hash)
+        if uo is None:
+            return SubmissionStatusResponse(
+                status="pending", txHash=None, blockNumber=None, receipt=None
+            )
+        success = bool(uo.get("success"))
+        inner_raw = uo.get("receipt")
+        inner: dict[str, Any] = inner_raw if isinstance(inner_raw, dict) else {}
+        u_tx = inner.get("transactionHash")
+        u_block_hex = inner.get("blockNumber")
+        u_block = int(u_block_hex, 16) if isinstance(u_block_hex, str) else None
+        u_tx_s = u_tx if isinstance(u_tx, str) else None
+        await exec_store.update_status(
+            intent_bundle_id=intent_uuid,
+            status="confirmed" if success else "reverted",
+            tx_hash=u_tx_s,
+            block_number=u_block,
+            reverted_reason=None if success else "userOp reverted on-chain",
+        )
+        return SubmissionStatusResponse(
+            status="confirmed" if success else "failed",
+            txHash=u_tx_s,
+            blockNumber=u_block,
+            receipt={
+                "userOpHash": execu.userop_hash, "success": success,
+                "blockNumber": u_block_hex,
+            },
+        )
+
     tx_hash = execu.tx_hash
     if not tx_hash:
         return SubmissionStatusResponse(

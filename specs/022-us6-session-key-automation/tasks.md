@@ -46,10 +46,15 @@ confirm-before-PR are hard stops.
   session **public** key.
 - **T2.5** `execution/bundler.py`: Alchemy Rundler client (`eth_sendUserOperation`,
   `eth_estimateUserOperationGas`, `eth_getUserOperationReceipt`, `eth_supportedEntryPoints`).
-- **T2.6** Session-key submission path: open `orchestrate.build_tx` (`execMode='session_key'` →
-  set `exec_mode`/`is_session_key_path`, build userOp via `builder`), `orchestrate.submit_signed`
-  (`opType='userop'` → simulate + submit via bundler, record `signing_mode='session_key'` +
-  `userop_hash`), `submission_status` (userop receipt). Still policy-gated + recipient-pinned.
+- **T2.6** Session-key submission path — ✅ **DONE** (`feature/US6-session-key-submission-path`):
+  `orchestrate.build_tx` (`execMode='session_key'` → set `exec_mode`/`is_session_key_path`, emit the
+  UNSIGNED `execute()` UserOp via `execution/session_userop.build_session_userop`, `signature=null`,
+  N3), `orchestrate.submit_signed` (`opType='userop'` → byte-match `sender`+`callData` to the built op
+  (SC-005) → submit via the bundler → record `signing_mode='session_key'` + `userop_hash`),
+  `submission_status` (userop receipt via `bundler.get_user_op_receipt`). Still policy-gated +
+  recipient-pinned; bundler rejection surfaced verbatim; bundler outage → retryable, no row. No new
+  migration (reuses `0021`'s `signing_mode` enum + `userop_hash`/`exec_mode` columns). Tests:
+  `tests/execution/test_session_userop.py` + the session-key path in `tests/api/test_submit_signed.py`.
 - **T2.7** `api/notifications.py`: `_session_key_notif()` + `sessionKeyExpiry` derivation source
   (expiring-soon / expired / revoked / cap-near) from `session_keys`; fail-open.
 - **T2.8** Agent tests: SessionScope validator, sessions API, bundler client (mocked), notification

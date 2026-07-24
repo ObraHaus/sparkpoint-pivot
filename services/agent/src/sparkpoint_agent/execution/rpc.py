@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import eth_abi
 import httpx
 
 _TIMEOUT_S = 15.0
+_GET_NONCE_SELECTOR = "0x35567e1a"  # getNonce(address,uint192) on the ERC-4337 EntryPoint
 
 
 async def _rpc(rpc_url: str, method: str, params: list[Any]) -> Any:
@@ -41,3 +43,16 @@ async def get_receipt(rpc_url: str, tx_hash: str) -> dict[str, Any] | None:
     when not yet mined / unreachable."""
     result = await _rpc(rpc_url, "eth_getTransactionReceipt", [tx_hash])
     return result if isinstance(result, dict) else None
+
+
+async def get_nonce(rpc_url: str, entry_point: str, sender: str) -> int | None:
+    """The account's ERC-4337 nonce (key 0) via ``EntryPoint.getNonce(sender, 0)`` — read-only
+    ``eth_call``, signs nothing (N3). None on any transport/RPC error (best-effort)."""
+    data = _GET_NONCE_SELECTOR + eth_abi.encode(["address", "uint192"], [sender, 0]).hex()
+    result = await _rpc(rpc_url, "eth_call", [{"to": entry_point, "data": data}, "latest"])
+    if not isinstance(result, str):
+        return None
+    try:
+        return int(result, 16)
+    except ValueError:
+        return None

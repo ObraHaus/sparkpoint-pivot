@@ -37,8 +37,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   notification, and the ERC-4337 bundler client. Spec Kit `specs/022-us6-session-key-automation`.
 - **Web:** `/automation` + `/automation/grant` + `/trust/permissions` de-mocked against the real API
   (the `StatusTag mock` retired); the session keypair is client-generated (only the address crosses
-  the wire, N3). The automated-move submission path is honestly deferred (needs a client-side
-  session-signer — the service never holds the key, N3); the mechanism is proven + the bundler is ready.
+  the wire, N3).
+- **Spine session-key submission path (this increment).** The 019 execution spine now accepts the
+  full session-key flow, gated exactly as the per-action path — the session mode only changes the
+  *signing envelope*, never a guardrail. `POST /build-tx` with `execMode=session_key` decodes,
+  recipient-pins (N1), simulates, and PURE-`policy.evaluate`-gates as usual, then emits an **unsigned**
+  EntryPoint-v0.7 `execute()` UserOp (`signature=null`, N3) for the CLIENT (holding the session key)
+  to sign. `POST /submit-signed-tx` (`opType=userop`) **relays** the client-signed op via the Alchemy
+  bundler and records only the `userop_hash` event — after byte-matching the submitted op's
+  `sender`+`callData` to what the spine built (SC-005), so a client can't smuggle a different
+  target/amount/recipient under a bundle's id; `validateUserOp` is the on-chain backstop, and a
+  bundler rejection is surfaced verbatim (never a faked success). `GET /submit-signed-tx/{id}`
+  resolves the bundler's UserOp receipt (pending → confirmed/failed). N2: a bundler outage is a
+  retryable degrade, never a gate on the user's funds. No new migration (reuses the `signing_mode`
+  enum + `userop_hash`/`exec_mode` columns pre-provisioned in `0021`). The remaining piece is the web
+  client-side session-signer that auto-signs the built UserOp for a hands-off move (the service never
+  holds the key, N3) — the whole mechanism is now proven end-to-end on the agent.
 
 ### Changed (trust — list more contracts, honestly scoped)
 - **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory

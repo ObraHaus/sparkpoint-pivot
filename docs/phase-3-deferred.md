@@ -14,7 +14,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 
 | # | Deferred item | Honest in-app state today | Gate/condition to build |
 |---|---|---|---|
-| 1 | US6 session-key automation | **BLOCKER RESOLVED + STACK LIVE (022):** Path-A AA stack deployed on Base Sepolia + a real mode-0x01 session-key UserOp passed the Alchemy bundler's ERC-7562 tracer **and executed on-chain** (tx `0x1d1fad64…`). Web still `StatusTag mock` pending the grant-flow wire-up | Grant/revoke web flow + spine session-key submission path + `sessionKeyExpiry` notification (in progress on `feature/US6-session-key-automation`) |
+| 1 | US6 session-key automation | **BLOCKER RESOLVED + STACK LIVE + SPINE WIRED (022):** Path-A AA stack deployed on Base Sepolia + a real mode-0x01 session-key UserOp passed the Alchemy bundler's ERC-7562 tracer **and executed on-chain** (tx `0x1d1fad64…`). Grant/revoke API + `sessionKeyExpiry` notif + the **spine session-key submission path** (`/build-tx` execMode=session_key → `/submit-signed-tx` opType=userop via the bundler → receipt) all built + tested | Web client-side session-signer (auto-signs the built UserOp for a hands-off move; service never holds the key, N3) |
 | 2 | Base↔Sui bridge + Sui network | `StatusTag mock` "Unavailable during Alpha" | Sui (Move) custody increment designed; mainnet |
 | 3 | Aerodrome swaps | Swap venue gated "mainnet only" | Base **mainnet** (no Sepolia Aerodrome) |
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
@@ -39,12 +39,21 @@ pending its increment*, not a shipped-Base-equivalent proof.
   (a scoped session key deposited 1 USDC into the vault with no per-move user signature). SC-U6-A met.
 - **Adversarially verified:** the N4 refuter returned **NOT REFUTED** across 37 attack tests
   (`contracts/test/account/refute/RefuteN4Adversarial.t.sol`); every account invariant + refuter holds.
-- **Still in progress** (this row stays until it fully ships to alpha): the grant/revoke web flow +
-  the spine session-key submission path (`/build-tx` execMode=session_key → `/submit-signed-tx`
-  opType=userop via the bundler) + the `sessionKeyExpiry` notification. Backend foundation (migration
-  `0024_session_keys`, `SessionKeyStore`, the `SessionScope` §6 validator) is built + tested; the web
-  `/automation` still wears a `StatusTag mock` until the grant flow is wired. Never autonomous (Gate C;
-  mainnet remains gated on the recorded audit).
+- **Spine session-key submission path — DONE (this increment).** The 019 execution spine now accepts
+  the full session-key flow: `/build-tx` with `execMode=session_key` decodes → recipient-pins (N1) →
+  simulates → PURE-`policy.evaluate`-gates exactly as the per-action path, then emits an **unsigned**
+  EntryPoint-v0.7 `execute()` UserOp (`signature=null`, N3) the CLIENT signs; `/submit-signed-tx`
+  (`opType=userop`) **relays** the client-signed op via the Alchemy bundler + records only the
+  `userop_hash` — after byte-matching `sender`+`callData` to the built op (SC-005); `/submit-signed-tx/{id}`
+  resolves the bundler's UserOp receipt. No new migration (reuses the `signing_mode` enum +
+  `userop_hash`/`exec_mode` columns from `0021`). Grant/revoke API (`/session-keys/*`, migration
+  `0025_session_keys`, `SessionKeyStore`, the `SessionScope` §6 validator) + the `sessionKeyExpiry`
+  notification shipped in the prior increment (#105).
+- **Still remaining** (this row stays until it fully ships to alpha): the **web client-side
+  session-signer** — the piece that holds the client-generated session key and auto-signs the built
+  UserOp so a move executes with no per-move user signature (the service never holds the key, N3). The
+  grant flow registers the key + `/automation` reflects real grant state; wiring the auto-sign is the
+  hands-off-UX increment. Never autonomous (Gate C; mainnet remains gated on the recorded audit).
 - **Tracking:** `specs/022-us6-session-key-automation` + `specs/001-sparkpoint-pivot-mvp` (US6);
   constitution N4 / §IV.
 
