@@ -25,6 +25,7 @@ from .mandates import (
     PgMandateStore,
     row_to_record,
 )
+from .notification_reads import NotificationReadStore, ReadCursor
 from .pool import Database, get_database
 from .recommendations import RecInsert, RecommendationStore, RecRow
 from .simulations import SimulationInsert, SimulationRow, SimulationStore
@@ -56,9 +57,11 @@ __all__ = [
     "MandateRecord",
     "MandateStore",
     "MandateWrite",
+    "NotificationReadStore",
     "PaymentAlreadyRecorded",
     "PgMandateStore",
     "PgSwapFeeEventStore",
+    "ReadCursor",
     "RecInsert",
     "RecRow",
     "RecommendationStore",

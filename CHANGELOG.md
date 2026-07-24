@@ -10,6 +10,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (021 — real in-app notifications, end to end)
+- **The notifications bell now has a real backend — your feed is computed live from your actual
+  on-chain activity, never a mock.** `GET /notifications` derives the feed from already-indexed real
+  data (no stored, no fabricated rows — Principle III): a *Deposit confirmed* / *Withdrawal confirmed*
+  per indexed vault flow (each linked to its on-chain tx), a *reverted-tx* alert from the executions
+  index (the one signal the flow index can't carry — a revert emits no event), and a realized
+  *win/loss/flat* per withdrawal from the SAME exact average-cost replay the `/outcomes` ledger uses
+  (surfaced ONLY when the share history reconciles — never a partial-history guess). Each notification
+  carries the `NotifKey` category the settings toggles map to, so the client can filter the feed by the
+  user's on-device preferences.
+  - **Real unread badge.** Migration `0023_notification_reads` adds a per-wallet read cursor (the only
+    persisted state — the feed itself is derived); `POST /notifications/read` advances it. Unread is
+    computed against the cursor and is cross-device.
+  - **`db/executions.py`** gains `list_by_account` (the `executions_account_idx` was already there).
+  - **Non-custody (N1–N5):** advisory READ only — no key, no signature, never on the withdraw/exit path
+    (N2). A degraded chain/index/store read yields a partial or empty feed (fail-open) and **never 500s**
+    the bell; `POST /read` fail-opens to `ok:false` rather than erroring. Session-key-expiry,
+    caps-near-limit and Aave-rate-change notifications are intentionally **absent**: the first needs US6
+    (no session keys exist to expire) and the latter two need a background poller (feature 021 phase 2) —
+    none are faked.
+- **The bell + `/notifications` page are wired to this live feed in the same change** — the mock (the
+  hardcoded 3-row `mock-data.ts` array + the "Preview" badges) is **retired**. The top-bar bell shows a
+  real unread count; opening the drawer marks the feed read; both surfaces honour the on-device category
+  toggles. `notificationsView.ts` is a pure, unit-tested DTO→view mapper (offline ⇒ the app degrades
+  gracefully, never crashes).
+- **Tests / gates.** +10 agent tests (`test_notifications.py`: real derivation, the reconcile gate, the
+  reverted alert, unread-vs-cursor, and every fail-open path) + web mapper unit tests. `ruff` +
+  `mypy --strict` + `pytest` (726) green; web `typecheck:test` + `lint` + `build` green. Migration
+  `0023` applied to develop.
+
 ### Changed (020 — US5 follow-up: the signed-tx relay self-heals a briefly-lagging tx)
 - **A signed transaction now reliably correlates to its outcome even when the chain is a beat behind.**
   The ExecutionDrawer's best-effort relay to `POST /submit-signed-tx` (which the #91 hardening made

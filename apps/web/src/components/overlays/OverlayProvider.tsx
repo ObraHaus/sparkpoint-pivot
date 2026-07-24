@@ -16,8 +16,10 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
-import { StatusTag } from "@/components/ui/status-tag";
 import { data } from "@/lib/mock-data";
+import { useNotifications, useMarkNotificationsRead } from "@/lib/agent/useAgent";
+import { filterByPrefs, type NotificationView } from "@/lib/agent/notificationsView";
+import { useNotifPrefs } from "@/lib/settings/usePrefs";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
 import { toHref } from "@/lib/nav";
@@ -313,29 +315,56 @@ function ProveItBody({ go }: { go: (r: string) => void }) {
 }
 
 function NotificationsBody() {
+  // The REAL feed (§3.11) — derived from on-chain activity, never a mock. Opening the drawer marks it
+  // read (advisory; clears the badge). Rows are filtered by the user's on-device category toggles.
+  const notif = useNotifications();
+  const { prefs } = useNotifPrefs();
+  const markRead = useMarkNotificationsRead();
+  useEffect(() => {
+    markRead();
+  }, [markRead]);
+
+  if (!notif) return <NotifEmpty text="Connect your wallet to see your notifications." />;
+  if (!notif.loaded && notif.isLoading) return <NotifEmpty text="Loading your notifications…" />;
+  if (notif.isError) {
+    return <NotifEmpty text="Couldn’t load notifications right now — your funds are unaffected." />;
+  }
+  const items = filterByPrefs(notif.view.items, prefs);
+  if (items.length === 0) return <NotifEmpty text="You’re all caught up — no notifications yet." />;
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-        <StatusTag variant="mock" title={"Preview — notifications aren’t wired to a live feed yet."} />
-      </div>
-      {data.notifications.map((n, i) => (
-        <div className="proveitem" key={i} style={{ opacity: n.unread ? 1 : 0.7 }}>
-          <span className="pi-ico" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
-            <Icon name={n.icon} size={16} />
-          </span>
-          <div style={{ flex: 1 }}>
-            <div className="pi-t">
-              {n.t}
-              {n.unread && (
-                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--primary)", verticalAlign: "middle", marginLeft: 4 }} />
-              )}
-            </div>
-            <div className="pi-d">{n.s}</div>
-            <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 4 }}>{n.time}</div>
-          </div>
-        </div>
+      {items.map((n) => (
+        <NotifRow key={n.id} n={n} />
       ))}
     </>
+  );
+}
+
+function NotifRow({ n }: { n: NotificationView }) {
+  return (
+    <div className="proveitem" style={{ opacity: n.unread ? 1 : 0.7 }}>
+      <span className="pi-ico" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
+        <Icon name={n.icon} size={16} />
+      </span>
+      <div style={{ flex: 1 }}>
+        <div className="pi-t">
+          {n.title}
+          {n.unread && (
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--primary)", verticalAlign: "middle", marginLeft: 4 }} />
+          )}
+        </div>
+        <div className="pi-d">{n.body}</div>
+        <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 4 }}>{n.timeText}</div>
+      </div>
+    </div>
+  );
+}
+
+function NotifEmpty({ text }: { text: string }) {
+  return (
+    <div style={{ padding: "20px 6px", fontSize: 13, color: "var(--muted-foreground)", textAlign: "center" }}>
+      {text}
+    </div>
   );
 }
 

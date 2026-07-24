@@ -45,6 +45,14 @@ _GET_BY_INTENT_SQL = (
     " FROM executions WHERE intent_bundle_id = $1"
 )
 
+# Newest-first per-user list (executions_account_idx). Drives the notifications feed (feature 021).
+_LIST_BY_ACCOUNT_SQL = (
+    "SELECT id, intent_bundle_id, smart_account_address, action_kind, signing_mode, status,"
+    " userop_hash, tx_hash, block_number, gas_used, realized_amounts, reverted_reason,"
+    " intent_log_action_id, attribution_method, created_at, updated_at"
+    " FROM executions WHERE smart_account_address = $1 ORDER BY created_at DESC LIMIT $2"
+)
+
 
 def _hex_to_bytes(value: str | None) -> bytes | None:
     """A 0x-prefixed hex string → bytes for a BYTEA column (None-safe)."""
@@ -171,6 +179,15 @@ class ExecutionStore:
         """Fetch the execution for an intent, or None."""
         row = await self.db.fetchrow(_GET_BY_INTENT_SQL, intent_bundle_id)
         return _row_to_model(row) if row is not None else None
+
+    async def list_by_account(
+        self, smart_account_address: str, *, limit: int = 50
+    ) -> list[ExecutionRow]:
+        """The account's executions, newest-first (drives the notifications feed, feature 021)."""
+        rows = await self.db.fetch(
+            _LIST_BY_ACCOUNT_SQL, smart_account_address.lower(), max(1, min(limit, 200))
+        )
+        return [_row_to_model(r) for r in rows]
 
 
 __all__: Sequence[str] = ("ExecutionRow", "ExecutionStore")
