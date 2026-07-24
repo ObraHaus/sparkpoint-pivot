@@ -131,8 +131,10 @@ library SessionScopeLib {
             return scope; // out of window: return the packed window, record no spend
         }
 
-        // 3 ── The callData must be a single execute(target,value,inner).
-        if (_topSelector(op.callData) != EXECUTE_SELECTOR) {
+        // 3 ── The callData must be a single execute(target,value,inner), and carry NO native value:
+        //      every allowlisted session action is an ERC-20 flow, so a session op never forwards ETH
+        //      (N4 hardening — closes the native-`value` gap flagged by the adversarial refuter).
+        if (_topSelector(op.callData) != EXECUTE_SELECTOR || _execValue(op.callData) != 0) {
             scope.validationData = SIG_VALIDATION_FAILED;
             return scope;
         }
@@ -238,6 +240,15 @@ library SessionScopeLib {
         returns (uint256)
     {
         return (uint256(validAfter) << 208) | (uint256(validUntil) << 160);
+    }
+
+    /// @dev The `value` word of an `execute(address,uint256,bytes)` calldata (2nd head arg, at byte
+    ///      offset 4 + 32 = 36). Returns 0 for a too-short calldata (the selector/decode checks reject it).
+    function _execValue(bytes calldata cd) internal pure returns (uint256 v) {
+        if (cd.length < 68) return 0;
+        assembly {
+            v := calldataload(add(cd.offset, 36))
+        }
     }
 
     function _topSelector(bytes calldata cd) internal pure returns (bytes4) {

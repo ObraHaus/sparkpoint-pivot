@@ -307,6 +307,13 @@ contract RefuteSessionDrainTest is AccountTestBase {
     //  (allowlisted, non-payable) target, never to the attacker/SparkPoint.
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// @dev N4 hardening: a session op carrying native `value` is REJECTED at validation — session keys
+    ///      never forward ETH (every allowlisted action is an ERC-20 flow). Closes the refuter's caveat.
+    function test_i_nonZeroValue_rejectedAtValidation() public {
+        bytes memory cd = _execCd(address(vault), 1, _vaultDepositCd(1, address(account)));
+        _expectRejected(_sessionOp(cd));
+    }
+
     function test_i_nonZeroValue_cannotReachAttacker() public {
         bytes memory cd = _execCd(address(vault), 5 ether, _vaultDepositCd(1, address(account)));
         PackedUserOperation memory op = _sessionOp(cd);
