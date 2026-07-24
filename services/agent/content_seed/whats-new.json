@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "trust-center-more-contracts",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Trust Center now shows more of our contracts",
+      "body": "A small transparency addition. The Trust Center's contracts list now also includes the vault factory (which only deploys our branded vaults, never touches funds) and the swap router behind the user-signed swap page. We also surface our extra vaults there — clearly marked as user-signed and, for now, testnet demos that wrap a mock Morpho vault, so nothing is dressed up as more than it is. As always these are all read live on-chain and verifiable on Basescan.",
+      "cta_label": "Open Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T21:00:00Z",
+      "active": true
+    },
+    {
       "slug": "killswitch-now-real-2of3-multisig",
       "type": "changelog",
       "tag": "Improved",

@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (trust — list more contracts, honestly scoped)
+- **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory
+  (`0x2774…6D8b`) and the Uniswap V3 swap router (`0x94cC…2bc4`)** — the latter clearly labelled
+  *user-signed · not a vault/agent path* (the factory is deploy-time only, never a fund path).
+- **"Whitelisted protocols" gains a clearly-separated "User-signed vaults · not agent-routed"
+  sub-section** listing the Morpho wrapper, badged *testnet demo · wraps a mock Morpho vault* — so it's
+  visible without being conflated with the G5 agent fund-routing allowlist (which stays the real
+  external venues: Aave v3 Pool). Honest by construction: the wrapper's underlying is a `MockMorphoVault`
+  (Morpho has no testnet); a real Morpho vault would join the allowlist on mainnet. Web-only, no migration.
+
 ### Changed (security — the kill-switch is now a REAL 2-of-3 multisig; deployer fully renounced)
 - **§6.2's "multisig kill-switch, live and operational" is now genuinely met — no single key can pause
   the vault or change fees/caps.** The vault's `guardian()` stays the OZ TimelockController, but its
