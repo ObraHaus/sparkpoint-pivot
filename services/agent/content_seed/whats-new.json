@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "proactive-notifications",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The bell now gives you a heads-up before things change",
+      "body": "Your notifications used to tell you about things that already happened. Now they also watch for changes worth knowing about ahead of time: when the vault is getting close to its deposit limit, when the Aave lending rate moves meaningfully, and when there's a fresh recommendation matched to your goals. Each alert is triggered by a real, verifiable reading — the vault's on-chain balance against its cap, the live rate, your own strategy re-score — never a made-up notification, and you're only told once per genuine change. Turn any category on or off in Settings → Notifications. (Session-key expiry alerts arrive alongside automation later, and email / push notifications still aren't part of this.)",
+      "cta_label": "Open notifications",
+      "cta_href": "/notifications",
+      "published_at": "2026-07-24T19:30:00Z",
+      "active": true
+    },
+    {
       "slug": "operator-analytics-now-real",
       "type": "changelog",
       "tag": "Improved",
