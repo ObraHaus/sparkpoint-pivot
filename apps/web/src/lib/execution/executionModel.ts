@@ -92,3 +92,51 @@ export function formatDelta(delta: string, decimals: number): string {
   const num = frac ? `${whole}.${frac}` : whole;
   return (neg ? "-" : "+") + num;
 }
+
+/* ── §3.6 best-effort relay of a signed tx (outcome correlation) ─────────────── */
+
+/**
+ * The HTTP statuses the agent marks *retryable* for the `/submit-signed-tx` relay: a `409` (the
+ * relayed tx isn't yet visible to the agent's RPC — `DATA_STALE`, propagation lag) and a transient
+ * `503` (`UPSTREAM_UNAVAILABLE`). A `400` byte-mismatch (SC-005) — or any other status — is permanent.
+ */
+export function isRelayRetryable(status: number): boolean {
+  return status === 409 || status === 503;
+}
+
+/** Injectable side effects for {@link relayWithRetry} so the retry policy is unit-testable. */
+export interface RelayDeps {
+  /** POST the relay with `idempotencyKey`; resolves to the HTTP status (0 on a network error). Never throws. */
+  post: (idempotencyKey: string) => Promise<number>;
+  /** Resolve after `ms` (the inter-attempt backoff). */
+  sleep: (ms: number) => Promise<void>;
+  /** A fresh idempotency key for the whole logical submission — generated ONCE, reused across retries. */
+  newKey: () => string;
+}
+
+/** How many times to try, and the backoff between tries. */
+export interface RelayPolicy {
+  maxAttempts: number;
+  backoffMs: number;
+}
+
+/**
+ * Best-effort relay of a signed tx for outcome correlation (§3.6), with a bounded retry on a
+ * *retryable* degrade so a briefly-lagging real tx still correlates without any user action (the #91
+ * verify-before-record returns `409 DATA_STALE` until the agent's RPC sees the tx). Uses ONE stable
+ * idempotency key across retries: the agent caches only 2xx (so a `409` is re-processed, not replayed),
+ * and `executions.UNIQUE(intent_bundle_id)` is the durable no-double-record backstop. NEVER throws —
+ * the direct on-chain receipt is the source of truth (N2 independence). Returns the final HTTP status
+ * (2xx success / idempotent replay, the last error status, or 0 on network failure) for tests only.
+ */
+export async function relayWithRetry(deps: RelayDeps, policy: RelayPolicy): Promise<number> {
+  const key = deps.newKey();
+  let status = 0;
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    status = await deps.post(key);
+    if (status >= 200 && status < 300) return status; // recorded (or idempotent 2xx replay) — done
+    if (!isRelayRetryable(status) || attempt === policy.maxAttempts) return status;
+    await deps.sleep(policy.backoffMs);
+  }
+  return status;
+}

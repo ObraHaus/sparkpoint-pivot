@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (020 — US5 follow-up: the signed-tx relay self-heals a briefly-lagging tx)
+- **A signed transaction now reliably correlates to its outcome even when the chain is a beat behind.**
+  The ExecutionDrawer's best-effort relay to `POST /submit-signed-tx` (which the #91 hardening made
+  verify the tx on-chain **before** recording) previously fired *before* the receipt confirmed and
+  ignored the response — so a not-yet-visible tx got a `409 DATA_STALE` and was never recorded,
+  silently losing the per-recommendation outcome correlation. The relay now fires **only after the
+  receipt confirms** (the tx is retrievable on-chain, matching #91's design) and **retries a `409
+  DATA_STALE`** (or a transient `503`) with a bounded backoff — using ONE **stable idempotency key**
+  across retries, so a retry never double-records (the agent caches only 2xx, so a `409` re-processes;
+  `executions.UNIQUE(intent_bundle_id)` is the durable backstop). A byte-mismatch (`400`, SC-005) is
+  permanent and never retried, and a **reverted tx is never relayed**. Non-custody preserved (N2): the
+  relay is fire-and-forget, never blocks the sign / confirm / exit flow, and the direct on-chain
+  receipt is the source of truth. The pure retry policy is extracted to
+  `executionModel.relayWithRetry` (+6 web unit tests, 146 total). Web-only; no migration.
+
 ### Changed (020 — US5 persist-at-surface: `GET /recommendations` returns a durable `recId`)
 - **A recommendation now has a durable identity the moment it's shown — not just after you act on it.**
   `GET /recommendations` previously returned a strategy-keyed `recId` (`rec_vault_deposit`), so the

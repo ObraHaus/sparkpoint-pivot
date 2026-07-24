@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "reliable-outcome-correlation-after-signing",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Your signed moves link to their outcome more reliably",
+      "body": "A small reliability improvement to the credibility loop. After you sign a move, we tell the app to record it so it can later show how that specific move performed. If the blockchain is briefly a beat behind, we now wait for your transaction to confirm and quietly retry a couple of times — so the link between your move and its outcome sticks, without you doing anything. As always this happens in the background and never holds up signing or your ability to withdraw; your wallet is the only thing that ever signs.",
+      "cta_label": "Open Outcomes",
+      "cta_href": "/outcomes",
+      "published_at": "2026-07-24T17:00:00Z",
+      "active": true
+    },
+    {
       "slug": "durable-recommendation-identity",
       "type": "changelog",
       "tag": "Improved",
