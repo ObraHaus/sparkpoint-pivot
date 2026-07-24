@@ -55,6 +55,21 @@ contract RefuteSessionDrainTest is AccountTestBase {
         usdc.mint(address(drainable), 1_000_000e6);
         policy.setAllowedTarget(address(drainable), SEL_VAULT_REDEEM, true);
 
+        // Re-authorize the session with `drainable.redeem` ADDED to its on-account allowlist snapshot,
+        // so the end-to-end drain probes fail on the RECIPIENT PIN (N1) — not a mere allowlist miss.
+        // Re-authorization preserves the (still-zero) monotonic spend ledger.
+        address[] memory t = new address[](7);
+        bytes4[] memory s = new bytes4[](7);
+        t[0] = address(vault); s[0] = SEL_VAULT_DEPOSIT;
+        t[1] = address(vault); s[1] = SEL_VAULT_REDEEM;
+        t[2] = address(vault); s[2] = SEL_VAULT_WITHDRAW;
+        t[3] = address(aavePool); s[3] = SEL_AAVE_SUPPLY;
+        t[4] = address(aavePool); s[4] = SEL_AAVE_WITHDRAW;
+        t[5] = address(router); s[5] = SEL_AERO_SWAP;
+        t[6] = address(drainable); s[6] = SEL_VAULT_REDEEM;
+        vm.prank(owner);
+        account.authorizeSessionKey(_defaultPolicy(), t, s);
+
         // Prefund the account's EntryPoint gas deposit so handleOps needs no in-band prefund
         // (keeps the account's own ETH balance untouched by the gas accounting).
         vm.deal(address(this), 20 ether);
@@ -226,7 +241,7 @@ contract RefuteSessionDrainTest is AccountTestBase {
             assertTrue(_accountAccepts(op), "in-scope op below cumulative cap must validate");
         }
 
-        uint256 spent = policy.policyOf(address(account), sessionKey).spent;
+        uint256 spent = account.sessionPolicyOf(sessionKey).spent;
         assertEq(spent, uint256(SESSION_CUMULATIVE), "spent must sit exactly at the cumulative cap");
 
         // The cap is now reached: any further spend, even a single unit, is rejected.
@@ -237,7 +252,7 @@ contract RefuteSessionDrainTest is AccountTestBase {
 
         // And `spent` was never nudged past the cap by the rejected ops (monotonic + bounded).
         assertEq(
-            policy.policyOf(address(account), sessionKey).spent,
+            account.sessionPolicyOf(sessionKey).spent,
             uint256(SESSION_CUMULATIVE),
             "rejected ops must not move the monotonic spend ledger"
         );
@@ -252,7 +267,10 @@ contract RefuteSessionDrainTest is AccountTestBase {
         rogue.sessionKey = attacker;
         rogue.perTxCap = type(uint128).max;
         rogue.cumulativeCap = type(uint128).max;
-        bytes memory inner = abi.encodeCall(SparkPointAccount.authorizeSessionKey, (rogue));
+        address[] memory noTargets = new address[](0);
+        bytes4[] memory noSelectors = new bytes4[](0);
+        bytes memory inner =
+            abi.encodeCall(SparkPointAccount.authorizeSessionKey, (rogue, noTargets, noSelectors));
         _expectRejected(_sessionExec(address(account), inner));
     }
 

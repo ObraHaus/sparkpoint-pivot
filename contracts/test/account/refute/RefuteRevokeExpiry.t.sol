@@ -5,7 +5,7 @@ import { PackedUserOperation } from "@account-abstraction/interfaces/PackedUserO
 
 import { AccountTestBase } from "../utils/AccountTestBase.sol";
 import { IPolicyModule } from "../../../src/interfaces/IPolicyModule.sol";
-import { PolicyModule } from "../../../src/account/PolicyModule.sol";
+import { SparkPointAccount } from "../../../src/account/SparkPointAccount.sol";
 
 /// @title RefuteRevokeExpiry — ADVERSARIAL refuter for N4 (revocation + expiry bypass).
 /// @notice Cites smart-contracts.md §4 (the 6-step deterministic flow, "reads live storage so a
@@ -22,9 +22,10 @@ import { PolicyModule } from "../../../src/account/PolicyModule.sol";
 /// sentinel the spec's SessionBounds says must be impossible — policy-schema.md §6 "No infinite session")
 /// was accepted at arming, and the validator's step-2 early return packed it into the EntryPoint's
 /// `_parseValidationData` `0 → type(uint48).max` conversion, defeating the hard expiry AND skipping the
-/// allowlist / cap / recipient-pin / slippage checks (steps 3-6). FIX (defense-in-depth): PolicyModule
-/// .registerSession now REVERTS `ZeroValidUntil` (and `SessionTooLong` beyond maxSessionDurationDays), and
-/// SessionKeyValidator step 2 hard-fails any stored `validUntil == 0` before it can be packed.
+/// allowlist / cap / recipient-pin / slippage checks (steps 3-6). FIX (defense-in-depth):
+/// SparkPointAccount.authorizeSessionKey now REVERTS `ZeroValidUntil` (and `SessionTooLong` beyond
+/// maxSessionDurationDays), and SessionScopeLib.inspect step 2 hard-fails any stored `validUntil == 0`
+/// before it can be packed. (Path-A, feature 022: session state lives in the account's own storage.)
 contract RefuteRevokeExpiryTest is AccountTestBase {
     address internal rogue = makeAddr("rogueTarget"); // never seeded into the allowlist
 
@@ -32,14 +33,14 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
         _deployAccountStack();
     }
 
-    // ── helper: owner-authorize a key with an explicit window ──
+    // ── helper: owner-authorize a key with an explicit window (standard allowlist snapshot) ──
     function _authorize(address key, uint48 va, uint48 vu) internal {
         IPolicyModule.Policy memory p = _defaultPolicy();
         p.sessionKey = key;
         p.validAfter = va;
         p.validUntil = vu;
         vm.prank(owner);
-        account.authorizeSessionKey(p);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -81,42 +82,46 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
     // DEFENSE 2 — a compromised agent cannot UN-revoke or re-arm its own key
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// @dev The agent calling PolicyModule.registerSession DIRECTLY writes into ITS OWN account
-    ///      namespace (`_policies[msg.sender]`), never the victim's — account-associated storage (§5).
-    ///      The victim's revoked policy is untouched, so the key stays dead.
-    function test_defense_agentCannotUnrevoke_viaDirectRegisterSession() public {
+    /// @dev Path-A: the session scope + revoked flag live in the ACCOUNT'S OWN storage, mutated ONLY by
+    ///      the owner via `authorizeSessionKey`. There is no external per-session registry the agent can
+    ///      write to — so it cannot un-revoke the victim's key. The re-arm attempt reverts NotOwner and
+    ///      the victim's policy stays revoked.
+    function test_defense_agentCannotUnrevoke_viaAuthorize() public {
         (address k, uint256 pk) = makeAddrAndKey("reviveKey");
         _authorize(k, uint48(block.timestamp), uint48(block.timestamp + 7 days));
         vm.prank(owner);
         account.revokeSessionKey(k);
 
-        // Attacker forges a pristine (revoked=false, spent=0) policy and re-registers it.
+        // Attacker forges a pristine (revoked=false) policy and tries to re-arm it — owner-only.
         IPolicyModule.Policy memory forged = _defaultPolicy();
         forged.sessionKey = k;
         forged.revoked = false;
         vm.prank(attacker);
-        policy.registerSession(forged); // writes _policies[attacker][k], NOT _policies[account][k]
+        vm.expectRevert(SparkPointAccount.NotOwner.selector);
+        account.authorizeSessionKey(forged, _allowTargets(), _allowSelectors());
 
-        // Victim account's policy is still revoked — the agent's write landed in a foreign namespace.
-        assertTrue(
-            policy.policyOf(address(account), k).revoked, "victim policy must remain revoked"
-        );
+        // Victim account's policy is still revoked — no foreign write could reach it.
+        assertTrue(account.sessionPolicyOf(k).revoked, "victim policy must remain revoked");
         bytes memory cd = _execCd(address(vault), 0, _vaultDepositCd(100e6, address(account)));
         assertFalse(
             _accountAccepts(_sessionOpWith(pk, cd)),
-            "REFUTE FAILED (good): key revived via foreign register"
+            "REFUTE FAILED (good): key revived via re-arm"
         );
     }
 
-    /// @dev The agent cannot route through the account either: `execute`-ing PolicyModule.registerSession
-    ///      is not an allowlisted (target,selector) pair, so validation rejects it before any state write.
-    function test_defense_agentCannotReachRegisterSession_viaSessionExecute() public {
+    /// @dev The agent cannot route through the account either: `execute`-ing the account's own
+    ///      `authorizeSessionKey` is not an allowlisted (target,selector) pair, so validation rejects it
+    ///      before any state write (and it is owner-gated regardless).
+    function test_defense_agentCannotReachAuthorize_viaSessionExecute() public {
         IPolicyModule.Policy memory forged = _defaultPolicy();
-        bytes memory inner = abi.encodeWithSelector(PolicyModule.registerSession.selector, forged);
-        bytes memory cd = _execCd(address(policy), 0, inner);
+        address[] memory t = new address[](0);
+        bytes4[] memory s = new bytes4[](0);
+        bytes memory inner =
+            abi.encodeCall(SparkPointAccount.authorizeSessionKey, (forged, t, s));
+        bytes memory cd = _execCd(address(account), 0, inner);
         assertFalse(
             _accountAccepts(_sessionOp(cd)),
-            "REFUTE FAILED (good): session op reached registerSession"
+            "REFUTE FAILED (good): session op reached authorizeSessionKey"
         );
     }
 
@@ -125,8 +130,8 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
         IPolicyModule.Policy memory p = _defaultPolicy();
         p.sessionKey = sessionKey;
         vm.prank(attacker);
-        vm.expectRevert(); // NotOwner
-        account.authorizeSessionKey(p);
+        vm.expectRevert(SparkPointAccount.NotOwner.selector);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -159,30 +164,32 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
     // DEFENSE 4 — the monotonic `spent` ledger cannot be reset or written by the agent
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// @dev `recordSpend` is `onlyValidator`; a direct agent call reverts. And re-registration by the
-    ///      agent lands in a foreign namespace (Defense 2), so the victim's monotonic `spent` cannot be
-    ///      zeroed by anyone but the trusted owner re-arming the key.
+    /// @dev Path-A: the monotonic `spent` ledger lives in the account's OWN storage and is advanced
+    ///      ONLY inside `validateUserOp`. There is NO external spend-writing function to call, and
+    ///      `authorizeSessionKey` PRESERVES the stored `spent` (a re-authorization can never reset it) —
+    ///      so neither the agent nor even the owner can zero the ledger.
     function test_defense_spentLedgerNotResettableByAgent() public {
         // Accumulate real spend on the default session key via an accepted in-scope deposit.
         bytes memory cd = _execCd(address(vault), 0, _vaultDepositCd(400e6, address(account)));
         assertTrue(_accountAccepts(_sessionOp(cd)), "in-scope deposit accepted");
-        assertEq(policy.policyOf(address(account), sessionKey).spent, 400e6, "spend recorded");
+        assertEq(account.sessionPolicyOf(sessionKey).spent, 400e6, "spend recorded");
 
-        // Agent tries to write the ledger directly — onlyValidator gate reverts.
-        vm.prank(attacker);
-        vm.expectRevert(PolicyModule.OnlyValidator.selector);
-        policy.recordSpend(address(account), sessionKey, 0);
-
-        // Agent tries to re-register a zeroed policy for the victim's key — lands in attacker namespace.
+        // Agent tries to re-arm a zeroed policy for the victim's key — authorizeSessionKey is owner-only.
         IPolicyModule.Policy memory forged = _defaultPolicy();
         forged.spent = 0;
         vm.prank(attacker);
-        policy.registerSession(forged);
+        vm.expectRevert(SparkPointAccount.NotOwner.selector);
+        account.authorizeSessionKey(forged, _allowTargets(), _allowSelectors());
+
+        // Even the OWNER re-authorizing with spent=0 in the struct cannot zero the ledger — the on-input
+        // `policy.spent` is ignored and the stored monotonic value is preserved.
+        vm.prank(owner);
+        account.authorizeSessionKey(forged, _allowTargets(), _allowSelectors());
 
         assertEq(
-            policy.policyOf(address(account), sessionKey).spent,
+            account.sessionPolicyOf(sessionKey).spent,
             400e6,
-            "REFUTE FAILED (good): monotonic spent was reset by the agent"
+            "REFUTE FAILED (good): monotonic spent was reset"
         );
     }
 
@@ -236,7 +243,7 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
     ///      validUntil==0; closing it at the source removes every downstream PoC.
     function test_refute_validUntilZero_rejectedAtArming() public {
         (address k,) = makeAddrAndKey("infiniteKey");
-        vm.expectRevert(PolicyModule.ZeroValidUntil.selector);
+        vm.expectRevert(SparkPointAccount.ZeroValidUntil.selector);
         _authorize(k, uint48(block.timestamp), 0); // "no expiry" sentinel — MUST revert now
     }
 
@@ -244,7 +251,7 @@ contract RefuteRevokeExpiryTest is AccountTestBase {
     ///      over-long key at arming, so an owner cannot mint a decade-long session either (N4 bound).
     function test_refute_sessionTooLong_rejectedAtArming() public {
         (address k,) = makeAddrAndKey("decadeKey");
-        vm.expectRevert(PolicyModule.SessionTooLong.selector);
+        vm.expectRevert(SparkPointAccount.SessionTooLong.selector);
         _authorize(k, uint48(block.timestamp), uint48(block.timestamp + 3650 days));
     }
 

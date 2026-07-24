@@ -84,7 +84,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
     /// @dev spent is monotonic and bounded by cumulativeCap, and mirrors the accepted notionals.
     function invariant_spentMonotonicAndBounded() public view {
         assertLe(ghostAcceptedCumulative, SESSION_CUMULATIVE, "G2: accepted spend exceeded the cap");
-        uint256 spent = policy.policyOf(address(account), sessionKey).spent;
+        uint256 spent = account.sessionPolicyOf(sessionKey).spent;
         assertLe(spent, SESSION_CUMULATIVE, "G2: on-chain spent exceeded the cap");
         assertEq(spent, ghostAcceptedCumulative, "G2: spent must equal accepted notionals");
     }
@@ -108,7 +108,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
             value: 0,
             data: _vaultDepositCd(uint256(SESSION_PER_TX) + 1, address(account))
         });
-        (bool ok,) = policy.checkAction(address(account), call, uint256(SESSION_PER_TX) + 1);
+        (bool ok,) = account.checkAction(call, uint256(SESSION_PER_TX) + 1);
         assertFalse(ok, "checkAction must reject a notional above the per-tx cap");
     }
 
@@ -116,7 +116,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         IPolicyModule.Call memory call = IPolicyModule.Call({
             target: address(vault), value: 0, data: _vaultDepositCd(100e6, sparkpoint)
         });
-        (bool ok,) = policy.checkAction(address(account), call, 100e6);
+        (bool ok,) = account.checkAction(call, 100e6);
         assertFalse(ok, "checkAction must reject an external recipient");
     }
 
@@ -124,7 +124,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         IPolicyModule.Call memory call = IPolicyModule.Call({
             target: address(vault), value: 0, data: _vaultDepositCd(100e6, address(account))
         });
-        (bool ok,) = policy.checkAction(address(account), call, 100e6);
+        (bool ok,) = account.checkAction(call, 100e6);
         assertTrue(ok, "checkAction must accept a fully in-scope call");
     }
 
@@ -142,7 +142,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         IPolicyModule.Call memory call = IPolicyModule.Call({
             target: address(router), value: 0, data: _aeroSwapCd(amountIn, 0, address(account))
         });
-        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        (bool ok, bytes32 reason) = account.checkAction(call, amountIn);
         assertFalse(ok, "swap with amountOutMin == 0 must be rejected");
         assertEq(reason, _SLIPPAGE, "reason must be the slippage floor, not another gate");
     }
@@ -159,7 +159,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         IPolicyModule.Call memory call = IPolicyModule.Call({
             target: address(router), value: 0, data: _aeroSwapCd(amountIn, amountOutMin, address(account))
         });
-        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        (bool ok, bytes32 reason) = account.checkAction(call, amountIn);
         assertFalse(ok, "amountOutMin below the slippage floor must be rejected");
         assertEq(reason, _SLIPPAGE, "reason must be the slippage floor");
     }
@@ -172,7 +172,7 @@ contract PolicyModuleTest is StdInvariant, AccountTestBase {
         IPolicyModule.Call memory call = IPolicyModule.Call({
             target: address(router), value: 0, data: _aeroSwapCd(amountIn, floor, address(account))
         });
-        (bool ok, bytes32 reason) = policy.checkAction(address(account), call, amountIn);
+        (bool ok, bytes32 reason) = account.checkAction(call, amountIn);
         assertTrue(ok, "swap AT the slippage floor with recipient pinned must pass");
         assertEq(reason, bytes32(0), "an accepted action reports OK (bytes32(0))");
     }

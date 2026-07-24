@@ -92,7 +92,6 @@ abstract contract AccountTestBase is Test {
         entryPoint = new EntryPoint();
         policy = new PolicyModule(address(this));
         validator = new SessionKeyValidator(address(policy));
-        policy.setSessionValidator(address(validator));
 
         accountImpl = new SparkPointAccount(
             IEntryPoint(address(entryPoint)), address(validator), address(policy)
@@ -119,11 +118,12 @@ abstract contract AccountTestBase is Test {
         usdc.mint(address(account), 1_000_000e6);
         vm.deal(address(account), 100 ether);
 
-        // Owner authorizes ONE session key with the standard bounds (single-agent-key model).
+        // Owner authorizes ONE session key with the standard bounds (single-agent-key model) and the
+        // full six-pair allowlist snapshot (Path-A: the session scope is stored in the account).
         validAfter = uint48(block.timestamp);
         validUntil = uint48(block.timestamp + 7 days);
         vm.prank(owner);
-        account.authorizeSessionKey(_defaultPolicy());
+        account.authorizeSessionKey(_defaultPolicy(), _allowTargets(), _allowSelectors());
     }
 
     function _defaultPolicy() internal view returns (IPolicyModule.Policy memory p) {
@@ -135,6 +135,36 @@ abstract contract AccountTestBase is Test {
         p.spent = 0;
         p.maxSlippageBps = SESSION_MAX_SLIPPAGE_BPS;
         p.revoked = false;
+    }
+
+    /// @notice The standard session allowlist targets — parallel to `_allowSelectors()`. Mirrors the six
+    ///         globally-armed (target,selector) pairs seeded in `_deployAccountStack`.
+    function _allowTargets() internal view returns (address[] memory t) {
+        t = new address[](6);
+        t[0] = address(vault);
+        t[1] = address(vault);
+        t[2] = address(vault);
+        t[3] = address(aavePool);
+        t[4] = address(aavePool);
+        t[5] = address(router);
+    }
+
+    /// @notice The standard session allowlist selectors — parallel to `_allowTargets()`.
+    function _allowSelectors() internal pure returns (bytes4[] memory s) {
+        s = new bytes4[](6);
+        s[0] = SEL_VAULT_DEPOSIT;
+        s[1] = SEL_VAULT_REDEEM;
+        s[2] = SEL_VAULT_WITHDRAW;
+        s[3] = SEL_AAVE_SUPPLY;
+        s[4] = SEL_AAVE_WITHDRAW;
+        s[5] = SEL_AERO_SWAP;
+    }
+
+    /// @notice Owner-authorize `p` with the standard six-pair allowlist. Convenience for suites that
+    ///         re-authorize a custom policy (custom key/window/caps) but the standard scope.
+    function _authorizeStd(IPolicyModule.Policy memory p) internal {
+        vm.prank(owner);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
     }
 
     // ── UserOp construction / signing ──
