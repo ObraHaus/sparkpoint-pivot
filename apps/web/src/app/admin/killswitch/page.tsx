@@ -3,13 +3,14 @@
 /**
  * Admin → Emergency kill-switch (status + honest read-only control).
  *
- * Pausing is a NON-CUSTODIAL, pause-only power governed ON-CHAIN by the vault's guardian
- * (the deployed OZ TimelockController; a 2-of-3 Safe + timelock delay is Phase-3 hardening).
- * It can halt new execution — it can NEVER touch user funds or block withdrawals (N2).
+ * Pausing is a NON-CUSTODIAL, pause-only power governed ON-CHAIN by the vault's guardian (the OZ
+ * TimelockController), whose proposer/executor/canceller + admin roles are now held by a dedicated
+ * 2-of-3 Gnosis Safe (the deployer FULLY RENOUNCED, 2026-07-24). It can halt new execution — it can
+ * NEVER touch user funds or block withdrawals (N2).
  *
- * This panel is READ-ONLY in this build: it does not (and must not) fake a multisig signature.
- * Executing a pause/resume is performed off-app against the on-chain guardian; the illustrative
- * governance + history below are labelled as such (no fabricated signatures or audit records).
+ * This panel is READ-ONLY: it does not (and must not) sign. Executing a pause/resume is a 2-of-3 Safe
+ * action (prepare the timelock calldata on the Vaults page → 2 signers co-sign in the Safe). The
+ * governance shown below is REAL (live on-chain reads + the recorded Safe controller), not illustrative.
  *
  * Phase B: the pause STATE + the guardian are now LIVE on-chain reads (the vault's `paused()` /
  * `guardian()`), so the status pill reflects the real chain — never a hardcoded default.
@@ -28,6 +29,7 @@ const GUARDIAN_FALLBACK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
 
 export default function Page() {
   const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;
+  const govSafe = getAddresses(VAULT_CHAIN).governanceSafe as Address | undefined;
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
   const reads = useReadContracts({
     query: { enabled: !!vault, refetchInterval: 30_000 },
@@ -123,12 +125,32 @@ export default function Page() {
             <span style={{ fontWeight: 600 }}>OZ TimelockController</span>
           </div>
           <div className="statusrow">
+            <span className="muted">Controller (2-of-3 Safe)</span>
+            {govSafe ? (
+              <a
+                className="mono"
+                style={{ fontSize: 11, color: "var(--primary)" }}
+                href={`https://sepolia.basescan.org/address/${govSafe}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {govSafe.slice(0, 6)}…{govSafe.slice(-4)} <Icon name="ext" size={11} />
+              </a>
+            ) : (
+              <span className="muted" style={{ fontSize: 11 }}>—</span>
+            )}
+          </div>
+          <div className="statusrow">
             <span className="muted">2-of-3 Safe + delay</span>
-            <span className="pill info" style={{ fontSize: 10 }}>Phase 3</span>
+            <span className="pill ok" style={{ fontSize: 10 }}>
+              <span className="led" /> Live
+            </span>
           </div>
           <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-            A multi-signer Safe in front of the timelock (with a mandatory delay + admin renounce) is the
-            Phase-3 hardening step; today the deployer holds the timelock proposer/executor roles.
+            The timelock&rsquo;s proposer/executor/canceller + admin roles are held by a dedicated <b>2-of-3 Gnosis
+            Safe</b> — the deployer has <b>fully renounced</b>. No single key can pause the vault or change fees/caps;
+            only 2-of-3 of the guardian signers can, after the timelock delay. Proven on-chain by a pause→unpause
+            round-trip at the cutover.
           </div>
         </div>
       </div>
@@ -136,30 +158,31 @@ export default function Page() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 3 }}>Initiate emergency pause</div>
-            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", maxWidth: 520, lineHeight: 1.5 }}>
-              Executing a pause is an on-chain guardian (timelock) action performed off-app. This panel does not
-              sign transactions — wiring the guardian action here is tracked for Phase 3. Withdrawals stay open throughout.
+            <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", maxWidth: 560, lineHeight: 1.5 }}>
+              A pause is a <b>2-of-3 guardian Safe</b> action: prepare the timelock calldata on the Vaults page, then
+              <b> 2 of the 3</b> guardian signers co-sign it in the Safe. This monitoring panel never signs — deliberately
+              (a fund-safety control belongs behind the multisig, not a one-click web button). Withdrawals stay open throughout (N2).
             </div>
           </div>
-          <button
+          <a
             className="btn-exp"
-            disabled
-            aria-disabled="true"
-            title="Guardian action performed off-app — not wired into this panel"
-            style={{ fontSize: 13.5, padding: "11px 18px", opacity: 0.55, cursor: "not-allowed" }}
+            href="/admin/vaults"
+            title="Prepare the pause (timelock schedule+execute calldata) on the Vaults page, then co-sign 2-of-3 in the Safe"
+            style={{ fontSize: 13.5, padding: "11px 18px", textDecoration: "none" }}
           >
-            <Icon name="pause" size={14} /> Guardian action — off-app
-          </button>
+            <Icon name="pause" size={14} /> Prepare pause → Vaults
+          </a>
         </div>
       </div>
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="ch" style={{ marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span className="ct">Kill-switch history</span>
-          <span className="prov">no on-chain actions in this environment</span>
+          <span className="prov">from guardian events</span>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-          No pause/resume has been executed against the guardian in this environment. On-chain kill-switch
-          actions will be listed here (from the guardian&rsquo;s events) once the panel is wired.
+          The 2-of-3 guardian Safe executed a verification pause→unpause round-trip during the governance cutover.
+          A live event feed of pause/unpause actions is not yet wired into this panel; for now, the guardian
+          timelock and Safe are auditable directly on Basescan.
         </div>
       </div>
     </>

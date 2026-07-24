@@ -69,6 +69,7 @@ export default function Page() {
   const addrs = getAddresses(VAULT_CHAIN);
   const vault = addrs.vault as Address | undefined;
   const capReg = addrs.capRegistry as Address | undefined;
+  const govSafe = addrs.governanceSafe as Address | undefined;
 
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
   const capC = { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN } as const;
@@ -183,12 +184,15 @@ export default function Page() {
             <AddrRow label="Vault (ERC-4626)" addr={vault} />
             <AddrRow label="Cap registry" addr={capReg} />
             <AddrRow label="Guardian (timelock)" addr={guardian} />
+            <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
             <AddrRow label="Pauser" addr={pauser} />
             <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
             <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> Protocol fees flow to a <b>2-of-3 multisig</b> that only{" "}
-              <b>receives</b>. It isn&apos;t the guardian, can&apos;t pause or move the vault, and has{" "}
-              <b>no power over your deposits</b> (N5) — read live from <span className="mono">feeRecipient()</span>.
+              <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
+              key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
+              timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
+              2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
+              over the vault.
             </div>
           </div>
           {WHITELISTED.length > 0 && (

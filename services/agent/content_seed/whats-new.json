@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "killswitch-now-real-2of3-multisig",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The emergency kill-switch is now a real 2-of-3 multisig",
+      "body": "A meaningful safety hardening. The vault's emergency pause used to be controllable by a single deployer key; it's now governed by a dedicated 2-of-3 multisig (a Gnosis Safe) — so pausing new deposits, or changing fees/caps, takes 2 of 3 independent signers plus a timelock delay, and the original single key has fully given up that power. We proved the new multisig works on-chain (a pause then immediate un-pause) before locking it in. None of this can ever touch your withdrawals — you can always exit, paused or not. You can see the guardian and this 2-of-3 controller live on the Trust Center.",
+      "cta_label": "Open Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T20:00:00Z",
+      "active": true
+    },
+    {
       "slug": "operator-analytics-now-real",
       "type": "changelog",
       "tag": "Improved",

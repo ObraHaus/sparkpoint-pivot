@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (security — the kill-switch is now a REAL 2-of-3 multisig; deployer fully renounced)
+- **§6.2's "multisig kill-switch, live and operational" is now genuinely met — no single key can pause
+  the vault or change fees/caps.** The vault's `guardian()` stays the OZ TimelockController, but its
+  `PROPOSER`/`EXECUTOR`/`CANCELLER` + `DEFAULT_ADMIN` roles were transferred from the single deployer EOA
+  to a **dedicated 2-of-3 Gnosis Safe** (`0x1265…3964`, owners = 3 dedicated guardian signers, SEPARATE
+  from the fee-treasury Safe — separation of duties), and the **deployer fully renounced**. On-chain
+  ceremony (Base Sepolia, 2026-07-24): deploy Safe → grant roles → **prove** control via a `pauseDeposits`
+  → (60s) → `unpauseDeposits` round-trip signed 2-of-3 → renounce. Verified: deployer `hasRole==false`
+  for all four roles, Safe `hasRole==true` for PROPOSER/EXECUTOR/CANCELLER. Irreversible.
+  - Non-custody preserved (N2/N5): withdraw/redeem carry no pause modifier, so funds are always
+    withdrawable regardless of the guardian; the Safe is PAUSE/param-only and never on the fund path.
+  - Recorded as `governanceSafe` in the address book; surfaced honestly on **`/trust`** (Guardian
+    controller = 2-of-3 Safe) and **`/admin/killswitch`** ("2-of-3 Safe + delay · Live", controller
+    address, deployer-renounced note; the dead "Initiate pause — off-app" button now routes to the
+    Vaults guardian-action to prepare the timelock calldata for 2-of-3 co-signing). See DEPLOYMENT.md.
+
 ### Added (admin — real user-analytics: the Users + Stakeholder pages go live, not sample)
 - **The last mock dashboards are wired to real data.** After the money-view sweep, the two remaining
   sample pages (`/admin/users`, `/admin/stake`) are now computed live from the app's own tables via a
