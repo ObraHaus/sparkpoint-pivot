@@ -1,4 +1,4 @@
-"""Store for the on-chain session-key MIRROR (migration 0024, feature 022 US6 automation).
+"""Store for the on-chain session-key MIRROR (migration 0025, feature 022 US6 automation).
 
 One row per authorized session key: its PUBLIC key, the granted scope (targets/selectors,
 per-tx + cumulative caps, max slippage, hard expiry), the monotonic spend synced from chain, and the
@@ -153,7 +153,7 @@ _LIST_ACTIVE_BY_ACCOUNT_SQL = (
 
 @dataclass
 class SessionKeyStore:
-    """asyncpg-backed store over ``session_keys`` (migration 0024)."""
+    """asyncpg-backed store over ``session_keys`` (migration 0025)."""
 
     db: Database
 

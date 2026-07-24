@@ -13,6 +13,50 @@
       "active": true
     },
     {
+      "slug": "trust-center-more-contracts",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Trust Center now shows more of our contracts",
+      "body": "A small transparency addition. The Trust Center's contracts list now also includes the vault factory (which only deploys our branded vaults, never touches funds) and the swap router behind the user-signed swap page. We also surface our extra vaults there — clearly marked as user-signed and, for now, testnet demos that wrap a mock Morpho vault, so nothing is dressed up as more than it is. As always these are all read live on-chain and verifiable on Basescan.",
+      "cta_label": "Open Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T21:00:00Z",
+      "active": true
+    },
+    {
+      "slug": "killswitch-now-real-2of3-multisig",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The emergency kill-switch is now a real 2-of-3 multisig",
+      "body": "A meaningful safety hardening. The vault's emergency pause used to be controllable by a single deployer key; it's now governed by a dedicated 2-of-3 multisig (a Gnosis Safe) — so pausing new deposits, or changing fees/caps, takes 2 of 3 independent signers plus a timelock delay, and the original single key has fully given up that power. We proved the new multisig works on-chain (a pause then immediate un-pause) before locking it in. None of this can ever touch your withdrawals — you can always exit, paused or not. You can see the guardian and this 2-of-3 controller live on the Trust Center.",
+      "cta_label": "Open Trust Center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T20:00:00Z",
+      "active": true
+    },
+    {
+      "slug": "proactive-notifications",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The bell now gives you a heads-up before things change",
+      "body": "Your notifications used to tell you about things that already happened. Now they also watch for changes worth knowing about ahead of time: when the vault is getting close to its deposit limit, when the Aave lending rate moves meaningfully, and when a genuinely new kind of opportunity becomes available to you. Each alert is triggered by a real, verifiable reading — the vault's on-chain balance against its cap, the live rate, the set of strategies that clear your guardrails — never a made-up notification, and you're only told once per genuine change — never when the assistant simply re-orders the same suggestions, and never on ordinary back-and-forth right around a threshold. Turn any category on or off in Settings → Notifications. (Session-key expiry alerts arrive alongside automation later, and email / push notifications still aren't part of this.)",
+      "cta_label": "Open notifications",
+      "cta_href": "/notifications",
+      "published_at": "2026-07-24T19:30:00Z",
+      "active": true
+    },
+    {
+      "slug": "operator-analytics-now-real",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Our operator dashboards now run on real numbers too",
+      "body": "Following on from wiring our internal money-view to the live blockchain, we've now connected the rest of our internal operator dashboards — user growth, the onboarding funnel, risk mix, and top depositors — to real data computed from the system's own records, replacing the last of the placeholder sample figures. These are internal tools, so your own dashboards are unchanged; wallets are only ever shown in a pseudonymized form, and we never present a made-up number as real.",
+      "cta_label": "Our safety model",
+      "cta_href": "/trust",
+      "published_at": "2026-07-24T19:00:00Z",
+      "active": true
+    },
+    {
       "slug": "internal-dashboards-live-on-chain",
       "type": "changelog",
       "tag": "Improved",

@@ -82,14 +82,30 @@ pending its increment*, not a shipped-Base-equivalent proof.
   reads real yields.
 - **Tracking:** `specs/010-universal-vaults`, `specs/011-wrapper-vault-factory`; constitution §V.
 
-### 5. Notifications backend
-- **Why deferred:** there is no event/index backend to source transaction results or alerts; the
-  screen (and the bell drawer) render mock data.
-- **Current state / disclosure:** `StatusTag mock` "Preview — notifications aren't wired to a live
-  feed yet." on both the page (`apps/web/src/app/(app)/notifications/page.tsx`) and the bell drawer
-  (`apps/web/src/components/overlays/OverlayProvider.tsx`).
-- **Gate to build:** an on-chain event/index backend + a delivery channel; wire the page + drawer to it.
-- **Tracking:** `docs/design-handover/`.
+### 5. Notifications backend — **SHIPPED (021 phase 1: derive-on-read feed; phase 2: caps/rate/new-rec pollers). Only the session-key-expiry alert remains deferred (gated on US6).**
+- **Shipped in 021 phase 1 (PR #97):** the in-app notifications feed + bell drawer are wired to a REAL
+  backend — `GET /notifications` + `POST /notifications/read` (`api/notifications.py`). Every row is
+  DERIVED live from indexed on-chain/DB activity — a vault Deposit/Withdraw flow, a realized outcome
+  (`replay_outcomes`), a reverted/dropped execution — never fabricated (Principle III). Unread is a
+  per-user two-part read cursor (`last_read_at` + `last_read_block`, migration `0023`) so a re-read is
+  stable. Advisory read, fail-open (a degraded read yields a partial/empty feed, never a 500), never on
+  the withdraw/exit path (N2). The web `StatusTag mock` on the page + drawer is retired.
+- **Shipped in 021 phase 2 (this PR):** the three EDGE-TRIGGERED signals phase 1 couldn't derive on read
+  (they watch for a CHANGE over time). A background poller (`api/notification_poller.py`, ~15-min tick,
+  env-gated `NOTIF_POLLER_ENABLED`) + migration `0024` (`notification_events` + `notification_poller_state`)
+  emit one real, deduped event per genuine crossing: **vault near capacity** (live `total_assets` vs the
+  deposit cap ≥ 90%), **Aave rate moved** (live supply APY ≥ 25 bps from the last-notified level), and a
+  proactive **new recommendation for you** (per active-mandate wallet, re-scores the real recommender and
+  emits when the sorted SET of policy-cleared strategy KINDS gains a new kind — deterministic, so LLM
+  rank/amount jitter never fires a false alert; one LLM call/wallet, bounded + gated by
+  `NOTIF_POLLER_NEWRECS`). First observation per signal is a silent baseline; every detector is fail-open
+  and off the request path (N2). No web change — the phase-1 feed renders the new categories/icons as-is.
+- **Still deferred — session-key-expiry alert:** the `sessionKeyExpiry` NotifKey has no source until US6
+  (session-key automation, item 1) exists — there is no session key to expire. **Do NOT fake it.** When
+  US6 ships its ERC-4337 account + PolicyModule, add a poller detector that reads the on-chain session-key
+  validUntil and emits `session_key_expiring` as the key nears expiry (category `sessionKeyExpiry`, which
+  the settings page already lists, default-off). Gate to build = **US6 landed** (item 1).
+- **Tracking:** `docs/design-handover/`; migrations `0023`/`0024`.
 
 ### 6. Admin stake / TVL / users analytics
 - **Why deferred:** no analytics/TVL/revenue indexer backend; these admin panels render illustrative

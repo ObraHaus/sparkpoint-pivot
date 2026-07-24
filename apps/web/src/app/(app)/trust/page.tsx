@@ -69,6 +69,10 @@ export default function Page() {
   const addrs = getAddresses(VAULT_CHAIN);
   const vault = addrs.vault as Address | undefined;
   const capReg = addrs.capRegistry as Address | undefined;
+  const govSafe = addrs.governanceSafe as Address | undefined;
+  const factory = addrs.sparkPointVaultFactory as Address | undefined;
+  const swapRouter = addrs.uniswapV3SwapRouter02 as Address | undefined;
+  const wrappers = addrs.sparkPointWrappers ?? [];
 
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
   const capC = { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN } as const;
@@ -183,12 +187,22 @@ export default function Page() {
             <AddrRow label="Vault (ERC-4626)" addr={vault} />
             <AddrRow label="Cap registry" addr={capReg} />
             <AddrRow label="Guardian (timelock)" addr={guardian} />
+            <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
             <AddrRow label="Pauser" addr={pauser} />
             <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
+            <AddrRow label="Vault factory (branded wrappers)" addr={factory} />
+            <AddrRow label="Swap router (Uniswap V3 · user-signed)" addr={swapRouter} />
             <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> Protocol fees flow to a <b>2-of-3 multisig</b> that only{" "}
-              <b>receives</b>. It isn&apos;t the guardian, can&apos;t pause or move the vault, and has{" "}
-              <b>no power over your deposits</b> (N5) — read live from <span className="mono">feeRecipient()</span>.
+              <Icon name="info" size={12} /> The <b>vault factory</b> only deploys branded wrapper vaults (deploy-time
+              only — never a fund path). The <b>swap router</b> powers the separate <b>user-signed</b> swap page: you
+              sign every swap yourself, and it is <b>not</b> a vault or agent path.
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+              <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
+              key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
+              timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
+              2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
+              over the vault.
             </div>
           </div>
           {WHITELISTED.length > 0 && (
@@ -221,6 +235,38 @@ export default function Page() {
                 contracts — a closed set enforced on-chain (G5). Anything else is unreachable; your deposits
                 and withdrawals always settle to your own account.
               </div>
+              {wrappers.length > 0 && (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
+                    User-signed vaults{" "}
+                    <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>· not agent-routed</span>
+                  </div>
+                  {wrappers.map((w) => (
+                    <div className="statusrow" key={w.address}>
+                      <span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600 }}>{w.label}</span>
+                        <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                          testnet demo · wraps a mock Morpho vault
+                        </span>
+                      </span>
+                      <a
+                        className="mono"
+                        style={{ fontSize: 12, color: "var(--primary)" }}
+                        href={`${EXPLORER}/address/${w.address}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {short(w.address)} <Icon name="ext" size={11} />
+                      </a>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
+                    <Icon name="info" size={12} /> A branded ERC-4626 wrapper you deposit into with <b>your own
+                    signature</b> (never agent-routed). This one wraps a <b>mock</b> Morpho vault for the testnet demo —
+                    Morpho has no testnet. A real Morpho vault would join the allowlist above on mainnet.
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

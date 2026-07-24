@@ -65,6 +65,14 @@ export const baseSepolia: AddressBook = {
   vault: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
   capRegistry: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
   killSwitch: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
+  // ── Guardian control cutover to a 2-of-3 Safe (2026-07-24) ──
+  // The vault's guardian() is the OZ TimelockController 0x0A21…d720 (unchanged). Its
+  // PROPOSER/EXECUTOR/CANCELLER + DEFAULT_ADMIN roles were transferred to this dedicated 2-of-3
+  // Gnosis Safe and the deployer FULLY RENOUNCED — so no single key can pause/unpause/setFee/setCaps
+  // anymore; only 2-of-3 of the guardian signers can (§6.2 multisig kill-switch, live). Proven on-chain
+  // by a pause→unpause round-trip via the Safe before renounce. Owners are the dedicated guardian
+  // signers (testnet keys in .claude/testnet-wallets.txt); SEPARATE from the fee-treasury Safe.
+  governanceSafe: "0x1265f0ffFF933162719E2261E5b1242863543964",
 
   // ── Feature 011 wrapper-vault factory (deployed 2026-07-22 via DeployMorphoWrapperFactory) ──
   // The factory address is REQUIRED for wrapper provenance: useVault reads factory.isSparkPointVault

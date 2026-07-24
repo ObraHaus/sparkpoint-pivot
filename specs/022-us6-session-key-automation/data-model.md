@@ -1,6 +1,6 @@
 # Data Model — US6 Session-Key Automation (022)
 
-## E10 — `session_keys` (migration `0024_session_keys.sql`)
+## E10 — `session_keys` (migration `0025_session_keys.sql`)
 
 The owner-scoped **mirror** of an on-chain scoped session grant. The CHAIN (the deployed
 `SparkPointAccount`'s own storage) is the source of truth; every column is re-derivable, so nothing is

@@ -35,8 +35,15 @@ from pydantic import BaseModel
 
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
-from ..db import ExecutionStore, NotificationReadStore, SessionKeyStore, get_database
+from ..db import (
+    ExecutionStore,
+    NotificationEventStore,
+    NotificationReadStore,
+    SessionKeyStore,
+    get_database,
+)
 from ..db.executions import ExecutionRow
+from ..db.notification_events import NotificationEventRow
 from ..db.session_keys import SessionKeyRow
 from ..db.vault_flows import FlowRow, RealizedOutcome, VaultFlowReader, replay_outcomes
 from .security import AccountContext
@@ -80,8 +87,13 @@ def get_notif_read_store() -> NotificationReadStore:
 
 
 def get_session_key_store() -> SessionKeyStore:
-    """The session-key mirror (migration 0024) — drives sessionKeyExpiry. Overridden in tests."""
+    """The session-key mirror (migration 0025) — drives sessionKeyExpiry. Overridden in tests."""
     return SessionKeyStore(get_database())
+
+
+def get_notif_event_store() -> NotificationEventStore:
+    """The edge-triggered events store (migration 0024, phase 2). Overridden in tests."""
+    return NotificationEventStore(get_database())
 
 
 def _network_id(chain_id: int) -> str:  # noqa: ARG001 — both Base chains fold to one mirror id
@@ -257,6 +269,15 @@ def _session_key_notif(r: SessionKeyRow, now: datetime) -> _Derived | None:
     return None
 
 
+def _event_notif(e: NotificationEventRow) -> _Derived:
+    """A phase-2 edge-triggered event (caps/rate/new-rec) → a feed row. Keyed by real created_at."""
+    item = NotificationItem(
+        id=f"evt:{e.id}", category=e.category, type=e.type, title=e.title, body=e.body, icon=e.icon,
+        tsApprox=e.created_at.isoformat(), txHash=None, href=e.href, unread=False,
+    )
+    return e.created_at, None, item
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,13 +292,15 @@ async def get_notifications(
     exec_store: Annotated[ExecutionStore, Depends(get_execution_store)],
     read_store: Annotated[NotificationReadStore, Depends(get_notif_read_store)],
     session_store: Annotated[SessionKeyStore, Depends(get_session_key_store)],
+    event_store: Annotated[NotificationEventStore, Depends(get_notif_event_store)],
 ) -> NotificationsResponse:
     """The user's real in-app notifications, newest first (§3.11, feature 021).
 
-    Derived LIVE from indexed data — vault Deposit/Withdraw flows + realized outcomes + reverted
-    executions — so every row is provable (a tx hash / DB row), never fabricated. Advisory read: a
-    degraded read yields a partial or empty feed (fail-open), never a hard error and never on the
-    withdraw/exit path (N2). Unread is computed against the per-user read cursor.
+    Merges the phase-1 rows DERIVED live from indexed data (vault Deposit/Withdraw flows + realized
+    outcomes + reverted executions) with the phase-2 edge-triggered events the poller emitted (vault
+    near capacity, Aave rate moved, a new recommendation) — every row provable (a tx hash / DB row),
+    never fabricated. Advisory read: a degraded read yields a partial or empty feed (fail-open),
+    never a hard error nor on the withdraw/exit path (N2). Unread is computed vs the read cursor.
     """
     position = await _read_position(reader, account)
     derived: list[_Derived] = []
@@ -288,6 +311,13 @@ async def get_notifications(
     except Exception:  # noqa: BLE001 — advisory; a store outage degrades the feed, never 500s
         execs = []
     derived.extend(_reverted_notif(e) for e in execs if e.status in _REVERTED_STATES)
+
+    # 1b. Phase-2 edge-triggered events (caps / rate / new-rec) the poller emitted (global + mine).
+    try:
+        events = await event_store.list_for(account.account, limit=_FEED_LIMIT)
+    except Exception:  # noqa: BLE001 — advisory; an events-store outage degrades the feed
+        events = []
+    derived.extend(_event_notif(e) for e in events)
 
     # 2. Vault Deposit/Withdraw flows + realized outcomes (only when the vault read is live).
     hist: list[FlowRow] = []
@@ -316,9 +346,15 @@ async def get_notifications(
         if notif is not None:
             derived.append(notif)
 
-    # Newest-first, capped.
+    # Newest-first, capped. Reserve the poller EVENTS (caps / rate / new-rec, id "evt:*") so a burst
+    # of vault-flow rows can't bury an unread alert out of the capped window (which would also
+    # under-count the badge); fill the remaining slots with the newest non-event rows.
     derived.sort(key=lambda d: d[0], reverse=True)
-    derived = derived[:_FEED_LIMIT]
+    evt_rows = [d for d in derived if d[2].id.startswith("evt:")]
+    other_rows = [d for d in derived if not d[2].id.startswith("evt:")]
+    kept = evt_rows + other_rows[: max(0, _FEED_LIMIT - len(evt_rows))]
+    kept.sort(key=lambda d: d[0], reverse=True)
+    derived = kept[:_FEED_LIMIT]
 
     # Unread vs the per-user read cursor (fail-open: no cursor / outage ⇒ treat all as unread). A
     # chain event (block is not None) is read once its block <= last_read_block — a STABLE key that

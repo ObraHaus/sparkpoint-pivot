@@ -34,7 +34,7 @@ confirm-before-PR are hard stops.
 
 ## Phase 2 — Backend `[P after Phase 1]`
 
-- **T2.1** `migrations/0024_session_keys.sql` (data-model.md): `session_keys` + `session_key_status`
+- **T2.1** `migrations/0025_session_keys.sql` (data-model.md): `session_keys` + `session_key_status`
   enum; additive/idempotent; `PGCLIENTENCODING=UTF8`. Apply to develop DB; update MIGRATIONS.md.
 - **T2.2** `db/session_keys.py`: `SessionKeyStore` (insert grant, mark revoked, update spent/status
   from chain, list by wallet, get active). Owner-scoped; chain is authoritative.

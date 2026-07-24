@@ -141,6 +141,13 @@ export interface AddressBook {
   /** `KillSwitch`/`Guardian` — PAUSE-ONLY controller (N5). */
   readonly killSwitch?: Address;
   /**
+   * The 2-of-3 Gnosis Safe that CONTROLS the guardian timelock (holds its PROPOSER/EXECUTOR/CANCELLER
+   * roles after the deployer full-renounce). The vault's `guardian()` stays the timelock; this Safe is
+   * who signs the timelocked pause/unpause/setFee/setCaps actions (§6.2 multisig kill-switch, N5).
+   * Optional so the module stays drift-safe; undefined ⇒ the page shows the timelock only.
+   */
+  readonly governanceSafe?: Address;
+  /**
    * `SparkPointVaultFactory` (feature 011) — the deploy-only CREATE2 registrar of branded
    * Morpho-wrapper vaults. A PLAIN address-book field, **NOT** a policy `TargetRef`: the factory is
    * admin/timelock-gated and never on the agent policy path, and (constitution IV.5(d)) its curated

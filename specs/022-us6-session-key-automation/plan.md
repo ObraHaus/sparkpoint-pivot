@@ -82,7 +82,7 @@ specs/022-us6-session-key-automation/
 ├── plan.md              # this file
 ├── spec.md              # the ratified sub-spec
 ├── research.md          # R1 ERC-7562/Path A · R2 Alchemy bundler · R3 SessionScope · R4 spine reuse
-├── data-model.md        # 0024_session_keys table + status enum + VR mapping
+├── data-model.md        # 0025_session_keys table + status enum + VR mapping
 ├── quickstart.md        # end-to-end validation (SC-008 / SC-U6-A / SC-U6-B), incl. the N4 drill
 ├── contracts/
 │   └── session-endpoints.md   # grant/revoke/list request-response + submission-path shapes
@@ -94,7 +94,7 @@ specs/022-us6-session-key-automation/
 - **Contracts** (`contracts/src/account/`): `SparkPointAccount.sol` (now owns session storage),
   `SessionKeyValidator.sol` (now pure), `PolicyModule.sol` (now stateless + global arming allowlist),
   interfaces; deploy script `contracts/script/DeploySessionStack.s.sol`; tests updated + N4 refuter.
-- **Agent** (`services/agent/`): `migrations/0024_session_keys.sql`; `db/session_keys.py`;
+- **Agent** (`services/agent/`): `migrations/0025_session_keys.sql`; `db/session_keys.py`;
   `policy/session.py` (SessionScope model + grant validator) wired into `policy/evaluate.py`;
   `api/sessions.py` (grant/revoke/list); the session-key branch in `execution/orchestrate.py` +
   `execution/builder.py` (userOp build) + a bundler client `execution/bundler.py`;

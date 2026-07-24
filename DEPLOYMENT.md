@@ -87,6 +87,16 @@ Resolve any findings in the Defender console / via its MCP server before merging
 - **Fee-treasury Safe** (Gnosis Safe v1.4.1, 2-of-3): `0xCB135893C84876aab9E10792b56e5bEa91dc578f` — deploy tx `0x014bd9d2ec9607ee7d3b305e489f84d3a468ee57b7cdf55fab96c9c9f0d3bf56`. Owners: deployer `0xA71e…5c30` + `0x867E…5fEb` + `0x122D…05Ed`; threshold 2. Signer keys in `.claude/testnet-wallets.txt` (testnet only).
 - **Fee-recipient cutover** (Timelock `0x0A21…d720`, `setFeeRecipient(Safe)`): schedule tx `0x99c737d4beebde52bbe65a90cfeb2c9832b3292904510770ef492e975f9b3c1b` → (60s delay) → execute tx `0x9d38d4e789917756ccee45a8510dcf901fa7d14e15c92522781ed740b089bac8`. `vault.feeRecipient()` == the Safe (perf fee + Base swap fee now route to the multisig).
 
+### Guardian → 2-of-3 Safe cutover — §6.2 multisig kill-switch (2026-07-24)
+
+The vault's `guardian()` stays the OZ **TimelockController** `0x0A21…d720` (unchanged). Its control was moved off the single deployer EOA onto a **dedicated 2-of-3 Gnosis Safe**, and the deployer **fully renounced** — so no single key can pause/unpause or change fees/caps anymore; only 2-of-3 of the guardian signers can, after the 60s timelock delay.
+
+- **Guardian Safe** (Gnosis Safe v1.4.1, 2-of-3, threshold 2): `0x1265f0ffFF933162719E2261E5b1242863543964`. Owners = 3 **dedicated** guardian signers `0xb24e…DB55` + `0xa1e8…D6Ff` + `0xF7aa…3426` (SEPARATE from the fee-treasury Safe — separation of duties). Signer keys in `.claude/testnet-wallets.txt` (testnet only; the originally-planned governance signers `0x08ea`/`0x23b6` were lost in a prior file clobber and replaced by these).
+- **Roles granted** to the Safe on the timelock: `PROPOSER_ROLE`, `EXECUTOR_ROLE`, `CANCELLER_ROLE` (deployer, direct — deployer held `DEFAULT_ADMIN_ROLE`).
+- **Proven before renounce** — the 2-of-3 Safe executed a full `pauseDeposits()` → (60s) → `unpauseDeposits()` round-trip via the timelock, restoring `paused()==false`, confirming the Safe truly controls the guardian.
+- **Deployer full-renounce**: `renounceRole` for `PROPOSER`/`EXECUTOR`/`CANCELLER`/`DEFAULT_ADMIN`. **Verified on-chain**: deployer `hasRole == false` for all four; Safe `hasRole == true` for PROPOSER/EXECUTOR/CANCELLER. Irreversible — the vault's governance is now a pure 2-of-3 multisig. (User funds unaffected regardless: withdraw/redeem carry no pause modifier, N2.)
+- Recorded in the address book as `governanceSafe` (Base Sepolia); surfaced on `/trust` (Guardian controller) and `/admin/killswitch` (2-of-3 · live). Ceremony script: `scratchpad/guardian-ceremony.cjs` (not committed; deploy/grant/test/renounce phases).
+
 ### Deterministic contract addresses (CREATE2)
 
 `contracts/script/DeploySepolia.s.sol` deploys the core (`SparkPointVault` + `CapRegistry` + `KillSwitch` + `AaveV3Adapter` + `TimelockController`) via **`CREATE2` with a fixed salt** — `keccak256("sparkpoint-core-v1")`. The deployed address is a pure function of **(deployer, salt, init-code)**, so:

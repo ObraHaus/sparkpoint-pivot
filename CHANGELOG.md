@@ -31,12 +31,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   tests — allowlist-snapshot bypass, the monotonic spend ledger (incl. "two ops in one bundle can't
   jointly exceed the cumulative cap"), the recipient pin end-to-end through `handleOps`,
   window/revoke/spend-reset, and admin-fn reachability — all held.
-- **Backend foundation:** migration `0024_session_keys` (the owner-scoped on-chain-grant mirror),
-  `SessionKeyStore`, and the real `SessionScope` §6-grammar validator (`policy/session.py`) replacing
-  the fail-closed grant stub. Spec Kit `specs/022-us6-session-key-automation`.
-- **In progress on the same branch:** the grant/revoke API + web flow, the spine session-key
-  submission path, and the `sessionKeyExpiry` notification — the web `/automation` stays honestly
-  `StatusTag mock` until wired.
+- **Backend:** migration `0025_session_keys` (the owner-scoped on-chain-grant mirror),
+  `SessionKeyStore`, the real `SessionScope` §6-grammar validator (`policy/session.py`) replacing the
+  fail-closed grant stub, the grant/revoke/list API (`/session-keys/*`), the `sessionKeyExpiry`
+  notification, and the ERC-4337 bundler client. Spec Kit `specs/022-us6-session-key-automation`.
+- **Web:** `/automation` + `/automation/grant` + `/trust/permissions` de-mocked against the real API
+  (the `StatusTag mock` retired); the session keypair is client-generated (only the address crosses
+  the wire, N3). The automated-move submission path is honestly deferred (needs a client-side
+  session-signer — the service never holds the key, N3); the mechanism is proven + the bundler is ready.
+
+### Changed (trust — list more contracts, honestly scoped)
+- **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory
+  (`0x2774…6D8b`) and the Uniswap V3 swap router (`0x94cC…2bc4`)** — the latter clearly labelled
+  *user-signed · not a vault/agent path* (the factory is deploy-time only, never a fund path).
+- **"Whitelisted protocols" gains a clearly-separated "User-signed vaults · not agent-routed"
+  sub-section** listing the Morpho wrapper, badged *testnet demo · wraps a mock Morpho vault* — so it's
+  visible without being conflated with the G5 agent fund-routing allowlist (which stays the real
+  external venues: Aave v3 Pool). Honest by construction: the wrapper's underlying is a `MockMorphoVault`
+  (Morpho has no testnet); a real Morpho vault would join the allowlist on mainnet. Web-only, no migration.
+
+### Changed (security — the kill-switch is now a REAL 2-of-3 multisig; deployer fully renounced)
+- **§6.2's "multisig kill-switch, live and operational" is now genuinely met — no single key can pause
+  the vault or change fees/caps.** The vault's `guardian()` stays the OZ TimelockController, but its
+  `PROPOSER`/`EXECUTOR`/`CANCELLER` + `DEFAULT_ADMIN` roles were transferred from the single deployer EOA
+  to a **dedicated 2-of-3 Gnosis Safe** (`0x1265…3964`, owners = 3 dedicated guardian signers, SEPARATE
+  from the fee-treasury Safe — separation of duties), and the **deployer fully renounced**. On-chain
+  ceremony (Base Sepolia, 2026-07-24): deploy Safe → grant roles → **prove** control via a `pauseDeposits`
+  → (60s) → `unpauseDeposits` round-trip signed 2-of-3 → renounce. Verified: deployer `hasRole==false`
+  for all four roles, Safe `hasRole==true` for PROPOSER/EXECUTOR/CANCELLER. Irreversible.
+  - Non-custody preserved (N2/N5): withdraw/redeem carry no pause modifier, so funds are always
+    withdrawable regardless of the guardian; the Safe is PAUSE/param-only and never on the fund path.
+  - Recorded as `governanceSafe` in the address book; surfaced honestly on **`/trust`** (Guardian
+    controller = 2-of-3 Safe) and **`/admin/killswitch`** ("2-of-3 Safe + delay · Live", controller
+    address, deployer-renounced note; the dead "Initiate pause — off-app" button now routes to the
+    Vaults guardian-action to prepare the timelock calldata for 2-of-3 co-signing). See DEPLOYMENT.md.
+
+### Added (admin — real user-analytics: the Users + Stakeholder pages go live, not sample)
+- **The last mock dashboards are wired to real data.** After the money-view sweep, the two remaining
+  sample pages (`/admin/users`, `/admin/stake`) are now computed live from the app's own tables via a
+  new admin-gated endpoint `GET /admin/users/analytics` — no fabricated numbers, honest zeros on a
+  sparse testnet, wallets pseudonymized (`user_<4hex>`, never a full address). **No migration** (a
+  read-only aggregate over existing tables); honest-degrades to `{configured:false}` on any DB error.
+  - **Real sources:** `users` + `onboarding_state` → total users + a cumulative onboarding funnel;
+    `mandates` (latest confirmed / user) → the risk-tier mix; `onchain_events` → per-owner net-deposited
+    (the top-depositors leaderboard) + activation; `usage_counters` → DAU/MAU; `subscriptions` → active
+    premium; `recommendations` (acted/executed) → recs accepted.
+  - **Users page** now shows live total users / stickiness / onboarding completion / activation, the real
+    funnel + risk-tier bars, and a pseudonymized leaderboard — the misleading `mandates`/`computed`
+    provenance pills are gone because the data now genuinely IS those sources.
+  - **Stakeholder page** headline KPIs are real (live TVL + users + depositors + premium); the forward
+    growth/revenue charts stay clearly labelled illustrative projections (no honest USD run-rate exists
+    on a test-token testnet, so none is fabricated).
+  - The now-dead `components/admin/data.tsx` mock module is deleted (nothing reads it anymore).
+  - New `db/analytics.py` (pure `build_funnel` + `pseudonymize` + the aggregate store) + `admin_analytics.py`
+    router. **+6 agent tests (733 total)**; `ruff` + `mypy --strict` + web `typecheck:test` + `lint` green.
 
 ### Changed (admin — the operator "money view" is now live on-chain, and mock dashboards stop pretending)
 - **The admin panel's analytics surfaces no longer fabricate numbers — the money-view reads the real chain.**
@@ -64,6 +112,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - New `lib/admin/vaultStats.ts` (pure, dependency-free USDC/cap formatters, +4 unit tests) +
     `lib/admin/useVaultStats.ts` (the shared live-reads hook); `Kpi` gains an optional sparkline so a live
     single-value tile omits a fabricated trend.
+
+### Fixed (021 phase 2 — poller hardening from an adversarial review: anti-spam, idempotency, coverage)
+- A 16-agent adversarial review (find → verify → refute) of the shipped poller surfaced several
+  verified robustness gaps; all fixed in one pass (no migration, no web behavior change):
+  - **Caps hysteresis (was: protocol-wide spam).** `poll_caps` re-armed the instant fill dropped below
+    90%, so a vault hovering at ~90% with ordinary deposit/withdraw churn re-fired the *protocol-wide*
+    "vault nearing capacity" alert to every user each up-crossing. Now the episode only re-arms after
+    fill falls below **85%** (a hysteresis band), and the first observation is a **silent baseline**
+    (never alert an already-full vault on a crossing the poller never witnessed) — consistent with the
+    rate/new-rec detectors.
+  - **Overlapping-poll idempotency.** A fast redeploy could briefly run two poll passes against the
+    shared DB; the non-atomic read-modify-write on `poller_state` could regress a seq counter (dropping
+    a real emit) or double-insert a rate alert. `poll_once` now takes a **Postgres advisory lock** so
+    only one pass runs at a time; a pass that can't take it skips the tick. The rate dedupe key also
+    dropped its volatile bps suffix (keys on the seq alone, like the other two detectors).
+  - **New-rec wallet coverage.** The per-tick LLM cap re-scored only the 20 newest-mandated wallets
+    with a stable ordering, permanently starving any wallet past the cap. Added a **rotation cursor**
+    (`list_active_owners(offset=…)`) so every active-mandate wallet is covered across ticks.
+  - **Feed reservation.** A user with >50 recent vault flows could bury an older *unread* poller event
+    out of the capped feed window (and under-count the badge). `GET /notifications` now **reserves the
+    edge-triggered events** before truncation so a caps/rate/new-rec alert always surfaces.
+  - Documented the latent owner-vs-account key divergence that will need account-awareness when
+    ERC-4337 smart accounts (US6) land. +4 poller/feed tests (752 agent tests green).
+
+### Fixed (021 phase 2 — new-recommendation alert made deterministic; no LLM-jitter false positives)
+- **Live-caught in first-boot validation:** the proactive new-recommendation poller keyed off the
+  recommender's *top* rec, but the recommender's candidate ordering is LLM-generated and jitters
+  run-to-run (the US5/T010 finding), so re-scoring the same wallet twice produced two different keys
+  and fired a spurious "new recommendation." Re-keyed on the **sorted SET of policy-cleared strategy
+  kinds** (deterministic; the suggested amount is dropped too), so the alert fires only when a
+  genuinely new *kind* of opportunity clears — never on reordering or a balance tick. A monotonic seq
+  keys each emit (a kind that leaves then returns re-notifies); a removal updates the baseline
+  silently. This also makes overlapping poll passes idempotent (stable key + `UNIQUE(dedupe_key)`).
+  +4 poller tests (incl. an explicit ranking/amount-jitter regression). No migration, no web change.
+
+### Added (021 phase 2 — proactive notifications: caps-near-limit, Aave-rate moves, new recommendations)
+- **The bell now also surfaces the three signals it couldn't before — a vault filling up, an Aave rate
+  move, and a fresh recommendation for you — each a real, provable event, never a fabricated alert.**
+  Phase 1 derived the feed from indexed data on read; these three watch for a *change over time*, so a
+  new background poller (`api/notification_poller.py`, ~15-min tick, env-gated `NOTIF_POLLER_ENABLED`)
+  observes each value and emits ONE real, deduped event only on a genuine crossing:
+  - **Vault near capacity** (`capsNearLimit`) — the live vault `total_assets` crosses ≥ 90% of the
+    on-chain deposit cap. One event per crossing episode (re-arms only after it leaves and re-enters).
+  - **Aave rate moved** (`rateChanges`) — the live Aave USDC supply APY moves ≥ 25 bps from the
+    last-notified level (so slow drift eventually notifies, but wiggle doesn't spam).
+  - **New recommendation for you** (`rateChanges`) — a proactive re-score of each active-mandate wallet
+    against the real recommender; emits when the top advice's content changes (one bounded LLM call per
+    wallet per tick, gated by `NOTIF_POLLER_NEWRECS`). The `sessionKeyExpiry` signal stays intentionally
+    **absent** until US6 exists (no session key to expire) — not faked.
+  - **How it's provable, not stored-and-forgotten.** Migration `0024_notification_events` adds
+    `notification_events` (one deduped row per real crossing) + `notification_poller_state` (the
+    last-seen value per signal, for edge-detection). `GET /notifications` merges these events into the
+    same phase-1 feed; the first observation of any signal is a silent baseline (existing state is never
+    replayed as if new).
+  - **Non-custody (N1–N5):** the poller is advisory only — no key, no signature, off the request path,
+    fail-open (a degraded read emits nothing, never raises), and never on the withdraw/exit path (N2).
+  - **No web change** — the phase-1 feed renders the new categories/icons as-is; the settings row was
+    already labelled "Rate changes & recommendations".
+- **Tests / gates.** +7 agent poller tests (`test_notification_poller.py`: the caps up-crossing + re-arm,
+  the rate baseline→threshold→dedupe sequence, the new-rec baseline→change→dedupe, the env gate, and
+  every fail-open path) + 3 events-in-feed tests. `ruff` + `mypy --strict` + `pytest` (737) green.
+  Migration `0024` applied to develop.
 
 ### Added (021 — real in-app notifications, end to end)
 - **The notifications bell now has a real backend — your feed is computed live from your actual

@@ -13,6 +13,7 @@ from .allowlist import (
     AllowlistStore,
     parse_allowlist_env,
 )
+from .analytics import AnalyticsStore, build_funnel, pseudonymize
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .content_entries import ContentEntryStore
 from .executions import ExecutionRow, ExecutionStore
@@ -25,6 +26,7 @@ from .mandates import (
     PgMandateStore,
     row_to_record,
 )
+from .notification_events import NotificationEventRow, NotificationEventStore, PollerState
 from .notification_reads import NotificationReadStore, ReadCursor
 from .pool import Database, get_database
 from .recommendations import RecInsert, RecommendationStore, RecRow
@@ -46,6 +48,7 @@ __all__ = [
     "DATABASE_URL_ENV",
     "DEFAULT_TIER",
     "AllowlistStore",
+    "AnalyticsStore",
     "BundleInsert",
     "BundleRow",
     "ContentEntryStore",
@@ -60,8 +63,11 @@ __all__ = [
     "MandateRecord",
     "MandateStore",
     "MandateWrite",
+    "NotificationEventRow",
+    "NotificationEventStore",
     "NotificationReadStore",
     "PaymentAlreadyRecorded",
+    "PollerState",
     "PgMandateStore",
     "PgSwapFeeEventStore",
     "ReadCursor",
@@ -76,7 +82,9 @@ __all__ = [
     "SwapFeeEventStore",
     "SwapFeePeriodBucket",
     "SwapFeeRevenueSummary",
+    "build_funnel",
     "get_database",
+    "pseudonymize",
     "summarize_swap_fees",
     "parse_allowlist_env",
     "row_to_record",
