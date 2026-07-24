@@ -10,6 +10,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (022 — US6 session-key automation: the ERC-7562 blocker is resolved + proven live on-chain)
+- **The deferred session-key automation blocker is dead.** US6 was stuck because the session-key
+  validation wrote the spend ledger (`recordSpend`) into the *external* `PolicyModule` during
+  ERC-4337 validation, at a slot that is not sender-associated — which a safe-mode bundler rejects.
+  Fixed via **Path A**: ALL per-session state (policy caps/expiry, the monotonic `spent` ledger, and
+  the session's `(target,selector)` allowlist snapshot) now lives in `SparkPointAccount`'s **own**
+  storage, so `validateUserOp` reads/writes only account-own storage ([STO-010], unambiguous — no
+  staking, no external dependency). `PolicyModule` is now stateless (global arming allowlist +
+  forbidden-selector guard); `SessionKeyValidator` is a view-only parity mirror; a new
+  `SessionScopeLib` is the single source of truth for the §4 scope decode/math. A `value`-hardening
+  rejects any session op carrying native ETH (session actions are all ERC-20 flows).
+- **Deployed to Base Sepolia + PROVEN LIVE.** The Path-A AA stack is on-chain (PolicyModule
+  `0x55A2…8134`, SessionKeyValidator `0xc4F1…Aa99`, SparkPointAccount impl `0xAF38…66C2`,
+  AccountFactory `0x251C…dbdb`). A real mode-0x01 session-key UserOp was **accepted by the Alchemy
+  Base-Sepolia bundler** (Rundler, canonical ERC-7562 tracer, EntryPoint v0.7) and **executed
+  on-chain** — tx `0x1d1fad64…8f44` — a scoped session key deposited into the vault with no per-move
+  user signature. (`contracts/deployments/84532/session-stack.md`.)
+- **Adversarially verified (N4):** the STAGE-2.9 refuter returned **NOT REFUTED** across 37 attack
+  tests — allowlist-snapshot bypass, the monotonic spend ledger (incl. "two ops in one bundle can't
+  jointly exceed the cumulative cap"), the recipient pin end-to-end through `handleOps`,
+  window/revoke/spend-reset, and admin-fn reachability — all held.
+- **Backend:** migration `0025_session_keys` (the owner-scoped on-chain-grant mirror),
+  `SessionKeyStore`, the real `SessionScope` §6-grammar validator (`policy/session.py`) replacing the
+  fail-closed grant stub, the grant/revoke/list API (`/session-keys/*`), the `sessionKeyExpiry`
+  notification, and the ERC-4337 bundler client. Spec Kit `specs/022-us6-session-key-automation`.
+- **Web:** `/automation` + `/automation/grant` + `/trust/permissions` de-mocked against the real API
+  (the `StatusTag mock` retired); the session keypair is client-generated (only the address crosses
+  the wire, N3). The automated-move submission path is honestly deferred (needs a client-side
+  session-signer — the service never holds the key, N3); the mechanism is proven + the bundler is ready.
+
 ### Changed (trust — list more contracts, honestly scoped)
 - **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory
   (`0x2774…6D8b`) and the Uniswap V3 swap router (`0x94cC…2bc4`)** — the latter clearly labelled

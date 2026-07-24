@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "hands-off-automation-proven-on-testnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Hands-off automation just went from planned to proven",
+      "body": "One of our biggest planned features — letting Sparky make approved rebalancing moves for you WITHOUT asking you to sign each one — was blocked on a hard technical problem for weeks. It's now solved and proven on our test network: we built a scoped, capped, time-limited 'session key' you can grant, and demonstrated a real automated move (a vault deposit) that went through end-to-end with no per-move signature — while staying fully bounded by the on-chain rules. Crucially, YOU keep the leash: the key can only ever do the specific things you allow, up to the caps you set, until it expires, and you can revoke it instantly and directly on-chain without us. The opt-in screen to turn this on for yourself is coming next — for now the Automation page still shows a preview.",
+      "cta_label": "See how it will work",
+      "cta_href": "/automation",
+      "published_at": "2026-07-24T18:45:00Z",
+      "active": true
+    },
+    {
       "slug": "trust-center-more-contracts",
       "type": "changelog",
       "tag": "Improved",

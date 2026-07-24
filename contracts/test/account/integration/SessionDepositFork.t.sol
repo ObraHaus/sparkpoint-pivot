@@ -62,7 +62,6 @@ contract SessionDepositForkTest is Test {
 
         policy = new PolicyModule(address(this));
         validator = new SessionKeyValidator(address(policy));
-        policy.setSessionValidator(address(validator));
 
         SparkPointAccount impl =
             new SparkPointAccount(entryPoint, address(validator), address(policy));
@@ -85,7 +84,7 @@ contract SessionDepositForkTest is Test {
         vm.prank(owner);
         account.execute(usdc, 0, abi.encodeCall(IERC20Like.approve, (VAULT, type(uint256).max)));
 
-        // Authorize the agent's session key.
+        // Authorize the agent's session key — scope: ONLY the deployed vault's deposit + redeem.
         IPolicyModule.Policy memory p;
         p.sessionKey = sessionKey;
         p.validAfter = uint48(block.timestamp);
@@ -93,8 +92,12 @@ contract SessionDepositForkTest is Test {
         p.perTxCap = 500e6;
         p.cumulativeCap = 5000e6;
         p.maxSlippageBps = 50;
+        address[] memory t = new address[](2);
+        bytes4[] memory s = new bytes4[](2);
+        t[0] = VAULT; s[0] = SEL_VAULT_DEPOSIT;
+        t[1] = VAULT; s[1] = SEL_VAULT_REDEEM;
         vm.prank(owner);
-        account.authorizeSessionKey(p);
+        account.authorizeSessionKey(p, t, s);
 
         // Prefund the account's EntryPoint gas deposit.
         vm.deal(address(this), 5 ether);

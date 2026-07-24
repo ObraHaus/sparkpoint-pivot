@@ -54,11 +54,14 @@ export const baseSepolia: AddressBook = {
   // US1 core deployed to Base Sepolia 2026-07-14 via script/DeploySepolia.s.sol
   // (guardian/governance = the OZ TimelockController 0x0A21…d720, minDelay 60s testnet;
   // custody wiring verified on-chain: HWM 1e18, perfFee 1000/cap 2000, mgmt/entry/exit 0).
-  // ERC-4337 account/factory/validator/policy land with W6 (still undefined ⇒ fail-closed).
-  sparkPointAccountImpl: undefined,
-  accountFactory: undefined,
-  sessionKeyValidator: undefined,
-  policyModule: undefined,
+  // ERC-4337 session-key stack (US6, feature 022) DEPLOYED to Base Sepolia 2026-07-24 via
+  // script/DeploySessionStack.s.sol — Path A (account-owned session storage); proven live (a
+  // mode-0x01 UserOp passed the Alchemy bundler ERC-7562 tracer + executed on-chain, tx 0x1d1fad64).
+  // See contracts/deployments/84532/session-stack.md.
+  sparkPointAccountImpl: "0xAF387322A9C5d08fC95e86C6e642d4e054D966C2",
+  accountFactory: "0x251C9Cb0A30fCA6FEF2916Ca2C5679411DCedbdb",
+  sessionKeyValidator: "0xc4F11ECB89C1A6c1655D46DD0fe22f2Ab604Aa99",
+  policyModule: "0x55A210191420823F309c25220257D7666BA38134",
   vault: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
   capRegistry: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
   killSwitch: "0x39C38c86611FF3679802D5341E830c83DB7F4537",

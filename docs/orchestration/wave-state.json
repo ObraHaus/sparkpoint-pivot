@@ -206,7 +206,7 @@
       "status": "pending",
       "deferred_register": "docs/phase-3-deferred.md",
       "deferred_items": [
-        "US6 session-key automation (PolicyModule undeployed)",
+        "US6 session-key automation — BLOCKER RESOLVED + STACK LIVE (022): the ERC-7562 recordSpend-in-validation blocker is fixed (Path A: all per-session state moved into SparkPointAccount own storage); the AA stack (PolicyModule/validator/account-impl/factory) is DEPLOYED on Base Sepolia + PROVEN LIVE (a mode-0x01 session-key UserOp passed the Alchemy bundler ERC-7562 tracer + executed on-chain, tx 0x1d1fad64); N4 refuter NOT REFUTED (37 attacks). Backend live: 0024 session_keys + SessionKeyStore + SessionScope §6 validator + grant/revoke/list API + sessionKeyExpiry notification + bundler client. REMAINING: web /automation grant-flow de-mock + the spine automated-move submission path (userOp builder + a client session-signer) — in progress on feature/US6-session-key-automation",
         "Base<->Sui bridge + Sui network",
         "Aerodrome swaps (Base mainnet)",
         "Real Morpho wrapper + 010 APY feed (mainnet)",

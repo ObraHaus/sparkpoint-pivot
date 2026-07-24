@@ -23,6 +23,7 @@ from sparkpoint_agent.api.notifications import (
     get_execution_store,
     get_notif_event_store,
     get_notif_read_store,
+    get_session_key_store,
     get_vault_flow_reader,
 )
 from sparkpoint_agent.api.vault import get_vault_reader
@@ -32,7 +33,18 @@ from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.db.executions import ExecutionRow
 from sparkpoint_agent.db.notification_events import NotificationEventRow
 from sparkpoint_agent.db.notification_reads import ReadCursor
+from sparkpoint_agent.db.session_keys import SessionKeyRow
 from sparkpoint_agent.db.vault_flows import FlowRow
+
+
+class _FakeSessionStore:
+    """A session_keys mirror over an in-memory row list (drives sessionKeyExpiry)."""
+
+    def __init__(self, rows: list[SessionKeyRow] | None = None) -> None:
+        self._rows = rows or []
+
+    async def list_by_account(self, _account: str) -> list[SessionKeyRow]:
+        return self._rows
 
 _1M = 1_000_000  # 1 USDC / 1 share in 6-dp base units
 
@@ -148,12 +160,14 @@ def _wire(
     event_store: FakeEventStore | None = None,
     events: list[NotificationEventRow] | None = None,
     vault_address: str | None = VAULT,
+    session_keys: list[SessionKeyRow] | None = None,
 ) -> FakeReadStore:
     store = read_store if read_store is not None else FakeReadStore()
     app.dependency_overrides[get_vault_reader] = lambda: reader or FakeReader()
     app.dependency_overrides[get_vault_flow_reader] = lambda: FakeFlowReader(flows or [])
     app.dependency_overrides[get_execution_store] = lambda: FakeExecStore(execs or [])
     app.dependency_overrides[get_notif_read_store] = lambda: store
+    app.dependency_overrides[get_session_key_store] = lambda: _FakeSessionStore(session_keys)
     app.dependency_overrides[get_notif_event_store] = lambda: event_store or FakeEventStore(events)
     app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
         chain_id=8453, rpc_url=None, vault_address=vault_address, database_url=None
@@ -370,3 +384,56 @@ def test_mark_read_fails_open_on_store_outage(client: TestClient) -> None:
     resp = client.post("/notifications/read", headers=GOOD_HEADERS)
     assert resp.status_code == 200  # advisory: never a hard error
     assert resp.json()["ok"] is False
+
+
+# ── sessionKeyExpiry (feature 022) ──────────────────────────────────────────────
+
+
+def _session_row(**over: object) -> SessionKeyRow:
+    base: dict[str, object] = {
+        "id": uuid4(),
+        "smart_account_address": USER,
+        "owner_address": USER,
+        "chain_id": 8453,
+        "session_pubkey": "0xabc0000000000000000000000000000000000abc",
+        "status": "active",
+        "allowlisted_targets": [VAULT],
+        "allowlisted_selectors": ["0x6e553f65"],
+        "per_tx_cap_raw": 500_000_000,
+        "cumulative_cap_raw": 5_000_000_000,
+        "spent_raw": 0,
+        "max_slippage_bps": 0,
+        "valid_after": None,
+        "valid_until": datetime.now(UTC) + timedelta(days=5),
+        "registered_tx_hash": None,
+        "revoked_tx_hash": None,
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
+    base.update(over)
+    return SessionKeyRow(**base)  # type: ignore[arg-type]
+
+
+def test_session_key_expiring_soon_becomes_notification(client: TestClient) -> None:
+    row = _session_row(valid_until=datetime.now(UTC) + timedelta(hours=2))  # within the 24h window
+    _wire(reader=FakeReader(shares=0, block=1000), session_keys=[row])
+    body = client.get("/notifications", headers=GOOD_HEADERS).json()
+    ske = [n for n in body["notifications"] if n["category"] == "sessionKeyExpiry"]
+    assert len(ske) == 1
+    assert ske[0]["type"] == "session_key_expiring"
+    assert ske[0]["href"] == "/automation"
+
+
+def test_session_key_revoked_becomes_notification(client: TestClient) -> None:
+    row = _session_row(status="revoked", revoked_tx_hash="0xdead")
+    _wire(reader=FakeReader(shares=0, block=1000), session_keys=[row])
+    body = client.get("/notifications", headers=GOOD_HEADERS).json()
+    ske = [n for n in body["notifications"] if n["category"] == "sessionKeyExpiry"]
+    assert len(ske) == 1
+    assert ske[0]["type"] == "session_key_revoked"
+
+
+def test_healthy_session_key_yields_no_notification(client: TestClient) -> None:
+    _wire(reader=FakeReader(shares=0, block=1000), session_keys=[_session_row()])
+    body = client.get("/notifications", headers=GOOD_HEADERS).json()
+    assert [n for n in body["notifications"] if n["category"] == "sessionKeyExpiry"] == []

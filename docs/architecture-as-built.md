@@ -97,7 +97,7 @@ On-chain (Base Sepolia 84532): vault `0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
 > The Phase-3 build gate for each not-yet-live surface below is tracked in
 > [`docs/phase-3-deferred.md`](phase-3-deferred.md).
 
-- **ERC-4337 account + PolicyModule (US6)** are undeployed — `/trust/permissions` says so; automation grants don't exist.
+- **ERC-4337 account + PolicyModule (US6)** — the Path-A stack is **deployed on Base Sepolia + proven live** (a real session-key UserOp passed the Alchemy bundler's ERC-7562 tracer + executed on-chain; feature 022, `contracts/deployments/84532/session-stack.md`). The grant/revoke web flow + spine submission path are in progress; the web still shows the honest `StatusTag mock` until wired, so user-facing automation grants aren't offered yet.
 - **Admin panels** overview/users/tvl/stake/revenue/config show **"Sample data"** badges (no analytics/TVL/revenue backend); live-honest: gateway, allowlist, killswitch, system, audit.
 - **Portfolio** allocation/positions/risk + the position-detail page are **"Sample data"**; only net worth reads live (agent, with a "Preview data" badge when disconnected).
 - **Offline chat** keyword-router is labeled **"Demo mode"**.

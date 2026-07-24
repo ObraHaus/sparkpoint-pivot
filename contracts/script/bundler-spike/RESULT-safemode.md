@@ -1,5 +1,17 @@
 # Bundler spike — SAFE-MODE + mode-0x01 session-key UserOp (item 6 / P1.5)
 
+> **⛳ SUPERSEDED / RESOLVED (feature 022, US6 — 2026-07-24).** The blocker this spike surfaced — a
+> `recordSpend`-in-validation write to the *external* PolicyModule at a slot associated with the
+> **sessionKey** (not the sender) — has been fixed by **Path A**: ALL per-session state (policy, caps,
+> monotonic `spent`, and the session's allowlist snapshot) now lives in `SparkPointAccount`'s **own**
+> storage, so `validateUserOp` reads/writes only account-own storage ([STO-010], unambiguous). See
+> `specs/022-us6-session-key-automation/` (research.md R1) and the refactored contracts. The definitive
+> ERC-7562 verdict is now obtained by submitting a mode-0x01 UserOp to the **real Alchemy Base-Sepolia
+> bundler** (Rundler, EntryPoint v0.7), which decodes v0.7 correctly (unlike the local Alto-0.0.20
+> harness below). The two spike deploy scripts (`BundlerSpikeDeploy.s.sol`,
+> `BundlerSpikeSessionDeploy.s.sol`) were retired with the fix; the raw logs + this analysis remain as
+> the historical evidence trail that drove the resolution.
+
 **Question (operator):** re-run the ERC-4337 v0.7 spike with Alto `--safe-mode true` and a
 **mode-0x01 session-key** UserOp — the path where `SessionKeyValidator.validateUserOp` calls
 `policyModule.recordSpend(...)` **during validation** (a write to the *external* PolicyModule).

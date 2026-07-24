@@ -34,14 +34,14 @@ contract SessionScopeTest is StdInvariant, AccountTestBase {
         ep.validAfter = uint48(block.timestamp - 2 days);
         ep.validUntil = uint48(block.timestamp - 1 days);
         vm.prank(owner);
-        account.authorizeSessionKey(ep);
+        account.authorizeSessionKey(ep, _allowTargets(), _allowSelectors());
 
         // A key that was authorized then REVOKED (immediate-revoke probe).
         (revokedKey, revokedPk) = makeAddrAndKey("revokedKey");
         IPolicyModule.Policy memory rp = _defaultPolicy();
         rp.sessionKey = revokedKey;
         vm.startPrank(owner);
-        account.authorizeSessionKey(rp);
+        account.authorizeSessionKey(rp, _allowTargets(), _allowSelectors());
         account.revokeSessionKey(revokedKey);
         vm.stopPrank();
 
@@ -79,7 +79,7 @@ contract SessionScopeTest is StdInvariant, AccountTestBase {
         assertLe(
             ghostAcceptedCumulative, SESSION_CUMULATIVE, "N4: cumulative spend exceeded the cap"
         );
-        uint256 spent = policy.policyOf(address(account), sessionKey).spent;
+        uint256 spent = account.sessionPolicyOf(sessionKey).spent;
         assertEq(spent, ghostAcceptedCumulative, "N4: on-chain spent must track accepted notionals");
     }
 
@@ -128,7 +128,7 @@ contract SessionScopeTest is StdInvariant, AccountTestBase {
         IPolicyModule.Policy memory p = _defaultPolicy();
         p.sessionKey = k;
         vm.prank(owner);
-        account.authorizeSessionKey(p);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
 
         bytes memory cd = _execCd(address(vault), 0, _vaultDepositCd(100e6, address(account)));
         PackedUserOperation memory op = _sessionOpWith(pk, cd);

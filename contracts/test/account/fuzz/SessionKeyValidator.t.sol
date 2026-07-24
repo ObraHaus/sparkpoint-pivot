@@ -107,7 +107,7 @@ contract SessionKeyValidatorFuzzTest is AccountTestBase {
         IPolicyModule.Policy memory p = _defaultPolicy();
         p.sessionKey = k;
         vm.prank(owner);
-        account.authorizeSessionKey(p);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
 
         bytes memory cd =
             _execCd(address(router), 0, _aeroSwapCd(amountIn, floor, address(account)));
@@ -126,7 +126,7 @@ contract SessionKeyValidatorFuzzTest is AccountTestBase {
         IPolicyModule.Policy memory p = _defaultPolicy();
         p.sessionKey = k;
         vm.prank(owner);
-        account.authorizeSessionKey(p);
+        account.authorizeSessionKey(p, _allowTargets(), _allowSelectors());
 
         bytes memory cd = _execCd(address(vault), 0, _vaultDepositCd(amount, address(account)));
         PackedUserOperation memory op = _sessionOpWith(pk, cd);
