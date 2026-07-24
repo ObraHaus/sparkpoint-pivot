@@ -7,14 +7,43 @@
  * SparkPoint Admin.html.
  */
 
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
 import { STREAM, Composed, Trajectory, DivergeBars, DualArea, Kpi } from "@/components/admin/charts";
-import { data } from "@/components/admin/data";
 import { useVaultStats } from "@/lib/admin/useVaultStats";
 import { formatUsdCompact } from "@/lib/admin/vaultStats";
 
+interface Analytics {
+  configured: boolean;
+  totalUsers: number;
+  activation: { deposited: number };
+  premiumActive: number;
+}
+
 export default function Page() {
   const s = useVaultStats();
+  const [a, setA] = useState<Analytics | null>(null);
+  const loadA = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agent/admin/users/analytics", {
+        headers: { "x-chain-id": "84532" },
+        cache: "no-store",
+      });
+      if (r.ok) setA((await r.json()) as Analytics);
+    } catch {
+      /* honest-degrade: the KPI renders "…" rather than a fabricated number */
+    }
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadA();
+  }, [loadA]);
+
+  const live = a?.configured === true;
+  const users = live ? a!.totalUsers.toLocaleString() : "…";
+  const depositors = live ? a!.activation.deposited.toLocaleString() : "…";
+  const premium = live ? a!.premiumActive.toLocaleString() : "…";
+
   return (
     <>
       <div className="pghead">
@@ -35,16 +64,16 @@ export default function Page() {
       >
         <Icon name="info" size={16} />
         <span>
-          <b style={{ color: "var(--foreground)" }}>Illustrative stakeholder deck.</b> The growth figures and charts below are
-          modelled projections, not live testnet data — pending mainnet instrumentation. The one live figure is{" "}
-          <b style={{ color: "var(--foreground)" }}>TVL</b>, read on-chain and labelled as such.
+          <b style={{ color: "var(--foreground)" }}>Live headline numbers, illustrative projections.</b> The KPI row is real —
+          TVL is read on-chain; users, depositors and premium come live from the database. The growth &amp; revenue{" "}
+          <b style={{ color: "var(--foreground)" }}>charts</b> below remain modelled projections (labelled as such) pending mainnet.
         </span>
       </div>
       <div className="band">
         <Kpi label="Live TVL (testnet)" val={formatUsdCompact(s.tvl)} />
-        <Kpi label="Total users" val="3,240" spark={data.usersSpark} sparkColor={STREAM.premium} delta="illustrative" deltaCls="flat" />
-        <Kpi label="Cumulative revenue" val="$13.9K" spark={data.revSpark} sparkColor={STREAM.srk} delta="illustrative" deltaCls="flat" />
-        <Kpi label="Run-rate (ARR-eq.)" val="$82.8K" spark={data.mrrSpark} sparkColor={STREAM.premium} delta="illustrative" deltaCls="flat" />
+        <Kpi label="Total users" val={users} />
+        <Kpi label="Depositors" val={depositors} />
+        <Kpi label="Premium active" val={premium} />
       </div>
       <div className="grid2">
         <div className="chartcard span2">
