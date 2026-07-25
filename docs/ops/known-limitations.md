@@ -72,15 +72,17 @@ a silent gap. Update in the same change that resolves one.
 
 ## Contracts / AA (from the Jul-16 audit — Phase 3)
 
-- **Session-key automation (US6) — blocker RESOLVED + stack deployed + proven live; product wire-up in
-  progress.** The ERC-7562 `recordSpend`-in-validation blocker is fixed (feature 022, Path A: all
-  per-session state moved into `SparkPointAccount`'s own storage). The AA stack is deployed on Base
-  Sepolia and a real session-key UserOp passed the Alchemy bundler's ERC-7562 tracer + executed
-  on-chain (`contracts/deployments/84532/session-stack.md`; N4 refuter NOT REFUTED). **Still limited
-  today:** the web `/automation` + `/trust/permissions` still show the honest `StatusTag mock` /
-  "only you can move funds" state until the grant/revoke web flow + the spine session-key submission
-  path + the `sessionKeyExpiry` notification land (in progress on `feature/US6-session-key-automation`;
-  migration `0024_session_keys` not yet applied). Mainnet stays gated on the recorded audit (Gate C).
+- **Session-key automation (US6) — SHIPPED on testnet; mainnet is the only remaining limit (Gate C).**
+  The ERC-7562 blocker is fixed (feature 022, Path A: all per-session state in `SparkPointAccount`'s own
+  storage); the AA stack is live on Base Sepolia (a real session-key UserOp passed the Alchemy bundler's
+  ERC-7562 tracer + executed on-chain; N4 refuter NOT REFUTED). The full slice is now shipped + live on
+  develop/alpha: migration `0025_session_keys` (**applied**), grant/revoke/list API + `sessionKeyExpiry`
+  notification (#105), the spine session-key submission path (#106), and the **web client-side
+  session-signer** (#107 — encrypted on-device key, a mode-0x01 signer byte-verified against the deployed
+  EntryPoint, the "Let Sparky do it" CTA, fully client-buildable revoke; the `StatusTag mock` is retired).
+  **Still limited:** it is **testnet only** (mainnet behind the recorded audit, Gate C) and — by design —
+  **never autonomous**: "hands-off" means no per-move signature, not no human; every move is still an
+  explicit click. There is no background/auto-execution path.
 
 ## Web app deploys / stale clients (feature 006)
 
