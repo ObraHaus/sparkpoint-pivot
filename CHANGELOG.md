@@ -72,6 +72,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   no new migration. 188 web unit tests (signer round-trip + hash regression pin, encrypted-store
   round-trip + SSR-safety, eligibility, revoke-calldata parity, submit/poll retry) + tsc + lint + build.
 
+### Fixed (022 — the hands-off path, caught by a live end-to-end on Base Sepolia)
+- **A live e2e proved the web session-signer executes on-chain — and caught a real bundler bug.** A
+  full run on Base Sepolia (grant a fresh session key → build `execute(vault,0,deposit(1 USDC,self))`
+  → sign with the **actual** `apps/web` `sessionSigner` → submit via the Alchemy bundler) executed the
+  move on-chain with **no per-move signature** (tx `0xcde4cc48…`, block 44592171, success). But the
+  first submission — carrying the client op's **null** `factory`/`factoryData`/`paymaster`/`paymasterData`
+  (v0.7 "absent") — was **rejected by the bundler with "Invalid account signature"**: sending those
+  slots as JSON `null` makes the Rundler hash a *different* op than the client signed. **Fix:**
+  `execution/bundler.py` now **strips null v0.7 fields** before `eth_sendUserOperation` (and
+  `eth_estimateUserOperationGas`), so the wire op matches exactly what was signed; the identical op that
+  was rejected with the nulls present was accepted + executed once they were dropped. A non-null
+  factory/paymaster (a real deploy/sponsor) is preserved. This is the seam only a real bundler exercises
+  — the unit tests + the on-chain `userOpHash` byte-check couldn't surface it.
+
 ### Changed (trust — list more contracts, honestly scoped)
 - **The Trust Center's "Contracts & roles" now also lists the branded-wrapper Vault factory
   (`0x2774…6D8b`) and the Uniswap V3 swap router (`0x94cC…2bc4`)** — the latter clearly labelled

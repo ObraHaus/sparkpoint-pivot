@@ -46,8 +46,17 @@ async def _bundler_rpc(
 
 async def send_user_op(bundler_url: str, user_op: dict[str, Any], entry_point: str) -> str:
     """``eth_sendUserOperation`` → the userOpHash. Raises ``BundlerError`` on a bundler rejection
-    (e.g. an ERC-7562 validation failure); transport errors propagate for a retryable degrade."""
-    result, err = await _bundler_rpc(bundler_url, "eth_sendUserOperation", [user_op, entry_point])
+    (e.g. an ERC-7562 validation failure); transport errors propagate for a retryable degrade.
+
+    Strips NULL v0.7 fields (``factory``/``factoryData``/``paymaster``/``paymasterData``) before the
+    call: the client signs the userOpHash with those slots ABSENT (initCode/paymasterAndData = 0x);
+    sending them as JSON ``null`` makes the Alchemy Rundler hash a different op → it rejects with
+    "Invalid account signature". Omitting the null keys makes the wire op match what was signed.
+    Proven on Base Sepolia: the identical op was rejected with the null keys present and accepted +
+    executed on-chain once they were dropped. A non-null factory/paymaster (deploy/sponsor) is kept.
+    """
+    clean_op = {k: v for k, v in user_op.items() if v is not None}
+    result, err = await _bundler_rpc(bundler_url, "eth_sendUserOperation", [clean_op, entry_point])
     if err is not None:
         raise BundlerError(
             str(err.get("message", "bundler rejected the UserOp")),
@@ -76,9 +85,10 @@ async def estimate_user_op_gas(
     bundler_url: str, user_op: dict[str, Any], entry_point: str
 ) -> dict[str, Any] | None:
     """``eth_estimateUserOperationGas`` → the recommended gas limits, or None on error."""
+    clean_op = {k: v for k, v in user_op.items() if v is not None}  # same null-field rule as send
     try:
         result, err = await _bundler_rpc(
-            bundler_url, "eth_estimateUserOperationGas", [user_op, entry_point]
+            bundler_url, "eth_estimateUserOperationGas", [clean_op, entry_point]
         )
     except (httpx.HTTPError, ValueError):
         return None

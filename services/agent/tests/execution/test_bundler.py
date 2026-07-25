@@ -28,6 +28,29 @@ async def test_send_user_op_returns_hash_on_accept(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+async def test_send_user_op_strips_null_v07_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A client op carries factory/factoryData/paymaster/paymasterData as null (v0.7 "absent"). The
+    # client signed the userOpHash with those slots absent (initCode/paymasterAndData = 0x); sending
+    # them as JSON null makes the bundler hash a DIFFERENT op → "Invalid account signature". They MUST
+    # be omitted on the wire (proven live on Base Sepolia). A non-null factory/paymaster is kept.
+    sent: dict[str, Any] = {}
+
+    async def _fake(url: str, method: str, params: list[Any]) -> tuple[Any, dict | None]:
+        sent.update(params[0])
+        return "0xok", None
+
+    monkeypatch.setattr(bundler, "_bundler_rpc", _fake)
+    op = {
+        "sender": "0xacc", "nonce": "0x0", "factory": None, "factoryData": None,
+        "callData": "0x", "paymaster": None, "paymasterData": None, "signature": "0x01",
+    }
+    assert await bundler.send_user_op("http://b", op, _EP) == "0xok"
+    for null_key in ("factory", "factoryData", "paymaster", "paymasterData"):
+        assert null_key not in sent
+    assert sent["sender"] == "0xacc" and sent["signature"] == "0x01"
+
+
+@pytest.mark.asyncio
 async def test_send_user_op_raises_verbatim_on_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake(url: str, method: str, params: list[Any]) -> tuple[Any, dict | None]:
         return None, {"code": -32602, "message": "AA24 signature error"}

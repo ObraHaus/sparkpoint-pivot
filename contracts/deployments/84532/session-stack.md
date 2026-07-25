@@ -36,3 +36,22 @@ Reproduce: `forge script script/VerifySessionBundler.s.sol --rpc-url $RPC --priv
 --slow` (owner setup), then POST the emitted `session-userop.json` to the bundler via
 `eth_sendUserOperation` (see the feature-022 quickstart). The bundler's canonical ERC-7562 validation
 tracer running clean over this op is the definitive evidence that Path A resolved the blocker.
+
+## Live e2e of the WEB signer (feature 022, #107) — PASS, 2026-07-25
+
+A second live run proved the **`apps/web` client-side session-signer specifically** (not the foundry
+script): a fresh session key was granted (owner tx `0xbdb7297e…`), then a `execute(vault, 0, deposit(1
+USDC, account))` UserOp was signed by the **web `sessionSigner`** (mode-0x01 / EIP-191 over viem's
+EntryPoint-v0.7 `userOpHash`) and submitted to the Alchemy bundler:
+
+- Session account: `0x07754FEd9680872710D7E91195890435Ee4aaF59` (reused; fresh grant, 1h expiry)
+- web userOpHash: `0xde40754aed364e01d54369c06918fc13b5b3ad1d495548061521bceb8b38b3dc`
+- **on-chain tx: `0xcde4cc48cf22ac880e3429b4eb05e7f08167086ee28708f2b4184ba4dd5f83b5`** (block 44592171,
+  success, 354,738 gas) — a session-key deposit with **no per-move user signature**.
+
+**Finding (fixed):** the first submission carried the client op's **null** v0.7 fields
+(`factory`/`paymaster`) and the bundler rejected it with *"Invalid account signature"* — sending those
+slots as JSON `null` makes the Rundler hash a different op than was signed. `execution/bundler.py` now
+strips null fields before `eth_sendUserOperation`; the identical op then executed on-chain. Only a real
+bundler exercises this seam (the unit tests + `userOpHash` byte-check against the on-chain EntryPoint
+did not surface it).
