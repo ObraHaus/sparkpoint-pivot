@@ -16,10 +16,10 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
 import { useNotifications, useMarkNotificationsRead } from "@/lib/agent/useAgent";
 import { filterByPrefs, type NotificationView } from "@/lib/agent/notificationsView";
 import { useNotifPrefs } from "@/lib/settings/usePrefs";
+import { useSessionKeys } from "@/lib/automation/useSessionKey";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
 import { toHref } from "@/lib/nav";
@@ -245,7 +245,9 @@ function Menu({ show, anchor, children }: { show: boolean; anchor: AnchorRect; c
 /* ------------------------------- content ------------------------------- */
 
 function ProveItBody({ go }: { go: (r: string) => void }) {
-  const sk = data.sessionKey;
+  // Reflect the REAL grant (US6) — retires the last `data.sessionKey` mock so the Trust Center never
+  // contradicts a live grant. `online:false` (no wallet) ⇒ null ⇒ the honest "No automation" copy.
+  const { active: sk } = useSessionKeys();
   const rows: [string, string, string, string, string?, string?][] = [
     ["shieldcheck", "--gain", "No admin withdrawal", "We have no code path to send your funds anywhere but back to you — not us, not anyone."],
     ["door", "--gain", "Withdraw anytime", "Exit directly on-chain, even if Sparky's app and AI are completely offline.", "Withdraw now", "trust/exit"],

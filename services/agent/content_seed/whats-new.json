@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "hands-off-automation-is-live-testnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Hands-off automation is here — approved moves, no signing prompt",
+      "body": "This completes the feature we've been building toward: if you grant Sparky a scoped session key, an approved, in-scope vault move can now run WITHOUT you signing each one. On an approved suggestion you'll see a new 'Let Sparky do it' button — but only when you have a live grant AND set it up on this device. Two things we want to be plain about. First, YOU stay in control: 'hands-off' means no signing prompt, not no you — every move is still a button you press; Sparky never moves on its own, and you can revoke instantly (that now works even if our servers are down). Second, your automation key is generated on your device and stored ENCRYPTED there — you unlock it once per session with a quick signature that authorizes no move; we never hold it. This is on our test network only for now. If you don't want any of this, do nothing — every move stays manual and you sign each one, exactly as before.",
+      "cta_label": "Set up automation",
+      "cta_href": "/automation",
+      "published_at": "2026-07-24T23:30:00Z",
+      "active": true
+    },
+    {
       "slug": "automated-moves-execution-path-wired",
       "type": "changelog",
       "tag": "New",

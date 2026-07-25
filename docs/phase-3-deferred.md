@@ -14,7 +14,7 @@ pending its increment*, not a shipped-Base-equivalent proof.
 
 | # | Deferred item | Honest in-app state today | Gate/condition to build |
 |---|---|---|---|
-| 1 | US6 session-key automation | **BLOCKER RESOLVED + STACK LIVE + SPINE WIRED (022):** Path-A AA stack deployed on Base Sepolia + a real mode-0x01 session-key UserOp passed the Alchemy bundler's ERC-7562 tracer **and executed on-chain** (tx `0x1d1fad64…`). Grant/revoke API + `sessionKeyExpiry` notif + the **spine session-key submission path** (`/build-tx` execMode=session_key → `/submit-signed-tx` opType=userop via the bundler → receipt) all built + tested | Web client-side session-signer (auto-signs the built UserOp for a hands-off move; service never holds the key, N3) |
+| 1 | US6 session-key automation | ✅ **DONE ON TESTNET (022):** Path-A AA stack live on Base Sepolia (mode-0x01 UserOp passed the Alchemy ERC-7562 tracer + executed on-chain, tx `0x1d1fad64…`); grant/revoke API + `sessionKeyExpiry` notif + spine submission path + **web client-side session-signer** (encrypted on-device key, mode-0x01 signer byte-verified vs the on-chain EntryPoint, "Let Sparky do it" CTA, client-buildable revoke) all shipped. Hands-off = no signature, still an explicit click (Gate C) | **Mainnet only** (Gate C: recorded audit + hardening sign-off; never autonomous) |
 | 2 | Base↔Sui bridge + Sui network | `StatusTag mock` "Unavailable during Alpha" | Sui (Move) custody increment designed; mainnet |
 | 3 | Aerodrome swaps | Swap venue gated "mainnet only" | Base **mainnet** (no Sepolia Aerodrome) |
 | 4 | Real Morpho wrapper + 010 APY feed | Demo wrapper on mock target; APY labeled/absent | Base mainnet Morpho + curated allowlist + APY feed |
@@ -49,11 +49,17 @@ pending its increment*, not a shipped-Base-equivalent proof.
   `userop_hash`/`exec_mode` columns from `0021`). Grant/revoke API (`/session-keys/*`, migration
   `0025_session_keys`, `SessionKeyStore`, the `SessionScope` §6 validator) + the `sessionKeyExpiry`
   notification shipped in the prior increment (#105).
-- **Still remaining** (this row stays until it fully ships to alpha): the **web client-side
-  session-signer** — the piece that holds the client-generated session key and auto-signs the built
-  UserOp so a move executes with no per-move user signature (the service never holds the key, N3). The
-  grant flow registers the key + `/automation` reflects real grant state; wiring the auto-sign is the
-  hands-off-UX increment. Never autonomous (Gate C; mainnet remains gated on the recorded audit).
+- **Web client-side session-signer — DONE (closes US6 on testnet).** `apps/web/src/lib/automation/`:
+  `sessionSigner.ts` (canonical EntryPoint-v0.7 `userOpHash` via viem + the 66-byte mode-0x01/EIP-191
+  signature the on-chain account recovers — **byte-verified against the deployed EntryPoint on Base
+  Sepolia**, no AA24 drift), `sessionKeyStore.ts` (session key **AES-GCM encrypted in IndexedDB** under
+  a one-time-per-session wallet-unlock-derived key; N3), `coverage.ts` (client eligibility vs the live
+  grant), `useSessionExecute.ts` (unlock → build → sign → relay → status). A **"Let Sparky do it"** CTA
+  shows on an approved rec only when a live in-scope grant + on-device key exist; **revoke is now fully
+  client-buildable** (works with SparkPoint offline, N2) and revoke/expiry wipes the local key.
+- **Only mainnet remains** (Gate C): every automated move stays bounded by the on-chain PolicyModule
+  and behind the recorded audit + hardening sign-off. **Hands-off = no signature, not no human** —
+  every move is still an explicit click; there is no autonomous/background execution path.
 - **Tracking:** `specs/022-us6-session-key-automation` + `specs/001-sparkpoint-pivot-mvp` (US6);
   constitution N4 / §IV.
 

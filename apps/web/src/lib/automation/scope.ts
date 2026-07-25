@@ -7,8 +7,23 @@
  * card and the grant form speak one vocabulary.
  */
 
-import { toFunctionSelector } from "viem";
-import type { SessionKeyAllowlistEntry } from "./useSessionKey";
+import { encodeFunctionData, toFunctionSelector, type Hex } from "viem";
+import type { RawTx, SessionKeyAllowlistEntry } from "./useSessionKey";
+
+/**
+ * Minimal ABI for the single `revokeSessionKey(address)` function. Inlined (not the shared barrel) so
+ * this stays a leaf module (node:test-loadable); the selector still byte-matches the deployed account
+ * + the server (`sessions.py` 0x84f4fc6a) — `scope.test.ts` pins that parity.
+ */
+const REVOKE_ABI = [
+  {
+    type: "function",
+    name: "revokeSessionKey",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "sessionKey", type: "address" }],
+    outputs: [],
+  },
+] as const;
 
 /** ERC-4626 vault selectors the rebalance scope covers — computed from the canonical signatures. */
 export const VAULT_DEPOSIT_SELECTOR = toFunctionSelector("deposit(uint256,address)"); // 0x6e553f65
@@ -37,6 +52,40 @@ export function vaultAllowlist(vault: string | undefined): SessionKeyAllowlistEn
     { target: vault, selector: VAULT_DEPOSIT_SELECTOR },
     { target: vault, selector: VAULT_REDEEM_SELECTOR },
   ];
+}
+
+/* ── revoke: fully CLIENT-buildable (the sacred exit never depends on SparkPoint, N2) ────────── */
+
+/**
+ * `revokeSessionKey(sessionKey)` calldata, encoded client-side from the canonical account ABI (so it
+ * byte-matches the server-built revoke, selector 0x84f4fc6a). Building revoke locally means the sacred
+ * exit works even if SparkPoint is entirely offline — no `/session-keys/revoke/build` round-trip.
+ */
+export function revokeSessionKeyCalldata(sessionKey: string): Hex {
+  return encodeFunctionData({
+    abi: REVOKE_ABI,
+    functionName: "revokeSessionKey",
+    args: [sessionKey as `0x${string}`],
+  });
+}
+
+/**
+ * The full revoke tx the user signs from their OWN wallet: `to` = their smart account, `data` =
+ * revokeSessionKey(sessionKey), value 0. Never gated by anything (N2). `null` if the account address
+ * isn't known yet (then the caller falls back to the server `/revoke/build`, still user-signed).
+ */
+export function buildRevokeTx(
+  account: string | undefined,
+  sessionKey: string,
+  chainId: number,
+): RawTx | null {
+  if (!account) return null;
+  return {
+    to: account as `0x${string}`,
+    data: revokeSessionKeyCalldata(sessionKey),
+    value: "0",
+    chainId,
+  };
 }
 
 /* ── USDC (6dp) base-unit ⇄ display ─────────────────────────────────────────── */

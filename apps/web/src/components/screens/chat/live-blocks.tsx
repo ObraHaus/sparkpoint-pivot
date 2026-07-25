@@ -19,6 +19,7 @@ import { Icon } from "@/lib/icons";
 import { RiskChip } from "@/components/ui/risk-chip";
 import type { ChatCard } from "@/lib/agent/cards";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
+import { HandsOffAction } from "@/components/screens/chat/HandsOffAction";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
 /**
@@ -205,14 +206,18 @@ function LiveBlock({
           </div>
           <div className="cnote">Estimates, not guarantees.</div>
           {signable || block.proposedAction.type === "aerodrome_swap" ? (
-            <div className="cact">
-              <button
-                className="btn btn-primary btn-md"
-                onClick={() => openAction(block.proposedAction, onReview, onSign)}
-              >
-                {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
-              </button>
-            </div>
+            <>
+              <div className="cact">
+                <button
+                  className="btn btn-primary btn-md"
+                  onClick={() => openAction(block.proposedAction, onReview, onSign)}
+                >
+                  {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
+                </button>
+              </div>
+              {/* US6: optional hands-off run — renders only with a live in-scope grant + on-device key. */}
+              {signable && <HandsOffAction action={block.proposedAction} />}
+            </>
           ) : (
             <div className="cnote">{block.policy.reason ?? REJECTED_FALLBACK}</div>
           )}
@@ -242,6 +247,8 @@ function LiveBlock({
                   {block.proposedAction.type === "aerodrome_swap" ? "Review swap" : "Review this move"}
                 </button>
               </div>
+              {/* US6: optional hands-off run — renders only with a live in-scope grant + on-device key. */}
+              {signable && <HandsOffAction action={block.proposedAction} />}
             </>
           ) : (
             <div className="cnote">{block.policy.reason ?? REJECTED_FALLBACK}</div>

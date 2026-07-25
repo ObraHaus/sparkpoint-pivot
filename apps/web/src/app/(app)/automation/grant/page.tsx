@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSignMessage } from "wagmi";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -27,6 +28,13 @@ import {
   useInvalidateSessionKeys,
   type GrantScopeEcho,
 } from "@/lib/automation/useSessionKey";
+import {
+  cacheUnlockKey,
+  deriveUnlockKey,
+  putSessionKey,
+  unlockMessage,
+  type KeyScope,
+} from "@/lib/automation/sessionKeyStore";
 import {
   bpsToPercent,
   formatUsdcBaseUnits,
@@ -54,17 +62,51 @@ export default function Page() {
   const [expiry, setExpiry] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   // The session PRIVATE key stays in the browser — only the address crosses to the service (N1/N3).
-  // TODO(persist): a durable client-side session-signing store isn't wired yet; held in memory so the
-  // grant can be reviewed + signed now. Automated execution (signing session userOps) is a follow-up.
-  const [, setSessionPk] = useState<Hex | null>(null);
+  // Held in memory through the grant flow; after the grant CONFIRMS the user can encrypt + persist it
+  // on this device (one unlock signature) so hands-off moves can sign later — see `onEnableHandsOff`.
+  const [sessionPk, setSessionPk] = useState<Hex | null>(null);
+  const [handsOff, setHandsOff] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [handsOffError, setHandsOffError] = useState<string | null>(null);
 
   const grant = useGrantBuilder();
   const tx = useSessionKeyTx();
   const invalidate = useInvalidateSessionKeys();
+  const { signMessageAsync } = useSignMessage();
   useHoldCriticalOp(tx.isBusy, "locked");
   useEffect(() => {
     if (tx.isDone) invalidate();
   }, [tx.isDone, invalidate]);
+
+  // Encrypt + persist the freshly-granted session key on THIS device (option A, operator-chosen): the
+  // user signs a fixed NON-transactional unlock message once → HKDF → AES-GCM key → store. The private
+  // key never leaves the device (N3); a stolen snapshot alone can't decrypt without the wallet re-sign.
+  async function onEnableHandsOff() {
+    const smartAccount = grant.result?.tx?.to;
+    if (!sessionPk || !smartAccount) {
+      setHandsOffError("The session key isn’t available — re-grant to enable hands-off signing.");
+      setHandsOff("error");
+      return;
+    }
+    setHandsOffError(null);
+    setHandsOff("saving");
+    try {
+      const signature = await signMessageAsync({ message: unlockMessage(smartAccount, VAULT_CHAIN) });
+      const unlockKey = await deriveUnlockKey(signature);
+      cacheUnlockKey(smartAccount, VAULT_CHAIN, unlockKey);
+      const scope: KeyScope = {
+        chainId: VAULT_CHAIN,
+        account: smartAccount,
+        sessionAddress: privateKeyToAccount(sessionPk).address,
+      };
+      const ok = await putSessionKey(scope, sessionPk, unlockKey);
+      if (!ok) throw new Error("This browser can’t store the key securely (private mode?).");
+      setSessionPk(null); // drop the in-memory copy — it now lives only encrypted at rest
+      setHandsOff("done");
+    } catch (e) {
+      setHandsOffError(e instanceof Error ? e.message : "Couldn’t enable hands-off signing.");
+      setHandsOff("error");
+    }
+  }
 
   const vault = (() => {
     try {
@@ -122,6 +164,51 @@ export default function Page() {
               </a>
             </div>
           )}
+
+          {/* Optional hands-off enablement: encrypt + store the session key on THIS device (N3). */}
+          {handsOff !== "done" ? (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 13,
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                background: "var(--info-subtle)",
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13 }}>Turn on hands-off moves (optional)</div>
+              <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
+                Store your automation key <strong>encrypted</strong> in this browser so approved, in-scope moves can run
+                without a wallet prompt. You’ll sign once to unlock it — that authorizes no move, and the key never leaves
+                your device. Skip this and every move stays manual (you sign each one).
+              </div>
+              {handsOffError && (
+                <div style={{ fontSize: 12, color: "var(--loss)", marginTop: 8 }}>{handsOffError}</div>
+              )}
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <button
+                  className="btn btn-primary btn-md"
+                  disabled={handsOff === "saving" || !sessionPk}
+                  onClick={() => void onEnableHandsOff()}
+                >
+                  {handsOff === "saving" ? "Sign to unlock…" : "Enable on this device"}
+                </button>
+                <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("automation"))}>
+                  Not now
+                </button>
+              </div>
+              {!sessionPk && handsOff !== "saving" && (
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8 }}>
+                  The key is only held during this grant — re-grant here to enable hands-off later.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, color: "var(--gain)", fontSize: 13 }}>
+              <Icon name="check" size={16} /> Hands-off signing is on for this browser.
+            </div>
+          )}
+
           <button className="btn btn-primary btn-md" style={{ marginTop: 16 }} onClick={() => router.push(toHref("automation"))}>
             Manage automation
           </button>

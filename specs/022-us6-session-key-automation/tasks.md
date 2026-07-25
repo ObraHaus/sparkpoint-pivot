@@ -62,14 +62,23 @@ confirm-before-PR are hard stops.
 
 ## Phase 3 — Web `[P after Phase 1]`
 
-- **T3.1** `lib/automation/useSessionKey.ts`: read the live grant (on-chain account view + agent
-  `GET /session-keys`); honest undefined-guard.
-- **T3.2** `app/(app)/automation/page.tsx`: retire `StatusTag mock`; render the live (revocable) grant
-  card + instant Revoke (client-buildable) or the honest empty state.
-- **T3.3** `app/(app)/automation/grant/page.tsx`: controlled inputs; build+sign a real grant via the
-  ExecutionDrawer path (not `confirm/deposit`).
-- **T3.4** `app/(app)/trust/permissions/page.tsx`: conditionalize the "no grants" banner to reflect a
-  live grant. Vault-fact table stays. `typecheck:test` + `lint` + `build` green.
+- **T3.1** ✅ `lib/automation/useSessionKey.ts`: reads the live grant (agent `GET /session-keys`);
+  honest undefined-guard. (Shipped in #105.)
+- **T3.2** ✅ `app/(app)/automation/page.tsx`: `StatusTag mock` retired; live revocable grant card +
+  instant Revoke or honest empty state. (#105.)
+- **T3.3** ✅ `app/(app)/automation/grant/page.tsx`: controlled inputs; real grant build+sign. (#105.)
+- **T3.4** ✅ `app/(app)/trust/permissions/page.tsx` + `OverlayProvider` "Prove it" row reflect the live
+  grant (last `data.sessionKey` mock retired). (This increment.)
+- **T3.5** ✅ **Web client-side session-signer (`feature/US6-web-session-signer`, THIS increment):**
+  `lib/automation/sessionSigner.ts` (canonical EntryPoint-v0.7 `userOpHash` via viem + 66-byte
+  mode-0x01/EIP-191 sig; **hash byte-verified against the deployed EntryPoint on Base Sepolia**),
+  `sessionKeyStore.ts` (**AES-GCM/IndexedDB**, one-time-per-session wallet-unlock-derived key, N3),
+  `coverage.ts` (eligibility vs the live grant), `sessionExecuteModel.ts` + `useSessionExecute.ts`
+  (unlock→build(`execMode=session_key`)→sign→`submit-signed-tx opType=userop`→poll), the **"Let Sparky
+  do it"** CTA in `chat/HandsOffAction.tsx` (gated on live grant + on-device key), grant-page
+  key-persist (kills `TODO(persist)`), **client-buildable revoke** (`scope.buildRevokeTx`, N2) + local
+  key wipe on revoke/expiry, and `useBuildTx` `execMode` param. 34 new unit tests; all 5 web gates
+  green. Gate C: hands-off = no signature, still an explicit click (no autonomy).
 
 ## Phase 4 — Housekeeping (same change)
 
