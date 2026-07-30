@@ -1,3 +1,4 @@
+# ruff: noqa: S101  (asserts are the idiomatic assertion mechanism in pytest)
 """024/T032 — registry-backed vault resolution, behind a flag, byte-identical when off.
 
 The contract under test, in precedence order:

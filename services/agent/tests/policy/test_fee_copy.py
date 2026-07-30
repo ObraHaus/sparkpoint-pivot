@@ -1,3 +1,4 @@
+# ruff: noqa: S101  (asserts are the idiomatic assertion mechanism in pytest)
 """024/T024 — the performance-fee disclosure must follow how the fee actually accrues.
 
 Constitution v3.0.0 ratified Morpho Vault V2 Fee Wrappers together with an explicit DISCLOSURE

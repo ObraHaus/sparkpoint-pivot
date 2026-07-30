@@ -1,3 +1,4 @@
+# ruff: noqa: S101  (asserts are the idiomatic assertion mechanism in pytest)
 """024/T032-T033 — GET /admin/vault-registry: advisory, all-chains, and FAIL-OPEN.
 
 Two properties matter more than the happy path:
