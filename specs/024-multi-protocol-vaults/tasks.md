@@ -127,10 +127,9 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
 
 ## Phase 4 — Honest APY (NOT gated)
 
-- [ ] **T050** Morpho API client on `vaultV2ByAddress(ourAddress, chainId)` → `avgNetApy`; fail-open to
-      "unavailable".
-- [ ] **T051** Background poller → `vault_apy_snapshots`. **Never on the request path** (rate limit).
-- [ ] **T052** UI: our fee, the child's fee, and the net — three separate lines.
+- [x] **T050** ✅ `data/morpho_api.py` — `vaultV2ByAddress(address, chainId)` → `avgNetApy`, which is ALREADY net of the whole fee chain (child fees + our fee + rewards), so it is exactly the IV.5 disclosure figure and needs no adjustment by our own fee. Schema introspected, not guessed: on `VaultV2` the fields are **top-level, not under `state`**, and `performanceFee`/`managementFee` are **fractions** (`0.25` = 25%). Fail-open to `unavailable` on every path — unsupported chain, transport error, GraphQL error (incl. the rate-limit rejection), unindexed vault, unparseable rate. A negative APY is PRESERVED, never clamped (a vault can genuinely lose money; clamping would flatter it).
+- [x] **T051** ✅ `api/vault_apy_poller.py` → `vault_apy_snapshots`, wired into `lifespan` and cancelled in `finally`, matching the three existing loops (lazy imports in the body; `except asyncio.CancelledError: raise` BEFORE the broad except). **Background only** — the API is rate-limited and sustained abuse reportedly triggers a week-scale cooldown, so a request-path read would scale with traffic and could take the feed down for everyone. Advisory lock **`210_260_024`** (mirrors `notification_poller`'s `210_240_021` = `21_<migration>_<feature>`; reuse would be a SILENT bug since both loops fail open). Interval floored at **300s** so a misconfigured `1` cannot hammer the API. The unsupported-chain check is LOCAL, so the default 84532 path makes no network call at all — asserted by test. Never writes `vault_registry` (migration/operator only).
+- [ ] **T052** UI: our fee, the child's fee, and the net — three separate lines. *(NOT DONE — the only Phase-4 item left. Groundwork is in place and no new endpoint is needed: `GET /admin/vault-registry` already returns `apySnapshots` via `store.latest_apy`, so filling the table populates it. The three lines are `sparkpoint_fee_bps`/live `performanceFee()`, `native_fee_note`, and `net_apy_bps` — which renders "unavailable" on 84532, since Morpho's API covers no testnet.)*
 - [ ] **T053** Retire the placeholder Morpho APY story spec 010 left open.
 
 ## Phase 5 — Robinhood mainnet 4663 **[GATED]**

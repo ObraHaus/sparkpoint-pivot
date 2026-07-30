@@ -357,6 +357,20 @@ async def _notification_poller_loop() -> None:
             raise
 
 
+async def _vault_apy_poller_loop() -> None:
+    """Feature 024 phase-4 (T051) background APY poller: snapshot each registry vault's net APY into
+    ``vault_apy_snapshots``. Off the request path DELIBERATELY — Morpho's API is rate-limited and
+    sustained abuse reportedly triggers a long cooldown, so a request-path read would scale with
+    traffic and could take the feed down for everyone. Fail-open, never on the withdraw/exit path
+    (N2). Gated by ``SPARKPOINT_VAULT_APY_POLL_ENABLED``; interval floored at 300s.
+
+    On Base Sepolia this can only ever write ``source='unavailable'`` with a NULL rate, because
+    Morpho's API covers no testnet — which is the honest answer, not a failure."""
+    from .vault_apy_poller import run_loop
+
+    await run_loop()
+
+
 # Feature 013/014 per-network DISPLAY constants — read outside AgentConfig (like PREMIUM_ALLOWLIST),
 # overridable by env. Each fee-recipient SET unions the pre-014 deployer EOA + the post-014
 # fee-treasury Safe (deployed at the SAME address on both chains) so the cumulative honestly counts
@@ -491,6 +505,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db = None
     index_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
+    apy_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
     # A deployment-shape check, independent of every dependency — so it must run BEFORE (and
     # regardless of) the DB connect, which is allowed to fail (023, FR-023-019).
@@ -520,6 +535,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Feature 021 phase 2: background notifications poller (edge-triggered caps/rate/new-recs →
         # notification_events). Best-effort, off the request path; never withdraw (N2). Env-gated.
         notif_task = asyncio.create_task(_notification_poller_loop())
+        # Feature 024 phase 4 (T051): background vault-APY poller → vault_apy_snapshots.
+        # Best-effort, off the request path (the Morpho API is rate-limited); never withdraw (N2).
+        apy_task = asyncio.create_task(_vault_apy_poller_loop())
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -531,6 +549,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             index_task.cancel()
         if notif_task is not None:
             notif_task.cancel()
+        if apy_task is not None:
+            apy_task.cancel()
         for task in swap_fee_tasks:
             task.cancel()
         if db is not None:
