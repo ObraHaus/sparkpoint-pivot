@@ -203,3 +203,46 @@ async def test_ingest_stamps_git_sha_and_timestamp(store: Any, embedder: Embedde
     assert row.metadata["git_sha"] == "abc1234"
     assert row.metadata["ingested_at"].endswith("+00:00")  # UTC iso
     assert row.metadata["source"] == "aave-v3-supply"  # original provenance preserved
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# R1 low #6 — the denylist missed a bare (non-0x) 32-byte key. Verified still live
+# in the 2026-07-30 sweep and fixed there. `scan_for_pii` RETURNS the kinds found
+# (it does not raise); `ingest_note` is what fails closed on a non-empty result.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_scan_detects_a_bare_hex_private_key_without_the_0x_prefix() -> None:
+    """A 32-byte key written without `0x` is just as much a secret; the 0x-anchored pattern
+    missed it."""
+    assert scan_for_pii(f"the deployer key is {'a' * 64} keep it safe") == ["private_key_hex_bare"]
+
+
+def test_scan_still_allows_a_legitimate_contract_address() -> None:
+    """40-hex addresses are LEGITIMATE in notes (contract addresses) and must stay ingestible —
+    the guard against over-blocking."""
+    assert scan_for_pii("The vault is at 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2 on Base.") == []
+
+
+def test_scan_does_not_flag_ordinary_prose_as_a_seed_phrase() -> None:
+    """The regression guard for the pattern this sweep REJECTED. A structural 12-lowercase-word
+    matcher flagged the repo's own changelog copy, and this denylist is fail-closed over
+    admin-authored prose — so a prose-matching pattern must never come back without the BIP-39
+    wordlist behind it."""
+    assert scan_for_pii(
+        "move now flows through our normal safety pipeline the exact same way"
+    ) == []
+
+
+def test_the_shipped_corpus_is_clean_under_the_denylist() -> None:
+    """Every file we actually ship must pass the guard — this is what caught the false positive."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    tripped = {
+        str(f.relative_to(root)): scan_for_pii(f.read_text(errors="ignore"))
+        for d in ("knowledge_seed", "knowledge_seed_tips", "persona_seed", "content_seed")
+        for f in sorted((root / d).glob("*"))
+        if f.is_file() and scan_for_pii(f.read_text(errors="ignore"))
+    }
+    assert tripped == {}

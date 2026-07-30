@@ -44,6 +44,7 @@ from ..agents.recommender import Candidate, ProposalContext, Recommender
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
     POLICY_VERSION,
+    SLIPPAGE,
     Action,
     ActionType,
     Asset,
@@ -643,9 +644,15 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
     non-recommended token as UNVERIFIED — the agent only PROPOSES; the swap is user-signed via the
     web's Uniswap path, outside the fail-closed policy (no ``Asset`` enum / allowlist widening).
     """
+    # R1 medium #1 — clamp at SOURCE. The planner's `_coerce_bps` accepts any non-negative
+    # integer, so a prompt-injected turn could put e.g. 9900 here, and the chat-inline swap card
+    # turns that into `minOut ≈ 0`. The web clamps too (`lib/swap/math`) and the wire schema now
+    # REJECTS out-of-range values outright — which is why the agent must never emit one, or a
+    # legitimate block would fail validation instead of merely being clamped.
     slippage = intent.max_slippage_bps
     if slippage is None:
         slippage = _DEFAULT_SWAP_SLIPPAGE_BPS
+    slippage = max(0, min(slippage, SLIPPAGE.absolute_ceiling_bps))
     in_asset = intent.asset or Asset.ETH  # the token to swap FROM (default ETH)
     in_addr = token_address(chain_id, in_asset)
     if intent.token_out_addr is not None:

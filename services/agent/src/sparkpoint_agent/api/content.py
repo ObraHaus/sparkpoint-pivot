@@ -62,6 +62,13 @@ class ContentWrite(BaseModel):
             return None
         # The widget/page render this as a link — allow ONLY internal paths or https, never
         # javascript:/data: schemes.
+        #
+        # R1 low #7: a PROTOCOL-RELATIVE href ("//evil.com") starts with "/" and so passed this
+        # check, but a browser resolves it against the current scheme — i.e. it is an EXTERNAL
+        # redirect wearing an internal-path costume. Reject it explicitly; an internal path never
+        # needs a second leading slash.
+        if candidate.startswith("//"):
+            raise ValueError("cta_href must not be protocol-relative ('//host' is external)")
         if not (candidate.startswith("/") or candidate.startswith("https://")):
             raise ValueError("cta_href must be an internal path ('/...') or an https:// URL")
         return candidate

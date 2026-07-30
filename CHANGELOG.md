@@ -55,6 +55,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`apy_source = 'unavailable'` with `net_apy_bps` NULL is the only legal write on 84532.** Morpho's API rejects chainId 84532 outright, so a `0` would be a fabricated yield; the `vault_apy_unavailable_is_null` CHECK enforces it.
 - **Base Sepolia is now a real FR-020 candidate rather than a green-by-skip.** `contracts/deployments/vault-candidates.json` gains an 84532 entry for our own vault, so the abdications and the asset are regression-checked on every PR — which is the point of the gate. Unlike the 8453/4663 rows, this candidate is a vault we *own*, so its `maxNativeFee` ceilings are a commitment about our own future behaviour rather than a filter on someone else's.
 
+### Fixed (security — R1 low sweep: 2 closed, 2 fixed, L8 re-opened as worse than filed)
+- **Admin-content CTA open redirect closed (R1 low #7).** The `cta_href` validator accepted anything
+  starting with `/`, which includes a **protocol-relative** `//evil.com` — a browser resolves that
+  against the current scheme, so an internal-looking path was in fact an external redirect. Now
+  rejected explicitly; an internal path never needs a second leading slash.
+- **PII denylist now catches a bare (non-`0x`) 32-byte key (R1 low #6, half).** A private key written
+  without the `0x` prefix slipped past the `0x`-anchored pattern.
+- **Mnemonic detection deliberately NOT added, with the evidence recorded.** A structural
+  12/24-lowercase-word matcher was written and rejected: over this repo's own corpus it flagged
+  ordinary English (*"move now flows through our normal safety pipeline the exact same way"*). Because
+  the denylist is fail-closed over admin-authored **prose**, shipping it would have rejected
+  legitimate notes and taught people to route around the guard. Real detection needs the vendored
+  BIP-39 wordlist. Two regression tests pin this — the false-positive string, and that every shipped
+  corpus file passes the guard (that corpus test is what caught it).
+- **Statuses verified in source for the rest**, recorded in `docs/security/R1-findings.md`: L5
+  (per-wallet rate limit) and L2 (stale admin role — `require_admin` does a live DB check per request)
+  are **closed**; L4 (`Secure` flag on http) is **not a defect**; L1 (SIWE nonce single-use), L3
+  (`X-Chain-Id` unbound — now folded into M3) and info #5 (general RPC error echo) remain **open**.
+- ⚠️ **L8 re-opened and re-rated.** R1 said the agent "ignores `uv.lock`" — true of CI's counterpart
+  only. CI pins with `uv sync --frozen`, but the **runtime** `services/agent/Dockerfile` installs bare
+  package *names with no versions* and never copies `uv.lock` in, so the deployed dependency set can
+  differ from what CI tested — a reproducibility/supply-chain gap, not a pinning nit. Both containers
+  also still run as root (no `USER` directive). Not fixed in the sweep: it changes the deployed
+  artifact and needs a deliberate call. Proposed fix recorded in the register.
+
 ### Changed — HONESTY (024 **T024**, a ratified obligation that gates any Fee Wrapper deposit)
 - **The performance-fee disclosure is now keyed on how the fee actually accrues, not hard-coded to a high-water mark.** Ratifying v3.0.0 carried a *disclosure* obligation, not merely a wording tweak: a Morpho Vault V2 keeps **no high-water-mark state at all** (`interest = newTotalAssets.zeroFloorSub(_totalAssets)`), so a gain **following an earlier loss IS charged** even while the holder is below their previous peak. SparkPoint's own vaults *do* hold a real `_highWaterMark` (confirmed in `SparkPointVault.sol` — `accrueFee()` returns 0 when price-per-share ≤ the mark), so today's copy is accurate and this is a **conditionalisation, not a correction**. New `VaultFeeBasis` (`high_water_mark` | `per_period_gain`) is derived **centrally** from the vault kind — `lib/policy/feeCopy.ts` + `useVault().feeBasis` on the web, `policy/fee_copy.py` on the agent — and never decided per call site, because a forgotten per-site flag is exactly how the retired-wrapper deposit bypass reached production and had to be caught by Defender.
 - `PERFORMANCE_FEE_DISCLOSURE` is retained **byte-identical**, so 015/FR-006 verbatim parity with the agent's `_DEPOSIT_DISCLOSURE` still holds and today's `/vault/quote/*` wire output is unchanged (pinned by tests on both sides). `performanceFee.base` gains a second value `period_interest_no_hwm`, and `performanceFee.highWaterMark` becomes **nullable** — a Vault V2 has no `highWaterMark()` selector, and writing `"0"` would read as "the mark is at par", a materially different promise from "no mark exists".
@@ -82,6 +107,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Two real bugs fixed, both the same class — a link to the wrong chain's explorer.** `app/exit/page.tsx` returned `https://basescan.org` for **any** chain that was not 84532, so on Robinhood testnet 46630 it produced a Base-mainnet link for a Robinhood transaction — on the one page whose entire purpose is proving a user can verify and exit on-chain. `admin/vaults/page.tsx`'s `scan()` was hard-coded to Sepolia while `GET /admin/vaults` returns rows for **every** chain, so a Base-mainnet wrapper linked into Sepolia's explorer. `ExecutionDrawer.tsx`'s inline helper knew only 8453/84532 and silently rendered no link on Robinhood. All now resolve from the one registry and render plain text — never a fabricated URL — when a chain has no explorer.
 - **024 T033 — `/admin/vaults` is honestly multi-chain**: each row names its **own** chain and states explicitly when live reads are out of scope for it, instead of rendering foreign-chain rows unlabelled with a `null` chainState that read as "broken". `CHAIN_ID` stays a constant **on purpose**, with the reason recorded in the file: a chain selector would offer chains the backend cannot serve, because the agent's `SPARKPOINT_VAULT_FACTORY_ADDRESS` is a single global env (calldata would target the 84532 factory whatever the header says) and `API_SUPPORTED_CHAIN_IDS` rejects Robinhood mainnet **4663** outright. Those two, plus the pre-existing `sendTransaction`-without-`chainId` gap a selector would make reachable, are documented as Phase 5/6 work rather than half-built.
 - Validation for all of the above: web **215** tests (+20), `tsc`, `typecheck:test`, `eslint --max-warnings=0`; shared `tsc --noEmit`; **253** forge tests; agent **822** pytest (+29); `mypy --strict` clean (124 files); `ruff check src` clean (**better than the develop baseline of 4** pre-existing errors); `policy-parity 84532` green against live chain (all 6 fields agree — which also confirms the launch vault address matches `0026`'s seed row, the thing that makes T032's flag-off path byte-identical); `custody-seam` and `knowledge-boundary` gates pass under their exact CI logic.
+
+### Fixed (security — alpha audit R1 medium #1: chat-swap slippage was unbounded)
+- **An assistant-proposed swap slippage is now clamped to the policy ceiling (300 bps).** Found while
+  verifying a decision record that claimed the chat-inline swap card's slippage was "bounded only by the
+  web client's 50 bps default" — it was bounded by nothing:
+  `ActionParamsSchema.maxSlippageBps` was `nonnegative()` with **no maximum**, `live-blocks.tsx`
+  forwarded the **agent-proposed** value straight through, and `amountOutMinimum` clamps only to
+  `[0, 10000]` bps (100%, i.e. `minOut ≈ 0`). On that card the slippage bound was therefore chosen by
+  the **model**, not the user, so a prompt-injected or compromised agent proposing 9900 bps produced a
+  sandwichable trade. Fixed in three layers: the agent clamps at source in `_swap_proposed_action`, the
+  wire schema now `.max(300)` so the unsafe value cannot be *represented*, and the web clamps
+  defensively in `lib/swap/math.clampProposedSlippageBps` before the value can reach
+  `amountOutMinimum`. The source clamp is required *by* the schema bound — otherwise an out-of-range
+  emission would fail validation and drop a legitimate block instead of being clamped. `undefined`
+  passes through so the card falls back to its own 50 bps preset; a missing value must never become a
+  permissive one. 8 regression tests (5 web, 3 agent).
+- **`docs/security/R1-findings.md` added.** R1 (2026-07-21) was report-only and its findings were never
+  committed, so its 3 mediums could not be tracked and its round-2 seam list was unavailable to a future
+  audit. Reconstructed with all three mediums verified against current code: M1 fixed here, M2
+  (idempotency scoping) fixed by 023, **M3 (S2S / `X-Owner` trust) still open** — and now load-bearing
+  for cache isolation, since 023's idempotency scope uses `X-Account` as a tenant key.
+- Corrected `COOLIFY.md`, which documented a `COOLIFY_API_TOKEN` env var that does not exist (the real
+  names are `COOLIFY_API_TOKEN_READ_READSENSITIVE` and `COOLIFY_API_TOKEN_RWD`).
 
 ### Changed — GOVERNANCE (024 Phase 1 — constitution **ratified v2.0.0 → v3.0.0**, MAJOR)
 - **Morpho Vault V2 Fee Wrappers are now permitted, and Robinhood Chain mainnet (4663) is in scope.** Ratified 2026-07-30 on operator authorization. **(1) IV.5's ineligibility rule narrowed** from "any SparkPoint-controlled address holds a role over the underlying" to: no role over the **child/underlying venue**, and no **discretionary** role (market selection, cap-setting, allocation) anywhere in the deposit path — SparkPoint may hold non-discretionary governance of its *own* wrapper when the risk-management powers are irreversibly **abdicated** at deployment. **(2) Permitted wrapper shapes generalised** to admit a Morpho Vault V2 Fee Wrapper under enumerated conditions (adapter list abdicated ⇒ one child forever; three critical gate setters abdicated; dead deposit first; multisig owner, never an EOA; ≥3-day curator timelock; 0 management fee, ≤20% performance fee; no "morpho" in the name; child passes the on-chain eligibility check). **(3) Principle VII clarified, not weakened** — a single-child, adapter-abdicated Fee Wrapper is not a meta-vault; **discretionary curation by SparkPoint remains forbidden**. **(4) Chain scope** extended to Base + Sui + Robinhood Chain 4663; **46630 has no Morpho at all** and stays swap-only with no mock substitute. `SparkPointMorphoVault` is **superseded** for new deployments.

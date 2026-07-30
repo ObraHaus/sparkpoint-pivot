@@ -13,6 +13,17 @@
       "active": true
     },
     {
+      "slug": "internal-safety-checks-tightened-link-and-secret-scanning",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Two small internal safety checks, tightened",
+      "body": "Housekeeping you won't see, told anyway. First: links we attach to our own announcements are only ever supposed to point back into the app, and we found a way one could have been written that looked internal but actually sent you to another site. Only our own team can write those links and none of them ever did — we closed the gap anyway. Second: before any of our internal notes go into the knowledge Sparky reads from, they're scanned so a secret can never be filed by mistake; that scan now also recognises a wallet key written in a slightly different format. While testing a third check we found it would have wrongly flagged ordinary sentences as if they were a recovery phrase, so we deliberately left it out rather than ship something that blocks honest writing — we'd rather the guard be right than look thorough. Nothing here changes what you see or do, and none of it ever touched your funds.",
+      "cta_label": "See the trust center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-30T15:30:00Z",
+      "active": true
+    },
+    {
       "slug": "fee-wording-now-follows-each-vault",
       "type": "changelog",
       "tag": "Improved",
@@ -21,6 +32,17 @@
       "cta_label": "See the fee breakdown",
       "cta_href": "/fees",
       "published_at": "2026-07-30T14:30:00Z",
+      "active": true
+    },
+    {
+      "slug": "swap-slippage-guardrail-tightened",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "We tightened the price protection on swaps started from chat",
+      "body": "When you start a swap from a chat suggestion, the card carries a \"max slippage\" setting — the worst price you're willing to accept before the trade is cancelled. We found that the assistant could propose that number without a ceiling, so in an unusual case it could have been set far too loose, which would let you get a noticeably worse price than the quote you saw. We've capped it at 3% in three separate places: where the assistant proposes it, in the data format itself, and again in the app before the trade is built. If no value is proposed you get the normal 0.5% default, and you can still set your own on the Swap page as before. Nothing changes in how swaps look or work for you, no funds were ever at risk from our side (we hold no keys and you sign every swap yourself), and we have no sign this was ever triggered — we found it ourselves while double-checking our own security notes, and we'd rather tell you than not.",
+      "cta_label": "Open Swap",
+      "cta_href": "/swap",
+      "published_at": "2026-07-30T13:00:00Z",
       "active": true
     },
     {

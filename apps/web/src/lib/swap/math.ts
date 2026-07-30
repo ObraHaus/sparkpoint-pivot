@@ -24,6 +24,32 @@ export function afterFee(amount: bigint, feeBips: number): bigint {
 }
 
 /**
+ * The policy layer's ABSOLUTE slippage ceiling in bps (policy-schema.md §5 — `absoluteCeilingBps`).
+ *
+ * Defined locally rather than imported so this module stays a leaf (node:test loads it directly —
+ * see the same note in `lib/automation/coverage.ts`); `packages/shared/src/policy/constants.ts` is
+ * the source of truth and a drift here would be a real defect.
+ */
+export const POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS = 300;
+
+/**
+ * Bound an ASSISTANT-PROPOSED slippage to the policy ceiling before it can reach
+ * {@link amountOutMinimum} (alpha security audit R1, medium #1).
+ *
+ * The chat-inline swap card takes its slippage from the agent's `proposedAction.params`. Unclamped,
+ * a prompt-injected or compromised agent proposing e.g. 9900 bps produces `minOut ≈ 0` — a
+ * sandwichable trade whose bound was chosen by the MODEL rather than the user. `amountOutMinimum`
+ * clamps only to [0, 10000] (100%), which is no protection at all.
+ *
+ * `undefined` passes through so the caller falls back to the UI's own 50 bps preset: a missing value
+ * must never become a permissive one.
+ */
+export function clampProposedSlippageBps(proposed: number | undefined): number | undefined {
+  if (proposed === undefined || !Number.isFinite(proposed)) return undefined;
+  return Math.max(0, Math.min(POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, Math.round(proposed)));
+}
+
+/**
  * The minimum output to accept = `amountOut × (1 − slippageBps/10000)`, floored (integer, never a
  * float). `slippageBps` is clamped to [0, 10000]. This is the ONLY value protecting the user from
  * the thin-pool price movement between quote and execution, so it is always set.

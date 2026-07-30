@@ -18,6 +18,7 @@
 import { Icon } from "@/lib/icons";
 import { RiskChip } from "@/components/ui/risk-chip";
 import type { ChatCard } from "@/lib/agent/cards";
+import { clampProposedSlippageBps } from "@/lib/swap/math";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { HandsOffAction } from "@/components/screens/chat/HandsOffAction";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
@@ -55,7 +56,12 @@ function inlineIntentFor(action: ProposedAction): InlineIntent {
         tokenOut: action.tokenOut ? { address: action.tokenOut.address, symbol: action.tokenOut.symbol } : undefined,
         chainId: action.chainId,
         amountIn: amount > 0n ? amount : undefined,
-        slippageBps: action.params?.maxSlippageBps,
+        // R1 medium #1: clamp the ASSISTANT-proposed slippage to the policy ceiling (§5, 300 bps)
+        // before it can reach `amountOutMinimum`. Unclamped, a prompt-injected or compromised agent
+        // proposing e.g. 9900 bps yields minOut ≈ 0 — a sandwichable trade chosen by the model rather
+        // than the user. `amountOutMinimum` clamps only to [0, 10000], which is no protection at all.
+        // The wire schema now also rejects out-of-range values; this is the defence-in-depth half.
+        slippageBps: clampProposedSlippageBps(action.params?.maxSlippageBps),
       };
     }
     default:
