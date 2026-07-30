@@ -1,4 +1,4 @@
--- 0024_session_keys.sql — feature 022 US6 session-key automation: the owner-scoped MIRROR of an
+-- 0025_session_keys.sql — feature 022 US6 session-key automation: the owner-scoped MIRROR of an
 -- on-chain scoped session grant (data-model.md §10 E10). One row per authorized session key: its
 -- public key, the scope it was granted (allowlisted targets/selectors, per-tx + cumulative caps, max
 -- slippage, hard expiry), the monotonic spend synced from chain, and the register/revoke tx hashes.
