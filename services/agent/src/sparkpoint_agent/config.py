@@ -5,9 +5,12 @@ the fee indexer read their environment through. It validates ONLY the vars the v
 surface needs and exposes fail-closed getters:
 
   - ``DATABASE_URL``            — the derived-index Postgres DSN (db/config.py owns the pool).
-  - the RPC url                 — ``SPARKPOINT_RPC_URL`` override, else the chain-appropriate
-                                  ``SIM_FORK_RPC_URL`` (Base-mainnet fork / 8453 · 31337) or
-                                  ``BASE_SEPOLIA_RPC_URL`` (84532).
+  - the RPC url                 — ``SPARKPOINT_RPC_URL`` override, else the var belonging to THAT
+                                  chain and only that chain (023): ``BASE_MAINNET_RPC_URL`` (8453),
+                                  ``BASE_SEPOLIA_RPC_URL`` (84532), ``SIM_FORK_RPC_URL`` (31337),
+                                  ``ROBINHOOD_RPC_URL`` (46630, public default). There is NO
+                                  cross-chain fallback: an unconfigured chain fails closed rather
+                                  than serving another chain's state (see ``_CHAIN_RPC_ENVS``).
   - ``SPARKPOINT_VAULT_ADDRESS`` — OPTIONAL. Undefined ⇒ the vault is not deployed on this
                                   chain; every getter that needs it fails closed and the
                                   endpoints return a clean "vault not deployed" envelope —
@@ -40,6 +43,10 @@ FEE_WALLET_ADDRESS_ENV = "FEE_WALLET_ADDRESS"  # 014 — fee-treasury Safe addre
 RPC_URL_ENV = "SPARKPOINT_RPC_URL"  # explicit override; wins over the chain-specific vars
 SIM_FORK_RPC_URL_ENV = "SIM_FORK_RPC_URL"
 BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
+# 023 — Base MAINNET (8453) gets its own var. Mainnet MUST be configured explicitly: there is no
+# fallback to the fork or to Sepolia (see _CHAIN_RPC_ENVS), so a missing value fails closed rather
+# than silently serving another chain's state as mainnet.
+BASE_MAINNET_RPC_URL_ENV = "BASE_MAINNET_RPC_URL"
 ROBINHOOD_RPC_URL_ENV = "ROBINHOOD_RPC_URL"  # §B3 Robinhood testnet (46630); keyless public default
 AAVE_POOL_ADDRESS_ENV = (
     "AAVE_POOL_ADDRESS"  # 017 — Aave v3 Pool for the live USDC supply-APY read (PUBLIC)
@@ -66,6 +73,7 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         RPC_URL_ENV,
         SIM_FORK_RPC_URL_ENV,
         BASE_SEPOLIA_RPC_URL_ENV,
+        BASE_MAINNET_RPC_URL_ENV,
         ROBINHOOD_RPC_URL_ENV,
         AAVE_POOL_ADDRESS_ENV,
         AAVE_RESERVE_USDC_ADDRESS_ENV,
@@ -124,19 +132,44 @@ def _normalize_address(value: str, field: str) -> str:
     return value.lower()
 
 
-def _resolve_rpc_url(source: Mapping[str, str], chain_id: int) -> str | None:
-    """Pick the RPC url for ``chain_id``. Explicit override wins; else chain-appropriate.
+# 023 — per-chain RPC candidates. Each chain lists ONLY env vars that can legitimately serve THAT
+# chain, so there is no cross-chain fallback in either direction. ``RPC_URL_ENV`` is the explicit
+# per-deployment override and stays first everywhere.
+#
+# WHY (the defect this closes): the previous order resolved 8453 as
+# ``SPARKPOINT_RPC_URL → SIM_FORK_RPC_URL → BASE_SEPOLIA_RPC_URL``, so a mainnet deployment missing
+# one env var read the Anvil fork — or Base Sepolia — and presented it as mainnet. Cap headroom,
+# ``paused()``, ``totalAssets()`` and the ERC-4626 previews all feed ``policy.evaluate()`` while the
+# built calldata still targets the MAINNET vault from env, so the failure mode was a bundle approved
+# against one chain's state and signed on another. The 84532 order had the mirror-image bug (a
+# Base-mainnet fork could be served as Sepolia). A missing value now fails CLOSED instead.
+_CHAIN_RPC_ENVS: dict[int, tuple[str, ...]] = {
+    8453: (RPC_URL_ENV, BASE_MAINNET_RPC_URL_ENV),  # Base mainnet — explicit only
+    84532: (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV),  # Base Sepolia
+    31337: (RPC_URL_ENV, SIM_FORK_RPC_URL_ENV),  # local Anvil fork of Base mainnet
+}
 
-    Returns ``None`` when nothing is configured (the getter fails closed on use).
+
+def rpc_env_candidates(chain_id: int) -> tuple[str, ...]:
+    """The env var NAMES that may supply ``chain_id``'s RPC url, in precedence order.
+
+    Names only — never values — so this is safe to interpolate into an error message or a log line.
+    """
+    if chain_id == ROBINHOOD_TESTNET_CHAIN_ID:
+        return (RPC_URL_ENV, ROBINHOOD_RPC_URL_ENV)
+    return _CHAIN_RPC_ENVS.get(chain_id, (RPC_URL_ENV,))
+
+
+def _resolve_rpc_url(source: Mapping[str, str], chain_id: int) -> str | None:
+    """Pick the RPC url for ``chain_id`` from that chain's OWN candidates (023).
+
+    Returns ``None`` when nothing is configured for this chain (the getter fails closed on use). A
+    url configured for a DIFFERENT chain is never substituted — see ``_CHAIN_RPC_ENVS``.
     """
     if chain_id == ROBINHOOD_TESTNET_CHAIN_ID:  # §B3 Robinhood testnet (46630)
         # Explicit override wins; else the keyless public RPC (this chain needs no key).
         return source.get(RPC_URL_ENV) or source.get(ROBINHOOD_RPC_URL_ENV) or _ROBINHOOD_PUBLIC_RPC
-    if chain_id == 84532:  # Base Sepolia
-        order = (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV, SIM_FORK_RPC_URL_ENV)
-    else:  # 8453 (Base mainnet) · 31337 (Anvil fork of Base mainnet) → the sim fork
-        order = (RPC_URL_ENV, SIM_FORK_RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV)
-    for name in order:
+    for name in rpc_env_candidates(chain_id):
         value = source.get(name)
         if value:
             return value
@@ -165,11 +198,17 @@ class AgentConfig:
         return self.vault_address is not None
 
     def require_rpc_url(self) -> str:
-        """The RPC url, or fail closed."""
+        """The RPC url, or fail closed — naming THIS chain's real candidates (023).
+
+        The message lists only the env var NAMES valid for ``chain_id`` (never a value), so an
+        operator standing up a new chain is told exactly what to set instead of being pointed at a
+        variable that would silently serve a different chain.
+        """
         if not self.rpc_url:
+            names = " / ".join(rpc_env_candidates(self.chain_id))
             raise ConfigError(
-                "no RPC url configured (set SPARKPOINT_RPC_URL, or SIM_FORK_RPC_URL / "
-                f"BASE_SEPOLIA_RPC_URL for chain {self.chain_id})."
+                f"no RPC url configured for chain {self.chain_id} — set one of: {names}. "
+                "There is no fallback to another chain's RPC (023)."
             )
         return self.rpc_url
 
