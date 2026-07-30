@@ -55,7 +55,7 @@ from .errors import (
     validation_error_handler,
 )
 from .execution import router as execution_router
-from .idempotency import IdempotencyStore
+from .idempotency import IdempotencyStore, LayeredIdempotencyStore, ScopedStore
 from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
 from .network_diagnostics import router as network_diagnostics_router
@@ -106,6 +106,23 @@ async def _llm_ready() -> bool:
         ok = False
     _llm_probe.update(ts=now, ok=ok)
     return ok
+
+
+def _durable_idempotency_store() -> ScopedStore | None:
+    """The Postgres-backed replay cache (migration 0026), or ``None`` if it cannot be constructed.
+
+    Resolved lazily and defensively so module import never depends on a DB. ``None`` degrades to the
+    in-process cache alone — replay protection that does not survive a restart, which is exactly the
+    pre-023 behavior and is safe (fail-open, N2). The store itself logs a distinct warning when the
+    table is absent, so a deploy that landed before 0026 was applied is observable (FR-023-015a).
+    """
+    try:
+        from ..db.idempotency import PgIdempotencyStore
+
+        return PgIdempotencyStore(get_database())
+    except Exception:
+        logger.warning("idempotency_durable_store_unavailable; replays will not span restarts")
+        return None
 
 
 async def _chain_readiness() -> tuple[int | None, bool, bool, bool]:
@@ -503,9 +520,12 @@ app = FastAPI(
     openapi_url="/openapi.json" if _DOCS_ENABLED else None,
 )
 
-# One process-local idempotency store shared by every request (§1.3). Production
-# swaps this for a Postgres/Redis-backed store so replays span workers/restarts.
-idempotency_store = IdempotencyStore()
+# The §1.3 idempotency cache: an in-process fast path LAYERED over a Postgres-backed store
+# (migration 0026), so a replay is honored after a restart and across workers — the old comment here
+# promised exactly this and 023 delivers it (FR-023-015). The durable half is resolved lazily so
+# module import never needs a DB, and every durable failure fails OPEN (the request is admitted):
+# idempotency guards a double-emit on an ADVISORY build and is never on the withdraw/exit path (N2).
+idempotency_store = LayeredIdempotencyStore(IdempotencyStore(), _durable_idempotency_store())
 app.add_middleware(RequestContextMiddleware, store=idempotency_store)
 
 # CORS — the browser (web tier) calls this service cross-origin (§1.2 headers + the
