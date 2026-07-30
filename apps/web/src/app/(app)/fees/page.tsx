@@ -8,6 +8,15 @@
  *
  * Faithful 1:1 port of the design's `fees` screen
  * (docs/design-handover/showcase/screens/fees.js). Markup, classes, and copy verbatim.
+ *
+ * 024/T024 — SCOPE OF THE HIGH-WATER-MARK CLAIM. This page reads the LAUNCH Aave vault
+ * (`addrs.vault`), which holds a real `_highWaterMark`, so the HWM wording is accurate here. It was
+ * however phrased UNIVERSALLY ("your high-water mark"), and constitution v3.0.0 ratified a vault kind
+ * for which it is false: a Morpho Vault V2 Fee Wrapper keeps no HWM state, so a gain after a loss is
+ * charged. The claims are therefore now (a) sourced from `lib/policy/feeCopy` rather than retyped, and
+ * (b) explicitly attributed to the vault they are true of. No Fee Wrapper is deployed yet, so this page
+ * deliberately does NOT describe one — that would advertise a capability that does not exist
+ * (Principle III). It gains its section when Phase 3 puts a real one on chain.
  */
 
 import { useRouter } from "next/navigation";
@@ -18,7 +27,15 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { StatusTag } from "@/components/ui/status-tag";
+import { feeBasisRecoverySentence, vaultFeeBasis } from "@/lib/policy/feeCopy";
 import "@/components/screens/fees.css";
+
+/**
+ * The basis for the vault this page reads. `first_party` = the launch Aave vault, which holds a real
+ * `_highWaterMark`. Stated as data, not baked into prose, so the sentences below cannot drift from the
+ * vault they describe (024/T024).
+ */
+const LAUNCH_FEE_BASIS = vaultFeeBasis("first_party");
 
 const VAULT_CHAIN = 84532;
 const EXPLORER = "https://sepolia.basescan.org";
@@ -162,7 +179,7 @@ export default function Page() {
         </div>
         <div className="card card-pad fcard">
           <h3>
-            <Icon name="coins" size={17} /> Performance fee · vault{" "}
+            <Icon name="coins" size={17} /> Performance fee · Aave Yield Vault{" "}
             <span className="feetag" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
               Active · v1
             </span>
@@ -179,10 +196,12 @@ export default function Page() {
             </li>
             <li>
               <Icon name="check" size={14} />
-              If your balance dips and recovers, you pay <b>nothing</b> until you’re back above your previous high.
+              {feeBasisRecoverySentence(LAUNCH_FEE_BASIS)}
             </li>
             <li className="muted-li">
               This is the “we only earn when you earn” fee — accrued transparently, shown in every net-APY breakdown.
+              The high-water mark is a property of <b>this</b> vault&apos;s contract, read live below — not a
+              blanket promise about every vault SparkPoint may list.
             </li>
           </ul>
         </div>
@@ -194,12 +213,11 @@ export default function Page() {
           <StatusTag variant={readsLive ? "live" : "partial"} label={readsLive ? "Live fee read" : "Reading…"} />
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
-          SparkPoint charges{" "}
+          On the Aave Yield Vault, SparkPoint charges{" "}
           <b style={{ color: "var(--foreground)" }}>{perfFeePct !== undefined ? `${perfFeePct}%` : "—"}</b> of your{" "}
           <b>profit above your high-water mark</b> — profit-only, read live from the vault. There is{" "}
           <b>0%</b> on your principal and <b>0%</b> to deposit or withdraw (structural to the ERC-4626 vault,
-          not a promise). If your value dips and recovers, you pay nothing until you&apos;re back above your
-          previous high.
+          not a promise). {feeBasisRecoverySentence(LAUNCH_FEE_BASIS)}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
           <Icon name="info" size={12} /> We don&apos;t show a per-wallet &ldquo;fees paid&rdquo; figure: the fee is

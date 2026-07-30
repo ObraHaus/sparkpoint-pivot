@@ -127,9 +127,47 @@ Migrations will live in a migrations dir (e.g. `services/agent/migrations/` or `
 - **`SparkPointMorphoVault` (feature 011, Phase 1)** — a branded, single-purpose, **non-upgradeable** ERC-4626 wrapper over ONE curated Morpho ERC-4626 vault (`contracts/src/vault/SparkPointMorphoVault.sol`, iface `ISparkPointMorphoVault.sol`). It is a source-clone of `SparkPointVault` with the Aave leg swapped for `IERC4626 morphoVault`. **Key difference: NON-REBASING accounting** — `totalAssets() = morphoVault.convertToAssets(morphoVault.balanceOf(this))` (the Aave vault reads the rebasing `aUSDC.balanceOf`), so it tracks the Morpho share price **up AND down**. `maxWithdraw`/`maxRedeem` clamp to Morpho liquidity, with a **Vaults-V2 fallback** (when `morphoVault.maxWithdraw==0` while `totalAssets>0`, availability falls back to the full claim so the N2 exit is never spuriously zeroed; the real `withdraw` + a `require(got==assets,"PARTIAL")` fail-close cleanly if liquidity is short). Same 0-management / profit-only ≤20% HWM fee (share-dilution, never on principal). Deployed only by the `SparkPointVaultFactory` (Phase 2) via **full-bytecode CREATE2** (not a minimal-proxy clone — a clone delegatecalls, violating N5). Tests: `test/{fuzz/MorphoVault4626,invariant/MorphoVaultNonCustody,fork/MorphoVaultFork}.t.sol` (fork test env-gated on `SIM_FORK_RPC_URL` + `MORPHO_VAULT_ADDRESS`). The stacked double-fee (SparkPoint fee **over** Morpho's native curator fee) and the non-Aave yield source must be disclosed net in the app.
 - **`SparkPointVaultFactory` (feature 011, Phase 2)** — a **deploy-only** CREATE2 registrar (`contracts/src/factory/SparkPointVaultFactory.sol`, iface `ISparkPointVaultFactory.sol`) that mints wrappers from an **on-chain curated Morpho allowlist**. `Ownable`, owner = the OZ `TimelockController` (which provides the mandated allowlist-add delay/veto per constitution v2.0.0 — no second in-contract timelock). It holds **no funds** and has no fund path (N1). Wrappers are **full-bytecode CREATE2** (not clones → N5); `predictVaultAddress(morphoVault, feeBps, Caps, label)` recomputes the exact init code so predict == the deployed address; a `vaultBySalt` guard prevents duplicate `(morphoVault, label)`. Each wrapper gets its own timelock-owned `CapRegistry`. De-allowlisting blocks future deploys only — deployed wrappers stay withdrawable (N2). Deploy via `contracts/script/DeployMorphoWrapperFactory.s.sol` (env: `MORPHO_VAULT` = the vetted curated vault; `DEPLOY_SMOKE_WRAPPER` optional). Deployed factory + curated-vault addresses go in `packages/shared/src/addresses/*` as the plain (non-`TargetRef`) `sparkPointVaultFactory?` / `curatedMorphoVaults?` fields.
   > **⛔ Superseded by feature 024 (2026-07-30) — do not deploy new wrappers.** The Base-Sepolia demo wrapper is **retired** (`sparkPointWrappers[].retired`): deposits fail-close in `deriveVaultConfirm`, withdrawals stay open (N2). Its underlying was a `MockMorphoVault` with unpermissioned simulation hooks, and the wrapper's `morphoVault` is immutable so it could not be re-pointed. The premise that "Morpho has no curated testnet vaults" is **false** — Morpho Blue, the MetaMorpho V1.1 factory and the **Vault V2 factory** (`0xE3a2CEbc…2ea0`) are all live on 84532. Going forward SparkPoint configures **Morpho Vault V2 Fee Wrappers** instead of deploying bespoke wrapper Solidity; see `specs/024-multi-protocol-vaults/`. The `SparkPointVaultFactory` stays deployed and readable for the retired wrapper's provenance.
-- **`/admin/vaults` manage half (feature 011, Phase 3)** — operators create + govern wrappers from `apps/web/src/app/admin/vaults/page.tsx` via the admin BFF `services/agent/.../api/admin_vaults.py`. **The BFF holds no key and has no fund path**: every mutating route (`/admin/vaults/create`, `/allowlist`, `/{vault}/guardian-action`) returns **prepared calldata** the operator signs from their own wagmi wallet (mirrors the read-only kill-switch pattern); chain access is `eth_call`-only via the keyless `vault_reader` transport, and the guardian-action enum is a **closed set** `{pause,unpause,setFee,setFeeRecipient,setCaps}` with **no move-funds verb**. Reads factory provenance via `SPARKPOINT_VAULT_FACTORY_ADDRESS` (undefined pre-deploy ⇒ create/allowlist fail closed). Needs migration `0016_vault_factory.sql` applied + an agent redeploy to go live.
+- **`/admin/vaults` manage half (feature 011, Phase 3)** — operators create + govern wrappers from `apps/web/src/app/admin/vaults/page.tsx` via the admin BFF `services/agent/.../api/admin_vaults.py`. **The BFF holds no key and has no fund path**: every mutating route (`/admin/vaults/create`, `/allowlist`, `/{vault}/guardian-action`) returns **prepared calldata** the operator signs from their own wagmi wallet (mirrors the read-only kill-switch pattern); chain access is `eth_call`-only via the keyless `vault_reader` transport, and the guardian-action enum is a **closed set** `{pause,unpause,setFee,setFeeRecipient,setCaps}` with **no move-funds verb**. Reads factory provenance via `SPARKPOINT_VAULT_FACTORY_ADDRESS` (undefined pre-deploy ⇒ create/allowlist fail closed). Needs migration `0016_vault_factory.sql` applied + an agent redeploy to go live. **⚠️ That env var is a SINGLE GLOBAL, not per-chain** — so create/allowlist calldata targets the 84532 factory whatever `x-chain-id` says. Together with `API_SUPPORTED_CHAIN_IDS` (`api/security.py`) rejecting Robinhood mainnet **4663**, that is why the page still pins `CHAIN_ID = "84532"` and offers **no chain selector** (024/T033): a selector would offer chains the backend cannot serve, and prepared calldata for the wrong network is worse than none. Each row does now name its own chain and say when live reads are out of scope for it. Making the factory env per-chain, widening the supported-chain list, and passing `chainId` to `sendTransaction` in `CalldataCard.sign()` are 024 Phase 5/6 work.
 - Every change must preserve the **five non-custody invariants (N1–N5)** in the constitution. Where the custom ERC-4337 stack threatens the schedule, the mid-build checkpoint may fall back to a battle-tested AA SDK (ZeroDev/Kernel) — any fallback must preserve N1–N5.
 - Simulate with **Tenderly** before any onchain action; verify on Basescan on deploy.
+
+## CI (GitHub Actions on the OH fleet)
+
+**Every workflow runs on ObraHaus's self-hosted fleet — never on GitHub-hosted runners.** The org's
+Actions allowance is shared and exhaustible: in July 2026 ObraHaus hit 2,000/2,000 minutes at a $0
+spending limit and **every repository was blocked at once**. CI moved onto the fleet in #111.
+
+Four things are not optional in a new workflow (playbook §9):
+
+1. **`runs-on: [self-hosted, oh-ci]`** — never `ubuntu-latest`, and never a bare `[self-hosted]`
+   (both fleets match it, so a job can land on capacity with none of the tools it needs). The
+   security scan is the one exception: `oh-defender.yml` uses `[self-hosted, oh-defender]`.
+2. **`timeout-minutes` on every job** — self-hosted capacity inherits no platform ceiling (the
+   documented default is five days), so one hung job holds a fleet slot indefinitely. This repo uses
+   `30` throughout.
+3. **`concurrency` with `cancel-in-progress: true`** — a superseded push otherwise holds a slot.
+4. **No double-triggering** — keep concrete branches (`develop`) in `push` and let `pull_request`
+   cover feature branches; a branch matched by both runs the whole workflow twice per commit.
+
+Also copy the same-repo fork guard onto any new self-hosted job, or a fork PR runs untrusted code on
+hosts we own:
+
+```yaml
+if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+```
+
+Actions are SHA-pinned with a trailing `# vN` comment. All gate logic lives in committed,
+locally-runnable helper scripts so each gate is testable outside CI:
+
+| Workflow | Local equivalent |
+|---|---|
+| `policy-parity` | `bash contracts/script/policy-parity-check.sh 84532` |
+| `vault-eligibility` (024/FR-020) | `bash contracts/script/vault-eligibility-check.sh [chainId]` |
+| `custody-seam` / `knowledge-boundary` / `changelog-required` | statement-anchored greps, inline in the YAML |
+
+**Troubleshooting.** A job that fails in ~2s with **0 steps** means no self-hosted runner was
+available for its labels — not billing, and not your code. Check `gh api .../jobs` for `steps: 0` and
+whether `develop` fails identically before debugging the workflow.
 
 ## LLM gateway (LiteLLM → OpenRouter)
 

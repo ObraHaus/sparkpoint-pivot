@@ -32,14 +32,32 @@ import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { vaultAddressFor } from "@/lib/chain/exit";
+import type { VaultFeeBasis } from "@/lib/policy/feeCopy";
 import { wagmiConfig } from "@/lib/wagmi";
 
 /**
  * Which vault this hook is reading. The conservative launch Aave vault is the DEFAULT (calling with
  * no `vaultAddress` resolves it, exactly as before). A `morpho_wrapper` is a branded, single-purpose
  * SparkPointMorphoVault over ONE curated Morpho vault — its yield is Morpho, NOT Aave (011 Phase 4).
+ * A `morpho_fee_wrapper` is a **Morpho Vault V2 Fee Wrapper** (024, constitution v3.0.0) — Morpho's
+ * own audited contract, not ours.
+ *
+ * The kinds differ in a way the USER must be told about, so `feeBasisForVaultKind` derives the
+ * fee-disclosure basis from this union rather than letting each surface decide: our own vaults keep a
+ * real `_highWaterMark`, and a Vault V2 keeps none (024/T024).
  */
-export type VaultKind = "aave_launch" | "morpho_wrapper";
+export type VaultKind = "aave_launch" | "morpho_wrapper" | "morpho_fee_wrapper";
+
+/**
+ * The fee-disclosure basis implied by a vault kind — resolved CENTRALLY, never per call site.
+ *
+ * 024 Phase 0 is the cautionary tale: a per-site `retired` flag was forgotten once and Defender
+ * caught a live deposit bypass through `/confirm/[intent]`, which mounts its own confirm hook. Fee
+ * copy has exactly the same shape of risk, so the mapping lives here and the sites consume it.
+ */
+export function feeBasisForVaultKind(kind: VaultKind): VaultFeeBasis {
+  return kind === "morpho_fee_wrapper" ? "per_period_gain" : "high_water_mark";
+}
 
 /**
  * The wrapper-only views (011). The 4626 + fee/pause spine is already covered by `sparkPointVaultAbi`
@@ -147,8 +165,18 @@ export interface UseVaultResult {
   readonly assetDecimals: number;
 
   // ── multi-vault identity (011 Phase 4) ─────────────────────────────────────
-  /** `'aave_launch'` (default) or `'morpho_wrapper'`. Drives copy + the double-fee disclosure. */
+  /** `'aave_launch'` (default), `'morpho_wrapper'`, or `'morpho_fee_wrapper'`. Drives copy + the
+   * double-fee disclosure. */
   readonly kind: VaultKind;
+  /**
+   * How this vault's performance fee accrues — derived centrally from {@link kind} (024/T024).
+   *
+   * Every fee surface MUST key its copy on this rather than assuming a high-water mark: SparkPoint's
+   * own vaults hold a real `_highWaterMark`, while a Morpho Vault V2 Fee Wrapper holds none, so on a
+   * Fee Wrapper a gain following an earlier loss IS charged. Ratified as a disclosure obligation in
+   * constitution v3.0.0.
+   */
+  readonly feeBasis: VaultFeeBasis;
   /** Human display name — the launch label, a registry override, or the wrapper's on-chain `label()`. */
   readonly label: string;
   /** Honest venue: the launch vault yields via Aave v3; a wrapper via Morpho (NOT Aave). */
@@ -185,11 +213,22 @@ export interface UseVaultResult {
   readonly totalAssets: bigint | undefined;
   /** DISPLAY ONLY — withdraw/redeem are never pause-gated (N2). Surfaced to prove exit-while-paused. */
   readonly paused: boolean | undefined;
-  /** Current performance-fee rate (bps); profit-only, over a high-water mark. */
+  /** Current performance-fee rate (bps); profit-only. See {@link feeBasis} for HOW it accrues. */
   readonly performanceFeeBps: number | undefined;
-  /** Immutable hard cap on the performance fee (bps) — 2000 (20%); never exceedable. */
+  /**
+   * Hard cap on the performance fee (bps) — 2000 (20%).
+   *
+   * On SparkPoint's own vaults this is a bytecode constant, so it is genuinely never exceedable. On a
+   * Fee Wrapper the ≤20% ceiling is a POLICY commitment (Morpho V2's own ceiling is 50%), held by the
+   * Safe owner + a ≥3-day timelock — so read this with {@link feeBasis} before calling it immutable.
+   */
   readonly maxPerformanceFeeBps: number | undefined;
-  /** Share-price high-water mark (WAD, 1e18-scaled). Fee accrues only above this. */
+  /**
+   * Share-price high-water mark (WAD, 1e18-scaled). Fee accrues only above this.
+   *
+   * `undefined` on a Fee Wrapper — a Morpho Vault V2 exposes no `highWaterMark()` because it keeps no
+   * such state. Absence here is therefore meaningful, not merely "still loading".
+   */
   readonly highWaterMark: bigint | undefined;
   readonly feeRecipient: Address | undefined;
   /** The vault's live `asset()` (should equal `usdcAddress`; surfaced for reconciliation). */
@@ -286,7 +325,13 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // Multi-vault resolution (011): an explicit `vaultAddress` targets a branded wrapper; omitting it
   // resolves the conservative launch Aave vault for this chain — the UNCHANGED default.
   const kind: VaultKind = options.kind ?? "aave_launch";
+  // `isWrapper` gates the SparkPointMorphoVault-SPECIFIC reads (`label()`, `morphoVault()`,
+  // `factory()`, `isSparkPointVault()`). A `morpho_fee_wrapper` is Morpho's OWN Vault V2 and exposes
+  // none of them, so it must NOT be folded in here — those reads would revert against it. Its live
+  // read path (a distinct V2 ABI) lands with the Phase 3 deployment; today the kind exists so the fee
+  // DISCLOSURE is honest before any Fee Wrapper can take a deposit (024/T024).
   const isWrapper = kind === "morpho_wrapper";
+  const isMorphoVenue = kind === "morpho_wrapper" || kind === "morpho_fee_wrapper";
   const launchVault = chainId === undefined ? undefined : vaultAddressFor(chainId);
   const vault = options.vaultAddress ?? launchVault;
   const usdcAddress = usdcAddressFor(chainId);
@@ -457,7 +502,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const label = isWrapper
     ? (wrapperLabel ?? options.label ?? "SparkPoint Vault")
     : (options.label ?? "Aave Yield Vault");
-  const underlyingProtocol: "aave_v3" | "morpho" = isWrapper ? "morpho" : "aave_v3";
+  const underlyingProtocol: "aave_v3" | "morpho" = isMorphoVenue ? "morpho" : "aave_v3";
 
   // ── parameterized previews ───────────────────────────────────────────────
   const depositAssets = options.previewDepositAssets;
@@ -554,6 +599,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     usdcAddress,
     assetDecimals,
     kind,
+    feeBasis: feeBasisForVaultKind(kind),
     label,
     underlyingProtocol,
     morphoVault,

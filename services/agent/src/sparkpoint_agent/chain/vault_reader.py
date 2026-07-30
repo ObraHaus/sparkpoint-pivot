@@ -346,6 +346,18 @@ class VaultReader:
         # superset). A generic external ERC-4626 vault is read with ``erc4626`` (core only).
         self._abi_kind = abi_kind if abi_kind in _ABI_KINDS else "sparkpoint"
 
+    @property
+    def vault_address(self) -> str | None:
+        """The vault this reader is bound to (lowercased), or ``None`` when not deployed here.
+
+        024/T032 — the single source of truth for "which vault this request is about". A caller that
+        must both READ a vault and build calldata for it (``/build-tx``) MUST take the address from
+        here rather than re-reading ``config.vault_address``: once the registry can override the env
+        var, two independent reads could straddle an operator's registry edit and produce a quote
+        priced against one vault with calldata targeting another.
+        """
+        return self._vault
+
     @classmethod
     def from_config(
         cls,

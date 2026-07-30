@@ -15,7 +15,9 @@
 
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import type { Hex } from "viem";
 import type { GuardrailCheck, ProposedAction } from "@sparkpoint/shared/schemas";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -44,10 +46,10 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+// 024 — delegates to the one chain-metadata registry instead of re-listing roots. The previous
+// inline version knew only 8453/84532, so Robinhood testnet rendered no link at all.
 function explorerTx(chainId: number | undefined, hash: string): string | null {
-  if (chainId === 84532) return `https://sepolia.basescan.org/tx/${hash}`;
-  if (chainId === 8453) return `https://basescan.org/tx/${hash}`;
-  return null;
+  return explorerTxUrl(chainId, hash as Hex) ?? null;
 }
 
 function GuardRow({ g }: { g: GuardrailCheck }) {

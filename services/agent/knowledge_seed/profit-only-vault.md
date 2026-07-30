@@ -22,6 +22,14 @@ principal**. If the strategy earns nothing, no fee is taken. This aligns the
 manager with the depositor — the vault is paid only when the depositor makes
 money, so a quoted net APY is always the gross Aave APY minus the profit-only fee.
 
+The high-water mark described here is a property of **this** vault's own contract
+(`SparkPointVault`, which keeps a real `_highWaterMark`). It is not a blanket
+property of every vault SparkPoint may list: a Morpho Vault V2 keeps no
+high-water-mark state, so on such a vault a gain following an earlier loss is
+charged even while the depositor is below their previous high. "0% on principal"
+and "nothing in a flat or falling period" hold in both cases. Each vault's own
+screen states its exact terms before signing.
+
 ## Net vs. gross
 
 Recommendations distinguish the **gross** APY (raw Aave supply rate) from the
