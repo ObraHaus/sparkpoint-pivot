@@ -21,9 +21,13 @@
     "ROBINHOOD TESTNET 46630 IS ABSENT ON PURPOSE. It has no Morpho deployment of any kind, so it has",
     "no candidates and must never be given a mock substitute (v3.0.0, D3).",
     "",
-    "BASE SEPOLIA 84532 HAS NO CANDIDATES. Morpho Blue and the VaultV2Factory are live there, but no",
-    "third-party Vault V2 exists to wrap — Phase 3 creates OUR OWN V2 over a live Blue market instead.",
-    "The gate green-by-skips a chain with no candidates."
+    "BASE SEPOLIA 84532 NOW HAS ONE CANDIDATE, AND IT IS OURS. No third-party Vault V2 exists there to",
+    "wrap, so Phase 3 created our own V2 over a live Blue market (broadcast 2026-07-30). Listing it here",
+    "turns the gate from a green-by-skip into a real assertion on the only 84532 vault we will ever",
+    "deposit into — the abdications and the asset are now regression-checked on every PR, which is the",
+    "whole point of FR-020. Unlike the 8453/4663 rows this candidate is a vault we OWN, so its",
+    "maxNativeFee ceilings are a commitment about our own future behaviour, not a filter on someone",
+    "else's."
   ],
   "gateSelectors": {
     "$comment": "Recomputed with `cast sig`, not copied from docs. The three CRITICAL setters are the ones abdicateNonCriticalGates:true renounces; a fourth exists (setSendAssetsGate 0x871c979c) which gates the DEPOSIT side and is deliberately NOT required, since N2 only protects the exit.",
@@ -32,6 +36,30 @@
     "setReceiveAssetsGate(address)": "0x04dbf0ce"
   },
   "chains": {
+    "84532": {
+      "label": "Base Sepolia",
+      "vaultV2Factory": "0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0",
+      "publicRpcUrl": "https://sepolia.base.org",
+      "rpcUrlEnv": "BASE_SEPOLIA_RPC_URL",
+      "candidates": [
+        {
+          "address": "0x756C41dD33481620EbCB0357F759d31c9eE72170",
+          "label": "SparkPoint USDC Yield (our own Vault V2)",
+          "expectedAsset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "expectedAssetSymbol": "USDC",
+          "expectedAssetDecimals": 6,
+          "maxNativePerformanceFeeBps": 0,
+          "maxNativeManagementFeeBps": 0,
+          "observed": {
+            "checkedAt": "2026-07-30",
+            "totalAssets": "999999",
+            "curator": "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
+            "liquidityRatioNote": "Not applicable/not asserted. Morpho's API covers no testnet, so no ratio is derivable here — and per the script's liquidity note this gate never PASSES a liquidity check it did not perform. The 999999 is the dead deposit, not user liquidity."
+          },
+          "vettingNotes": "OUR OWN Vault V2, broadcast 2026-07-30 in 52 receipt-checked txs (Phase 3). Asset is CIRCLE's USDC 0x036CbD53… — deliberately NOT Aave's 0xba50Cd2A…, which is what the rest of the 84532 address book calls `usdc`; both report symbol()=='USDC' at 6 dp and are not interchangeable. Allocates into Blue market 0x01351cf8… via MorphoMarketV1AdapterV2 0x4C4dCd2e…, because the canonical MorphoVaultV1AdapterFactory fee-wrapper path does not exist on this chain. 18-dp shares over the 6-dp asset (virtualShares 1e12). Native fees are 0/0 and the ceilings above hold us to that until the 2-of-3 Safe deliberately changes it behind a 3-day timelock."
+        }
+      ]
+    },
     "8453": {
       "label": "Base mainnet",
       "vaultV2Factory": "0x4501125508079A99ebBebCE205DeC9593C2b5857",

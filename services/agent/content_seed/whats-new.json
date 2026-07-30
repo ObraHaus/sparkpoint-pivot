@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "real-morpho-vault-live-on-testnet",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "A real Morpho vault is now live on our test network — the stand-in is gone",
+      "body": "Until today the \"Morpho\" vault you could see on our test network was a demo. Its underlying contract was a mock we had written for testing, and anyone on that network could have moved its share price. We closed it to new deposits last week and said so plainly. Withdrawals were never affected.\n\nIt has now been replaced by the real thing: a vault built on **Morpho's own audited contract**, created by Morpho's own factory, putting funds to work in a genuine Morpho lending market. We wrote none of the code that holds the money — that is the point. Our job is to configure and curate it, not to reinvent custody.\n\nSome specifics we think you should be able to check rather than take on trust:\n\n- **Control sits with a 2-of-3 multisig, not one key.** Ownership, curation and the emergency role were all handed to it, and every sensitive change is behind a 3-day delay you can watch on chain.\n- **We permanently gave up the ability to block your shares or your money.** Morpho's contract lets an operator install \"gates\" that can stop shares or assets from moving. We renounced those controls irreversibly, so no future decision by us — or by anyone — can put one back. Nothing we do can ever stand between you and your exit.\n- **We charge no fee on it yet.** The vault's own performance and management fees both read zero on chain right now.\n- **Its yield figure is shown as unavailable, not as 0%.** Morpho's data service doesn't cover test networks at all, so we would have to invent a number to show one. We would rather show nothing than something untrue.\n\nOne honest caveat worth stating: this vault does **not** keep a \"high-water mark\". On the Aave vault, if your balance dips and recovers you pay nothing until you're back above your previous best. Here, a gain after a loss still counts as a gain for that period — so it can be charged even while you're below your previous high. That difference is not in our favour to explain, which is exactly why we're explaining it.\n\nThis is on our test network only. Nothing changes for real funds.",
+      "cta_label": "Open the vault",
+      "cta_href": "/vault",
+      "published_at": "2026-07-30T16:00:00Z",
+      "active": true
+    },
+    {
       "slug": "fee-wording-now-follows-each-vault",
       "type": "changelog",
       "tag": "Improved",
@@ -20,7 +31,8 @@
       "body": "Nothing changes on your side today — this is groundwork, and we'd rather tell you about it than not. Before real money is ever involved we went back through the part of SparkPoint that reads the blockchain and prepares your transactions, looking for places where it could be pointed at the wrong network and not notice. We found some, and closed them. The service now proves which network it is talking to before it will quote you a number or prepare a move, and refuses to answer at all rather than answer from the wrong place. We also made hands-off moves work out the network fee at the moment you make them instead of using a fixed figure that only suited our test network, tightened a check so an out-of-date move can't be sent, and made sure one person's prepared transaction can never be handed to somebody else. Your funds, the vault, and the withdraw-anytime guarantee are untouched by all of this — every one of these changes can only ever make us MORE careful, never less. Still test network only; the real-money launch has its own separate review to pass first.",
       "cta_label": "See what we can and can't do",
       "cta_href": "/trust",
-      "published_at": "2026-07-30T10:00:00Z",      "active": true
+      "published_at": "2026-07-30T10:00:00Z",
+      "active": true
     },
     {
       "slug": "morpho-demo-vault-retired-deposits-closed",
