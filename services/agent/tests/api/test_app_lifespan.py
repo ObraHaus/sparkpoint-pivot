@@ -16,11 +16,13 @@ never-trap-funds posture: a DB outage degrades intelligence, never custody — N
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api import main
+from sparkpoint_agent.api import main as main_module
 
 # /readyz returns the per-dependency detail ONLY to a valid web-tier bearer; anonymous callers
 # get a bare {"ready": bool}. Tests that assert on `checks` must present this token.
@@ -127,3 +129,50 @@ def test_docs_and_openapi_disabled_by_default() -> None:
         assert client.get("/docs").status_code == 404
         assert client.get("/redoc").status_code == 404
         assert client.get("/openapi.json").status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 023 T027a (FR-023-019) — the multi-worker warning. Added because the
+# /speckit-analyze pass found this was the only requirement in the feature with
+# an implementation task and no test.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_multi_worker_config_warns(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """After the durable idempotency store, the process-global LLM limiter is the only mechanism
+    whose correctness depends on one worker — so N workers must be loud, not silent."""
+    caplog.set_level(logging.WARNING, logger="sparkpoint_agent.api")
+    monkeypatch.setenv("WEB_CONCURRENCY", "4")
+
+    main_module._warn_if_multi_worker()
+
+    warnings = [r for r in caplog.records if "multi_worker_detected" in r.getMessage()]
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert "WEB_CONCURRENCY=4" in message
+    assert "no custody impact" in message, "the warning must not overstate the consequence"
+
+
+def test_single_or_unset_worker_count_is_silent(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="sparkpoint_agent.api")
+    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
+    monkeypatch.delenv("UVICORN_WORKERS", raising=False)
+    main_module._warn_if_multi_worker()
+    monkeypatch.setenv("WEB_CONCURRENCY", "1")
+    main_module._warn_if_multi_worker()
+
+    assert not [r for r in caplog.records if "multi_worker_detected" in r.getMessage()]
+
+
+def test_a_garbled_worker_count_is_ignored_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Boot-path code must never raise on a malformed env value."""
+    caplog.set_level(logging.WARNING, logger="sparkpoint_agent.api")
+    monkeypatch.setenv("WEB_CONCURRENCY", "lots")
+    main_module._warn_if_multi_worker()
+    assert not [r for r in caplog.records if "multi_worker_detected" in r.getMessage()]

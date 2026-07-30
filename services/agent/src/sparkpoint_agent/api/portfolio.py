@@ -21,11 +21,19 @@ Honesty (never a fabricated number)
 - Custody balances come straight from the vault reader (``balanceOf`` →
   ``convertToAssets``); the underlying is USDC, valued at **$1 par** (the vault's stable
   underlying needs no oracle), with ``priceSource = "onchain"``.
-- Cost basis / realized+unrealized PnL / a PnL time-series need the derived cost-basis
-  index (owned by the fee indexer, not yet built) → exposed as ``null`` / ``[]``
-  (best-effort), never fabricated — mirroring the §3.7 withdraw quote.
+- Cost basis, realized + unrealized PnL and the value series are **REAL** (018/020): an
+  average-cost replay over the indexed vault flows (``db.vault_flows.replay_basis``).
+  They are surfaced ONLY when the share history ``reconciles`` — an incomplete or
+  disagreeing history yields ``null`` rather than a partial-history guess, so a number
+  here is always reconstructable from chain.
 - ``concentrationBps`` is derivable from the live allocation and is populated; a risk
   ``score`` / ``drift`` need the risk model (not yet wired) → ``null``.
+- Still honestly absent: the per-position ``onchainEvents`` history and per-position
+  series (they need the per-position event index) → ``[]``.
+
+(023 note: this section previously said cost basis and PnL were ``null`` "until the fee
+indexer lands". That stopped being true when 018/020 shipped; the docstrings that carry
+this service's invariants have to match what it does, or an auditor is reading fiction.)
 """
 
 from __future__ import annotations
@@ -94,7 +102,8 @@ _DATA_SOURCE = "vault_rpc"
 
 
 class PositionDetail(BaseModel):
-    """§3.3 enriched position. Cost-basis/PnL are ``null`` until the fee indexer lands."""
+    """§3.3 enriched position. Cost basis + realized/unrealized PnL are real (018/020), computed
+    from the indexed flows and surfaced only when the share history reconciles — else ``null``."""
 
     positionId: str
     venue: str
@@ -126,7 +135,7 @@ class Allocation(BaseModel):
 
 
 class PnlSeriesPoint(BaseModel):
-    """One point on the PnL time-series (needs the derived index → empty for now)."""
+    """One point on the value series, reconstructed from the indexed vault flows (018/020)."""
 
     ts: str
     valueUsd: str
@@ -146,7 +155,8 @@ class OnchainEvent(BaseModel):
 
 
 class Pnl(BaseModel):
-    """§3.3 ``pnl`` — realized/unrealized + a time-series (null/empty until indexed)."""
+    """§3.3 ``pnl`` — realized + unrealized from the average-cost replay, plus the value series.
+    ``null`` only when the indexed share history does not reconcile (never a guess)."""
 
     series: list[PnlSeriesPoint]
     realizedUsd: str | None = None

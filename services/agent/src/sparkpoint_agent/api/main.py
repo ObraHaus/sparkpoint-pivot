@@ -108,6 +108,39 @@ async def _llm_ready() -> bool:
     return ok
 
 
+def _warn_if_multi_worker() -> None:
+    """023 (FR-023-019) — the one remaining single-process assumption, made loud.
+
+    After the durable idempotency store (Story D), the only mechanism whose CORRECTNESS depends on
+    running exactly one worker is the process-global LLM concurrency limiter
+    (``llm/resilience.py``): with N workers there are N semaphores, so the effective in-flight cap
+    is N x the intended one.
+
+    Deliberately a WARNING, not a refusal to boot. That limiter guards **cost and upstream rate
+    limits**, not custody and not the correctness of any signable artifact — and the LiteLLM virtual
+    key caps rpm/tpm/daily budget server-side too. Taking a service down over a cost control would
+    be disproportionate; leaving the assumption undocumented and invisible would not.
+    """
+    for name in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        raw = os.getenv(name)
+        if not raw:
+            continue
+        try:
+            workers = int(raw)
+        except ValueError:
+            continue
+        if workers > 1:
+            logger.warning(
+                "multi_worker_detected %s=%d — the process-global LLM concurrency limiter is "
+                "PER-PROCESS, so the effective in-flight cap is %dx the intended one (cost/rate "
+                "limits only; no custody impact). Run ONE worker, or externalize the limiter. "
+                "See DEPLOYMENT.md.",
+                name,
+                workers,
+                workers,
+            )
+
+
 def _durable_idempotency_store() -> ScopedStore | None:
     """The Postgres-backed replay cache (migration 0026), or ``None`` if it cannot be constructed.
 
@@ -459,6 +492,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     index_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
+    # A deployment-shape check, independent of every dependency — so it must run BEFORE (and
+    # regardless of) the DB connect, which is allowed to fail (023, FR-023-019).
+    _warn_if_multi_worker()
     try:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)

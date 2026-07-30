@@ -62,4 +62,6 @@ _CASES: list[tuple[type[BaseModel], str, str]] = [
 def test_pydantic_matches_zod_field_set(model: type[BaseModel], file: str, schema: str) -> None:
     zod = _zod_fields(_read(file), schema)
     py = set(model.model_fields.keys())
-    assert py == zod, f"{model.__name__} drifted from {schema}: py-only={py - zod}, zod-only={zod - py}"
+    assert py == zod, (
+        f"{model.__name__} drifted from {schema}: py-only={py - zod}, zod-only={zod - py}"
+    )
