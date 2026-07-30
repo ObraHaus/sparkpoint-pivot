@@ -96,43 +96,48 @@ now load-bearing for cache isolation too. **This is the single highest-value ite
 
 ---
 
-## Confirmed lows (titles only — not re-verified; see the provenance note)
+## Lows — swept and statused 2026-07-30
 
-1. SIWE nonce not server-side single-use ⇒ a captured signed message is replayable within its expiry.
-   *(Adjudicated at R1: the "nonce cleared every outcome" defence is cookie-clearing only — an attacker
-   sets their own cookie — so the replay finding stands.)*
-2. 7-day stateless session freezes the beta/admin role ⇒ allowlist removal or a kill-switch is
-   ineffective for up to 7 days. Re-validate at the web tier.
-3. `X-Chain-Id` is client-controlled and not bound to the SIWE chain.
-4. `Secure` flag omitted on `http://` deploys.
-5. No per-wallet rate limit on `/chat` + `/recommendations`, and the LiteLLM virtual key had no
-   budget/rate cap ⇒ cost-DoS + leaked-key blast radius. *(Substantially addressed by feature 008's
-   per-tier quotas + the virtual key's rpm/tpm/daily budget — **verify and close**.)*
-6. PII denylist misses seed phrases and bare-hex keys (`ingestion.py`).
-7. Admin-content CTA allows a protocol-relative `//evil.com` open redirect.
-8. agent + litellm containers run as root; the agent ignored `uv.lock` (unpinned deps). *(CI now runs
-   `uv sync --frozen`, so the pinning half is likely closed — **verify**.)*
+Each row was **verified against current code**, not inferred from the changelog.
 
-*(~15 lows were reported; the 8 above are those recorded in the summary. The remainder are in the
-artifact only.)*
+| # | Finding | Status (verified 2026-07-30) |
+|---|---|---|
+| L1 | SIWE nonce not server-side single-use ⇒ a captured signed message is replayable within its expiry | **OPEN.** The nonce is issued into an httpOnly cookie and `/verify` clears it — exactly the cookie-clearing-only defence R1 adjudicated as insufficient (an attacker sets their own cookie). No server-side nonce store exists. |
+| L2 | 7-day stateless session freezes the beta/admin role ⇒ removal/kill-switch ineffective for up to 7d | **CLOSED on the security-critical path.** `api/allowlist.require_admin` does a **live DB `is_admin` check per request** (404, never 403), so an admin removal takes effect immediately on every `/admin/*` route. A stale role may linger in the web session for UI purposes — cosmetic, not authorisation. |
+| L3 | `X-Chain-Id` client-controlled, not bound to the SIWE chain | **OPEN — and now part of M3.** 023 made the chain part of the idempotency scope, so a forged `X-Chain-Id` is a cache-partition input as well as a read scope. Fix with M3's signed assertion (bind owner **and** chain), not separately. |
+| L4 | `Secure` flag omitted on http deploys | **NOT A DEFECT.** `isRequestSecure(req)` sets `secure` conditionally; on an `http://` slug the flag *cannot* be set. A consequence of http deploys, not a missing control — closes with TLS. |
+| L5 | No per-wallet rate limit on `/chat` + `/recommendations`; LiteLLM vkey had no budget/rate cap | **CLOSED.** Feature 008's `require_within_quota` is attached to `/chat`, `/recommendations` and `/onboarding/turn`, and the virtual key carries rpm/tpm + a daily budget. |
+| L6 | PII denylist misses seed phrases and bare-hex keys | **HALF FIXED, half deliberately deferred.** The bare (non-`0x`) 64-hex key pattern was **added** in this sweep. Mnemonic detection is **not** implemented, on purpose — see below. |
+| L7 | Admin-content CTA allows a protocol-relative `//evil.com` open redirect | **FIXED in this sweep.** The validator accepted anything starting with `/`, which includes `//host` — a browser resolves that as external. Now rejected explicitly. |
+| L8 | agent + litellm containers run as root; the agent ignored `uv.lock` | **OPEN, and worse than R1 described** — see the callout below. |
 
-## Info / defence-in-depth (titles only)
+### L6 — why mnemonic detection is absent (a decision, not an oversight)
 
-1. aUSDC donation **does** move price-per-share (`_decimalsOffset = 0`); the first-depositor
-   `ZeroShares` revert saves the classic attack, but the "donation-safe" claim is loose.
-2. The live guardian Timelock has the **sole deployer EOA** as proposer/executor/admin at a 60 s delay
-   ⇒ a compromised deployer could skim ≤20% of *future* yield and redirect `feeRecipient`. **This is
-   the Gate-C Safe M-of-N hardening item.**
-3. N2 withdraw-always holds against a SparkPoint pause, but an **Aave** reserve pause/freeze would
-   strand funds — document it.
-4. `CapRegistry` constructor has no zero-check on `governance`.
-5. RPC error strings are echoed into the client envelope (may leak a keyed RPC URL). *(023 hardened the
-   chain-identity path specifically to never log or surface a URL; the general echo path is **not**
-   covered — verify.)*
-6. No `SESSION_SECRET` strength floor; silent `AUTH_SECRET` fallback.
-7. `COOLIFY.md` (tracked in git) discloses the admin URL, app UUIDs, LAN IPs and internal FQDNs.
+A structural pattern (12/24 lowercase words in a row) was written during this sweep and then
+**rejected**: against the repo's own corpus it matched ordinary English —
+*"move now flows through our normal safety pipeline the exact same way"* — because that is simply the
+shape of twelve lowercase words.
 
----
+This denylist is **fail-closed over `knowledge_notes` that admins author as prose**
+(`api/admin_knowledge.py`), so a prose-matching pattern would reject legitimate notes and train people
+to route around the guard — strictly worse than not having it. Proper detection needs the 2048-word
+BIP-39 list (match on ≥N members), a vendored asset and a real design decision. A regression test now
+pins the false-positive string, plus a test that every shipped corpus file passes the guard — that
+corpus test is what caught this.
+
+### ⚠️ L8 — the deployed image does not use `uv.lock` at all
+
+R1 said the agent "ignores `uv.lock`". Verified 2026-07-30: **CI** pins correctly (`uv sync --frozen`),
+but `services/agent/Dockerfile` builds the runtime image with bare package **names and no versions**
+(`uv pip install --system fastapi "uvicorn[standard]" pydantic httpx anthropic asyncpg eth-abi`), and
+`uv.lock` is never copied in. So the deployed agent's dependency set is whatever was latest at
+image-build time and **can differ from the set CI tested** — a reproducibility and supply-chain gap,
+not merely a pinning nit. There are also **zero `USER` directives**, so both containers run as root.
+
+**Not fixed here, deliberately:** changing how the production image resolves dependencies alters the
+deployed artifact, needs a rebuild, and the existing comment justifies the explicit list as keeping the
+image slim — a rationale to weigh, not override in a sweep. **Proposed:**
+`COPY pyproject.toml uv.lock ./` + `RUN uv sync --frozen --no-dev` + a non-root `USER`.
 
 ## Round-2 blind spots (R1's own critic — the cross-layer seams the layer-split under-covered)
 

@@ -48,8 +48,27 @@ class PiiDetectedError(ValueError):
 _PII_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("email", re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")),
     ("private_key_hex", re.compile(r"\b0x[0-9a-fA-F]{64}\b")),
+    # R1 low #6: a 32-byte key written WITHOUT the 0x prefix is just as much a secret, and the
+    # 0x-anchored pattern above missed it. 64 hex chars is not a shape legitimate prose produces
+    # (a tx hash or block hash would be 0x-prefixed here too), so this is safe to fail closed on.
+    ("private_key_hex_bare", re.compile(r"\b[0-9a-fA-F]{64}\b")),
     ("pem_private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
 )
+
+# R1 low #6, second half — BIP-39 SEED PHRASES ARE DELIBERATELY NOT DETECTED HERE, and this is a
+# recorded decision rather than an oversight.
+#
+# A structural pattern (12 or 24 lowercase words in a row) was written and REJECTED during the
+# 2026-07-30 sweep: run against the repo's own corpus it matched ordinary English —
+# "move now flows through our normal safety pipeline the exact same way" — because that IS the shape
+# of twelve lowercase words. Since this denylist is FAIL-CLOSED over `knowledge_notes` that admins
+# author as prose (`api/admin_knowledge.py`), a prose-matching pattern would reject legitimate notes
+# and teach people to route around the guard, which is strictly worse than not having it.
+#
+# Detecting a mnemonic properly needs the 2048-word BIP-39 list (match on ≥N words being members),
+# which is a vendored asset + a real design decision. Tracked in docs/security/R1-findings.md; the
+# `private_key_hex` / `private_key_hex_bare` / `pem_private_key` patterns above cover raw key
+# material, which is the higher-frequency risk in an engineering corpus.
 
 
 def scan_for_pii(text: str) -> list[str]:
