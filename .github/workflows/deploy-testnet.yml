@@ -38,7 +38,11 @@ permissions:
 jobs:
   simulate:
     # workflow_dispatch requires the typed confirm; PRs to develop always dry-run. Never on push.
-    if: ${{ github.event_name == 'pull_request' || github.event.inputs.confirm == 'simulate-sepolia' }}
+    # The pull_request arm is narrowed to SAME-REPOSITORY pull requests: this job
+    # now runs on self-hosted fleet capacity, so a fork's PR would otherwise
+    # execute untrusted code on a host we own. Flagged as a high finding by the
+    # OH Defender gate on the migration PR; the workflow_dispatch arm is unchanged.
+    if: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event.inputs.confirm == 'simulate-sepolia' }}
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
     env:
