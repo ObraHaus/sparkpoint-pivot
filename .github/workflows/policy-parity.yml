@@ -14,7 +14,7 @@ name: policy-parity
 # gate is testable outside CI: `bash contracts/script/policy-parity-check.sh 84532`.
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop]
   pull_request:
     branches: [develop]
 concurrency:
@@ -22,7 +22,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   parity:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
     # Base Sepolia is the deployed chain today. Add chains here as they deploy;
     # the helper is chainId-parameterized and reads deployments/<chainId>/addresses.json.
     env:
