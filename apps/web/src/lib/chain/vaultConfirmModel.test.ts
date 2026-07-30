@@ -31,6 +31,7 @@ function makeView(o: Partial<VaultConfirmView> = {}): VaultConfirmView {
   return {
     kind: "aave_launch",
     factoryVerified: undefined,
+    retired: false,
     label: "Aave Yield Vault",
     chainId: 84532,
     account: ACCOUNT,
@@ -254,4 +255,40 @@ test("retired vault: withdraw is byte-identical to not-retired — N2 is never o
 test("launch vault is unaffected by the retired flag being absent (no regression, 024)", () => {
   const m = deriveVaultConfirm(makeView(), DEP, CTX);
   assert.equal(m.depositSignable, true);
+});
+
+// ── 024 REGRESSION: the fail-close must come from the VIEW, not from the caller ────────────────────
+// A review found `/confirm/[intent]` mounts its own useVaultConfirm and renders ConfirmFlow directly,
+// and it omitted `retired` — so a fully-attested retired wrapper was still deposit-signable there.
+// `useVault` now resolves `retired` from the address book, so these assert the fail-close holds with
+// `input.retired` ENTIRELY ABSENT. If someone adds a third mount point, it inherits this for free.
+test("retired via the VIEW alone fail-closes deposit — input.retired absent (024 regression)", () => {
+  const view = makeView({
+    kind: "morpho_wrapper",
+    factoryVerified: true, // attested
+    vault: WRAPPER,
+    retired: true, // resolved by useVault from the address book
+  });
+  const m = deriveVaultConfirm(view, DEP, CTX); // NOTE: no `retired` in the input
+  assert.equal(m.depositSignable, false);
+  assert.equal(m.depositReady, false);
+  assert.equal(m.label, "Vault retired — withdrawals only");
+});
+
+test("retired via the VIEW alone still leaves withdraw fully open (N2, 024 regression)", () => {
+  const base = {
+    kind: "morpho_wrapper" as const,
+    factoryVerified: true,
+    vault: WRAPPER,
+    shares: 1_000_000n,
+    underlying: 1_000_000n,
+    maxRedeem: 1_000_000n,
+  };
+  const WD: VaultConfirmInput = { mode: "withdraw", assets: 500_000n };
+  const open = deriveVaultConfirm(makeView({ ...base, retired: false }), WD, CTX);
+  const dead = deriveVaultConfirm(makeView({ ...base, retired: true }), WD, CTX);
+  assert.equal(dead.withdrawReady, true);
+  assert.equal(dead.withdrawReady, open.withdrawReady);
+  assert.equal(dead.redeemShares, open.redeemShares);
+  assert.equal(dead.label, open.label);
 });

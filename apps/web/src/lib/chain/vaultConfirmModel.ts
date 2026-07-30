@@ -72,6 +72,7 @@ export type VaultConfirmView = Pick<
   UseVaultResult,
   | "kind"
   | "factoryVerified"
+  | "retired"
   | "label"
   | "chainId"
   | "account"
@@ -191,11 +192,18 @@ export function deriveVaultConfirm(
     v.asset.toLowerCase() === v.usdcAddress.toLowerCase();
   const wrapperDepositSafe = attested && assetMatchesUsdc;
   /**
-   * Launch ⇒ always signable; wrapper ⇒ only when factory-attested AND its asset is the chain USDC.
-   * A RETIRED vault (024) is never deposit-signable regardless of attestation — this is the hard stop
-   * that keeps a deposit off a wrapper whose underlying we no longer trust. Withdraw is untouched (N2).
+   * RETIRED (024). The AUTHORITATIVE source is `v.retired`, which `useVault` resolves from the address
+   * book by vault address — so every mount point inherits the fail-close whether or not it remembers
+   * to pass anything. `input.retired` is kept only as an explicit override for tests and callers that
+   * fabricate a view. Either being true fail-closes.
    */
-  const depositSignable = (!isWrapper || wrapperDepositSafe) && input.retired !== true;
+  const retired = v.retired === true || input.retired === true;
+  /**
+   * Launch ⇒ always signable; wrapper ⇒ only when factory-attested AND its asset is the chain USDC.
+   * A RETIRED vault is never deposit-signable regardless of attestation — this is the hard stop that
+   * keeps a deposit off a wrapper whose underlying we no longer trust. Withdraw is untouched (N2).
+   */
+  const depositSignable = (!isWrapper || wrapperDepositSafe) && !retired;
 
   // Shares a withdraw redeems (linear convertToAssets), clamped to what's redeemable now (liquidity).
   const redeemShares = isDep
@@ -240,7 +248,7 @@ export function deriveVaultConfirm(
       ? "Switch to Base Sepolia"
       : wantUnits <= 0n
         ? "Enter an amount"
-        : input.retired === true
+        : retired
           ? "Vault retired — withdrawals only"
           : isWrapper && !attested
             ? "Unverified vault"
