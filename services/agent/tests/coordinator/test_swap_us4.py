@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from sparkpoint_agent.agents.planner import Intent, IntentKind, _parse_intent
 from sparkpoint_agent.coordinator.dag import _swap_proposed_action
-from sparkpoint_agent.policy import ActionType, Asset
+from sparkpoint_agent.policy import SLIPPAGE, ActionType, Asset
 
 _CUSTOM = "0x" + "ab" * 20  # a syntactically valid 20-byte address
 
@@ -63,3 +63,49 @@ def test_swap_proposed_action_defaults_to_the_opposite_recommended_token() -> No
     assert wire["tokenIn"]["symbol"] == "ETH"
     assert wire["tokenOut"]["symbol"] == "USDC"  # opposite recommended token
     assert wire["tokenOut"]["address"]  # a concrete address, not empty
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# R1 medium #1 — the assistant-proposed slippage must be clamped at SOURCE to the
+# policy ceiling. The planner's _coerce_bps accepts any non-negative integer, and
+# the chat-inline swap card feeds this value to amountOutMinimum, so an unclamped
+# 9900bps would mean minOut ~= 0 (sandwichable) with the bound chosen by the MODEL.
+# The wire schema also rejects out-of-range values now, which is why the agent must
+# never emit one — otherwise a legitimate block fails validation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_swap_proposed_action_clamps_an_over_ceiling_slippage() -> None:
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.ETH,
+        amount=10**18,
+        max_slippage_bps=9900,  # a prompt-injected / hostile proposal
+    )
+    wire = _swap_proposed_action(intent, 84532)
+    assert wire["params"]["maxSlippageBps"] == SLIPPAGE.absolute_ceiling_bps == 300
+
+
+def test_swap_proposed_action_leaves_an_in_range_slippage_alone() -> None:
+    for proposed in (0, 50, 300):
+        intent = Intent(
+            kind=IntentKind.BUILD_ACTION,
+            action_type=ActionType.AERODROME_SWAP,
+            asset=Asset.ETH,
+            amount=10**18,
+            max_slippage_bps=proposed,
+        )
+        assert _swap_proposed_action(intent, 84532)["params"]["maxSlippageBps"] == proposed
+
+
+def test_swap_proposed_action_default_is_within_the_ceiling() -> None:
+    """No stated slippage → the 50bps default, which must itself be in range."""
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.ETH,
+        amount=10**18,
+    )
+    emitted = _swap_proposed_action(intent, 84532)["params"]["maxSlippageBps"]
+    assert emitted == 50 <= SLIPPAGE.absolute_ceiling_bps

@@ -19,10 +19,19 @@ import { HexAddressSchema, UintAmountSchema } from "./primitives";
 /** agent-service-api.md §2.2 — reuses the foundation `ActionType` string enum. */
 export const ActionTypeSchema = z.nativeEnum(ActionType);
 
-/** §3.5 — action params; `maxSlippageBps` is REQUIRED for swaps, absent for custody ops. */
+/**
+ * §3.5 — action params; `maxSlippageBps` is REQUIRED for swaps, absent for custody ops.
+ *
+ * BOUNDED at the policy layer's absolute ceiling (§5, 300 bps). Previously this was only
+ * `nonnegative()`, so an agent-proposed `9900` parsed fine and flowed to the chat-inline swap card,
+ * where it became `amountOutMinimum ≈ 0` — a sandwichable trade chosen by the MODEL, not the user.
+ * (Alpha security audit R1, medium #1.) The bound belongs here as well as at the call site: a schema
+ * that cannot represent the unsafe value is a stronger control than a clamp someone must remember.
+ */
+export const MAX_SLIPPAGE_BPS_CEILING = 300;
 export const ActionParamsSchema = z
   .object({
-    maxSlippageBps: z.number().int().nonnegative(),
+    maxSlippageBps: z.number().int().nonnegative().max(MAX_SLIPPAGE_BPS_CEILING),
   })
   .strict();
 export type ActionParams = z.infer<typeof ActionParamsSchema>;

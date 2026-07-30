@@ -32,7 +32,7 @@ gates; this document keeps them apart:
 | Covers | The 11 Solidity contracts + the mainnet deploy gate | agent service, web, policy layer, data layer |
 | Required by | Constitution "Contract audit before mainnet"; `tasks.md` T103 | Prudence — R1's own round-2 list, plus ~11k lines shipped since |
 | Blocking Gate C | **Yes**, explicitly | Yes in practice (custody-adjacent code, never audited) |
-| Status | **Not started.** `deploy-mainnet.yml` does not exist. | **Not started.** R1 was 2026-07-21. |
+| Status | **Not started.** `deploy-mainnet.yml` does not exist. | **Not started**, but seeded: R1's register + round-2 seams are now in-repo, and R1's M1/M2 are closed. |
 
 ---
 
@@ -50,15 +50,18 @@ invert, which is exactly the kind of edit that deserves review rather than a qui
 0 critical / 0 high survived, 3 medium, ~15 low, 7 info, plus a listed round-2 seam set) was delivered
 as an artifact and **no findings file was ever committed**. Consequences:
 
-- The 3 mediums cannot be tracked to closure in-repo. Two are now resolved (idempotency scoping in
-  023; the swap ruling accepted in [D-GC-02](./gate-c-decisions.md)) and the third (S2S / `X-Owner`
-  trust) has no recorded status at all.
+- The 3 mediums could not be tracked to closure in-repo — now fixed by the register above. Verifying
+  them turned up that M1 (chat-swap slippage) was **still live**, not accepted: it has now been FIXED
+  in three layers. M2 (idempotency scoping) was closed by 023. M3 (S2S / `X-Owner` trust) remains
+  **open** and is the highest-value R2 item.
 - R1's own round-2 seam list — the highest-value input to R2 — is not available to whoever runs R2.
 - A future auditor cannot tell what was already examined and cleared.
 
-**Recommendation:** before R2 starts, commit an `docs/security/R1-findings.md` transcribed from the
-artifact, with a status column. An audit whose findings live outside the repo is an audit that gets
-re-litigated.
+**Done (2026-07-30):** [`docs/security/R1-findings.md`](../security/R1-findings.md) now exists, with a
+status column and an explicit provenance warning about what is *not* in it (the lows/infos are an index;
+per-finding detail lives only in the artifact). Transcribe the full artifact over it when to hand. An
+audit whose findings live outside the repo is an audit that gets re-litigated — and in this case the
+reconstruction itself caught a medium that was believed accepted but was still live.
 
 ---
 
@@ -151,8 +154,11 @@ R1 was 2026-07-21. Everything below landed after it. This is the argument for R2
 
 ## 6. Ordered plan
 
-1. **Commit `docs/security/R1-findings.md`** from the artifact, with status per finding. *(Unblocks
-   everything else; without it R2 re-discovers what R1 already found.)*
+1. ✅ **`docs/security/R1-findings.md` committed** (2026-07-30) — reconstructed from the audit summary,
+   with all 3 mediums verified against current code and given a status (M1 **fixed today**, M2 fixed by
+   023, M3 **open** and now load-bearing for cache isolation too). The lows/infos are an index only —
+   transcribe the full artifact over it when to hand. *(This was step 1 because without it R2
+   re-discovers what R1 already found.)*
 2. **Write `deploy-mainnet.yml`** with the SHA-pinned sign-off gate from §3. It can be written and
    merged *before* any audit exists — it will simply refuse to deploy, which is the correct default.
 3. **Run T103 (contracts)** — P0 five first. Produce one sign-off file per contract at its pinned SHA.

@@ -100,7 +100,10 @@ The web app can auto-reload stale tabs onto a new deploy + greet users with what
 
 The app `.status` badge is unreliable (apps on `coolify-build` can show `unhealthy` while serving the latest code). Use the deployment record:
 ```bash
-TOKEN=$(grep -E '^COOLIFY_API_TOKEN=' /home/hello/project/.claude/.env | cut -d= -f2-)   # standing read token
+# Token env names (verified 2026-07-30): there is NO bare `COOLIFY_API_TOKEN`.
+#   COOLIFY_API_TOKEN_READ_READSENSITIVE — reads, incl. an app's env values (used below)
+#   COOLIFY_API_TOKEN_RWD               — read/write/deploy (POST /api/v1/deploy)
+TOKEN=$(grep -E '^COOLIFY_API_TOKEN_READ_READSENSITIVE=' /home/hello/project/.claude/.env | cut -d= -f2-)
 BASE=https://coolifyadmin.aldrickb.xyz
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/deployments" \
   | jq -r '.[] | "\(.application_name) \(.status) \(.deployment_uuid)"'     # active builds → uuid
