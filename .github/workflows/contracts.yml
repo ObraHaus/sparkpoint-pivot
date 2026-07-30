@@ -1,7 +1,7 @@
 name: contracts
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop]
     # ITEM 6 — a policy-constant change (packages/shared/src/policy/**) must re-run the
     # N1-N5 non-custody invariants: the shared caps/slippage/fee are the source of truth the
     # on-chain policy is asserted equal to, so a drift there has to re-gate the invariants.
@@ -9,9 +9,14 @@ on:
   pull_request:
     branches: [develop]
     paths: ["contracts/**", "packages/shared/src/policy/**", ".github/workflows/contracts.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   forge:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { submodules: recursive }
