@@ -1,11 +1,16 @@
 # Proposed Constitution Amendment — v2.0.0 → v3.0.0 (MAJOR)
 
-**Status: DRAFT — NOT RATIFIED. NOT APPLIED.**
+**Status: ✅ RATIFIED AND APPLIED — 2026-07-30.**
 
-`.specify/memory/constitution.md` is **deliberately unmodified** by this feature. The constitution's own
-Governance clause requires that an amendment be made *"explicitly here per Governance — never implicitly
-through implementation."* This file is the proposal; ratification is an operator act, and only after it
-may `constitution.md` be edited and this file marked applied.
+`.specify/memory/constitution.md` is now at **v3.0.0** with the amendment-log entry appended. Ratification
+was authorized explicitly by the operator (aldrickb) after the findings report and the D1/D2/D3 decisions.
+This file remains the proposal of record and the evidence trail.
+
+**Applied with one substantive change to the draft:** the "open question" about Vault V2's fee accrual was
+CLOSED by reading the source, and the answer changed the amendment. V2 keeps **no high-water-mark state**,
+so the ratified text carries an explicit **disclosure** obligation rather than only a wording change — see
+"The SECOND genuine weakening" below. Ratification therefore also **commits us to restating the
+user-facing fee copy before any Fee Wrapper accepts a deposit.**
 
 - **Proposed by:** feature `024-multi-protocol-vaults`, 2026-07-30
 - **Classification:** **MAJOR** — it redefines the wording of NON-NEGOTIABLE Guardrail **IV.5** and the
@@ -50,10 +55,40 @@ The mitigating trade is that Fee Wrappers **strengthen** N1, N2 and N5 (permanen
 setters, permanently abdicated adapter list, and `forceDeallocate` in-kind exit) — and are audited,
 which our wrapper never was.
 
-**Open question that must be closed before Phase 6:** confirm from `vault-v2` source whether V2's
-performance fee is **high-water-mark and profit-only**. Our wrapper guarantees both. If V2's is not, the
-"never on principal, never in flat/down periods" promise changes substance and this becomes a
-**disclosure** amendment as well as a wording one.
+## The SECOND genuine weakening — resolved, and it is a disclosure change
+
+This was an open question; it is now closed by reading `morpho-org/vault-v2` `src/VaultV2.sol`
+`accrueInterestView()`. **V2's performance fee is profit-only per accrual, but it is NOT
+high-water-mark.**
+
+```solidity
+uint256 interest = newTotalAssets.zeroFloorSub(_totalAssets);   // max(0, new - last)
+uint256 performanceFeeAssets = interest > 0 && performanceFee > 0 && ...
+    ? interest.mulDivDown(performanceFee, WAD) : 0;
+```
+
+- **What holds:** no fee in a flat or down period (`zeroFloorSub` floors at 0), and the fee is share
+  **dilution** to the recipient (`createShares`), never a transfer out of principal — same as ours.
+- **What does NOT hold:** there is **no high-water-mark state anywhere in the contract**. The fee is
+  charged on *each positive increment since the last accrual*, with no memory of a prior peak. So a
+  depositor who suffers a loss and then recovers **pays a performance fee on the recovery**, even while
+  still below their own previous peak. `SparkPointMorphoVault` prevents exactly that with an explicit
+  `_highWaterMark`.
+- **Management fee:** V2's own NatSpec warns it "is not bound to the interest, so it can make the share
+  price go down" and "is taken even if the vault incurs some losses." We set it to **0**, so this is
+  moot — but the 0 is **load-bearing, not cosmetic**, and must stay 0.
+
+**Therefore this is a disclosure amendment, not only a wording one.** The current user-facing promise —
+*"a PERFORMANCE FEE … on REALIZED YIELD ONLY, above a share-price high-water mark — never on principal,
+never in flat/down periods"* — is **not accurate for a Fee Wrapper** and MUST be restated before any Fee
+Wrapper takes a deposit. Honest wording: *"charged only when the vault gains value over a period, never
+on your principal and never while it is flat or falling — note that a gain following an earlier loss is
+charged, even if you are still below your previous high."*
+
+Options, for the record: (a) accept V2's semantics and restate the disclosure (recommended — simple,
+audited, and the fee is still never on principal); (b) keep HWM by keeping our own Solidity, and pay for
+the audit; (c) set the Fee Wrapper's performance fee to **0** and monetise elsewhere, which makes the
+question disappear entirely.
 
 ---
 
@@ -129,11 +164,16 @@ Append to the authoritative contract list:
 
 ## Ratification checklist
 
-- [ ] Operator confirms the **fee-cap enforcement downgrade** (bytecode constant → policy + timelock).
-- [ ] Operator confirms **real user funds on chain 4663**, a chain with no Aave fallback and a non-USDC
-      unit of account.
-- [ ] V2 performance-fee accrual confirmed **HWM + profit-only**, or the disclosure updated.
-- [ ] Securities counsel sign-off that a Fee Wrapper distributor is not a discretionary manager
-      *(out of build scope per the constitution; flagged, not assumed)*.
-- [ ] Version bumped to **3.0.0**, `Last Amended` set, amendment log entry appended.
-- [ ] This file marked **APPLIED** with the ratification date.
+- [x] Operator confirms the **fee-cap enforcement downgrade** (bytecode constant → policy + timelock).
+      *Authorized 2026-07-30; recorded verbatim in the amendment log as weakening (a).*
+- [x] Operator confirms **real user funds on chain 4663**, a chain with no Aave fallback and a non-USDC
+      unit of account. *Decision D3, taken explicitly.*
+- [x] V2 performance-fee accrual checked — **profit-only per accrual, but NOT high-water-mark**. The
+      disclosure obligation is now ratified text, and the fee copy MUST be restated before a Fee Wrapper
+      takes a deposit (tracked as T024 in `tasks.md`).
+- [ ] **STILL OPEN — securities counsel sign-off** that a Fee Wrapper distributor is not a discretionary
+      manager. Explicitly **out of build scope** per the constitution's own scope clause, so it does not
+      block engineering — but it is *not* satisfied, and it is the one item a reader should not mistake for
+      done. Flagged, not assumed.
+- [x] Version bumped to **3.0.0**, `Last Amended` 2026-07-30, amendment log entry appended.
+- [x] This file marked **APPLIED**.

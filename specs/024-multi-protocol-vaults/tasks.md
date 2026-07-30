@@ -33,7 +33,19 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
       update the disclosure, not just the wording.
 - [ ] **T022** Ratify → edit `.specify/memory/constitution.md` to v3.0.0, append the amendment log entry,
       mark the proposal APPLIED.
+- [x] **T022** ✅ Ratified 2026-07-30 — constitution at **v3.0.0**, amendment log appended, proposal marked APPLIED,
+      `CLAUDE.md` version pointer corrected (it still said v1.3.0 while the constitution was v2.0.0).
 - [ ] **T023** Stop the feature-011 pre-mainnet audit spend (T035) on the superseded contracts.
+- [ ] **T024** ⚠️ **RATIFIED OBLIGATION — blocks any Fee Wrapper deposit.** Make the performance-fee copy
+      conditional on vault kind, so a Fee Wrapper can never inherit the launch vault's "over a high-water
+      mark" wording. Vault V2 keeps **no HWM state** (verified: `interest = newTotalAssets.zeroFloorSub(_totalAssets)`),
+      so a gain after an earlier loss IS charged. The current copy is accurate **today** — the Aave launch
+      vault has a real `_highWaterMark` — so this is a *conditionalisation*, not a deletion. Sites:
+      `components/NonCustodyBadge.tsx:134`, `app/(app)/fees/page.tsx:173,178,199`,
+      `app/(app)/vault/page.tsx:216,236`, `lib/chain/useVault.ts:188`.
+      Honest Fee Wrapper wording: *"charged only when the vault gains value over a period — never on your
+      principal, and never while it is flat or falling. Note a gain following an earlier loss is charged,
+      even if you are still below your previous high."*
 
 ## Phase 2 — Registry (advisory half NOT gated)
 
