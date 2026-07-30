@@ -10,6 +10,7 @@ process-local, so replay protection died on every restart.
 from __future__ import annotations
 
 import logging
+import pathlib
 from typing import Any
 
 import pytest
@@ -25,6 +26,24 @@ from sparkpoint_agent.db.idempotency import PgIdempotencyStore
 _KEY = "11111111-2222-3333-4444-555555555555"
 _A = "0xaaaa000000000000000000000000000000000001"
 _B = "0xbbbb000000000000000000000000000000000002"
+
+
+def _idempotency_migration_id() -> str:
+    """The migration id that ACTUALLY creates ``idempotency_records``, read from disk.
+
+    Derived rather than hardcoded because OH Defender caught the real bug this guards: the file was
+    renumbered 0026 -> 0027 (024 claimed 0026 for `vault_registry`) while the runtime warning
+    still said "Apply 0026". That would send an operator to the WRONG migration during the exact
+    mis-ordered deploy the warning exists for — and since the store fails open, this warning is the
+    only signal there is.
+    """
+    migrations = pathlib.Path(__file__).resolve().parents[2] / "migrations"
+    matches = sorted(migrations.glob("*_idempotency.sql"))
+    assert len(matches) == 1, f"expected exactly one idempotency migration, found {matches}"
+    return matches[0].stem
+
+
+_IDEMPOTENCY_MIGRATION_ID = _idempotency_migration_id()
 
 
 def _scope(account: str, *, path: str = "/build-tx", key: str = _KEY) -> IdempotencyScope:
@@ -177,7 +196,12 @@ async def test_pg_store_warns_once_and_distinctly_when_the_table_is_missing(
 
     warnings = [r for r in caplog.records if "idempotency_table_missing" in r.getMessage()]
     assert len(warnings) == 1, "warn once, not per request"
-    assert "0026" in warnings[0].getMessage()
+
+    migration_id = _IDEMPOTENCY_MIGRATION_ID
+    assert migration_id in warnings[0].getMessage(), (
+        f"the warning must name {migration_id} (the migration that creates the table), "
+        f"got: {warnings[0].getMessage()}"
+    )
 
 
 async def test_pg_store_does_not_claim_a_missing_table_for_an_unrelated_error(

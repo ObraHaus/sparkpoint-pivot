@@ -142,12 +142,12 @@ def _warn_if_multi_worker() -> None:
 
 
 def _durable_idempotency_store() -> ScopedStore | None:
-    """The Postgres-backed replay cache (migration 0026), or ``None`` if it cannot be constructed.
+    """The Postgres-backed replay cache (migration 0027), or ``None`` if it cannot be constructed.
 
     Resolved lazily and defensively so module import never depends on a DB. ``None`` degrades to the
     in-process cache alone — replay protection that does not survive a restart, which is exactly the
     pre-023 behavior and is safe (fail-open, N2). The store itself logs a distinct warning when the
-    table is absent, so a deploy that landed before 0026 was applied is observable (FR-023-015a).
+    table is absent, so a deploy that landed before 0027 was applied is observable (FR-023-015a).
     """
     try:
         from ..db.idempotency import PgIdempotencyStore
@@ -557,7 +557,7 @@ app = FastAPI(
 )
 
 # The §1.3 idempotency cache: an in-process fast path LAYERED over a Postgres-backed store
-# (migration 0026), so a replay is honored after a restart and across workers — the old comment here
+# (migration 0027), so a replay is honored after a restart and across workers — the old comment here
 # promised exactly this and 023 delivers it (FR-023-015). The durable half is resolved lazily so
 # module import never needs a DB, and every durable failure fails OPEN (the request is admitted):
 # idempotency guards a double-emit on an ADVISORY build and is never on the withdraw/exit path (N2).

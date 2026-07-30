@@ -23,9 +23,9 @@ How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); lo
 >   counts toward `ready` on a chain whose allowlist offers a swap. An S2S caller also gets `chain_id`
 >   — useful for telling a mis-pointed deployment from a down dependency. The RPC url is never in the
 >   response or any log line (it can carry a provider key).
-> - **Migration order is load-bearing:** apply **`0026`** BEFORE redeploying the agent. The idempotency
+> - **Migration order is load-bearing:** apply **`0027`** BEFORE redeploying the agent. The idempotency
 >   store fails open, so the reverse order runs with no replay protection, no error and no failing
->   check (the agent logs a distinct `idempotency_table_missing` warning as the backstop). `0026` is
+>   check (the agent logs a distinct `idempotency_table_missing` warning as the backstop). `0027` is
 >   additive, so applying it first is safe for the live agent.
 > - **RUN ONE UVICORN WORKER.** The process-global LLM concurrency limiter (`llm/resilience.py`) is
 >   per-process: with N workers the effective in-flight cap is N× the intended one. This affects

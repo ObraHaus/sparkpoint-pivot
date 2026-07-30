@@ -1,4 +1,4 @@
-"""023 — the durable idempotency store (migration ``0026``), FR-023-015/015a.
+"""023 — the durable idempotency store (migration ``0027``), FR-023-015/015a.
 
 Replaces a process-local dict that lost every record on restart and could not span workers.
 First-write-wins moves from an in-process lock to a database UNIQUE constraint on
@@ -10,8 +10,8 @@ NON-CUSTODY (N1/N2): no key material, no signature — only a cached 2xx body fo
 Never on the withdraw/exit path; a failure FAILS OPEN (the caller admits the request).
 
 ⚠️ The cost of fail-open, and the reason for the warning below: a MISSING table looks exactly like
-a working store at the request level, so an agent deployed BEFORE ``0026`` is applied would run
-with no replay protection, no error, and no failing check. Apply ``0026`` first — it is additive, so
+a working store at the request level, so an agent deployed BEFORE ``0027`` is applied would run
+with no replay protection, no error, and no failing check. Apply ``0027`` first — it is additive, so
 the live agent ignores it. This module logs a DISTINCT ``idempotency_table_missing`` warning, once
 rather than per request, so the mis-ordered case is observable instead of silent.
 """
@@ -63,8 +63,9 @@ class PgIdempotencyStore:
         ):
             self._warned_missing = True
             logger.warning(
-                "idempotency_table_missing — migration 0026 is NOT applied on this database, so "
-                "replay protection is INACTIVE (requests still serve; fail-open, N2). Apply 0026 "
+                "idempotency_table_missing — migration 0027_idempotency is NOT applied on this "
+                "database, so replay protection is INACTIVE (requests still serve; "
+                "fail-open, N2). Apply 0027_idempotency "
                 "and restart."
             )
 

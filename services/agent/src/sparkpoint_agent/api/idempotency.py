@@ -14,7 +14,7 @@ responses are never replayed from cache.
    created it. (Open medium from the alpha security audit R1.)
 2. **The store was process-local**, so replay protection died on every restart and could not span
    workers. :class:`IdempotencyStore` remains as the in-process fast path, and
-   ``db/idempotency.PgIdempotencyStore`` (migration ``0026``) backs it durably.
+   ``db/idempotency.PgIdempotencyStore`` (migration ``0027``) backs it durably.
 
 FAIL-OPEN (N2): a store failure ADMITS the request. Idempotency guards a double-emit on an ADVISORY
 build and is never on the withdraw/exit path, so it must never become a new way for a DB blip to

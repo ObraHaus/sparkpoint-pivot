@@ -169,7 +169,7 @@ audit recommendation, not adopted here.
 
 - **Scope** = `(account, method, path, Idempotency-Key)`. `account` is the middleware's already-parsed
   `X-Account`; `method` and `path` prevent a key valid for one route replaying onto another.
-- **Store** = `idempotency_records` via migration `0026` (additive, idempotent, `IF NOT EXISTS`), with a
+- **Store** = `idempotency_records` via migration `0027` (additive, idempotent, `IF NOT EXISTS`), with a
   unique constraint on the scope, first-write-wins semantics preserved, and a bounded retention sweep
   (bundles are short-lived, so retention can be measured in hours, not forever).
 - **Failure posture** = **fail open for serving.** A store outage admits the request. This mirrors the
@@ -178,12 +178,12 @@ audit recommendation, not adopted here.
   gate; making it fail closed would invent a new way for a DB blip to block a user's build.
 
 **The cost of fail-open, and the guard for it.** Failing open means a *missing table* is
-indistinguishable from a working store at the request level — so a deploy landing before `0026` is applied
+indistinguishable from a working store at the request level — so a deploy landing before `0027` is applied
 would silently run with no replay protection: no error, no failing check, nothing in `/readyz`. Two
 controls, because the ordering alone is a process promise:
 
-1. **Ordering** — `0026` is applied *before* the agent is redeployed (the standard
-   migration-before-deploy rule this repo already follows; `0026` is additive, so the currently-live agent
+1. **Ordering** — `0027` is applied *before* the agent is redeployed (the standard
+   migration-before-deploy rule this repo already follows; `0027` is additive, so the currently-live agent
    ignores it).
 2. **Observability** — the store logs a **distinct** warning the first time it finds the table absent
    (not the generic "store unavailable" path), so the degraded state is visible in the agent log rather

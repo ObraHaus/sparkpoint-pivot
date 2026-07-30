@@ -287,12 +287,12 @@ what the module computes; confirm `ruff` covers every path the config claims.
 - **FR-023-014**: Replay of a caller's own key on the same route MUST continue to return the original
   2xx response; SSE and non-2xx responses MUST continue never to be cached.
 - **FR-023-015a** *(deploy ordering — the silent-degradation guard)*: because the store fails **open**,
-  a deploy that precedes the `0026` apply would lose replay protection with **no error and no failing
-  check**. `0026` MUST therefore be applied **before** the agent is redeployed, and the service MUST log a
+  a deploy that precedes the `0027` apply would lose replay protection with **no error and no failing
+  check**. `0027` MUST therefore be applied **before** the agent is redeployed, and the service MUST log a
   distinct warning at first use when the table is absent, so the degradation is observable rather than
   silent.
 - **FR-023-015**: The idempotency store MUST be durable so replay protection survives a restart and spans
-  workers — backed by Postgres via one additive, idempotent migration (`0026`), with a bounded retention
+  workers — backed by Postgres via one additive, idempotent migration (`0027`), with a bounded retention
   sweep so the table cannot grow without limit. *(Clarify decision, 2026-07-30: operator chose to close
   this in-feature rather than defer it, accepting the migration step.)* A store outage MUST fail **open**
   for serving (admit the request, as the pre-existing behavior does) — idempotency is a
@@ -333,7 +333,7 @@ what the module computes; confirm `ruff` covers every path the config claims.
 - **Gas envelope** — moves from module constants to per-request estimated values with named bounds.
 - **`intent_bundles.expires_at` / `is_session_key_path`** — already persisted (migration 0021); this
   feature starts *reading* them on the submit path. No schema change needed for these.
-- **`idempotency_records`** (new, migration `0026`) — the durable replay cache: the composite scope
+- **`idempotency_records`** (new, migration `0027`) — the durable replay cache: the composite scope
   (account, method, path, key) plus the cached status/media-type/body and a `created_at` for the
   retention sweep. Holds **no key material** and is **never** on the withdraw/exit path (N2); losing the
   table degrades replay protection to fail-open, never custody.

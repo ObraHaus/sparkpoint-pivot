@@ -46,7 +46,7 @@ justification will not pass the gate.
       no dev detail). This change is not visually obvious, so it needs an **honest "behind-the-scenes"**
       entry (the gate's own error text asks for exactly this). Newest-first; keys:
       `slug, type, tag, title, body, cta_label, cta_href, published_at, active`.
-- [ ] Version id left automatic (nothing hand-bumped); migration `0026` applies with
+- [ ] Version id left automatic (nothing hand-bumped); migration `0027` applies with
       `PGCLIENTENCODING=UTF8`; no new agent seed dir (so no new `Dockerfile` `COPY` needed — confirm).
 - [ ] `changelog-required` CI green; tests / typecheck / lint green.
 
@@ -81,13 +81,13 @@ These unblock Stories A and D. Nothing else may start until T002–T004 are gree
       not a hostile RPC; a provider that lies about `eth_chainId` defeats it, and the operator's choice of
       provider is trusted as it already is for every read. An overstated guarantee is its own defect under
       Principle III, so this sentence is part of the task, not a nicety. (FR-023-002, 003)
-- [ ] **T004** `[FOUND]` **Migration `0026_idempotency.sql`** — `services/agent/migrations/`.
+- [ ] **T004** `[FOUND]` **Migration `0027_idempotency.sql`** — `services/agent/migrations/`.
       `idempotency_records`: the composite scope (`account`, `method`, `path`, `key`) with a UNIQUE
       constraint, the cached `status_code` / `media_type` / `body`, and `created_at` for retention.
       Additive, forward-only, `IF NOT EXISTS`, `DO $$ … EXCEPTION WHEN duplicate_object` for any type.
       Header must carry the non-custody note in house style: holds **no** key material, is **never** on
       the withdraw/exit path (N2), and losing the table degrades replay protection to fail-open, never
-      custody. **Name the file `0026`** and make the header's self-reference say `0026` — the `0025`
+      custody. **Name the file `0027`** and make the header's self-reference say `0027` — the `0025`
       header's stale `0024` is a defect this feature also fixes (T025). (FR-023-015)
       *Verify*: `yoyo` parses it; do **not** apply to develop yet (T029 sequences the apply).
 
@@ -193,7 +193,7 @@ Depends on T004.
       **admits** the request, mirroring the quota gate. Idempotency guards a double-emit on an *advisory
       build*; it must never become a new way for a DB blip to block a build (N2).
       ⚠️ **But fail-open makes a *missing table* indistinguishable from a working store at the request
-      level**, so a deploy landing before `0026` is applied would run with no replay protection and no
+      level**, so a deploy landing before `0027` is applied would run with no replay protection and no
       signal anywhere. Log a **distinct** warning the first time the table is found absent — not the
       generic store-unavailable path — so the degraded state is visible in the agent log rather than
       inferred. (FR-023-015, 015a)
@@ -274,17 +274,17 @@ Depends on T004.
         no cross-chain fallback exists), the new `chain_identity` readiness check, and the **single-worker
         constraint** with its reason.
       - `DEVELOPMENT.md` — the local/fork story after T002 (`31337` takes `SIM_FORK_RPC_URL`).
-      - `MIGRATIONS.md` — the `0026` row + the run-history entry, `PGCLIENTENCODING=UTF8`, Production
+      - `MIGRATIONS.md` — the `0027` row + the run-history entry, `PGCLIENTENCODING=UTF8`, Production
         still `none`.
       - `CHANGELOG.md` — the `## [Unreleased]` dev bullet.
-- [ ] **T029** `[POLISH]` **Apply `0026` to develop — BEFORE the agent is redeployed** out-of-band via
+- [ ] **T029** `[POLISH]` **Apply `0027` to develop — BEFORE the agent is redeployed** out-of-band via
       yoyo with `PGCLIENTENCODING=UTF8`; verify the table + UNIQUE constraint exist; record it in
       `MIGRATIONS.md`.
       ⚠️ **Ask the operator before running it** — it touches the shared develop database (CLAUDE.md:
       confirm before infra mutations).
       ⚠️ **Ordering is load-bearing, not a formality** (the analyze pass's one HIGH finding): the store
       fails **open**, so a redeploy that lands before this apply runs with **no replay protection, no
-      error, and no failing check**. `0026` is additive, so applying it first is safe for the
+      error, and no failing check**. `0027` is additive, so applying it first is safe for the
       currently-live agent — the unsafe order is the other one. T018's table-missing warning is the
       backstop if this is ever got wrong. (FR-023-015a)
 - [ ] **T030** `[POLISH]` **Client-facing changelog entry** — `services/agent/content_seed/whats-new.json`,

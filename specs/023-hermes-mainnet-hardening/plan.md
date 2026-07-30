@@ -124,7 +124,7 @@ feature strengthens the third.
 **Primary Dependencies**: FastAPI, httpx, pydantic v2, asyncpg, eth-abi. **No new runtime dependency** —
 the gas estimator, the JSON-RPC reads and the store all use clients already in the tree.
 
-**Storage**: Postgres + pgvector (`spark-postgres` on develop). **One new migration: `0026`** (additive,
+**Storage**: Postgres + pgvector (`spark-postgres` on develop). **One new migration: `0027`** (additive,
 idempotent, `IF NOT EXISTS`, applied with `PGCLIENTENCODING=UTF8`).
 
 **Testing**: pytest + pytest-asyncio, injected fakes at the existing seams (no network, no live chain).
@@ -144,9 +144,9 @@ trips `_FORBIDDEN_ENV_SUBSTRINGS`; anonymous `/readyz` stays a bare boolean; RPC
 **Scale/Scope**: 9 requirement groups, ~19 source files (13 edited, 3 new, 3 marker-only), 1 migration,
 1 CI edit, 4 living docs, 7 test files (5 new, 2 extended + `test_app_lifespan.py`).
 
-**Deploy ordering (load-bearing)**: migration `0026` MUST be applied **before** the agent is redeployed.
+**Deploy ordering (load-bearing)**: migration `0027` MUST be applied **before** the agent is redeployed.
 The idempotency store fails open, so the reverse order runs with no replay protection, no error, and no
-failing check — the one HIGH finding from `/speckit-analyze`. `0026` is additive, so applying it first is
+failing check — the one HIGH finding from `/speckit-analyze`. `0027` is additive, so applying it first is
 safe for the currently-live agent (FR-023-015a; tasks T018, T029).
 
 ## Project Structure
@@ -166,7 +166,7 @@ specs/023-hermes-mainnet-hardening/
 ```
 services/agent/
 ├── migrations/
-│   └── 0026_idempotency.sql                    # NEW — durable replay cache
+│   └── 0027_idempotency.sql                    # NEW — durable replay cache
 ├── src/sparkpoint_agent/
 │   ├── config.py                               # per-chain RPC lists; no cross-chain fallback
 │   ├── chain/
@@ -206,7 +206,7 @@ CHANGELOG.md · MIGRATIONS.md · DEPLOYMENT.md · DEVELOPMENT.md
 
 | Trade | Why it is taken | Simpler option rejected because |
 |---|---|---|
-| **A migration (`0026`) for durable idempotency**, where composite scoping alone would close the security hole | Operator's clarify decision (2026-07-30): close FR-023-015 in-feature. Replay protection then survives restarts and spans workers, and the R1 medium closes completely rather than half. | *Scope-only* leaves a documented gap that would need its own spec, PR, migration and prod apply later — i.e. the same cost, deferred, plus a window where a restart drops replay protection on mainnet. Cost of doing it now: a MIGRATIONS.md entry, a develop apply, and a prod apply step before first mainnet boot. |
+| **A migration (`0027`) for durable idempotency**, where composite scoping alone would close the security hole | Operator's clarify decision (2026-07-30): close FR-023-015 in-feature. Replay protection then survives restarts and spans workers, and the R1 medium closes completely rather than half. | *Scope-only* leaves a documented gap that would need its own spec, PR, migration and prod apply later — i.e. the same cost, deferred, plus a window where a restart drops replay protection on mainnet. Cost of doing it now: a MIGRATIONS.md entry, a develop apply, and a prod apply step before first mainnet boot. |
 | **Retaining superseded scaffolding** rather than deleting it | Operator's clarify decision. Keeps the only code-form record of the per-flow `AgentSpec`→DAG mapping and the read/execution design intent. | *Deletion* gives a cleaner grep but discards that record. The residual risk (an auditor believing dead code is live) is closed by an **enforcing test**, not by prose — prose alone would be exactly the failure mode the playbook warns about. |
 | **Fail-open on an idempotency-store outage** | The data layer is never on the withdraw/exit path (N2); idempotency guards a double-emit on an *advisory build*. Matches how the quota gate already degrades. | *Fail-closed* would invent a new way for a DB blip to block a user's build — a custody-adjacent regression to protect a convenience property. |
 | **Two RPC calls per session-key build** (estimate + fee) | The envelope is inside the `userOpHash`; the client signs it and cannot repair it. Only live values are right on both chains. | *Constants with raised ceilings* trade a guaranteed mainnet failure for an unbounded overpay, and break again on the next L1 gas spike. |
