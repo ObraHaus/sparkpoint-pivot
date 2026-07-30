@@ -33,6 +33,7 @@ import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { vaultAddressFor } from "@/lib/chain/exit";
 import type { VaultFeeBasis } from "@/lib/policy/feeCopy";
+import { morphoVaultV2Abi, wadToBpsCeil } from "@/lib/chain/morphoVaultV2Abi";
 import { wagmiConfig } from "@/lib/wagmi";
 
 /**
@@ -163,6 +164,22 @@ export interface UseVaultResult {
    * `_decimalsOffset() == 0` invariant these OZ-ERC-4626 vaults hold (see the read site).
    */
   readonly assetDecimals: number;
+  /**
+   * The vault's SHARE-token decimals. Equal to {@link assetDecimals} on SparkPoint's own ERC-4626s,
+   * and **18 over a 6-dp asset** on a Morpho Vault V2 (which sets a decimals offset). Separate from
+   * {@link assetDecimals} so a caller formatting a SHARE amount cannot silently use the asset scale.
+   */
+  readonly shareDecimals: number;
+  /**
+   * The ERC-20 a deposit actually spends — the vault's own `asset()`, which on Base Sepolia is NOT
+   * the chain's `usdc`. Use this for approvals; see the derivation for why the distinction matters.
+   */
+  readonly depositToken: Address | undefined;
+  /**
+   * The V2's own MANAGEMENT fee in bps (WAD-converted). `undefined` on SparkPoint's own vaults, which
+   * charge none. Disclosed separately from the performance fee so the fee chain reads honestly.
+   */
+  readonly managementFeeBps: number | undefined;
 
   // ── multi-vault identity (011 Phase 4) ─────────────────────────────────────
   /** `'aave_launch'` (default), `'morpho_wrapper'`, or `'morpho_fee_wrapper'`. Drives copy + the
@@ -332,16 +349,49 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // DISCLOSURE is honest before any Fee Wrapper can take a deposit (024/T024).
   const isWrapper = kind === "morpho_wrapper";
   const isMorphoVenue = kind === "morpho_wrapper" || kind === "morpho_fee_wrapper";
+  /**
+   * 024 Phase 3 — a **Morpho Vault V2 Fee Wrapper**. A THIRD predicate, deliberately separate from
+   * `isWrapper` and from `feeBasis`, because the three answer different questions:
+   *   `isWrapper`      → "may I call the SparkPointMorphoVault-only views?" (a V2: no, they revert)
+   *   `isFeeWrapper`   → "which ABI and which read set?"                    (this one)
+   *   `feeBasis`       → "which fee copy is honest?"                        (already correct)
+   * Collapsing any two of them is how a reverting read or a wrong fee string reaches production.
+   */
+  const isFeeWrapper = kind === "morpho_fee_wrapper";
   const launchVault = chainId === undefined ? undefined : vaultAddressFor(chainId);
   const vault = options.vaultAddress ?? launchVault;
+  // 024: the address-book entry for a V2, when this hook is pointed at one. Carries the ASSET (which
+  // is NOT the chain's `usdc` — see `depositToken`) and the two separate decimals.
+  const feeWrapperEntry = ((): { asset: Address; assetDecimals: number; shareDecimals: number } | undefined => {
+    if (!isFeeWrapper || chainId === undefined || vault === undefined) return undefined;
+    try {
+      const e = (getAddresses(chainId).morphoFeeWrappers ?? []).find(
+        (x) => x.address.toLowerCase() === vault.toLowerCase(),
+      );
+      return e === undefined
+        ? undefined
+        : { asset: e.asset, assetDecimals: e.assetDecimals, shareDecimals: e.shareDecimals };
+    } catch {
+      return undefined; // never throw out of a hook body
+    }
+  })();
   const usdcAddress = usdcAddressFor(chainId);
   // 024: retirement is a property of the VAULT, resolved centrally from the address book — never a
   // flag each call site has to remember to pass. Deposit fail-closes on it; withdraw never does (N2).
+  //
+  // BOTH LISTS ARE SCANNED. A V2 lives in `morphoFeeWrappers`, not `sparkPointWrappers`, and this
+  // hook's own header records that a per-call-site `retired` flag was forgotten once and Defender
+  // caught a live deposit bypass through `/confirm/[intent]`. A vault that is invisible to this scan
+  // re-opens exactly that class of bug, so the scan follows the vault wherever it is declared.
   const retired = ((): boolean => {
     if (chainId === undefined || vault === undefined) return false;
+    const target = vault.toLowerCase();
     try {
-      const w = getAddresses(chainId).sparkPointWrappers ?? [];
-      return w.some((x) => x.address.toLowerCase() === vault.toLowerCase() && x.retired === true);
+      const book = getAddresses(chainId);
+      const w = book.sparkPointWrappers ?? [];
+      if (w.some((x) => x.address.toLowerCase() === target && x.retired === true)) return true;
+      const v2 = book.morphoFeeWrappers ?? [];
+      return v2.some((x) => x.address.toLowerCase() === target && x.retired === true);
     } catch {
       return false; // an unconfigured chain has no wrappers; never throw out of a hook body
     }
@@ -362,30 +412,118 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
 
   // A single base for every vault read: pins the ABI + the chain transport. When the
   // vault is undefined the `enabled` gate keeps these reads from ever firing.
+  // The SHARED ERC-4626 spine. `totalAssets` / `asset` / `balanceOf` / `convertToAssets` /
+  // `preview*` carry identical selectors AND identical signatures on both contracts, so one ABI
+  // decodes both correctly — same calldata in, same shape out. Only the reads that genuinely DIFFER
+  // are split below, which keeps this change small and leaves the launch path byte-identical.
   const vaultBase = { address: vault as Address, abi: sparkPointVaultAbi, chainId: readChainId } as const;
+  /** The V2-only read base. See morphoVaultV2Abi's header for what a V2 does and does not expose. */
+  const v2Base = { address: vault as Address, abi: morphoVaultV2Abi, chainId: readChainId } as const;
 
   // ── vault-global batch (no wallet required) ──────────────────────────────
   const globalReads = useReadContracts({
     allowFailure: true,
     contracts: [
       { ...vaultBase, functionName: "totalAssets" },
+      { ...vaultBase, functionName: "asset" },
+    ],
+    query: { enabled: enabledGlobal },
+  });
+  const totalAssets = globalReads.data?.[0]?.result as bigint | undefined;
+  const assetLive = globalReads.data?.[1]?.result as Address | undefined;
+
+  // ── LAUNCH-ONLY reads. A Vault V2 has none of these selectors, so they are `enabled`-gated OFF
+  //    against one rather than left to fail silently.
+  //
+  //    THE SILENCE IS THE HAZARD, not the revert. `allowFailure: true` resolves a missing selector to
+  //    `undefined`, and an `undefined` `performanceFeeBps` falls straight through to
+  //    `perfFeeBounds(chainId).defaultBps` inside `netApy` below — so firing this set at a V2 would
+  //    render a confident **10% fee that was never read from the vault**. The deployed V2's real fee
+  //    is 0. Displaying an unread fee figure is exactly what Principle III forbids. ────────────────
+  const launchOnlyReads = useReadContracts({
+    allowFailure: true,
+    contracts: [
       { ...vaultBase, functionName: "paused" },
       { ...vaultBase, functionName: "performanceFeeBps" },
       { ...vaultBase, functionName: "MAX_PERFORMANCE_FEE_BPS" },
       { ...vaultBase, functionName: "highWaterMark" },
       { ...vaultBase, functionName: "feeRecipient" },
-      { ...vaultBase, functionName: "asset" },
     ],
-    query: { enabled: enabledGlobal },
+    query: { enabled: enabledGlobal && !isFeeWrapper },
   });
 
-  const totalAssets = globalReads.data?.[0]?.result as bigint | undefined;
-  const paused = globalReads.data?.[1]?.result as boolean | undefined;
-  const performanceFeeBps = globalReads.data?.[2]?.result as number | undefined;
-  const maxPerformanceFeeBps = globalReads.data?.[3]?.result as number | undefined;
-  const highWaterMark = globalReads.data?.[4]?.result as bigint | undefined;
-  const feeRecipient = globalReads.data?.[5]?.result as Address | undefined;
-  const asset = globalReads.data?.[6]?.result as Address | undefined;
+  // ── V2-ONLY reads. Fees here are WAD-scaled (1e18 == 100%), never bps. ──────────────────────────
+  const feeWrapperReads = useReadContracts({
+    allowFailure: true,
+    contracts: [
+      { ...v2Base, functionName: "performanceFee" },
+      { ...v2Base, functionName: "managementFee" },
+      { ...v2Base, functionName: "performanceFeeRecipient" },
+    ],
+    query: { enabled: enabledGlobal && isFeeWrapper },
+  });
+
+  /**
+   * DISPLAY-ONLY pause state. `undefined` on a V2, and that absence is MEANINGFUL rather than "still
+   * loading": a Vault V2 has no `paused()`, so there is no protocol-level deposit pause to surface.
+   * Withdraw/redeem were never pause-gated on either contract (N2).
+   */
+  const paused = isFeeWrapper ? undefined : (launchOnlyReads.data?.[0]?.result as boolean | undefined);
+  /**
+   * The LIVE performance fee in bps.
+   *
+   * On a V2 this is converted from WAD with exact-integer, round-up arithmetic — `wadToBpsCeil`'s
+   * header records how this same conversion in 64-bit arithmetic wrapped a 25% fee to −8 bps and
+   * passed a 0-bps ceiling. Stays `undefined` while genuinely unresolved; never defaulted here.
+   */
+  const performanceFeeBps = isFeeWrapper
+    ? ((): number | undefined => {
+        const wad = feeWrapperReads.data?.[0]?.result as bigint | undefined;
+        return wad === undefined ? undefined : wadToBpsCeil(wad);
+      })()
+    : (launchOnlyReads.data?.[1]?.result as number | undefined);
+  /** The V2's own MANAGEMENT fee in bps (WAD-converted). `undefined` on our own vaults — they have none. */
+  const managementFeeBps = isFeeWrapper
+    ? ((): number | undefined => {
+        const wad = feeWrapperReads.data?.[1]?.result as bigint | undefined;
+        return wad === undefined ? undefined : wadToBpsCeil(wad);
+      })()
+    : undefined;
+  /**
+   * The ≤20% performance-fee ceiling.
+   *
+   * On SparkPoint's own vaults this is a BYTECODE CONSTANT, so "governance can never exceed it" is
+   * literally true. A V2 exposes no such selector and its OWN ceiling is 50%, so here the ≤20% figure
+   * is a POLICY commitment held by the Safe owner + a ≥3-day timelock. It therefore comes from our
+   * policy constants, never from a vault read — and `feeCapEnforcementLabel(feeBasis)` is what tells
+   * the user which of the two they are looking at.
+   */
+  const maxPerformanceFeeBps = isFeeWrapper
+    ? perfFeeBounds(chainId).ceilingBps
+    : (launchOnlyReads.data?.[2]?.result as number | undefined);
+  /**
+   * Share-price high-water mark. Permanently `undefined` on a V2 — it keeps NO such state, which is
+   * precisely why `feeBasis` is `per_period_gain` for this kind. Absence IS the signal; a `0` would
+   * read as "the mark is at par", a materially different and false promise.
+   */
+  const highWaterMark = isFeeWrapper ? undefined : (launchOnlyReads.data?.[3]?.result as bigint | undefined);
+  const feeRecipient = isFeeWrapper
+    ? (feeWrapperReads.data?.[2]?.result as Address | undefined)
+    : (launchOnlyReads.data?.[4]?.result as Address | undefined);
+  const asset = assetLive ?? (isFeeWrapper ? feeWrapperEntry?.asset : undefined);
+
+  /**
+   * The ERC-20 a deposit actually spends — **the vault's own `asset()`, not the chain's `usdc`.**
+   *
+   * On Base Sepolia these differ, and the difference is not cosmetic. The address book's `usdc` is
+   * AAVE's test token `0xba50Cd2A…`; a Morpho Vault V2's asset is CIRCLE's `0x036CbD53…`. Both report
+   * `symbol() == "USDC"` at 6 dp and are NOT interchangeable. The balance/allowance reads and
+   * `needsApproval` all key on this, because `vaultConfirmModel` hands it to the executor as the token
+   * to approve: keyed on the chain's `usdc` instead, the user would sign a perfectly successful
+   * approve on a token the vault never pulls, and the deposit would then revert on-chain — the worst
+   * shape of failure, because the approve looks like it worked.
+   */
+  const depositToken = isFeeWrapper ? (asset ?? feeWrapperEntry?.asset) : usdcAddress;
 
   // ── live CapRegistry caps (US1) ───────────────────────────────────────────
   // The governance-settable per-user / total / vault caps, read DIRECTLY on-chain from the bounded
@@ -410,19 +548,30 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // ── account-scoped batch (owner's position + limits) ─────────────────────
   const accountReads = useReadContracts({
     allowFailure: true,
+    contracts: [{ ...vaultBase, functionName: "balanceOf", args: [account as Address] }],
+    query: { enabled: enabledAccount },
+  });
+
+  // ── the max* limits, LAUNCH-ONLY and gated OFF against a V2 ─────────────────────────────────────
+  // On a Vault V2 `maxDeposit`/`maxMint`/`maxWithdraw`/`maxRedeem` are all `pure returns (0)` and are
+  // NOT enforced inside deposit/withdraw. Reading them would not error — it would return a confident
+  // 0, and a UI that believes it tells the holder "you cannot withdraw". That is both false and the
+  // single worst thing to say to someone trying to exit (N2), so these stay `undefined` on a V2 and
+  // consumers fall back to the policy caps rather than to a fabricated limit.
+  const limitReads = useReadContracts({
+    allowFailure: true,
     contracts: [
-      { ...vaultBase, functionName: "balanceOf", args: [account as Address] },
       { ...vaultBase, functionName: "maxDeposit", args: [account as Address] },
       { ...vaultBase, functionName: "maxWithdraw", args: [account as Address] },
       { ...vaultBase, functionName: "maxRedeem", args: [account as Address] },
     ],
-    query: { enabled: enabledAccount },
+    query: { enabled: enabledAccount && !isFeeWrapper },
   });
 
   const shares = accountReads.data?.[0]?.result as bigint | undefined;
-  const maxDeposit = accountReads.data?.[1]?.result as bigint | undefined;
-  const maxWithdraw = accountReads.data?.[2]?.result as bigint | undefined;
-  const maxRedeem = accountReads.data?.[3]?.result as bigint | undefined;
+  const maxDeposit = isFeeWrapper ? undefined : (limitReads.data?.[0]?.result as bigint | undefined);
+  const maxWithdraw = isFeeWrapper ? undefined : (limitReads.data?.[1]?.result as bigint | undefined);
+  const maxRedeem = isFeeWrapper ? undefined : (limitReads.data?.[2]?.result as bigint | undefined);
 
   // ── underlying: convertToAssets(shares) — dependent on the shares read ────
   const underlyingRead = useReadContract({
@@ -437,16 +586,16 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const usdcReads = useReadContracts({
     allowFailure: true,
     contracts: [
-      { address: usdcAddress as Address, abi: erc20Abi, chainId: readChainId, functionName: "balanceOf", args: [account as Address] },
+      { address: depositToken as Address, abi: erc20Abi, chainId: readChainId, functionName: "balanceOf", args: [account as Address] },
       {
-        address: usdcAddress as Address,
+        address: depositToken as Address,
         abi: erc20Abi,
         chainId: readChainId,
         functionName: "allowance",
         args: [account as Address, vault as Address],
       },
     ],
-    query: { enabled: enabledAccount && usdcAddress !== undefined },
+    query: { enabled: enabledAccount && depositToken !== undefined },
   });
   const usdcBalance = usdcReads.data?.[0]?.result as bigint | undefined;
   const usdcAllowance = usdcReads.data?.[1]?.result as bigint | undefined;
@@ -468,7 +617,31 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     query: { enabled: enabledGlobal },
   });
   const decimalsLive = decimalsRead.data as number | undefined;
-  const assetDecimals = decimalsLive ?? USDC_DECIMALS;
+
+  // ── 024: on a Vault V2 the invariant above DOES NOT HOLD, so read the two decimals separately. ──
+  //
+  // The comment directly above predicted this break by name. A V2 sets a non-zero decimals offset
+  // (`virtualShares() == 1e12`), so its own `decimals()` is 18 while its ASSET is 6-dp USDC. Using
+  // the share decimals to scale an asset amount is a 1e12 error in the user's face: 100 USDC renders
+  // as ~0.0000000001, and the USD valuation collapses to zero so the position disappears from net
+  // worth entirely. The asset's decimals therefore come from `asset()`'s own `decimals()`, with the
+  // address-book entry as the pre-resolution fallback (never the share decimals).
+  const assetDecimalsRead = useReadContract({
+    address: asset as Address,
+    abi: erc20Abi,
+    chainId: readChainId,
+    functionName: "decimals",
+    query: { enabled: enabledGlobal && isFeeWrapper && asset !== undefined },
+  });
+  const assetDecimals = isFeeWrapper
+    ? ((assetDecimalsRead.data as number | undefined) ?? feeWrapperEntry?.assetDecimals ?? USDC_DECIMALS)
+    : (decimalsLive ?? USDC_DECIMALS);
+  /**
+   * The vault's SHARE-token decimals. Equal to {@link assetDecimals} on SparkPoint's own ERC-4626s
+   * (`_decimalsOffset() == 0`), and **18 over a 6-dp asset** on a Vault V2. Exposed separately so a
+   * caller formatting a SHARE amount cannot silently reuse the asset scale, or vice versa.
+   */
+  const shareDecimals = decimalsLive ?? feeWrapperEntry?.shareDecimals ?? assetDecimals;
 
   // ── wrapper-only views (011): branded label + the single curated Morpho target it routes into. ──
   const wrapperReads = useReadContracts({
@@ -545,23 +718,31 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
 
   const refetch = useCallback(() => {
     void globalReads.refetch();
+    void launchOnlyReads.refetch();
+    void feeWrapperReads.refetch();
     void accountReads.refetch();
+    void limitReads.refetch();
     void underlyingRead.refetch();
     void usdcReads.refetch();
     void previewDepositRead.refetch();
     void previewRedeemRead.refetch();
     void decimalsRead.refetch();
+    void assetDecimalsRead.refetch();
     void wrapperReads.refetch();
     void provenanceRead.refetch();
     void capReads.refetch();
   }, [
     globalReads,
+    launchOnlyReads,
+    feeWrapperReads,
     accountReads,
+    limitReads,
     underlyingRead,
     usdcReads,
     previewDepositRead,
     previewRedeemRead,
     decimalsRead,
+    assetDecimalsRead,
     wrapperReads,
     provenanceRead,
     capReads,
@@ -598,6 +779,9 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     vault,
     usdcAddress,
     assetDecimals,
+    shareDecimals,
+    depositToken,
+    managementFeeBps,
     kind,
     feeBasis: feeBasisForVaultKind(kind),
     label,
