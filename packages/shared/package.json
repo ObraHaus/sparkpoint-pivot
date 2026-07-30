@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./policy": "./src/policy/index.ts",
+    "./chains": "./src/chains/index.ts",
     "./addresses": "./src/addresses/index.ts",
     "./schemas": "./src/schemas/index.ts",
     "./abis": "./src/abis/index.ts"

@@ -40,9 +40,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..chain import HttpxJsonRpcTransport, VaultUnavailable, VaultUnavailableReason
 from ..chain.vault_factory import GUARDIAN_ACTIONS, GuardianActionError, VaultFactoryChain
+from ..chain.vault_resolution import registry_enabled
 from ..config import AgentConfig
 from ..db import get_database
 from ..db.vault_factory import VaultFactoryStore
+from ..db.vault_registry import VaultRegistryStore
 from .allowlist import require_admin
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
@@ -90,6 +92,11 @@ def _get_account(request: Request) -> AccountContext:
 def get_vault_factory_store() -> VaultFactoryStore:
     """The asyncpg-backed provenance store (production). Overridden with a fake in tests."""
     return VaultFactoryStore(get_database())
+
+
+def get_vault_registry_store() -> VaultRegistryStore:
+    """The 024 registry store (migration 0026). Overridden with a fake in tests."""
+    return VaultRegistryStore(get_database())
 
 
 def get_factory_chain(request: Request) -> VaultFactoryChain | None:
@@ -252,6 +259,50 @@ async def list_vaults(
         # The invariant this page renders + enforces: no fund-moving admin verb exists.
         "guardianActions": list(GUARDIAN_ACTIONS),
         "noMoveFundsAction": True,
+    }
+
+
+@router.get("/admin/vault-registry")
+async def list_vault_registry(
+    admin: Annotated[AccountContext, Depends(require_admin)],
+    store: Annotated[VaultRegistryStore, Depends(get_vault_registry_store)],
+) -> dict[str, Any]:
+    """The 024 vault REGISTRY (migration 0026) — read-only/advisory, all chains.
+
+    Deliberately NOT mounted at ``/admin/vaults/registry``: ``GET /admin/vaults/{vault}`` is a
+    catch-all path param declared below, and FastAPI matches in registration order, so that path
+    would be shadowed into a lookup for a vault literally named "registry". This is also a genuinely
+    different resource — 0026's ``vault_registry`` (which vaults exist, on every chain) versus
+    0016's ``sparkpoint_wrappers`` (branded-wrapper provenance on one chain).
+
+    FAIL-OPEN, and that is the point. Migration 0026 may not be applied yet, so an unmigrated or
+    unreachable database returns ``available: false`` with empty rows and an honest reason — never a
+    500, and never invented rows. This endpoint is advisory only: nothing here authorizes a
+    signature, and per IV.5(d) the registry must not reach the deterministic policy path.
+    """
+    registry_flag = registry_enabled()
+    try:
+        vaults = await store.list_vaults()
+        allowlist = await store.list_allowlist(admin.chain_id)
+        apy = await store.latest_apy(admin.chain_id)
+    except Exception as exc:  # noqa: BLE001 - advisory surface; an unapplied 0026 is expected
+        logger.warning("admin/vault-registry: read failed (is 0026 applied?)", exc_info=True)
+        return {
+            "available": False,
+            "reason": f"{type(exc).__name__} — migration 0026 may not be applied on this database.",
+            "resolutionEnabled": registry_flag,
+            "vaults": [],
+            "allowlist": [],
+            "apySnapshots": [],
+        }
+    return {
+        "available": True,
+        # Whether the service is actually RESOLVING from these rows, or still using the env var.
+        # Surfaced so the operator can see that rows exist but are not yet load-bearing.
+        "resolutionEnabled": registry_flag,
+        "vaults": vaults,
+        "allowlist": allowlist,
+        "apySnapshots": apy,
     }
 
 

@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "fee-wording-now-follows-each-vault",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Our fee wording now follows each vault's real rules — not one blanket promise",
+      "body": "Until now every screen described our performance fee the same way: 10% of your gains, charged only above your \"high-water mark\" — meaning if your balance dipped and recovered, you paid nothing until you were back above your previous best. That is exactly true of the Aave Yield Vault you can use today, and nothing about it has changed.\n\nIt will not be true of every vault we add. We're preparing to offer vaults built on Morpho's own audited contracts, and those contracts don't keep a high-water mark. On one of those, a gain that comes after a loss IS charged, even if you're still below your earlier peak. What stays the same either way: we never charge anything on your deposit, never charge in a flat or falling period, there is no management fee, and nothing is ever held back to let you withdraw.\n\nSo we've stopped writing the fee one way everywhere. Each vault now states its own terms — on its page, in the fee breakdown, and in the confirmation you sign — and the wording is generated from the vault's actual contract rather than typed out by hand on each screen. We're doing this before any such vault exists rather than after, because a fee promise you'd have had to discover was wrong isn't a promise. We also corrected a related line that called our 20% fee ceiling \"immutable\": that's true of our own vault, where it's fixed in the contract's code, but on a Morpho-built vault the limit is held by our multi-signature wallet and a 3-day delay instead — stronger than a policy, weaker than code, and now described as what it is.\n\nSeparately, we fixed two links that pointed at the wrong network's block explorer, including one on the page whose whole job is helping you verify and exit on-chain.",
+      "cta_label": "See the fee breakdown",
+      "cta_href": "/fees",
+      "published_at": "2026-07-30T14:30:00Z",
+      "active": true
+    },
+    {
       "slug": "mainnet-readiness-hardening-behind-the-scenes",
       "type": "changelog",
       "tag": "Improved",
@@ -9,8 +20,7 @@
       "body": "Nothing changes on your side today — this is groundwork, and we'd rather tell you about it than not. Before real money is ever involved we went back through the part of SparkPoint that reads the blockchain and prepares your transactions, looking for places where it could be pointed at the wrong network and not notice. We found some, and closed them. The service now proves which network it is talking to before it will quote you a number or prepare a move, and refuses to answer at all rather than answer from the wrong place. We also made hands-off moves work out the network fee at the moment you make them instead of using a fixed figure that only suited our test network, tightened a check so an out-of-date move can't be sent, and made sure one person's prepared transaction can never be handed to somebody else. Your funds, the vault, and the withdraw-anytime guarantee are untouched by all of this — every one of these changes can only ever make us MORE careful, never less. Still test network only; the real-money launch has its own separate review to pass first.",
       "cta_label": "See what we can and can't do",
       "cta_href": "/trust",
-      "published_at": "2026-07-30T10:00:00Z",
-      "active": true
+      "published_at": "2026-07-30T10:00:00Z",      "active": true
     },
     {
       "slug": "morpho-demo-vault-retired-deposits-closed",

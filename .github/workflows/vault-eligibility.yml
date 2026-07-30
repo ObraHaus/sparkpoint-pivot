@@ -1,0 +1,56 @@
+name: vault-eligibility
+# FR-020 / 024-T034 — the automated on-chain eligibility gate for Fee Wrapper children.
+#
+# Constitution v3.0.0 permits a SparkPoint branded wrapper over a third-party Morpho Vault V2 ONLY
+# if that child passes an on-chain eligibility check. `abdicated(bytes4)` is a public mapping and
+# `isVaultV2` a public factory view, so the check is fully automatable — which is why it is a CI gate
+# rather than a review checklist. Per candidate in contracts/deployments/vault-candidates.json:
+# factory provenance, the THREE critical gate setters permanently abdicated (the one real N2 hole in
+# wrapping someone else's vault), the `asset()` match our own factory never performed, and the
+# child's native fee ceilings for the NET stacked-fee disclosure (IV.5).
+#
+# Any drift FAILS the job (non-zero + ::error::). The gate green-by-skips ONLY when a chain has no
+# declared candidates — it never silently passes on a real mismatch, and a missing RPC secret falls
+# back to the chain's public RPC rather than skipping.
+#
+# READ-ONLY, AND SAFE TO POINT AT MAINNET. Every candidate lives on a mainnet (Base 8453 / Robinhood
+# 4663) because Base Sepolia has no Morpho Vault V2 to wrap at all — so unlike policy-parity this
+# gate must read mainnet. It does so with `cast call` only, never `cast send`, and no signing key is
+# present in the job env. Do NOT copy deploy-testnet.yml's "fail if chainId == 8453" guard here: that
+# guard exists to stop a mainnet BROADCAST, and this job legitimately reads 8453/4663.
+#
+# NO paths FILTER, deliberately: a required check behind a paths filter stays perpetually pending
+# (same reasoning as changelog-required.yml), and eligibility can regress from a chain-state change
+# with no diff in this repo at all — the child's curator could un-abdicate nothing, but could raise a
+# fee. Running on every PR is the point.
+#
+# All logic lives in the committed, locally-runnable helper, so the gate is testable outside CI:
+#   bash contracts/script/vault-eligibility-check.sh          # every chain
+#   bash contracts/script/vault-eligibility-check.sh 8453     # one chain
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  eligibility:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
+    # Optional per-chain RPC overrides. Neither secret exists today and neither is required: the
+    # helper falls back to each chain's public RPC (declared in vault-candidates.json) and verifies
+    # via `cast chain-id` that the endpoint really serves the chain before trusting any read, so a
+    # wrong or missing endpoint fails closed instead of reporting a false PASS.
+    env:
+      BASE_MAINNET_RPC_URL: ${{ secrets.BASE_MAINNET_RPC_URL }}
+      ROBINHOOD_MAINNET_RPC_URL: ${{ secrets.ROBINHOOD_MAINNET_RPC_URL }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: FR-020 — provenance · 3 critical gates abdicated · asset match · native fee ceilings
+        run: bash contracts/script/vault-eligibility-check.sh

@@ -29,6 +29,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
+import { feeBasisShortLabel } from "@/lib/policy/feeCopy";
 import { VaultPicker } from "@/components/ui/VaultPicker";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
@@ -213,7 +214,8 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
                 </div>
                 <div className="br">
                   <span className="muted">
-                    Fee · SparkPoint {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
+                    Fee · SparkPoint {feePctInt}% of yield{" "}
+                    <span style={{ fontSize: 11 }}>({feeBasisShortLabel(v.feeBasis)})</span>
                   </span>
                   <span className="tnum" style={{ fontSize: 12 }}>+ Morpho curator fee</span>
                 </div>
@@ -233,7 +235,8 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
                 </div>
                 <div className="br">
                   <span className="muted">
-                    Performance fee · {feePctInt}% of yield <span style={{ fontSize: 11 }}>(over high-water mark)</span>
+                    Performance fee · {feePctInt}% of yield{" "}
+                    <span style={{ fontSize: 11 }}>({feeBasisShortLabel(v.feeBasis)})</span>
                   </span>
                   <span className="tnum">
                     {grossApyBps !== null && grossApyBps > ZERO_APY_BPS ? `−${(supplyPct - netPct).toFixed(2)}%` : "—"}

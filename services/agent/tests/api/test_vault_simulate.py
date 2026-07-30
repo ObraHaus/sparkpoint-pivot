@@ -49,6 +49,11 @@ class FakeReader:
         self._allowance = allowance
         self._deployed = deployed
 
+    @property
+    def vault_address(self) -> str | None:
+        """024/T032 — mirrors the real reader: the single resolved vault for this request."""
+        return VAULT if self._deployed else None
+
     async def asset(self) -> str:
         if not self._deployed:
             raise VaultUnavailable(VaultUnavailableReason.NOT_DEPLOYED, "vault not deployed")

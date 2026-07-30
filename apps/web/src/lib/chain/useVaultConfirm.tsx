@@ -32,7 +32,7 @@ import {
   type VaultConfirmModel,
 } from "@/lib/chain/vaultConfirmModel";
 import type { OnchainConfirm } from "@/components/ui/ConfirmFlow";
-import { PERFORMANCE_FEE_DISCLOSURE } from "@/lib/policy/feeCopy";
+import { performanceFeeDisclosure } from "@/lib/policy/feeCopy";
 
 // Re-exported for the existing call sites (`_amount-screen.tsx` imports `toNum` from here).
 export { toNum };
@@ -144,7 +144,9 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
             {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
           </>
         ),
-        disclosure: PERFORMANCE_FEE_DISCLOSURE,
+        // 024/T024 — the disclosure follows the VAULT's real fee mechanics. This is the string the
+        // user signs against, so it may never over-promise a high-water mark the contract lacks.
+        disclosure: performanceFeeDisclosure(v.feeBasis),
       }
     : {
         exec: m.withdrawExec,
