@@ -4,12 +4,18 @@ name: knowledge-boundary
 # the deterministic policy path, and knowledge_search must stay out of the build/sim registries.
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop]
   pull_request:
     branches: [develop]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   boundary:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: knowledge/ ↛ policy/ (and policy/ decision path pure) — real imports only
