@@ -34,10 +34,10 @@ from ..policy import (
     evaluate_session_grant,
 )
 from .security import AccountContext
-from .vault import get_account, get_sim_config
+from .vault import get_account, get_sim_config, require_verified_chain
 
 logger = logging.getLogger("sparkpoint_agent.api.sessions")
-router = APIRouter(tags=["sessions"])
+router = APIRouter(tags=["sessions"], dependencies=[Depends(require_verified_chain)])
 
 # selector: authorizeSessionKey(Policy, address[], bytes4[]) — Policy tuple = _POLICY_TYPE below
 _AUTHORIZE_SELECTOR = "0xbc3cabbb"

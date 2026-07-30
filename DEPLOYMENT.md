@@ -7,6 +7,33 @@ How SparkPoint Pivot ships. Platform specifics in [COOLIFY.md](./COOLIFY.md); lo
 > - **agent (develop):** `sparkpoint-agent-develop` (UUID `fw8s4ko4080wgk8okso8go48`), FastAPI on `:8000` at `8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app`. It has a **public FQDN** (Coolify/Traefik routes by domain) but is **hardened**: `/docs`+`/openapi.json` disabled, `/readyz` leaks nothing to anonymous callers, and every functional route is behind a fail-closed S2S bearer that ONLY the web BFF holds (server-side). The browser NEVER calls it directly — it goes through the same-origin BFF at `/api/agent/*`. Both apps sit on the shared Coolify network; moving the BFF→agent hop to internal-only DNS + dropping the agent's public FQDN is a documented follow-up.
 > - **DB:** `spark-postgres` (existing) — migrations 0002/0003/0004 applied; the agent connects the asyncpg pool at startup.
 >
+> **⚠️ MAINNET ENV CONTRACT (feature 023) — read before standing up an 8453 deployment.**
+> - **`CHAIN_ID=8453` REQUIRES an explicit mainnet RPC** — `SPARKPOINT_RPC_URL` or the new
+>   `BASE_MAINNET_RPC_URL`. There is **no fallback** to `SIM_FORK_RPC_URL` or `BASE_SEPOLIA_RPC_URL`
+>   any more, in either direction. Before 023 a missing var silently served fork or Sepolia state as
+>   mainnet, which (because cap headroom/`paused()`/`totalAssets()` feed the policy gate while the
+>   calldata targets the mainnet vault) could produce a bundle **approved against one chain's state and
+>   signed on another**. An unconfigured chain now fails closed and names the vars to set.
+> - **The RPC must prove its chain.** The agent asserts `eth_chainId == CHAIN_ID` (cached ~60s). A
+>   MISMATCH **latches**: the chain-dependent surface (vault quotes/simulations, portfolio, outcomes,
+>   build/simulate/submit, session-keys) fails closed until the config is fixed **and the process
+>   restarts**. `/healthz`, chat, the advisory reads and `/admin/*` keep serving, and the frontend's
+>   direct-RPC exit is untouched (N2). This catches **misconfiguration**, not a hostile RPC.
+> - **`/readyz` is chain-aware.** `chain_rpc` + `chain_identity` replace `base_rpc`; `sim_fork` only
+>   counts toward `ready` on a chain whose allowlist offers a swap. An S2S caller also gets `chain_id`
+>   — useful for telling a mis-pointed deployment from a down dependency. The RPC url is never in the
+>   response or any log line (it can carry a provider key).
+> - **Migration order is load-bearing:** apply **`0027`** BEFORE redeploying the agent. The idempotency
+>   store fails open, so the reverse order runs with no replay protection, no error and no failing
+>   check (the agent logs a distinct `idempotency_table_missing` warning as the backstop). `0027` is
+>   additive, so applying it first is safe for the live agent.
+> - **RUN ONE UVICORN WORKER.** The process-global LLM concurrency limiter (`llm/resilience.py`) is
+>   per-process: with N workers the effective in-flight cap is N× the intended one. This affects
+>   **cost and upstream rate limits only** — no custody impact, and the LiteLLM virtual key caps
+>   rpm/tpm/daily budget server-side as well — so the agent WARNS at boot rather than refusing to
+>   start when `WEB_CONCURRENCY`/`UVICORN_WORKERS` > 1. Externalizing the limiter is the follow-up if
+>   horizontal scaling is ever needed.
+
 > **LLM path (Phase A, 2026-07-16):** Hermes no longer calls Anthropic directly — it calls an OpenAI-compatible **LiteLLM gateway → OpenRouter** (`sparkpoint-litellm-develop`, alias `sparkpoint-chat`), backed by a **dedicated, isolated Postgres** (`sparkpoint-litellm-db-develop`, NOT spark-postgres). Only the gateway holds the OpenRouter key; the agent uses a per-service **virtual key** (rpm/tpm + daily budget). `readyz` probes the gateway liveness (the `llm` check). The Anthropic-OAuth path stays as an env-selected fallback. Full gateway inventory + secrets policy in [COOLIFY.md](./COOLIFY.md).
 >
 > Prior status (2026-07-10, superseded): web deployed, backend/agent/DB "planned". Full app inventory + UUIDs in [COOLIFY.md](./COOLIFY.md).

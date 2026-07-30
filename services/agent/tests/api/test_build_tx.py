@@ -1,10 +1,12 @@
 # ruff: noqa: S101, S105, ANN001, ARG001
 """§3.5 POST /build-tx contract tests (feature 019 US2) — the single signing chokepoint.
 
-Everything runs against a MOCKED vault reader + config + dry-runner + in-memory bundle store (no live
+Everything runs against a MOCKED vault reader + config + dry-runner + in-memory bundle store (no
+live
 vault / RPC / Postgres). The crux (spec SC-001/002/003, VR-X2/X3, N1/N2/N3):
 
-- an APPROVED vault deposit → one IntentBundle (recipient forced, signature null, sim present + passed);
+- an APPROVED vault deposit → one IntentBundle (recipient forced, signature null, sim present +
+passed);
 - an over-cap deposit → CAP_EXCEEDED envelope + NO bundle;
 - a swap / unknown / non-USDC action → an honest refusal + NO bundle (vault-only on testnet);
 - a deposit needing approval → APPROVAL_REQUIRED (no false revert, runner not called);
@@ -126,7 +128,8 @@ class FakeRecStore:
     """Structural RecommendationStore stand-in (US5). Records upserts/status writes for assertions.
 
     ``get`` returns whatever was pre-seeded (default: unknown → None, so ``_resolve_rec`` upserts a
-    minimal snapshot); ``upsert`` mints a UUID and records the RecInsert; ``mark_status`` records the
+    minimal snapshot); ``upsert`` mints a UUID and records the RecInsert; ``mark_status`` records
+    the
     lifecycle write. No Postgres — the whole point is to keep /build-tx tests DB-free.
     """
 
@@ -324,7 +327,9 @@ def test_build_idempotent_replay_returns_same_bundle(client: TestClient) -> None
 # ── US5 — non-custody invariants under adversarial conditions ────────────────────────────────────
 
 
-def test_withdraw_builds_under_fully_hostile_ctx(client: TestClient, store: FakeBundleStore) -> None:
+def test_withdraw_builds_under_fully_hostile_ctx(
+    client: TestClient, store: FakeBundleStore
+) -> None:
     """N2 (SC-003): a redeem builds even when paused + over-cap + the simulator is DOWN, and is
     NEVER KILL_SWITCH_PAUSED. The assembler never even gathers the pause/cap reads on an exit."""
 
@@ -407,7 +412,8 @@ def _deposit_body_rec(rec_id: str, amount: str = "100000000") -> dict[str, objec
 def test_build_links_a_known_recommendation_and_marks_it_acted(
     client: TestClient, rec_store: FakeRecStore
 ) -> None:
-    # A wire recommendationId that resolves to the caller's persisted rec → the bundle carries it and
+    # A wire recommendationId that resolves to the caller's persisted rec → the bundle carries it
+    # and
     # the rec advances to 'acted' (no new snapshot minted — the explicit FR-039 link).
     known = uuid4()
     rec_store.seeded[known] = SimpleNamespace(id=known, wallet=USER)

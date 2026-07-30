@@ -36,6 +36,14 @@ sparkpoint-pivot/
 - **pnpm** (the repo will ship `pnpm-lock.yaml`).
 - **Foundry** (`forge` / `cast` / `anvil`) for `contracts/`.
 - **Docker** for the agent service (OpenClaw / Hermes).
+- **RPC env per chain (feature 023).** Each chain resolves its RPC from its OWN vars only — there is no
+  cross-chain fallback. Locally that means: `CHAIN_ID=31337` takes `SIM_FORK_RPC_URL` (the Anvil
+  Base-mainnet fork, and the swap simulator); `84532` takes `BASE_SEPOLIA_RPC_URL`; `8453` takes the new
+  `BASE_MAINNET_RPC_URL`; `46630` keeps its keyless public default. `SPARKPOINT_RPC_URL` remains the
+  explicit per-deployment override on every chain. If a chain has nothing configured, the vault surface
+  fails closed and the error names that chain's real candidates. The agent also asserts
+  `eth_chainId == CHAIN_ID` at first use, so pointing a local run at the wrong fork surfaces
+  immediately instead of silently producing quotes against the wrong chain.
 - **Postgres 16 + pgvector** (local, or point at the Coolify develop DB).
 
 ## Setup (planned)

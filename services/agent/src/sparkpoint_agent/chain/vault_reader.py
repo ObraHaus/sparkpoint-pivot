@@ -54,10 +54,14 @@ class VaultUnavailableReason(Enum):
 
       - NOT_DEPLOYED    → SIMULATION_UNAVAILABLE (no vault address / no code at address).
       - RPC_UNREACHABLE → UPSTREAM_UNAVAILABLE   (transport/JSON-RPC/decoding failure).
+      - CHAIN_MISMATCH  → UPSTREAM_UNAVAILABLE   (023: the RPC serves a DIFFERENT chain than
+                          ``CHAIN_ID`` — a configuration error, not a transient one, so it is
+                          non-retryable and must never degrade to a value read off the wrong chain).
     """
 
     NOT_DEPLOYED = "NOT_DEPLOYED"
     RPC_UNREACHABLE = "RPC_UNREACHABLE"
+    CHAIN_MISMATCH = "CHAIN_MISMATCH"
 
 
 class VaultUnavailable(Exception):

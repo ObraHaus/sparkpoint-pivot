@@ -55,7 +55,7 @@ from .errors import (
     validation_error_handler,
 )
 from .execution import router as execution_router
-from .idempotency import IdempotencyStore
+from .idempotency import IdempotencyStore, LayeredIdempotencyStore, ScopedStore
 from .mandate import router as mandate_router
 from .middleware import RequestContextMiddleware
 from .network_diagnostics import router as network_diagnostics_router
@@ -106,6 +106,96 @@ async def _llm_ready() -> bool:
         ok = False
     _llm_probe.update(ts=now, ok=ok)
     return ok
+
+
+def _warn_if_multi_worker() -> None:
+    """023 (FR-023-019) — the one remaining single-process assumption, made loud.
+
+    After the durable idempotency store (Story D), the only mechanism whose CORRECTNESS depends on
+    running exactly one worker is the process-global LLM concurrency limiter
+    (``llm/resilience.py``): with N workers there are N semaphores, so the effective in-flight cap
+    is N x the intended one.
+
+    Deliberately a WARNING, not a refusal to boot. That limiter guards **cost and upstream rate
+    limits**, not custody and not the correctness of any signable artifact — and the LiteLLM virtual
+    key caps rpm/tpm/daily budget server-side too. Taking a service down over a cost control would
+    be disproportionate; leaving the assumption undocumented and invisible would not.
+    """
+    for name in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        raw = os.getenv(name)
+        if not raw:
+            continue
+        try:
+            workers = int(raw)
+        except ValueError:
+            continue
+        if workers > 1:
+            logger.warning(
+                "multi_worker_detected %s=%d — the process-global LLM concurrency limiter is "
+                "PER-PROCESS, so the effective in-flight cap is %dx the intended one (cost/rate "
+                "limits only; no custody impact). Run ONE worker, or externalize the limiter. "
+                "See DEPLOYMENT.md.",
+                name,
+                workers,
+                workers,
+            )
+
+
+def _durable_idempotency_store() -> ScopedStore | None:
+    """The Postgres-backed replay cache (migration 0027), or ``None`` if it cannot be constructed.
+
+    Resolved lazily and defensively so module import never depends on a DB. ``None`` degrades to the
+    in-process cache alone — replay protection that does not survive a restart, which is exactly the
+    pre-023 behavior and is safe (fail-open, N2). The store itself logs a distinct warning when the
+    table is absent, so a deploy that landed before 0027 was applied is observable (FR-023-015a).
+    """
+    try:
+        from ..db.idempotency import PgIdempotencyStore
+
+        return PgIdempotencyStore(get_database())
+    except Exception:
+        logger.warning("idempotency_durable_store_unavailable; replays will not span restarts")
+        return None
+
+
+async def _chain_readiness() -> tuple[int | None, bool, bool, bool]:
+    """023 — ``(chain_id, rpc_resolved, chain_identity_verified, chain_allowlists_a_swap)``.
+
+    Derived from the RESOLVED config rather than from raw env-var presence, so readiness describes
+    the chain this deployment actually serves. Fail-safe: an unloadable config reports
+    ``(None, False, False, False)`` — honestly not ready — rather than raising out of a probe
+    endpoint that infra depends on.
+    """
+    from ..chain.chain_identity import ChainIdentity
+    from ..config import AgentConfig
+    from ..policy import ActionType, get_policy_constants
+    from .vault import _probe_for
+
+    try:
+        config = AgentConfig.from_env()
+    except Exception:
+        return None, False, False, False
+
+    rpc_ok = bool(config.rpc_url)
+    identity_ok = False
+    if rpc_ok:
+        probe = _probe_for(config)
+        if probe is not None:
+            try:
+                identity_ok = (await probe.verdict()) is ChainIdentity.VERIFIED
+            except Exception:
+                identity_ok = False
+
+    # Does this chain's RESOLVED allowlist actually offer a swap? Only then is the fork simulator a
+    # readiness dependency (swaps are the oracle-dependent path that cannot fall back to a dry-run).
+    swap_capable = False
+    try:
+        constants = get_policy_constants(config.chain_id)
+        swap_capable = any(e.action is ActionType.AERODROME_SWAP for e in constants.allowlist)
+    except Exception:
+        swap_capable = False
+
+    return config.chain_id, rpc_ok, identity_ok, swap_capable
 
 
 # Startup must NEVER block on the DB: asyncpg.create_pool can hang for its full connect
@@ -402,6 +492,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     index_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
+    # A deployment-shape check, independent of every dependency — so it must run BEFORE (and
+    # regardless of) the DB connect, which is allowed to fail (023, FR-023-019).
+    _warn_if_multi_worker()
     try:
         db = get_database()
         await asyncio.wait_for(db.connect(), timeout=_DB_CONNECT_TIMEOUT_S)
@@ -463,9 +556,12 @@ app = FastAPI(
     openapi_url="/openapi.json" if _DOCS_ENABLED else None,
 )
 
-# One process-local idempotency store shared by every request (§1.3). Production
-# swaps this for a Postgres/Redis-backed store so replays span workers/restarts.
-idempotency_store = IdempotencyStore()
+# The §1.3 idempotency cache: an in-process fast path LAYERED over a Postgres-backed store
+# (migration 0027), so a replay is honored after a restart and across workers — the old comment here
+# promised exactly this and 023 delivers it (FR-023-015). The durable half is resolved lazily so
+# module import never needs a DB, and every durable failure fails OPEN (the request is admitted):
+# idempotency guards a double-emit on an ADVISORY build and is never on the withdraw/exit path (N2).
+idempotency_store = LayeredIdempotencyStore(IdempotencyStore(), _durable_idempotency_store())
 app.add_middleware(RequestContextMiddleware, store=idempotency_store)
 
 # CORS — the browser (web tier) calls this service cross-origin (§1.2 headers + the
@@ -587,6 +683,23 @@ async def readyz(
     leak the internal dependency topology (which of Postgres/RPC/model/sim is down, the policy
     version) to anonymous callers on the public FQDN. ``postgres`` is a REAL ``SELECT 1``
     round-trip, so a configured-but-unreachable DB reports ``false`` honestly.
+
+    023 (FR-023-005/006) — the checks now describe **the chain this deployment actually serves**:
+
+    - ``chain_rpc``      : an RPC url RESOLVED for ``CHAIN_ID`` (config, not a raw env name).
+    - ``chain_identity`` : that RPC provably reports ``CHAIN_ID`` (the 023 probe).
+    - ``sim_fork``       : reported always, but only counted toward ``ready`` when the served chain
+                           actually allowlists a swap — the fork simulator is required for the
+                           oracle-dependent swap path, not for the vault-only surface.
+
+    Previously ``base_rpc`` keyed off ``BASE_SEPOLIA_RPC_URL``/``ALCHEMY_ACCESS_KEY`` and
+    ``sim_fork`` off ``SIM_FORK_RPC_URL``, which was wrong in both directions on mainnet: a
+    correctly-configured mainnet deployment reported not-ready forever, while one carrying a stale
+    Sepolia url reported ready **while serving mainnet**. The second is the dangerous one, and an
+    operator who learns to ignore ``/readyz`` is how a real outage gets missed.
+
+    Chain-id VALUES may appear in this S2S breakdown (they are public facts); the RPC **url** never
+    does, here or in any log line, because it can carry a provider key.
     """
     postgres_ok = False
     try:
@@ -594,20 +707,29 @@ async def readyz(
     except Exception:
         # Unconnected pool / unreachable DB / missing DSN → honestly not ready.
         postgres_ok = False
+    chain_id, chain_rpc_ok, chain_identity_ok, swap_capable = await _chain_readiness()
     checks = {
+        "chain_rpc": chain_rpc_ok,
+        "chain_identity": chain_identity_ok,
         "sim_fork": bool(os.getenv("SIM_FORK_RPC_URL")),
-        "base_rpc": bool(os.getenv("BASE_SEPOLIA_RPC_URL") or os.getenv("ALCHEMY_ACCESS_KEY")),
         # Real LLM-gateway liveness (cached ~60s), not mere key-presence.
         "llm": await _llm_ready(),
         "postgres": postgres_ok,
     }
-    ready = all(checks.values())
+    # The fork simulator gates the SWAP path only; a vault-only chain is ready without it.
+    required = dict(checks)
+    if not swap_capable:
+        required.pop("sim_fork")
+    ready = all(required.values())
     if not has_valid_s2s(authorization):
         # Anonymous: boolean only — no dependency detail, no policy version.
         return {"ready": ready}
     return {
         "ready": ready,
         "checks": checks,
+        # The chain being served, so an operator can tell a mis-pointed deployment apart from a
+        # down dependency at a glance. A public fact — unlike the RPC url, which never appears.
+        "chain_id": chain_id,
         # Default to the mirrored constant so the reported version is always accurate.
         "policy_version": os.getenv("POLICY_VERSION", POLICY_VERSION),
     }

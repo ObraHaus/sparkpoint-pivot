@@ -37,9 +37,16 @@ from ..execution.models import (
     SubmitSignedResponse,
 )
 from .security import AccountContext
-from .vault import DryRunner, get_account, get_dry_runner, get_sim_config, get_vault_reader
+from .vault import (
+    DryRunner,
+    get_account,
+    get_dry_runner,
+    get_sim_config,
+    get_vault_reader,
+    require_verified_chain,
+)
 
-router = APIRouter(tags=["execution"])
+router = APIRouter(tags=["execution"], dependencies=[Depends(require_verified_chain)])
 
 
 def get_bundle_store() -> IntentBundleStore:

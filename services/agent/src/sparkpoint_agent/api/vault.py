@@ -35,7 +35,14 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
+from ..chain import (
+    ChainIdentityProbe,
+    HttpxJsonRpcTransport,
+    VaultReader,
+    VaultUnavailable,
+    VaultUnavailableReason,
+)
+from ..chain.chain_identity import PROBE_TIMEOUT_S
 from ..config import AgentConfig
 from ..policy import CAPS, GOVERNANCE
 from ..policy.enums import ActionType, ReasonCode
@@ -43,7 +50,61 @@ from ..sim import SimulationRequest, SimulationResult, SimulatorUnavailableError
 from .errors import ApiError, ErrorCode, ErrorReason, new_request_id, render_api_error
 from .security import AccountContext
 
-router = APIRouter(tags=["vault"])
+# 023 (FR-023-002/003) — one probe per (chain_id, rpc_url), so the assertion costs at most one RPC
+# round-trip per TTL window and a MISMATCH latch survives across requests. Keyed on the url too, so
+# re-pointing a deployment's RPC yields a fresh probe rather than reusing a stale verdict. Bounded
+# by the number of supported chains × configured urls, so it cannot grow unbounded.
+_chain_probes: dict[tuple[int, str], ChainIdentityProbe] = {}
+
+
+def _probe_for(config: AgentConfig) -> ChainIdentityProbe | None:
+    """The cached probe for ``config``'s chain, or ``None`` when no RPC is configured.
+
+    ``None`` is not a bypass: with no RPC url every chain read already fails closed with
+    RPC_UNREACHABLE at reader construction, so there is nothing to verify.
+    """
+    url = config.rpc_url
+    if not url:
+        return None
+    key = (config.chain_id, url)
+    probe = _chain_probes.get(key)
+    if probe is None:
+        probe = ChainIdentityProbe(
+            chain_id=config.chain_id, transport=HttpxJsonRpcTransport(url, timeout=PROBE_TIMEOUT_S)
+        )
+        _chain_probes[key] = probe
+    return probe
+
+
+async def require_verified_chain(request: Request) -> None:
+    """023 — refuse to serve the chain-dependent surface unless the RPC proves its chain.
+
+    Attached as a ROUTER-level dependency on the surfaces whose answers depend on chain state
+    (vault quotes/simulations, portfolio, outcomes, build/simulate/submit, session-key builds), so
+    the gate is declared once per router and is visible in the route table rather than buried inside
+    a helper.
+
+    Why this exists (FR-023-002): cap headroom, ``paused()``, ``totalAssets()`` and the ERC-4626
+    previews all feed ``policy.evaluate()``, while built calldata targets the vault address from
+    env. An RPC serving a different chain therefore yields a bundle approved against one chain's
+    state and signed on another — the policy layer behaves perfectly and still returns the wrong
+    answer.
+
+    NOT gated, deliberately (N2 + honest degradation): ``/healthz`` / ``/readyz``, chat and its
+    non-chain paths, mandate/onboarding, allowlist, content/tips, and every ``/admin/*`` surface.
+    The frontend's direct-RPC exit path never touches this service at all, so a mismatch cannot
+    trap funds.
+    """
+    config = AgentConfig.from_env()
+    account = getattr(request.state, "account", None)
+    if isinstance(account, AccountContext):
+        config = config.for_chain(account.chain_id)
+    probe = _probe_for(config)
+    if probe is not None:
+        await probe.require_verified()
+
+
+router = APIRouter(tags=["vault"], dependencies=[Depends(require_verified_chain)])
 
 # The 1e18 scale of the on-chain HWM / share price (assets-per-share). SparkPointVault
 # stores ``_highWaterMark`` as ``convertToAssets(1e18)`` — a 1e18-scaled ratio seeded to

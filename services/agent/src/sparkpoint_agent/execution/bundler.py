@@ -97,6 +97,40 @@ async def estimate_user_op_gas(
     return result
 
 
+#: 023 — headroom over the pending base fee, the common bundler convention: it lets the op
+#: survive several blocks of base-fee growth without over-committing. On an OP-Stack L2 the base
+#: fee is small enough that the absolute overpay is negligible.
+BASE_FEE_MULTIPLIER = 2
+
+
+async def fee_per_gas(rpc_url: str) -> tuple[int, int] | None:
+    """023 (FR-023-007) — live ``(max_fee_per_gas, max_priority_fee_per_gas)``, or ``None``.
+
+    ``max_fee = BASE_FEE_MULTIPLIER × pending baseFeePerGas + priority``. Read live because the
+    previous hardcoded 0.05 gwei was a Base-Sepolia artifact: on mainnet a fee cap below the base
+    fee gets the op rejected outright or stranded un-mined, and the fee fields are inside the
+    ``userOpHash``, so the client signs them and cannot repair them afterwards.
+
+    ``None`` on ANY failure — the caller fails closed rather than guessing (a wrong envelope is
+    unrecoverable without a rebuild).
+    """
+    try:
+        priority_raw, err = await _bundler_rpc(rpc_url, "eth_maxPriorityFeePerGas", [])
+        if err is not None or not isinstance(priority_raw, str):
+            return None
+        block, block_err = await _bundler_rpc(rpc_url, "eth_getBlockByNumber", ["pending", False])
+        if block_err is not None or not isinstance(block, dict):
+            return None
+        base_raw = block.get("baseFeePerGas")
+        if not isinstance(base_raw, str):
+            return None
+        priority = int(priority_raw, 16)
+        base = int(base_raw, 16)
+    except (httpx.HTTPError, ValueError, TypeError):
+        return None
+    return BASE_FEE_MULTIPLIER * base + priority, priority
+
+
 async def supported_entry_points(bundler_url: str) -> list[str]:
     """``eth_supportedEntryPoints`` → the EntryPoints the bundler serves (a liveness probe)."""
     try:

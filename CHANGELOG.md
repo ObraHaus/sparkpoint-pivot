@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Corrected `CLAUDE.md`, which still advertised constitution **v1.3.0** while the file was at v2.0.0. Securities-counsel review of the distributor posture remains **open and explicitly out of build scope** — flagged, not assumed.
 
 ### Added (024 Phase 2 — migration `0026_vault_registry`, written + validated, **NOT applied**)
-- **The vault registry that replaces `SPARKPOINT_VAULT_ADDRESS`.** There was previously **no `vaults` table at all** (`0002_vault.sql` referenced a `vaults.address` that never existed) and the service resolved exactly one vault from an env var. `0026` adds `vault_registry` keyed on `(chain_id, vault_address)` with **separate `asset_decimals` and `share_decimals`** (a Morpho Vault V2 mints 18-dp shares over a 6-dp asset — assuming they match is a 1e12 mis-scale) and a **per-row `asset_address`**, because Base Sepolia genuinely has two different "USDC" tokens: Aave's `0xba50Cd2A…` and Morpho's Circle `0x036CbD53…`, both reporting `symbol()="USDC"` at 6 dp and not interchangeable.
+- **The vault registry that replaces `SPARKPOINT_VAULT_ADDRESS`.** There was previously **no `vaults` table at all** (`0002_vault.sql` referenced a `vaults.address` that never existed) and the service resolved exactly one vault from an env var. `0027` adds `vault_registry` keyed on `(chain_id, vault_address)` with **separate `asset_decimals` and `share_decimals`** (a Morpho Vault V2 mints 18-dp shares over a 6-dp asset — assuming they match is a 1e12 mis-scale) and a **per-row `asset_address`**, because Base Sepolia genuinely has two different "USDC" tokens: Aave's `0xba50Cd2A…` and Morpho's Circle `0x036CbD53…`, both reporting `symbol()="USDC"` at 6 dp and not interchangeable.
 - `vault_allowlist` carries the **FR-020 on-chain eligibility evidence** — provenance (`isVaultV2`), the three **critical gate setters permanently abdicated** (the one real N2 hole in wrapping a third-party vault), `asset()` match (a check our own factory never performed), and a liquidity-ratio floor. `vault_apy_snapshots` is source-tagged with `source='unavailable'` as a first-class value and a CHECK that **forbids storing a fabricated `0`** — Morpho's API covers no testnet, so "unavailable" is the honest answer there.
 - Seeds only what exists today on 84532: the Aave launch vault `live`, the retired demo wrapper `redeem_only`, and the mock target recorded `rejected` so it can never be re-admitted. **Additive, idempotent, and inert until the Phase-2 backend reads it** — nothing queries these tables yet. **Nothing in this schema may ever gate a withdrawal (N2).**
 - **Validated against the develop DB inside a rolled-back transaction** (develop left unchanged): all three tables create, both seed rows land, and each CHECK was proven to fire independently via savepoints — `child_iff_wrapper`, `unavailable_is_null`, `fee<=2000`, `addr_lower` — with the valid NULL-APY row accepted. An earlier pass reported two of those as enforced when the transaction had merely aborted; the savepoint re-run is the real evidence.
@@ -34,6 +34,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Honest scope finding: "Morpho vaults on Robinhood testnet" cannot be built.** Chain **46630 has no Morpho deployment of any kind** (verified: empty bytecode at every Morpho address). Morpho on Robinhood is **mainnet-only (4663)** and its vaults are denominated in **USDG, not USDC** — which the current factory cannot reach at all, since it stamps `usdc` as a shared immutable. Base Sepolia becomes the single rehearsal network; 46630 stays swap-only and fail-closed, with **no mock substitute**.
 - **`constitution-amendment-v3.0.0.md`** — a proposed MAJOR amendment, drafted for ratification and **deliberately NOT applied** (`.specify/memory/constitution.md` is untouched; the constitution requires amendments be made explicitly, never implicitly through implementation). It narrows **IV.5**'s ineligibility rule to the *child* venue and to *discretionary* roles, clarifies that a single-child adapter-abdicated Fee Wrapper is **not** a Principle-VII meta-vault, and extends chain scope to **Robinhood Chain 4663**. It also states plainly the one genuine weakening: the ≤20% performance-fee cap moves from a **bytecode constant** to a **policy + ≥3-day-timelock + Safe-owner** guarantee, because Morpho's V2 ceilings are 50% / 5%.
 - Recorded for follow-up: `_decimalsOffset()` is never overridden in `contracts/src/` (OZ offset is `0`) while both vaults' NatSpec implies a stronger virtual-shares guarantee; and `AaveV3Adapter` (reverts `NotImplemented()`) plus `KillSwitch` (self-documented "COMPILE-ONLY STUB", referenced by no vault) are both **deployed and published** in `deployments/84532/addresses.json`.
+
+### Fixed (023 — Hermes mainnet hardening: the agent-side Gate-C readiness slice)
+- **A mainnet deployment can no longer read the wrong chain.** `_resolve_rpc_url` resolved chain
+  `8453` as `SPARKPOINT_RPC_URL → SIM_FORK_RPC_URL → BASE_SEPOLIA_RPC_URL`, so a mainnet instance
+  missing one env var read the Anvil fork — or Base Sepolia — and presented it as mainnet. Because cap
+  headroom, `paused()`, `totalAssets()` and the ERC-4626 previews all feed `policy.evaluate()` while
+  the built calldata still targets the **mainnet** vault from env, the failure mode was a bundle
+  **approved against one chain's state and signed on another**: the policy layer behaves perfectly and
+  still returns the wrong answer. Now each chain resolves only from its OWN env vars (new
+  `BASE_MAINNET_RPC_URL` for 8453; 84532 likewise loses the fork fallback, which had the mirror-image
+  bug), and an unconfigured chain fails **closed**.
+- **The RPC must now PROVE its chain.** New `chain/chain_identity.py` asserts `eth_chainId ==
+  CHAIN_ID` (TTL-cached ~60s, modelled on the LLM-gateway probe) with three states: `VERIFIED`
+  serves; `MISMATCH` **latches** closed (a configuration error will not fix itself); `UNKNOWN` fails
+  closed but **re-probes** (a blip must not take a healthy deployment down). Attached as a
+  router-level dependency on the four chain-dependent routers (vault, portfolio, execution, sessions)
+  and raised through the existing `VaultUnavailable` envelope. It catches **misconfiguration**, not a
+  hostile RPC — stated in the module docstring, because an overstated guarantee is its own defect.
+  `/healthz`, chat, the advisory reads and every `/admin/*` surface are deliberately NOT gated (N2).
+- **`/readyz` now describes the chain being served.** `chain_rpc` + `chain_identity` (from the
+  resolved config) replace `base_rpc`, and `sim_fork` counts toward `ready` only on a chain whose
+  allowlist actually offers a swap. The old checks were wrong in both directions: a correct mainnet
+  deployment reported not-ready forever, and one carrying a stale Sepolia url reported **ready while
+  serving mainnet**. `chain_id` is surfaced in the S2S breakdown; the RPC url never is (it can carry a
+  provider key). The anonymous response stays a bare boolean.
+- **Session-key UserOps are priced for the chain they execute on.** The gas envelope was five
+  constants proven on Base Sepolia (`maxFeePerGas` 0.05 gwei, `preVerificationGas` 200k). On mainnet
+  `preVerificationGas` tracks the L1 data-posting cost and a fee cap below the base fee gets the op
+  rejected or stranded — and the envelope is inside the `userOpHash`, so the client signs it and
+  cannot repair it. Now: live fees (`eth_maxPriorityFeePerGas` + pending `baseFeePerGas`, 2× headroom)
+  plus `eth_estimateUserOperationGas` (which already existed and was never called), each field clamped
+  to a named floor/ceiling. Fail-closed with **no** fallback envelope. The estimate draft carries a
+  correct-**length** dummy signature (66 bytes: mode‖r‖s‖v), pinned by a test against the scheme so it
+  cannot drift.
+- **A stale or mode-mismatched UserOp can no longer reach the bundler.** `/submit-signed-tx` now
+  checks `expires_at` and `is_session_key_path` before contacting the bundler — on the **userop branch
+  only**. The asymmetry is deliberate: on the eoa path submit is a correlation relay for an
+  already-broadcast tx, so refusing an expired bundle would destroy the US5 outcome record while
+  stopping nothing. Pinned by a regression test.
+- **Idempotency keys are scoped to the caller.** The cache was keyed on the raw `Idempotency-Key`
+  alone — a client-supplied value with no tenant component — so a key collision across wallets could
+  serve one caller's cached `IntentBundle` to another (open medium from audit R1). Now scoped
+  `(account, chain_id, method, path, key)`, and backed durably by Postgres (**migration `0027`**) so replay
+  protection survives a restart and spans workers; first-write-wins moves from an in-process lock to a
+  UNIQUE constraint. Fails **open** (N2) — with a distinct `idempotency_table_missing` warning, since
+  fail-open makes a missing table look exactly like a working store.
+- **Provability hygiene.** The superseded `coordinator/{coordinator,flows,agentic_loop}.py` now carry
+  a `SUPERSEDED — NOT EXECUTED` docstring naming `execution/orchestrate.py`, enforced by a test that
+  checks both the marker and that nothing outside `coordinator/` imports those symbols.
+  `api/portfolio.py` no longer claims cost basis and PnL are `null` "until the fee indexer lands" —
+  018/020 shipped them. CI now runs `ruff check .` (the whole tree `[tool.ruff]` declares, not just
+  `src`) and the 52 accumulated `E501`s are cleared with no `noqa` and no line-length change. A
+  multi-worker configuration now warns loudly that the process-global LLM limiter is per-process
+  (cost/rate limits only, no custody impact).
 
 ### Added (022 — US6 session-key automation: the ERC-7562 blocker is resolved + proven live on-chain)
 - **The deferred session-key automation blocker is dead.** US6 was stuck because the session-key

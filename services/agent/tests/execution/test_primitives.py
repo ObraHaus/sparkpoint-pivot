@@ -28,7 +28,9 @@ VAULT = "0x00000000000000000000000000000000000000aa"
 USER = "0x1111111111111111111111111111111111111111"
 
 
-def _req(atype: str = "vault_deposit", asset: str = USDC, amount: str = "100000000") -> BuildActionRequest:
+def _req(
+    atype: str = "vault_deposit", asset: str = USDC, amount: str = "100000000"
+) -> BuildActionRequest:
     return BuildActionRequest(type=atype, asset=asset, decimals=6, amount=amount)
 
 
