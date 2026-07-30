@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (security — R1 low sweep: 2 closed, 2 fixed, L8 re-opened as worse than filed)
+- **Admin-content CTA open redirect closed (R1 low #7).** The `cta_href` validator accepted anything
+  starting with `/`, which includes a **protocol-relative** `//evil.com` — a browser resolves that
+  against the current scheme, so an internal-looking path was in fact an external redirect. Now
+  rejected explicitly; an internal path never needs a second leading slash.
+- **PII denylist now catches a bare (non-`0x`) 32-byte key (R1 low #6, half).** A private key written
+  without the `0x` prefix slipped past the `0x`-anchored pattern.
+- **Mnemonic detection deliberately NOT added, with the evidence recorded.** A structural
+  12/24-lowercase-word matcher was written and rejected: over this repo's own corpus it flagged
+  ordinary English (*"move now flows through our normal safety pipeline the exact same way"*). Because
+  the denylist is fail-closed over admin-authored **prose**, shipping it would have rejected
+  legitimate notes and taught people to route around the guard. Real detection needs the vendored
+  BIP-39 wordlist. Two regression tests pin this — the false-positive string, and that every shipped
+  corpus file passes the guard (that corpus test is what caught it).
+- **Statuses verified in source for the rest**, recorded in `docs/security/R1-findings.md`: L5
+  (per-wallet rate limit) and L2 (stale admin role — `require_admin` does a live DB check per request)
+  are **closed**; L4 (`Secure` flag on http) is **not a defect**; L1 (SIWE nonce single-use), L3
+  (`X-Chain-Id` unbound — now folded into M3) and info #5 (general RPC error echo) remain **open**.
+- ⚠️ **L8 re-opened and re-rated.** R1 said the agent "ignores `uv.lock`" — true of CI's counterpart
+  only. CI pins with `uv sync --frozen`, but the **runtime** `services/agent/Dockerfile` installs bare
+  package *names with no versions* and never copies `uv.lock` in, so the deployed dependency set can
+  differ from what CI tested — a reproducibility/supply-chain gap, not a pinning nit. Both containers
+  also still run as root (no `USER` directive). Not fixed in the sweep: it changes the deployed
+  artifact and needs a deliberate call. Proposed fix recorded in the register.
+
 ### Changed — HONESTY (024 **T024**, a ratified obligation that gates any Fee Wrapper deposit)
 - **The performance-fee disclosure is now keyed on how the fee actually accrues, not hard-coded to a high-water mark.** Ratifying v3.0.0 carried a *disclosure* obligation, not merely a wording tweak: a Morpho Vault V2 keeps **no high-water-mark state at all** (`interest = newTotalAssets.zeroFloorSub(_totalAssets)`), so a gain **following an earlier loss IS charged** even while the holder is below their previous peak. SparkPoint's own vaults *do* hold a real `_highWaterMark` (confirmed in `SparkPointVault.sol` — `accrueFee()` returns 0 when price-per-share ≤ the mark), so today's copy is accurate and this is a **conditionalisation, not a correction**. New `VaultFeeBasis` (`high_water_mark` | `per_period_gain`) is derived **centrally** from the vault kind — `lib/policy/feeCopy.ts` + `useVault().feeBasis` on the web, `policy/fee_copy.py` on the agent — and never decided per call site, because a forgotten per-site flag is exactly how the retired-wrapper deposit bypass reached production and had to be caught by Defender.
 - `PERFORMANCE_FEE_DISCLOSURE` is retained **byte-identical**, so 015/FR-006 verbatim parity with the agent's `_DEPOSIT_DISCLOSURE` still holds and today's `/vault/quote/*` wire output is unchanged (pinned by tests on both sides). `performanceFee.base` gains a second value `period_interest_no_hwm`, and `performanceFee.highWaterMark` becomes **nullable** — a Vault V2 has no `highWaterMark()` selector, and writing `"0"` would read as "the mark is at par", a materially different promise from "no mark exists".

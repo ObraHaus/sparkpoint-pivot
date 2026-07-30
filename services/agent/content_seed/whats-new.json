@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "internal-safety-checks-tightened-link-and-secret-scanning",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Two small internal safety checks, tightened",
+      "body": "Housekeeping you won't see, told anyway. First: links we attach to our own announcements are only ever supposed to point back into the app, and we found a way one could have been written that looked internal but actually sent you to another site. Only our own team can write those links and none of them ever did — we closed the gap anyway. Second: before any of our internal notes go into the knowledge Sparky reads from, they're scanned so a secret can never be filed by mistake; that scan now also recognises a wallet key written in a slightly different format. While testing a third check we found it would have wrongly flagged ordinary sentences as if they were a recovery phrase, so we deliberately left it out rather than ship something that blocks honest writing — we'd rather the guard be right than look thorough. Nothing here changes what you see or do, and none of it ever touched your funds.",
+      "cta_label": "See the trust center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-30T15:30:00Z",
+      "active": true
+    },
+    {
       "slug": "fee-wording-now-follows-each-vault",
       "type": "changelog",
       "tag": "Improved",
@@ -31,7 +42,8 @@
       "body": "Nothing changes on your side today — this is groundwork, and we'd rather tell you about it than not. Before real money is ever involved we went back through the part of SparkPoint that reads the blockchain and prepares your transactions, looking for places where it could be pointed at the wrong network and not notice. We found some, and closed them. The service now proves which network it is talking to before it will quote you a number or prepare a move, and refuses to answer at all rather than answer from the wrong place. We also made hands-off moves work out the network fee at the moment you make them instead of using a fixed figure that only suited our test network, tightened a check so an out-of-date move can't be sent, and made sure one person's prepared transaction can never be handed to somebody else. Your funds, the vault, and the withdraw-anytime guarantee are untouched by all of this — every one of these changes can only ever make us MORE careful, never less. Still test network only; the real-money launch has its own separate review to pass first.",
       "cta_label": "See what we can and can't do",
       "cta_href": "/trust",
-      "published_at": "2026-07-30T10:00:00Z",      "active": true
+      "published_at": "2026-07-30T10:00:00Z",
+      "active": true
     },
     {
       "slug": "morpho-demo-vault-retired-deposits-closed",
