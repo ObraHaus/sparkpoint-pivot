@@ -36,7 +36,7 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
 - [x] **T022** ✅ Ratified 2026-07-30 — constitution at **v3.0.0**, amendment log appended, proposal marked APPLIED,
       `CLAUDE.md` version pointer corrected (it still said v1.3.0 while the constitution was v2.0.0).
 - [ ] **T023** Stop the feature-011 pre-mainnet audit spend (T035) on the superseded contracts.
-- [ ] **T024** ⚠️ **RATIFIED OBLIGATION — blocks any Fee Wrapper deposit.** Make the performance-fee copy
+- [x] **T024** ✅ **DONE** (fee copy is now keyed on a central `VaultFeeBasis`). ⚠️ **RATIFIED OBLIGATION — blocks any Fee Wrapper deposit.** Make the performance-fee copy
       conditional on vault kind, so a Fee Wrapper can never inherit the launch vault's "over a high-water
       mark" wording. Vault V2 keeps **no HWM state** (verified: `interest = newTotalAssets.zeroFloorSub(_totalAssets)`),
       so a gain after an earlier loss IS charged. The current copy is accurate **today** — the Aave launch
@@ -47,14 +47,27 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
       principal, and never while it is flat or falling. Note a gain following an earlier loss is charged,
       even if you are still below your previous high."*
 
-## Phase 2 — Registry (advisory half NOT gated)
+      **As shipped:** `VaultFeeBasis` (`high_water_mark` | `per_period_gain`) is derived CENTRALLY from the
+      vault kind — `lib/policy/feeCopy.ts` + `useVault().feeBasis` (web), `policy/fee_copy.py` (agent) — never
+      per call site. `PERFORMANCE_FEE_DISCLOSURE` kept byte-identical so 015/FR-006 verbatim parity and the
+      §3.7 wire output are unchanged. `performanceFee.base` gains `period_interest_no_hwm`; `highWaterMark`
+      became nullable (a V2 has no such selector; `"0"` would read as "the mark is at par").
+      **Four sites this task list did not name, also fixed:** the withdraw receipt note in
+      `vaultConfirmModel.ts` (asserted HWM in BOTH branches); `agents/literacy.py`'s canned answer (the
+      assistant asserting it unqualified, with no vault context available); `NonCustodyBadge.tsx`'s
+      "immutable — governance can never exceed it" fee-cap claim, which v3.0.0 downgrades to a policy
+      commitment on the Fee Wrapper path; and `knowledge_seed/profit-only-vault.md`. `/fees` had its claims
+      SCOPED to the launch vault it actually reads, and deliberately does not describe a Fee Wrapper — none
+      exists, and advertising one would fabricate a capability.
 
-- [ ] **T030** Migration `0026_vault_registry.sql`: `vault_registry`, `vault_allowlist`, `vault_apy_snapshots`.
-- [ ] **T031** Backfill the two existing vaults; the retired wrapper lands as `status = 'redeem_only'`.
-- [ ] **T032** Registry resolution behind a feature flag; day-one behaviour byte-identical.
-- [ ] **T033** Extend `/admin/vaults` beyond its hard-coded `CHAIN_ID = "84532"`.
-- [ ] **T034** FR-020 eligibility checker as a CI job: `isVaultV2`, three `abdicated(...)`, `asset()` match,
-      fee reads, liquidity floor.
+## Phase 2 — Registry (advisory half NOT gated) ✅ SHIPPED (except applying 0026)
+
+- [x] **T030** ✅ Migration `0026_vault_registry.sql` written + validated (rolled-back txn, savepoint per CHECK). **STILL NOT APPLIED to develop** — needs operator sign-off. Go-live order: apply → redeploy agent → verify `/admin/vault-registry` `available: true` → only then set the flag.
+- [x] **T031** ✅ Seeded inside `0026` (Aave launch vault `live`; retired demo wrapper `redeem_only`; mock target recorded `rejected`). The seeded launch address was confirmed to equal the live on-chain vault by `policy-parity 84532`, which is what makes T032's flag-off path byte-identical.
+- [x] **T032** ✅ `chain/vault_resolution.py` + `db/vault_registry.py`, gated on `SPARKPOINT_VAULT_REGISTRY_ENABLED` (default off ⇒ env value verbatim, **no DB round-trip**). Fail-OPEN: an unmigrated/unreachable registry falls back to the env var and warns once per chain, because a display table must never take a funded vault offline (N2). Returns a bare address string, so no row content can reach the policy path (IV.5(d)). ONE resolution per request — `VaultReader.vault_address` is now the single source, and `/build-tx` + both `/vault/simulate/*` read it from there instead of re-reading config (previously `/build-tx` resolved a second time, which with the registry live could price a quote against one vault and emit calldata for another).
+- [x] **T033** ✅ *(partial by design, and documented as such)* Each row now names its OWN chain and states when live reads are out of scope for it; `scan()` is chain-aware via the shared registry (it was hard-coded to Sepolia while the endpoint returns rows for every chain, so a Base-mainnet wrapper linked into Sepolia's explorer). Plus a new advisory `GET /admin/vault-registry`. **`CHAIN_ID` deliberately stays a constant:** a selector would offer chains the backend cannot serve — the agent's `SPARKPOINT_VAULT_FACTORY_ADDRESS` is a single global env, and `API_SUPPORTED_CHAIN_IDS` rejects 4663. Those two + the `sendTransaction`-without-`chainId` gap are Phase 5/6.
+- [x] **T035** ✅ *(from plan.md Layer 3)* Chain metadata collapsed onto one LEAF registry `packages/shared/src/chains/` (`@sparkpoint/shared/chains`): three independent chainId→explorer maps and two independent chain lists folded into one. Leaf-ness (no relative imports, no enums, no viem/wagmi) is what lets a web unit test VALUE-import it under `--experimental-strip-types`, and `chainMeta.test.ts`'s value import IS that assertion. Duplication vs policy `CHAIN_ID` is checked by a compile-time parity guard (`chains/parity.ts`), verified to fire on a deliberate drift. **Fixed two wrong-chain-explorer bugs:** `app/exit/page.tsx` returned basescan.org for ANY non-84532 chain (so Robinhood txs linked to Base mainnet — on the page whose job is proving you can verify and exit), and `ExecutionDrawer.tsx` silently rendered no link on Robinhood.
+- [x] **T034** ✅ `contracts/script/vault-eligibility-check.sh` + `.github/workflows/vault-eligibility.yml` (oh-ci, timeout, concurrency, fork guard) + `contracts/deployments/vault-candidates.json`. Read-only (`cast call` only, no key), DB-free. **All 3 candidates verified PASS live** on 8453 + 4663 via public RPCs, no secrets. **Negatives proven to FAIL:** wrong asset, non-VaultV2 address, tampered selector, and a real 25%-fee vault vs a 0bps ceiling. Selectors recomputed with `cast sig` and re-derived at runtime. **Caught a bash 64-bit overflow** — `wad*10000` for a 25% fee wrapped to −8bps and PASSED a 0bps ceiling; moved to python3, rounded up. **Liquidity floor NOT asserted, and the script says so:** withdrawable liquidity needs Morpho's indexer, and idle balance is useless for it (Steakhouse Prime USDC: $567M totalAssets, 0 idle).
 
 ## Phase 3 — Real Morpho on Base Sepolia **[GATED]**
 
@@ -96,7 +109,7 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
 
 ## Housekeeping (every phase)
 
-- [ ] **T080** Both changelogs in the same beat — repo `CHANGELOG.md` **and** the in-app `/changelog`.
-- [ ] **T081** Living docs: `MIGRATIONS.md`, `DEPLOYMENT.md`, `docs/architecture-as-built.md`.
+- [x] **T080** ✅ Both changelogs updated in the same beat for the Phase-2 work — repo `CHANGELOG.md` + in-app `whats-new.json` (`fee-wording-now-follows-each-vault`).
+- [x] **T081** ✅ *(partial)* `MIGRATIONS.md` (0026 is no longer "inert" — it is read behind a flag; go-live order recorded), `DEVELOPMENT.md` (**new CI section** — the playbook's oh-ci fleet rules were undocumented here; plus the `/admin/vaults` single-global-factory-env blocker), `COOLIFY.md` (the new optional env var). `docs/architecture-as-built.md` still pending.
 - [ ] **T082** Reword the `_decimalsOffset` NatSpec (offset is 0, not the implied stronger guarantee).
 - [ ] **T083** Annotate or unpublish the inert `AaveV3Adapter` / `KillSwitch` addresses on 84532.
