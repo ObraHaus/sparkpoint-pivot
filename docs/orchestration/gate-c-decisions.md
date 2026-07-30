@@ -93,9 +93,14 @@ unbounded"); it is hereby **closed as accepted**, not fixed.
 
 These remain Gate-C-adjacent and undecided; they are engineering scope, not policy calls:
 
-- **T103 itself** — the recorded internal security audit + hardening sign-off. Must run against the
-  post-023 tree; the execution spine (019), session keys (022), the bundler relay and 023 all landed
-  **after** R1, so the most custody-adjacent code in the service has never been audited.
+- **T103 itself** — the recorded internal security audit + hardening sign-off. Readiness, scope and an
+  ordered plan are now in [`t103-audit-readiness.md`](./t103-audit-readiness.md). ⚠️ That prep found
+  T103 is narrower than the shorthand suggests: it is the **contract** audit plus a mainnet deploy gate
+  (which **does not exist yet** — there is no `deploy-mainnet.yml`). The **app-layer** audit is a
+  separate, also-required piece ("R2"): the execution spine (019), session keys (022), the bundler
+  relay and 023 all landed **after** R1, so the most custody-adjacent code in the service has never
+  been audited. It also found that **R1's findings were never committed to the repo**, so its 3 mediums
+  cannot be tracked and its round-2 seam list is unavailable to whoever runs R2.
 - **Mainnet deployment shape** — `SPARKPOINT_VAULT_ADDRESS` is singular and `for_chain` nulls the
   vault off-chain, so one instance cannot serve both the Sepolia and mainnet vaults. Feature 024's
   `vault_registry` (migration 0026) may supersede this question.
