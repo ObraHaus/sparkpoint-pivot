@@ -12,6 +12,7 @@ confirmed/failed).
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -38,12 +39,18 @@ HEADERS = {
 
 
 class FakeBundleRow:
-    def __init__(self) -> None:
+    """023: models the real 0021 columns the submit path now reads — ``expires_at`` and
+    ``is_session_key_path``. Defaults are a FRESH, session-capable bundle so the pre-023 tests keep
+    exercising what they were written for; the two new cases pass the flags explicitly."""
+
+    def __init__(self, *, expires_in_s: int = 180, is_session_key_path: bool = True) -> None:
         self.id = INTENT
         self.chain_id = 8453
         self.kind = "vault_deposit"
         self.steps = [{"to": VAULT, "data": STEP_DATA, "value": "0", "opType": "eoa_call"}]
         self.smart_account_address = USER
+        self.expires_at = datetime.now(UTC) + timedelta(seconds=expires_in_s)
+        self.is_session_key_path = is_session_key_path
 
 
 class FakeBundleStore:
@@ -374,3 +381,94 @@ def test_status_session_userop_pending_when_unbundled(
     monkeypatch.setattr(bundler, "get_user_op_receipt", no_receipt)
     r = client.get(f"/submit-signed-tx/{INTENT}", headers=HEADERS)
     assert r.status_code == 200 and r.json()["status"] == "pending"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 023 T021 (FR-023-010/011/012) — a UserOp submission must not reach the bundler
+# with a stale or mode-mismatched bundle, and the eoa correlation relay must
+# stay exactly as permissive as it is (the asymmetry is deliberate).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _client_with(row: FakeBundleRow, exec_store: FakeExecStore) -> Iterator[TestClient]:
+    app.dependency_overrides[get_bundle_store] = lambda: FakeBundleStore(row)
+    app.dependency_overrides[get_exec_store] = lambda: exec_store
+    app.dependency_overrides[get_sim_config] = lambda: FakeConfig()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+class _BundlerSpy:
+    """Records whether the bundler was reached at all — the point of both new checks."""
+
+    def __init__(self) -> None:
+        self.sends = 0
+
+    async def send(self, rpc_url: str, user_op: dict[str, object], entry_point: str) -> str:
+        self.sends += 1
+        return UOP_HASH
+
+
+def test_expired_bundle_userop_rejected_before_the_bundler(
+    monkeypatch: pytest.MonkeyPatch, exec_store: FakeExecStore
+) -> None:
+    """FR-023-010 — a bundle past expiry is refused, the bundler is never contacted, nothing is
+    recorded. Until 023 this was enforced only client-side, i.e. cooperatively."""
+    monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
+    spy = _BundlerSpy()
+    monkeypatch.setattr(bundler, "send_user_op", spy.send)
+    row = FakeBundleRow(expires_in_s=-1)  # expired one second ago
+
+    for client in _client_with(row, exec_store):
+        r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop()))
+
+    assert r.status_code == 409
+    body = r.json()["error"]
+    assert body["code"] == "DATA_STALE"
+    assert any(reason["code"] == "BUNDLE_EXPIRED" for reason in body["reasons"])
+    assert spy.sends == 0, "an expired bundle must never reach the bundler"
+    assert exec_store.inserts == 0
+
+
+def test_per_action_bundle_cannot_be_submitted_as_a_userop(
+    monkeypatch: pytest.MonkeyPatch, exec_store: FakeExecStore
+) -> None:
+    """FR-023-011 — audit-record fidelity: intent_bundles.exec_mode and executions.signing_mode must
+    not be able to disagree. No policy consequence, but a self-contradicting trail is a defect in a
+    project that treats the trail as provable."""
+    monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
+    spy = _BundlerSpy()
+    monkeypatch.setattr(bundler, "send_user_op", spy.send)
+    row = FakeBundleRow(is_session_key_path=False)
+
+    for client in _client_with(row, exec_store):
+        r = client.post("/submit-signed-tx", headers=HEADERS, json=_session_body(_userop()))
+
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert spy.sends == 0
+    assert exec_store.inserts == 0
+
+
+def test_expired_wallet_path_bundle_is_STILL_recorded(
+    monkeypatch: pytest.MonkeyPatch, exec_store: FakeExecStore
+) -> None:
+    """FR-023-012 — the asymmetry regression, and the reason it exists.
+
+    On the eoa path submit is a CORRELATION RELAY: the transaction is already broadcast, so refusing
+    an expired bundle would destroy the US5 outcome record while stopping nothing. If a future
+    "consistency" refactor moves the expiry check up out of the userop branch, this test fails.
+    """
+    monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
+
+    async def get_tx(rpc_url: str, tx_hash: str) -> dict[str, object]:
+        return {"to": VAULT, "input": STEP_DATA}
+
+    monkeypatch.setattr(rpc, "get_transaction", get_tx)
+    row = FakeBundleRow(expires_in_s=-1, is_session_key_path=False)
+
+    for client in _client_with(row, exec_store):
+        r = client.post("/submit-signed-tx", headers=HEADERS, json=_submit_body())
+
+    assert r.status_code == 202
+    assert exec_store.inserts == 1, "an already-broadcast tx must still be correlated (US5)"
