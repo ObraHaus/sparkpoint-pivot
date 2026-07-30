@@ -27,6 +27,8 @@
 import { formatUnits, type Address } from "viem";
 import type { UseVaultResult, VaultKind, NetApyFraming } from "./useVault";
 import type { DepositExec, WithdrawExec } from "./useExecuteVaultTx";
+// TYPE-ONLY, per this module's leaf rule (it must stay resolvable under `node --experimental-strip-types`).
+import type { VaultFeeBasis } from "../policy/feeCopy";
 
 /** USDC / launch-share base-unit scale — the display default before a per-vault `decimals()` resolves. */
 const DECIMALS = 6;
@@ -177,6 +179,12 @@ export function deriveVaultConfirm(
   //    attested. The launch vault (neither) keeps its exact Aave copy. See the file header. ──
   const attested = v.factoryVerified === true;
   const isWrapper = v.kind === "morpho_wrapper" || attested;
+  // 024/T024 — HOW the performance fee accrues, which is NOT the same question as "is it a wrapper".
+  // Today's `morpho_wrapper` is a SparkPointMorphoVault and DOES hold a real `_highWaterMark`, so
+  // `isWrapper` is the wrong switch for fee copy. Only a `morpho_fee_wrapper` (a Morpho Vault V2)
+  // lacks a HWM. Derived from the kind, never from attestation.
+  const feeBasis: VaultFeeBasis = v.kind === "morpho_fee_wrapper" ? "per_period_gain" : "high_water_mark";
+  const hwmClause = feeBasis === "high_water_mark" ? " over your high-water mark" : " for the period";
   const showWrapperIdentity = isWrapper && attested;
   const vaultName = showWrapperIdentity ? v.label : isWrapper ? "vault" : v.label;
   const shareSymbol = isWrapper ? "shares" : "spvUSDC";
@@ -289,7 +297,11 @@ export function deriveVaultConfirm(
   // curator fee — both are disclosed (Constitution III / FR-023).
   const feeRow: [string, string, string] = isWrapper
     ? ["SparkPoint performance fee", `${feePctInt}% of yield — STACKS on Morpho's curator fee`, ""]
-    : ["Performance fee", `${feePctInt}% of yield (over HWM)`, ""];
+    : [
+        "Performance fee",
+        `${feePctInt}% of yield${feeBasis === "high_water_mark" ? " (over HWM)" : " (per period, no HWM)"}`,
+        "",
+      ];
   // Honest APY (III): never frame a wrapper with the hardcoded Aave rate — show "—" until the
   // 010 market-data feed supplies the real net-of-both-fees APY (a separate, not-yet-built follow-up).
   // Honest net APY: "—" for a wrapper or an unreadable gross; "≈0% (testnet)" when the live rate is
@@ -307,12 +319,16 @@ export function deriveVaultConfirm(
   // The 0% management/AUM fee, stated explicitly alongside the profit-only performance fee
   // (§3.7: "0% management, entry, and exit"). Identical launch + wrapper — never an AUM fee.
   const managementFeeRow: [string, string, string] = ["Management fee", "0% — none", "--gain"];
-  // Withdraw receipt disclosure: the profit-only fee is taken as share dilution over the
-  // high-water mark and is ALREADY reflected in the assets returned — nothing extra is withheld
-  // to exit (N2). Keyed to the LIVE fee %, never a fabricated dollar figure.
+  // Withdraw receipt disclosure: the profit-only fee is taken as share dilution and is ALREADY
+  // reflected in the assets returned — nothing extra is withheld to exit (N2). Keyed to the LIVE
+  // fee %, never a fabricated dollar figure.
+  //
+  // 024/T024 — the "over your high-water mark" clause is keyed on `feeBasis`, not on `isWrapper`.
+  // It was previously asserted in BOTH branches, which would have been false on a Fee Wrapper
+  // (a Morpho Vault V2 keeps no HWM state, so a gain after a loss is charged).
   const withdrawFeeNote = isWrapper
-    ? `Accrued performance fee: ${feePctInt}% of profit over your high-water mark — already reflected in your share price (stacks on Morpho's curator fee). 0% to withdraw, 0% on your principal.`
-    : `Accrued performance fee: ${feePctInt}% of profit over your high-water mark — already reflected in your share price. 0% to withdraw, 0% on your principal.`;
+    ? `Accrued performance fee: ${feePctInt}% of profit${hwmClause} — already reflected in your share price (stacks on Morpho's curator fee). 0% to withdraw, 0% on your principal.`
+    : `Accrued performance fee: ${feePctInt}% of profit${hwmClause} — already reflected in your share price. 0% to withdraw, 0% on your principal.`;
   const venueGuard = isWrapper
     ? "Yield source — Morpho (external), not Aave"
     : "Allowlisted protocol — Aave v3 (Base)";

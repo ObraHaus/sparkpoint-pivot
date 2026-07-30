@@ -29,7 +29,12 @@ import { stageCopy } from "@/lib/stage";
 import { formatBps } from "@/lib/policy/mirror";
 import { useVault } from "@/lib/chain/useVault";
 import { CapsMeter } from "@/components/CapsMeter";
-import { PERFORMANCE_FEE_DISCLOSURE } from "@/lib/policy/feeCopy";
+import {
+  PERFORMANCE_FEE_DISCLOSURE,
+  feeBasisShortLabel,
+  feeCapEnforcementLabel,
+  performanceFeeDisclosure,
+} from "@/lib/policy/feeCopy";
 
 /**
  * Re-exported for existing consumers; the canonical string now lives in the dependency-free
@@ -131,8 +136,8 @@ export function NonCustodyBadge({ chainId }: NonCustodyBadgeProps) {
         </span>
       </div>
       <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55, marginTop: 8 }}>
-        {feePct} of yield, charged only over a high-water mark — 0% on your principal, and 0% management, entry, and
-        exit fees. Hard cap {maxFeePct} (immutable — governance can never exceed it).
+        {feePct} of yield, charged only {feeBasisShortLabel(v.feeBasis)} — 0% on your principal, and 0% management,
+        entry, and exit fees. Hard cap {maxFeePct} ({feeCapEnforcementLabel(v.feeBasis)}).
       </div>
       <div
         style={{
@@ -146,7 +151,7 @@ export function NonCustodyBadge({ chainId }: NonCustodyBadgeProps) {
           borderRadius: "var(--radius)",
         }}
       >
-        {PERFORMANCE_FEE_DISCLOSURE}
+        {performanceFeeDisclosure(v.feeBasis)}
       </div>
 
       {/* Provable-on-chain references (only when the live reads have resolved). */}

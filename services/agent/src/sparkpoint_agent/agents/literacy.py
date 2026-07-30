@@ -45,10 +45,18 @@ DEFAULT_TIPS: dict[str, str] = {
         "you actually get, caused by the market moving as your trade executes. A max-"
         "slippage setting cancels the trade if it would move more than you allow."
     ),
+    # 024/T024 — deliberately scoped to the vault the claim is TRUE of. Constitution v3.0.0
+    # ratified Morpho Vault V2 Fee Wrappers, which keep no high-water-mark state, so an unqualified
+    # "above your high-water mark" here would become false the moment one is listed. This is a canned
+    # literacy answer with no vault context available, so it names its subject instead of
+    # generalising, and states the part that holds on every vault.
     "what_is_a_performance_fee": (
-        "SparkPoint's performance fee is charged only on profit above your high-water "
-        "mark — 10% of yield, 0% on your principal, and nothing at all in flat or down "
-        "periods. It is taken as share dilution and never blocks your withdrawal."
+        "A performance fee is charged on gains, not on your deposit. On SparkPoint's Aave "
+        "Yield Vault it is 10% of yield charged only on profit above your high-water mark — "
+        "0% on your principal, and nothing at all in flat or down periods. It is taken as "
+        "share dilution and never blocks your withdrawal. The exact terms are shown on each "
+        "vault's own screen before you sign, because how the fee accrues depends on the "
+        "vault's contract."
     ),
     "what_is_non_custodial": (
         "Non-custodial means you always control your funds: SparkPoint holds no keys and "

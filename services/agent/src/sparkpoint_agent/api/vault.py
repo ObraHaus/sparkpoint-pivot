@@ -39,6 +39,13 @@ from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
 from ..config import AgentConfig
 from ..policy import CAPS, GOVERNANCE
 from ..policy.enums import ActionType, ReasonCode
+from ..policy.fee_copy import (
+    FeeBasis,
+    deposit_disclosure,
+    fee_base,
+    fee_basis_for_kind,
+    withdraw_disclosure,
+)
 from ..sim import SimulationRequest, SimulationResult, SimulatorUnavailableError, ViemEthCallChecker
 from .errors import ApiError, ErrorCode, ErrorReason, new_request_id, render_api_error
 from .security import AccountContext
@@ -57,15 +64,17 @@ _UINT256_MAX = 2**256 - 1
 
 # §3.7 disclosure strings — rendered VERBATIM (do not paraphrase). The deposit form
 # carries the fuller custody statement; the withdraw form is the short profit-only line.
-_DEPOSIT_DISCLOSURE = (
-    "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on "
-    "your principal. We only earn when you earn — never on your principal, never by "
-    "taking custody."
-)
-_WITHDRAW_DISCLOSURE = (
-    "SparkPoint performance fee: 10% of yield, profit-only, high-water mark — 0% on "
-    "your principal."
-)
+#
+# 024/T024 — these now come from ``policy.fee_copy``, keyed on how the vault's fee ACCRUES rather
+# than hard-coded to a high-water mark. The only vault this service resolves today is the Aave launch
+# vault (``first_party``), which holds a real ``_highWaterMark``, so every value below is
+# byte-identical to the constants it replaced and the §3.7 wire shape is unchanged. The
+# ``per_period_gain`` variants exist because constitution v3.0.0 ratified Morpho Vault V2 Fee
+# Wrappers, which keep NO high-water-mark state — a disclosure obligation that must be satisfied
+# BEFORE any Fee Wrapper can take a deposit, not after.
+_LAUNCH_FEE_BASIS: FeeBasis = fee_basis_for_kind("first_party")
+_DEPOSIT_DISCLOSURE = deposit_disclosure(_LAUNCH_FEE_BASIS)
+_WITHDRAW_DISCLOSURE = withdraw_disclosure(_LAUNCH_FEE_BASIS)
 _WITHDRAW_NOTE = (
     "Withdrawals are never blocked by caps, the kill-switch, or fee accrual (N2). The "
     "performance fee is profit-only (0% on your principal) and is taken as share "
@@ -73,8 +82,9 @@ _WITHDRAW_NOTE = (
 )
 _EXIT_HATCH_URL = "/exit"
 
-# The profit-only fee is charged only on realized yield above the high-water mark.
-_FEE_BASE = "realized_yield_above_hwm"
+# The profit-only fee is charged only on realized yield above the high-water mark. On a Fee Wrapper
+# it is charged on each period's gain instead, so this too follows the basis.
+_FEE_BASE = fee_base(_LAUNCH_FEE_BASIS)
 
 # §018/US2 — the REAL mutating ERC-4626 calldata selectors for the pre-sign dry-run. These are
 # the 4-byte function selectors of the vault's state-changing entrypoints (verified against the
@@ -132,7 +142,12 @@ class PerformanceFeeDeposit(BaseModel):
     entryBps: int
     exitBps: int
     principalBps: int
-    highWaterMark: str
+    #: ``None`` ⇒ this vault keeps NO high-water mark (a Morpho Vault V2 exposes no
+    #: ``highWaterMark()`` because it holds no such state). Nullable rather than ``"0"`` so a
+    #: consumer can tell "no HWM exists" from "the HWM is at par" — writing 0 for the former would
+    #: read as a vault whose fee starts at any gain above par, which is a different promise
+    #: (024/T024). Read ``base`` for the authoritative accrual mode.
+    highWaterMark: str | None
     active: bool
     disclosure: str
     provableOnchain: bool
@@ -168,7 +183,8 @@ class PerformanceFeeWithdraw(BaseModel):
     rateBps: int
     maxRateBps: int
     base: str
-    highWaterMark: str
+    #: ``None`` ⇒ no high-water mark exists on this vault — see ``PerformanceFeeDeposit``.
+    highWaterMark: str | None
     estFeeOnYieldUsd: str | None
     netYieldUsd: str | None
     disclosure: str
