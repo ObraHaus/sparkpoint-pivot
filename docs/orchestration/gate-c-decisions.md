@@ -69,11 +69,31 @@ SparkPoint-controlled recipient (N1). Bringing swaps under the gate is a real fe
 fresh price simulation to be signable at all, which would make the fork simulator a hard readiness
 dependency on any swap-capable chain — and it is not required for the vault-first launch.
 
-**What it costs / accepted risk.** A user can execute a swap with slippage bounded only by the web
-client's own default (50 bps preset, user-adjustable), with no server-side policy verdict and no
-deterministic min-out floor. A compromised or modified client could widen its own slippage. This is
-the second of the two mediums left open by alpha security audit **R1** ("chat-swap slippage
-unbounded"); it is hereby **closed as accepted**, not fixed.
+**What it costs / accepted risk.** A user can execute a swap with no server-side policy verdict: the
+min-out floor is computed client-side from the slippage setting, so a modified client could widen its
+own slippage. That residual risk is accepted — the swap is user-signed, and nothing about it touches
+the vault, the exit path (N2) or a SparkPoint-controlled recipient (N1).
+
+> ⚠️ **CORRECTION (2026-07-30, same day).** This entry originally claimed the slippage was "bounded
+> only by the web client's own default (50 bps preset)". **That was wrong**, and verifying it turned up
+> a live defect rather than an accepted one. `ActionParamsSchema.maxSlippageBps` was
+> `z.number().int().nonnegative()` with **no upper bound**, `live-blocks.tsx` forwarded the
+> **agent-proposed** value straight through, and `amountOutMinimum` clamps only to `[0, 10000]` bps —
+> i.e. 100%, which is no protection at all. So on the chat-inline card the bound was chosen by the
+> **model**, not the user: a prompt-injected agent proposing 9900 bps yields `minOut ≈ 0`, a
+> sandwichable trade.
+>
+> That is R1 medium #1 as originally written, still live — so it has been **FIXED, not accepted**
+> (`fix/r1-medium-unbounded-chat-slippage`): the agent clamps at source in `_swap_proposed_action`, the
+> wire schema now rejects out-of-range values outright, and the web clamps defensively in
+> `lib/swap/math.clampProposedSlippageBps` — three layers, because the schema rejection means the
+> agent must never emit an out-of-range value or a legitimate block would fail validation. Eight
+> regression tests pin it on both sides.
+>
+> **What D-GC-02 still decides** is the narrower, genuine policy question: the swap path stays
+> *outside* `policy.evaluate()` and is user-signed. That ruling stands. What it does **not** cover is
+> an unbounded model-chosen slippage — that was a bug, and accepting it would have been accepting a
+> false description of the system.
 
 **Obligations this decision creates:**
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { afterFee, amountOutMinimum, formatBpsPercent, ROUTING_FEE_BIPS } from "./math.ts";
+import { POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, ROUTING_FEE_BIPS, afterFee, amountOutMinimum, clampProposedSlippageBps, formatBpsPercent } from "./math.ts";
 
 test("afterFee takes the routing fee (0.20%) as an exact integer floor", () => {
   assert.equal(ROUTING_FEE_BIPS, 20); // matches the /fees page 0.20%
@@ -46,4 +46,42 @@ test("formatBpsPercent renders whole + fractional percents", () => {
   assert.equal(formatBpsPercent(100), "1%");
   assert.equal(formatBpsPercent(300), "3%");
   assert.equal(formatBpsPercent(125), "1.25%");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R1 medium #1 — an assistant-proposed slippage must be bounded by the policy
+// ceiling before it can reach amountOutMinimum. Regression guard: unclamped,
+// a prompt-injected agent proposing 9900bps yields minOut ~= 0.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("clampProposedSlippageBps bounds an over-ceiling agent proposal", () => {
+  assert.equal(clampProposedSlippageBps(9900), POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS);
+  assert.equal(clampProposedSlippageBps(10_000), POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS);
+  assert.equal(clampProposedSlippageBps(301), POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS);
+});
+
+test("clampProposedSlippageBps leaves in-range values alone", () => {
+  assert.equal(clampProposedSlippageBps(50), 50);
+  assert.equal(clampProposedSlippageBps(300), 300);
+  assert.equal(clampProposedSlippageBps(0), 0);
+});
+
+test("clampProposedSlippageBps passes undefined through, never a permissive default", () => {
+  // The card must fall back to its own 50bps preset — a MISSING value must not become a loose one.
+  assert.equal(clampProposedSlippageBps(undefined), undefined);
+  assert.equal(clampProposedSlippageBps(Number.NaN), undefined);
+  assert.equal(clampProposedSlippageBps(Number.POSITIVE_INFINITY), undefined);
+});
+
+test("clampProposedSlippageBps rejects negatives", () => {
+  assert.equal(clampProposedSlippageBps(-500), 0);
+});
+
+test("the clamped worst case still protects the user in amountOutMinimum", () => {
+  // Unclamped 9900bps => minOut 1% of quote (sandwichable). Clamped => 97% floor.
+  const quote = 1_000_000n;
+  const unclamped = amountOutMinimum(quote, 9900);
+  const clamped = amountOutMinimum(quote, clampProposedSlippageBps(9900) as number);
+  assert.equal(unclamped, 10_000n);
+  assert.equal(clamped, 970_000n);
 });
