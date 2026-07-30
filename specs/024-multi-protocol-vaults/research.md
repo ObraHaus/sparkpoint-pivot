@@ -118,7 +118,54 @@ FeeWrapperConfig {
 - It requires the **`MorphoVaultV1AdapterFactory`**, which is **absent on Base Sepolia** ⇒ the canonical
   Fee Wrapper path does **not** run on 84532.
 
-### Dead deposit — a doc conflict to settle before deploying
+### Dead deposit — CONFLICT SETTLED (measured on a fork, 2026-07-30)
+
+**Resolved empirically against the real deployed factory on an anvil fork of Base Sepolia. The
+dead-deposit page is right; the vault-creation page's Phase-8 comment is wrong.** Measured:
+
+```
+vault.virtualShares()             = 1e12       (decimalOffset 12 for a 6-dp asset; decimals()=18)
+vault.previewMint(1e18 shares)    = 1000000    = EXACTLY 1.000000 USDC
+after mint(1e18, 0xdead)          : totalAssets 999999, 0xdead holds 1e18 shares
+deployer USDC 8.685350 -> 7.685350            (spent exactly 1.000000)
+```
+
+The argument is **SHARES**. Reading the vault-creation page's "1e12 for ≤9 decimals" as *assets*
+would mean 1,000,000 USDC — unaffordable and absurd; reading it as *shares* would cost 1 base unit
+(0.000001 USDC), far too small to defend against the inflation attack that is the dead deposit's
+whole purpose. Only `mint(1e18, 0xdead)` ≈ 1 USDC is coherent with V2's arithmetic AND with the
+dead-deposit page's own table.
+
+The deploy script now **guards this**: it reads `previewMint` live and refuses to proceed if the cost
+is not exactly 1,000,000 base units, because the step cannot be undone.
+
+### Other Phase-3 facts verified on the same fork
+
+- **Cap id pre-images.** `increaseAbsoluteCap(bytes idData, …)` takes the PRE-IMAGE and the vault
+  hashes it. `keccak256(abi.encode("this", adapter))` equals the adapter's own on-chain
+  `adapterId()` exactly. The adapter exposes **three** ids — `adapterId`,
+  `keccak(abi.encode("collateralToken", collateral))`, and
+  `keccak(abi.encode("this/marketParams", adapter, marketParams))` — and all three need caps.
+- **`increaseTimelock` really must be last.** After raising its own timelock, a further
+  `submit` + immediate `increaseTimelock` **reverted** (delay not elapsed). Any selector left
+  un-timelocked past that point stays that way for 3 days.
+- **Timelocks must precede the role handover** — an ordering the docs get backwards for our flow.
+  `submit` is CURATOR-gated, so once `setCurator(Safe)` runs the deployer can no longer submit and
+  every remaining `increaseTimelock` reverts `Unauthorized` (`0x82b42900`). Found by running the
+  script with roles first. Morpho's docs list roles (Phase 6) before timelocks (Phase 9), which
+  only works if the *new* curator performs them.
+- **N2 exit path works.** Round trip on the fork: deposit 2 USDC → `redeem` ALL shares → full
+  principal returned, shares 0. `forceDeallocate(address,bytes,uint256,address)` = `0xe4d38cd8` is
+  present; `forceDeallocatePenalty(adapter)` starts at 0.
+- **`maxDeposit/maxMint/maxWithdraw/maxRedeem` all returned 0** on the live V2, as documented, and
+  are not enforced inside deposit/withdraw. Confirms: never derive a UI limit from them on a V2.
+- **The address is deterministic.** `VaultV2Factory.vaultV2(owner, asset, salt)` is a view that
+  returns the same address the create produced, so the real deployment address is pre-computable
+  from `(deployer, Circle USDC, keccak("sparkpoint-usdc-v2-basesepolia-001"))` — no log parsing.
+- **The resulting vault passes `vault-eligibility-check.sh` (FR-020)** — the gate and the deploy
+  script agree, which is a useful cross-check that neither is wrong in isolation.
+
+### Dead deposit — the original conflict, for the record
 
 `docs/curate/tutorials-v2/dead-deposit` gives `targetShares = max(1e9, 10^(6 + max(0, 18 - decimals)))`,
 a table (USDC, 6 dp → mint **1e18 shares**, spend **1 USDC**, ≈$1), and an approval table (6 dp →
