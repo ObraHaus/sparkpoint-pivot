@@ -3,6 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { base, baseSepolia, robinhoodTestnet } from "wagmi/chains";
+import {
+  PREFERRED_CHAIN_ID,
+  SWITCHABLE_CHAINS,
+  chainName,
+  explorerRoot,
+  isSupportedChain,
+} from "@sparkpoint/shared/chains";
 import type { Network, NetworkId } from "@/lib/mock-data";
 
 /**
@@ -15,14 +22,11 @@ import type { Network, NetworkId } from "@/lib/mock-data";
 
 // §B3: Robinhood testnet (46630) is a supported network for chat + read-only portfolio (the vault
 // stays Base-only — the vault pages still show their own "not on this network" state off Base).
-const SUPPORTED = new Set<number>([base.id, baseSepolia.id, robinhoodTestnet.id]);
-const EXPLORER: Record<number, string> = {
-  [base.id]: "https://basescan.org",
-  [baseSepolia.id]: "https://sepolia.basescan.org",
-  [robinhoodTestnet.id]: "https://explorer.testnet.chain.robinhood.com",
-};
-/** The chain the develop vault lives on — where an off-network wallet is prompted to switch. */
-const PREFERRED_CHAIN = baseSepolia;
+//
+// 024 — these were four independent re-derivations (a SUPPORTED set, an EXPLORER map, a SWITCHABLE
+// list and a chainName() switch) sitting beside the list `wagmi.ts` actually registers, so the two
+// could disagree about which chains exist. They now all read from `@sparkpoint/shared/chains`, the
+// single chain-metadata registry, and `wagmi.ts` asserts its own coverage against the same source.
 
 /** Honest display list for the network menu. Base is live; Sui is a fast-follow, not live. */
 const NETWORKS: Network[] = [
@@ -48,19 +52,15 @@ export interface SwitchableNetwork {
  * `switchChain({ chainId })` also triggers the wallet's `wallet_addEthereumChain` when the chain is
  * unknown — so no manual add-chain call is needed to get a user onto Robinhood testnet.
  */
-const SWITCHABLE: SwitchableNetwork[] = [
-  { chainId: baseSepolia.id, name: "Base Sepolia", color: "#0052FF", live: true },
-  { chainId: robinhoodTestnet.id, name: "Robinhood Testnet", color: "#00C805", live: true },
-];
+const SWITCHABLE: SwitchableNetwork[] = SWITCHABLE_CHAINS.map((c) => ({
+  chainId: c.chainId as SupportedChainId,
+  name: c.name,
+  color: c.color,
+  live: true,
+}));
 
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "Not connected");
 
-function chainName(chainId?: number): string {
-  if (chainId === base.id) return "Base";
-  if (chainId === baseSepolia.id) return "Base Sepolia";
-  if (chainId === robinhoodTestnet.id) return "Robinhood Testnet";
-  return "Unsupported network";
-}
 
 interface NetworkContextValue {
   networks: Network[];
@@ -116,7 +116,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   );
 
   const switchToBase = useCallback(() => {
-    switchChain({ chainId: PREFERRED_CHAIN.id });
+    switchChain({ chainId: PREFERRED_CHAIN_ID as SupportedChainId });
   }, [switchChain]);
 
   // Disconnect watcher — end the server session when the wallet disconnects in the EXTENSION (not
@@ -136,7 +136,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
   }, [isConnected]);
 
   const value = useMemo<NetworkContextValue>(() => {
-    const onSupportedChain = chainId !== undefined && SUPPORTED.has(chainId);
+    const onSupportedChain = isSupportedChain(chainId);
     const network: Network = {
       id: "base",
       name: chainName(chainId),
@@ -154,7 +154,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       chainId,
       onSupportedChain,
       networkSettling: isConnected && status !== "connected",
-      explorerBase: (chainId && EXPLORER[chainId]) || EXPLORER[PREFERRED_CHAIN.id],
+      explorerBase: explorerRoot(chainId) ?? explorerRoot(PREFERRED_CHAIN_ID) ?? "",
       setActiveNetwork: () => undefined,
       switchableNetworks: SWITCHABLE,
       switchToChain,

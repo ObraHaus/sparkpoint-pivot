@@ -31,6 +31,7 @@ import type { Address } from "viem";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { buildRedeemCall, vaultAddressFor } from "@/lib/chain/exit";
+import { explorerRoot } from "@/lib/chain/explorer";
 
 /** USDC/6dp formatting — plain, no design-system dep (this page must always render). */
 function usdc(raw: bigint): string {
@@ -42,8 +43,16 @@ function usdc(raw: bigint): string {
   return `${neg ? "-" : ""}${body}`;
 }
 
+/**
+ * 024 — BUG FIX plus de-duplication. This used to be a two-way ternary that returned
+ * `https://basescan.org` for ANY chain that was not 84532 — so on Robinhood testnet 46630 it
+ * produced a Base-mainnet explorer link for a Robinhood transaction: a confidently wrong reference
+ * on the one page whose entire job is proving a user can verify and exit on-chain (Principle III).
+ * Now resolved from the single chain-metadata registry, and honestly empty for a chain with no
+ * explorer, so callers render a non-link rather than a misleading one.
+ */
 function explorerBase(chainId: number): string {
-  return chainId === 84532 ? "https://sepolia.basescan.org" : "https://basescan.org";
+  return explorerRoot(chainId) ?? "";
 }
 
 export default function ExitPage() {

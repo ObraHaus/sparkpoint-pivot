@@ -10,6 +10,26 @@
  *     predicted CREATE2 address), an allowlist-vetting form, and a guardian-action panel
  *     (pause / unpause / setFee / setFeeRecipient / adjust caps).
  *
+ * 024 / T033 — MULTI-CHAIN STATUS, stated plainly rather than half-built.
+ *
+ * `GET /admin/vaults` has always returned rows for EVERY chain, but this page rendered them with no
+ * chain label and a chain-blind explorer link, so a Base-mainnet row looked like a broken
+ * Base-Sepolia row and linked into the wrong explorer. Both are fixed: each row now names its own
+ * chain, links via the shared chain registry (plain text when a chain has no explorer), and says
+ * explicitly when live reads are simply out of scope for it rather than failing.
+ *
+ * `CHAIN_ID` below is still a constant, and that is deliberate — a chain SELECTOR here would be
+ * dishonest until two agent-side blockers are cleared, because it would offer chains the backend
+ * cannot serve:
+ *   1. `SPARKPOINT_VAULT_FACTORY_ADDRESS` is a SINGLE global env in the agent
+ *      (`api/admin_vaults.py`), so create/allowlist calldata would target the 84532 factory whatever
+ *      the `x-chain-id` header said — prepared calldata for the wrong network is worse than none.
+ *   2. `API_SUPPORTED_CHAIN_IDS = (8453, 84532, 46630)` (`api/security.py`) rejects Robinhood
+ *      mainnet 4663 outright, so the chain v3.0.0 just ratified 400s at the door.
+ * There is also a pre-existing gap a selector would make reachable: `CalldataCard.sign()` calls
+ * `sendTransaction` with no `chainId`, so it broadcasts on whatever chain the wallet is on. Today
+ * that happens to be the one chain this panel reads. Fixing all three is 024 Phase 5/6 work.
+ *
  * NON-CUSTODY (N1/N2) — the invariant this page renders AND relies on:
  *   Every mutating action returns PREPARED CALLDATA the operator signs from their OWN wallet (or
  *   copies to sign off-app against the owner/timelock). This panel holds NO key and has NO fund
@@ -23,6 +43,8 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { useAccount, useSendTransaction } from "wagmi";
 import type { Address, Hex } from "viem";
 import { Icon } from "@/lib/icons";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { chainName } from "@sparkpoint/shared/chains";
 
 const API = "/api/agent/admin/vaults";
 const CHAIN_ID = "84532";
@@ -84,7 +106,14 @@ async function post(path: string, body: unknown): Promise<Record<string, unknown
 }
 
 const short = (a: string | null | undefined) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
-const scan = (a: string) => `https://sepolia.basescan.org/address/${a}`;
+/**
+ * 024 — chain-AWARE explorer link. This was `https://sepolia.basescan.org/address/${a}` for every
+ * row, but `GET /admin/vaults` returns rows for EVERY chain (the store has no WHERE clause), so a
+ * Base-mainnet wrapper rendered a link into Sepolia's explorer — a confidently wrong reference.
+ * Returns `undefined` for a chain with no explorer so the caller renders plain text, never a
+ * fabricated URL (Principle III).
+ */
+const scan = (chainId: number | undefined, a: string) => explorerAddressUrl(chainId, a);
 
 const inputStyle: CSSProperties = {
   padding: "8px 10px",
@@ -126,9 +155,21 @@ function CalldataCard({ title, call }: { title: string; call: Calldata }) {
       </div>
       <div className="statusrow">
         <span className="muted">To</span>
-        <a className="mono" style={{ fontSize: 11, color: "var(--primary)" }} href={scan(call.to)} target="_blank" rel="noreferrer">
-          {short(call.to)} <Icon name="ext" size={11} />
-        </a>
+        {/* Prepared calldata is always built for the chain this panel is scoped to, so the target
+            resolves on THAT chain's explorer — not on whichever chain a row happened to be from. */}
+        {scan(Number(CHAIN_ID), call.to) ? (
+          <a
+            className="mono"
+            style={{ fontSize: 11, color: "var(--primary)" }}
+            href={scan(Number(CHAIN_ID), call.to)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {short(call.to)} <Icon name="ext" size={11} />
+          </a>
+        ) : (
+          <span className="mono" style={{ fontSize: 11 }}>{short(call.to)}</span>
+        )}
       </div>
       <div style={{ marginTop: 8 }}>
         <div style={labelStyle}>Calldata (data)</div>
@@ -230,13 +271,39 @@ export default function Page() {
           <div key={`${v.chain_id}-${v.vault_address}`} className="panel" style={{ marginBottom: 10, background: "var(--surface-2, transparent)" }}>
             <div className="statusrow">
               <span style={{ fontWeight: 600 }}>{v.label}</span>
-              <span className={`pill ${v.status === "live" ? "ok" : "amber"}`} style={{ fontSize: 10 }}>{v.status}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {/* 024 — the row's OWN chain. Rows for other chains were previously rendered with no
+                    chain label and a null chainState, which read as "broken" rather than
+                    "not the chain this panel is reading". */}
+                <span className="pill" style={{ fontSize: 10 }}>
+                  {chainName(v.chain_id)}
+                </span>
+                <span className={`pill ${v.status === "live" ? "ok" : "amber"}`} style={{ fontSize: 10 }}>{v.status}</span>
+              </span>
             </div>
+            {v.chain_id !== Number(CHAIN_ID) && (
+              <div className="statusrow">
+                <span className="muted" style={{ fontSize: 11 }}>
+                  Live on-chain reads are scoped to {chainName(Number(CHAIN_ID))}, so this row shows
+                  its stored record only — not a failed read.
+                </span>
+              </div>
+            )}
             <div className="statusrow">
               <span className="muted">Wrapper</span>
-              <a className="mono" style={{ fontSize: 11, color: "var(--primary)" }} href={scan(v.vault_address)} target="_blank" rel="noreferrer">
-                {short(v.vault_address)} <Icon name="ext" size={11} />
-              </a>
+              {scan(v.chain_id, v.vault_address) ? (
+                <a
+                  className="mono"
+                  style={{ fontSize: 11, color: "var(--primary)" }}
+                  href={scan(v.chain_id, v.vault_address)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {short(v.vault_address)} <Icon name="ext" size={11} />
+                </a>
+              ) : (
+                <span className="mono" style={{ fontSize: 11 }}>{short(v.vault_address)}</span>
+              )}
             </div>
             <div className="statusrow">
               <span className="muted">Wrapped Morpho vault</span>
