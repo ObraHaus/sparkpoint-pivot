@@ -1,7 +1,8 @@
 # ruff: noqa: S101  (asserts are the idiomatic assertion mechanism in pytest)
 """Contract tests for the SessionScope grant validator (policy-schema.md §6, feature 022 US6, N4).
 
-Assert the §6 grammar (rules 1–6): a valid scoped grant is APPROVED, and every out-of-grammar grant is
+Assert the §6 grammar (rules 1–6): a valid scoped grant is APPROVED, and every out-of-grammar grant
+is
 REJECTED with the right ReasonCode and yields NO signable scope (``scope is None``) — so an
 out-of-policy session key can never be authorized. Mirrors the on-chain
 ``SparkPointAccount.authorizeSessionKey`` guards; these MUST pass.

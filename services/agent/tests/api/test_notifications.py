@@ -2,9 +2,12 @@
 """§3.11 in-app notifications endpoints (api/notifications.py, feature 021).
 
 The vault reader, the flow reader, the executions store and the read cursor are all MOCKED — no live
-chain / RPC / DB. These prove the crux: every notification is DERIVED from a real source row (a vault
-flow, an execution, a replayed outcome) — never fabricated — and the feed degrades fail-open (a stale
-vault read or a store outage yields a partial/empty feed, never a 500). Unread is computed against the
+chain / RPC / DB. These prove the crux: every notification is DERIVED from a real source row (a
+vault
+flow, an execution, a replayed outcome) — never fabricated — and the feed degrades fail-open (a
+stale
+vault read or a store outage yields a partial/empty feed, never a 500). Unread is computed against
+the
 per-user read cursor; POST /notifications/read advances it.
 """
 
@@ -46,6 +49,7 @@ class _FakeSessionStore:
     async def list_by_account(self, _account: str) -> list[SessionKeyRow]:
         return self._rows
 
+
 _1M = 1_000_000  # 1 USDC / 1 share in 6-dp base units
 
 TOKEN = "test-web-tier-token"
@@ -63,7 +67,8 @@ GOOD_HEADERS = {
 
 
 class FakeReader:
-    """Serves the vault position reads (share balance + head block). `unavailable` → stale degrade."""
+    """Serves the vault position reads (share balance + head block). `unavailable` → stale
+    degrade."""
 
     def __init__(self, *, shares: int = 0, block: int = 1000, unavailable: bool = False) -> None:
         self._shares = shares
@@ -98,7 +103,8 @@ class FakeExecStore:
 
 
 class FakeEventStore:
-    """Serves the phase-2 edge-triggered events (caps/rate/new-rec) the poller would have emitted."""
+    """Serves the phase-2 edge-triggered events (caps/rate/new-rec) the poller would have
+    emitted."""
 
     def __init__(self, rows: list[NotificationEventRow] | None = None) -> None:
         self._rows = rows or []
@@ -137,10 +143,21 @@ class RaisingReadStore(FakeReadStore):
 def _exec(status: str, *, action: str = "deposit", reason: str | None = None) -> ExecutionRow:
     now = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
     return ExecutionRow(
-        id=uuid4(), intent_bundle_id=uuid4(), smart_account_address=USER, action_kind=action,
-        signing_mode="per_action_user_signature", status=status, userop_hash=None,
-        tx_hash="0xdead", block_number=999, gas_used=None, realized_amounts=None,
-        reverted_reason=reason, attribution_method=None, created_at=now, updated_at=now,
+        id=uuid4(),
+        intent_bundle_id=uuid4(),
+        smart_account_address=USER,
+        action_kind=action,
+        signing_mode="per_action_user_signature",
+        status=status,
+        userop_hash=None,
+        tx_hash="0xdead",
+        block_number=999,
+        gas_used=None,
+        realized_amounts=None,
+        reverted_reason=reason,
+        attribution_method=None,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -181,8 +198,22 @@ def _wire(
 def test_deposit_and_withdrawal_flows_become_real_notifications(client: TestClient) -> None:
     # A deposit (100 USDC) then a full withdraw (105 USDC) → the shares net to 0 (reconciles).
     flows = [
-        FlowRow(kind="deposit", assets=100 * _1M, shares=100 * _1M, block_number=900, log_index=0, tx_hash="0xaaa"),
-        FlowRow(kind="withdraw", assets=105 * _1M, shares=100 * _1M, block_number=950, log_index=0, tx_hash="0xbbb"),
+        FlowRow(
+            kind="deposit",
+            assets=100 * _1M,
+            shares=100 * _1M,
+            block_number=900,
+            log_index=0,
+            tx_hash="0xaaa",
+        ),
+        FlowRow(
+            kind="withdraw",
+            assets=105 * _1M,
+            shares=100 * _1M,
+            block_number=950,
+            log_index=0,
+            tx_hash="0xbbb",
+        ),
     ]
     _wire(reader=FakeReader(shares=0, block=1000), flows=flows)
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
@@ -201,7 +232,9 @@ def test_deposit_and_withdrawal_flows_become_real_notifications(client: TestClie
 
 
 def test_reverted_execution_becomes_an_alert(client: TestClient) -> None:
-    _wire(execs=[_exec("reverted", action="deposit", reason="ERC20: transfer amount exceeds balance")])
+    _wire(
+        execs=[_exec("reverted", action="deposit", reason="ERC20: transfer amount exceeds balance")]
+    )
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
     rev = next(n for n in body["notifications"] if n["type"] == "tx_reverted")
     assert rev["category"] == "txResults"
@@ -211,7 +244,8 @@ def test_reverted_execution_becomes_an_alert(client: TestClient) -> None:
 
 
 def test_confirmed_executions_are_not_double_counted(client: TestClient) -> None:
-    # Only reverted/dropped executions surface (confirmed deposits come from the flow index instead).
+    # Only reverted/dropped executions surface (confirmed deposits come from the flow index
+    # instead).
     _wire(execs=[_exec("confirmed"), _exec("indexed"), _exec("submitted")])
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
     assert body["notifications"] == []
@@ -220,8 +254,19 @@ def test_confirmed_executions_are_not_double_counted(client: TestClient) -> None
 def test_outcomes_only_when_history_reconciles(client: TestClient) -> None:
     # A lone withdraw with no funding deposit → the share history can't reconcile → NO outcome row
     # (honest: never a partial-history guess). The withdrawal-confirmed tx row still shows.
-    flows = [FlowRow(kind="withdraw", assets=50 * _1M, shares=50 * _1M, block_number=950, log_index=0, tx_hash="0xccc")]
-    _wire(reader=FakeReader(shares=999, block=1000), flows=flows)  # shares != reconstructed → no reconcile
+    flows = [
+        FlowRow(
+            kind="withdraw",
+            assets=50 * _1M,
+            shares=50 * _1M,
+            block_number=950,
+            log_index=0,
+            tx_hash="0xccc",
+        )
+    ]
+    _wire(
+        reader=FakeReader(shares=999, block=1000), flows=flows
+    )  # shares != reconstructed → no reconcile
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
     types = [n["type"] for n in body["notifications"]]
     assert "withdrawal_confirmed" in types
@@ -229,7 +274,16 @@ def test_outcomes_only_when_history_reconciles(client: TestClient) -> None:
 
 
 def test_unread_computed_against_the_read_cursor(client: TestClient) -> None:
-    flows = [FlowRow(kind="deposit", assets=10 * _1M, shares=10 * _1M, block_number=990, log_index=0, tx_hash="0xd")]
+    flows = [
+        FlowRow(
+            kind="deposit",
+            assets=10 * _1M,
+            shares=10 * _1M,
+            block_number=990,
+            log_index=0,
+            tx_hash="0xd",
+        )
+    ]
     # No cursor → everything is unread.
     _wire(reader=FakeReader(shares=10 * _1M, block=1000), flows=flows)
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
@@ -238,7 +292,11 @@ def test_unread_computed_against_the_read_cursor(client: TestClient) -> None:
     # A cursor whose block height is at/above the deposit's block → the deposit is already read.
     past = datetime.now(UTC) - timedelta(hours=1)
     cursor = ReadCursor(last_read_at=past, last_read_block=990)
-    _wire(reader=FakeReader(shares=10 * _1M, block=1000), flows=flows, read_store=FakeReadStore(cursor=cursor))
+    _wire(
+        reader=FakeReader(shares=10 * _1M, block=1000),
+        flows=flows,
+        read_store=FakeReadStore(cursor=cursor),
+    )
     body2 = client.get("/notifications", headers=GOOD_HEADERS).json()
     assert body2["unreadCount"] == 0
     assert body2["notifications"][0]["unread"] is False
@@ -246,22 +304,37 @@ def test_unread_computed_against_the_read_cursor(client: TestClient) -> None:
 
 def test_head_block_item_stays_read_after_mark_read(client: TestClient) -> None:
     """The stability fix: a notification mined in the CURRENT head block, once marked read, does NOT
-    re-flag as unread on an immediate re-read (unread is keyed by block height, not a volatile clock)."""
-    flows = [FlowRow(kind="deposit", assets=_1M, shares=_1M, block_number=1000, log_index=0, tx_hash="0xh")]
+    re-flag as unread on an immediate re-read (unread is keyed by block height, not a volatile
+    clock)."""
+    flows = [
+        FlowRow(
+            kind="deposit", assets=_1M, shares=_1M, block_number=1000, log_index=0, tx_hash="0xh"
+        )
+    ]
     store = _wire(reader=FakeReader(shares=_1M, block=1000), flows=flows)  # deposit block == head
     b1 = client.get("/notifications", headers=GOOD_HEADERS).json()
     assert b1["notifications"][0]["unread"] is True  # unseen
     assert client.post("/notifications/read", headers=GOOD_HEADERS).json()["ok"] is True
     assert store.cursor is not None and store.cursor.last_read_block == 1000  # head block recorded
     b2 = client.get("/notifications", headers=GOOD_HEADERS).json()
-    assert b2["notifications"][0]["unread"] is False  # stays read — block 1000 <= last_read_block 1000
+    assert (
+        b2["notifications"][0]["unread"] is False
+    )  # stays read — block 1000 <= last_read_block 1000
     assert b2["unreadCount"] == 0
 
 
 def test_stale_vault_read_still_serves_execution_alerts_fail_open(client: TestClient) -> None:
     # The vault read degrades (no flows/outcomes), but the executions-based alert still shows — the
     # feed never 500s and stale is surfaced honestly.
-    _wire(reader=FakeReader(unavailable=True), flows=[FlowRow(kind="deposit", assets=_1M, shares=_1M, block_number=1, log_index=0, tx_hash="0xe")], execs=[_exec("reverted")])
+    _wire(
+        reader=FakeReader(unavailable=True),
+        flows=[
+            FlowRow(
+                kind="deposit", assets=_1M, shares=_1M, block_number=1, log_index=0, tx_hash="0xe"
+            )
+        ],
+        execs=[_exec("reverted")],
+    )
     resp = client.get("/notifications", headers=GOOD_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
@@ -271,7 +344,11 @@ def test_stale_vault_read_still_serves_execution_alerts_fail_open(client: TestCl
 
 
 def test_read_cursor_outage_fails_open_to_all_unread(client: TestClient) -> None:
-    flows = [FlowRow(kind="deposit", assets=_1M, shares=_1M, block_number=990, log_index=0, tx_hash="0xf")]
+    flows = [
+        FlowRow(
+            kind="deposit", assets=_1M, shares=_1M, block_number=990, log_index=0, tx_hash="0xf"
+        )
+    ]
     _wire(reader=FakeReader(shares=_1M, block=1000), flows=flows, read_store=RaisingReadStore())
     resp = client.get("/notifications", headers=GOOD_HEADERS)
     assert resp.status_code == 200
@@ -301,14 +378,21 @@ def _event(
     created_at: datetime | None = None,
 ) -> NotificationEventRow:
     return NotificationEventRow(
-        id=str(uuid4()), wallet=wallet, category=category, type=event_type, title=title,
-        body=body, icon=icon, href=href,
+        id=str(uuid4()),
+        wallet=wallet,
+        category=category,
+        type=event_type,
+        title=title,
+        body=body,
+        icon=icon,
+        href=href,
         created_at=created_at or datetime(2026, 7, 24, 12, 0, tzinfo=UTC),
     )
 
 
 def test_edge_triggered_event_appears_in_feed(client: TestClient) -> None:
-    # A poller-emitted event surfaces in the merged feed, carrying its real fields, id prefixed evt:.
+    # A poller-emitted event surfaces in the merged feed, carrying its real fields, id prefixed
+    # evt:.
     _wire(events=[_event()])
     body = client.get("/notifications", headers=GOOD_HEADERS).json()
     ev = next(n for n in body["notifications"] if n["type"] == "vault_near_capacity")
@@ -336,7 +420,9 @@ def test_event_unread_keyed_by_read_cursor(client: TestClient) -> None:
     _wire(
         events=[
             _event(created_at=new),
-            _event(event_type="rate_moved", category="rateChanges", created_at=old, href="/strategies"),
+            _event(
+                event_type="rate_moved", category="rateChanges", created_at=old, href="/strategies"
+            ),
         ],
         read_store=FakeReadStore(cursor=cursor),
     )
@@ -354,7 +440,14 @@ def test_events_survive_truncation_amid_a_flood_of_flows(
     # capped window (which would also under-count the badge). Events are reserved before truncation.
     monkeypatch.setattr("sparkpoint_agent.api.notifications._FEED_LIMIT", 3)
     flows = [
-        FlowRow(kind="deposit", assets=_1M, shares=_1M, block_number=900 + i, log_index=0, tx_hash=f"0xf{i}")
+        FlowRow(
+            kind="deposit",
+            assets=_1M,
+            shares=_1M,
+            block_number=900 + i,
+            log_index=0,
+            tx_hash=f"0xf{i}",
+        )
         for i in range(5)
     ]
     old_event = _event(created_at=datetime(2020, 1, 1, tzinfo=UTC))  # far older than every flow

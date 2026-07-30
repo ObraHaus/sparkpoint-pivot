@@ -21,7 +21,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .errors import ApiError, ErrorCode, new_request_id, render_api_error
-from .idempotency import IdempotencyStore, StoredResponse, is_valid_key
+from .idempotency import IdempotencyScope, ScopedStore, StoredResponse, is_valid_key
 from .security import authenticate, is_exempt, parse_account_headers
 
 _CallNext = Callable[[Request], Awaitable[Response]]
@@ -45,9 +45,9 @@ def _response_from_bytes(
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """s2s auth + user-scoping headers + idempotency, sharing one ``IdempotencyStore``."""
+    """s2s auth + user-scoping headers + idempotency, sharing one scoped store."""
 
-    def __init__(self, app: object, store: IdempotencyStore) -> None:
+    def __init__(self, app: object, store: ScopedStore) -> None:
         super().__init__(app)  # type: ignore[arg-type]
         self._store = store
 
@@ -72,8 +72,20 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             return render_api_error(exc, request_id)
 
         # Replay a previously stored response for this idempotency key (POST only, §1.3).
+        # 023 (FR-023-013): the cache is scoped to (account, chain_id, method, path, key). The raw
+        # key is client-supplied and carries no tenant component, so keying on it alone could serve
+        # one wallet's cached IntentBundle to another — or one chain's bundle on another chain.
+        scope = None
         if key is not None and request.method == "POST":
-            cached = await self._store.get(key)
+            account = getattr(request.state, "account", None)
+            scope = IdempotencyScope.build(
+                account=getattr(account, "account", None),
+                chain_id=getattr(account, "chain_id", None),
+                method=request.method,
+                path=request.url.path,
+                key=key,
+            )
+            cached = await self._store.get(scope)
             if cached is not None:
                 return _response_from_bytes(cached.status_code, cached.media_type, cached.body)
 
@@ -81,7 +93,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         # Capture + store the original 2xx JSON response so a retry replays it. Streamed
         # (SSE) and non-2xx responses are never cached.
-        if key is not None and request.method == "POST":
+        if scope is not None:
             content_type = response.headers.get("content-type", "")
             # ``call_next`` yields a streaming response exposing ``body_iterator``.
             body_iterator = getattr(response, "body_iterator", None)
@@ -92,7 +104,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             ):
                 body = b"".join([chunk async for chunk in body_iterator])
                 await self._store.put(
-                    key, StoredResponse(response.status_code, content_type, body)
+                    scope, StoredResponse(response.status_code, content_type, body)
                 )
                 extra = {
                     k: v for k, v in response.headers.items() if k.lower() not in _MANAGED_HEADERS

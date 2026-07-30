@@ -1,4 +1,24 @@
-"""The deterministic Coordinator — a Python DAG runner, NOT an LLM router.
+"""⚠️  SUPERSEDED — NOT EXECUTED (023, FR-023-016).
+
+Nothing imports or calls this module. The execution interposition that actually RUNS is
+``execution/orchestrate.py`` (feature 019) — an independent implementation of the same
+ordering: decode → build → simulate → assemble → PURE ``policy.evaluate`` → gate → persist.
+
+RETAINED deliberately (023 clarify decision) rather than deleted, because it holds the only
+code-form record of
+the deterministic-Coordinator design intent and its ``FlowState`` threading.
+
+Read it as design documentation, NOT as a live guarantee: a Gate-C auditor reading a module
+that presents itself as "the" policy interposition must not be misled about which one is
+load-bearing. ``tests/coordinator/test_superseded_markers.py`` fails if this marker is dropped,
+or if any module outside ``coordinator/`` starts importing these symbols — so the claim cannot
+quietly rot.
+
+The original module documentation follows.
+
+----
+
+The deterministic Coordinator — a Python DAG runner, NOT an LLM router.
 
 Grounding: research.md §6 — the Coordinator is a deterministic Python DAG; the model
 has NO tool to choose the next agent. ``run_read`` walks a flow's fixed, ordered

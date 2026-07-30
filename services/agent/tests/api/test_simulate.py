@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -33,6 +33,10 @@ class FakeBundleRow:
     kind = "vault_deposit"
     steps = [{"to": VAULT, "data": "0x6e553f65", "value": "0", "opType": "eoa_call"}]
     smart_account_address = USER
+    # 023: the real 0021 columns `_load_bundle` now reads. `/simulate` does NOT enforce expiry (its
+    # whole job is refreshing a near-expiry bundle), so a fresh value here is scaffolding only.
+    expires_at = datetime.now(UTC) + timedelta(seconds=180)
+    is_session_key_path = False
 
 
 class FakeBundleStore:

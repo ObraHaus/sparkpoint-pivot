@@ -1,4 +1,24 @@
-"""The MANUAL execution loop — policy interposed BETWEEN "proposed" and "signable".
+"""⚠️  SUPERSEDED — NOT EXECUTED (023, FR-023-016).
+
+Nothing imports or calls this module. The execution interposition that actually RUNS is
+``execution/orchestrate.py`` (feature 019) — an independent implementation of the same
+ordering: decode → build → simulate → assemble → PURE ``policy.evaluate`` → gate → persist.
+
+RETAINED deliberately (023 clarify decision) rather than deleted, because it holds the only
+code-form record of
+the manual build → simulate → EVALUATE → gate loop as originally specified.
+
+Read it as design documentation, NOT as a live guarantee: a Gate-C auditor reading a module
+that presents itself as "the" policy interposition must not be misled about which one is
+load-bearing. ``tests/coordinator/test_superseded_markers.py`` fails if this marker is dropped,
+or if any module outside ``coordinator/`` starts importing these symbols — so the claim cannot
+quietly rot.
+
+The original module documentation follows.
+
+----
+
+The MANUAL execution loop — policy interposed BETWEEN "proposed" and "signable".
 
 This is the non-custody crux (research.md §6; agent-service-api.md §3.5; N1/N3).
 Unlike the read paths (which may use the SDK auto tool-runner), the execution path

@@ -9,6 +9,11 @@ vault's EIP-4626 rounding (round-DOWN in the vault's favor) exactly.
 
 from __future__ import annotations
 
+from .chain_identity import (
+    PROBE_TTL_S,
+    ChainIdentity,
+    ChainIdentityProbe,
+)
 from .vault_reader import (
     HttpxJsonRpcTransport,
     JsonRpcTransport,
@@ -19,6 +24,9 @@ from .vault_reader import (
 )
 
 __all__ = [
+    "PROBE_TTL_S",
+    "ChainIdentity",
+    "ChainIdentityProbe",
     "HttpxJsonRpcTransport",
     "JsonRpcTransport",
     "VaultReader",

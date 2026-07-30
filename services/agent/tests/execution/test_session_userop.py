@@ -26,6 +26,25 @@ _ACCOUNT = "0x1111111111111111111111111111111111111111"
 _INNER = "0x6e553f65"
 
 
+def _stub_gas(monkeypatch: pytest.MonkeyPatch) -> None:
+    """023 — the builder now also reads live fees + a bundler gas estimate (FR-023-007), so a test
+    that exercises the build must stub all three reads. Fixture-only change: the assertions below
+    are unchanged (sender / nonce / null signature / callData byte-match)."""
+
+    async def _fees(url: str) -> tuple[int, int]:
+        return 50_000_000, 1_000_000
+
+    async def _estimate(url: str, op: dict[str, object], entry_point: str) -> dict[str, str]:
+        return {
+            "callGasLimit": hex(500_000),
+            "verificationGasLimit": hex(150_000),
+            "preVerificationGas": hex(200_000),
+        }
+
+    monkeypatch.setattr(session_userop.bundler, "fee_per_gas", _fees)
+    monkeypatch.setattr(session_userop.bundler, "estimate_user_op_gas", _estimate)
+
+
 def _step() -> IntentStep:
     return IntentStep(
         chainId=84532, opType="userop", to=_VAULT, value="0", data=_INNER, label="deposit"
@@ -87,6 +106,7 @@ async def test_build_session_userop_unsigned_matches_scope(
         return 7
 
     monkeypatch.setattr(session_userop.rpc, "get_nonce", _nonce)
+    _stub_gas(monkeypatch)
     op = await build_session_userop(_step(), sender=_ACCOUNT, rpc_url="http://rpc")
     assert op is not None
     assert op.signature is None  # N3 — service never signs

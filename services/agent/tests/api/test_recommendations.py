@@ -166,7 +166,8 @@ class FakeRecStore:
     """In-memory :class:`RecommendationStore` double for persist-at-surface (US5 T010).
 
     Assigns a STABLE UUID per content ``dedupe_key`` (so re-surfacing the same advice keeps one id,
-    idempotent). ``fail=True`` raises on upsert to exercise the fail-open degrade to the ephemeral id.
+    idempotent). ``fail=True`` raises on upsert to exercise the fail-open degrade to the ephemeral
+    id.
     Only ``upsert`` is exercised by the §3.4 endpoints.
     """
 

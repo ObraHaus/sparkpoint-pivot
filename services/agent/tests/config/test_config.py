@@ -12,6 +12,7 @@ import pytest
 
 from sparkpoint_agent.config import (
     ALLOWED_ENV_KEYS,
+    BASE_MAINNET_RPC_URL_ENV,
     DEFAULT_CHAIN_ID,
     FEE_WALLET_ADDRESS_ENV,
     AgentConfig,
@@ -21,6 +22,7 @@ from sparkpoint_agent.config import (
 
 _SIM = "http://fork.local:8545"
 _SEPOLIA = "http://sepolia.local:8545"
+_MAINNET = "http://mainnet.local:8545"  # 023 — BASE_MAINNET_RPC_URL; 8453's only non-override src
 _OVERRIDE = "http://override.local:8545"
 _VAULT = "0xABCDef0000000000000000000000000000001234"
 _SAFE = "0xCB135893C84876aab9E10792b56e5bEa91dc578f"
@@ -48,11 +50,57 @@ def test_fee_wallet_env_is_allowlisted_and_keyless() -> None:
 
 
 def test_defaults_chain_id_when_unset() -> None:
-    cfg = AgentConfig.from_env({"SIM_FORK_RPC_URL": _SIM})
+    # 023: the default chain is 8453, whose ONLY non-override RPC source is BASE_MAINNET_RPC_URL —
+    # a fork url no longer resolves here (see test_mainnet_never_falls_back_to_fork_or_sepolia).
+    cfg = AgentConfig.from_env({"BASE_MAINNET_RPC_URL": _MAINNET})
     assert cfg.chain_id == DEFAULT_CHAIN_ID == 8453
-    assert cfg.rpc_url == _SIM
+    assert cfg.rpc_url == _MAINNET
     assert cfg.vault_address is None
     assert cfg.vault_deployed is False
+
+
+def test_mainnet_never_falls_back_to_fork_or_sepolia() -> None:
+    """023 / FR-023-001 — the regression guard for the defect this feature closes.
+
+    Chain 8453 previously resolved ``SPARKPOINT_RPC_URL → SIM_FORK_RPC_URL → BASE_SEPOLIA_RPC_URL``,
+    so a mainnet deployment missing one env var read the fork (or Sepolia) and presented it as
+    mainnet — a bundle approved against one chain's state and signed on another. Both must now
+    resolve to ``None`` (fail closed), and ``require_rpc_url`` must name 8453's real candidates.
+    """
+    for env in ({"SIM_FORK_RPC_URL": _SIM}, {"BASE_SEPOLIA_RPC_URL": _SEPOLIA}):
+        cfg = AgentConfig.from_env({"CHAIN_ID": "8453", **env})
+        assert cfg.rpc_url is None
+        with pytest.raises(ConfigError) as excinfo:
+            cfg.require_rpc_url()
+        message = str(excinfo.value)
+        assert "BASE_MAINNET_RPC_URL" in message  # names what to set…
+        assert _SIM not in message and _SEPOLIA not in message  # …never a url (may carry a key)
+
+
+def test_sepolia_never_falls_back_to_the_mainnet_fork() -> None:
+    """023 / FR-023-001 — the mirror-image bug: a Base-mainnet fork served as Base Sepolia."""
+    cfg = AgentConfig.from_env({"CHAIN_ID": "84532", "SIM_FORK_RPC_URL": _SIM})
+    assert cfg.rpc_url is None
+
+
+def test_local_fork_and_robinhood_still_resolve() -> None:
+    """023 — the two non-regressions: local dev (31337) and the read-only Robinhood testnet."""
+    fork = AgentConfig.from_env({"CHAIN_ID": "31337", "SIM_FORK_RPC_URL": _SIM})
+    assert fork.rpc_url == _SIM
+    # 46630 keeps its keyless public default when no override is configured.
+    rh = AgentConfig.from_env({"CHAIN_ID": "46630"})
+    assert rh.rpc_url is not None and rh.rpc_url.startswith("https://")
+    # And the explicit override still wins on every chain.
+    override = AgentConfig.from_env(
+        {"CHAIN_ID": "8453", "SPARKPOINT_RPC_URL": _OVERRIDE, "BASE_MAINNET_RPC_URL": _MAINNET}
+    )
+    assert override.rpc_url == _OVERRIDE
+
+
+def test_mainnet_rpc_env_is_allowlisted_and_keyless() -> None:
+    """023 — the new var is in the closed read allowlist and trips no key-bearing substring."""
+    assert BASE_MAINNET_RPC_URL_ENV in ALLOWED_ENV_KEYS
+    _assert_no_key_material()
 
 
 def test_unsupported_chain_id_fails_closed() -> None:
@@ -172,11 +220,13 @@ def test_private_key_env_is_never_consumed() -> None:
     env = {
         "DEPLOYER_PRIVATE_KEY": sentinel,
         "TEST_USER_PRIVATE_KEY": sentinel,
-        "SIM_FORK_RPC_URL": _SIM,
+        # 023: the default chain is 8453, so use ITS var — the point of this test is that the real
+        # vars resolve while key-bearing ones are ignored, not which chain is being configured.
+        "BASE_MAINNET_RPC_URL": _MAINNET,
         "SPARKPOINT_VAULT_ADDRESS": _VAULT,
     }
     cfg = AgentConfig.from_env(env)
-    assert cfg.rpc_url == _SIM
+    assert cfg.rpc_url == _MAINNET
     assert cfg.vault_address == _VAULT.lower()
     assert sentinel not in (cfg.rpc_url, cfg.vault_address, cfg.database_url)
     assert "DEPLOYER_PRIVATE_KEY" not in ALLOWED_ENV_KEYS

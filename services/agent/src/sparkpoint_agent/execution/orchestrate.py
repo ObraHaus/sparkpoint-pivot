@@ -518,6 +518,14 @@ async def submit_signed(
         # op's sender + callData to what the spine built for this bundle (SC-005) before recording,
         # so a client can't smuggle a different move under this id; validateUserOp is the on-chain
         # backstop. N2: a bundler outage is a retryable degrade, never a gate on the user's funds.
+        #
+        # 023 (FR-023-010/011) — TWO checks BEFORE the bundler is contacted, on this branch ONLY.
+        # The asymmetry with the eoa branch below is deliberate and load-bearing: there, submit is a
+        # CORRELATION RELAY for a transaction that is already broadcast, so rejecting it would only
+        # destroy the US5 outcome record while stopping nothing. Here, submit IS the submission — so
+        # the same checks are the difference between a cooperative and a structural guarantee.
+        _assert_bundle_fresh(bundle)
+        _assert_exec_mode_agrees(bundle)
         user_op = signed.userOp
         if not isinstance(user_op, dict) or not user_op.get("signature"):
             raise ApiError(
@@ -692,6 +700,10 @@ class _BundleWithId:
         self.kind = row.kind
         self.steps = row.steps
         self.smart_account_address = row.smart_account_address
+        # 023 — both already persisted by migration 0021 and already in the store's select list; the
+        # submit path simply starts READING them (FR-023-010/011). No query change, no migration.
+        self.expires_at = row.expires_at
+        self.is_session_key_path = bool(row.is_session_key_path)
 
 
 async def _load_bundle(intent_id: str, bundle_store: IntentBundleStore) -> _BundleWithId:
@@ -703,6 +715,50 @@ async def _load_bundle(intent_id: str, bundle_store: IntentBundleStore) -> _Bund
     if row is None:
         raise ApiError(ErrorCode.NOT_FOUND, "Unknown intent.")
     return _BundleWithId(row)
+
+
+def _assert_bundle_fresh(bundle: _BundleWithId) -> None:
+    """023 (FR-023-010) — refuse a UserOp submission for a bundle past its ``expires_at``.
+
+    A bundle carries a short TTL (``_BUNDLE_TTL_SECONDS``) precisely so a stale one is REBUILT
+    rather than submitted: its policy verdict was taken against chain state that may have moved.
+    Until now that was enforced only by the web app's ``isExpired`` — cooperatively. That is fine on
+    the eoa path, where submit is a correlation relay, but not here, where this call is what reaches
+    the bundler.
+
+    No tolerance window, deliberately: a fudge factor here would be a second, undocumented TTL. If
+    180s proves too tight in practice, that is a visible change to ``_BUNDLE_TTL_SECONDS``.
+    """
+    if datetime.now(UTC) >= bundle.expires_at:
+        raise ApiError(
+            ErrorCode.DATA_STALE,
+            "This move's simulation and policy check have expired — rebuild it before submitting.",
+            reasons=[
+                ErrorReason("BUNDLE_EXPIRED", "the intent bundle is past its expiry; rebuild it")
+            ],
+        )
+
+
+def _assert_exec_mode_agrees(bundle: _BundleWithId) -> None:
+    """023 (FR-023-011) — a UserOp submission must cite a bundle BUILT for the session-key path.
+
+    No policy consequence: the same ``evaluate()`` cleared the action either way, and the on-chain
+    ``validateUserOp`` re-enforces the session scope regardless. What it protects is the AUDIT
+    RECORD — without it, ``intent_bundles.exec_mode = per_action_user_signature`` could be paired
+    with ``executions.signing_mode = session_key``, a self-contradiction in a trail this project
+    treats as provable (Principle III).
+    """
+    if not bundle.is_session_key_path:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "This move was not built for hands-off execution — rebuild it as a session-key move.",
+            reasons=[
+                ErrorReason(
+                    "VALIDATION_ERROR",
+                    "exec-mode mismatch: a userop submission cites a per-action bundle",
+                )
+            ],
+        )
 
 
 def _assert_byte_match(tx: dict[str, Any], step: dict[str, Any]) -> None:

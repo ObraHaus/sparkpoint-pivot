@@ -28,7 +28,10 @@ jobs:
         # runtime dep can never silently drift out of CI the way a hardcoded list does.
         run: uv sync --frozen --python 3.12
       - name: ruff
-        run: .venv/bin/ruff check src
+        # 023 (FR-023-018): lint the WHOLE tree, not just src. [tool.ruff] already declares
+        # src = ["src", "tests"], so checking only src left a path the config claimed to cover
+        # outside the gate — and 52 E501s had accumulated there unnoticed.
+        run: .venv/bin/ruff check .
       - name: mypy (BLOCKING — strict, ITEM 4)
         # No `|| echo ...` escape: a strict-mypy failure MUST fail CI. tool.mypy stays
         # `strict = true` (pyproject.toml); the only overrides are the documented
