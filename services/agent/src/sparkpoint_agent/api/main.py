@@ -108,6 +108,46 @@ async def _llm_ready() -> bool:
     return ok
 
 
+async def _chain_readiness() -> tuple[int | None, bool, bool, bool]:
+    """023 — ``(chain_id, rpc_resolved, chain_identity_verified, chain_allowlists_a_swap)``.
+
+    Derived from the RESOLVED config rather than from raw env-var presence, so readiness describes
+    the chain this deployment actually serves. Fail-safe: an unloadable config reports
+    ``(None, False, False, False)`` — honestly not ready — rather than raising out of a probe
+    endpoint that infra depends on.
+    """
+    from ..chain.chain_identity import ChainIdentity
+    from ..config import AgentConfig
+    from ..policy import ActionType, get_policy_constants
+    from .vault import _probe_for
+
+    try:
+        config = AgentConfig.from_env()
+    except Exception:
+        return None, False, False, False
+
+    rpc_ok = bool(config.rpc_url)
+    identity_ok = False
+    if rpc_ok:
+        probe = _probe_for(config)
+        if probe is not None:
+            try:
+                identity_ok = (await probe.verdict()) is ChainIdentity.VERIFIED
+            except Exception:
+                identity_ok = False
+
+    # Does this chain's RESOLVED allowlist actually offer a swap? Only then is the fork simulator a
+    # readiness dependency (swaps are the oracle-dependent path that cannot fall back to a dry-run).
+    swap_capable = False
+    try:
+        constants = get_policy_constants(config.chain_id)
+        swap_capable = any(e.action is ActionType.AERODROME_SWAP for e in constants.allowlist)
+    except Exception:
+        swap_capable = False
+
+    return config.chain_id, rpc_ok, identity_ok, swap_capable
+
+
 # Startup must NEVER block on the DB: asyncpg.create_pool can hang for its full connect
 # timeout (~tens of seconds) if the DB is unreachable at boot, which stalls uvicorn startup
 # past the orchestrator's readiness deadline and gets the container killed. Bounding the
@@ -587,6 +627,23 @@ async def readyz(
     leak the internal dependency topology (which of Postgres/RPC/model/sim is down, the policy
     version) to anonymous callers on the public FQDN. ``postgres`` is a REAL ``SELECT 1``
     round-trip, so a configured-but-unreachable DB reports ``false`` honestly.
+
+    023 (FR-023-005/006) — the checks now describe **the chain this deployment actually serves**:
+
+    - ``chain_rpc``      : an RPC url RESOLVED for ``CHAIN_ID`` (config, not a raw env name).
+    - ``chain_identity`` : that RPC provably reports ``CHAIN_ID`` (the 023 probe).
+    - ``sim_fork``       : reported always, but only counted toward ``ready`` when the served chain
+                           actually allowlists a swap — the fork simulator is required for the
+                           oracle-dependent swap path, not for the vault-only surface.
+
+    Previously ``base_rpc`` keyed off ``BASE_SEPOLIA_RPC_URL``/``ALCHEMY_ACCESS_KEY`` and
+    ``sim_fork`` off ``SIM_FORK_RPC_URL``, which was wrong in both directions on mainnet: a
+    correctly-configured mainnet deployment reported not-ready forever, while one carrying a stale
+    Sepolia url reported ready **while serving mainnet**. The second is the dangerous one, and an
+    operator who learns to ignore ``/readyz`` is how a real outage gets missed.
+
+    Chain-id VALUES may appear in this S2S breakdown (they are public facts); the RPC **url** never
+    does, here or in any log line, because it can carry a provider key.
     """
     postgres_ok = False
     try:
@@ -594,20 +651,29 @@ async def readyz(
     except Exception:
         # Unconnected pool / unreachable DB / missing DSN → honestly not ready.
         postgres_ok = False
+    chain_id, chain_rpc_ok, chain_identity_ok, swap_capable = await _chain_readiness()
     checks = {
+        "chain_rpc": chain_rpc_ok,
+        "chain_identity": chain_identity_ok,
         "sim_fork": bool(os.getenv("SIM_FORK_RPC_URL")),
-        "base_rpc": bool(os.getenv("BASE_SEPOLIA_RPC_URL") or os.getenv("ALCHEMY_ACCESS_KEY")),
         # Real LLM-gateway liveness (cached ~60s), not mere key-presence.
         "llm": await _llm_ready(),
         "postgres": postgres_ok,
     }
-    ready = all(checks.values())
+    # The fork simulator gates the SWAP path only; a vault-only chain is ready without it.
+    required = dict(checks)
+    if not swap_capable:
+        required.pop("sim_fork")
+    ready = all(required.values())
     if not has_valid_s2s(authorization):
         # Anonymous: boolean only — no dependency detail, no policy version.
         return {"ready": ready}
     return {
         "ready": ready,
         "checks": checks,
+        # The chain being served, so an operator can tell a mis-pointed deployment apart from a
+        # down dependency at a glance. A public fact — unlike the RPC url, which never appears.
+        "chain_id": chain_id,
         # Default to the mirrored constant so the reported version is always accurate.
         "policy_version": os.getenv("POLICY_VERSION", POLICY_VERSION),
     }

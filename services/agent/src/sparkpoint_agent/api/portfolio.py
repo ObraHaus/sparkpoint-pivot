@@ -55,7 +55,7 @@ from ..db.vault_flows import (
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
-from .vault import get_account, get_vault_reader
+from .vault import get_account, get_vault_reader, require_verified_chain
 
 
 def get_rec_store() -> RecommendationStore:
@@ -68,7 +68,7 @@ def get_vault_flow_reader() -> VaultFlowReader:
     return VaultFlowReader(get_database())
 
 
-router = APIRouter(tags=["portfolio"])
+router = APIRouter(tags=["portfolio"], dependencies=[Depends(require_verified_chain)])
 
 # The single vault position is addressed by this stable id (one ERC-4626 position per
 # user). ``GET /portfolio/positions/vault`` resolves it; any other id is NOT_FOUND.
