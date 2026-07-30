@@ -23,6 +23,14 @@ export interface VaultOption {
   readonly symbol?: string;
   /** For a wrapper: its immutable underlying Morpho target (informational; app reads `morphoVault()` live). */
   readonly morphoVault?: Address;
+  /**
+   * RETIRED (024): still selectable and still fully withdrawable (N2) — but DEPOSIT is fail-closed
+   * downstream in `deriveVaultConfirm`. Kept in the options list on purpose: dropping it would make
+   * `resolveSelectedVault` silently fall back to the launch vault for a holder deep-linking with
+   * `?vault=<retired>`, which is a worse failure than showing it plainly as retired.
+   */
+  readonly retired?: boolean;
+  readonly retiredReason?: string;
 }
 
 /** The launch Aave vault option — matches `useVault`'s defaults exactly, so selecting it is byte-identical. */
@@ -49,6 +57,8 @@ export function buildVaultOptions(input: {
     label: w.label,
     symbol: w.symbol,
     morphoVault: w.morphoVault,
+    retired: w.retired,
+    retiredReason: w.retiredReason,
   }));
   return [LAUNCH_VAULT_OPTION, ...wrapperOptions];
 }

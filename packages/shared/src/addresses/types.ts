@@ -180,6 +180,17 @@ export interface SparkPointWrapper {
   readonly label: string;
   readonly symbol?: string;
   readonly morphoVault?: Address;
+  /**
+   * RETIRED (feature 024): the wrapper is still deployed and still fully redeemable on-chain, but
+   * SparkPoint no longer offers DEPOSITS into it. Deposit fail-closes in `deriveVaultConfirm`
+   * (`depositSignable === false`, CTA "Vault retired"); withdraw/redeem and the portfolio row are
+   * deliberately UNTOUCHED — N2 says only underlying liquidity may ever block an exit, never us.
+   * Retiring is a display/authorization decision here; the on-chain contract is immutable and a
+   * holder can always redeem directly, backend-independent.
+   */
+  readonly retired?: boolean;
+  /** Why it was retired — surfaced in the picker tooltip + the Trust Center so the reason is public. */
+  readonly retiredReason?: string;
 }
 
 /**

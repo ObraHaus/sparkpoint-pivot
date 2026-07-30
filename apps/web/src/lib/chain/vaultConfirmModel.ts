@@ -56,6 +56,12 @@ export interface VaultConfirmInput {
   readonly kind?: VaultKind;
   /** Registry label override for the branded wrapper (else its on-chain `label()`). */
   readonly label?: string;
+  /**
+   * RETIRED (024): SparkPoint no longer authorizes DEPOSITS into this vault. Fail-closes
+   * `depositSignable`. Deliberately has NO effect on the withdraw path — N2 says only underlying
+   * liquidity may block an exit, never a SparkPoint decision.
+   */
+  readonly retired?: boolean;
 }
 
 /**
@@ -66,6 +72,7 @@ export type VaultConfirmView = Pick<
   UseVaultResult,
   | "kind"
   | "factoryVerified"
+  | "retired"
   | "label"
   | "chainId"
   | "account"
@@ -184,8 +191,19 @@ export function deriveVaultConfirm(
     v.usdcAddress !== undefined &&
     v.asset.toLowerCase() === v.usdcAddress.toLowerCase();
   const wrapperDepositSafe = attested && assetMatchesUsdc;
-  /** Launch ⇒ always signable; wrapper ⇒ only when factory-attested AND its asset is the chain USDC. */
-  const depositSignable = !isWrapper || wrapperDepositSafe;
+  /**
+   * RETIRED (024). The AUTHORITATIVE source is `v.retired`, which `useVault` resolves from the address
+   * book by vault address — so every mount point inherits the fail-close whether or not it remembers
+   * to pass anything. `input.retired` is kept only as an explicit override for tests and callers that
+   * fabricate a view. Either being true fail-closes.
+   */
+  const retired = v.retired === true || input.retired === true;
+  /**
+   * Launch ⇒ always signable; wrapper ⇒ only when factory-attested AND its asset is the chain USDC.
+   * A RETIRED vault is never deposit-signable regardless of attestation — this is the hard stop that
+   * keeps a deposit off a wrapper whose underlying we no longer trust. Withdraw is untouched (N2).
+   */
+  const depositSignable = (!isWrapper || wrapperDepositSafe) && !retired;
 
   // Shares a withdraw redeems (linear convertToAssets), clamped to what's redeemable now (liquidity).
   const redeemShares = isDep
@@ -230,8 +248,10 @@ export function deriveVaultConfirm(
       ? "Switch to Base Sepolia"
       : wantUnits <= 0n
         ? "Enter an amount"
-        : isWrapper && !attested
-          ? "Unverified vault"
+        : retired
+          ? "Vault retired — withdrawals only"
+          : isWrapper && !attested
+            ? "Unverified vault"
           : isWrapper && !assetMatchesUsdc
             ? "Unsupported vault asset"
             : paused

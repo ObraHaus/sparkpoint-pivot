@@ -156,6 +156,14 @@ export interface UseVaultResult {
   /** For a wrapper: the single curated Morpho vault it routes into (`morphoVault()`). Else undefined. */
   readonly morphoVault: Address | undefined;
   /**
+   * RETIRED (024) — resolved HERE from the address book by the vault address, not passed in by the
+   * caller. Deriving it centrally is deliberate: `retired` fail-closes DEPOSIT, and a per-call-site
+   * flag is forgettable (it was in fact forgotten once, in the `/confirm/[intent]` route, which mounts
+   * its own `useVaultConfirm` and renders `ConfirmFlow` directly — bypassing the amount screen). Any
+   * present or future mount point now inherits the fail-close for free. Withdraw is unaffected (N2).
+   */
+  readonly retired: boolean;
+  /**
    * Wrapper PROVENANCE via `factory.isSparkPointVault(vault)`: `true` ⇒ attested (safe to render),
    * `false` ⇒ refused (fail-closed), `undefined` ⇒ launch vault / factory not deployed / still loading.
    */
@@ -282,6 +290,17 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const launchVault = chainId === undefined ? undefined : vaultAddressFor(chainId);
   const vault = options.vaultAddress ?? launchVault;
   const usdcAddress = usdcAddressFor(chainId);
+  // 024: retirement is a property of the VAULT, resolved centrally from the address book — never a
+  // flag each call site has to remember to pass. Deposit fail-closes on it; withdraw never does (N2).
+  const retired = ((): boolean => {
+    if (chainId === undefined || vault === undefined) return false;
+    try {
+      const w = getAddresses(chainId).sparkPointWrappers ?? [];
+      return w.some((x) => x.address.toLowerCase() === vault.toLowerCase() && x.retired === true);
+    } catch {
+      return false; // an unconfigured chain has no wrappers; never throw out of a hook body
+    }
+  })();
   const factoryAddress = chainId === undefined ? undefined : factoryAddressFor(chainId);
   const capRegistryAddress = chainId === undefined ? undefined : capRegistryAddressFor(chainId);
 
@@ -538,6 +557,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     label,
     underlyingProtocol,
     morphoVault,
+    retired,
     factoryVerified,
     unavailable,
     isDeployed,
