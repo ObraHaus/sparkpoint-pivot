@@ -72,14 +72,15 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             return render_api_error(exc, request_id)
 
         # Replay a previously stored response for this idempotency key (POST only, §1.3).
-        # 023 (FR-023-013): the cache is scoped to (account, method, path, key) — the raw key alone
-        # is client-supplied and carries no tenant component, so keying on it could serve one
-        # wallet's cached IntentBundle to another.
+        # 023 (FR-023-013): the cache is scoped to (account, chain_id, method, path, key). The raw
+        # key is client-supplied and carries no tenant component, so keying on it alone could serve
+        # one wallet's cached IntentBundle to another — or one chain's bundle on another chain.
         scope = None
         if key is not None and request.method == "POST":
             account = getattr(request.state, "account", None)
             scope = IdempotencyScope.build(
                 account=getattr(account, "account", None),
+                chain_id=getattr(account, "chain_id", None),
                 method=request.method,
                 path=request.url.path,
                 key=key,

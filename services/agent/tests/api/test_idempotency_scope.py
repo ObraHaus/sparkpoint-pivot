@@ -46,8 +46,12 @@ def _idempotency_migration_id() -> str:
 _IDEMPOTENCY_MIGRATION_ID = _idempotency_migration_id()
 
 
-def _scope(account: str, *, path: str = "/build-tx", key: str = _KEY) -> IdempotencyScope:
-    return IdempotencyScope.build(account=account, method="POST", path=path, key=key)
+def _scope(
+    account: str, *, chain_id: int = 84532, path: str = "/build-tx", key: str = _KEY
+) -> IdempotencyScope:
+    return IdempotencyScope.build(
+        account=account, chain_id=chain_id, method="POST", path=path, key=key
+    )
 
 
 def _response(marker: str) -> StoredResponse:
@@ -73,6 +77,19 @@ async def test_same_key_on_a_different_route_is_not_a_hit() -> None:
     await store.put(_scope(_A, path="/build-tx"), _response("build"))
 
     assert await store.get(_scope(_A, path="/submit-signed-tx")) is None
+
+
+async def test_same_key_on_a_different_chain_is_not_a_hit() -> None:
+    """The chain is part of the scope. A built bundle is chain-specific (its steps carry a
+    ``chainId``), so a wallet reusing a key across chains must not replay the other chain's bundle.
+    Added after the OH Defender AI review on the 023 PR pointed out that the reasoning behind the
+    ``account`` component applies to the chain too."""
+    store = IdempotencyStore()
+    await store.put(_scope(_A, chain_id=84532), _response("sepolia bundle"))
+
+    assert await store.get(_scope(_A, chain_id=8453)) is None
+    same_chain = await store.get(_scope(_A, chain_id=84532))
+    assert same_chain is not None and same_chain.body == b"sepolia bundle"
 
 
 async def test_replay_of_your_own_key_returns_the_original() -> None:

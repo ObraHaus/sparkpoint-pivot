@@ -1,5 +1,6 @@
 -- 0027_idempotency.sql — feature 023 (Hermes mainnet hardening, FR-023-013/014/015): the DURABLE
--- replay cache behind the §1.3 `Idempotency-Key` contract. One row per (account, method, path, key):
+-- replay cache behind the §1.3 `Idempotency-Key` contract. One row per (account, chain, method, path,
+-- key):
 -- the cached 2xx response a replay returns verbatim, so a retried build can never double-emit an
 -- IntentBundle. Additive, forward-only. Apply with PGCLIENTENCODING=UTF8.
 --
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
     -- The §1.2 scoping headers' account: an idempotency key is only ever valid for the wallet that
     -- issued it. CITEXT so 0xABC… and 0xabc… are the same caller (addresses are checksum-agnostic).
     account        CITEXT      NOT NULL,
+    -- The §1.2 `X-Chain-Id`. A built bundle is CHAIN-SPECIFIC (its steps carry a chainId), so the
+    -- same wallet on two chains must not share a cache entry — the same reasoning that puts `account`
+    -- in the scope. Caught by the OH Defender AI review on this PR.
+    chain_id       BIGINT      NOT NULL,
     method         TEXT        NOT NULL,               -- HTTP method (POST today; scoped anyway)
     path           TEXT        NOT NULL,               -- request path: a key can't cross routes
     key            TEXT        NOT NULL,               -- the client's Idempotency-Key (a UUID, §1.3)
@@ -57,7 +62,7 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
     -- FIRST WRITE WINS, enforced by the database rather than by an in-process lock — this is what
     -- makes the guarantee hold ACROSS workers. The store inserts with ON CONFLICT DO NOTHING and
     -- then re-reads, which is the exact SQL expression of the previous in-memory `setdefault`.
-    CONSTRAINT idempotency_records_scope_uniq UNIQUE (account, method, path, key)
+    CONSTRAINT idempotency_records_scope_uniq UNIQUE (account, chain_id, method, path, key)
 );
 
 -- Drives the retention sweep (oldest-first, bounded horizon).

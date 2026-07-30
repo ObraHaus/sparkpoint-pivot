@@ -10,8 +10,10 @@ responses are never replayed from cache.
 1. **The cache key carried no tenant component.** It was the raw ``Idempotency-Key`` alone — a value
    the CLIENT supplies — so a key collision across wallets could serve one caller's cached
    ``IntentBundle`` to another. The key is now the :class:`IdempotencyScope`
-   ``(account, method, path, key)``, so a key is only ever valid for the caller AND the route that
-   created it. (Open medium from the alpha security audit R1.)
+   ``(account, chain_id, method, path, key)``, so a key is only ever valid for the caller, the CHAIN
+   and the route that created it. (Open medium from the alpha security audit R1; the ``chain_id``
+   component was added after the OH Defender AI review on the 023 PR pointed out that the same
+   reasoning applies to the chain — a built bundle is chain-specific.)
 2. **The store was process-local**, so replay protection died on every restart and could not span
    workers. :class:`IdempotencyStore` remains as the in-process fast path, and
    ``db/idempotency.PgIdempotencyStore`` (migration ``0027``) backs it durably.
@@ -46,23 +48,40 @@ def is_valid_key(key: str) -> bool:
 class IdempotencyScope:
     """What a cached response is valid FOR — the composite cache key (023).
 
-    ``account`` is the middleware's already-parsed ``X-Account`` (lower-cased, since addresses are
-    checksum-agnostic). ``method`` + ``path`` stop a key that is valid for one route from replaying
-    onto another. Frozen so it can be a dict key.
+    Every dimension the cached RESPONSE depends on must be in here, or a replay can return something
+    computed for a different context:
+
+    * ``account`` — the middleware's already-parsed ``X-Account``, lower-cased (addresses are
+      checksum-agnostic). Without it, one wallet's cached bundle could reach another (audit-R1).
+    * ``chain_id`` — the ``X-Chain-Id``. A built bundle is chain-specific (its steps carry a
+      ``chainId``), so the same wallet on two chains must not share an entry.
+    * ``method`` + ``path`` — stop a key valid for one route from replaying onto another.
+
+    Frozen so it can be a dict key.
     """
 
     account: str
+    chain_id: int
     method: str
     path: str
     key: str
 
     @classmethod
-    def build(cls, *, account: str | None, method: str, path: str, key: str) -> IdempotencyScope:
-        """Normalize a scope. A missing account becomes ``"-"``: every non-exempt route is
-        account-scoped by the middleware, so this is unreachable in practice — and if it ever were
-        reachable, an explicit sentinel shares nothing across callers, which is the safe direction.
+    def build(
+        cls, *, account: str | None, chain_id: int | None, method: str, path: str, key: str
+    ) -> IdempotencyScope:
+        """Normalize a scope. A missing account/chain becomes the ``"-"`` / ``0`` sentinel: every
+        non-exempt route is account- and chain-scoped by the middleware, so this is unreachable in
+        practice — and if it ever were, an explicit sentinel shares nothing across callers, which is
+        the safe direction.
         """
-        return cls(account=(account or "-").lower(), method=method.upper(), path=path, key=key)
+        return cls(
+            account=(account or "-").lower(),
+            chain_id=chain_id or 0,
+            method=method.upper(),
+            path=path,
+            key=key,
+        )
 
 
 @dataclass(frozen=True)

@@ -76,7 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Idempotency keys are scoped to the caller.** The cache was keyed on the raw `Idempotency-Key`
   alone — a client-supplied value with no tenant component — so a key collision across wallets could
   serve one caller's cached `IntentBundle` to another (open medium from audit R1). Now scoped
-  `(account, method, path, key)`, and backed durably by Postgres (**migration `0027`**) so replay
+  `(account, chain_id, method, path, key)`, and backed durably by Postgres (**migration `0027`**) so replay
   protection survives a restart and spans workers; first-write-wins moves from an in-process lock to a
   UNIQUE constraint. Fails **open** (N2) — with a distinct `idempotency_table_missing` warning, since
   fail-open makes a missing table look exactly like a working store.

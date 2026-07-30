@@ -283,7 +283,7 @@ what the module computes; confirm `ruff` covers every path the config claims.
 **Idempotency (Tier 0)**
 
 - **FR-023-013**: An idempotency cache entry MUST be scoped by at minimum the requesting account, the
-  HTTP method and the request path, in addition to the `Idempotency-Key`.
+  chain, the HTTP method and the request path, in addition to the `Idempotency-Key`.
 - **FR-023-014**: Replay of a caller's own key on the same route MUST continue to return the original
   2xx response; SSE and non-2xx responses MUST continue never to be cached.
 - **FR-023-015a** *(deploy ordering — the silent-degradation guard)*: because the store fails **open**,
@@ -329,12 +329,12 @@ what the module computes; confirm `ruff` covers every path the config claims.
 ### Key Entities
 
 - **`AgentConfig`** — gains a verified chain identity; no new field carries a secret.
-- **Idempotency cache key** — becomes a composite of (account, method, path, key) rather than a bare key.
+- **Idempotency cache key** — becomes a composite of (account, chain_id, method, path, key) rather than a bare key.
 - **Gas envelope** — moves from module constants to per-request estimated values with named bounds.
 - **`intent_bundles.expires_at` / `is_session_key_path`** — already persisted (migration 0021); this
   feature starts *reading* them on the submit path. No schema change needed for these.
 - **`idempotency_records`** (new, migration `0027`) — the durable replay cache: the composite scope
-  (account, method, path, key) plus the cached status/media-type/body and a `created_at` for the
+  (account, chain_id, method, path, key) plus the cached status/media-type/body and a `created_at` for the
   retention sweep. Holds **no key material** and is **never** on the withdraw/exit path (N2); losing the
   table degrades replay protection to fail-open, never custody.
 

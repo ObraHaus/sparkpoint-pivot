@@ -2,7 +2,7 @@
 
 Replaces a process-local dict that lost every record on restart and could not span workers.
 First-write-wins moves from an in-process lock to a database UNIQUE constraint on
-``(account, method, path, key)``, which is what makes the guarantee hold ACROSS workers:
+``(account, chain_id, method, path, key)``, which is what makes the guarantee hold ACROSS workers:
 ``INSERT … ON CONFLICT DO NOTHING`` then re-read is the exact SQL expression of the previous
 ``dict.setdefault``, so the semantics are preserved rather than reinterpreted.
 
@@ -33,13 +33,14 @@ RETENTION = timedelta(hours=24)
 
 _SELECT = (
     "SELECT status_code, media_type, body FROM idempotency_records"
-    " WHERE account = $1 AND method = $2 AND path = $3 AND key = $4"
+    " WHERE account = $1 AND chain_id = $2 AND method = $3 AND path = $4 AND key = $5"
 )
 #: ON CONFLICT DO NOTHING = first-write-wins, enforced across workers by the UNIQUE constraint.
 _INSERT = (
-    "INSERT INTO idempotency_records (account, method, path, key, status_code, media_type, body)"
-    " VALUES ($1, $2, $3, $4, $5, $6, $7)"
-    " ON CONFLICT (account, method, path, key) DO NOTHING"
+    "INSERT INTO idempotency_records"
+    " (account, chain_id, method, path, key, status_code, media_type, body)"
+    " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+    " ON CONFLICT (account, chain_id, method, path, key) DO NOTHING"
 )
 _SWEEP = "DELETE FROM idempotency_records WHERE created_at < $1"
 
@@ -72,7 +73,7 @@ class PgIdempotencyStore:
     async def get(self, scope: IdempotencyScope) -> StoredResponse | None:
         try:
             row = await self._db.fetchrow(
-                _SELECT, scope.account, scope.method, scope.path, scope.key
+                _SELECT, scope.account, scope.chain_id, scope.method, scope.path, scope.key
             )
         except Exception as exc:
             self._note_missing_table(exc)
@@ -90,6 +91,7 @@ class PgIdempotencyStore:
             await self._db.execute(
                 _INSERT,
                 scope.account,
+                scope.chain_id,
                 scope.method,
                 scope.path,
                 scope.key,
