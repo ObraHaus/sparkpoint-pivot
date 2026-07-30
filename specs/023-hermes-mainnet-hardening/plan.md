@@ -3,7 +3,9 @@
 **Branch**: `feature/023-hermes-mainnet-hardening` · **Spec**: [spec.md](./spec.md) ·
 **Research**: [research.md](./research.md) · **Date**: 2026-07-30
 
-**Constitution**: v2.0.0 (`.specify/memory/constitution.md`) — N1–N5, Gate C, Principles I–VII.
+**Constitution**: **v3.0.0** (`.specify/memory/constitution.md`) — N1–N5, Gate C, Principles I–VII.
+*(Re-checked 2026-07-30 after feature 024 ratified v2.0.0 → v3.0.0 mid-flight; see the re-check note
+under Constitution Check. Principle VI requires this gate to pass against the CURRENT constitution.)*
 
 **Baseline**: `develop@03b7ed4` — 793 pytest green, `ruff check src` clean, strict mypy clean
 (122 source files). Any red introduced here is this feature's defect.
@@ -88,6 +90,32 @@ Saying so in the code is part of the deliverable — an overstated guarantee is 
 | **Workflow: contract audit before mainnet / simulation before sign / beta-gating** | **N/A to this diff** — no contract change, no new signing surface, no gating change. This feature is a *prerequisite* to the T103 audit gate, not a substitute for it. |
 
 **Verdict: PASS.** No violation requires an exception. One complexity trade is recorded below.
+
+### v3.0.0 re-check (2026-07-30)
+
+Feature 024 ratified the constitution **v2.0.0 → v3.0.0** (a MAJOR amendment) while this feature was
+in flight, so the gate was re-run rather than assumed. v3.0.0's substantive changes are: Morpho Vault
+V2 Fee Wrappers admitted as a permitted wrapper shape; `SparkPointMorphoVault` superseded for NEW
+deployments; the Base-Sepolia demo wrapper retired; IV.5's ineligibility rule narrowed to exclude
+*discretionary* roles; and **Robinhood Chain mainnet (4663) added to the in-scope network set**.
+
+**Still PASS, and nothing in this feature is affected by the wrapper/fee changes** — 023 touches no
+contract, no vault, no fee path, and no wrapper. Two interactions were checked explicitly:
+
+1. **The 4663 chain-scope extension.** 4663 is ratified but is NOT yet in
+   `policy.SUPPORTED_CHAIN_IDS` (still `8453 · 84532 · 31337 · 46630` on develop), so this feature
+   correctly does not carry a `_CHAIN_RPC_ENVS` row for it. An unlisted chain resolves only from the
+   explicit override, which is fail-closed and safe. A ⚠️ handoff comment now sits on
+   `_CHAIN_RPC_ENVS` so whoever implements 4663 adds its row rather than silently inheriting the
+   override-only path. **The per-chain design is what makes adding 4663 safe** — under the old
+   cross-chain fallback, a new chain would have inherited a Base or fork url by default.
+2. **The v3.0.0 fee-disclosure obligations** (a Fee Wrapper has no high-water mark, so the "above a
+   high-water mark" phrasing must not be used for one) are a WEB/copy concern, tracked by 024 as
+   T024. 023 changes no fee copy and no disclosure string.
+
+The Principle I/II/III assessments above hold verbatim under v3.0.0: none of the amended text touches
+the non-custody invariants, the AI-disposition rule, or the provable-not-promised standard, and this
+feature strengthens the third.
 
 ## Technical Context
 

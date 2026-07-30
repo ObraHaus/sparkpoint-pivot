@@ -103,7 +103,15 @@ export function AmountScreen({
     ready,
     label,
     onchain,
-  } = useVaultConfirm({ mode, assets: wantUnits, vaultAddress: sel.vaultAddress, kind: sel.kind, label: sel.label });
+  } = useVaultConfirm({
+    mode,
+    assets: wantUnits,
+    vaultAddress: sel.vaultAddress,
+    kind: sel.kind,
+    label: sel.label,
+    // 024: a retired vault fail-closes DEPOSIT only. `mode: "withdraw"` never reads this (N2).
+    retired: sel.retired,
+  });
 
   const ctaLabel = label;
 

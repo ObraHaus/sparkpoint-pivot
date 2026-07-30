@@ -81,12 +81,26 @@ export const baseSepolia: AddressBook = {
   sparkPointVaultFactory: "0x2774D4b0Af206b8F489BF1db9d8FAFbB17D36D8b",
   sparkPointWrappers: [
     {
-      // TESTNET DEMO wrapper — wraps a MockMorphoVault (NOT a real Morpho vault; see
-      // contracts/deployments/84532/testnet-wrapper-notes.md). Gives the alpha picker a real 2nd vault.
+      // ── RETIRED 2026-07-30 (feature 024) — DEPOSITS OFF, WITHDRAW UNTOUCHED (N2). ──
+      // This wrapper is immutably bound to `0x7f37…8420`, which is NOT a real Morpho vault: it is the
+      // test-tree `MockMorphoVault` (contracts/test/mocks/Mocks.sol:283-350). That mock's simulation
+      // hooks — simulateYield / simulateLoss / lendOut / setAvailableLiquidity / setMaxReturnsZero —
+      // are all plain `external` with NO access control, so ANY anonymous caller on Base Sepolia can
+      // move the wrapper's share price or drain its withdrawable liquidity. It must never be a
+      // deposit target. The wrapper's `morphoVault` is a constructor immutable, so this cannot be
+      // fixed by re-pointing it — only by retiring the wrapper.
+      //
+      // We keep the row (rather than deleting it) precisely so existing testnet holders keep a
+      // first-class exit: the picker still resolves it, /portfolio still shows the position, and
+      // withdraw/redeem is never gated. Real Morpho on 84532 replaces it in feature 024 Phase 3
+      // (Morpho Blue + VaultV2Factory 0xE3a2CEbc…2ea0 are both live on Base Sepolia).
       address: "0xff0a43FA397a90c1277C96A783e1171e1efbE9BB",
       label: "SparkPoint Morpho USDC",
       symbol: "spMORPHO",
       morphoVault: "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
+      retired: true,
+      retiredReason:
+        "Testnet demo only — its underlying is a mock with no access control. Withdrawals stay open; deposits are closed.",
     },
   ],
 

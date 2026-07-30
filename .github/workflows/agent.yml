@@ -1,14 +1,20 @@
 name: agent
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop]
     paths: ["services/agent/**", ".github/workflows/agent.yml"]
   pull_request:
     branches: [develop]
     paths: ["services/agent/**", ".github/workflows/agent.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   agent:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
     defaults: { run: { working-directory: services/agent } }
     # The vault chain-read client loads the vault ABI (+ methodIdentifiers) from the
     # committed T015 export, so agent CI needs NO `forge build` / `contracts/out`.

@@ -1,4 +1,4 @@
--- 0026_idempotency.sql — feature 023 (Hermes mainnet hardening, FR-023-013/014/015): the DURABLE
+-- 0027_idempotency.sql — feature 023 (Hermes mainnet hardening, FR-023-013/014/015): the DURABLE
 -- replay cache behind the §1.3 `Idempotency-Key` contract. One row per (account, method, path, key):
 -- the cached 2xx response a replay returns verbatim, so a retried build can never double-emit an
 -- IntentBundle. Additive, forward-only. Apply with PGCLIENTENCODING=UTF8.
@@ -21,7 +21,7 @@
 -- ⚠️ FAIL-OPEN HAS A COST, SO ORDERING IS LOAD-BEARING (FR-023-015a): because a MISSING table is
 -- indistinguishable from a working store at the request level, an agent deployed BEFORE this
 -- migration is applied would run with no replay protection, no error, and no failing check. Apply
--- 0026 BEFORE redeploying the agent. This migration is additive, so the currently-live agent
+-- 0027 BEFORE redeploying the agent. This migration is additive, so the currently-live agent
 -- ignores it — the unsafe order is the other one. The store also logs a DISTINCT table-missing
 -- warning as the backstop if that is ever got wrong.
 --
@@ -29,6 +29,12 @@
 -- bounded horizon rather than kept forever — see `idempotency_records_created_at_idx` and the
 -- sweep in db/idempotency.py. The table is a cache, not a ledger; `audit_logs` (0001) and
 -- `intent_bundles` (0021) remain the durable record of what was decided and issued.
+--
+--
+-- ⚠️ RENUMBERED 0026 -> 0027 (2026-07-30). Feature 024 landed `0026_vault_registry` on develop while
+-- this branch was in flight, so both claimed 0026. This file moved to 0027; the schema is unchanged
+-- and the SQL is idempotent, so re-applying under the new id is a no-op. See MIGRATIONS.md for the
+-- bookkeeping (the interim `0026_idempotency` yoyo row was removed when this was re-applied as 0027).
 --
 -- FK note: like session_keys (0025) and intent_bundles/executions (0021), this table is standalone
 -- (keyed by the request scope, not by a user row), so no FK churn is introduced.

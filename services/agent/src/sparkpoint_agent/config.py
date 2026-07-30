@@ -16,7 +16,8 @@ surface needs and exposes fail-closed getters:
                                   endpoints return a clean "vault not deployed" envelope —
                                   NEVER a fabricated quote (mirrors packages/shared/src/
                                   addresses/*.ts, where ``vault`` is ``undefined`` pre-deploy).
-  - ``CHAIN_ID``                — one of policy.SUPPORTED_CHAIN_IDS (8453 · 84532 · 31337).
+  - ``CHAIN_ID``                — one of policy.SUPPORTED_CHAIN_IDS
+                                  (8453 · 84532 · 31337 · 46630).
 
 NON-CUSTODY (N1/N3): this loader is PROVABLY keyless. It reads only the fixed
 ``ALLOWED_ENV_KEYS`` allowlist; the module-load guard ``_assert_no_key_material``
@@ -143,6 +144,10 @@ def _normalize_address(value: str, field: str) -> str:
 # built calldata still targets the MAINNET vault from env, so the failure mode was a bundle approved
 # against one chain's state and signed on another. The 84532 order had the mirror-image bug (a
 # Base-mainnet fork could be served as Sepolia). A missing value now fails CLOSED instead.
+# ⚠️ ADDING A CHAIN: give it an entry here. Constitution v3.0.0 (2026-07-30) ratified **Robinhood
+# Chain mainnet 4663** as in-scope, but it is NOT in ``policy.SUPPORTED_CHAIN_IDS`` yet, so it is
+# deliberately absent below. Whoever implements 4663 must add its row — an unlisted chain falls back
+# to ``(RPC_URL_ENV,)`` only — fail-closed and safe, but its chain-specific var is then ignored.
 _CHAIN_RPC_ENVS: dict[int, tuple[str, ...]] = {
     8453: (RPC_URL_ENV, BASE_MAINNET_RPC_URL_ENV),  # Base mainnet — explicit only
     84532: (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV),  # Base Sepolia

@@ -13,6 +13,17 @@
       "active": true
     },
     {
+      "slug": "morpho-demo-vault-retired-deposits-closed",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "We closed deposits on the test Morpho vault — your withdrawals stay open",
+      "body": "The second vault in the picker on our test network — \"SparkPoint Morpho USDC\" — was never a real Morpho vault. It was a stand-in we built so the picker had something to show, and we've now found that the stand-in can be poked by anyone on the test network: a stranger could move its share price or tie up the cash available to withdraw. Nobody's real money was ever involved, but that's not a vault we're willing to keep taking deposits into, so we've retired it. Deposits are closed. Withdrawals are NOT — if you hold shares in it, it still shows in your portfolio and you can take your money out at any time, exactly as before. That's a rule we hold ourselves to: we may decide to stop taking money in, but we never decide when you can take money out. The reason we built a stand-in in the first place was that we believed Morpho didn't run on test networks. We checked again properly and that was wrong — Morpho is live on Base Sepolia. So the replacement won't be another stand-in; it will be the real thing. We're also changing how we build these vaults: instead of writing our own vault contract to sit on top of Morpho's, we'll configure Morpho's own audited contract for it. Less of our code between you and your money.",
+      "cta_label": "See the trust center",
+      "cta_href": "/trust",
+      "published_at": "2026-07-30T09:00:00Z",
+      "active": true
+    },
+    {
       "slug": "hands-off-automation-proven-end-to-end",
       "type": "changelog",
       "tag": "Improved",

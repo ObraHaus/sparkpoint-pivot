@@ -15,7 +15,15 @@
  *   • deposit/withdraw WITHOUT a usable amount (or not signable yet) ⇒ the LIVE amount-entry screen,
  *     which runs the exact same gate on confirm.
  *   • deposit ALWAYS sits behind the beta whitelist (mirrors /vault/deposit) so the route can't
- *     bypass the deposit gate.
+ *     bypass the BETA gate.
+ *
+ * ⚠️ This route mounts its OWN `useVaultConfirm` and, when `hasAmount && ready`, renders
+ * `<ConfirmFlow>` DIRECTLY — it does not go through `<AmountScreenRoute>`. So it is a genuine second
+ * authorization point, not just a shell: any per-vault deposit gate must hold here independently.
+ * A 024 review caught exactly that — the `retired` fail-close was threaded into `_amount-screen` but
+ * not here, leaving `/confirm/deposit?vault=<retired>` signable. The durable fix was to resolve
+ * `retired` centrally inside `useVault` (from the address book, by vault address) so this route and any
+ * future mount inherit it; the explicit pass below is belt-and-braces. Keep both.
  *   • swap/premium/bridge (not live) ⇒ the shared honest <ConfirmFlow> placeholder, unchanged.
  */
 
@@ -84,6 +92,10 @@ function RouteVaultConfirm({ mode }: { mode: "deposit" | "withdraw" }) {
     vaultAddress: sel.vaultAddress,
     kind: sel.kind,
     label: sel.label,
+    // 024: a retired vault must never be deposit-signable from THIS mount either. `useVault` resolves
+    // `retired` from the address book by vault address, so the fail-close holds even without this line
+    // — it is passed explicitly as belt-and-braces, matching `_amount-screen`. Withdraw is unaffected (N2).
+    retired: sel.retired,
   });
 
   // THE REAL GATE — byte-identical to the chat inline card + the vault amount screen — as soon as the
