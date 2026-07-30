@@ -246,7 +246,9 @@ export default function Page() {
                       <span>
                         <span style={{ fontSize: 13.5, fontWeight: 600 }}>{w.label}</span>
                         <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
-                          testnet demo · wraps a mock Morpho vault
+                          {w.retired
+                            ? "retired · withdrawals only · wraps a mock Morpho vault"
+                            : "testnet demo · wraps a mock Morpho vault"}
                         </span>
                       </span>
                       <a
@@ -262,8 +264,10 @@ export default function Page() {
                   ))}
                   <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.5 }}>
                     <Icon name="info" size={12} /> A branded ERC-4626 wrapper you deposit into with <b>your own
-                    signature</b> (never agent-routed). This one wraps a <b>mock</b> Morpho vault for the testnet demo —
-                    Morpho has no testnet. A real Morpho vault would join the allowlist above on mainnet.
+                    signature</b> (never agent-routed). This one wraps a <b>mock</b> Morpho vault, so we have{" "}
+                    <b>retired it: deposits are closed, withdrawals stay open</b> and are never gated by us (N2).
+                    Morpho <i>does</i> run on Base Sepolia — Morpho Blue and the Vault V2 factory are both live there —
+                    so a real Morpho vault replaces this one rather than another mock.
                   </div>
                 </div>
               )}

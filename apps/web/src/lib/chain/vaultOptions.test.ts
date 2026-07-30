@@ -97,3 +97,28 @@ test("toWrapperPositionInput: assetIsUsdc omitted ⇒ defaults usdPriced true", 
 
 // avoid unused-type-import lint in strict configs
 export type _Opt = VaultOption;
+
+// ── 024: retirement flows through, and a retired address still RESOLVES ────────
+test("buildVaultOptions: retired + retiredReason pass through to the option", () => {
+  const opts = buildVaultOptions({
+    wrappers: [{ ...wrapper, retired: true, retiredReason: "mock underlying" }],
+  });
+  assert.equal(opts[1].retired, true);
+  assert.equal(opts[1].retiredReason, "mock underlying");
+});
+
+test("buildVaultOptions: a non-retired wrapper leaves retired undefined (no behaviour change)", () => {
+  const opts = buildVaultOptions({ wrappers: [wrapper] });
+  assert.equal(opts[1].retired, undefined);
+});
+
+// This is the reason a retired wrapper stays IN the options list: dropping it would make a holder
+// deep-linking to ?vault=<retired> silently land on the launch vault — a wrong-vault fallback that is
+// worse than plainly showing it as retired.
+test("resolveSelectedVault: a RETIRED wrapper still resolves, never silently falls back to launch", () => {
+  const opts = buildVaultOptions({ wrappers: [{ ...wrapper, retired: true }] });
+  const sel = resolveSelectedVault(opts, WRAPPER);
+  assert.equal(sel.vaultAddress, WRAPPER);
+  assert.equal(sel.retired, true);
+  assert.notEqual(sel.kind, "aave_launch");
+});

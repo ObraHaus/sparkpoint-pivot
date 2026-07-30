@@ -78,6 +78,10 @@ export function VaultPicker({
         const active = (o.vaultAddress ?? "launch") === (selected.vaultAddress ?? "launch");
         const isWrapper = o.kind === "morpho_wrapper";
         const showChip = isWrapper && soleWrapper && o.vaultAddress === wrapperOpt?.vaultAddress;
+        // 024: a retired vault stays SELECTABLE (so a holder can reach withdraw and /portfolio), but
+        // says so plainly. The deposit hard-stop lives in the confirm gate, not here — this component
+        // still adds no gate.
+        const retired = o.retired === true;
         return (
           <button
             key={o.vaultAddress ?? "launch"}
@@ -85,10 +89,33 @@ export function VaultPicker({
             aria-selected={active}
             className={active ? "active" : ""}
             onClick={() => select(o)}
-            title={isWrapper ? "Branded Morpho wrapper vault" : "The conservative launch Aave vault"}
+            title={
+              retired
+                ? (o.retiredReason ?? "Retired — withdrawals only.")
+                : isWrapper
+                  ? "Branded Morpho wrapper vault"
+                  : "The conservative launch Aave vault"
+            }
           >
             {o.label}
-            {showChip ? <VerifiedChip verified={wv.factoryVerified} /> : null}
+            {retired ? (
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  letterSpacing: 0.2,
+                  padding: "0 5px",
+                  borderRadius: 5,
+                  color: "var(--muted-foreground)",
+                  background: "var(--muted)",
+                }}
+              >
+                RETIRED
+              </span>
+            ) : showChip ? (
+              <VerifiedChip verified={wv.factoryVerified} />
+            ) : null}
           </button>
         );
       })}

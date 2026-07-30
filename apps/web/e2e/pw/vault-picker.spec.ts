@@ -74,21 +74,29 @@ test.describe("011 vault picker (live)", () => {
     await expect(page.getByText("net APY · not yet available")).toBeVisible();
     await expect(page.getByText("Aave supply rate")).toHaveCount(0);
 
-    // The wrapper option carries a live-attestation ✓ badge (factory.isSparkPointVault === true).
-    await expect(picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ })).toContainText("✓");
+    // 024: the wrapper is RETIRED, so the option is badged RETIRED rather than carrying the live
+    // attestation ✓. It stays selectable on purpose — a holder must still be able to reach withdraw.
+    await expect(picker.getByRole("tab", { name: /SparkPoint Morpho USDC/ })).toContainText("RETIRED");
   });
 
-  test("wrapper deposit screen: threads the selection + honest copy", async ({ page }) => {
+  test("024 — retired wrapper: the deposit screen renders but CANNOT be signed", async ({ page }) => {
     await page.goto(`/vault/deposit?vault=${WRAPPER}`, { waitUntil: "domcontentloaded" });
     await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
-    // Deposit is beta-gated; the deployer is beta-allowlisted, so the amount screen renders (not BetaGate).
     await expect(page.getByRole("heading", { name: /Deposit USDC/ })).toBeVisible({ timeout: 20_000 });
-    // Honest wrapper framing: routes into the wrapper via Morpho, net APY "—" (never an Aave estimate).
+    // Honest wrapper framing is unchanged...
     await expect(page.getByText(/Into SparkPoint Morpho USDC/)).toBeVisible();
-    await expect(page.getByText(/yield via Morpho/)).toBeVisible();
+    // ...but the CTA is the retirement fail-close, and it is DISABLED. Enter an amount first so the
+    // label cannot be the trivial "Enter an amount" state.
+    const amount = page.locator('input[inputmode="decimal"]').first();
+    await amount.fill("1");
+    const cta = page.getByRole("button", { name: /Vault retired — withdrawals only/ });
+    await expect(cta).toBeVisible({ timeout: 15_000 });
+    await expect(cta).toBeDisabled();
   });
 
-  test("wrapper withdraw screen renders (never provenance/beta-gated — N2)", async ({ page }) => {
+  // The N2 counterpart to the test above: retiring is OUR decision, so it may close deposits but must
+  // NEVER close the exit. If this ever fails while the deposit test passes, we have broken N2.
+  test("wrapper withdraw screen renders (never provenance/beta/retirement-gated — N2)", async ({ page }) => {
     await page.goto(`/vault/withdraw?vault=${WRAPPER}`, { waitUntil: "domcontentloaded" });
     await expect(page).not.toHaveURL(/\/(connect|verify)(\/|$|\?)/);
     await expect(page.getByRole("heading", { name: /^Withdraw$/ })).toBeVisible({ timeout: 20_000 });

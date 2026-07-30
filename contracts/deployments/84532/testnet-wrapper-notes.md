@@ -1,5 +1,30 @@
 # Base Sepolia (84532) — testnet Morpho-wrapper demo deploy
 
+> ## ⛔ RETIRED 2026-07-30 (feature 024) — deposits closed, withdrawals open
+>
+> **Why.** The wrapper's underlying `0x7f37…8420` is the test-tree `MockMorphoVault`
+> (`contracts/test/mocks/Mocks.sol:283-350`). Its simulation hooks — `simulateYield`, `simulateLoss`,
+> `lendOut`, `setAvailableLiquidity`, `setMaxReturnsZero` — are all plain `external` with **no access
+> control**, so any anonymous caller on Base Sepolia can move the wrapper's share price or drain its
+> withdrawable liquidity. The wrapper's `morphoVault` is a constructor **immutable**, so this cannot be
+> repaired by re-pointing it — only by retiring the wrapper.
+>
+> **What changed.** `packages/shared/src/addresses/baseSepolia.ts` marks the row `retired: true`.
+> Deposit fail-closes in `deriveVaultConfirm` (`depositSignable === false`, CTA
+> "Vault retired — withdrawals only"). **Withdraw, redeem and the `/portfolio` row are untouched** —
+> N2 says only underlying liquidity may ever block an exit, never a SparkPoint decision. The row is
+> deliberately *kept* (not deleted) so a holder deep-linking `?vault=0xff0a…E9BB` still resolves to the
+> wrapper instead of silently falling back to the launch vault.
+>
+> **The premise below is also now false.** "Morpho has no curated testnet vaults" was the stated reason
+> for the mock. Verified on-chain 2026-07-30: Base Sepolia runs **Morpho Blue**
+> `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` (live markets, real supply/borrow), the **MetaMorpho V1.1
+> factory** `0x2c3FE6D71F8d54B063411Abb446B49f13725F784` (50 vaults created) and the **Vault V2 factory**
+> `0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0`. Feature 024 Phase 3 replaces this mock with real Morpho.
+>
+> **Not done here (needs a signer):** the on-chain `factory.allowlistMorphoVault(mock, false)` call, via
+> the Timelock. That blocks *future* deploys only and can never affect the deployed wrapper (N2).
+
 Deployed 2026-07-21 to give the alpha vault picker a real 2nd vault (Morpho has no curated testnet vaults).
 
 | Contract | Address | Notes |
