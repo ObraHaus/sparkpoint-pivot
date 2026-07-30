@@ -27,6 +27,7 @@ Non-custody invariants enforced here
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from enum import StrEnum
 from typing import Annotated
 
@@ -36,7 +37,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
+from ..chain.vault_resolution import resolve_vault_address
 from ..config import AgentConfig
+from ..db.pool import get_database
+from ..db.vault_registry import VaultRegistryStore
 from ..policy import CAPS, GOVERNANCE
 from ..policy.enums import ActionType, ReasonCode
 from ..policy.fee_copy import (
@@ -66,8 +70,8 @@ _UINT256_MAX = 2**256 - 1
 # carries the fuller custody statement; the withdraw form is the short profit-only line.
 #
 # 024/T024 — these now come from ``policy.fee_copy``, keyed on how the vault's fee ACCRUES rather
-# than hard-coded to a high-water mark. The only vault this service resolves today is the Aave launch
-# vault (``first_party``), which holds a real ``_highWaterMark``, so every value below is
+# than hard-coded to a high-water mark. The only vault this service resolves today is the Aave
+# launch vault (``first_party``), which holds a real ``_highWaterMark``, so every value below is
 # byte-identical to the constants it replaced and the §3.7 wire shape is unchanged. The
 # ``per_period_gain`` variants exist because constitution v3.0.0 ratified Morpho Vault V2 Fee
 # Wrappers, which keep NO high-water-mark state — a disclosure obligation that must be satisfied
@@ -222,7 +226,24 @@ def get_account(request: Request) -> AccountContext:
     return account
 
 
-def get_vault_reader(request: Request) -> VaultReader:
+def get_registry_store() -> VaultRegistryStore | None:
+    """The 024 vault-registry store, or ``None`` when no database is configured.
+
+    ``None`` is a normal state, not an error: registry resolution is opt-in and fails open to
+    ``SPARKPOINT_VAULT_ADDRESS``, so a service with no ``DATABASE_URL`` keeps working exactly as
+    before. Overridden in tests. Never on the withdraw path's critical section (N2).
+    """
+    try:
+        AgentConfig.from_env().require_database_url()
+    except Exception:  # noqa: BLE001 - an unconfigured DB must not break vault resolution
+        return None
+    return VaultRegistryStore(db=get_database())
+
+
+async def get_vault_reader(
+    request: Request,
+    store: Annotated[VaultRegistryStore | None, Depends(get_registry_store)] = None,
+) -> VaultReader:
     """Build the fail-closed chain-read client, SCOPED to the request's chain (T030 · §B3).
 
     The reader targets the chain the caller asserted via ``X-Chain-Id``: the RPC is resolved for
@@ -232,11 +253,26 @@ def get_vault_reader(request: Request) -> VaultReader:
     read. Construction raises :class:`VaultUnavailable` (RPC_UNREACHABLE) when no RPC is configured;
     each vault read raises NOT_DEPLOYED when the vault address is unset — both mapped to the §1.5
     envelope by :func:`vault_unavailable_handler`. Overridden in tests with a mocked reader.
+
+    024/T032 — the vault address is RESOLVED here (registry when enabled, else the env var) so this
+    dependency is the single per-request seam for it. Resolving once per request is deliberate: two
+    lookups could straddle an operator's registry edit and mix two addresses into one prepared
+    transaction. With the flag off this is byte-identical to the previous behaviour and does not
+    touch the database.
     """
     config = AgentConfig.from_env()
+    home_chain_id = config.chain_id
     account = getattr(request.state, "account", None)
     if isinstance(account, AccountContext):
         config = config.for_chain(account.chain_id)
+    # `for_chain` clears the vault on every non-home chain (the vault is Base-only) and the resolver
+    # must NOT undo that — otherwise a request on Robinhood 46630 could be handed a Base vault
+    # address, which is exactly the cross-chain vault read this dependency exists to prevent. So the
+    # registry is only consulted for the chain the vault actually lives on.
+    if config.chain_id == home_chain_id:
+        resolved = await resolve_vault_address(config, store)
+        if resolved != config.vault_address:
+            config = replace(config, vault_address=resolved)
     return VaultReader.from_config(config)
 
 
@@ -541,7 +577,10 @@ async def simulate_deposit(
     # asset() fails closed (VaultUnavailable → SIMULATION_UNAVAILABLE) when the vault is undeployed,
     # so a vault address is proven present before we read it for the calldata `to`.
     usdc = await reader.asset()
-    vault = chain_config.require_vault_address()
+    # 024/T032 — the reader already resolved the vault ONCE for this request (registry when enabled,
+    # else the env var). Taking it from there keeps the simulated calldata's `to` identical to the
+    # vault the reads above were priced against; a second resolution could disagree.
+    vault = reader.vault_address or chain_config.require_vault_address()
     receiver = account.account
 
     # Resolve to the asset amount (for the calldata) + the expected shares (for display).
@@ -607,7 +646,8 @@ async def simulate_withdraw(
     else:  # by == assets — shares to burn to withdraw the requested assets (rounds UP)
         assets = body.amount_int
         shares = await reader.preview_withdraw(assets)
-    vault = chain_config.require_vault_address()
+    # 024/T032 — as above: one resolution per request, taken from the reader.
+    vault = reader.vault_address or chain_config.require_vault_address()
 
     sim = await dry_run(
         _build_sim_request(

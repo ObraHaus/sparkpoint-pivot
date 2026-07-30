@@ -85,7 +85,15 @@ async def build_transaction(
     """
     chain_config = config.for_chain(account.chain_id)
     usdc = await reader.asset()
-    vault = chain_config.require_vault_address()
+    # 024/T032 — take the vault from the READER, which already resolved it once for this request
+    # (registry when enabled, else SPARKPOINT_VAULT_ADDRESS). Re-reading the config here would be a
+    # SECOND resolution: with the registry live, the two could disagree across an operator's
+    # edit and we would price a quote against one vault while emitting calldata for another.
+    # Still fails closed identically when nothing is deployed on this chain.
+    vault = reader.vault_address
+    if vault is None:
+        # Raises the canonical NOT_DEPLOYED ConfigError.
+        vault = chain_config.require_vault_address()
     bundle = await orchestrate.build_tx(
         body,
         account=account,

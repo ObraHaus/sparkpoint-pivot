@@ -16,17 +16,17 @@ mechanics differ, and the difference is adverse to the user:
   whenever price-per-share is at or below that mark, so a depositor who dips and recovers pays
   nothing until back above their previous peak.
 * ``per_period_gain`` — a Morpho Vault V2 keeps **no high-water-mark state at all**
-  (``interest = newTotalAssets.zeroFloorSub(_totalAssets)``, i.e. ``max(0, new - last)``). The fee is
-  charged on each positive increment since the last accrual, with no memory of a prior peak, so a
-  gain FOLLOWING an earlier loss IS charged even while the depositor is still under water.
+  (``interest = newTotalAssets.zeroFloorSub(_totalAssets)``, i.e. ``max(0, new - last)``). The fee
+  is charged on each positive increment since the last accrual, with no memory of a prior peak,
+  so a gain FOLLOWING an earlier loss IS charged even while the depositor is still under water.
 
 What survives on both bases, and may therefore still be promised unconditionally: never charged on
 principal, never charged in a flat or falling period, and taken as share dilution rather than by
 withholding assets.
 
 NOTE ON TODAY'S WIRE OUTPUT. The only vault this service resolves is the Aave launch vault, which is
-``high_water_mark`` — so every string this module returns today is byte-identical to the constants it
-replaced. The ``per_period_gain`` branch exists so the honest wording is in place BEFORE a Fee
+``high_water_mark`` — so every string this module returns today is byte-identical to the constants
+it replaced. The ``per_period_gain`` branch exists so the honest wording is in place BEFORE a Fee
 Wrapper can accept a deposit, which is exactly what the ratified obligation requires.
 """
 
