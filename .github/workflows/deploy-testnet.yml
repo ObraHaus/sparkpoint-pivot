@@ -39,7 +39,8 @@ jobs:
   simulate:
     # workflow_dispatch requires the typed confirm; PRs to develop always dry-run. Never on push.
     if: ${{ github.event_name == 'pull_request' || github.event.inputs.confirm == 'simulate-sepolia' }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
     env:
       # The ONLY RPC this job may use. On fork PRs (no secrets) it is empty and the
       # RPC-backed steps self-skip — exactly like the fork tests — while the secret-free
