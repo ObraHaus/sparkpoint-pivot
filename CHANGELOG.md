@@ -10,6 +10,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (security — alpha audit R1 medium #1: chat-swap slippage was unbounded)
+- **An assistant-proposed swap slippage is now clamped to the policy ceiling (300 bps).** Found while
+  verifying a decision record that claimed the chat-inline swap card's slippage was "bounded only by the
+  web client's 50 bps default" — it was bounded by nothing:
+  `ActionParamsSchema.maxSlippageBps` was `nonnegative()` with **no maximum**, `live-blocks.tsx`
+  forwarded the **agent-proposed** value straight through, and `amountOutMinimum` clamps only to
+  `[0, 10000]` bps (100%, i.e. `minOut ≈ 0`). On that card the slippage bound was therefore chosen by
+  the **model**, not the user, so a prompt-injected or compromised agent proposing 9900 bps produced a
+  sandwichable trade. Fixed in three layers: the agent clamps at source in `_swap_proposed_action`, the
+  wire schema now `.max(300)` so the unsafe value cannot be *represented*, and the web clamps
+  defensively in `lib/swap/math.clampProposedSlippageBps` before the value can reach
+  `amountOutMinimum`. The source clamp is required *by* the schema bound — otherwise an out-of-range
+  emission would fail validation and drop a legitimate block instead of being clamped. `undefined`
+  passes through so the card falls back to its own 50 bps preset; a missing value must never become a
+  permissive one. 8 regression tests (5 web, 3 agent).
+- **`docs/security/R1-findings.md` added.** R1 (2026-07-21) was report-only and its findings were never
+  committed, so its 3 mediums could not be tracked and its round-2 seam list was unavailable to a future
+  audit. Reconstructed with all three mediums verified against current code: M1 fixed here, M2
+  (idempotency scoping) fixed by 023, **M3 (S2S / `X-Owner` trust) still open** — and now load-bearing
+  for cache isolation, since 023's idempotency scope uses `X-Account` as a tenant key.
+- Corrected `COOLIFY.md`, which documented a `COOLIFY_API_TOKEN` env var that does not exist (the real
+  names are `COOLIFY_API_TOKEN_READ_READSENSITIVE` and `COOLIFY_API_TOKEN_RWD`).
+
 ### Changed — GOVERNANCE (024 Phase 1 — constitution **ratified v2.0.0 → v3.0.0**, MAJOR)
 - **Morpho Vault V2 Fee Wrappers are now permitted, and Robinhood Chain mainnet (4663) is in scope.** Ratified 2026-07-30 on operator authorization. **(1) IV.5's ineligibility rule narrowed** from "any SparkPoint-controlled address holds a role over the underlying" to: no role over the **child/underlying venue**, and no **discretionary** role (market selection, cap-setting, allocation) anywhere in the deposit path — SparkPoint may hold non-discretionary governance of its *own* wrapper when the risk-management powers are irreversibly **abdicated** at deployment. **(2) Permitted wrapper shapes generalised** to admit a Morpho Vault V2 Fee Wrapper under enumerated conditions (adapter list abdicated ⇒ one child forever; three critical gate setters abdicated; dead deposit first; multisig owner, never an EOA; ≥3-day curator timelock; 0 management fee, ≤20% performance fee; no "morpho" in the name; child passes the on-chain eligibility check). **(3) Principle VII clarified, not weakened** — a single-child, adapter-abdicated Fee Wrapper is not a meta-vault; **discretionary curation by SparkPoint remains forbidden**. **(4) Chain scope** extended to Base + Sui + Robinhood Chain 4663; **46630 has no Morpho at all** and stays swap-only with no mock substitute. `SparkPointMorphoVault` is **superseded** for new deployments.
 - **Two enforcement weakenings recorded explicitly rather than absorbed silently.** (a) The ≤20% / 0% fee cap moves from a **bytecode constant** to a **policy** guarantee (Morpho's V2 ceilings are 50% / 5%), enforced by a multisig owner + a ≥3-day timelock on the fee setters + a public Trust Center read. (b) **Vault V2 keeps NO high-water-mark state** — verified in `vault-v2` `accrueInterestView()` (`interest = newTotalAssets.zeroFloorSub(_totalAssets)`), so a Fee Wrapper's fee is profit-only *per accrual* (never in a flat/falling period, always share-dilution, never on principal) but **a gain following an earlier loss IS charged** even below the holder's previous peak. That makes it a **disclosure change**: the "over a high-water mark" phrasing MUST NOT be used for a Fee Wrapper, and the fee copy must be restated before one accepts a deposit (tracked as T024). The current copy stays accurate for the Aave launch vault, which has a real `_highWaterMark`.

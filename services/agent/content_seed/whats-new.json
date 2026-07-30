@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "swap-slippage-guardrail-tightened",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "We tightened the price protection on swaps started from chat",
+      "body": "When you start a swap from a chat suggestion, the card carries a \"max slippage\" setting — the worst price you're willing to accept before the trade is cancelled. We found that the assistant could propose that number without a ceiling, so in an unusual case it could have been set far too loose, which would let you get a noticeably worse price than the quote you saw. We've capped it at 3% in three separate places: where the assistant proposes it, in the data format itself, and again in the app before the trade is built. If no value is proposed you get the normal 0.5% default, and you can still set your own on the Swap page as before. Nothing changes in how swaps look or work for you, no funds were ever at risk from our side (we hold no keys and you sign every swap yourself), and we have no sign this was ever triggered — we found it ourselves while double-checking our own security notes, and we'd rather tell you than not.",
+      "cta_label": "Open Swap",
+      "cta_href": "/swap",
+      "published_at": "2026-07-30T13:00:00Z",
+      "active": true
+    },
+    {
       "slug": "mainnet-readiness-hardening-behind-the-scenes",
       "type": "changelog",
       "tag": "Improved",
