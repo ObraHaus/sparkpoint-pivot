@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-21
 
-**Status**: Draft
+**Status**: Draft — **US1 (live vault yields) SUPERSEDED by feature 024 Phase 4, 2026-07-31.** See below.
 
 **Input**: User description: "Make the app universal / multi-vault so the AI can SEE external Morpho/QuickNode-Earn vaults and suggest better yield strategies, and adding a future vault is easy (registry-only). Advisory + read-only only — no custody change."
 
@@ -33,6 +33,24 @@ Resolved with the operator on 2026-07-21 (see the approved plan Constitution Che
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - The AI can see live vault yields (Priority: P1) 🎯 MVP
+
+> **SUPERSEDED — 024/T053, 2026-07-31.** This story left a placeholder Morpho APY feed open. It is now
+> delivered, in a narrower and more honest form, by **feature 024 Phase 4**: `data/morpho_api.py`
+> (T050) reads `vaultV2ByAddress → avgNetApy` — already net of the entire fee chain, so it is the
+> IV.5 disclosure figure directly — and `api/vault_apy_poller.py` (T051) writes source-tagged
+> snapshots to `vault_apy_snapshots` from a **background loop only**, never the request path, because
+> the API is rate-limited and sustained abuse reportedly triggers a week-scale cooldown.
+>
+> **The honest limit this story anticipated is now enforced by the schema, not by intention.** Morpho's
+> API covers no testnet and rejects chainId 84532 outright, so on Base Sepolia the only legal write is
+> `source='unavailable'` with `net_apy_bps` NULL — the `vault_apy_unavailable_is_null` CHECK in
+> migration 0026 rejects a `0`. So this story's "never a fabricated or `0` APY" requirement is no
+> longer a rule someone must remember; a careless `x or 0` now fails the INSERT.
+>
+> **What is NOT carried over:** the story's broader "AI reasons over live external yields to suggest
+> better strategies" ambition. 024 delivers the honest *feed and disclosure*, not strategy direction
+> over it — and constitution IV.5(d) keeps curated-vault records out of the policy/strategy path by
+> design. Treat that ambition as open and unscheduled rather than delivered.
 
 Today the recommender is **yield-blind**: `_build_chain_context` sets
 `market=MarketData(gross_apy_bps=None, projected_apy_bps=None)`, so the LLM ranks the code-fixed candidate

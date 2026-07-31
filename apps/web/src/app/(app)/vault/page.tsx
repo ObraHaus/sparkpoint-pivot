@@ -29,7 +29,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
-import { feeBasisShortLabel } from "@/lib/policy/feeCopy";
+import { feeBasisShortLabel, vaultFeeChain } from "@/lib/policy/feeCopy";
 import { VaultPicker } from "@/components/ui/VaultPicker";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
@@ -79,7 +79,13 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const book = safeAddresses(bookChainId);
   const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
   const sel = resolveSelectedVault(options, selectedParam);
+  // `isWrapper` stays LEGACY-SPECIFIC (the SparkPointMorphoVault): it gates copy about a branded
+  // wrapper over one curated Morpho vault. `isMorphoVenue` is the broader question — "is the yield
+  // Morpho's rather than Aave's?" — and is what the APY/fee panel branches on, so a Vault V2 gets the
+  // Morpho treatment instead of silently falling into the Aave branch and being described as earning
+  // an Aave supply rate it has no relationship to.
   const isWrapper = sel.kind === "morpho_wrapper";
+  const isMorphoVenue = sel.kind === "morpho_wrapper" || sel.kind === "morpho_fee_wrapper";
   const depositHref = toHref("vault/deposit") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
   const withdrawHref = toHref("vault/withdraw") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
 
@@ -110,6 +116,28 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const netPct = framing?.netApyPct ?? 0;
   const supplyPct = (grossApyBps ?? 0) / 100;
   const feePctInt = Math.round((framing?.feeBps ?? v.netApy(0).feeBps) / 100);
+
+  // 024 / T052 — the three-line stacked fee chain for a Morpho venue.
+  //   * OUR fee is the vault's own live `performanceFeeBps` (on a V2, SparkPoint's fee IS the V2's
+  //     `performanceFee()` — there is no separate layer).
+  //   * The CHILD leg differs by kind and neither case may be rendered as a bare 0. On a Fee Wrapper
+  //     we allocate straight into a Morpho Blue market, so there is no child VAULT to stack on — a
+  //     fact worth stating. On the legacy wrapper we have never read the underlying's fee, so the
+  //     honest value is "not yet read", NOT zero.
+  //   * The NET is genuinely unavailable: Morpho's API covers no testnet, so `netApyBps` stays
+  //     undefined and the row renders "unavailable" rather than a fabricated 0%.
+  const feeChain = vaultFeeChain({
+    basis: v.feeBasis,
+    sparkpointFeeBps: v.performanceFeeBps,
+    // Deliberately NOT `v.managementFeeBps`: on a Vault V2 that selector is OUR vault's management
+    // fee, not a child's, so feeding it to the CHILD line would misattribute our own fee to someone
+    // else. The child leg is described by the note (Fee Wrapper) or left unread (legacy wrapper).
+    nativeFeeNote:
+      sel.kind === "morpho_fee_wrapper"
+        ? "no child vault — allocates directly into a Morpho Blue market, which charges no vault fee"
+        : undefined,
+    netApyBps: undefined,
+  });
 
   // Live CapRegistry per-user cap (US1); fall back to the compile-time policy mirror only when the
   // on-chain read is unresolved / CapRegistry isn't deployed on this chain — never a fabricated cap.
@@ -199,31 +227,56 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
             <div style={{ fontSize: 38, fontWeight: 600, letterSpacing: "-.02em" }} className="tnum">
-              {isWrapper ? "—" : apyLabel(framing?.netApyBps ?? null, { testnet })}
+              {isMorphoVenue ? "—" : apyLabel(framing?.netApyBps ?? null, { testnet })}
             </div>
             <div className="muted" style={{ fontSize: 13, marginBottom: 7 }}>
-              {isWrapper ? "net APY · not yet available" : "net APY · estimate"}
+              {isMorphoVenue ? "net APY · unavailable" : "net APY · estimate"}
             </div>
           </div>
-          {isWrapper ? (
+          {isMorphoVenue ? (
             <>
               <div className="apybreak" style={{ marginTop: 16 }}>
                 <div className="br">
                   <span className="muted">Yield source</span>
                   <span className="tnum">Morpho (external)</span>
                 </div>
-                <div className="br">
-                  <span className="muted">
-                    Fee · SparkPoint {feePctInt}% of yield{" "}
-                    <span style={{ fontSize: 11 }}>({feeBasisShortLabel(v.feeBasis)})</span>
-                  </span>
-                  <span className="tnum" style={{ fontSize: 12 }}>+ Morpho curator fee</span>
-                </div>
+                {/* 024 / T052 — the stacked fee chain as THREE SEPARATE LINES.
+                    IV.5 requires the chain disclosed net, and it must be three rows rather than one
+                    blended number because the two fees have different owners: ours we choose, the
+                    child's we merely inherit and cannot change. This replaced a single vague
+                    "+ Morpho curator fee", which named a fee without ever stating its size.
+                    `vaultFeeChain` keeps "we didn't read it" and "there is none" distinct — the same
+                    discipline that makes an unavailable APY render as "unavailable", never 0%. */}
+                {feeChain.map((line) => (
+                  <div key={line.kind}>
+                    {/* Same rule as the launch branch: a divider sets the NET apart from the
+                        components above it, so the summary line reads as a total rather than a
+                        fourth ingredient. */}
+                    {line.kind === "net" ? <div className="divider" style={{ margin: "4px 0" }} /> : null}
+                    <div
+                      className="br"
+                      style={line.kind === "net" ? { fontWeight: 600 } : undefined}
+                    >
+                      <span className={line.kind === "net" ? undefined : "muted"}>{line.label}</span>
+                      <span
+                        className="tnum"
+                        style={{
+                          fontSize: 12,
+                          // An honest unknown is secondary + italic so it never reads as a figure.
+                          color: line.unknown ? "var(--muted-foreground)" : undefined,
+                          fontStyle: line.unknown ? "italic" : undefined,
+                        }}
+                      >
+                        {line.value}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-                Routes pooled USDC into a curated Morpho vault — yield is Morpho&apos;s, not Aave&apos;s, and the
-                SparkPoint performance fee stacks on Morpho&apos;s native curator fee. No live APY feed yet, so
-                it&apos;s shown as &ldquo;—&rdquo; — never an invented number.
+                Routes pooled USDC into Morpho — the yield is Morpho&apos;s, not Aave&apos;s. There is no live
+                APY feed for this vault, so the net is shown as &ldquo;unavailable&rdquo; rather than an
+                invented number.
               </div>
             </>
           ) : (
@@ -283,7 +336,7 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
             <span className="muted" style={{ fontSize: 11 }}>
               {/* Match the confirm gate's share-symbol convention (generic "shares" for a wrapper) so the
                   same token isn't named two ways across the overview → deposit/confirm flow. */}
-              {isWrapper ? "shares" : "spvUSDC"} ≈ {v.underlying !== undefined ? money(toNum(v.underlying)) : "—"}
+              {isMorphoVenue ? "shares" : "spvUSDC"} ≈ {v.underlying !== undefined ? money(toNum(v.underlying)) : "—"}
             </span>
           </div>
           <div className="preview-row">

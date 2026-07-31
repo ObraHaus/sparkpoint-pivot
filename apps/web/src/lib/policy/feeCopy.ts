@@ -123,3 +123,109 @@ export function feeCapEnforcementLabel(basis: VaultFeeBasis): string {
     ? "immutable — governance can never exceed it"
     : "policy cap — enforced by the 2-of-3 Safe owner and a ≥3-day timelock, observable on-chain";
 }
+
+/**
+ * ── 024 / T052 — THE STACKED FEE CHAIN, AS THREE SEPARATE LINES ─────────────────────────────────
+ *
+ * Constitution IV.5 requires the fee chain to be disclosed NET, and the reason it must be three
+ * lines rather than one blended number is that the two fees have different owners. Ours we choose;
+ * the child's we merely inherit and cannot change. A single "total fee" figure would hide which is
+ * which, and hide that a curator we do not control can move their half.
+ *
+ * The rule this model exists to enforce: **"we didn't read it" and "there is none" are different
+ * statements and must never render the same.** `undefined` means unread; `0` means genuinely zero.
+ * Collapsing them is the same class of error as rendering an unavailable APY as 0% — it converts an
+ * absence of knowledge into a confident claim.
+ */
+
+/** One row of the fee chain. `kind` lets a surface style the net line differently. */
+export interface FeeChainLine {
+  readonly kind: "sparkpoint" | "native" | "net";
+  readonly label: string;
+  readonly value: string;
+  /** True when the value is an honest "we don't know" rather than a figure. */
+  readonly unknown: boolean;
+}
+
+export interface FeeChainInput {
+  /** How OUR fee accrues — drives the parenthetical on the SparkPoint line. */
+  readonly basis: VaultFeeBasis;
+  /** SparkPoint's performance fee in bps. `undefined` ⇒ not yet read (NOT "zero"). */
+  readonly sparkpointFeeBps: number | undefined;
+  /** The child's own performance fee in bps. `undefined` ⇒ not read; `0` ⇒ genuinely none. */
+  readonly nativePerformanceFeeBps?: number | undefined;
+  /** The child's own management fee in bps. Same undefined-vs-0 rule. */
+  readonly nativeManagementFeeBps?: number | undefined;
+  /**
+   * A registry note explaining the child leg when there is no numeric fee to show — e.g. on Base
+   * Sepolia our V2 allocates straight into a Blue market, so there is no child VAULT to stack on.
+   */
+  readonly nativeFeeNote?: string | undefined;
+  /** Net APY in bps, already net of the whole chain. `undefined` ⇒ genuinely unavailable. */
+  readonly netApyBps?: number | undefined;
+}
+
+/** bps → a percent string with no float drift: `1000` → `"10%"`, `25` → `"0.25%"`. */
+function bpsPct(bps: number): string {
+  const sign = bps < 0 ? "-" : "";
+  const b = Math.abs(bps);
+  const whole = Math.trunc(b / 100);
+  const frac = b % 100;
+  if (frac === 0) return `${sign}${whole}%`;
+  return `${sign}${whole}.${String(frac).padStart(2, "0").replace(/0$/, "")}%`;
+}
+
+/**
+ * The three lines: what SparkPoint charges, what the child charges, and the resulting net.
+ *
+ * Never invents a number. An unread fee renders "not yet read", an absent child leg renders its
+ * reason, and an unavailable net renders "unavailable" — never `0%`, which would be a fabricated
+ * yield (Principle III / FR-013; Morpho's API covers no testnet, so on Base Sepolia "unavailable"
+ * is the permanent and correct answer rather than a transient one).
+ */
+export function vaultFeeChain(input: FeeChainInput): readonly [FeeChainLine, FeeChainLine, FeeChainLine] {
+  const ours: FeeChainLine =
+    input.sparkpointFeeBps === undefined
+      ? { kind: "sparkpoint", label: "SparkPoint performance fee", value: "not yet read", unknown: true }
+      : {
+          kind: "sparkpoint",
+          label: `SparkPoint performance fee (${feeBasisShortLabel(input.basis)})`,
+          // 0 is a real, checkable claim here — say it plainly rather than hiding the row.
+          value: input.sparkpointFeeBps === 0 ? "0% — none charged" : `${bpsPct(input.sparkpointFeeBps)} of yield`,
+          unknown: false,
+        };
+
+  const perf = input.nativePerformanceFeeBps;
+  const mgmt = input.nativeManagementFeeBps;
+  let native: FeeChainLine;
+  if (perf === undefined && mgmt === undefined) {
+    // Unread. If the registry explains WHY there is no child leg, that explanation is the honest
+    // value; otherwise say we have not read it rather than implying zero.
+    native = input.nativeFeeNote
+      ? { kind: "native", label: "Underlying vault fee", value: input.nativeFeeNote, unknown: false }
+      : { kind: "native", label: "Underlying vault fee", value: "not yet read", unknown: true };
+  } else {
+    const parts: string[] = [];
+    if (perf !== undefined) parts.push(`${bpsPct(perf)} performance`);
+    if (mgmt !== undefined && mgmt !== 0) parts.push(`${bpsPct(mgmt)} management`);
+    const allZero = (perf ?? 0) === 0 && (mgmt ?? 0) === 0;
+    native = {
+      kind: "native",
+      label: "Underlying vault fee",
+      value: allZero ? "0% — the underlying charges nothing" : parts.join(" + "),
+      unknown: false,
+    };
+  }
+
+  const net: FeeChainLine =
+    input.netApyBps === undefined
+      ? { kind: "net", label: "Net APY, after every fee above", value: "unavailable", unknown: true }
+      : {
+          kind: "net",
+          label: "Net APY, after every fee above",
+          value: bpsPct(input.netApyBps),
+          unknown: false,
+        };
+
+  return [ours, native, net] as const;
+}
