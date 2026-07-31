@@ -20,10 +20,23 @@ Legend: `[x]` done in this PR · `[ ]` not started · **[GATED]** blocked on con
 - [x] **T010** e2e: retired deposit CTA visible **and disabled**; withdraw still renders; picker shows RETIRED.
 - [x] **T011** Record the retirement + the falsified premise in `contracts/deployments/84532/testnet-wrapper-notes.md`.
 - [x] **T012** Mark feature 011 superseded in `DEVELOPMENT.md`.
-- [ ] **T013** *(needs a signer, not code)* Call `factory.allowlistMorphoVault(mock, false)` via the
-      Timelock. Blocks future deploys only; can never affect the deployed wrapper (N2).
-- [ ] **T014** *(needs DB access)* Set the `sparkpoint_wrappers` row to a retired status and annotate
-      `morpho_curated_allowlist`.
+- [x] **T013** ✅ **DONE 2026-07-31.** `factory.allowlistMorphoVault(mock, false)` executed via the MorphoWrapperTimelock `0xE7b9FfB9…55B5` (the factory's `owner()`), which the deployer holds PROPOSER+EXECUTOR on at `minDelay 0`. schedule `0x92f9de39…192e` → execute `0x9d49c2b8…19a9`. **Verified: `isAllocated`→ `isAllowlisted(mock)` is now `false`.** N2 re-proved immediately after: the retired wrapper's holder still has `maxRedeem(deployer) = 50000000`, their full balance — revoking blocks FUTURE deploys over the mock and cannot touch the existing wrapper, whose `morphoVault` binding is a constructor immutable.
+- [~] **T014** **PARTIALLY DONE 2026-07-31 — one half is blocked by the 0016 SCHEMA, not by access.**
+      * ✅ **`morpho_curated_allowlist` revoked.** The mock is now `allowed=false, status='revoked'` with the
+        reason appended — the canonical pairing the app's own writer produces
+        (`db/vault_factory.py`: `status = "allowlisted" if allowed else "revoked"`). Applied via the
+        committed, idempotent `contracts/deployments/84532/retire-mock-wrapper-rows.sql` (re-run proven
+        to be a no-op: notes length identical across two passes).
+      * ⛔ **`sparkpoint_wrappers.status = 'retired'` is IMPOSSIBLE without a schema change.** The live
+        constraint is `CHECK (status = ANY (ARRAY['pending','live']))` — there is no retired state in
+        0016. The attempt raised `CheckViolationError` and rolled back cleanly (verified: nothing partial
+        landed). Widening that CHECK is a **migration against the shared develop DB**, deliberately left
+        as an operator decision rather than slipped into an ops script.
+      * **The retirement is nevertheless durably on record**, in the table that supersedes this one:
+        migration 0026 states "`status = 'redeem_only'` is the durable form of a RETIRED vault", and
+        `vault_registry` already carries this wrapper as `redeem_only`. Nothing reads 0016's `status`
+        for an authorization decision — the only predicate on it anywhere is the promote-only
+        `WHERE status='pending'` guard, and the user-facing picker/exit read the STATIC address book.
 
 ## Phase 1 — Ratify
 
