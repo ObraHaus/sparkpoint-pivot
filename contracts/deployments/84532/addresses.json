@@ -1,4 +1,22 @@
 {
+  "$comment": [
+    "Base Sepolia (84532) deployment record.",
+    "",
+    "INERT ENTRIES (024/T083, verified on-chain 2026-07-31). `AaveV3Adapter` and `KillSwitch` are",
+    "DEPLOYED (306 and 456 bytes of code) but are NOT wired to anything: the live SparkPointVault",
+    "0x15D269B1...47f2 exposes guardian/pauser/paused/pauseDeposits/unpauseDeposits and has NO",
+    "adapter() or killSwitch() selector at all, and no runtime code in apps/web or services/agent",
+    "reads the killSwitch address (only its ABI is exported). They are kept for the deployment",
+    "record rather than deleted, but they MUST NOT be presented as active safety machinery \u2014 the",
+    "live pause/guardian path is the vault's own, not this standalone KillSwitch.",
+    "",
+    "`MockMorphoVault_testnetDemo` is a TEST MOCK with unpermissioned simulation hooks and is the",
+    "retired SparkPointMorphoVault's immutable underlying. Never a deposit target.",
+    "",
+    "Two USDCs on this chain: `circleUsdc` 0x036CbD53... is what Morpho's markets (and our Vault V2)",
+    "use; the Aave market + launch vault use 0xba50Cd2A..., which the shared address book calls",
+    "`usdc`. Both report symbol()=='USDC' at 6 dp and are NOT interchangeable."
+  ],
   "AaveV3Adapter": "0x6BA308C0E564690155769cd2211b31c3C554204e",
   "CapRegistry": "0x4538B536b1da5940deC8e15048Ce07a053699B04",
   "KillSwitch": "0x39C38c86611FF3679802D5341E830c83DB7F4537",
@@ -13,7 +31,6 @@
   "MockMorphoVault_testnetDemo": "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
   "SRK": "0x2dF90304126560F01Dd6EafB508B69c033dFeD52",
   "feeTreasurySafe": "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
-
   "MorphoBlue": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
   "MorphoVaultV2Factory": "0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0",
   "MorphoMarketV1AdapterV2Factory": "0xa24674Cc2c603FBA8AE6b442E3dB05f3dDaAa3D5",

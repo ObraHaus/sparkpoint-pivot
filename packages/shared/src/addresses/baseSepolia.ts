@@ -64,6 +64,14 @@ export const baseSepolia: AddressBook = {
   policyModule: "0x55A210191420823F309c25220257D7666BA38134",
   vault: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
   capRegistry: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
+  // ── INERT on this chain (024/T083, verified on-chain 2026-07-31) ──────────────────────────────
+  // Deployed (456 bytes of code) but NOT WIRED TO ANYTHING. The live `SparkPointVault`
+  // 0x15D269B1…47f2 exposes `guardian` / `pauser` / `paused` / `pauseDeposits` / `unpauseDeposits`
+  // and has **no `killSwitch()` selector at all**, and nothing in `apps/web` or `services/agent`
+  // reads this address (only the ABI is exported). Kept for the deployment record rather than
+  // deleted — but it MUST NOT be presented as active safety machinery anywhere in the UI or the
+  // Trust Center: the live pause path is the VAULT's own, not this standalone contract. The same
+  // applies to `AaveV3Adapter` in `contracts/deployments/84532/addresses.json`.
   killSwitch: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
   // ── Guardian control cutover to a 2-of-3 Safe (2026-07-24) ──
   // The vault's guardian() is the OZ TimelockController 0x0A21…d720 (unchanged). Its

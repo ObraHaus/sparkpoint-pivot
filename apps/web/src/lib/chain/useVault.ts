@@ -160,8 +160,10 @@ export interface UseVaultResult {
   /**
    * The vault asset's decimals. Read live on-chain per vault (`decimals()`), falling back to USDC's 6
    * before the read resolves — so a wrapper over a non-6dp asset scales correctly, never hardcoded.
-   * This is the vault's SHARE-token `decimals()`; it equals the ASSET decimals only under the
-   * `_decimalsOffset() == 0` invariant these OZ-ERC-4626 vaults hold (see the read site).
+   * For SparkPoint's own ERC-4626s this is the vault's SHARE-token `decimals()`, which equals the
+   * asset's only because those vaults never override OpenZeppelin's default `_decimalsOffset()` of
+   * 0. That is a DEFAULT WE RELY ON, not a guarantee the contract enforces — and 024 supplied the
+   * counterexample, so a Fee Wrapper reads the asset's own `decimals()` instead (see the read site).
    */
   readonly assetDecimals: number;
   /**
@@ -603,12 +605,18 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // ── per-vault decimals (011): read live so a wrapper over a non-6dp asset scales right; the
   //    launch vault reads 6 and matches USDC_DECIMALS. Fails soft to 6 before it resolves.
   //
-  //    INVARIANT (fix 6): this reads the vault's OWN erc20 `decimals()` — i.e. the SHARE-token
-  //    decimals — yet consumers also scale ASSET amounts (deposit/withdraw USDC) with it. That is
-  //    sound ONLY because these OZ ERC-4626 vaults (launch `SparkPointVault` + the branded
-  //    `SparkPointMorphoVault` wrapper) use the default `_decimalsOffset() == 0`, so
-  //    share-decimals == asset-decimals. If a future vault sets a non-zero virtual offset this
-  //    breaks; such a vault MUST instead read `asset()`'s decimals separately. Launch: 6 == 6. ──
+  //    A RELIED-ON DEFAULT, NOT AN INVARIANT (024/T082 — this comment previously called it one).
+  //    This reads the vault's OWN erc20 `decimals()` — the SHARE-token decimals — yet consumers also
+  //    scale ASSET amounts (deposit/withdraw USDC) with it. That is sound for SparkPoint's own
+  //    ERC-4626s (launch `SparkPointVault` + the `SparkPointMorphoVault` wrapper) ONLY because they
+  //    never override OpenZeppelin's default `_decimalsOffset()` of 0, so share-decimals ==
+  //    asset-decimals. Nothing enforces that: it is a default we inherit and have verified, and any
+  //    vault that sets a non-zero offset breaks it.
+  //
+  //    THE COUNTEREXAMPLE IS NOW DEPLOYED, so this is no longer hypothetical: a Morpho Vault V2 sets
+  //    an offset (`virtualShares() == 1e12`) and reads 18 decimals over a 6-dp asset. Such a vault
+  //    MUST read `asset()`'s decimals separately — which is exactly what the fee-wrapper branch
+  //    below does. Launch: 6 == 6. ──
   const decimalsRead = useReadContract({
     address: vault as Address,
     abi: erc20Abi,

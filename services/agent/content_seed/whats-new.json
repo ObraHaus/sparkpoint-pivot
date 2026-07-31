@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "fee-breakdown-now-shows-every-layer",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The fee breakdown now shows every layer — including the ones that aren't ours",
+      "body": "On the Morpho vault our fee summary used to end with the phrase \"+ Morpho curator fee\". That named a cost without ever telling you how big it was, which is not much better than not mentioning it.\n\nIt now shows three separate lines: **what we charge**, **what the underlying vault charges**, and **the net after both**. We split them deliberately rather than showing one combined number, because the two are not the same kind of thing. Ours we set and can answer for. The other belongs to a vault curator we don't control, who can change it without asking us. Blending them into one figure would hide that distinction — and hide which half could move.\n\nOne detail we want to be pedantic about: **\"we haven't read this yet\" and \"there is none\" are now shown differently.** If a fee is genuinely zero it says so. If we simply haven't been able to read it, it says that instead. Those look the same on a screen if you're careless, and treating an unknown as a zero is how a product ends up quietly making a promise it never checked.\n\nThe net yield line follows the same rule. On our test network Morpho publishes no yield data at all, so it reads \"unavailable\" rather than 0% — because 0% would be a number we made up.",
+      "cta_label": "See the fee breakdown",
+      "cta_href": "/fees",
+      "published_at": "2026-07-31T02:30:00Z",
+      "active": true
+    },
+    {
       "slug": "real-morpho-vault-live-on-testnet",
       "type": "changelog",
       "tag": "Added",
