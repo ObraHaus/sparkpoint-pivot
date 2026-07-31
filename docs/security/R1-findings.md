@@ -1,5 +1,8 @@
 # Alpha security audit — Round 1 (R1) findings register
 
+> Part of the mainnet-readiness set. **Start at [`mainnet-readiness.md`](../orchestration/mainnet-readiness.md)** for the
+> full picture; this file is the detail behind one part of it.
+
 **Audit date:** 2026-07-21 · **Target:** the alpha at `develop` (pre-019/020/021/022/023) ·
 **Mode:** full-depth adversarial, **report-only — no code was changed by the audit itself**.
 

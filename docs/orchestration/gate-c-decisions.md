@@ -1,5 +1,8 @@
 # Gate C — recorded operator decisions
 
+> Part of the mainnet-readiness set. **Start at [`mainnet-readiness.md`](./mainnet-readiness.md)** for the
+> full picture; this file is the detail behind one part of it.
+
 Gate C (mainnet) requires the recorded internal security audit + hardening sign-off (T103) and is
 **never autonomous** ([`GATES.md`](./GATES.md)). This file is the register of the *operator decisions*
 that gate depends on — the ones that are policy calls rather than engineering work, recorded so they
