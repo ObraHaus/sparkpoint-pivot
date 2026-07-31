@@ -218,6 +218,29 @@ Two pieces of config:
 
 Developed in a [Coder](https://coder.com/) workspace (`testcoder.aldrickb.xyz`); forwarded ports reached at `https://<port>--<workspace-host>`.
 
+### ⚠️ Parallel repo copies: validate the tree you think you are validating
+
+Several sibling clones of this repo exist side by side (`sparkpoint-pivot`, `sparkpoint-pivot-2`, `sparkpoint-pivot-3`, …) so agents can work in parallel. That makes one Python-tooling detail load-bearing:
+
+**`uv run <tool>` can resolve a SIBLING clone's `.venv`. `uv run python -m <tool>` does not.** Measured in `services/agent` inside `sparkpoint-pivot-3`, with `VIRTUAL_ENV` and `PYTHONPATH` both unset and no `pytest` on `PATH`:
+
+```
+uv run pytest            → sys.prefix = …/sparkpoint-pivot/services/agent/.venv     ← the SIBLING
+uv run python -m pytest  → sys.prefix = …/sparkpoint-pivot-3/services/agent/.venv   ← correct
+uv run python -c …       → sys.prefix = …/sparkpoint-pivot-3/services/agent/.venv   ← correct
+```
+
+So **use `uv run python -m pytest` / `-m ruff` / `-m mypy`** when validating a specific clone. The failure mode is quiet and expensive: third-party packages come from the wrong venv while `sparkpoint_agent` still resolves to the local `src/`, so a suite can pass "green" against a hybrid of two trees. A missed `ruff` failure has turned CI red this way before. Running `uv sync --frozen --python 3.12` in the clone first is necessary but **not sufficient** — it creates the right venv without changing which one `uv run <tool>` picks.
+
+Quick assertion when in doubt:
+
+```bash
+uv run python -m pytest --version >/dev/null && \
+  uv run python -c "import sys, sparkpoint_agent; print(sys.prefix); print(sparkpoint_agent.__file__)"
+```
+
+Both paths must contain the clone you are in.
+
 ## Conventions & security
 
 See the constitution (`.specify/memory/constitution.md`) and the repo `CLAUDE.md`. Validate every change before a PR: `pnpm typecheck && pnpm lint && pnpm build` (+ tests; `forge test` for contracts). PRs target `develop` and are gated by the **OH Defender** scan (resolve all findings before merge). **Conventional Commits**; end every commit with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Ask before any production / Coolify-mutating action.

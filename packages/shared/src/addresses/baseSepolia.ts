@@ -104,6 +104,36 @@ export const baseSepolia: AddressBook = {
     },
   ],
 
+  // ── Feature 024 Phase 3: a REAL Morpho Vault V2, broadcast 2026-07-30 ──────────────────────────
+  // Morpho's OWN audited Vault V2, created by Morpho's `VaultV2Factory` and configured by us — the
+  // organising rule of constitution v3.0.0 ("stop writing custody-critical Solidity; configure
+  // Morpho's instead"). This REPLACES the retired `SparkPointMorphoVault` demo above, whose
+  // underlying was a mock. Verified live after the handover tx 0x5f44f1af…58fd:
+  //   isVaultV2 true · owner + curator + sentinel = the 2-of-3 Safe 0xCB13…578f
+  //   setReceiveSharesGate / setSendSharesGate / setReceiveAssetsGate PERMANENTLY abdicated (N2)
+  //   3-day timelocks on all 7 curator selectors · dead deposit = 1e18 shares to 0xdead (1.000000 USDC)
+  //   native performanceFee() == managementFee() == 0
+  //
+  // NOTE THE ASSET. This vault's `asset()` is CIRCLE's USDC `0x036CbD53…`, NOT the `usdc` field
+  // above (Aave's test token `0xba50Cd2A…`). Both report symbol()=="USDC" at 6 dp on this chain and
+  // are NOT interchangeable — Morpho's markets use Circle's. This is why `asset` is a required field
+  // on the entry rather than inherited from the book.
+  morphoVaultV2Factory: "0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0",
+  morphoFeeWrappers: [
+    {
+      address: "0x756C41dD33481620EbCB0357F759d31c9eE72170",
+      label: "SparkPoint USDC Yield",
+      symbol: "spUSDCv2",
+      adapter: "0x4C4dCd2e2Bb985a606C1e7d4822bB330637D8E24",
+      marketId: "0x01351cf859346bbae655f1c9da71ba0e9ad201dd79a276c28f34e574386b0bfb",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      assetDecimals: 6,
+      // 18, not 6 — the V2 applies a decimals offset (`virtualShares() == 1e12`). Scaling a USDC
+      // amount with this number instead of `assetDecimals` is a 1e12 error.
+      shareDecimals: 18,
+    },
+  ],
+
   // ── Premium / SRK (feature 012) — Base-Sepolia only ──
   // `srk` is filled by script/DeploySRK.s.sol at deploy time; undefined ⇒ the pay surface shows an
   // honest "SRK unavailable on this network" state rather than a fabricated value.

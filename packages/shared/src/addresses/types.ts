@@ -168,6 +168,19 @@ export interface AddressBook {
    * addresses. **NOT** policy `TargetRef`s. Undefined/empty ⇒ launch vault only (byte-identical).
    */
   readonly sparkPointWrappers?: readonly SparkPointWrapper[];
+  /**
+   * Morpho's own `VaultV2Factory` on this chain (feature 024) — the contract that CREATED our Vault V2
+   * Fee Wrappers, and the only acceptable provenance root for one (`isVaultV2(address)`). Distinct from
+   * {@link sparkPointVaultFactory}, which registers SparkPoint's own bespoke wrappers (superseded for
+   * new deploys by constitution v3.0.0). Undefined ⇒ Morpho has no V2 factory on this chain.
+   */
+  readonly morphoVaultV2Factory?: Address;
+  /**
+   * Deployed **Morpho Vault V2 Fee Wrapper** instances (feature 024, constitution v3.0.0) — Morpho's
+   * own audited vault contract, configured by us, NOT SparkPoint custody Solidity. A curated DISPLAY
+   * list, **NOT** policy `TargetRef`s. Undefined/empty ⇒ none on this chain.
+   */
+  readonly morphoFeeWrappers?: readonly MorphoFeeWrapper[];
 }
 
 /**
@@ -190,6 +203,55 @@ export interface SparkPointWrapper {
    */
   readonly retired?: boolean;
   /** Why it was retired — surfaced in the picker tooltip + the Trust Center so the reason is public. */
+  readonly retiredReason?: string;
+}
+
+/**
+ * A deployed **Morpho Vault V2 Fee Wrapper** (feature 024) — one display entry for the vault picker.
+ *
+ * Deliberately NOT reusing {@link SparkPointWrapper}: the two are different contracts with different
+ * ABIs, and conflating them is exactly how a reverting read reaches production. A Vault V2 exposes
+ * NONE of `label()` / `morphoVault()` / `factory()` / `isSparkPointVault()` / `highWaterMark()` /
+ * `paused()`, so the wrapper-only reads in `useVault` must never be pointed at one.
+ */
+export interface MorphoFeeWrapper {
+  /** The Vault V2 itself — what a user's deposit/withdraw actually targets. */
+  readonly address: Address;
+  /** Display label. A V2 has no on-chain `label()`, so unlike a wrapper this is the ONLY source. */
+  readonly label: string;
+  /** The V2's own `symbol()` (set by us via `setSymbol`). */
+  readonly symbol?: string;
+  /**
+   * The vault's immutable allocation route — a `MorphoMarketV1AdapterV2` bound to this vault at
+   * creation. This is the auditable "what is underneath", standing in for a child vault: on Base
+   * Sepolia the canonical `MorphoVaultV1AdapterFactory` fee-wrapper path does not exist, so the V2
+   * allocates into a Morpho **Blue market** through this adapter rather than into a child V1 vault.
+   */
+  readonly adapter: Address;
+  /**
+   * The Blue market id the adapter allocates into (informational; `bytes32` hex). Present only for an
+   * adapter-into-market wrapper, absent for a child-vault wrapper.
+   */
+  readonly marketId?: string;
+  /**
+   * The vault's `asset()`. REQUIRED and never inferred from the chain's `usdc` field: Base Sepolia has
+   * TWO tokens that both report `symbol() == "USDC"` at 6 dp — Aave's `0xba50Cd2A…` (the address
+   * book's `usdc`) and Circle's `0x036CbD53…`, which is what Morpho's markets use. They are NOT
+   * interchangeable, and a Fee Wrapper's asset is the Circle one.
+   */
+  readonly asset: Address;
+  /** The ASSET's decimals (6 for USDC) — what deposit/withdraw amounts are denominated in. */
+  readonly assetDecimals: number;
+  /**
+   * The vault's SHARE decimals — **18** on a Vault V2 over a 6-dp asset, because V2 applies a
+   * decimals offset (`virtualShares() == 1e12`). These are stored separately from
+   * {@link assetDecimals} precisely because assuming they match is a 1e12 mis-scale on every
+   * displayed amount. Any consumer that scales an ASSET amount must use `assetDecimals`.
+   */
+  readonly shareDecimals: number;
+  /** RETIRED — deposits closed, withdraw/redeem deliberately untouched (N2). See SparkPointWrapper. */
+  readonly retired?: boolean;
+  /** Why it was retired — public, same rationale as {@link SparkPointWrapper.retiredReason}. */
   readonly retiredReason?: string;
 }
 
