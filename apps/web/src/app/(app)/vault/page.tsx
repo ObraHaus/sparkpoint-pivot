@@ -248,23 +248,28 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
                     `vaultFeeChain` keeps "we didn't read it" and "there is none" distinct — the same
                     discipline that makes an unavailable APY render as "unavailable", never 0%. */}
                 {feeChain.map((line) => (
-                  <div
-                    className="br"
-                    key={line.kind}
-                    style={line.kind === "net" ? { fontWeight: 600 } : undefined}
-                  >
-                    <span className={line.kind === "net" ? undefined : "muted"}>{line.label}</span>
-                    <span
-                      className="tnum"
-                      style={{
-                        fontSize: 12,
-                        // An honest unknown is styled as secondary text so it never reads as a figure.
-                        color: line.unknown ? "var(--muted-foreground)" : undefined,
-                        fontStyle: line.unknown ? "italic" : undefined,
-                      }}
+                  <div key={line.kind}>
+                    {/* Same rule as the launch branch: a divider sets the NET apart from the
+                        components above it, so the summary line reads as a total rather than a
+                        fourth ingredient. */}
+                    {line.kind === "net" ? <div className="divider" style={{ margin: "4px 0" }} /> : null}
+                    <div
+                      className="br"
+                      style={line.kind === "net" ? { fontWeight: 600 } : undefined}
                     >
-                      {line.value}
-                    </span>
+                      <span className={line.kind === "net" ? undefined : "muted"}>{line.label}</span>
+                      <span
+                        className="tnum"
+                        style={{
+                          fontSize: 12,
+                          // An honest unknown is secondary + italic so it never reads as a figure.
+                          color: line.unknown ? "var(--muted-foreground)" : undefined,
+                          fontStyle: line.unknown ? "italic" : undefined,
+                        }}
+                      >
+                        {line.value}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
