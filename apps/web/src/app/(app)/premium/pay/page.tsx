@@ -21,6 +21,7 @@ import {
   PREMIUM_PRICE_SRK_BASE,
   PREMIUM_PRICE_SRK_WHOLE,
 } from "@/lib/chain/premiumPay";
+import { SRK_FAUCET_ANCHOR } from "@/lib/chain/srkFaucet";
 import { type PremiumPayExec, useExecutePremiumTx } from "@/lib/chain/useExecutePremiumTx";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -184,12 +185,8 @@ export default function Page() {
             </div>
             <div className="payrow">
               <span className="muted">Price</span>
-              <span className="tnum">
-                {PREMIUM_PRICE_SRK_WHOLE.toString()} SRK{" "}
-                <span className="muted" title="Illustrative peg only — not an oracle price">
-                  ≈ $12.00
-                </span>
-              </span>
+              {/* SRK only — there is no USD oracle for it, so no dollar figure is shown. */}
+              <span className="tnum">{Number(PREMIUM_PRICE_SRK_WHOLE).toLocaleString()} SRK</span>
             </div>
             <div className="payrow">
               <span className="muted">Your SRK balance</span>
@@ -244,8 +241,13 @@ export default function Page() {
                 </span>
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                <button className="btn btn-outline btn-lg" style={{ flex: 1 }} onClick={() => router.push(toHref("srk"))}>
-                  Acquire SRK
+                {/* The faucet + live balance moved to /premium (026); /srk is now info-only. */}
+                <button
+                  className="btn btn-outline btn-lg"
+                  style={{ flex: 1 }}
+                  onClick={() => router.push(`${toHref("premium")}#${SRK_FAUCET_ANCHOR}`)}
+                >
+                  Get SRK from the faucet
                 </button>
               </div>
             </>

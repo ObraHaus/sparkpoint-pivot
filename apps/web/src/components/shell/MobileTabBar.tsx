@@ -3,19 +3,28 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/lib/icons";
-import { PRIMARY, SECONDARY } from "@/lib/nav";
+import {
+  containsRoute,
+  EXIT_ITEM,
+  NOTIFICATIONS_ITEM,
+  PERMISSIONS_ITEM,
+  PRIMARY,
+  SECONDARY,
+  toHref,
+} from "@/lib/nav";
+import { NavTree } from "./NavTree";
 
 export function MobileTabBar({ active }: { active: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreActive = SECONDARY.some((s) => s.route === active);
-
-  const moreLinks = [...SECONDARY, { route: "notifications", label: "Notifications", icon: "bell" as const }];
+  // Group children count too — being inside a collapsed group must not lose the "More" active state.
+  const moreActive = containsRoute(SECONDARY, active);
+  const close = () => setMoreOpen(false);
 
   return (
     <>
       <nav className="tabbar">
         {PRIMARY.map((n) => (
-          <Link key={n.route} href={"/" + n.route} className={active === n.route ? "active" : ""}>
+          <Link key={n.route} href={toHref(n.route)} className={active === n.route ? "active" : ""}>
             <Icon name={n.icon} size={21} />
             <span>{n.label}</span>
           </Link>
@@ -28,34 +37,30 @@ export function MobileTabBar({ active }: { active: string }) {
 
       {moreOpen && (
         <>
-          <div className="scrim show" onClick={() => setMoreOpen(false)} />
+          <div className="scrim show" onClick={close} />
           <div className="sheet show" role="dialog" aria-label="More">
             <div className="sheet-hd">
               <span className="t">More</span>
-              <button className="iconbtn" onClick={() => setMoreOpen(false)} aria-label="Close">
+              <button className="iconbtn" onClick={close} aria-label="Close">
                 <Icon name="x" size={18} />
               </button>
             </div>
             <div className="sheet-bd">
-              <Link href="/trust/exit" className="navlink exit" style={{ marginBottom: 12 }} onClick={() => setMoreOpen(false)}>
-                <Icon name="door" size={18} />
-                Withdraw / Exit
+              {/* Pinned above the fold, outside the tree — same two escape hatches as today (N2). */}
+              <Link href={toHref(EXIT_ITEM.route)} className="navlink exit" style={{ marginBottom: 12 }} onClick={close}>
+                <Icon name={EXIT_ITEM.icon} size={18} />
+                {EXIT_ITEM.label}
               </Link>
-              <Link href="/trust/permissions" className="navlink" onClick={() => setMoreOpen(false)}>
-                <Icon name="shieldcheck" size={18} />
-                Prove it — permissions
-              </Link>
-              <Link href="/changelog" className="navlink" onClick={() => setMoreOpen(false)}>
-                <Icon name="book" size={18} />
-                Changelog
+              <Link href={toHref(PERMISSIONS_ITEM.route)} className="navlink" onClick={close}>
+                <Icon name={PERMISSIONS_ITEM.icon} size={18} />
+                {PERMISSIONS_ITEM.label}
               </Link>
               <div className="divider" />
-              {moreLinks.map((n) => (
-                <Link key={n.route} href={"/" + n.route} className="navlink" onClick={() => setMoreOpen(false)}>
-                  <Icon name={n.icon} size={18} />
-                  {n.label}
-                </Link>
-              ))}
+              <NavTree nodes={SECONDARY} active={active} onNavigate={close} />
+              <Link href={toHref(NOTIFICATIONS_ITEM.route)} className="navlink" onClick={close}>
+                <Icon name={NOTIFICATIONS_ITEM.icon} size={18} />
+                {NOTIFICATIONS_ITEM.label}
+              </Link>
             </div>
           </div>
         </>

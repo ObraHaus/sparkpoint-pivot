@@ -22,7 +22,7 @@ import { cookies } from "next/headers";
 import { createPublicClient, http, isAddress, type Hex } from "viem";
 import { base, baseSepolia, robinhoodTestnet } from "viem/chains";
 import { parseSiweMessage, verifySiweMessage } from "viem/siwe";
-import { fetchAllowlistStatus } from "@/lib/auth/agent-status";
+import { fetchAllowlistStatus, runSrkMainnetGate } from "@/lib/auth/agent-status";
 import {
   NONCE_COOKIE,
   SESSION_COOKIE,
@@ -141,11 +141,22 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   // Roles from the agent's DB-backed allowlist. If we can't reach it, refuse rather than mint a
   // session with unverifiable roles (fail-closed).
-  const status = await fetchAllowlistStatus(address.toLowerCase(), chainId);
+  const lower = address.toLowerCase();
+  let status = await fetchAllowlistStatus(lower, chainId);
   if (!status) return bad("allowlist_unavailable", 503);
 
+  // 026 — 1M-SRK auto-gate. A non-allowlisted wallet holding at least the threshold of SRK on
+  // ETHEREUM MAINNET is auto-added to the beta list and walks straight in; everyone else falls
+  // through to the application form on /verify. This runs BEFORE the cookie is minted and the
+  // status is then RE-RESOLVED, so a qualifying holder gets in on this login, not the next one.
+  // Fail-open at every step (`runSrkMainnetGate` returns false on any error) — a balance read must
+  // never be able to block a login, and it can only ever ADD access.
+  if (!status.beta && (await runSrkMainnetGate(lower, chainId))) {
+    status = (await fetchAllowlistStatus(lower, chainId)) ?? status;
+  }
+
   const token = await signSession({
-    address: address.toLowerCase(),
+    address: lower,
     beta: status.beta,
     admin: status.admin,
   });
@@ -153,7 +164,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const res = NextResponse.json({
     ok: true,
-    address: address.toLowerCase(),
+    address: lower,
     beta: status.beta,
     admin: status.admin,
   });

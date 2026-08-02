@@ -56,6 +56,13 @@ const chat = (jar) =>
     headers: { "content-type": "application/json", "x-chain-id": String(CHAIN), cookie: cookie(jar) },
     body: JSON.stringify({ message: "hello" }),
   });
+// 026 — the ONE agent path a signed-in but NON-beta wallet may reach: its own access application.
+const application = (jar, body) =>
+  fetch(`${WEB}/api/agent/access/application`, {
+    method: body ? "POST" : "GET",
+    headers: { "content-type": "application/json", "x-chain-id": String(CHAIN), cookie: cookie(jar) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
 
 // ── Unauthenticated gate matrix ──────────────────────────────────────────────
 test("unauthenticated gate matrix", { skip }, async () => {
@@ -86,6 +93,24 @@ test("non-beta wallet: SIWE ok, but denied from app + assistant", { skip }, asyn
   const api = await chat(jar);
   assert.equal(api.status, 403);
   assert.equal((await api.json()).error?.code, "BETA_NOT_ENABLED");
+});
+
+// ── 026: a non-beta wallet is no longer a dead end — it may apply, and ONLY apply ────────────
+test("non-beta wallet may reach the access-application endpoint (and nothing else)", { skip }, async () => {
+  const { jar, body } = await login(privateKeyToAccount(generatePrivateKey()));
+  assert.equal(body.beta, false, "a fresh random wallet must not be allowlisted");
+
+  // The narrow BFF exemption: this path is NOT 403 BETA_NOT_ENABLED for a non-beta session.
+  const own = await application(jar);
+  assert.notEqual(own.status, 403, "/access/application must be reachable without beta");
+  if (own.status === 200) assert.equal((await own.json()).application, null, "no application yet");
+
+  // Everything else still is. (Deliberate: the exemption is one path prefix, not a hole.)
+  assert.equal((await chat(jar)).status, 403, "the assistant stays gated");
+  const admin = await fetch(`${WEB}/api/agent/admin/access/applications`, {
+    headers: { "x-chain-id": String(CHAIN), cookie: cookie(jar) },
+  });
+  assert.equal(admin.status, 403, "the admin review surface is NOT part of the exemption");
 });
 
 // ── SIWE negative paths ──────────────────────────────────────────────────────

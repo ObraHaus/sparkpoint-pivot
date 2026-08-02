@@ -34,6 +34,7 @@ from ..db.limits import LimitsStore
 from ..db.persona_notes import PersonaNoteStore
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
+from .access import router as access_router
 from .admin_analytics import router as admin_analytics_router
 from .admin_knowledge import router as admin_knowledge_router
 from .admin_limits import router as admin_limits_router
@@ -651,6 +652,9 @@ app.include_router(sessions_router)
 # §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
 # management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
 app.include_router(allowlist_router)
+# 026 alpha access applications (/access/* + /admin/access/applications*) — the ONE write surface a
+# non-beta wallet gets (its own application, owner-scoped); approval is an allowlist add. N2-safe.
+app.include_router(access_router)
 # §B admin LLM-gateway view (/admin/llm/status) — admin-gated, read-only gateway telemetry.
 app.include_router(admin_llm_router)
 # §R2 admin Obsidian console (/admin/knowledge/*) — admin-gated corpus view/edit/reingest.

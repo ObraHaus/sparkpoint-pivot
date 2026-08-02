@@ -5,8 +5,15 @@
  * grants no standing pull-approval). See SC-006, FR-020/FR-022.
  */
 
-/** Premium price in whole SRK — MUST match the agent's `PREMIUM_PRICE_SRK` (500e18). */
-export const PREMIUM_PRICE_SRK_WHOLE = 500n;
+/**
+ * Premium price in whole SRK — MUST match the agent's `PREMIUM_PRICE_SRK`, which is expressed in
+ * BASE UNITS (so the env value is `10000000000000000000000`, i.e. 10000e18 — NOT `10000`).
+ *
+ * Client-decided 2026-08-02: 500 → 10,000 SRK/month, alongside the 5,000-SRK/24h faucet on
+ * /premium. Web and agent must flip together at deploy — the verifier accepts `value >= price`, so
+ * a web price BELOW the agent's is what breaks a purchase.
+ */
+export const PREMIUM_PRICE_SRK_WHOLE = 10_000n;
 export const PREMIUM_PRICE_SRK_BASE = PREMIUM_PRICE_SRK_WHOLE * 10n ** 18n;
 
 export interface PremiumPayInputs {

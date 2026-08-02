@@ -7,6 +7,7 @@ A derived index/accelerator only -- never on the withdrawal path, holds no keys
 
 from __future__ import annotations
 
+from .access_applications import AccessApplicationStore, Application
 from .allowlist import (
     ADMIN_ROLE,
     BETA_ROLE,
@@ -47,7 +48,9 @@ __all__ = [
     "BETA_ROLE",
     "DATABASE_URL_ENV",
     "DEFAULT_TIER",
+    "AccessApplicationStore",
     "AllowlistStore",
+    "Application",
     "AnalyticsStore",
     "BundleInsert",
     "BundleRow",

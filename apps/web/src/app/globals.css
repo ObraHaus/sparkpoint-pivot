@@ -214,6 +214,15 @@ button{font-family:inherit;}
 .navlink svg{width:18px;height:18px;flex:none;}
 .navlink .badge-sm{margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;
   background:var(--muted);color:var(--muted-foreground);}
+/* Collapsible nav group (NavTree) — rail + mobile More sheet. */
+.navgroup{display:flex;flex-direction:column;gap:2px;}
+.navgroup-btn{width:100%;border:none;background:none;font-family:inherit;text-align:left;}
+.navgroup-chev{margin-left:auto;display:inline-flex;line-height:0;transition:transform .15s;}
+.navgroup-chev.open{transform:rotate(180deg);}
+.navgroup-items{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 20px;padding-left:8px;
+  border-left:1px solid var(--border-soft);}
+@media (prefers-reduced-motion: reduce){ .navgroup-chev{transition:none;} }
+
 .navlink.exit{color:var(--foreground);border:1px solid var(--border);margin-top:4px;}
 .navlink.exit svg{color:var(--gain);}
 .navlink.exit:hover{border-color:var(--gain);}

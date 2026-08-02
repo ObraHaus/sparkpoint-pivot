@@ -20,6 +20,7 @@ import { useAgentClient } from "@/lib/agent/useAgent";
 import { hasSavedMandate } from "@/lib/agent/mandate";
 import { useNetwork } from "@/lib/network";
 import { captureNetworkDiagnostic } from "@/lib/debug/networkBeacon";
+import { AccessApplicationForm } from "@/components/access/AccessApplicationForm";
 import { PubTop } from "@/components/screens/PubTop";
 import { stageCopy } from "@/lib/stage";
 import "@/components/screens/public.css";
@@ -163,7 +164,7 @@ export default function VerifyPage() {
           ? "Your plan is saved — pick up where you left off."
           : "Let's build your plan — it takes about 3 minutes."
         : blocked
-          ? "Your wallet can still withdraw anytime via /exit, but new deposits aren't open for it yet."
+          ? "Apply below and an admin will review it. Your wallet can still withdraw anytime via /exit."
           : needsSignIn
             ? "Sign a message to prove you control this wallet. It authorizes nothing on-chain and moves no funds."
             : "Confirming your session…";
@@ -295,13 +296,19 @@ export default function VerifyPage() {
               </>
             )}
             {blocked && (
-              <a
-                className="btn btn-ghost btn-sm"
-                onClick={() => router.push("/exit")}
-                style={{ marginTop: "16px", display: "inline-flex", cursor: "pointer" }}
-              >
-                Withdraw via /exit →
-              </a>
+              <>
+                {/* 026 — this branch is no longer a dead end: apply for access here. The /exit
+                    escape hatch below is UNCHANGED and stays outside the form (N2 — the way out is
+                    never behind a form, and never a click further away than it was). */}
+                <AccessApplicationForm />
+                <a
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => router.push("/exit")}
+                  style={{ marginTop: "16px", display: "inline-flex", cursor: "pointer" }}
+                >
+                  Withdraw via /exit →
+                </a>
+              </>
             )}
           </div>
         </div>

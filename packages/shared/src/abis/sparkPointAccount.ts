@@ -41,6 +41,19 @@ export const sparkPointAccountAbi = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "activeSessionKey",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "components": [
@@ -88,11 +101,67 @@ export const sparkPointAccountAbi = [
         "internalType": "struct IPolicyModule.Policy",
         "name": "policy",
         "type": "tuple"
+      },
+      {
+        "internalType": "address[]",
+        "name": "targets",
+        "type": "address[]"
+      },
+      {
+        "internalType": "bytes4[]",
+        "name": "selectors",
+        "type": "bytes4[]"
       }
     ],
     "name": "authorizeSessionKey",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "internalType": "struct IPolicyModule.Call",
+        "name": "call",
+        "type": "tuple"
+      },
+      {
+        "internalType": "uint256",
+        "name": "valueUSD",
+        "type": "uint256"
+      }
+    ],
+    "name": "checkAction",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "ok",
+        "type": "bool"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "reason",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -168,6 +237,35 @@ export const sparkPointAccountAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sessionKey",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "target",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes4",
+        "name": "selector",
+        "type": "bytes4"
+      }
+    ],
+    "name": "isSessionAllowed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "owner",
     "outputs": [
@@ -217,6 +315,67 @@ export const sparkPointAccountAbi = [
     "name": "revokeSessionKey",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sessionKey",
+        "type": "address"
+      }
+    ],
+    "name": "sessionPolicyOf",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "sessionKey",
+            "type": "address"
+          },
+          {
+            "internalType": "uint48",
+            "name": "validAfter",
+            "type": "uint48"
+          },
+          {
+            "internalType": "uint48",
+            "name": "validUntil",
+            "type": "uint48"
+          },
+          {
+            "internalType": "uint128",
+            "name": "perTxCap",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint128",
+            "name": "cumulativeCap",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint128",
+            "name": "spent",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint16",
+            "name": "maxSlippageBps",
+            "type": "uint16"
+          },
+          {
+            "internalType": "bool",
+            "name": "revoked",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct IPolicyModule.Policy",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -465,6 +624,31 @@ export const sparkPointAccountAbi = [
       {
         "indexed": true,
         "internalType": "address",
+        "name": "sessionKey",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "notional",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newSpent",
+        "type": "uint256"
+      }
+    ],
+    "name": "SessionKeySpent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
         "name": "entryPoint",
         "type": "address"
       },
@@ -503,6 +687,11 @@ export const sparkPointAccountAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "AllowlistLengthMismatch",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -516,6 +705,11 @@ export const sparkPointAccountAbi = [
   {
     "inputs": [],
     "name": "ERC1967NonPayable",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EmptyAllowlist",
     "type": "error"
   },
   {
@@ -550,6 +744,16 @@ export const sparkPointAccountAbi = [
   },
   {
     "inputs": [],
+    "name": "SessionTooLong",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TargetNotArmed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "UUPSUnauthorizedCallContext",
     "type": "error"
   },
@@ -567,6 +771,16 @@ export const sparkPointAccountAbi = [
   {
     "inputs": [],
     "name": "ZeroOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroSessionKey",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroValidUntil",
     "type": "error"
   }
 ] as const;

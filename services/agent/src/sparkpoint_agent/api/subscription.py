@@ -28,6 +28,15 @@ from .vault import get_account
 
 #: SRK is Base-Sepolia-only; verification always runs against 84532, whatever chain is asserted.
 SRK_CHAIN_ID = 84532
+#: The canonical Premium price in SRK BASE UNITS (18 dp) - client-decided 2026-08-02, 500 -> 10,000.
+#:
+#: ``PREMIUM_PRICE_SRK`` is compared directly against an ERC-20 ``Transfer`` value, so it is BASE
+#: UNITS, not whole tokens: the deployed env value must be ``10000000000000000000000``. A bare
+#: ``10000`` would be 1e-14 SRK and would accept a dust payment. This constant is the fallback when
+#: the env is unset, and MUST stay equal to the web's ``PREMIUM_PRICE_SRK_WHOLE`` * 1e18
+#: (``apps/web/src/lib/chain/premiumPay.ts``) - the verifier accepts ``value >= price``, so a web
+#: price BELOW the agent's is what breaks a purchase.
+PREMIUM_PRICE_SRK_DEFAULT_RAW = 10_000 * 10**18
 #: The seeded logical network id (`networks` seeds only 'base'; develop points it at Base Sepolia).
 _NETWORK_ID = "base"
 
@@ -64,8 +73,10 @@ def get_payment_verifier(
     """
     srk = os.getenv("SRK_ADDRESS_84532")
     treasury = os.getenv("PREMIUM_TREASURY_ADDRESS")
-    price = _env_int("PREMIUM_PRICE_SRK")
-    if not srk or not treasury or price is None:
+    # The price falls back to the canonical constant so a missing env can never under-charge; the
+    # SRK address + treasury stay REQUIRED, so an unconfigured deployment still fails closed.
+    price = _env_int("PREMIUM_PRICE_SRK") or PREMIUM_PRICE_SRK_DEFAULT_RAW
+    if not srk or not treasury:
         raise ApiError(
             ErrorCode.VALIDATION_ERROR, "Premium purchase is not available on this deployment."
         )
