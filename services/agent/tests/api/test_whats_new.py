@@ -42,7 +42,7 @@ def test_load_entries_parses_and_validates(tmp_path: Path, monkeypatch: pytest.M
     assert out[0]["type_"] == "changelog"
     assert out[0]["tag"] == "New"
     assert out[0]["cta_href"] == "/x"
-    assert out[1]["tag"] is None                            # unknown tag coerced to None
+    assert out[1]["tag"] == "Improved"                      # unknown tag NORMALIZED, never None
     assert out[1]["cta_href"] is None                       # javascript: scheme rejected
 
 

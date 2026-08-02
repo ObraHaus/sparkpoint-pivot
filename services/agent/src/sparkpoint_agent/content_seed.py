@@ -20,6 +20,36 @@ from .db.content_entries import ContentEntryStore
 logger = logging.getLogger(__name__)
 
 _ALLOWED_TAGS = {"New", "Fixed", "Improved", "Announcement"}
+#: Synonym → canonical. Authors reach for Keep-a-Changelog vocabulary ("Added"/"Changed") out of
+#: habit; silently NULLING those (the old behavior) is how untagged entries kept reaching
+#: /changelog.
+#: Normalize instead — and default anything else to "Improved", the least-specific honest claim.
+_TAG_SYNONYMS = {
+    "new": "New",
+    "added": "New",
+    "add": "New",
+    "fixed": "Fixed",
+    "fix": "Fixed",
+    "bugfix": "Fixed",
+    "hotfix": "Fixed",
+    "improved": "Improved",
+    "improvement": "Improved",
+    "changed": "Improved",
+    "change": "Improved",
+    "updated": "Improved",
+    "update": "Improved",
+    "announcement": "Announcement",
+}
+
+
+def _normalize_tag(raw: object, type_: str) -> str:
+    """Every changelog entry gets a canonical tag — never None (the client hit untagged entries
+    twice; a display chip that can silently vanish is a bug class, not an option)."""
+    if isinstance(raw, str):
+        canonical = _TAG_SYNONYMS.get(raw.strip().lower())
+        if canonical:
+            return canonical
+    return "Announcement" if type_ == "announcement" else "Improved"
 
 
 def whats_new_path() -> Path:
@@ -66,14 +96,14 @@ def load_entries() -> list[dict[str, Any]]:
         body = str(item.get("body") or "").strip()
         if not slug or not title or not body:
             continue
-        tag = item.get("tag")
+        type_ = "changelog" if item.get("type") != "announcement" else "announcement"
         out.append(
             {
                 "slug": slug[:80],
-                "type_": "changelog" if item.get("type") != "announcement" else "announcement",
+                "type_": type_,
                 "title": title[:200],
                 "body": body[:4000],
-                "tag": tag if tag in _ALLOWED_TAGS else None,
+                "tag": _normalize_tag(item.get("tag"), type_),
                 "cta_label": (str(item["cta_label"])[:60] if item.get("cta_label") else None),
                 "cta_href": _safe_href(item.get("cta_href")),
                 "is_active": bool(item.get("active", True)),

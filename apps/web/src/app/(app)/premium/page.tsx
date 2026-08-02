@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
-import { premiumStatusView, type PremiumStatus } from "@/lib/premium/tierStatus";
+import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
@@ -53,32 +53,6 @@ const METRIC_LABEL: Record<string, string> = {
  * (feature 008, US6), from the self-scoped `/usage/self`. Never nags: it only shows what's used,
  * renders nothing until real data is available, and never blocks anything.
  */
-/** The wallet's own plan, from the same self-scoped read UsageThisPeriod uses. Fail-open:
- * any failure reads as "not premium", which renders the pre-existing cards exactly. */
-function useSelfPremiumStatus(): PremiumStatus {
-  const [status, setStatus] = useState<PremiumStatus>({ active: false, untilLabel: null });
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const r = await fetch("/api/agent/usage/self", {
-          headers: { "x-chain-id": "84532" },
-          cache: "no-store",
-        });
-        if (!r.ok || !alive) return;
-        const u = (await r.json()) as SelfUsage & { expiresAt?: string | null };
-        if (alive) setStatus(premiumStatusView(u.tier, u.expiresAt));
-      } catch {
-        /* advisory only — the cards fall back to the free rendering */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return status;
-}
-
 function UsageThisPeriod() {
   const [usage, setUsage] = useState<SelfUsage | null>(null);
 

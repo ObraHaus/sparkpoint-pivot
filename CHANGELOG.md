@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (nav slim + Settings surfacing — client decision Aug 2 evening)
+- **The side rail is now Swap, Bridge, ▾Information, Settings.** Changelog moved INTO the Information group; **Premium and Automation left the nav** and surface inside Settings instead — Premium as a live "Plan" row on Settings → Account (current tier + renewal date via the shared `useSelfPremiumStatus`, "Manage plan" → /premium), Automation via the Settings → Security "Active session keys" row, which now shows the LIVE grant state (`useSessionKeys`: active grant + expiry, or "None — you sign every move") instead of hardcoded copy. Both routes remain deep-linkable and ⌘K-searchable (`OFF_NAV_DESTINATIONS` feeds the palette), so nothing became unreachable. Nav tests updated to the new decided shape.
+
+### Fixed (changelog tags can no longer go missing — structural, third time's the charm)
+- **Entries kept reaching /changelog without their New/Fixed/Improved chip.** Root cause: authors naturally write Keep-a-Changelog vocabulary ("Added", "Changed") and `content_seed.load_entries` silently NULLED any off-vocabulary tag — 7 such entries were live (5 "Added", 2 "Changed"). Fixed at every layer so the class dies: (1) the seed is canonicalized; (2) the loader now NORMALIZES synonyms (added→New, changed→Improved, …) and defaults to "Improved" instead of ever emitting None; (3) `tests/test_whats_new_seed.py` CI-enforces canonical tags + required fields + unique slugs on the committed file, so an off-vocabulary tag fails the PR with a message naming the entry; (4) the web `EntryCard` display-normalizes as the last line of defence (pre-fix DB rows, any future writer). The old unit test pinning the null-coercion behavior was updated to the new never-None contract.
+
+
 ### Fixed (premium status now surfaces on the Premium pages)
 - **/premium and /premium/pay never consumed the wallet's tier** — the plan cards hardcoded "Your current plan" onto the FREE card, and the pay page's only model was balance-vs-price, so a just-upgraded subscriber was told "You need N more SRK for the first month" (hit by the client minutes after the first real purchase was granted). New leaf module `lib/premium/tierStatus.ts` (pure, fail-open: anything unknown reads as not-premium ⇒ the pre-existing UI) + both pages now read the self-scoped `/usage/self`: the Premium card shows "Your current plan — until <date>" with an "Extend a month" secondary; the pay page reframes as "Extend Premium … paying again adds a month on top" and the shortfall banner says "to extend Premium by a month" instead of claiming a first month. 4 new leaf tests; web 324.
 
