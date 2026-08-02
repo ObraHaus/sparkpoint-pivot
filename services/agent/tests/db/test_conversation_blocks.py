@@ -118,6 +118,21 @@ async def test_append_turn_persists_blocks_as_json_alongside_the_summary() -> No
     assert json.loads(args[3]) == [_TEXT_BLOCK, _ACTION_BLOCK]
 
 
+async def test_append_turn_encodes_non_ascii_raw_never_as_unicode_escapes() -> None:
+    # 025 HOTFIX REGRESSION GUARD. The shared develop Postgres is server_encoding SQL_ASCII,
+    # whose JSONB parser hard-rejects any \uXXXX escape above ASCII (UntranslatableCharacterError)
+    # while raw UTF-8 bytes pass through — so `json.dumps` MUST use ensure_ascii=False here.
+    # With the default escaping, every block containing an em-dash or curly quote (virtually
+    # every LLM answer) failed the INSERT and the fail-open sink dropped the whole turn.
+    db = _FakeDb()
+    block = {"type": "text", "markdown": "Swaps run on Uniswap V3 — you review the quote…"}
+    await _store(db).append_turn(_CID, "assistant", "summary", [block])
+    payload = db.append_args()[3]
+    assert "\\u" not in payload, "non-ASCII must go to Postgres as raw UTF-8, not \\u escapes"
+    assert "—" in payload and "…" in payload
+    assert json.loads(payload) == [block]
+
+
 async def test_append_turn_without_blocks_writes_null() -> None:
     # A user turn (and any assistant turn with nothing structured) keeps the pre-025 shape.
     db = _FakeDb()
