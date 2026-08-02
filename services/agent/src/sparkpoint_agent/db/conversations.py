@@ -128,7 +128,14 @@ class ConversationStore:
         silence. The retry needs a FRESH transaction: the first one is already aborted by the
         failed statement.
         """
-        payload = json.dumps(list(blocks)) if blocks else None
+        # ``ensure_ascii=False`` is LOAD-BEARING, not style. The shared develop Postgres was
+        # created with server_encoding SQL_ASCII, and its JSONB parser hard-rejects any
+        # ``\uXXXX`` escape above ASCII (``UntranslatableCharacterError``) — while RAW UTF-8
+        # bytes pass through unvalidated, exactly like the ``content`` TEXT column always has.
+        # With the default ``ensure_ascii=True``, every block containing an em-dash or a curly
+        # quote (i.e. virtually every LLM answer) failed this INSERT, the fail-open sink
+        # swallowed it, and chat history silently stopped recording (025 hotfix).
+        payload = json.dumps(list(blocks), ensure_ascii=False) if blocks else None
         try:
             async with self.db.acquire() as conn, conn.transaction():
                 await conn.execute(_APPEND_TURN, conversation_id, role, content, payload)

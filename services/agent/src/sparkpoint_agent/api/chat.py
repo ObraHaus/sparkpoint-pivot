@@ -34,6 +34,7 @@ adds NO authority of its own):
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Annotated, Any, Literal, Protocol
@@ -310,6 +311,28 @@ def get_feedback_sink() -> FeedbackSink:
     return _NoopFeedbackSink()
 
 
+_logger = logging.getLogger(__name__)
+
+#: Once-per-process guard for the sink's append-failure warning (mirrors the pre-0028 column
+#: warning in db/conversations.py). Fail-open persistence needs at least one loud line per
+#: failure mode, or a systematic drop (e.g. the SQL_ASCII/JSONB encoding failure this 025 hotfix
+#: fixed) is indistinguishable from "nothing happened".
+_warned_append_failure = False
+
+
+def _warn_append_failure(exc: Exception) -> None:
+    global _warned_append_failure
+    if not _warned_append_failure:
+        _warned_append_failure = True
+        _logger.warning(
+            "conversation_turn_append_failed: chat history is NOT being recorded (%s: %s). "
+            "Fail-open — chat keeps serving, but replay/history silently degrade until this "
+            "is fixed. Logged once per process.",
+            type(exc).__name__,
+            exc,
+        )
+
+
 class _ConversationSink:
     """FAIL-OPEN per-wallet conversation persistence (B1). Every method swallows DB errors so a
     persistence outage (or a test with no DB) degrades to no history — it NEVER breaks a chat turn
@@ -347,7 +370,13 @@ class _ConversationSink:
             return
         try:
             await self._store.append_turn(_uuid(conversation_id), role, content, blocks)
-        except Exception:
+        except Exception as exc:
+            # Fail-open stays (persistence must never break a chat turn) — but no longer BLIND.
+            # A silent `except: return` here hid a 100%-reproducible encoding failure in
+            # production (SQL_ASCII vs \u-escaped JSONB, 025 hotfix): every assistant turn was
+            # dropped and nothing said so. One warning per process names the exception class so
+            # the NEXT systematic failure is visible in the logs without flooding them.
+            _warn_append_failure(exc)
             return
 
 
