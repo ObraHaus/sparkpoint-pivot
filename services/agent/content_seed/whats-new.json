@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-notices-what-you-do-not-just-what-you-say",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Sparky now notices what you do on the platform — not just what you say in chat",
+      "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
+      "cta_label": "See what Sparky remembers",
+      "cta_href": "/settings",
+      "published_at": "2026-08-03T04:30:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-remembers-what-youve-done-together",
       "type": "changelog",
       "tag": "Added",
