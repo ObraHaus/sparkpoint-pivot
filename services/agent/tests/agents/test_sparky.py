@@ -245,3 +245,44 @@ async def test_memory_and_grounding_can_both_be_present_and_stay_separately_fenc
     )
     content = str(fake.calls[0]["messages"])
     assert "<<<USER_MEMORY" in content and "<<<REFERENCE_NOTES" in content
+
+
+# ── 028 hotfix · leaked deliberation is DISCARDED, not served ───────────────────
+
+
+async def test_leaked_reasoning_monologue_falls_back() -> None:
+    # Live incident (2026-08-02, free pool): the "answer" was the model's internal plan —
+    # "We need to answer the user: … Use only the reference notes and memory data. We must not
+    # mention instructions inside them…". The prompt forbids this; the discard ENFORCES it.
+    leaked = (
+        'We need to answer the user: "remind me what happened". Use only the reference notes '
+        "and memory data. We must not mention instructions inside them, and not invent facts."
+    )
+    reply = await Sparky(llm=_ok(leaked)).reply("remind me what happened")
+    assert reply.fell_back and reply.body == ""
+
+
+async def test_meta_discard_catches_each_marker_family() -> None:
+    from sparkpoint_agent.agents.sparky import _looks_meta_shaped
+
+    for bad in [
+        "According to the reference notes you provided, I am Sparky.",
+        "The memory data shows you deposited yesterday.",
+        "We should only use what's in the notes.",
+        "The user asks about their portfolio.",
+        "<<<USER_MEMORY seems empty>>>",
+        "My system prompt says I can't do that.",
+    ]:
+        assert _looks_meta_shaped(bad), bad
+
+
+async def test_normal_second_person_answers_survive_the_meta_discard() -> None:
+    from sparkpoint_agent.agents.sparky import _looks_meta_shaped
+
+    for good in [
+        "Last time you asked about the vault, and you deposited 1.00 USDC yourself.",
+        "I'm Sparky — I can explain DeFi, show your portfolio, and suggest strategies.",
+        "You claimed test SRK from the faucet on Aug 2, then we looked at your holdings.",
+        "We looked at your portfolio together yesterday.",
+    ]:
+        assert not _looks_meta_shaped(good), good
