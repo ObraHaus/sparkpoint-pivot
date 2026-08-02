@@ -1,0 +1,50 @@
+-- 0031_user_memory_activity_cursor.sql — feature 028 (Sparky memory v2): the per-user fold cursor
+-- that lets platform activity (vault flows, executions, swaps, faucet claims) fold into the
+-- feature-027 memory digest EXACTLY ONCE. Additive, forward-only, reversible. Apply with
+-- PGCLIENTENCODING=UTF8.
+--
+-- WHY THIS COLUMN EXISTS — the client ask behind 028: Sparky should know what the user actually
+-- DID on the platform, even when the action never touched chat. The activity itself is already
+-- recorded (onchain_events, executions, swap_fee_events); what is missing is a per-user high-water
+-- mark so a lazy fold at chat-turn start can pick up only what is NEW. `activity_cursor` holds
+-- that mark as one JSONB document (shape v1, see specs/028-memory-activity-fold/data-model.md §1):
+-- per-network (block, log) pairs for vault flows and swaps, a {ts, deferred[]} pair for executions
+-- (pending rows are DEFERRED, not dropped), and a timestamp for the faucet probe.
+--
+-- WHY A COLUMN ON user_memory AND NOT A SIBLING TABLE — the cursor's lifecycle IS the memory
+-- row's lifecycle: created on the user's first fold, read/written only inside the fold's
+-- transaction, meaningless without the row. A sibling table buys a join and a second upsert for
+-- one column. NULL (or a missing sub-key) simply means "never folded" — the fold then takes the
+-- 5 most recent events as a conversational backfill sample and jumps the cursor to head.
+--
+-- ⚠️ CLEAR SEMANTICS CHANGE RIDES WITH THIS MIGRATION (code, not schema): the user's
+-- "Clear memory" used to DELETE the user_memory row; from 028 it BLANKS `lines` only, PRESERVING
+-- this cursor. That is what implements FR-009 ("cleared activity never resurrects"): wiping the
+-- cursor with the lines would make the next fold re-discover months of history the user just
+-- erased. Erasing memory for a wallet that has none still creates no row (UPDATE matches nothing).
+--
+-- SQL_ASCII (standing constraint since 025/#125): every write to this column serializes with
+-- json.dumps(..., ensure_ascii=False). Cursor content is ASCII by construction (hex, digits,
+-- ISO timestamps) — the convention is enforced anyway, with a regression test at the driver
+-- boundary, because "ASCII by construction" is one refactor away from false.
+--
+-- ORDERING — order-INSENSITIVE vs the 028 agent redeploy, and PROVEN so, not asserted:
+--   * pre-028 agent + this column: the column is never named by old code — a no-op.
+--   * 028 agent + pre-0031 schema: every cursor read/write catches UndefinedColumnError, warns
+--     `user_memory_fold_column_missing` once per process, and disables the fold — memory behaves
+--     exactly like v1 (chat-only lines). Pinned by tests/db/test_user_memory.py.
+-- House default remains apply-before-redeploy. Standing yoyo gotcha: `yoyo apply --batch`
+-- applies EVERY pending migration — check what else is queued before running it.
+--
+-- NON-CUSTODY (Constitution N1/N2/N3): the cursor holds block numbers, log indexes, row ids and
+-- timestamps — no key material, no signature, no authority. It gates nothing but memory-line
+-- derivation, which reaches ONLY the intent classifier and Sparky's prose (the 027 boundary,
+-- byte-identical-verdict-tested). Never on the withdraw/exit path.
+--
+-- ROLLBACK: ALTER TABLE user_memory DROP COLUMN IF EXISTS activity_cursor;
+-- (the fold warns once and degrades to memory v1; nothing else references the column)
+
+-- NULL = this user has never had platform activity folded. Deliberately ONE statement (plain DDL,
+-- no COMMENT ON) so the yoyo step count stays 1.
+ALTER TABLE user_memory
+    ADD COLUMN IF NOT EXISTS activity_cursor JSONB;

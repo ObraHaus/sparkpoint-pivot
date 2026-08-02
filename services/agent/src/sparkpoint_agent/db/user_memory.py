@@ -31,12 +31,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from asyncpg.exceptions import UndefinedTableError
+from asyncpg.exceptions import UndefinedColumnError, UndefinedTableError
 
 from ..memory import MAX_MEMORY_LINES, MemoryEntry, UserMemory
 from .pool import Database
 
 logger = logging.getLogger(__name__)
+
+
+class FoldColumnMissing(Exception):
+    """``user_memory.activity_cursor`` (migration 0031) is absent — the activity fold is
+    disabled until it is applied. Raised (after a once-per-process warning) so the fold
+    orchestrator can stop probing per turn; memory v1 behavior is unaffected."""
 
 _UPSERT_USER = (
     "INSERT INTO users (eoa_address) VALUES ($1) "
@@ -49,15 +55,36 @@ _UPSERT_MEMORY = (
     "INSERT INTO user_memory (user_id, lines, updated_at) VALUES ($1, $2, now()) "
     "ON CONFLICT (user_id) DO UPDATE SET lines = EXCLUDED.lines, updated_at = now()"
 )
+# ── 028 activity-fold cursor (migration 0031) ────────────────────────────────────
+#: Cursor read for the fold — joined by wallet like _GET_MEMORY. Missing row ⇒ NULL ⇒ first fold.
+_GET_CURSOR = (
+    "SELECT m.activity_cursor FROM user_memory m JOIN users u ON u.id = m.user_id "
+    "WHERE u.eoa_address = $1"
+)
+#: Lock variant that also carries the cursor, so the append+advance RMW is one unit.
+_SELECT_FOR_UPDATE_WITH_CURSOR = (
+    "SELECT lines, activity_cursor FROM user_memory WHERE user_id = $1 FOR UPDATE"
+)
+_UPSERT_MEMORY_WITH_CURSOR = (
+    "INSERT INTO user_memory (user_id, lines, activity_cursor, updated_at) "
+    "VALUES ($1, $2, $3, now()) "
+    "ON CONFLICT (user_id) DO UPDATE SET lines = EXCLUDED.lines, "
+    "activity_cursor = EXCLUDED.activity_cursor, updated_at = now()"
+)
 #: Reads join through ``users`` so the caller's wallet is the only key (``eoa_address`` is CITEXT,
 #: so the comparison is case-insensitive without normalising here).
 _GET_MEMORY = (
     "SELECT m.lines, m.updated_at FROM user_memory m JOIN users u ON u.id = m.user_id "
     "WHERE u.eoa_address = $1"
 )
-#: Clear does NOT upsert the user — erasing memory for a wallet that has none must not create a row.
+#: Clear does NOT upsert the user — erasing memory for a wallet that has none must not create a
+#: row (UPDATE matches nothing). 028: clear BLANKS ``lines`` instead of deleting the row, so the
+#: activity cursor SURVIVES a clear — that is what keeps cleared platform activity from being
+#: re-discovered and resurrected on the very next fold (FR-009). Pre-0031 databases have no
+#: ``activity_cursor`` column but blanking ``lines`` is identical to the old DELETE on the wire.
 _CLEAR_MEMORY = (
-    "DELETE FROM user_memory WHERE user_id = (SELECT id FROM users WHERE eoa_address = $1)"
+    "UPDATE user_memory SET lines = '[]'::jsonb, updated_at = now() "
+    "WHERE user_id = (SELECT id FROM users WHERE eoa_address = $1)"
 )
 
 #: Logged ONCE per process when ``user_memory`` (migration 0030) is absent.
@@ -74,6 +101,37 @@ def _warn_missing_table() -> None:
     if not _warned_missing_table:
         _warned_missing_table = True
         logger.warning(_MISSING_TABLE_WARNING)
+
+
+#: Logged ONCE per process when ``user_memory.activity_cursor`` (migration 0031) is absent.
+_MISSING_COLUMN_WARNING = (
+    "user_memory_fold_column_missing: migration 0031 is not applied on this database. Chat and "
+    "chat-derived memory work normally, but PLATFORM ACTIVITY (deposits, withdrawals, swaps, "
+    "faucet claims) is NOT being folded into memory. Apply 0031 and this resolves itself."
+)
+_warned_missing_column = False
+
+
+def _warn_missing_column() -> None:
+    global _warned_missing_column
+    if not _warned_missing_column:
+        _warned_missing_column = True
+        logger.warning(_MISSING_COLUMN_WARNING)
+
+
+def _decode_cursor(raw: Any) -> dict[str, Any] | None:
+    """Decode ``activity_cursor`` defensively (str | dict | NULL, like ``_decode_entries``).
+    Anything unparseable or non-dict degrades to ``None`` — a corrupt cursor re-runs the
+    first-fold sample (bounded at 5 lines) rather than breaking a chat turn."""
+    if raw is None:
+        return None
+    parsed: Any = raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _utc_now() -> datetime:
@@ -175,11 +233,76 @@ class MemoryStore:
             payload = json.dumps([e.to_wire() for e in capped], ensure_ascii=False)
             await conn.execute(_UPSERT_MEMORY, user_id, payload)
 
+    async def get_activity_cursor(self, owner_eoa: str) -> dict[str, Any] | None:
+        """This wallet's fold cursor (028), or ``None`` for "never folded".
+
+        Raises :class:`FoldColumnMissing` (after a once-per-process warning) when migration 0031
+        is absent, so the orchestrator disables the fold instead of re-probing every turn. Any
+        OTHER database failure raises to the caller — the fold's fail-open wrapper owns that
+        decision, mirroring how :meth:`append` defers to the chat sink.
+        """
+        try:
+            raw = await self.db.fetchval(_GET_CURSOR, owner_eoa)
+        except UndefinedTableError:
+            _warn_missing_table()
+            raise FoldColumnMissing from None
+        except UndefinedColumnError:
+            _warn_missing_column()
+            raise FoldColumnMissing from None
+        return _decode_cursor(raw)
+
+    async def append_with_cursor(
+        self, owner_eoa: str, lines: Sequence[str], cursor: dict[str, Any]
+    ) -> None:
+        """Fold ``lines`` AND advance the activity cursor — one transaction (028).
+
+        Identical folding/cap/dedup semantics to :meth:`append`, plus the cursor write, so a
+        crash between the two is impossible: either the lines land WITH their high-water mark or
+        neither does (exactly-once folding, FR-006). ``lines`` MAY be empty — a fold that found
+        events but deduped/skipped them all (or a first-fold of an inactive user) still advances
+        the cursor so the same range is never rescanned.
+
+        Raises :class:`FoldColumnMissing` when 0031 is absent (warned once); raises other
+        database errors to the caller like :meth:`append` does.
+        """
+        fresh = [line for line in (str(x).strip() for x in lines) if line]
+        stamp = self.now().isoformat()
+        # ensure_ascii=False on BOTH payloads — the SQL_ASCII rule (see append). The cursor is
+        # ASCII by construction today, but that is one refactor away from false; the regression
+        # test asserts the driver boundary, not our intentions.
+        cursor_payload = json.dumps(cursor, ensure_ascii=False)
+        try:
+            async with self.db.acquire() as conn, conn.transaction():
+                user_id = await conn.fetchval(_UPSERT_USER, owner_eoa)
+                row = await conn.fetchrow(_SELECT_FOR_UPDATE_WITH_CURSOR, user_id)
+                current = list(_decode_entries(row["lines"] if row is not None else None))
+                for line in fresh:
+                    if current and current[-1].line == line:
+                        continue
+                    current.append(MemoryEntry(at=stamp, line=line))
+                capped = current[-MAX_MEMORY_LINES:]
+                lines_payload = json.dumps(
+                    [e.to_wire() for e in capped], ensure_ascii=False
+                )
+                await conn.execute(
+                    _UPSERT_MEMORY_WITH_CURSOR, user_id, lines_payload, cursor_payload
+                )
+        except UndefinedTableError:
+            _warn_missing_table()
+            raise FoldColumnMissing from None
+        except UndefinedColumnError:
+            _warn_missing_column()
+            raise FoldColumnMissing from None
+
     async def clear(self, owner_eoa: str) -> None:
-        """Erase this wallet's whole digest (the user's own "Clear memory"). Idempotent: clearing
+        """Erase this wallet's digest LINES (the user's own "Clear memory"). Idempotent: clearing
         a wallet that has no memory is a successful no-op. RAISES on failure so the endpoint can
         tell the user honestly that it did not work — unlike the write path, this one is a direct,
-        user-initiated action and must never claim success it did not achieve."""
+        user-initiated action and must never claim success it did not achieve.
+
+        028: clear blanks ``lines`` but PRESERVES ``activity_cursor`` (FR-009) — erased platform
+        activity must never be re-discovered by the next fold. On the wire this is identical to
+        the pre-028 row delete (GET /memory/self reads empty either way)."""
         try:
             await self.db.execute(_CLEAR_MEMORY, owner_eoa)
         except UndefinedTableError:

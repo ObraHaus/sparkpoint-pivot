@@ -122,6 +122,22 @@ class SwapFeeIndexer:
         cache[token] = dec
         return dec
 
+    async def _tx_sender(self, tx_hash: str, cache: dict[str, str | None]) -> str | None:
+        """028: the swap's SIGNER (tx ``from``) — one cached eth_getTransactionByHash per tx.
+        ``None`` on any failure: the fee row is still written, just never attributed (honest)."""
+        if tx_hash in cache:
+            return cache[tx_hash]
+        sender: str | None = None
+        try:
+            tx = await self._rpc("eth_getTransactionByHash", [tx_hash])
+            raw = tx.get("from") if isinstance(tx, dict) else None
+            if isinstance(raw, str) and raw.startswith("0x") and len(raw) == 42:
+                sender = raw.lower()
+        except Exception:  # noqa: BLE001 — attribution is best-effort, ingestion never fails on it
+            sender = None
+        cache[tx_hash] = sender
+        return sender
+
     async def index_once(self, network_id: str | None = None) -> SwapIndexResult:
         """Catch up from the cursor to ``head - FINALITY_MARGIN`` in bounded windows."""
         net = network_id or self.network_id
@@ -140,6 +156,7 @@ class SwapFeeIndexer:
         window = max(_MIN_WINDOW, self.window)
         block_cache: dict[str, datetime] = {}
         decimals_cache: dict[str, int] = {}
+        sender_cache: dict[str, str | None] = {}
         last = raw_cursor
         router = self.router.lower()
 
@@ -154,7 +171,7 @@ class SwapFeeIndexer:
                     continue
                 break  # at the floor and still failing → stop; cursor holds the last good block
             for log in logs:
-                ev = await self._decode(log, net, router, block_cache, decimals_cache)
+                ev = await self._decode(log, net, router, block_cache, decimals_cache, sender_cache)
                 if ev is None:
                     skipped += 1
                     continue
@@ -176,6 +193,7 @@ class SwapFeeIndexer:
         router: str,
         block_cache: dict[str, datetime],
         decimals_cache: dict[str, int],
+        sender_cache: dict[str, str | None],
     ) -> SwapFeeEvent | None:
         topics = log.get("topics") or []
         if not isinstance(topics, list) or len(topics) < 3:
@@ -200,9 +218,12 @@ class SwapFeeIndexer:
             log_index = int(str(log.get("logIndex")), 16)
         except Exception:  # noqa: BLE001 — an undecodable log is skipped, never crashes the loop
             return None
+        tx_hash = str(log.get("transactionHash", "")).lower()
+        # 028: attribute the swap to its SIGNER (best-effort, cached; None = unattributed).
+        swapper = await self._tx_sender(tx_hash, sender_cache) if tx_hash else None
         return SwapFeeEvent(
             network_id=net,
-            tx_hash=str(log.get("transactionHash", "")).lower(),
+            tx_hash=tx_hash,
             log_index=log_index,
             block_number=block_number,
             block_time=block_time,
@@ -211,4 +232,5 @@ class SwapFeeIndexer:
             fee_value_raw=value,
             from_address=frm,
             to_address=to,
+            swapper_address=swapper,
         )

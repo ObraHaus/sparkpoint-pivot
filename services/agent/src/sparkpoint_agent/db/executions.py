@@ -46,6 +46,16 @@ _GET_BY_INTENT_SQL = (
 )
 
 # Newest-first per-user list (executions_account_idx). Drives the notifications feed (feature 021).
+# 028 activity fold — rows STRICTLY newer than a timestamp, UNION the carried deferred ids
+# (pending rows awaiting a terminal state — research R5), oldest-first, bounded.
+_LIST_SINCE_SQL = (
+    "SELECT id, intent_bundle_id, smart_account_address, action_kind, signing_mode, status,"
+    " userop_hash, tx_hash, block_number, gas_used, realized_amounts, reverted_reason,"
+    " intent_log_action_id, attribution_method, created_at, updated_at"
+    " FROM executions WHERE smart_account_address = $1"
+    " AND (created_at > $2 OR id = ANY($3::uuid[]))"
+    " ORDER BY created_at ASC LIMIT $4"
+)
 _LIST_BY_ACCOUNT_SQL = (
     "SELECT id, intent_bundle_id, smart_account_address, action_kind, signing_mode, status,"
     " userop_hash, tx_hash, block_number, gas_used, realized_amounts, reverted_reason,"
@@ -179,6 +189,24 @@ class ExecutionStore:
         """Fetch the execution for an intent, or None."""
         row = await self.db.fetchrow(_GET_BY_INTENT_SQL, intent_bundle_id)
         return _row_to_model(row) if row is not None else None
+
+    async def list_by_account_since(
+        self,
+        smart_account_address: str,
+        after_ts: datetime,
+        deferred_ids: Sequence[UUID],
+        limit: int = 25,
+    ) -> list[ExecutionRow]:
+        """028 fold delta: rows STRICTLY newer than ``after_ts`` plus the carried ``deferred_ids``
+        (pending rows from earlier folds awaiting a terminal state), oldest-first, bounded."""
+        rows = await self.db.fetch(
+            _LIST_SINCE_SQL,
+            smart_account_address.lower(),
+            after_ts,
+            list(deferred_ids),
+            max(1, min(limit, 200)),
+        )
+        return [_row_to_model(r) for r in rows]
 
     async def list_by_account(
         self, smart_account_address: str, *, limit: int = 50

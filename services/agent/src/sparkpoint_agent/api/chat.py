@@ -35,19 +35,22 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Annotated, Any, Literal, Protocol
 
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from ..activity_fold import ActivityFolder, fold_activity
 from ..agents.literacy import Literacy
 from ..agents.planner import Planner
 from ..agents.recommender import Recommender
 from ..agents.sparky import Sparky
 from ..chain import VaultReader, VaultUnavailable
+from ..chain.faucet_probe import FaucetProbe
 from ..config import AgentConfig
 from ..coordinator import (
     ChainContext,
@@ -60,7 +63,10 @@ from ..coordinator import (
 )
 from ..db import get_database
 from ..db.conversations import ConversationStore
+from ..db.executions import ExecutionStore
+from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
+from ..db.vault_flows import VaultFlowReader
 from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
@@ -69,6 +75,7 @@ from .errors import ApiError, ErrorCode
 from .quota import require_within_quota
 from .recommendations import (
     _build_chain_context,
+    _network_id,
     _read_gate_inputs,
     get_agent_config,
     get_mandate_provider,
@@ -434,17 +441,54 @@ def _warn_memory_failure(exc: Exception) -> None:
         )
 
 
+#: Once-per-process guard for the 028 activity-fold failure warning (same discipline).
+_warned_fold_failure = False
+
+
+def _warn_fold_failure(exc: BaseException) -> None:
+    global _warned_fold_failure
+    if not _warned_fold_failure:
+        _warned_fold_failure = True
+        _logger.warning(
+            "user_memory_fold_failed: platform activity is NOT being folded into memory "
+            "(%s: %s). Fail-open — chat and chat-derived memory keep working; activity lines "
+            "are simply missing until this is fixed. Logged once per process.",
+            type(exc).__name__,
+            exc,
+        )
+
+
 class _MemorySink:
-    """FAIL-OPEN cross-conversation memory persistence (027). Mirrors :class:`_ConversationSink`:
-    a database outage, or an agent running ahead of migration 0030, degrades to "no memory" —
-    exactly the pre-027 behaviour — and can NEVER break a chat turn.
+    """FAIL-OPEN cross-conversation memory persistence (027) + the 028 activity fold. Mirrors
+    :class:`_ConversationSink`: a database outage, or an agent running ahead of migration
+    0030/0031, degrades to "no memory"/"no activity" — never a broken chat turn.
 
     The BOUNDARY lives with the caller, not here: what this returns is passed only to the
     classifier and to Sparky's prose turn (see ``CoordinatorDag.run_chat``), never to propose,
     the policy gate, or ``/build-tx``."""
 
-    def __init__(self, store: MemoryStore) -> None:
+    def __init__(
+        self,
+        store: MemoryStore,
+        folder_factory: Callable[[int], ActivityFolder | None] | None = None,
+    ) -> None:
         self._store = store
+        self._folder_factory = folder_factory
+
+    async def fold_platform_activity(self, *, owner: str, account: str, chain_id: int) -> None:
+        """The 028 lazy fold — run once per turn BEFORE the digest read, so this very turn
+        already knows about fresh platform activity. Fail-open + warned once per process."""
+        if self._folder_factory is None:
+            return
+        try:
+            folder = self._folder_factory(chain_id)
+            if folder is None:
+                return
+            result = await fold_activity(folder, owner=owner, account=account)
+            if result.error is not None:
+                _warn_fold_failure(result.error)
+        except Exception as exc:
+            _warn_fold_failure(exc)
 
     async def lines(self, owner_eoa: str) -> list[str]:
         """This wallet's remembered lines, oldest first — ``[]`` on any failure."""
@@ -475,10 +519,44 @@ class _NoopMemorySink(_MemorySink):
     async def remember(self, owner_eoa: str, lines: Sequence[str]) -> None:
         return None
 
+    async def fold_platform_activity(self, *, owner: str, account: str, chain_id: int) -> None:
+        return None
+
+
+def _activity_folder(chain_id: int) -> ActivityFolder | None:
+    """The 028 fold sources for one chain — vault flows, app-signed executions, attributed
+    swaps, and the SRK faucet probe. Every source is optional and independently fail-open."""
+    config = get_agent_config().for_chain(chain_id)
+    db = get_database()
+    net = _network_id(chain_id)
+    targets: tuple[tuple[str, str], ...] = ()
+    if config.vault_address:
+        targets = ((net, config.vault_address),)
+    usdc = (
+        {net: config.aave_reserve_usdc_address} if config.aave_reserve_usdc_address else None
+    )
+    # The faucet is a Base Sepolia (84532) testnet convenience; both env vars optional —
+    # unset simply disables the source (read like PREMIUM_*, outside the keyless AgentConfig).
+    probe: FaucetProbe | None = None
+    faucet_addr = os.getenv("SRK_FAUCET_ADDRESS")
+    faucet_rpc = os.getenv("BASE_SEPOLIA_RPC_URL")
+    if chain_id == 84532 and faucet_addr and faucet_rpc:
+        probe = FaucetProbe(rpc_url=faucet_rpc, faucet_address=faucet_addr)
+    return ActivityFolder(
+        memory=MemoryStore(db),
+        flows=VaultFlowReader(db) if targets else None,
+        flow_targets=targets,
+        executions=ExecutionStore(db),
+        swaps=PgSwapFeeEventStore(db),
+        swap_networks=(net,),
+        usdc_by_network=usdc,
+        faucet_probe=probe,
+    )
+
 
 def get_memory_sink() -> _MemorySink:
     """The per-wallet cross-conversation memory sink (fail-open Pg-backed; overridden in tests)."""
-    return _MemorySink(MemoryStore(get_database()))
+    return _MemorySink(MemoryStore(get_database()), folder_factory=_activity_folder)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -607,6 +685,12 @@ async def chat(
     # someone else's thread.
     conversation_id = await sink.resolve(account.owner, body.conversationId, body.message)
     history = await sink.history(conversation_id)
+    # 028: lazily fold NEW platform activity (vault flows; US2/US3 add executions/swaps/faucet)
+    # into the digest FIRST, so this very turn already knows about a deposit made an hour ago on
+    # the vault page. Fail-open + once-per-process warning; exactly-once via the activity cursor.
+    await memory.fold_platform_activity(
+        owner=account.owner, account=account.account, chain_id=account.chain_id
+    )
     # 027: the wallet's CROSS-conversation digest — read once per turn, keyed to the SIWE-verified
     # owner (never the conversation), which is exactly why a brand-new chat is no longer blank.
     # Fail-open to [] (no row, no migration 0030, no database), which reproduces pre-027 behaviour.

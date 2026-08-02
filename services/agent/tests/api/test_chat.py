@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -677,3 +677,113 @@ def test_a_broken_memory_store_never_breaks_the_chat_turn(client: TestClient) ->
 async def test_a_broken_memory_read_degrades_to_no_memory() -> None:
     sink = _MemorySink(_ExplodingStore())  # type: ignore[arg-type]
     assert await sink.lines(OWNER) == [], "a failed read is 'no memory', not an exception"
+
+
+# ── 028 · the platform-activity fold at turn start ──────────────────────────────
+
+
+class _FoldRecordingSink(_RecordingMemorySink):
+    """Also records fold calls and their order relative to the digest read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sequence: list[str] = []
+        self.folds: list[tuple[str, str, int]] = []
+
+    async def fold_platform_activity(self, *, owner: str, account: str, chain_id: int) -> None:
+        self.sequence.append("fold")
+        self.folds.append((owner, account, chain_id))
+
+    async def lines(self, owner_eoa: str) -> list[str]:
+        self.sequence.append("read")
+        return await super().lines(owner_eoa)
+
+
+def test_chat_folds_platform_activity_once_before_reading_the_digest(
+    client: TestClient,
+) -> None:
+    _wire(_dag(intent=Intent(kind=IntentKind.OTHER)), _chain())
+    sink = _FoldRecordingSink()
+    app.dependency_overrides[get_memory_sink] = lambda: sink
+    resp = _post_chat(client, "hello")
+    assert resp.status_code == 200
+    assert sink.folds == [(OWNER, USER, 8453)], "fold keyed by session identity + chain"
+    assert sink.sequence[:2] == ["fold", "read"], "fold runs BEFORE the digest read"
+
+
+def test_a_broken_activity_folder_never_breaks_the_chat_turn(client: TestClient) -> None:
+    # Through the PRODUCTION sink: the folder factory itself explodes — worse than any store
+    # failure — and the turn still streams its cards with zero error blocks (FR-007/SC-006).
+    def _bomb(chain_id: int) -> Any:
+        raise RuntimeError("factory exploded")
+
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    app.dependency_overrides[get_memory_sink] = lambda: _MemorySink(
+        _ExplodingStore(),  # type: ignore[arg-type]
+        folder_factory=_bomb,
+    )
+    resp = _post_chat(client, "where can I earn yield?")
+    assert resp.status_code == 200
+    blocks = _blocks(_parse_sse(resp.text))
+    assert any(b["type"] == "recommendation" for b in blocks)
+    assert all(b["type"] != "error" for b in blocks)
+
+
+async def test_fold_failures_warn_exactly_once_per_process(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    import sparkpoint_agent.api.chat as chat_module
+
+    chat_module._warned_fold_failure = False
+    try:
+
+        def _bomb(chain_id: int) -> Any:
+            raise RuntimeError("factory exploded")
+
+        sink = _MemorySink(_ExplodingStore(), folder_factory=_bomb)  # type: ignore[arg-type]
+        with caplog.at_level(logging.WARNING, logger=chat_module.__name__):
+            for _ in range(3):
+                await sink.fold_platform_activity(owner=OWNER, account=OWNER, chain_id=84532)
+        hits = [r for r in caplog.records if "user_memory_fold_failed" in r.getMessage()]
+        assert len(hits) == 1
+    finally:
+        chat_module._warned_fold_failure = False
+
+
+def test_every_activity_source_down_still_streams_a_clean_turn(client: TestClient) -> None:
+    # SC-006 second half: memory store, flow reader, exec store, swap store AND the faucet probe
+    # all raising — the fold degrades to memory v1 and the turn is indistinguishable from normal.
+    from sparkpoint_agent.activity_fold import ActivityFolder
+    from sparkpoint_agent.db.user_memory import MemoryStore as _RealMemoryStore
+
+    class _EvilEverything:
+        def __getattr__(self, name: str) -> Any:
+            async def _boom(*args: Any, **kwargs: Any) -> Any:
+                raise RuntimeError("everything is down")
+
+            return _boom
+
+    def _factory(chain_id: int) -> ActivityFolder:
+        evil = _EvilEverything()
+        return ActivityFolder(
+            memory=cast(_RealMemoryStore, evil),
+            flows=cast(Any, evil),
+            flow_targets=(("base", VAULT),),
+            executions=cast(Any, evil),
+            swaps=cast(Any, evil),
+            swap_networks=("base",),
+            faucet_probe=cast(Any, evil),
+        )
+
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    app.dependency_overrides[get_memory_sink] = lambda: _MemorySink(
+        _ExplodingStore(),  # type: ignore[arg-type]
+        folder_factory=_factory,
+    )
+    resp = _post_chat(client, "where can I earn yield?")
+    assert resp.status_code == 200
+    blocks = _blocks(_parse_sse(resp.text))
+    assert any(b["type"] == "recommendation" for b in blocks)
+    assert all(b["type"] != "error" for b in blocks)

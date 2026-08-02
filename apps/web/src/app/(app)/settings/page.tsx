@@ -138,8 +138,9 @@ function MandateTab() {
 
 /** The one honest sentence that has to sit next to the list, in the user's own words. */
 const MEMORY_DISCLOSURE =
-  "This is advisory context for suggestions and answers only — it never authorises anything, " +
-  "and it is never used to move your funds.";
+  "This includes your recent platform activity — deposits, withdrawals, swaps, and faucet " +
+  "claims — alongside what you've discussed. It is advisory context for suggestions and " +
+  "answers only — it never authorises anything, and it is never used to move your funds.";
 
 /**
  * The Memory tab (027) — "Sparky's memory": what the assistant carries between conversations,
