@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * /settings — tabbed settings: Account, Mandate, Notifications, Appearance, Security.
+ * /settings — tabbed settings: Account, Mandate, Memory, Notifications, Appearance, Security.
  * Risk profile, goals, alerts, connected wallet, and theme (wired to next-themes).
  *
  * Faithful 1:1 port of the design's `settings` screen
  * (docs/design-handover/showcase/screens/support.js). Markup, classes, and copy verbatim;
- * the tab/switch/segment interactivity is reproduced with React state.
+ * the tab/switch/segment interactivity is reproduced with React state. The **Memory** tab is
+ * new in feature 027 (the design predates cross-conversation memory) and reuses the same
+ * `.setrow` primitives, so it reads as part of the same screen.
  */
 
 import { useState } from "react";
@@ -19,15 +21,16 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 import { StatusTag } from "@/components/ui/status-tag";
-import { useMandate } from "@/lib/agent/useAgent";
+import { useMandate, useSparkyMemory, useClearSparkyMemory } from "@/lib/agent/useAgent";
 import { useNotifPrefs, useDisplayPrefs } from "@/lib/settings/usePrefs";
 import type { NotifKey } from "@/lib/settings/prefs";
 
-type Tab = "account" | "mandate" | "notifications" | "appearance" | "security";
+type Tab = "account" | "mandate" | "memory" | "notifications" | "appearance" | "security";
 
 const SETTABS: [Tab, string][] = [
   ["account", "Account"],
   ["mandate", "Mandate"],
+  ["memory", "Memory"],
   ["notifications", "Notifications"],
   ["appearance", "Appearance"],
   ["security", "Security"],
@@ -133,6 +136,137 @@ function MandateTab() {
   );
 }
 
+/** The one honest sentence that has to sit next to the list, in the user's own words. */
+const MEMORY_DISCLOSURE =
+  "This is advisory context for suggestions and answers only — it never authorises anything, " +
+  "and it is never used to move your funds.";
+
+/**
+ * The Memory tab (027) — "Sparky's memory": what the assistant carries between conversations,
+ * shown verbatim, with a one-press erase.
+ *
+ * Deliberately unglamorous. The lines are rendered exactly as stored (the same strings the model
+ * is given), because the card's claim is "this is what Sparky knows about you" and a prettier
+ * paraphrase would make that claim false. Clearing reports FAILURE honestly: a button labelled
+ * "Clear memory" that silently did nothing would be worse than no button at all.
+ */
+function MemoryTab() {
+  const memory = useSparkyMemory();
+  const clearMemory = useClearSparkyMemory();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  if (memory === null) {
+    return (
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Sparky&apos;s memory</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Connect your wallet to see what Sparky remembers.
+          </div>
+        </div>
+        <span className="muted">—</span>
+      </div>
+    );
+  }
+
+  const onClear = async () => {
+    setBusy(true);
+    setFailed(false);
+    const ok = await clearMemory();
+    setBusy(false);
+    setFailed(!ok);
+    if (ok) setConfirming(false);
+  };
+
+  return (
+    <>
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Sparky&apos;s memory</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            A short running note of what you&apos;ve done together, so a new conversation
+            doesn&apos;t start from scratch. {MEMORY_DISCLOSURE}
+          </div>
+        </div>
+        {memory.view.isEmpty || confirming ? (
+          <span className="muted">{memory.view.isEmpty ? "Nothing yet" : ""}</span>
+        ) : (
+          <button className="btn btn-outline btn-md" onClick={() => setConfirming(true)}>
+            Clear memory
+          </button>
+        )}
+      </div>
+
+      {confirming && (
+        <div className="setrow">
+          <div>
+            <div style={{ fontWeight: 600 }}>Clear everything Sparky remembers?</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              This can&apos;t be undone. Your chat history, plan, and funds are untouched.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ghost btn-md" onClick={() => setConfirming(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn btn-primary btn-md" onClick={onClear} disabled={busy}>
+              {busy ? "Clearing…" : "Yes, clear it"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {failed && (
+        <div className="setrow">
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Couldn&apos;t clear your memory just now — nothing was changed. Please try again.
+          </div>
+        </div>
+      )}
+
+      {memory.isLoading && (
+        <div className="setrow">
+          <div className="muted" style={{ fontSize: 12.5 }}>Loading…</div>
+        </div>
+      )}
+
+      {memory.isError && (
+        <div className="setrow">
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Couldn&apos;t load Sparky&apos;s memory just now.
+          </div>
+        </div>
+      )}
+
+      {memory.loaded && memory.view.isEmpty && (
+        <div className="setrow">
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Sparky hasn&apos;t noted anything yet. It starts remembering once you chat.
+          </div>
+        </div>
+      )}
+
+      {memory.view.rows.map((row) => (
+        <div className="setrow" key={row.key}>
+          <div style={{ fontSize: 13.5 }}>{row.text}</div>
+          <span className="muted" style={{ fontSize: 12.5 }}>{row.dateText}</span>
+        </div>
+      ))}
+
+      {!memory.view.isEmpty && (
+        <div className="setrow">
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Showing the {memory.view.count} most recent notes — older ones drop off automatically.
+            {memory.view.updatedText ? ` ${memory.view.updatedText}.` : ""}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Page() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
@@ -147,7 +281,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "In-app notifications are live — these category toggles filter your real notifications feed", "Display preferences are saved on this device; compact density and reduce-motion apply across the app"]} pending={["Only email / push DELIVERY of notifications isn’t wired yet (in-app is live); session-key alerts arrive once automation ships"]} /></h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "Sparky's memory is real: the Memory tab shows the actual notes it carries between conversations, and Clear memory really erases them", "In-app notifications are live — these category toggles filter your real notifications feed", "Display preferences are saved on this device; compact density and reduce-motion apply across the app"]} pending={["Only email / push DELIVERY of notifications isn’t wired yet (in-app is live); session-key alerts arrive once automation ships"]} /></h1>
         </div>
         <button
           className="btn btn-ghost btn-md"
@@ -211,6 +345,8 @@ export default function Page() {
         )}
 
         {tab === "mandate" && <MandateTab />}
+
+        {tab === "memory" && <MemoryTab />}
 
         {tab === "notifications" && (
           <>

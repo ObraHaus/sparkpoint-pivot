@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-remembers-what-youve-done-together",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Sparky now remembers what you've done together — see and clear it in Settings",
+      "body": "Until now, every new conversation started from a blank slate. Sparky could follow along within a single chat, but the moment you opened a new one it had no idea you'd ever spoken — which is a strange thing for an assistant you talk to every day.\n\nSparky now keeps a short running note of what you've done together: the questions you've asked, the strategies it suggested, when you looked at your portfolio. It's brief by design — a couple of lines per exchange, and only the most recent ones are kept — and it's built from what actually happened on screen rather than from a second pass of the AI guessing at a summary. Ask \"what did we look at last time?\" in a brand-new chat and you'll get a real answer.\n\nYou can see exactly what it remembers, and erase all of it, under Settings → Memory. The list shows the notes word for word — not a tidied-up version — because you should be able to check what the assistant is working from. Only you can see your own; there's no admin view of it anywhere.\n\nOne thing worth being plain about: this memory is context for conversation and suggestions only. It never authorises anything, it can't make a move eligible that wouldn't be otherwise, and it is never involved in moving your funds — every transaction still goes through the same checks and still has to be signed by you.\n\nWe also fixed a related quirk in the same pass: Sparky would sometimes talk about its own reference material instead of just answering (\"the notes you provided don't say who I am\"). It answers directly now.",
+      "cta_label": "Open Settings",
+      "cta_href": "/settings",
+      "published_at": "2026-08-02T09:30:00Z",
+      "active": true
+    },
+    {
       "slug": "get-srk-from-the-faucet-on-premium",
       "type": "changelog",
       "tag": "Added",

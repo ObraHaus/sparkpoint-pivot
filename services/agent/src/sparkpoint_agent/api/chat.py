@@ -60,8 +60,10 @@ from ..coordinator import (
 )
 from ..db import get_database
 from ..db.conversations import ConversationStore
+from ..db.user_memory import MemoryStore
 from ..knowledge import default_citation_retriever, default_grounder
 from ..llm import AsyncClaudeClient, ClaudeAuthError
+from ..memory import derive_memory_lines
 from ..persona import get_persona
 from .errors import ApiError, ErrorCode
 from .quota import require_within_quota
@@ -413,6 +415,72 @@ def get_conversation_sink() -> _ConversationSink:
     return _ConversationSink(ConversationStore(get_database()))
 
 
+#: Once-per-process guard for the memory sink's write-failure warning (same reasoning as
+#: ``_warn_append_failure``: fail-open persistence needs one loud line per failure mode, or
+#: "nothing is ever remembered" is indistinguishable from "this user has done nothing").
+_warned_memory_failure = False
+
+
+def _warn_memory_failure(exc: Exception) -> None:
+    global _warned_memory_failure
+    if not _warned_memory_failure:
+        _warned_memory_failure = True
+        _logger.warning(
+            "user_memory_write_failed: cross-conversation memory is NOT being recorded (%s: %s). "
+            "Fail-open — chat keeps serving and simply starts each conversation blank. Logged "
+            "once per process.",
+            type(exc).__name__,
+            exc,
+        )
+
+
+class _MemorySink:
+    """FAIL-OPEN cross-conversation memory persistence (027). Mirrors :class:`_ConversationSink`:
+    a database outage, or an agent running ahead of migration 0030, degrades to "no memory" —
+    exactly the pre-027 behaviour — and can NEVER break a chat turn.
+
+    The BOUNDARY lives with the caller, not here: what this returns is passed only to the
+    classifier and to Sparky's prose turn (see ``CoordinatorDag.run_chat``), never to propose,
+    the policy gate, or ``/build-tx``."""
+
+    def __init__(self, store: MemoryStore) -> None:
+        self._store = store
+
+    async def lines(self, owner_eoa: str) -> list[str]:
+        """This wallet's remembered lines, oldest first — ``[]`` on any failure."""
+        try:
+            return list((await self._store.get(owner_eoa)).lines)
+        except Exception:
+            return []
+
+    async def remember(self, owner_eoa: str, lines: Sequence[str]) -> None:
+        """Fold this turn's derived lines into the digest (fail-open, warned once per process)."""
+        if not lines:
+            return
+        try:
+            await self._store.append(owner_eoa, lines)
+        except Exception as exc:
+            _warn_memory_failure(exc)
+
+
+class _NoopMemorySink(_MemorySink):
+    """Default in tests — no memory read, no memory write (chat behaves exactly as pre-027)."""
+
+    def __init__(self) -> None:  # noqa: D401 — deliberately skips the store
+        pass
+
+    async def lines(self, owner_eoa: str) -> list[str]:
+        return []
+
+    async def remember(self, owner_eoa: str, lines: Sequence[str]) -> None:
+        return None
+
+
+def get_memory_sink() -> _MemorySink:
+    """The per-wallet cross-conversation memory sink (fail-open Pg-backed; overridden in tests)."""
+    return _MemorySink(MemoryStore(get_database()))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SSE stream
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,6 +529,8 @@ async def _event_stream(
     history: list[tuple[str, str]],
     sink: _ConversationSink,
     owner_eoa: str,
+    memory: _MemorySink,
+    memory_lines: list[str],
 ) -> AsyncIterator[str]:
     """Drive one ``run_chat`` turn and frame each §2.7 block as an SSE ``block`` event.
 
@@ -468,7 +538,9 @@ async def _event_stream(
     unexpected error mid-stream (which the app exception handlers can no longer catch,
     the response having already started) degrades to a single inert ``error`` block so a
     traceback or partial output can never reach the wire — fail-closed, non-custody. The user
-    turn + a compact assistant summary are persisted (fail-open) for multi-turn history.
+    turn + a compact assistant summary are persisted (fail-open) for multi-turn history, and
+    1–2 deterministic memory lines are folded into the wallet's CROSS-conversation digest (027)
+    from the blocks this turn actually streamed — no second LLM call.
     """
     # Persist the user's turn up front (fail-open) so history survives even a mid-stream failure.
     await sink.record(conversation_id, "user", message)
@@ -476,7 +548,9 @@ async def _event_stream(
     summary_parts: list[str] = []
     block_wires: list[dict[str, Any]] = []
     try:
-        async for block in dag.run_chat(message, chain, surface=surface, history=history):
+        async for block in dag.run_chat(
+            message, chain, surface=surface, history=history, memory_lines=memory_lines
+        ):
             count += 1
             wire = block.to_wire()
             frag = _assistant_summary(wire)
@@ -496,6 +570,11 @@ async def _event_stream(
     await sink.record(
         conversation_id, "assistant", " ".join(summary_parts).strip(), block_wires
     )
+    # 027: the same terminal persist also feeds the CROSS-conversation digest. Derivation is
+    # deterministic (``derive_memory_lines`` reads the block wires this turn already produced), so
+    # memory costs no extra model call and no extra latency. Fail-open like the sink above — a
+    # memory write can never break a chat turn, and a systematic failure is warned once.
+    await memory.remember(owner_eoa, derive_memory_lines(message, block_wires))
     yield _sse(_EVENT_DONE, {"conversationId": conversation_id, "blockCount": count})
 
 
@@ -511,6 +590,7 @@ async def chat(
     dag: Annotated[CoordinatorDag, Depends(get_coordinator_dag)],
     chain_provider: Annotated[ChatChainProvider, Depends(get_chain_provider)],
     sink: Annotated[_ConversationSink, Depends(get_conversation_sink)],
+    memory: Annotated[_MemorySink, Depends(get_memory_sink)],
 ) -> StreamingResponse:
     """Primary conversational surface — stream §2.7 ChatBlocks as SSE (agent-service-api.md §3.2).
 
@@ -527,6 +607,10 @@ async def chat(
     # someone else's thread.
     conversation_id = await sink.resolve(account.owner, body.conversationId, body.message)
     history = await sink.history(conversation_id)
+    # 027: the wallet's CROSS-conversation digest — read once per turn, keyed to the SIWE-verified
+    # owner (never the conversation), which is exactly why a brand-new chat is no longer blank.
+    # Fail-open to [] (no row, no migration 0030, no database), which reproduces pre-027 behaviour.
+    memory_lines = await memory.lines(account.owner)
     # Built before streaming so a read failure surfaces as a clean pre-stream §1.5 envelope.
     chain = await chain_provider.context(account, surface=surface)
     stream = _event_stream(
@@ -538,6 +622,8 @@ async def chat(
         history=history,
         sink=sink,
         owner_eoa=account.owner,
+        memory=memory,
+        memory_lines=memory_lines,
     )
     return StreamingResponse(
         stream,
