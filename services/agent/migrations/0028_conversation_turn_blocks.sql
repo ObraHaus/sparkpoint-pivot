@@ -37,9 +37,18 @@
 -- chokepoint where the user signs. The write is fail-open (the sink swallows DB errors), so an
 -- outage costs chat history, never custody, and this is NEVER on the withdraw/exit path (N2).
 --
--- ORDERING: additive and nullable, so the currently-live agent ignores it entirely and the pre-025
--- reader is unaffected. Either order is safe; apply before the 025 agent redeploy so the first
--- turns after deploy persist their cards.
+-- ⚠️ ORDERING — APPLY THIS **BEFORE** THE 025 AGENT REDEPLOY.
+-- The additive/nullable shape makes ONE direction free: the currently-live PRE-025 agent never
+-- names `blocks`, so applying early changes nothing for it. The other direction is NOT symmetric,
+-- and an earlier draft of this header wrongly claimed it was. A 025 agent against a pre-0028
+-- database names a column that does not exist, and reproducing it showed both halves fail:
+--   * `append_turn` raises UndefinedColumnError -> swallowed by the FAIL-OPEN sink in api/chat.py
+--     -> chat still serves, but conversation history SILENTLY STOPS BEING RECORDED entirely;
+--   * `get_conversation` raises -> nothing catches it above -> HTTP 500 on every conversation open.
+-- db/conversations.py now carries an explicit pre-0028 fallback for both (logging
+-- `conversation_turns_blocks_column_missing` once), so that order degrades to "cards aren't
+-- persisted yet" instead of breaking history. That is a BACKSTOP, not a licence: until this is
+-- applied, no card is persisted and every reopened conversation still replays as flat text.
 --
 -- ROLLBACK: `ALTER TABLE conversation_turns DROP COLUMN IF EXISTS blocks;` — drops the replay detail
 -- and returns `GET /conversations/{id}` to summary-only turns, which both the 025 web replay and the

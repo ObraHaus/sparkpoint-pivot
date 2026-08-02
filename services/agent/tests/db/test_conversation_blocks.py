@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
+from asyncpg.exceptions import UndefinedColumnError
+
 from sparkpoint_agent.db.conversations import ConversationStore
 from sparkpoint_agent.db.pool import Database
 
@@ -214,3 +216,60 @@ async def test_recent_history_does_not_select_blocks() -> None:
     await _store(db).recent_history(_CID)
     (sql, _args) = next(c for c in db.calls if "conversation_turns" in c[0])
     assert "blocks" not in sql
+
+
+# ── deploy-order safety: the agent running AHEAD of migration 0028 ─────────────
+
+
+class _PreMigrationConn(_FakeConn):
+    """Raises UndefinedColumnError for any statement naming `blocks` (a pre-0028 database)."""
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        self._parent.calls.append((sql, args))  # record the ATTEMPT, then fail like Postgres
+        if "blocks" in sql:
+            raise UndefinedColumnError(
+                'column "blocks" of relation "conversation_turns" does not exist'
+            )
+        return "INSERT 0 1"
+
+
+class _PreMigrationDb(_FakeDb):
+    @asynccontextmanager
+    async def acquire(self) -> Any:
+        yield _PreMigrationConn(self)
+
+    async def fetch(self, sql: str, *args: Any) -> Any:
+        self.calls.append((sql, args))
+        if "blocks" in sql:
+            raise UndefinedColumnError('column "blocks" does not exist')
+        # The pre-0028 projection: no `blocks` key on the row at all.
+        return [{k: v for k, v in r.items() if k != "blocks"} for r in self._rows]
+
+
+async def test_append_turn_falls_back_when_the_blocks_column_is_missing() -> None:
+    """An agent deployed BEFORE 0028 is applied must keep recording history.
+
+    Without this fallback the raise is swallowed by the fail-open sink in api/chat.py and
+    conversation history stops being written ENTIRELY, in silence — a far worse outcome than
+    simply not persisting the cards yet.
+    """
+    db = _PreMigrationDb()
+    await _store(db).append_turn(_CID, "assistant", "[recommended: X]", [_ACTION_BLOCK])
+    inserts = [(sql, a) for sql, a in db.calls if "INSERT INTO conversation_turns" in sql]
+    # The blocks INSERT was attempted, then retried without the column.
+    assert len(inserts) == 2
+    assert "blocks" in inserts[0][0]
+    assert "blocks" not in inserts[1][0]
+    assert inserts[1][1] == (_CID, "assistant", "[recommended: X]")
+    # Recency was still bumped, so the thread does not fall out of the sidebar's sort.
+    assert any("UPDATE conversations" in sql for sql, _a in db.calls)
+
+
+async def test_get_conversation_falls_back_when_the_blocks_column_is_missing() -> None:
+    """…and reading must not 500. `api/conversations.py` has no handler above this call."""
+    db = _PreMigrationDb(rows=[_row("assistant", "[showed your portfolio]", None)])
+    convo = await _store(db).get_conversation(_OWNER, str(_CID))
+    assert convo is not None
+    # Replays as text — identical to a legacy turn, which is exactly right.
+    assert convo["turns"][0]["blocks"] == []
+    assert convo["turns"][0]["content"] == "[showed your portfolio]"
