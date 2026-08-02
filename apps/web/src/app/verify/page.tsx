@@ -10,12 +10,14 @@
  * non-allowlisted wallet is told so honestly and can still withdraw anytime via /exit.
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import { Icon } from "@/lib/icons";
 import { useSession, useSiweLogin } from "@/lib/auth/useSiwe";
+import { useAgentClient } from "@/lib/agent/useAgent";
+import { hasSavedMandate } from "@/lib/agent/mandate";
 import { useNetwork } from "@/lib/network";
 import { captureNetworkDiagnostic } from "@/lib/debug/networkBeacon";
 import { PubTop } from "@/components/screens/PubTop";
@@ -48,6 +50,40 @@ export default function VerifyPage() {
   const done = betaOk;
   const blocked = signedIn && !session.beta;
   const needsSignIn = isConnected && onSupported && session === null;
+
+  // Does this wallet already have a plan? /connect auto-forwards every returning wallet here and
+  // sessions last 7 days, so without this check an onboarded user is told to "Start onboarding"
+  // as the PRIMARY action forever — the app's own front door insisting they haven't started.
+  //
+  // `null` = unknown (still checking, or the check failed) ⇒ FAIL OPEN to the pre-025 CTA. This is
+  // a convenience read on a gate that must never break: it is not on the withdraw/exit path (N2)
+  // and nothing here is signable. Only fetched once the session is BETA — the BFF 403s
+  // (`BETA_NOT_ENABLED`) every agent call for a non-beta wallet, so probing on the blocked branch
+  // would be a guaranteed-failing request, and that branch must keep behaving exactly as today.
+  const { client: agentClient, identity } = useAgentClient();
+  // The answer is STAMPED with the wallet+chain it was read for, and read back only on a match, so
+  // a wallet switch reverts to "unknown" during render instead of momentarily showing the previous
+  // wallet's answer. (Clearing it with a setState in the effect body would be a cascading render.)
+  const probeKey = identity ? `${identity.account}:${identity.chainId}` : "";
+  const [probe, setProbe] = useState<{ key: string; onboarded: boolean } | null>(null);
+  const onboarded = probe !== null && probe.key === probeKey ? probe.onboarded : null;
+  useEffect(() => {
+    if (!betaOk || !agentClient || !probeKey) return;
+    const ctrl = new AbortController();
+    let live = true;
+    void (async () => {
+      try {
+        const body = await agentClient.request<unknown>("/mandate", { signal: ctrl.signal });
+        if (live) setProbe({ key: probeKey, onboarded: hasSavedMandate(body) });
+      } catch {
+        // Fail open — an unreachable/failing agent must never turn the access gate into a dead end.
+      }
+    })();
+    return () => {
+      live = false;
+      ctrl.abort();
+    };
+  }, [betaOk, agentClient, probeKey]);
 
   // Snapshot the real wallet/network state for the developer capture (see networkBeacon).
   const diagSnap = useCallback(
@@ -123,7 +159,9 @@ export default function VerifyPage() {
     : wrongNetwork
       ? "Switch your wallet to Base Sepolia or Robinhood Testnet to continue."
       : done
-        ? "Let's build your plan — it takes about 3 minutes."
+        ? onboarded
+          ? "Your plan is saved — pick up where you left off."
+          : "Let's build your plan — it takes about 3 minutes."
         : blocked
           ? "Your wallet can still withdraw anytime via /exit, but new deposits aren't open for it yet."
           : needsSignIn
@@ -232,18 +270,26 @@ export default function VerifyPage() {
                 {pending ? "Waiting for signature…" : "Sign in with wallet"}
               </a>
             )}
+            {/* A wallet with a saved plan is NOT a new user — sending it to "Start onboarding" as
+                the primary action is the app telling a returning user it doesn't know them. The
+                two branches are otherwise identical, and `onboarded !== true` (unknown INCLUDED)
+                keeps the pre-025 wording, so a failed/slow mandate read changes nothing. */}
             {done && (
               <>
                 <a
                   className="btn btn-primary btn-lg"
-                  onClick={() => router.push("/onboarding")}
+                  onClick={() => router.push(onboarded ? "/chat" : "/onboarding")}
                   style={{ marginTop: "18px", display: "inline-flex", cursor: "pointer" }}
                 >
-                  Start onboarding
+                  {onboarded ? "Continue to app" : "Start onboarding"}
                 </a>
                 <div style={{ marginTop: "10px" }}>
-                  <a className="btn btn-ghost btn-sm" onClick={() => router.push("/chat")} style={{ cursor: "pointer" }}>
-                    Skip to app
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => router.push(onboarded ? "/onboarding" : "/chat")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {onboarded ? "Review your plan" : "Skip to app"}
                   </a>
                 </div>
               </>

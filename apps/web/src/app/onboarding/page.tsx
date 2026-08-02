@@ -16,7 +16,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
-import { useOnboarding } from "@/lib/agent/useAgent";
+import { useOnboarding, mandateSaveHint, type MandateSaveFailure } from "@/lib/agent/useAgent";
 import { buildMandateDraft } from "@/lib/agent/mandateDraft";
 
 /** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
@@ -76,22 +76,30 @@ export default function OnboardingPage() {
   // default recompute (it drops the goal/tier/timeline the user chose — US3 AC2).
   const onboarding = useOnboarding();
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // WHY the failure is kept, not just the state: the dock used to say "check your connection" for
+  // every failure, including a hard server rejection that no amount of retrying could fix. We now
+  // show the server's own message/code when there is one (025).
+  const [saveFailure, setSaveFailure] = useState<MandateSaveFailure | null>(null);
   const confirmPlan = useCallback(async (): Promise<boolean> => {
     const mandate = buildMandateDraft(answers);
     if (!onboarding.online) {
       // No connected wallet ⇒ nothing to scope the mandate to. Surface it; never pretend.
+      setSaveFailure({ kind: "offline" });
       setSaveState("error");
       return false;
     }
     setSaveState("saving");
-    const saved = await onboarding.confirmMandate(mandate);
-    if (saved) {
+    setSaveFailure(null);
+    const outcome = await onboarding.confirmMandate(mandate);
+    if (outcome.ok) {
       setSaveState("saved");
       return true;
     }
+    setSaveFailure(outcome.failure);
     setSaveState("error");
     return false;
   }, [onboarding, answers]);
+  const saveHint = mandateSaveHint(saveState === "error" ? saveFailure : null);
 
   // ---------- stepper ----------
   const inputActive = Math.min(Math.max(stepIndex, 1), 6); // 1..6
@@ -164,7 +172,7 @@ export default function OnboardingPage() {
       {/* sticky dock */}
       <div className="dock">
         <div className="dockinner" id="dock">
-          {renderDock(stepIndex, answers, go, router.push, confirmPlan, saveState)}
+          {renderDock(stepIndex, answers, go, router.push, confirmPlan, saveState, saveHint)}
         </div>
       </div>
     </>
@@ -747,6 +755,8 @@ function renderDock(
   push: (href: string) => void,
   confirmPlan: () => Promise<boolean>,
   saveState: SaveState,
+  /** Pre-resolved dock copy for the current save state (see `mandateSaveHint`). */
+  saveHint: string,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -808,11 +818,7 @@ function renderDock(
     case 6:
       return (
         <>
-          <span className="hint">
-            {saveState === "error"
-              ? "Couldn't save your plan — check your connection and try again."
-              : "You can change this anytime in Settings."}
-          </span>
+          <span className="hint">{saveHint}</span>
           <button
             className="btn btn-outline btn-lg"
             type="button"
