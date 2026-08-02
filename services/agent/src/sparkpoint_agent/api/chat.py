@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Annotated, Any, Literal, Protocol
@@ -49,6 +50,7 @@ from ..agents.planner import Planner
 from ..agents.recommender import Recommender
 from ..agents.sparky import Sparky
 from ..chain import VaultReader, VaultUnavailable
+from ..chain.faucet_probe import FaucetProbe
 from ..config import AgentConfig
 from ..coordinator import (
     ChainContext,
@@ -62,6 +64,7 @@ from ..coordinator import (
 from ..db import get_database
 from ..db.conversations import ConversationStore
 from ..db.executions import ExecutionStore
+from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
 from ..knowledge import default_citation_retriever, default_grounder
@@ -521,18 +524,33 @@ class _NoopMemorySink(_MemorySink):
 
 
 def _activity_folder(chain_id: int) -> ActivityFolder | None:
-    """The 028 fold sources for one chain — vault flows + app-signed executions (US3 adds
-    swaps/faucet). Executions fold even on a chain with no deployed vault."""
+    """The 028 fold sources for one chain — vault flows, app-signed executions, attributed
+    swaps, and the SRK faucet probe. Every source is optional and independently fail-open."""
     config = get_agent_config().for_chain(chain_id)
     db = get_database()
+    net = _network_id(chain_id)
     targets: tuple[tuple[str, str], ...] = ()
     if config.vault_address:
-        targets = ((_network_id(chain_id), config.vault_address),)
+        targets = ((net, config.vault_address),)
+    usdc = (
+        {net: config.aave_reserve_usdc_address} if config.aave_reserve_usdc_address else None
+    )
+    # The faucet is a Base Sepolia (84532) testnet convenience; both env vars optional —
+    # unset simply disables the source (read like PREMIUM_*, outside the keyless AgentConfig).
+    probe: FaucetProbe | None = None
+    faucet_addr = os.getenv("SRK_FAUCET_ADDRESS")
+    faucet_rpc = os.getenv("BASE_SEPOLIA_RPC_URL")
+    if chain_id == 84532 and faucet_addr and faucet_rpc:
+        probe = FaucetProbe(rpc_url=faucet_rpc, faucet_address=faucet_addr)
     return ActivityFolder(
         memory=MemoryStore(db),
         flows=VaultFlowReader(db) if targets else None,
         flow_targets=targets,
         executions=ExecutionStore(db),
+        swaps=PgSwapFeeEventStore(db),
+        swap_networks=(net,),
+        usdc_by_network=usdc,
+        faucet_probe=probe,
     )
 
 

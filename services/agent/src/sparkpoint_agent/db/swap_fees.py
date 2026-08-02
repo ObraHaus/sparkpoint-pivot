@@ -11,11 +11,14 @@ makes the admin revenue figure momentarily incomplete.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
+
+from asyncpg.exceptions import UndefinedColumnError
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +40,10 @@ class SwapFeeEvent:
     fee_value_raw: int  # output-token base units
     from_address: str  # lowercased == the swap router
     to_address: str  # lowercased == the configured fee recipient
+    #: 028 (migration 0032): the tx SENDER — the wallet that signed the swap — resolved at
+    #: ingest via one cached eth_getTransactionByHash. ``None`` = unresolvable or pre-0032 row;
+    #: those swaps are never attributed (honest degrade).
+    swapper_address: str | None = None
 
 
 #: A fetched row is structurally identical to the insert unit (the ledger stores exactly these
@@ -88,6 +95,23 @@ class SwapFeeEventStore(Protocol):
 
 #: The indexer_cursors.stream name for the swap-fee replay (reuses the 0001 table).
 SWAP_FEE_STREAM = "swap_fee"
+
+logger = logging.getLogger(__name__)
+
+#: Logged ONCE per process when swap_fee_events.swapper_address (migration 0032) is absent.
+_MISSING_SWAPPER_WARNING = (
+    "swap_fee_swapper_column_missing: migration 0032 is not applied on this database. Swap-fee "
+    "ingestion (the revenue dashboard) keeps working, but swaps are NOT attributed to wallets "
+    "and never fold into Sparky's memory. Apply 0032 and this resolves itself."
+)
+_warned_missing_swapper = False
+
+
+def _warn_missing_swapper() -> None:
+    global _warned_missing_swapper
+    if not _warned_missing_swapper:
+        _warned_missing_swapper = True
+        logger.warning(_MISSING_SWAPPER_WARNING)
 
 
 def _truncate(when: datetime, period: str) -> datetime:
@@ -151,25 +175,51 @@ class PgSwapFeeEventStore:
         self._db = db
 
     async def record(self, ev: SwapFeeEvent) -> bool:
-        status = await self._db.execute(
-            """
-            INSERT INTO swap_fee_events (
-                network_id, tx_hash, log_index, block_number, block_time,
-                token_address, token_decimals, fee_value_raw, from_address, to_address
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (network_id, tx_hash, log_index) DO NOTHING
-            """,
-            ev.network_id,
-            ev.tx_hash.lower(),
-            ev.log_index,
-            ev.block_number,
-            ev.block_time,
-            ev.token_address.lower(),
-            ev.token_decimals,
-            ev.fee_value_raw,
-            ev.from_address.lower(),
-            ev.to_address.lower(),
-        )
+        try:
+            status = await self._db.execute(
+                """
+                INSERT INTO swap_fee_events (
+                    network_id, tx_hash, log_index, block_number, block_time,
+                    token_address, token_decimals, fee_value_raw, from_address, to_address,
+                    swapper_address
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT (network_id, tx_hash, log_index) DO NOTHING
+                """,
+                ev.network_id,
+                ev.tx_hash.lower(),
+                ev.log_index,
+                ev.block_number,
+                ev.block_time,
+                ev.token_address.lower(),
+                ev.token_decimals,
+                ev.fee_value_raw,
+                ev.from_address.lower(),
+                ev.to_address.lower(),
+                ev.swapper_address.lower() if ev.swapper_address else None,
+            )
+        except UndefinedColumnError:
+            # Pre-0032 database: fee ingestion (revenue) must keep working; only the 028
+            # attribution is lost. Deploy-order safe in BOTH directions, warned once.
+            _warn_missing_swapper()
+            status = await self._db.execute(
+                """
+                INSERT INTO swap_fee_events (
+                    network_id, tx_hash, log_index, block_number, block_time,
+                    token_address, token_decimals, fee_value_raw, from_address, to_address
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (network_id, tx_hash, log_index) DO NOTHING
+                """,
+                ev.network_id,
+                ev.tx_hash.lower(),
+                ev.log_index,
+                ev.block_number,
+                ev.block_time,
+                ev.token_address.lower(),
+                ev.token_decimals,
+                ev.fee_value_raw,
+                ev.from_address.lower(),
+                ev.to_address.lower(),
+            )
         return status.strip().endswith(" 1")
 
     async def get_cursor(self, network_id: str) -> int:
@@ -225,6 +275,57 @@ class PgSwapFeeEventStore:
                 fee_value_raw=int(r["fee_value_raw"]),
                 from_address=str(r["from_address"]),
                 to_address=str(r["to_address"]),
+            )
+            for r in rows
+        ]
+
+    async def list_for_swapper(
+        self,
+        network_id: str,
+        swapper: str,
+        after: tuple[int, int] | None,
+        limit: int = 25,
+    ) -> list[SwapFeeEvent]:
+        """028 fold delta: this wallet's attributed swaps STRICTLY AFTER ``after`` =
+        (block_number, log_index), oldest-first, bounded. Pre-0032 rows have NULL
+        ``swapper_address`` and are never returned (honest — no guessed attribution).
+        Raises ``UndefinedColumnError`` upward on a pre-0032 database (after a once-per-process
+        warning) so the fold skips the source, cursor untouched."""
+        block, log = after if after is not None else (-1, -1)
+        try:
+            rows = await self._db.fetch(
+                """
+                SELECT network_id, tx_hash, log_index, block_number, block_time,
+                       token_address, token_decimals, fee_value_raw, from_address, to_address,
+                       swapper_address
+                FROM swap_fee_events
+                WHERE network_id = $1 AND swapper_address = $2
+                  AND (block_number, log_index) > ($3, $4)
+                ORDER BY block_number ASC, log_index ASC
+                LIMIT $5
+                """,
+                network_id,
+                swapper.lower(),
+                block,
+                log,
+                max(1, min(limit, 200)),
+            )
+        except UndefinedColumnError:
+            _warn_missing_swapper()
+            raise
+        return [
+            SwapFeeEvent(
+                network_id=str(r["network_id"]),
+                tx_hash=str(r["tx_hash"]),
+                log_index=int(r["log_index"]),
+                block_number=int(r["block_number"]),
+                block_time=r["block_time"],
+                token_address=str(r["token_address"]),
+                token_decimals=int(r["token_decimals"]),
+                fee_value_raw=int(r["fee_value_raw"]),
+                from_address=str(r["from_address"]),
+                to_address=str(r["to_address"]),
+                swapper_address=str(r["swapper_address"]) if r["swapper_address"] else None,
             )
             for r in rows
         ]

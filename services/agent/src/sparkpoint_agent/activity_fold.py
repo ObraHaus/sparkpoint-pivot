@@ -30,13 +30,16 @@ from .activity import (
     EXEC_SKIP_FOREVER,
     EXEC_TERMINAL_SUCCESS,
     MAX_DEFERRED_EXECS,
+    SWAP_NOTIONAL_MULTIPLIER,
     ActivityEvent,
     format_line,
     merge_and_dedup,
     normalize_tx,
     plan_fold,
 )
+from .chain.faucet_probe import FaucetProbe
 from .db.executions import ExecutionStore
+from .db.swap_fees import PgSwapFeeEventStore
 from .db.user_memory import FoldColumnMissing, MemoryStore
 from .db.vault_flows import VaultFlowReader
 
@@ -70,10 +73,13 @@ class ActivityFolder:
     flow_targets: tuple[tuple[str, str], ...] = ()
     #: US2 — app-signed executions (keyed by ``account.account``).
     executions: ExecutionStore | None = None
-    #: Extension points (US3): see fold_activity for their contracts.
-    swaps: Any = None
+    #: US3 — attributed swaps (keyed by ``owner``, per network) + the canonical-USDC match for
+    #: honest units (a fee in any other token renders unitless).
+    swaps: PgSwapFeeEventStore | None = None
     swap_networks: tuple[str, ...] = ()
-    faucet_probe: Any = None
+    usdc_by_network: dict[str, str] | None = None
+    #: US3 — the SRK faucet claim probe (keyed by ``owner``; Base Sepolia only today).
+    faucet_probe: FaucetProbe | None = None
 
 
 async def _read_flow_events(
@@ -214,6 +220,72 @@ def _exec_sub_cursor(
     return {"ts": ts.isoformat(), "deferred": [rid for rid, _ in kept]}
 
 
+async def _read_swap_events(
+    folder: ActivityFolder, owner: str, cursor: dict[str, Any] | None
+) -> tuple[list[ActivityEvent], list[str]]:
+    """US3: attributed swaps since the per-network swap sub-cursor. The notional is estimated
+    from the recorded 0.20% platform fee (× SWAP_NOTIONAL_MULTIPLIER) and always marked
+    approximate; a fee token that is not the network's canonical USDC renders unitless."""
+    if folder.swaps is None or not folder.swap_networks:
+        return [], []
+    events: list[ActivityEvent] = []
+    skipped: list[str] = []
+    buckets = (cursor or {}).get("swaps") or {}
+    usdc = folder.usdc_by_network or {}
+    for network_id in folder.swap_networks:
+        after = None
+        marker = buckets.get(network_id)
+        if isinstance(marker, dict) and "block" in marker:
+            after = (int(marker["block"]), int(marker.get("log", 0)))
+        try:
+            rows = await folder.swaps.list_for_swapper(
+                network_id, owner, after, limit=SOURCE_READ_LIMIT
+            )
+        except Exception:
+            skipped.append(f"swaps:{network_id}")
+            continue
+        canonical = (usdc.get(network_id) or "").lower()
+        for r in rows:
+            at = r.block_time if r.block_time.tzinfo else r.block_time.replace(tzinfo=UTC)
+            is_usdc = bool(canonical) and r.token_address.lower() == canonical
+            events.append(
+                ActivityEvent(
+                    source="swap",
+                    kind="swap",
+                    at=at,
+                    amount_raw=r.fee_value_raw * SWAP_NOTIONAL_MULTIPLIER,
+                    decimals=r.token_decimals,
+                    unit="USDC" if is_usdc else None,
+                    approx=True,
+                    tx=normalize_tx(r.tx_hash),
+                    network=network_id,
+                    position=(r.block_number, r.log_index),
+                )
+            )
+    return events, skipped
+
+
+async def _read_faucet_event(
+    folder: ActivityFolder, owner: str, cursor: dict[str, Any] | None
+) -> tuple[list[ActivityEvent], dict[str, Any] | None]:
+    """US3: at most ONE faucet-claim event — the most recent claim, when newer than the faucet
+    sub-cursor. Returns ``(events, new_faucet_ts)``; ``(None)`` sub-cursor means untouched."""
+    if folder.faucet_probe is None:
+        return [], None
+    last = await folder.faucet_probe.last_claim_at(owner)
+    if last is None:
+        return [], None
+    prior_raw = (cursor or {}).get("faucet")
+    try:
+        prior = datetime.fromisoformat(prior_raw) if isinstance(prior_raw, str) else None
+    except ValueError:
+        prior = None
+    if prior is not None and last <= prior:
+        return [], None
+    event = ActivityEvent(source="faucet", kind="faucet_claim", at=last)
+    return [event], {"faucet": last.isoformat()}
+
+
 async def fold_activity(folder: ActivityFolder, *, owner: str, account: str) -> FoldResult:
     """One lazy fold for this user. Returns, never raises (see the module contract)."""
     try:
@@ -234,7 +306,12 @@ async def fold_activity(folder: ActivityFolder, *, owner: str, account: str) -> 
             events.extend(exec_read.events)
         skipped.extend(exec_skipped)
 
-        # US3 (swaps + faucet) extends here.
+        swap_events, swap_skipped = await _read_swap_events(folder, owner, cursor)
+        events.extend(swap_events)
+        skipped.extend(swap_skipped)
+
+        faucet_events, faucet_sub = await _read_faucet_event(folder, owner, cursor)
+        events.extend(faucet_events)
 
         exec_saw_something = exec_read is not None and exec_read.saw_rows
         if not events and cursor is not None and not exec_saw_something:
@@ -244,6 +321,11 @@ async def fold_activity(folder: ActivityFolder, *, owner: str, account: str) -> 
         deduped = merge_and_dedup(events)
         plan = plan_fold(deduped, cursor)
         new_cursor = dict(plan.cursor)
+        if faucet_sub is not None:
+            # The faucet event never survives a cap-cut silently: if it folded, advance; if the
+            # plan cut it, leave the sub-cursor so it re-derives next turn.
+            if any(e.source == "faucet" for e in plan.events):
+                new_cursor["faucet"] = faucet_sub["faucet"]
         if exec_read is not None:
             # Overlay the exec sub-cursor — it needs source-private knowledge (pending rows +
             # cap-cut settled rows), which plan_fold deliberately doesn't have (data-model §4).

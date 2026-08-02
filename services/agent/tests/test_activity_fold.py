@@ -300,3 +300,135 @@ async def test_a_failing_exec_source_skips_without_touching_its_cursor() -> None
     assert result.folded == 1 and "execs" in result.skipped_sources
     _, cursor = memory.appends[0]
     assert cursor["execs"] == sub, "untouched"
+
+
+# ── US3 · swaps + faucet ────────────────────────────────────────────────────────
+
+
+class _FakeSwaps:
+    def __init__(self, rows_by_net: dict[str, list[Any]] | None = None, *, boom: bool = False):
+        self.rows_by_net = rows_by_net or {}
+        self.boom = boom
+
+    async def list_for_swapper(
+        self, network_id: str, swapper: str, after: Any, limit: int = 25
+    ) -> list[Any]:
+        if self.boom:
+            raise RuntimeError("swaps db down")
+        rows = self.rows_by_net.get(network_id, [])
+        if after is None:
+            return rows
+        return [r for r in rows if (r.block_number, r.log_index) > after]
+
+
+class _FakeProbe:
+    def __init__(self, last: datetime | None):
+        self.last = last
+
+    async def last_claim_at(self, owner: str) -> datetime | None:
+        return self.last
+
+
+def _swap_row(
+    block: int = 200, fee: int = 2_000_000, token: str = "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f"
+) -> Any:
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _Row:
+        block_number: int
+        log_index: int
+        block_time: datetime
+        token_address: str
+        token_decimals: int
+        fee_value_raw: int
+        tx_hash: str
+
+    return _Row(
+        block_number=block,
+        log_index=1,
+        block_time=_AT,
+        token_address=token,
+        token_decimals=6,
+        fee_value_raw=fee,
+        tx_hash="0x" + "ee" * 32,
+    )
+
+
+_USDC = "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f"
+
+
+def _folder3(
+    memory: _FakeMemory,
+    swaps: _FakeSwaps | None = None,
+    probe: _FakeProbe | None = None,
+) -> ActivityFolder:
+    folder = _folder(memory, _FakeFlows())
+    folder.swaps = swaps  # type: ignore[assignment]
+    folder.swap_networks = ("base", "robinhood") if swaps else ()
+    folder.usdc_by_network = {"base": _USDC}
+    folder.faucet_probe = probe  # type: ignore[assignment]
+    return folder
+
+
+async def test_a_usdc_swap_folds_with_approximate_notional() -> None:
+    # fee 2 USDC × 500 = ~1,000 USDC notional
+    memory = _FakeMemory(cursor={"v": 1})
+    result = await fold_activity(
+        _folder3(memory, _FakeSwaps({"base": [_swap_row()]})), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 1
+    lines, cursor = memory.appends[0]
+    assert lines == ["made a token swap (~1,000.00 USDC, Aug 1)"]
+    assert cursor["swaps"]["base"] == {"block": 200, "log": 1}
+
+
+async def test_an_unknown_token_swap_renders_unitless() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    row = _swap_row(token="0x" + "77" * 20)
+    result = await fold_activity(
+        _folder3(memory, _FakeSwaps({"base": [row]})), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 1
+    assert memory.appends[0][0] == ["made a token swap (~1,000.00 tokens, Aug 1)"]
+
+
+async def test_swaps_fold_per_network_with_independent_cursors() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    rows = {"base": [_swap_row(block=200)], "robinhood": [_swap_row(block=991)]}
+    result = await fold_activity(
+        _folder3(memory, _FakeSwaps(rows)), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 2
+    _, cursor = memory.appends[0]
+    assert cursor["swaps"]["base"] == {"block": 200, "log": 1}
+    assert cursor["swaps"]["robinhood"] == {"block": 991, "log": 1}
+
+
+async def test_a_faucet_claim_folds_once_and_only_once() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    probe = _FakeProbe(_AT)
+    first = await fold_activity(_folder3(memory, probe=probe), owner=_OWNER, account=_ACCOUNT)
+    assert first.folded == 1
+    lines, cursor = memory.appends[0]
+    assert lines == ["claimed test SRK from the faucet (Aug 1)"]
+    assert cursor["faucet"] == _AT.isoformat()
+    second = await fold_activity(_folder3(memory, probe=probe), owner=_OWNER, account=_ACCOUNT)
+    assert second.folded == 0 and len(memory.appends) == 1
+
+
+async def test_a_dead_probe_skips_the_source_cursor_untouched() -> None:
+    memory = _FakeMemory(cursor={"v": 1, "faucet": "2026-07-01T00:00:00+00:00"})
+    result = await fold_activity(_folder3(memory, probe=_FakeProbe(None)), owner=_OWNER, account=_ACCOUNT)
+    assert result.folded == 0 and memory.appends == []
+
+
+async def test_a_failing_swap_source_skips_that_network_only() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    result = await fold_activity(
+        _folder3(memory, _FakeSwaps(boom=True), probe=_FakeProbe(_AT)),
+        owner=_OWNER,
+        account=_ACCOUNT,
+    )
+    assert result.folded == 1, "the faucet line still folds"
+    assert set(result.skipped_sources) == {"swaps:base", "swaps:robinhood"}
