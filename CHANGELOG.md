@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (premium status now surfaces on the Premium pages)
+- **/premium and /premium/pay never consumed the wallet's tier** — the plan cards hardcoded "Your current plan" onto the FREE card, and the pay page's only model was balance-vs-price, so a just-upgraded subscriber was told "You need N more SRK for the first month" (hit by the client minutes after the first real purchase was granted). New leaf module `lib/premium/tierStatus.ts` (pure, fail-open: anything unknown reads as not-premium ⇒ the pre-existing UI) + both pages now read the self-scoped `/usage/self`: the Premium card shows "Your current plan — until <date>" with an "Extend a month" secondary; the pay page reframes as "Extend Premium … paying again adds a month on top" and the shortfall banner says "to extend Premium by a month" instead of claiming a first month. 4 new leaf tests; web 324.
+
+
 ### Fixed (012 latent — the Premium grant could never bank a real payment)
 - **The FIRST real Premium purchase ever made on alpha (10,000 SRK, tx `0xeedfdaf9…`) paid on-chain and then 500'd on the grant.** The on-chain payment verifier passed; the failure was `_NEW_EXPIRY_SQL`'s `$2::interval` — the bare cast makes Postgres type the PARAMETER as interval, so asyncpg refuses the Python str `'1 month'` (`DataError: 'str' object has no attribute 'days'`), which the endpoint's `PaymentInvalid`/`RuntimeError` handlers don't catch → `INTERNAL`. Shipped with 012 Phase 0 and never caught because the unit fakes accept a str where the real driver does not (the mandate-key lesson, again), and no live purchase had ever been completed (`/admin/revenue` "real-0"). Fix: `($2::text)::interval` — the parameter stays text, the conversion happens in SQL, calendar-month semantics preserved. Proven against the live database (rolled back) and by replaying the client's real payment tx post-deploy.
 
