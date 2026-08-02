@@ -15,11 +15,14 @@ import pytest
 from sparkpoint_agent.api.chat import (
     _VaultChatChainProvider,
     _VaultChatPortfolioProvider,
+    get_coordinator_dag,
 )
 from sparkpoint_agent.api.security import AccountContext
 from sparkpoint_agent.chain import VaultUnavailable, VaultUnavailableReason
 from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.coordinator.dag import _build_action_refusal
+from sparkpoint_agent.llm import API_KEY_ENV
+from sparkpoint_agent.persona import get_persona
 from sparkpoint_agent.policy import ActionType
 
 OWNER = "0xA71e24359A6cb7A939aae2d62dD12b6256365c30"
@@ -168,3 +171,29 @@ def test_refusal_split_deposit_is_build_message() -> None:
     msg = _build_action_refusal(84532, ActionType.VAULT_DEPOSIT)
     assert "couldn't build" in msg.lower()
     assert "supported on" not in msg.lower()
+
+
+# ── 025 · Task 1 — the general/identity responder is wired in PRODUCTION ────────
+
+
+class _NoMandate:
+    async def active(self, chain: object) -> None:
+        return None
+
+
+def test_chat_dag_wires_the_persona_bearing_general_responder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The /chat DAG MUST carry a Sparky whose persona provider is the real ``get_persona``.
+
+    ``CoordinatorDag.sparky`` defaults to ``None`` (so ``/recommendations`` need not build a prose
+    agent it never reaches), and a ``None`` responder silently reinstates the static help line —
+    exactly the "who are you?" bug 025 fixes. This pins the production wiring so that regression
+    cannot happen quietly.
+    """
+    monkeypatch.setenv(API_KEY_ENV, "sk-ant-test-not-a-real-key")
+    dag = get_coordinator_dag(_FakeReader(), _config(), _NoMandate())  # type: ignore[arg-type]
+    assert dag.sparky is not None, "the /chat DAG must wire the general/identity responder"
+    assert dag.sparky.persona_provider is get_persona
+    # …and it shares the SAME persona surface as the literacy agent (one voice, one source).
+    assert dag.literacy.persona_provider is get_persona

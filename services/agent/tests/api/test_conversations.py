@@ -120,3 +120,72 @@ def test_delete_own_conversation(client: TestClient, store: _FakeStore) -> None:
 
 def test_conversations_require_s2s_auth() -> None:
     assert TestClient(app).get("/conversations").status_code in (401, 400)
+
+
+# ── 025 · Task 2: the endpoint carries the persisted cards ─────────────────────
+
+_ACTION_BLOCK = {
+    "type": "action",
+    "proposedAction": {
+        "type": "aerodrome_swap",
+        "asset": "0x4200000000000000000000000000000000000006",
+        "decimals": 18,
+        "amount": "10000000000000000",
+        "params": {"maxSlippageBps": 50},
+    },
+    "policy": {"status": "rejected", "reason": "Swaps run on Uniswap V3."},
+}
+
+
+def test_get_conversation_returns_persisted_blocks(
+    client: TestClient, store: _FakeStore
+) -> None:
+    # A 025 turn carries its cards, so the web can replay real cards instead of the summary.
+    cid = "11111111-1111-1111-1111-111111111111"
+    store.convos[cid]["turns"] = [
+        {"role": "user", "content": "Swap ETH to USDC", "blocks": [], "at": "t"},
+        {
+            "role": "assistant",
+            "content": "[proposed action: aerodrome_swap]",
+            "blocks": [_ACTION_BLOCK],
+            "at": "t",
+        },
+    ]
+    resp = client.get(f"/conversations/{cid}", headers=_headers(ALICE))
+    assert resp.status_code == 200
+    turns = resp.json()["turns"]
+    assert turns[0]["blocks"] == []
+    assert turns[1]["blocks"] == [_ACTION_BLOCK]
+    # The lossy summary is still there — legacy readers and the classifier both keep working.
+    assert turns[1]["content"] == "[proposed action: aerodrome_swap]"
+    # The policy stamp survives replay verbatim; nothing re-derives or upgrades it.
+    assert turns[1]["blocks"][0]["policy"]["status"] == "rejected"
+
+
+def test_get_conversation_legacy_turns_are_unaffected(
+    client: TestClient, store: _FakeStore
+) -> None:
+    # A pre-0028 turn (no `blocks` key at all) still returns its text and never 500s.
+    cid = "11111111-1111-1111-1111-111111111111"
+    store.convos[cid]["turns"] = [
+        {"role": "user", "content": "hello", "at": "t"},
+        {"role": "assistant", "content": "[showed your portfolio]", "at": "t"},
+    ]
+    resp = client.get(f"/conversations/{cid}", headers=_headers(ALICE))
+    assert resp.status_code == 200
+    turns = resp.json()["turns"]
+    assert [t["content"] for t in turns] == ["hello", "[showed your portfolio]"]
+    assert all("blocks" not in t for t in turns)
+
+
+def test_persisted_blocks_are_not_leaked_to_a_foreign_caller(
+    client: TestClient, store: _FakeStore
+) -> None:
+    # Ownership is unchanged by 025: Bob still cannot read Alice's cards.
+    cid = "11111111-1111-1111-1111-111111111111"
+    store.convos[cid]["turns"] = [
+        {"role": "assistant", "content": "s", "blocks": [_ACTION_BLOCK], "at": "t"}
+    ]
+    resp = client.get(f"/conversations/{cid}", headers=_headers(BOB))
+    assert resp.status_code == 404
+    assert "aerodrome_swap" not in resp.text

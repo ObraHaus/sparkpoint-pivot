@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Annotated, Any, Literal, Protocol
 
 from fastapi import APIRouter, Depends, Response
@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 from ..agents.literacy import Literacy
 from ..agents.planner import Planner
 from ..agents.recommender import Recommender
+from ..agents.sparky import Sparky
 from ..chain import VaultReader, VaultUnavailable
 from ..config import AgentConfig
 from ..coordinator import (
@@ -282,6 +283,10 @@ def get_coordinator_dag(
         # Sparky's persona (get_persona) shapes the literacy prose voice — trusted SYSTEM content,
         # process-stable + memoised, never on the policy/action path.
         literacy=Literacy(llm=client, persona_provider=get_persona),
+        # …and the GENERAL/identity branch, so "who are you?" answers as Sparky instead of the
+        # static help line. Same trusted-persona composition, same prose-only boundary: its output
+        # is wrapped in a `text` block, which cannot carry an action or a policy stamp.
+        sparky=Sparky(llm=client, persona_provider=get_persona),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
@@ -328,11 +333,20 @@ class _ConversationSink:
         except Exception:
             return []
 
-    async def record(self, conversation_id: str, role: str, content: str) -> None:
-        if not content:
+    async def record(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        blocks: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
+        # 025: persist when EITHER the text summary or the structured cards carry something. The
+        # pre-025 guard was `not content`, which silently dropped a turn whose blocks all
+        # summarize to "" (e.g. a citation-only turn) — those are now replayable.
+        if not content and not blocks:
             return
         try:
-            await self._store.append_turn(_uuid(conversation_id), role, content)
+            await self._store.append_turn(_uuid(conversation_id), role, content, blocks)
         except Exception:
             return
 
@@ -349,7 +363,13 @@ class _NoopConversationSink(_ConversationSink):
     async def history(self, conversation_id: str) -> list[tuple[str, str]]:
         return []
 
-    async def record(self, conversation_id: str, role: str, content: str) -> None:
+    async def record(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        blocks: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
         return None
 
 
@@ -367,6 +387,21 @@ def get_conversation_sink() -> _ConversationSink:
 # ─────────────────────────────────────────────────────────────────────────────
 # SSE stream
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+# 025 — the block types worth REPLAYING when a conversation is reopened. Everything here is
+# durable CONTENT the user saw; the two exclusions are deliberate:
+#
+#   * ``tool_step`` — transient thinking-state. Each step is emitted TWICE (running → done) and the
+#     renderer keeps every row, so replaying them would resurrect a wall of progress spinners
+#     frozen mid-"running" forever. The brief excludes them and the renderer proves why.
+#   * ``error`` — the mid-stream ``UPSTREAM_UNAVAILABLE`` fallback is a one-off infrastructure
+#     blip. Persisting it would etch a transient gateway hiccup permanently into the thread.
+#
+# Both stay in the LIVE stream (the user sees them in the moment); they just aren't history.
+_PERSISTED_BLOCK_TYPES = frozenset(
+    {"text", "tip", "recommendation", "action", "portfolio_snapshot", "outcome", "citation"}
+)
 
 
 def _assistant_summary(block_wire: dict[str, Any]) -> str:
@@ -410,6 +445,7 @@ async def _event_stream(
     await sink.record(conversation_id, "user", message)
     count = 0
     summary_parts: list[str] = []
+    block_wires: list[dict[str, Any]] = []
     try:
         async for block in dag.run_chat(message, chain, surface=surface, history=history):
             count += 1
@@ -417,6 +453,10 @@ async def _event_stream(
             frag = _assistant_summary(wire)
             if frag:
                 summary_parts.append(frag)
+            # 025: keep the card's own wire JSON alongside the lossy summary, so reopening the
+            # conversation replays the CARD instead of "[proposed action: aerodrome_swap]".
+            if wire.get("type") in _PERSISTED_BLOCK_TYPES:
+                block_wires.append(wire)
             yield _sse(_EVENT_BLOCK, wire)
     except Exception:
         # Fail-closed: degrade to an inert block, never leak internals (BaseException — e.g.
@@ -424,7 +464,9 @@ async def _event_stream(
         fallback: ChatBlock = ErrorBlock("UPSTREAM_UNAVAILABLE", _STREAM_FAILURE_MESSAGE)
         count += 1
         yield _sse(_EVENT_BLOCK, fallback.to_wire())
-    await sink.record(conversation_id, "assistant", " ".join(summary_parts).strip())
+    await sink.record(
+        conversation_id, "assistant", " ".join(summary_parts).strip(), block_wires
+    )
     yield _sse(_EVENT_DONE, {"conversationId": conversation_id, "blockCount": count})
 
 

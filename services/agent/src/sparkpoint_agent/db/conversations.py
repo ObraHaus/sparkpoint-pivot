@@ -9,6 +9,8 @@ never custody (N2).
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -27,7 +29,8 @@ _OWNS_CONVO = (
     "WHERE c.id = $1 AND u.eoa_address = $2"
 )
 _APPEND_TURN = (
-    "INSERT INTO conversation_turns (conversation_id, role, content) VALUES ($1, $2, $3)"
+    "INSERT INTO conversation_turns (conversation_id, role, content, blocks) "
+    "VALUES ($1, $2, $3, $4)"
 )
 _TOUCH_CONVO = "UPDATE conversations SET updated_at = now() WHERE id = $1"
 _LIST_CONVOS = (
@@ -37,7 +40,7 @@ _LIST_CONVOS = (
     "WHERE u.eoa_address = $1 ORDER BY c.updated_at DESC LIMIT $2"
 )
 _GET_TURNS = (
-    "SELECT role, content, created_at FROM conversation_turns "
+    "SELECT role, content, blocks, created_at FROM conversation_turns "
     "WHERE conversation_id = $1 ORDER BY id ASC"
 )
 _RECENT_TURNS = (
@@ -73,11 +76,24 @@ class ConversationStore:
             new_id: UUID = await conn.fetchval(_CREATE_CONVO, user_id, _title_from(first_message))
             return new_id
 
-    async def append_turn(self, conversation_id: UUID, role: str, content: str) -> None:
-        """Append one turn + bump the conversation's recency. ``content`` is already scrubbed of
-        any card internals by the caller (user message, or a compact assistant summary)."""
+    async def append_turn(
+        self,
+        conversation_id: UUID,
+        role: str,
+        content: str,
+        blocks: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
+        """Append one turn + bump the conversation's recency.
+
+        ``content`` is already scrubbed of any card internals by the caller (user message, or a
+        compact assistant summary) and remains the classifier-history text. ``blocks`` is the
+        assistant turn's ordered §2.7 block wire JSON (025) — the structured cards, so a reopened
+        conversation replays them instead of the lossy summary. ``None``/empty writes SQL NULL,
+        which is exactly what a user turn and every pre-025 row carry.
+        """
+        payload = json.dumps(list(blocks)) if blocks else None
         async with self.db.acquire() as conn, conn.transaction():
-            await conn.execute(_APPEND_TURN, conversation_id, role, content)
+            await conn.execute(_APPEND_TURN, conversation_id, role, content, payload)
             await conn.execute(_TOUCH_CONVO, conversation_id)
 
     async def recent_history(
@@ -106,17 +122,7 @@ class ConversationStore:
         if cid is None or not await self.db.fetchval(_OWNS_CONVO, cid, owner_eoa):
             return None
         rows = await self.db.fetch(_GET_TURNS, cid)
-        return {
-            "id": str(cid),
-            "turns": [
-                {
-                    "role": str(r["role"]),
-                    "content": str(r["content"]),
-                    "at": r["created_at"].isoformat(),
-                }
-                for r in rows
-            ],
-        }
+        return {"id": str(cid), "turns": [_turn_wire(r) for r in rows]}
 
     async def delete_conversation(self, owner_eoa: str, conversation_id: str) -> bool:
         """Delete a conversation ONLY if owned by ``owner_eoa``. Returns True iff it was deleted."""
@@ -125,6 +131,39 @@ class ConversationStore:
             return False
         await self.db.execute(_DELETE_CONVO, cid)
         return True
+
+
+def _as_blocks(raw: Any) -> list[dict[str, Any]]:
+    """Decode a ``blocks`` jsonb value into the block list, defensively (025).
+
+    asyncpg hands jsonb back as a ``str`` unless a codec is registered (the same reason
+    ``db/recommendations._as_dict`` exists), so tolerate a str, an already-decoded list, or the
+    ``NULL`` that every user turn and every pre-025 row carries. Anything unparseable or
+    non-list degrades to ``[]`` — the caller then replays that turn as its text summary, exactly
+    like a legacy turn. Corrupt history must never break loading a conversation.
+    """
+    if raw is None:
+        return []
+    parsed: Any = raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(parsed, list):
+        return []
+    return [b for b in parsed if isinstance(b, dict)]
+
+
+def _turn_wire(row: Any) -> dict[str, Any]:
+    """One persisted turn on the §B1 wire. ``blocks`` is always present (``[]`` when the turn has
+    none) so the client needs no per-element narrowing; an empty list means "replay the text"."""
+    return {
+        "role": str(row["role"]),
+        "content": str(row["content"]),
+        "blocks": _as_blocks(row["blocks"]),
+        "at": row["created_at"].isoformat(),
+    }
 
 
 def _as_uuid(value: str) -> UUID | None:

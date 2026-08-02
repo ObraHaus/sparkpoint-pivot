@@ -1,0 +1,54 @@
+-- 0028_conversation_turn_blocks.sql — feature 025 (Wave 2 chat credibility): persist the STRUCTURED
+-- chat cards of an assistant turn so reopening a conversation replays real cards, not a summary.
+-- Additive, forward-only, reversible. Apply with PGCLIENTENCODING=UTF8.
+--
+-- WHY THIS COLUMN EXISTS — the reopen-a-chat defect the client reported. `conversation_turns` (0010)
+-- stores `content TEXT` only, and the streamed §2.7 ChatBlocks were never persisted anywhere. On the
+-- terminal persist each card was lossy-summarized (`_assistant_summary` in api/chat.py) to a
+-- placeholder like `[proposed action: aerodrome_swap]` / `[recommended: …]` / `[showed your
+-- portfolio]`, and THAT string is what `GET /conversations/{id}` returned and the web replayed as
+-- plain text. A conversation therefore visibly degraded the moment you reopened it: the swap card,
+-- the recommendation and the portfolio snapshot all collapsed into bracketed stubs. `blocks` holds
+-- each assistant turn's block wire JSON so replay can rehydrate the SAME cards through the SAME
+-- fail-closed validator and renderer the live stream uses.
+--
+-- WHY A JSONB COLUMN AND NOT A `conversation_blocks` TABLE — blocks are only ever written as a whole
+-- turn (one terminal persist) and only ever read as a whole turn (the full conversation replay).
+-- Nothing queries an individual block, so a child table would buy a join, an explicit ordering
+-- column, and a second write inside the append transaction for no gain. Keeping the array on the
+-- turn row makes the write atomic with the row it belongs to, preserves block order for free (JSON
+-- array order), and inherits `conversation_turns`' existing ON DELETE CASCADE from conversations →
+-- users, so a deleted chat still takes its cards with it. Legacy rows are simply NULL.
+--
+-- THE SUMMARY STAYS. `content` is unchanged and still written for every turn: it feeds the
+-- classifier's multi-turn history (`recent_history`) and every pre-025 read path. `blocks` is
+-- strictly ADDITIVE detail — belt-and-braces, so a partial rollback degrades replay to exactly the
+-- pre-025 behaviour rather than losing the conversation.
+--
+-- WHAT IS NOT STORED: `tool_step` blocks are excluded by the writer — they are transient
+-- thinking-state ("Reading your portfolio…"), meaningless once the turn is over, and replaying them
+-- as a frozen progress spinner would be actively misleading.
+--
+-- NON-CUSTODY (Constitution N1/N2/N3): this column holds NO key material and NO signature. A
+-- persisted `action`/`recommendation` block carries only a ProposedAction plus the policy STAMP the
+-- deterministic, LLM-free gate already produced — it is a record of what was displayed, never an
+-- authorization. Signability is re-derived on read from that stamp by the same `.strict()` schema
+-- the live stream uses, and materializing anything signable remains the single `/build-tx`
+-- chokepoint where the user signs. The write is fail-open (the sink swallows DB errors), so an
+-- outage costs chat history, never custody, and this is NEVER on the withdraw/exit path (N2).
+--
+-- ORDERING: additive and nullable, so the currently-live agent ignores it entirely and the pre-025
+-- reader is unaffected. Either order is safe; apply before the 025 agent redeploy so the first
+-- turns after deploy persist their cards.
+--
+-- ROLLBACK: `ALTER TABLE conversation_turns DROP COLUMN IF EXISTS blocks;` — drops the replay detail
+-- and returns `GET /conversations/{id}` to summary-only turns, which both the 025 web replay and the
+-- pre-025 web render as text. No other table references it.
+
+-- Assistant turns only: the ordered §2.7 ChatBlock wire JSON of the turn (tool_step + error
+-- excluded). NULL for user turns and for every turn written before feature 025 — the reader maps
+-- NULL to [] and that turn replays as its `content` summary, exactly as it does today.
+-- Deliberately ONE statement (every other migration here is plain DDL; no COMMENT ON, so the yoyo
+-- step count stays 1 and there is nothing for the splitter to get wrong).
+ALTER TABLE conversation_turns
+    ADD COLUMN IF NOT EXISTS blocks JSONB;

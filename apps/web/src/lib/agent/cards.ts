@@ -61,12 +61,42 @@ export function parseCard(raw: string): ChatCard {
   } catch {
     return { status: "inert", reason: "invalid_json", message: INERT_MESSAGE, raw };
   }
+  return parseCardValue(json, raw);
+}
 
-  const result = ChatBlockSchema.safeParse(json);
+/**
+ * Parse ONE already-decoded block VALUE into a `ChatCard`, fail-closed — the
+ * REPLAY entry point (feature 025). A conversation reopened from
+ * `GET /conversations/{id}` carries its persisted blocks as parsed JSON, not as
+ * SSE strings, so there is nothing to `JSON.parse`.
+ *
+ * A replayed block gets EXACTLY the validation a streamed one does — the same
+ * `.strict()` union, the same `isSignable` derivation from the persisted policy
+ * stamp. So a schema drift, a truncated row, or a hand-edited DB value degrades
+ * to the same inert, non-actionable card, and a stored block can never confer a
+ * sign path its stamp does not carry. (`raw` is only for logging; it is
+ * reconstructed from the value when the caller has no original string.)
+ */
+export function parseCardValue(value: unknown, raw?: string): ChatCard {
+  const result = ChatBlockSchema.safeParse(value);
   if (!result.success) {
-    return { status: "inert", reason: "schema_mismatch", message: INERT_MESSAGE, raw };
+    return {
+      status: "inert",
+      reason: "schema_mismatch",
+      message: INERT_MESSAGE,
+      raw: raw ?? safeStringify(value),
+    };
   }
 
   const block = result.data;
   return { status: "valid", block, signable: isSignable(block) };
+}
+
+/** `JSON.stringify` that can never throw into the render path (cyclic/BigInt input). */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return "[unserializable block]";
+  }
 }

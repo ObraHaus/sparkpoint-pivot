@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender, _Rank
+from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.api.chat import (
     _NoopConversationSink,
     get_chain_provider,
@@ -42,6 +43,7 @@ from sparkpoint_agent.coordinator.dag import (
     MandateView,
     MarketData,
     PortfolioView,
+    PositionLite,
 )
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom
@@ -62,9 +64,13 @@ GOOD_HEADERS = {
 _TOOL_LABELS = {
     "Understanding your request",
     "Explaining that",
+    "Thinking that through",
     "Reading your portfolio",
     "Checking strategies against your guardrails",
 }
+
+# What the mocked general/identity responder (Sparky) says on an OTHER turn.
+SPARKY_ANSWER = "I'm Sparky, SparkPoint's assistant. Only you can sign a transaction."
 
 
 # ── fakes (mirror tests/coordinator/test_dag.py) ────────────────────────────────
@@ -164,6 +170,7 @@ def _dag(
         planner=Planner(llm=_StructuredLlm(planner_result)),
         recommender=Recommender(llm=_StructuredLlm(reco_result)),
         literacy=Literacy(llm=_CompleteLlm("APY is your yearly yield.")),
+        sparky=Sparky(llm=_CompleteLlm(SPARKY_ANSWER)),
         portfolio_provider=portfolio if portfolio is not None else _Portfolio(PortfolioView()),
         mandate_provider=_Mandate(mandate),
         id_factory=_seq_ids(),
@@ -325,19 +332,36 @@ def test_chat_never_returns_a_signable_bundle(client: TestClient) -> None:
 
 
 def test_chat_malformed_llm_output_degrades_to_inert_block(client: TestClient) -> None:
-    # Planner returns no JSON (ok=False, not refused) → safe OTHER intent → general help text.
+    # Planner returns no JSON (ok=False, not refused) → safe OTHER intent → the general/identity
+    # branch, which now answers with a persona-bearing prose turn (025) instead of a canned line.
     _wire(_dag(planner_ok=False), _chain())
     resp = _post_chat(client, "%%% garbled $$$")
 
     assert resp.status_code == 200
     blocks = _blocks(_parse_sse(resp.text))
     types = [b["type"] for b in blocks]
-    # tool_step(running) → tool_step(done) → a single inert text block; no action ever built.
-    assert types == ["tool_step", "tool_step", "text"]
+    # understand(running/done) → general answer(running/done) → a single inert text block. The
+    # branch returns before gather/propose/gate, so no action is ever built.
+    assert types == ["tool_step", "tool_step", "tool_step", "tool_step", "text"]
     assert not any(b["type"] in {"recommendation", "action"} for b in blocks)
     # tool_step labels are code-authored (summarized trace), never raw model text/CoT.
     labels = {b["label"] for b in blocks if b["type"] == "tool_step"}
-    assert labels == {"Understanding your request"}
+    assert labels == {"Understanding your request", "Thinking that through"}
+
+
+def test_chat_general_question_answers_in_sparkys_voice(client: TestClient) -> None:
+    # 025 · Task 1 — an identity/general turn is answered by the persona-bearing responder, NOT
+    # the static help line, and it is structurally prose-only (no action/recommendation block can
+    # come out of this branch, and nothing carries a signature).
+    _wire(_dag(intent=Intent(kind=IntentKind.OTHER)), _chain())
+    resp = _post_chat(client, "who are you?")
+
+    assert resp.status_code == 200
+    blocks = _blocks(_parse_sse(resp.text))
+    texts = [b["markdown"] for b in blocks if b["type"] == "text"]
+    assert texts == [SPARKY_ANSWER]
+    assert not any(b["type"] in {"recommendation", "action"} for b in blocks)
+    assert not any(_has_signature(b) for b in blocks)
 
 
 def test_chat_planner_refusal_streams_refusal_error(client: TestClient) -> None:
@@ -447,3 +471,113 @@ def test_feedback_requires_auth(client: TestClient) -> None:
     )
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+# ── 025 · Task 2: the streamed cards are PERSISTED, not just summarized ─────────
+
+
+class _RecordingConversationSink(_NoopConversationSink):
+    """Captures every ``record`` call so the terminal persist can be asserted end-to-end."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[tuple[str, str, list[dict[str, Any]]]] = []
+
+    async def record(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        blocks: Any = None,
+    ) -> None:
+        self.records.append((role, content, [dict(b) for b in (blocks or [])]))
+
+    def assistant(self) -> tuple[str, list[dict[str, Any]]]:
+        (record,) = [r for r in self.records if r[0] == "assistant"]
+        return record[1], record[2]
+
+
+def _wire_recording_sink() -> _RecordingConversationSink:
+    sink = _RecordingConversationSink()
+    app.dependency_overrides[get_conversation_sink] = lambda: sink
+    return sink
+
+
+def test_chat_persists_card_wire_json_alongside_the_lossy_summary(client: TestClient) -> None:
+    # The defect: reopening a conversation showed "[proposed action: aerodrome_swap]" because the
+    # cards were never stored. Now the block wire rides along with the summary.
+    _wire(
+        _dag(
+            intent=Intent(
+                kind=IntentKind.BUILD_ACTION,
+                action_type=ActionType.AERODROME_SWAP,
+                asset=Asset.ETH,
+                amount=10**16,
+            )
+        ),
+        _chain(),
+    )
+    sink = _wire_recording_sink()
+    _post_chat(client, "Swap ETH to USDC")
+
+    summary, blocks = sink.assistant()
+    # The lossy summary is KEPT (it feeds the classifier history + every pre-025 path)…
+    assert summary == "[proposed action: aerodrome_swap]"
+    # …and the real card is persisted next to it, in full.
+    assert [b["type"] for b in blocks] == ["action"]
+    assert blocks[0]["proposedAction"]["type"] == "aerodrome_swap"
+    # The policy STAMP is persisted verbatim, so replay can never upgrade a rejected card.
+    assert blocks[0]["policy"]["status"] == "rejected"
+
+
+def test_chat_persists_the_user_turn_without_blocks(client: TestClient) -> None:
+    _wire(_dag(intent=Intent(kind=IntentKind.OTHER)), _chain())
+    sink = _wire_recording_sink()
+    _post_chat(client, "who are you?")
+    user = [r for r in sink.records if r[0] == "user"]
+    assert user == [("user", "who are you?", [])]
+
+
+def test_chat_never_persists_transient_tool_step_blocks(client: TestClient) -> None:
+    # tool_step is thinking-state: emitted twice per step (running → done) and meaningless once
+    # the turn is over. Replaying it would resurrect frozen progress spinners.
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    sink = _wire_recording_sink()
+    resp = _post_chat(client, "recommend something")
+
+    streamed = {b["type"] for b in _blocks(_parse_sse(resp.text))}
+    assert "tool_step" in streamed, "tool_step must still reach the LIVE stream"
+    _summary, blocks = sink.assistant()
+    assert blocks, "the recommendation cards themselves must be persisted"
+    assert all(b["type"] != "tool_step" for b in blocks)
+    assert any(b["type"] == "recommendation" for b in blocks)
+
+
+def test_chat_never_persists_a_transient_stream_error(client: TestClient) -> None:
+    # A mid-stream gateway blip is shown live but must not be etched into the thread forever.
+    _wire(
+        _dag(intent=Intent(kind=IntentKind.PORTFOLIO), portfolio=_ExplodingPortfolio()), _chain()
+    )
+    sink = _wire_recording_sink()
+    resp = _post_chat(client, "show me my portfolio")
+
+    streamed = _blocks(_parse_sse(resp.text))
+    assert any(b["type"] == "error" for b in streamed), "the error must reach the LIVE stream"
+    assert all(b["type"] != "error" for _r, _c, bl in sink.records for b in bl)
+
+
+def test_chat_persists_a_portfolio_snapshot_card(client: TestClient) -> None:
+    view = PortfolioView(
+        positions=(PositionLite(venue="Wallet (idle)", asset="USDC", value_usd="50.00"),),
+        net_worth_usd="50.00",
+        idle_usdc=50_000_000,
+    )
+    _wire(_dag(intent=Intent(kind=IntentKind.PORTFOLIO), portfolio=_Portfolio(view)), _chain())
+    sink = _wire_recording_sink()
+    _post_chat(client, "what's in my wallet?")
+
+    summary, blocks = sink.assistant()
+    assert "[showed your portfolio]" in summary
+    types = [b["type"] for b in blocks]
+    assert types == ["portfolio_snapshot", "text"]
+    assert blocks[0]["positions"][0]["venue"] == "Wallet (idle)"
