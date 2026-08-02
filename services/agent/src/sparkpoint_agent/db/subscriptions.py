@@ -31,10 +31,20 @@ _INSERT_PAYMENT_SQL = (
 
 # Renewal math in SQL (DB clock): from the later of now() and the wallet's current
 # *active* (future) expiry, then add the period. A lapsed/new wallet starts fresh from now().
+#
+# ⚠️ ``($2::text)::interval``, NOT ``$2::interval`` — with the bare cast Postgres types the
+# PARAMETER itself as interval, and asyncpg then refuses to bind a Python str ("'str' object
+# has no attribute 'days'"), raising DataError → the endpoint's 500. The double cast keeps the
+# parameter text (asyncpg binds the str) and converts inside SQL, preserving CALENDAR-month
+# semantics ('1 month' ≠ a fixed timedelta). This bug shipped with 012 Phase 0 and was caught
+# by the FIRST real purchase ever made on alpha — the unit fakes accepted the str happily; the
+# real driver did not (the mandate-key lesson, again: fakes must not be more permissive than
+# the wire).
 _NEW_EXPIRY_SQL = (
     "SELECT GREATEST(now(), COALESCE("
     "(SELECT expires_at FROM wallet_tier WHERE address = $1 "
-    "AND expires_at IS NOT NULL AND expires_at > now()), now())) + $2::interval AS new_expiry"
+    "AND expires_at IS NOT NULL AND expires_at > now()), now())) + ($2::text)::interval"
+    " AS new_expiry"
 )
 
 _INSERT_SUB_SQL = (

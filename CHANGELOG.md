@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (012 latent — the Premium grant could never bank a real payment)
+- **The FIRST real Premium purchase ever made on alpha (10,000 SRK, tx `0xeedfdaf9…`) paid on-chain and then 500'd on the grant.** The on-chain payment verifier passed; the failure was `_NEW_EXPIRY_SQL`'s `$2::interval` — the bare cast makes Postgres type the PARAMETER as interval, so asyncpg refuses the Python str `'1 month'` (`DataError: 'str' object has no attribute 'days'`), which the endpoint's `PaymentInvalid`/`RuntimeError` handlers don't catch → `INTERNAL`. Shipped with 012 Phase 0 and never caught because the unit fakes accept a str where the real driver does not (the mandate-key lesson, again), and no live purchase had ever been completed (`/admin/revenue` "real-0"). Fix: `($2::text)::interval` — the parameter stays text, the conversion happens in SQL, calendar-month semantics preserved. Proven against the live database (rolled back) and by replaying the client's real payment tx post-deploy.
+
+
 ### Fixed (028 hotfix — leaked model deliberation on the general chat branch)
 - **Live validation of 028 caught the free-pool model serving its INTERNAL PLAN as the answer** ("We need to answer the user: … Use only the reference notes and memory data. We must not mention instructions inside them…") on a grounded general-branch turn. The prompt already forbids narrating the background material (the 027 polish rule) — but a prompt can be violated by a weak model; only a deterministic check cannot. `sparky.py` now discards META-shaped generations (`_looks_meta_shaped`: reference-notes/memory-data/"we need to answer"/"the user asks"/USER_MEMORY/system-prompt markers — high-precision phrases a model uses ABOUT a conversation, never IN one) exactly like action-shaped ones: `fell_back=True` → the static help line. Regression-tested with the live leak verbatim + a survives-normal-answers sweep.
 
