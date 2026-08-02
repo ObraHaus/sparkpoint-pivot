@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
-from asyncpg.exceptions import UndefinedTableError
+from asyncpg.exceptions import UndefinedColumnError, UndefinedTableError
 
 import sparkpoint_agent.db.user_memory as user_memory_module
 from sparkpoint_agent.db.pool import Database
@@ -59,13 +59,21 @@ class _FakeConn:
         self._parent.calls.append((sql, args))
         return "INSERT 0 1"
 
+    async def fetchrow(self, sql: str, *args: Any) -> Any:
+        # 028: append_with_cursor locks lines + activity_cursor together.
+        self._parent.calls.append((sql, args))
+        if "FOR UPDATE" in sql:
+            return {"lines": self._parent.stored, "activity_cursor": self._parent.stored_cursor}
+        return None
+
 
 class _FakeDb:
     """Records SQL + args; canned reads by SQL fragment (no live DB)."""
 
-    def __init__(self, *, stored: Any = None, row: Any = None) -> None:
+    def __init__(self, *, stored: Any = None, row: Any = None, stored_cursor: Any = None) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.stored = stored
+        self.stored_cursor = stored_cursor
         self._row = row
 
     @asynccontextmanager
@@ -75,6 +83,11 @@ class _FakeDb:
     async def fetchrow(self, sql: str, *args: Any) -> Any:
         self.calls.append((sql, args))
         return self._row
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        # 028: the cursor read (`get_activity_cursor`) is a top-level fetchval.
+        self.calls.append((sql, args))
+        return self.stored_cursor
 
     async def execute(self, sql: str, *args: Any) -> str:
         self.calls.append((sql, args))
@@ -230,10 +243,14 @@ async def test_get_fails_open_when_the_database_is_unreachable() -> None:
 # ── clear ───────────────────────────────────────────────────────────────────────
 
 
-async def test_clear_deletes_only_the_callers_row_and_never_creates_a_user() -> None:
+async def test_clear_blanks_only_the_callers_lines_and_never_creates_a_user() -> None:
+    # 028: clear is an UPDATE of ``lines`` (not a row DELETE) so the activity cursor SURVIVES —
+    # FR-009: cleared platform activity must never be re-discovered by the next fold.
     db = _FakeDb()
     await _store(db).clear(_OWNER)
-    (sql, args) = next(c for c in db.calls if "DELETE FROM user_memory" in c[0])
+    (sql, args) = next(c for c in db.calls if "UPDATE user_memory" in c[0])
+    assert "lines = '[]'::jsonb" in sql
+    assert "activity_cursor" not in sql, "clear must not touch the fold cursor"
     assert args == (_OWNER,)
     assert not any("INSERT INTO users" in s for s, _ in db.calls)
 
@@ -266,8 +283,10 @@ class _PreMigrationDb(_FakeDb):
 def _reset_warning_latch() -> Any:
     # The missing-table warning is once-per-process; reset it so each test sees it fire.
     user_memory_module._warned_missing_table = False
+    user_memory_module._warned_missing_column = False
     yield
     user_memory_module._warned_missing_table = False
+    user_memory_module._warned_missing_column = False
 
 
 async def test_get_on_a_pre_0030_database_reads_as_no_memory_never_a_500() -> None:
@@ -295,3 +314,98 @@ async def test_a_missing_table_is_warned_exactly_once_per_process(
     hits = [r for r in caplog.records if "user_memory_table_missing" in r.getMessage()]
     assert len(hits) == 1
     assert "0030" in hits[0].getMessage()
+
+
+# ── 028 · activity-fold cursor (migration 0031) ─────────────────────────────────
+
+
+class _PreColumnDb(_FakeDb):
+    """Raises UndefinedColumnError for anything naming `activity_cursor` (pre-0031 database)."""
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        self.calls.append((sql, args))
+        if "activity_cursor" in sql:
+            raise UndefinedColumnError('column "activity_cursor" does not exist')
+        return None
+
+
+_CURSOR = {"v": 1, "flows": {"base": {"block": 100, "log": 2}}}
+
+
+async def test_get_activity_cursor_round_trips_a_jsonb_string() -> None:
+    db = _FakeDb(stored_cursor=json.dumps(_CURSOR))
+    assert await _store(db).get_activity_cursor(_OWNER) == _CURSOR
+
+
+async def test_get_activity_cursor_none_means_never_folded() -> None:
+    assert await _store(_FakeDb()).get_activity_cursor(_OWNER) is None
+
+
+async def test_get_activity_cursor_corrupt_degrades_to_first_fold_not_a_crash() -> None:
+    assert await _store(_FakeDb(stored_cursor="{not json")).get_activity_cursor(_OWNER) is None
+    listy = _FakeDb(stored_cursor=json.dumps([1, 2]))
+    assert await _store(listy).get_activity_cursor(_OWNER) is None
+
+
+async def test_append_with_cursor_writes_lines_and_cursor_in_one_transaction() -> None:
+    db = _FakeDb()
+    await _store(db).append_with_cursor(_OWNER, ["deposited 500.00 USDC into the vault"], _CURSOR)
+    args = next(a for sql, a in db.calls if "INSERT INTO user_memory" in sql)
+    assert json.loads(args[1])[0]["line"].startswith("deposited")
+    assert json.loads(args[2]) == _CURSOR
+    # Both writes happened via the SAME acquired connection (transactional unit).
+    assert any("FOR UPDATE" in sql and "activity_cursor" in sql for sql, _ in db.calls)
+
+
+async def test_append_with_cursor_accepts_zero_lines_and_still_advances() -> None:
+    # A fold whose events all deduped away must still move the high-water mark.
+    db = _FakeDb()
+    await _store(db).append_with_cursor(_OWNER, [], _CURSOR)
+    args = next(a for sql, a in db.calls if "INSERT INTO user_memory" in sql)
+    assert json.loads(args[1]) == []
+    assert json.loads(args[2]) == _CURSOR
+
+
+async def test_append_with_cursor_folds_onto_existing_lines_and_caps() -> None:
+    db = _FakeDb(stored=_entries(*[f"old {i}" for i in range(MAX_MEMORY_LINES)]))
+    await _store(db).append_with_cursor(_OWNER, ["fresh"], _CURSOR)
+    args = next(a for sql, a in db.calls if "INSERT INTO user_memory" in sql)
+    lines = [e["line"] for e in json.loads(args[1])]
+    assert len(lines) == MAX_MEMORY_LINES
+    assert lines[-1] == "fresh" and lines[0] == "old 1"
+
+
+async def test_cursor_payload_reaches_the_driver_as_raw_utf8_never_escapes() -> None:
+    # SQL_ASCII regression guard (the 025/#125 lesson) applied to the NEW jsonb writer.
+    db = _FakeDb()
+    cursor = {"v": 1, "note": "em-dash — survives"}
+    line = "made a token swap (~1,000.00 USDC — big)"
+    await _store(db).append_with_cursor(_OWNER, [line], cursor)
+    args = next(a for sql, a in db.calls if "INSERT INTO user_memory" in sql)
+    assert "\\u" not in args[1] and "—" in args[1]
+    assert "\\u" not in args[2] and "—" in args[2]
+
+
+async def test_pre_0031_column_disables_the_fold_with_one_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sparkpoint_agent.db.user_memory import FoldColumnMissing
+
+    with caplog.at_level(logging.WARNING, logger=user_memory_module.__name__):
+        for _ in range(3):
+            with pytest.raises(FoldColumnMissing):
+                await _store(_PreColumnDb()).get_activity_cursor(_OWNER)
+    hits = [r for r in caplog.records if "user_memory_fold_column_missing" in r.getMessage()]
+    assert len(hits) == 1
+    assert "0031" in hits[0].getMessage()
+
+
+async def test_pre_0030_table_also_reads_as_fold_disabled() -> None:
+    from sparkpoint_agent.db.user_memory import FoldColumnMissing
+
+    class _NoTable(_FakeDb):
+        async def fetchval(self, sql: str, *args: Any) -> Any:
+            raise UndefinedTableError('relation "user_memory" does not exist')
+
+    with pytest.raises(FoldColumnMissing):
+        await _store(_NoTable()).get_activity_cursor(_OWNER)
