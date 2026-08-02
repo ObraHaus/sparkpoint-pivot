@@ -38,7 +38,8 @@ import {
   type CardActions,
 } from "@/components/screens/chat/cards";
 import { useAgentClient, usePortfolioView, useMandate } from "@/lib/agent/useAgent";
-import { parseCard, type ChatCard } from "@/lib/agent/cards";
+import { parseCard, parseCardValue, type ChatCard } from "@/lib/agent/cards";
+import { replayTurns, type ConversationTurnDto } from "@/lib/agent/conversationReplay";
 import { AgentApiError } from "@/lib/agent/client";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
@@ -432,18 +433,27 @@ export default function ChatPage() {
       setActiveConvId(id);
       convRef.current = id;
       try {
-        const c = await agentClient.request<{ turns: { role: string; content: string }[] }>(
+        const c = await agentClient.request<{ turns?: ConversationTurnDto[] }>(
           `/conversations/${id}`,
         );
-        // Replay persisted turns (assistant content is a compact summary, not the live cards).
+        // Replay persisted turns (025). A turn that carries its structured blocks is rehydrated
+        // through the SAME fail-closed validator and the SAME renderer as the live stream, so a
+        // reopened conversation shows real cards instead of "[proposed action: aerodrome_swap]".
+        // A turn without blocks — every pre-025 row — still replays as its text summary.
         setTurns(
-          c.turns
-            .filter((t) => t.content.trim().length > 0)
-            .map((t) =>
-              t.role === "user"
-                ? { id: nextId(), kind: "user" as const, text: t.content }
-                : { id: nextId(), kind: "ai" as const, text: t.content },
-            ),
+          replayTurns(c.turns).map((t) =>
+            t.kind === "user"
+              ? { id: nextId(), kind: "user" as const, text: t.text }
+              : t.kind === "cards"
+                ? {
+                    id: nextId(),
+                    kind: "live" as const,
+                    // Streaming is over: a replayed turn is complete by definition.
+                    cards: t.cards.map((b) => parseCardValue(b)),
+                    streaming: false,
+                  }
+                : { id: nextId(), kind: "ai" as const, text: t.text },
+          ),
         );
         setChips(EMPTY_CHIPS);
       } catch {

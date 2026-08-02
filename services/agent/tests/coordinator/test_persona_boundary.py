@@ -15,6 +15,7 @@ from typing import Any
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender, _Rank
+from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
     CoordinatorDag,
@@ -79,12 +80,18 @@ def _chain() -> ChainContext:
 
 
 def _dag(
-    intent: Intent, *, literacy_llm: _SysComplete, reco_llm: _RecordingStructured
+    intent: Intent,
+    *,
+    literacy_llm: _SysComplete,
+    reco_llm: _RecordingStructured,
+    sparky_llm: _SysComplete | None = None,
 ) -> CoordinatorDag:
     return CoordinatorDag(
         planner=Planner(llm=_RecordingStructured(StructuredResult(ok=True, value=intent))),
         recommender=Recommender(llm=reco_llm),
         literacy=Literacy(llm=literacy_llm, persona_provider=lambda: PERSONA),
+        # The SECOND persona-bearing prose surface (025) — the general/identity branch.
+        sparky=Sparky(llm=sparky_llm or _SysComplete(), persona_provider=lambda: PERSONA),
         portfolio_provider=_Portfolio(),
         mandate_provider=_Mandate(MandateView(version=1)),
     )
@@ -105,6 +112,21 @@ async def test_persona_reaches_literacy_system_on_learn() -> None:
     await _run(dag, "what is APY?")
     assert lit.systems, "the literacy agent must be invoked on a LEARN turn"
     assert all(PERSONA in s for s in lit.systems), "persona must be in the literacy SYSTEM prompt"
+
+
+async def test_persona_reaches_the_general_responder_on_other() -> None:
+    # WIRING (025): the general/identity branch is the SECOND persona surface — "who are you?"
+    # must be answered in Sparky's voice, not by the static help line.
+    lit, sparky = _SysComplete(), _SysComplete()
+    dag = _dag(
+        Intent(kind=IntentKind.OTHER),
+        literacy_llm=lit,
+        reco_llm=_RecordingStructured(StructuredResult(ok=True, value={})),
+        sparky_llm=sparky,
+    )
+    await _run(dag, "who are you?")
+    assert sparky.systems, "the general responder must be invoked on an OTHER turn"
+    assert all(PERSONA in s for s in sparky.systems), "persona must be in its SYSTEM prompt"
 
 
 async def test_persona_never_reaches_recommender_or_blocks() -> None:

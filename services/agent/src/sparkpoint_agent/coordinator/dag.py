@@ -41,6 +41,7 @@ from ..agents import guardrail
 from ..agents.literacy import Literacy
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender
+from ..agents.sparky import Sparky
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
     POLICY_VERSION,
@@ -91,6 +92,10 @@ ContextFactory = Callable[["Candidate", "Gathered"], PolicyContext]
 # real price check.
 _CUSTODY_DRYRUN = SimulationInput(provider="viem_local", will_revert=False)
 
+# The STATIC fallback for the general/conversational branch. It is no longer the normal answer
+# (the persona-bearing ``Sparky`` agent is — see the OTHER branch in ``run_chat``); it is what the
+# user gets when that LLM turn refuses, fails, or produces something unusable, so a general
+# question always gets an honest, non-custody answer instead of a broken turn.
 _GENERAL_HELP = (
     "I can suggest and simulate USDC yield strategies within your guardrails, explain how "
     "things work, and show your portfolio — but only you can sign a transaction. What would "
@@ -278,6 +283,13 @@ class CoordinatorDag:
     literacy: Literacy
     portfolio_provider: PortfolioProvider
     mandate_provider: MandateProvider
+    # The persona-bearing general/identity responder (the OTHER branch's voice). Defaulted to
+    # None so the non-chat consumers that build this DAG (``/recommendations``) need not
+    # construct a prose agent they never reach; ``None`` degrades the general branch to the
+    # static ``_GENERAL_HELP`` (the pre-025 behaviour). The /chat wiring ALWAYS sets it —
+    # ``tests/api/test_chat_wiring.py`` pins that, so a wiring regression can't silently
+    # reinstate the canned-line bug.
+    sparky: Sparky | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -318,6 +330,25 @@ class CoordinatorDag:
             return await self.knowledge.retrieve_passages(query, k=k, min_score=min_score)
         except Exception:
             return ()
+
+    async def _general_answer(
+        self, message: str, passages: tuple[Passage, ...], *, user: str | None
+    ) -> tuple[str, bool]:
+        """The general/identity branch's prose answer + whether the MODEL produced it.
+
+        Returns ``(_GENERAL_HELP, False)`` when no responder is wired (the non-chat DAG
+        consumers) or when the responder degraded — a refusal, an empty or action-shaped
+        generation, or an upstream LLM failure. The second element gates the citation block:
+        the static help text is not grounded in the retrieved passages, so it must never be
+        presented as if it were.
+        """
+        if self.sparky is None:
+            return _GENERAL_HELP, False
+        context = _format_grounding(passages) if passages else None
+        reply = await self.sparky.reply(message, context_hint=context, user=user)
+        if reply.fell_back or not reply.body:
+            return _GENERAL_HELP, False
+        return reply.body, True
 
     # -- stage 2: gather (portfolio + mandate reads) --------------------------
 
@@ -422,20 +453,30 @@ class CoordinatorDag:
             return
 
         if intent.kind is IntentKind.OTHER:
-            # Grounded explainer: answer FROM the corpus when it covers the question, else the
-            # static general-help. A similarity threshold means a barely-related corpus hit grounds
-            # NOTHING (no fake citations). Passage text feeds only this prose turn (never policy).
+            # The GENERAL / identity branch — "who are you?", "what can you do?", "hi", and
+            # anything off-topic. Sparky answers in its own (persona-bearing) voice: this used to
+            # emit one hardcoded sentence whenever grounding was empty, which on a deployment
+            # without an embedding backend is ALWAYS — so every general question got the same
+            # canned line and the assistant read as broken.
+            #
+            # Grounding still runs first and is ADDITIVE: when the corpus genuinely covers the
+            # question its passages are handed to the same prose turn as advisory reference text
+            # (a similarity threshold means a barely-related hit grounds NOTHING — no fake
+            # citations). Passage text feeds only this prose turn, never propose/build/policy.
+            #
+            # Prose-only by construction: whatever comes back is wrapped in a `text` block, which
+            # has no proposedAction and no policy stamp — this branch cannot emit anything
+            # signable. It also returns BEFORE the gather/propose/gate stages ever run.
             passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
-            if passages:
-                yield ToolStepBlock("Checking the knowledge base", "running")
-                card = await self.literacy.tip(
-                    message, context_hint=_format_grounding(passages), user=user
-                )
-                yield ToolStepBlock("Checking the knowledge base", "done")
-                yield TextBlock(card.body)
+            label = "Checking the knowledge base" if passages else "Thinking that through"
+            yield ToolStepBlock(label, "running")
+            answer, grounded = await self._general_answer(message, passages, user=user)
+            yield ToolStepBlock(label, "done")
+            yield TextBlock(answer)
+            # Cite ONLY when the grounded answer actually came from the model. A fallback to the
+            # static help text is not grounded in those passages, so citing them would be a lie.
+            if passages and grounded:
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
-            else:
-                yield TextBlock(_GENERAL_HELP)
             return
 
         yield ToolStepBlock("Reading your portfolio", "running")

@@ -17,6 +17,7 @@ from typing import Any
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender, _Rank
+from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
     CoordinatorDag,
@@ -90,11 +91,15 @@ def _chain() -> ChainContext:
 
 
 def _dag(intent: Intent, *, grounder: _FakeGrounder,
-         literacy_llm: _RecordingComplete, reco_llm: _RecordingStructured) -> CoordinatorDag:
+         literacy_llm: _RecordingComplete, reco_llm: _RecordingStructured,
+         sparky_llm: _RecordingComplete | None = None) -> CoordinatorDag:
     return CoordinatorDag(
         planner=Planner(llm=_RecordingStructured(StructuredResult(ok=True, value=intent))),
         recommender=Recommender(llm=reco_llm),
         literacy=Literacy(llm=literacy_llm),
+        # The general/identity branch's prose agent (025). LEARN still goes through literacy;
+        # OTHER goes through here, so the grounding assertions below follow the branch.
+        sparky=Sparky(llm=sparky_llm or _RecordingComplete()),
         portfolio_provider=_Portfolio(),
         mandate_provider=_Mandate(MandateView(version=1)),
         knowledge=grounder,  # type: ignore[arg-type]
@@ -118,12 +123,15 @@ async def test_learn_answer_is_grounded_and_cited() -> None:
 
 
 async def test_other_answer_is_grounded_and_cited() -> None:
-    g, lit = _FakeGrounder(), _RecordingComplete()
-    dag = _dag(Intent(kind=IntentKind.OTHER), grounder=g,
-               literacy_llm=lit, reco_llm=_RecordingStructured(StructuredResult(ok=True, value={})))
+    # The OTHER branch grounds the SAME way as LEARN, but through the persona-bearing general
+    # responder (025): passage text reaches Sparky's prose turn and the answer is cited.
+    g, lit, sparky = _FakeGrounder(), _RecordingComplete(), _RecordingComplete()
+    dag = _dag(Intent(kind=IntentKind.OTHER), grounder=g, literacy_llm=lit,
+               reco_llm=_RecordingStructured(StructuredResult(ok=True, value={})),
+               sparky_llm=sparky)
     wires = await _run(dag, "tell me about the vault's fee")
     assert g.calls
-    assert any(SENTINEL in str(m) for m in lit.messages)
+    assert any(SENTINEL in str(m) for m in sparky.messages), "passage text grounds the general turn"
     assert any(b.get("type") == "citation" for b in wires)
 
 

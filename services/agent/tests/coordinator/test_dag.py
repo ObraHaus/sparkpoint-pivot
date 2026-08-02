@@ -39,6 +39,9 @@ BIG = 10**15
 _TOOL_LABELS = {
     "Understanding your request",
     "Explaining that",
+    # 025 — the general/identity branch (a grounded turn uses the knowledge-base label instead).
+    "Thinking that through",
+    "Checking the knowledge base",
     "Reading your portfolio",
     "Checking strategies against your guardrails",
 }
