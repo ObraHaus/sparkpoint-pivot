@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-introduces-itself-and-chats-keep-their-cards",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky can finally introduce itself — and reopened chats keep their cards",
+      "body": "Two things made the assistant feel broken, and both are fixed.\n\n**Asking Sparky about itself got you a stock sentence.** \"Who are you?\", \"what can you do?\", \"hi\" — every one of them came back with the same fixed line, every time. That was not the assistant being terse; there was simply no code path that answered questions about Sparky at all, so it fell through to one hardcoded reply. It now genuinely answers, in its own voice, and an off-topic question (the weather, say) gets an honest redirect instead of a canned response.\n\nWorth saying plainly: on this conversational path Sparky only ever **talks**. It cannot propose or build a transaction there, and it never could — that is a structural property of how the reply is built, not a rule we ask it to follow. If the model is unavailable, you get the honest short answer rather than an error.\n\n**Reopening an old conversation used to gut it.** Your swap cards, recommendations and portfolio snapshots collapsed into placeholder text like \"[proposed action: aerodrome_swap]\". The cards were never actually being saved — only a one-line description of them was. They are saved now, and they come back as real, interactive cards, rendered by exactly the same code that drew them the first time.\n\nTwo details we were deliberate about. A replayed card carries the **same safety verdict it was issued with** — nothing is re-approved just because it was reloaded, and anything you act on is re-checked before you sign, as always. And conversations from before this update are untouched: they keep working exactly as they did, they simply have no cards to restore.",
+      "cta_label": "Open chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T02:00:00Z",
+      "active": true
+    },
+    {
       "slug": "fee-breakdown-now-shows-every-layer",
       "type": "changelog",
       "tag": "Improved",
