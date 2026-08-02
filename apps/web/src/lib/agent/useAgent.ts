@@ -27,6 +27,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createAgentClient, AgentApiError, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
 import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
+import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/mandateSave";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
 import {
@@ -435,14 +436,16 @@ export interface OnboardingDriver {
    */
   runReview: (draft: MandateDraft, selections: Record<string, unknown>) => Promise<MandateDraft | null>;
   /**
-   * Persist a confirmed mandate via `POST /mandate` (FR-002). Best-effort; resolves
-   * `null` on any error. The mandate is advisory config — it never authorizes funds.
+   * Persist a confirmed mandate via `POST /mandate` (FR-002). Resolves a TYPED
+   * {@link MandateSaveOutcome} — a server rejection (with its §1.6 code + message) is
+   * distinguishable from a transport failure, so the caller can say what actually went
+   * wrong. The mandate is advisory config — it never authorizes funds.
    */
-  confirmMandate: (mandate: MandateDraft) => Promise<unknown | null>;
+  confirmMandate: (mandate: MandateDraft) => Promise<MandateSaveOutcome>;
 }
 
 export function useOnboarding(): OnboardingDriver {
-  const { client, online, identity } = useAgentClient();
+  const { client, online } = useAgentClient();
   const queryClient = useQueryClient();
 
   const runReview = useCallback(
@@ -474,27 +477,39 @@ export function useOnboarding(): OnboardingDriver {
   );
 
   const confirmMandate = useCallback(
-    async (mandate: MandateDraft): Promise<unknown | null> => {
-      if (!client) return null;
+    async (mandate: MandateDraft): Promise<MandateSaveOutcome> => {
+      if (!client) return { ok: false, failure: { kind: "offline" } };
       try {
         const res = await client.request<{ mandate?: unknown }>("/mandate", {
           method: "POST",
           body: { mandate },
-          // Caller-owned, stable per user+version so a retry de-dupes (§1.3).
-          idempotencyKey: `mandate-${identity?.account ?? "anon"}-v${mandate.version}`,
+          // §1.3 requires a UUID — the middleware 400s anything else BEFORE the route runs, which
+          // is what a `mandate-<wallet>-v<version>` key hit on every single save (025).
+          //
+          // FRESH PER ATTEMPT, deliberately. Since 023 the agent's idempotency cache is DURABLE
+          // (Postgres, migration 0027) and scoped `(account, chain_id, method, path, key)`. The
+          // draft hardcodes `version: 1`, so a key that is stable per user+version would make the
+          // first successful 201 replay forever — every later edit answering 201 with the ORIGINAL
+          // mandate and silently persisting nothing. A per-attempt key still de-dupes the only
+          // replay that can actually happen here (a double-click / retry re-sending the same
+          // request object is a different submission, and saving the same plan twice is a no-op
+          // against a versioned store).
+          idempotencyKey: crypto.randomUUID(),
         });
         // Instant reflect: the settings tab / chat rail / portfolio drift read `useMandate`
         // (["agent","mandate"]); invalidate so a freshly-saved plan shows without a remount.
         void queryClient.invalidateQueries({ queryKey: ["agent", "mandate"] });
         // `client.request` throws on a non-2xx, so reaching here means the POST SUCCEEDED. Return
-        // the echoed mandate when present, else the response object itself (still truthy) — a
-        // success whose body omits `mandate` must NOT surface as a false "Try again" (US1 AC2).
-        return res?.mandate ?? res ?? { ok: true };
-      } catch {
-        return null;
+        // the echoed mandate when present, else the response object itself — a success whose body
+        // omits `mandate` must NOT surface as a false "Try again" (US1 AC2).
+        return { ok: true, mandate: res?.mandate ?? res ?? null };
+      } catch (err) {
+        // Do NOT swallow: the caller needs to tell a server rejection (a real code + message it can
+        // quote) apart from a transport failure, or every failure reads as "check your connection".
+        return { ok: false, failure: classifyMandateSaveError(err) };
       }
     },
-    [client, identity, queryClient],
+    [client, queryClient],
   );
 
   return { online, runReview, confirmMandate };
@@ -544,3 +559,7 @@ export function useMandate(): MandateState {
 
 /** Re-export the pure drift helper so screens import mandate wiring from one place. */
 export { mandateDrift, type DriftStatus };
+
+/** Re-exported so the onboarding dock imports the save outcome + its copy from one place. */
+export { mandateSaveHint } from "@/lib/agent/mandateSave";
+export type { MandateSaveOutcome, MandateSaveFailure } from "@/lib/agent/mandateSave";

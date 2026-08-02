@@ -13,6 +13,39 @@
       "active": true
     },
     {
+      "slug": "saving-your-plan-now-actually-works",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Saving your plan now actually works — and it never did before",
+      "body": "If you finished onboarding and pressed **Set my plan**, it failed. Every time, for everyone. We would then tell you to \"check your connection and try again\" — which was not only wrong, it was advice that could never have worked.\n\nHere is what was actually happening. Every request our app makes carries a small reference tag so that if it gets sent twice by accident, we don't act on it twice. Ours was formatted incorrectly for this one request, and our server rejected it on sight — before it ever got as far as reading your plan. So no plan has ever been saved through onboarding. The server was right to refuse; the mistake was entirely on the app's side, and that is where we fixed it.\n\n**Your plan now saves, and you can change it and save again as often as you like.** Each save is recorded as a new version, so your earlier plans aren't overwritten or lost.\n\nWe also fixed the part that annoys us more than the bug did. When a save fails now, we tell you **the actual reason** the server gave, instead of assuming it was your internet. We only mention your connection when we genuinely could not reach the server at all. Blaming you for our error is a bad habit for software to have, and we would rather not have it.\n\nAs always: your plan is guidance for what Sparky may suggest. It authorises nothing, and it can never move your money.",
+      "cta_label": "Review your plan",
+      "cta_href": "/settings",
+      "published_at": "2026-08-02T01:45:00Z",
+      "active": true
+    },
+    {
+      "slug": "we-stop-asking-you-to-start-over",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "We stop asking you to start over every time you come back",
+      "body": "If you had already set up your plan, the sign-in screen kept offering **\"Start onboarding\"** as its main button every single time you returned — as though we had never met you. The screen simply never checked whether you already had a plan, and because sign-ins last a week and returning wallets are sent straight there, most people saw it constantly.\n\nIt now recognises that you have a plan and offers **\"Continue to app\"** instead, with a quieter link if you actually do want to look at or redo your plan. If you haven't set one up yet, nothing changes — you'll still be invited to start.\n\nOne deliberate detail: if we can't tell either way (the check is slow, or it fails), we show you the old wording rather than guessing. This screen is the door into the app, and a convenience check is never allowed to lock it.",
+      "cta_label": "Go to chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T01:40:00Z",
+      "active": true
+    },
+    {
+      "slug": "no-more-premium-prompt-on-things-that-are-free",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "No more \"Premium subscription\" prompt on things that were never paid",
+      "body": "Reviewing some of Sparky's suggestions — supplying directly to Aave, for instance — brought up a screen headed **\"Confirm: Premium subscription\"**. Understandably, people read that as: this move is behind a paywall.\n\nIt is not, and it never was. There is no paid tier on any suggestion Sparky makes. What had happened is far more boring: when the app has no way to carry out a particular kind of move for you, it was falling back on the wrong placeholder screen — and the one it picked happened to be the Premium one. A purely technical gap was being dressed up as a commercial one, which is exactly the sort of thing that makes a product feel like it's up to something.\n\nYou now get a plain note saying what's true: Sparky can suggest that move, but the app can't carry it out for you yet, so there's nothing to sign here. No button, because there is nothing to buy and nothing to approve. You're free to act on the idea yourself wherever you normally would.\n\nDeposits, withdrawals and swaps are unaffected — they were always real, and still are. And as ever, nothing moves without your signature.",
+      "cta_label": "Ask Sparky",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T01:35:00Z",
+      "active": true
+    },
+    {
       "slug": "fee-breakdown-now-shows-every-layer",
       "type": "changelog",
       "tag": "Improved",

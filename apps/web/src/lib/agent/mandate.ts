@@ -93,6 +93,19 @@ export function mandateView(wire: MandateWire | null | undefined): MandateView |
   };
 }
 
+/**
+ * `true` iff a raw `GET /mandate` body carries a real persisted mandate. §3.1 answers 200 with
+ * `{"mandate": null}` when the user has none, so "no mandate" and "the read failed" are DIFFERENT
+ * facts and only this one is a positive answer — callers that gate a CTA on it must fail open on
+ * the other. Defensive: any unexpected shape ⇒ `false`. Agrees with `mandateView` by construction,
+ * so /verify and the settings surface can never disagree about whether a plan exists.
+ */
+export function hasSavedMandate(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const wire = (body as { mandate?: unknown }).mandate;
+  return mandateView(wire as MandateWire | null | undefined) !== null;
+}
+
 /** Risk drift = live realized tier vs the mandate's target ceiling tier. The mandate only
  * NARROWS allowed risk, so holding AT or BELOW the mandate tier is on-plan; only exceeding
  * it is a drift. `unknown` when either input is absent. */

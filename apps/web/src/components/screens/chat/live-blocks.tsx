@@ -21,15 +21,18 @@ import type { ChatCard } from "@/lib/agent/cards";
 import { clampProposedSlippageBps } from "@/lib/swap/math";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { HandsOffAction } from "@/components/screens/chat/HandsOffAction";
+import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
 /**
  * Map a live block's `proposedAction` to the chat inline-confirm intent, carrying the LIVE amount so
  * the action drives a REAL execution path (never a mock amount). Vault deposit/withdraw/redeem →
  * the real vault gate; `aerodrome_swap` → the functional inline swap (user-signed via Uniswap,
- * independent of the agent's fail-closed swap policy); anything else → an honest placeholder.
+ * independent of the agent's fail-closed swap policy); anything else → an honest inert notice.
  */
 function inlineIntentFor(action: ProposedAction): InlineIntent {
+  // Gate on the tested predicate FIRST so the "we can't run this" answer has exactly one source.
+  if (!isInlineExecutable(action.type)) return unsupportedIntent(action.type);
   const amount = (() => {
     try {
       return BigInt(action.amount);
@@ -65,8 +68,10 @@ function inlineIntentFor(action: ProposedAction): InlineIntent {
       };
     }
     default:
-      // aave_supply / aave_withdraw etc. aren't inline-wired yet → honest placeholder.
-      return { kind: "premium" };
+      // Unreachable — `isInlineExecutable` already gated every type without a real path. Kept as
+      // defence-in-depth, and it must stay the INERT notice: answering `{ kind: "premium" }` here
+      // is what made an un-executable `aave_supply` render as "Confirm: Premium subscription" (025).
+      return unsupportedIntent(action.type);
   }
 }
 
