@@ -321,6 +321,9 @@ class _FakeSwaps:
         return [r for r in rows if (r.block_number, r.log_index) > after]
 
 
+_USDC = "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f"
+
+
 class _FakeProbe:
     def __init__(self, last: datetime | None):
         self.last = last
@@ -329,9 +332,7 @@ class _FakeProbe:
         return self.last
 
 
-def _swap_row(
-    block: int = 200, fee: int = 2_000_000, token: str = "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f"
-) -> Any:
+def _swap_row(block: int = 200, fee: int = 2_000_000, token: str = _USDC) -> Any:
     from dataclasses import dataclass as _dc
 
     @_dc
@@ -354,8 +355,6 @@ def _swap_row(
         tx_hash="0x" + "ee" * 32,
     )
 
-
-_USDC = "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f"
 
 
 def _folder3(
@@ -419,7 +418,9 @@ async def test_a_faucet_claim_folds_once_and_only_once() -> None:
 
 async def test_a_dead_probe_skips_the_source_cursor_untouched() -> None:
     memory = _FakeMemory(cursor={"v": 1, "faucet": "2026-07-01T00:00:00+00:00"})
-    result = await fold_activity(_folder3(memory, probe=_FakeProbe(None)), owner=_OWNER, account=_ACCOUNT)
+    result = await fold_activity(
+        _folder3(memory, probe=_FakeProbe(None)), owner=_OWNER, account=_ACCOUNT
+    )
     assert result.folded == 0 and memory.appends == []
 
 
