@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -750,3 +750,40 @@ async def test_fold_failures_warn_exactly_once_per_process(
         assert len(hits) == 1
     finally:
         chat_module._warned_fold_failure = False
+
+
+def test_every_activity_source_down_still_streams_a_clean_turn(client: TestClient) -> None:
+    # SC-006 second half: memory store, flow reader, exec store, swap store AND the faucet probe
+    # all raising — the fold degrades to memory v1 and the turn is indistinguishable from normal.
+    from sparkpoint_agent.activity_fold import ActivityFolder
+    from sparkpoint_agent.db.user_memory import MemoryStore as _RealMemoryStore
+
+    class _EvilEverything:
+        def __getattr__(self, name: str) -> Any:
+            async def _boom(*args: Any, **kwargs: Any) -> Any:
+                raise RuntimeError("everything is down")
+
+            return _boom
+
+    def _factory(chain_id: int) -> ActivityFolder:
+        evil = _EvilEverything()
+        return ActivityFolder(
+            memory=cast(_RealMemoryStore, evil),
+            flows=cast(Any, evil),
+            flow_targets=(("base", VAULT),),
+            executions=cast(Any, evil),
+            swaps=cast(Any, evil),
+            swap_networks=("base",),
+            faucet_probe=cast(Any, evil),
+        )
+
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    app.dependency_overrides[get_memory_sink] = lambda: _MemorySink(
+        _ExplodingStore(),  # type: ignore[arg-type]
+        folder_factory=_factory,
+    )
+    resp = _post_chat(client, "where can I earn yield?")
+    assert resp.status_code == 200
+    blocks = _blocks(_parse_sse(resp.text))
+    assert any(b["type"] == "recommendation" for b in blocks)
+    assert all(b["type"] != "error" for b in blocks)
