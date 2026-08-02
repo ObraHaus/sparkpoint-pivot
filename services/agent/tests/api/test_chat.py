@@ -29,11 +29,14 @@ from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender, _Rank
 from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.api.chat import (
+    _MemorySink,
     _NoopConversationSink,
+    _NoopMemorySink,
     get_chain_provider,
     get_conversation_sink,
     get_coordinator_dag,
     get_feedback_sink,
+    get_memory_sink,
 )
 from sparkpoint_agent.api.main import app
 from sparkpoint_agent.api.security import AccountContext
@@ -245,8 +248,11 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 def _wire(dag: CoordinatorDag, chain: ChainContext) -> None:
     app.dependency_overrides[get_coordinator_dag] = lambda: dag
     app.dependency_overrides[get_chain_provider] = lambda: _FakeChainProvider(chain)
-    # Hermetic: no DB-backed conversation persistence in the chat unit tests (B1).
+    # Hermetic: no DB-backed conversation persistence in the chat unit tests (B1) and no
+    # DB-backed cross-conversation memory (027) — both sinks are fail-open in production, so the
+    # no-op stand-ins reproduce exactly what a chat turn does with neither of them available.
     app.dependency_overrides[get_conversation_sink] = lambda: _NoopConversationSink()
+    app.dependency_overrides[get_memory_sink] = lambda: _NoopMemorySink()
 
 
 def _post_chat(client: TestClient, message: str, **body: Any) -> Any:
@@ -581,3 +587,93 @@ def test_chat_persists_a_portfolio_snapshot_card(client: TestClient) -> None:
     types = [b["type"] for b in blocks]
     assert types == ["portfolio_snapshot", "text"]
     assert blocks[0]["positions"][0]["venue"] == "Wallet (idle)"
+
+
+# ── 027 · Wave 4: the cross-conversation memory read + write path ───────────────
+
+
+class _RecordingMemorySink(_NoopMemorySink):
+    """Captures the digest handed to the DAG and every line written back."""
+
+    def __init__(self, seeded: list[str] | None = None) -> None:
+        super().__init__()
+        self.seeded = seeded or []
+        self.reads: list[str] = []
+        self.writes: list[tuple[str, list[str]]] = []
+
+    async def lines(self, owner_eoa: str) -> list[str]:
+        self.reads.append(owner_eoa)
+        return list(self.seeded)
+
+    async def remember(self, owner_eoa: str, lines: Any) -> None:
+        self.writes.append((owner_eoa, list(lines)))
+
+
+def _wire_memory(seeded: list[str] | None = None) -> _RecordingMemorySink:
+    sink = _RecordingMemorySink(seeded)
+    app.dependency_overrides[get_memory_sink] = lambda: sink
+    return sink
+
+
+def test_chat_remembers_the_question_and_the_recommendation_it_produced(
+    client: TestClient,
+) -> None:
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    memory = _wire_memory()
+    _post_chat(client, "where can I earn yield?")
+
+    assert len(memory.writes) == 1
+    owner, lines = memory.writes[0]
+    assert owner == OWNER, "memory is keyed to the WALLET, not the conversation"
+    assert lines[0] == "asked: where can I earn yield?"
+    assert lines[1].startswith("was recommended: ")
+
+
+def test_chat_remembers_a_portfolio_view(client: TestClient) -> None:
+    view = PortfolioView(
+        positions=(PositionLite(venue="Wallet (idle)", asset="USDC", value_usd="50.00"),),
+        net_worth_usd="50.00",
+        idle_usdc=50_000_000,
+    )
+    _wire(_dag(intent=Intent(kind=IntentKind.PORTFOLIO), portfolio=_Portfolio(view)), _chain())
+    memory = _wire_memory()
+    _post_chat(client, "what's in my wallet?")
+    assert memory.writes[0][1] == ["asked: what's in my wallet?", "viewed portfolio"]
+
+
+def test_chat_reads_the_digest_for_the_session_wallet_before_streaming(
+    client: TestClient,
+) -> None:
+    _wire(_dag(intent=Intent(kind=IntentKind.OTHER)), _chain())
+    memory = _wire_memory(["asked: what is APY?", "viewed portfolio"])
+    resp = _post_chat(client, "what did we do last time?")
+    assert resp.status_code == 200
+    assert memory.reads == [OWNER]
+
+
+class _ExplodingStore:
+    """A MemoryStore whose every call fails, as a dead pool or a pre-0030 database would."""
+
+    async def get(self, owner_eoa: str) -> Any:
+        raise RuntimeError("pool is down")
+
+    async def append(self, owner_eoa: str, lines: Any) -> None:
+        raise RuntimeError("pool is down")
+
+
+def test_a_broken_memory_store_never_breaks_the_chat_turn(client: TestClient) -> None:
+    # FAIL-OPEN, exactly like the conversation sink, and asserted through the PRODUCTION sink
+    # rather than a stand-in — the swallow lives in `_MemorySink`, so that is what has to hold.
+    # A memory outage costs context, never a chat turn (and never custody, N2).
+    _wire(_dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1)), _chain())
+    app.dependency_overrides[get_memory_sink] = lambda: _MemorySink(_ExplodingStore())  # type: ignore[arg-type]
+    resp = _post_chat(client, "where can I earn yield?")
+    assert resp.status_code == 200
+    blocks = _blocks(_parse_sse(resp.text))
+    assert any(b["type"] == "recommendation" for b in blocks), "the turn still streamed its cards"
+    assert all(b["type"] != "error" for b in blocks), "and produced no error block"
+
+
+async def test_a_broken_memory_read_degrades_to_no_memory() -> None:
+    sink = _MemorySink(_ExplodingStore())  # type: ignore[arg-type]
+    assert await sink.lines(OWNER) == [], "a failed read is 'no memory', not an exception"

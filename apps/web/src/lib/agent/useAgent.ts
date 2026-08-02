@@ -43,6 +43,11 @@ import {
   type NotificationsResponseDto,
   type NotificationsView,
 } from "@/lib/agent/notificationsView";
+import {
+  toMemoryView,
+  type MemoryResponseDto,
+  type MemoryView,
+} from "@/lib/agent/memoryView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
 const DEFAULT_CHAIN_ID = 8453;
@@ -563,3 +568,70 @@ export { mandateDrift, type DriftStatus };
 /** Re-exported so the onboarding dock imports the save outcome + its copy from one place. */
 export { mandateSaveHint } from "@/lib/agent/mandateSave";
 export type { MandateSaveOutcome, MandateSaveFailure } from "@/lib/agent/mandateSave";
+
+
+/* ── GET /memory/self + POST /memory/clear (feature 027) ───────────────────── */
+
+export interface SparkyMemoryState {
+  /** The remembered lines, newest first. Empty is a completely normal state. */
+  view: MemoryView;
+  isLoading: boolean;
+  isError: boolean;
+  loaded: boolean;
+  refetch: () => void;
+}
+
+/**
+ * What Sparky remembers about the connected wallet, across conversations (feature 027).
+ *
+ * Session-scoped server-side: the BFF derives the owner from the verified SIWE session, so this
+ * can only ever return the caller's OWN memory — there is no id to pass and no way to ask for
+ * someone else's. `null` when offline (no wallet), which the Settings card renders as its
+ * disconnected state rather than as "you have no memory".
+ *
+ * ADVISORY ONLY: these lines are context for suggestions and answers. Nothing here authorizes
+ * anything, and nothing on this path can move funds (N2) — the card says so in plain words.
+ */
+export function useSparkyMemory(): SparkyMemoryState | null {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "memory", identity?.account],
+    enabled: online,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: ({ signal }) => client!.request<MemoryResponseDto>("/memory/self", { signal }),
+  });
+  if (!online) return null;
+  return {
+    view: toMemoryView(query.data),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    loaded: query.isSuccess && query.data !== undefined,
+    refetch: () => void query.refetch(),
+  };
+}
+
+/**
+ * Erase everything Sparky remembers about the connected wallet.
+ *
+ * Unlike the advisory writes elsewhere in this module, this one REPORTS FAILURE: the user pressed
+ * a button labelled "Clear memory", so resolving `false` when the server refused is the difference
+ * between an honest UI and one that lies about having deleted something. On success the memory
+ * query is invalidated so the list reflects reality immediately.
+ */
+export function useClearSparkyMemory(): () => Promise<boolean> {
+  const { client, online } = useAgentClient();
+  const queryClient = useQueryClient();
+  return useCallback(async () => {
+    if (!online || !client) return false;
+    try {
+      await client.request("/memory/clear", { method: "POST", body: {} });
+      await queryClient.invalidateQueries({ queryKey: ["agent", "memory"] });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [client, online, queryClient]);
+}
+
+export type { MemoryView, MemoryRow } from "@/lib/agent/memoryView";

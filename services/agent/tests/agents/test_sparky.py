@@ -191,3 +191,57 @@ async def test_runaway_generation_without_sentence_end_cuts_on_a_word() -> None:
     reply = await Sparky(llm=_ok("word " * 400)).reply("who are you?")
     assert len(reply.body) <= MAX_CHARS
     assert not reply.body.endswith("wor")  # never a mid-word cut
+
+
+# ── 027 · background context: memory in, meta-commentary out ────────────────────
+
+
+def test_system_forbids_narrating_the_reference_notes_or_the_memory() -> None:
+    """Radar 2 (live on develop, once RAG grounding went active).
+
+    A plain "who are you?" came back as *"The reference notes you provided don't include any
+    information about who I am."* — the model narrating its own scaffolding INSTEAD of answering,
+    while carrying a full persona in its SYSTEM the whole time. The 027 memory digest is a second
+    channel with the identical failure mode ("according to my memory of you…"), so one rule covers
+    both: background is something to USE, never to TALK ABOUT.
+    """
+    lowered = SYSTEM.lower()
+    assert "reference notes" in lowered
+    assert "memory" in lowered
+    for forbidden in ("mention", "quote", "describe", "apolog"):
+        assert forbidden in lowered, f"the background rule must forbid {forbidden}…"
+    assert "instruction" in lowered, "fenced background must be labelled data, not instructions"
+
+
+async def test_memory_lines_are_rendered_into_the_user_turn_not_the_system() -> None:
+    # A memory line quotes the USER's own words. That is untrusted content and must not share a
+    # prompt position with the operator-authored (trusted) persona.
+    fake = _ok("Last time we looked at your vault position.")
+    await Sparky(llm=fake, persona_provider=lambda: "PERSONA_BLOCK").reply(
+        "what did we do last time?", memory_lines=["viewed their portfolio"]
+    )
+    (call,) = fake.calls
+    assert "viewed their portfolio" in str(call["messages"])
+    assert "<<<USER_MEMORY" in str(call["messages"])
+    assert "viewed their portfolio" not in call["system"]
+    assert "PERSONA_BLOCK" in call["system"]
+
+
+async def test_no_memory_leaves_the_prompt_byte_identical_to_pre_027() -> None:
+    without = _ok("hi")
+    empty = _ok("hi")
+    await Sparky(llm=without).reply("hi")
+    await Sparky(llm=empty).reply("hi", memory_lines=[])
+    assert without.calls[0]["messages"] == empty.calls[0]["messages"]
+    assert "USER_MEMORY" not in str(without.calls[0]["messages"])
+
+
+async def test_memory_and_grounding_can_both_be_present_and_stay_separately_fenced() -> None:
+    fake = _ok("An answer.")
+    await Sparky(llm=fake).reply(
+        "what is APY?",
+        context_hint="<<<REFERENCE_NOTES\nAPY is annualised yield.\n>>>",
+        memory_lines=["asked: what is APY?"],
+    )
+    content = str(fake.calls[0]["messages"])
+    assert "<<<USER_MEMORY" in content and "<<<REFERENCE_NOTES" in content

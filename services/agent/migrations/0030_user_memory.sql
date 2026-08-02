@@ -1,0 +1,74 @@
+-- 0030_user_memory.sql — feature 027 (Wave 4 AI memory): one rolling, per-USER activity digest so a
+-- BRAND-NEW conversation still knows what Sparky and this user have done together.
+-- Additive, forward-only, reversible. Apply with PGCLIENTENCODING=UTF8.
+--
+-- WHY THIS TABLE EXISTS — the client punch-list item: "even if the user starts a new conversation,
+-- the AI should know what it did previously with the user by having a memory that the AI can
+-- revisit." Cross-conversation memory did not exist in any form. `conversation_turns` (0010 + 0028)
+-- is keyed to ONE conversation, and the only thing ever fed back into the model is
+-- `ConversationStore.recent_history` — the last turns of the CURRENT thread, and only to the intent
+-- classifier. Open a new chat and the assistant starts from absolute zero, which reads as amnesia
+-- to a user who has been talking to it for a week.
+--
+-- WHY A PER-USER ROW AND NOT A `user_memory_lines` CHILD TABLE — the digest is written as a whole
+-- (read-modify-write: fold in this turn's lines, drop the oldest over the cap, upsert) and read as a
+-- whole (render the digest for one prompt). Nothing ever queries a single line, filters by line, or
+-- orders by anything but position, so a child table would buy a second write, an explicit ordering
+-- column, and a DELETE-oldest query per turn for no gain. On the row, the whole fold is one
+-- statement inside one transaction, order is free (JSON array order, newest LAST), the 40-entry cap
+-- is enforced in the same write, and `clear()` is a single DELETE. `ON DELETE CASCADE` from `users`
+-- means deleting a user takes their memory with them.
+--
+-- SHAPE — `lines` is an ordered JSON array of compact entries, newest LAST:
+--     [{"at": "2026-08-02T04:15:00+00:00", "line": "asked: how do I earn on my USDC"},
+--      {"at": "2026-08-02T04:15:00+00:00", "line": "was recommended: Aave USDC Supply"}]
+-- Entries are DETERMINISTIC — derived in code from the block wires the turn already streamed
+-- (`memory.derive_memory_lines`), never a second LLM summarization pass. HARD-CAPPED at 40 entries;
+-- the writer drops the oldest on every write, so the row cannot grow without bound and the rendered
+-- digest stays inside its ~800-char prompt budget.
+--
+-- ⚠️ JSONB + SQL_ASCII — the shared develop Postgres was created with `server_encoding SQL_ASCII`,
+-- whose JSONB parser hard-REJECTS any `\uXXXX` escape above ASCII (`UntranslatableCharacterError`)
+-- while raw UTF-8 bytes pass through unvalidated. Every writer of this column MUST therefore
+-- serialize with `json.dumps(..., ensure_ascii=False)`. This is not style: the identical mistake in
+-- 025 silently dropped EVERY assistant turn on alpha (hotfix #125), because the sink is fail-open.
+-- `db/user_memory.py` does this and `tests/db/test_user_memory.py` pins it.
+--
+-- NON-CUSTODY (Constitution N1/N2/N3): this table holds NO key material, NO signature, NO amount,
+-- NO address, and NO policy stamp — only short human-readable strings describing what was DISPLAYED
+-- to the user. It is ADVISORY CONTEXT for natural-language understanding and prose only: the digest
+-- reaches exactly two places, the intent classifier's history context and Sparky's prose turn, and
+-- reaches NEITHER `propose`, NOR the deterministic policy gate, NOR `/build-tx` — the same boundary
+-- the per-conversation history already observes (`coordinator/dag.py`: history is "fed ONLY to the
+-- classifier's NL understanding — never to policy/action"), pinned by
+-- `tests/coordinator/test_memory_boundary.py`. Memory can therefore change how a question is
+-- UNDERSTOOD and how an answer READS; it can never authorize, widen, or shortcut a signable action.
+-- Reads and writes are fail-open, so an outage costs context, never custody, and this is NEVER on
+-- the withdraw/exit path (N2).
+--
+-- USER CONTROL: the row is inspectable and erasable by its owner — `GET /memory/self` and
+-- `POST /memory/clear` (session-derived owner, no admin override, no admin read path), surfaced as
+-- the "Sparky's memory" tab in web Settings.
+--
+-- ⚠️ ORDERING — APPLY-ORDER INSENSITIVE, in BOTH directions, unlike 0028.
+--   * OLD agent + NEW schema: nothing pre-027 names `user_memory`, so applying early is inert.
+--   * NEW agent + OLD schema: every read AND write in `db/user_memory.py` catches
+--     `UndefinedTableError` and degrades to "no memory" (logging `user_memory_table_missing` ONCE),
+--     so chat behaves exactly as it does today and `GET /memory/self` returns an empty list rather
+--     than a 500. This is asserted by tests, not assumed — 0028's header claimed order-insensitivity
+--     without one and was wrong (the fail-open sink turned a missing column into silently-lost
+--     history). The backstop is still not a licence: until this is applied, nothing is remembered.
+--
+-- vs 0029 (feature 026, Wave 3, in flight): independent and order-free. Different tables, no shared
+-- objects, no shared enums; either may be applied first.
+--
+-- ROLLBACK: `DROP TABLE IF EXISTS user_memory;` — erases every digest (the app degrades to exactly
+-- today's no-memory behaviour). No other table references it.
+
+-- One row per user. `lines` defaults to an empty array so a row created by any future writer is
+-- immediately well-formed; the app always writes the whole array.
+CREATE TABLE IF NOT EXISTS user_memory (
+    user_id    UUID        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    lines      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -57,6 +57,7 @@ from .errors import (
 from .execution import router as execution_router
 from .idempotency import IdempotencyStore, LayeredIdempotencyStore, ScopedStore
 from .mandate import router as mandate_router
+from .memory import router as memory_router
 from .middleware import RequestContextMiddleware
 from .network_diagnostics import router as network_diagnostics_router
 from .notifications import router as notifications_router
@@ -659,6 +660,11 @@ app.include_router(admin_knowledge_router)
 app.include_router(admin_persona_router)
 # §B1 per-wallet chat conversation history (/conversations*) — session-scoped, no admin override.
 app.include_router(conversations_router)
+# Feature 027 cross-conversation memory (/memory/self, /memory/clear) — the user's own view of what
+# Sparky remembers about them, and their own erase. Session-scoped, NO admin override and no admin
+# read path. Advisory NL/prose context only: it never reaches propose, the policy gate or /build-tx,
+# and it is never on the withdraw/exit path (N2).
+app.include_router(memory_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
 # Feature 008 admin tier-limits config (/admin/limits/*) — admin-gated, audited, POST-only writes.

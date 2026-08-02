@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import Any
 
 from ..llm import AsyncClaudeClient, Effort
+from ..memory import CLASSIFIER_DIGEST_CHARS, render_digest
 from ..policy import ActionType, Asset
 
 # Bound the multi-turn context fed to the classifier (recent turns, each clamped) so the token
@@ -40,6 +41,24 @@ def _render_history(history: Sequence[tuple[str, str]] | None) -> str:
         speaker = "user" if role == "user" else "assistant"
         lines.append(f"{speaker}: {text}")
     return "recent_conversation:\n" + "\n".join(lines) + "\n"
+
+
+def _render_memory(memory_lines: Sequence[str] | None) -> str:
+    """Render the CROSS-conversation memory digest for the classifier (027), or "" when there is
+    none — in which case the prompt is byte-identical to the pre-027 one.
+
+    Tighter budget than the prose surface (:data:`CLASSIFIER_DIGEST_CHARS`): the classifier only
+    needs enough to resolve a follow-up that reaches ACROSS conversations ("do that again", "the
+    second option from yesterday"), and its prompt already carries the current thread's turns.
+    Rendered here rather than clamped from an already-rendered block, so the untrusted-content
+    fence can never be truncated open.
+
+    BOUNDARY: this is NL-understanding context only. The classified :class:`Intent` still passes
+    through the whitelist coercions below and then the deterministic, LLM-free policy gate — memory
+    never reaches ``propose``, the gate, or ``/build-tx``.
+    """
+    return render_digest(memory_lines or (), max_chars=CLASSIFIER_DIGEST_CHARS)
+
 
 # Extraction is light judgment (parse an amount/asset from free text), not deep
 # reasoning — MEDIUM effort (research.md §6 effort-tiering; the recommender is HIGH).
@@ -214,6 +233,7 @@ class Planner:
         surface: str = "chat",
         user: str | None = None,
         history: Sequence[tuple[str, str]] | None = None,
+        memory_lines: Sequence[str] | None = None,
     ) -> Intent:
         """Classify ``message`` into an :class:`Intent`, fail-closed.
 
@@ -223,10 +243,16 @@ class Planner:
         the verified wallet (LiteLLM per-user budget/attribution key) — identity only, never
         authority. ``history`` is the recent (role, content) turns — context so a follow-up
         ("yes, do that" / "the first one") classifies against the prior turn; it never grants
-        authority and never bypasses the whitelist.
+        authority and never bypasses the whitelist. ``memory_lines`` is the same idea across
+        CONVERSATIONS (027): the user's rolling activity digest, so "do that again" in a brand-new
+        chat still resolves. Both are advisory context with exactly the same standing — neither
+        grants authority, and an empty/absent digest leaves this prompt byte-identical to pre-027.
         """
         context = _render_history(history)
-        user_content = f"surface={surface}\n{context}message={message}"
+        memory = _render_memory(memory_lines)
+        if memory:
+            memory = f"{memory}\n"
+        user_content = f"surface={surface}\n{memory}{context}message={message}"
         result = await self.llm.structured(
             system=SYSTEM,
             messages=[{"role": "user", "content": user_content}],

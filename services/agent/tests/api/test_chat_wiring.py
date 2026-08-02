@@ -13,10 +13,14 @@ import re
 import pytest
 
 from sparkpoint_agent.api.chat import (
+    _MemorySink,
+    _NoopMemorySink,
     _VaultChatChainProvider,
     _VaultChatPortfolioProvider,
     get_coordinator_dag,
+    get_memory_sink,
 )
+from sparkpoint_agent.api.main import app
 from sparkpoint_agent.api.security import AccountContext
 from sparkpoint_agent.chain import VaultUnavailable, VaultUnavailableReason
 from sparkpoint_agent.config import AgentConfig
@@ -197,3 +201,28 @@ def test_chat_dag_wires_the_persona_bearing_general_responder(
     assert dag.sparky.persona_provider is get_persona
     # …and it shares the SAME persona surface as the literacy agent (one voice, one source).
     assert dag.literacy.persona_provider is get_persona
+
+
+# ── 027 · Wave 4 — the memory sink is wired in PRODUCTION ──────────────────────
+
+
+def test_chat_wires_the_real_pg_backed_memory_sink(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``get_memory_sink`` must return the REAL, store-backed sink.
+
+    A regression to a no-op here is invisible at runtime — chat keeps working perfectly and
+    simply never remembers anything, which is exactly the bug feature 027 exists to fix. The
+    database handle is stubbed so this stays hermetic (no pool, no DATABASE_URL).
+    """
+    monkeypatch.setattr("sparkpoint_agent.api.chat.get_database", lambda: object())
+    sink = get_memory_sink()
+    assert isinstance(sink, _MemorySink)
+    assert not isinstance(sink, _NoopMemorySink), "the production sink must not be the test no-op"
+
+
+def test_the_memory_endpoints_are_registered_and_session_scoped() -> None:
+    # /memory/self + /memory/clear must exist (the Settings card is useless without them), and
+    # NOTHING under /admin may read another user's memory — there is deliberately no admin path.
+    paths = set(app.openapi()["paths"])
+    assert "/memory/self" in paths
+    assert "/memory/clear" in paths
+    assert not any(p.startswith("/admin") and "memory" in p for p in paths)

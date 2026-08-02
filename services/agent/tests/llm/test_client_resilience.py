@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from sparkpoint_agent.api.chat import _event_stream, _NoopConversationSink
+from sparkpoint_agent.api.chat import _event_stream, _NoopConversationSink, _NoopMemorySink
 from sparkpoint_agent.coordinator.chat_blocks import ChatBlock, TextBlock
 from sparkpoint_agent.llm import AuthMode, Limiter, RetryPolicy
 from sparkpoint_agent.llm.client import AsyncClaudeClient
@@ -174,7 +174,13 @@ class _FirstBlockThenFailDag:
     """A stand-in Coordinator: emits one block, then raises an upstream error mid-turn."""
 
     def run_chat(
-        self, message: str, chain: Any, *, surface: str = "chat", history: Any = None
+        self,
+        message: str,
+        chain: Any,
+        *,
+        surface: str = "chat",
+        history: Any = None,
+        memory_lines: Any = None,
     ) -> AsyncIterator[ChatBlock]:
         async def _gen() -> AsyncIterator[ChatBlock]:
             yield TextBlock("first visible block")
@@ -195,6 +201,8 @@ async def test_sse_fails_closed_after_first_block_no_duplication() -> None:
             history=[],
             sink=_NoopConversationSink(),
             owner_eoa="0x0000000000000000000000000000000000000000",
+            memory=_NoopMemorySink(),
+            memory_lines=[],
         )
     ]
     joined = "".join(frames)

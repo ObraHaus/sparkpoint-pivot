@@ -307,14 +307,19 @@ class CoordinatorDag:
         surface: str = "chat",
         user: str | None = None,
         history: Sequence[tuple[str, str]] | None = None,
+        memory_lines: Sequence[str] | None = None,
     ) -> Intent:
         """Stage 1 — classify the turn via the planner (the ONLY LLM understanding step).
 
         ``user`` is the verified wallet, forwarded to the model gateway as the per-user
         budget/attribution key — identity only, never authority. ``history`` is bounded recent
-        turns for follow-up disambiguation (never authority, never bypasses the whitelist).
+        turns for follow-up disambiguation, and ``memory_lines`` is the same thing across
+        CONVERSATIONS (027) — both are NL-understanding context only: never authority, never a
+        bypass of the whitelist, and neither reaches stage 3 (propose) or stage 4 (the gate).
         """
-        return await self.planner.classify(message, surface=surface, user=user, history=history)
+        return await self.planner.classify(
+            message, surface=surface, user=user, history=history, memory_lines=memory_lines
+        )
 
     async def _ground(
         self, query: str, k: int = _GROUND_K, *, min_score: float = 0.0
@@ -332,7 +337,12 @@ class CoordinatorDag:
             return ()
 
     async def _general_answer(
-        self, message: str, passages: tuple[Passage, ...], *, user: str | None
+        self,
+        message: str,
+        passages: tuple[Passage, ...],
+        *,
+        user: str | None,
+        memory_lines: Sequence[str] | None = None,
     ) -> tuple[str, bool]:
         """The general/identity branch's prose answer + whether the MODEL produced it.
 
@@ -341,11 +351,19 @@ class CoordinatorDag:
         generation, or an upstream LLM failure. The second element gates the citation block:
         the static help text is not grounded in the retrieved passages, so it must never be
         presented as if it were.
+
+        ``memory_lines`` (027) is the user's cross-conversation digest, handed to the same prose
+        turn as advisory context — this is what lets a NEW conversation answer "what did we do
+        last time?" instead of starting blank. Prose-only, like the passages: this branch returns
+        before gather/propose/gate ever run, and its output is a ``text`` block, which cannot
+        carry a ProposedAction or a policy stamp.
         """
         if self.sparky is None:
             return _GENERAL_HELP, False
         context = _format_grounding(passages) if passages else None
-        reply = await self.sparky.reply(message, context_hint=context, user=user)
+        reply = await self.sparky.reply(
+            message, context_hint=context, user=user, memory_lines=memory_lines
+        )
         if reply.fell_back or not reply.body:
             return _GENERAL_HELP, False
         return reply.body, True
@@ -412,6 +430,7 @@ class CoordinatorDag:
         *,
         surface: str = "chat",
         history: Sequence[tuple[str, str]] | None = None,
+        memory_lines: Sequence[str] | None = None,
     ) -> AsyncIterator[ChatBlock]:
         """Drive one /chat turn as a stream of §2.7 ChatBlocks (never a signable bundle).
 
@@ -420,6 +439,17 @@ class CoordinatorDag:
         directly-commanded action becomes an ``action`` block whose sign path exists ONLY when
         the deterministic verdict approved it. ``history`` is bounded recent turns for follow-up
         disambiguation (fed ONLY to the classifier's NL understanding — never to policy/action).
+
+        ``memory_lines`` (027) is the user's rolling CROSS-conversation activity digest, and it
+        observes THE SAME HARD BOUNDARY as ``history``, by constitution: it is passed to exactly
+        two consumers — :meth:`understand` (the classifier's NL understanding) and
+        :meth:`_general_answer` (Sparky's prose turn) — and to NOTHING else. It is deliberately
+        NOT threaded into :meth:`gather`, :meth:`propose`, :meth:`policy_gate`, the
+        :class:`ProposalContext`, the :class:`PolicyContext`, or any ``/build-tx`` input. Memory
+        can change how a question is UNDERSTOOD and how an answer READS; it can never authorize,
+        widen, or shortcut a signable action, and a candidate suggested "because the user did it
+        before" still faces the identical deterministic, LLM-free gate. Pinned by
+        ``tests/coordinator/test_memory_boundary.py``.
         """
         # The verified wallet (X-Owner) → the model gateway's per-user budget/attribution key.
         # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
@@ -434,7 +464,9 @@ class CoordinatorDag:
             return
 
         yield ToolStepBlock("Understanding your request", "running")
-        intent = await self.understand(message, surface=surface, user=user, history=history)
+        intent = await self.understand(
+            message, surface=surface, user=user, history=history, memory_lines=memory_lines
+        )
         yield ToolStepBlock("Understanding your request", "done")
 
         if intent.refused:
@@ -470,7 +502,9 @@ class CoordinatorDag:
             passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
-            answer, grounded = await self._general_answer(message, passages, user=user)
+            answer, grounded = await self._general_answer(
+                message, passages, user=user, memory_lines=memory_lines
+            )
             yield ToolStepBlock(label, "done")
             yield TextBlock(answer)
             # Cite ONLY when the grounded answer actually came from the model. A fallback to the
