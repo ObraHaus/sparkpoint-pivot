@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-keeps-its-thinking-to-itself",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky keeps its thinking to itself",
+      "body": "While verifying the memory update on the live alpha, we caught Sparky — rarely, and only on certain phrasings — answering with its own working notes instead of an answer: the kind of behind-the-scenes reasoning you were never meant to see. Asking it nicely not to do that was already part of its instructions; clearly that wasn't enough.\n\nSo now it isn't a request, it's a rule the software enforces: any reply that reads like internal deliberation is thrown away before it reaches you, and you get Sparky's plain fallback line instead. A slightly boring answer beats a leaked one, every time.\n\nNothing else changed — memory, suggestions, and every safety check are exactly as they were.",
+      "cta_label": "Open chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T17:15:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-notices-what-you-do-not-just-what-you-say",
       "type": "changelog",
       "tag": "Added",

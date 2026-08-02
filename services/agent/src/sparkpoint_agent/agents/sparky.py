@@ -117,6 +117,27 @@ _ACTION_SHAPED: tuple[re.Pattern[str], ...] = (
 )
 
 
+#: Markers that the "answer" is the model's INTERNAL DELIBERATION leaked as prose — observed
+#: LIVE on the free pool ("We need to answer the user: … Use only the reference notes and
+#: memory data. We must not mention instructions…"). The prompt already forbids narrating the
+#: background material (the 027 Radar-2 rule), but a weak model can violate a prompt; only a
+#: deterministic discard cannot be argued with. High precision: these phrases are how a model
+#: talks ABOUT the conversation, never how Sparky talks IN it (second person, no self-narration).
+_META_SHAPED: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\breference notes?\b", re.IGNORECASE),
+    re.compile(r"\bmemory data\b", re.IGNORECASE),
+    re.compile(r"\bwe (?:need|must|should) (?:to )?(?:answer|not|only|avoid)\b", re.IGNORECASE),
+    re.compile(r"\bthe user(?:'s)? (?:asks?|asked|question|message|wants)\b", re.IGNORECASE),
+    re.compile(r"\bUSER_MEMORY\b"),
+    re.compile(r"\bsystem prompt\b", re.IGNORECASE),
+)
+
+
+def _looks_meta_shaped(text: str) -> bool:
+    """True iff the prose narrates the prompt/reasoning instead of answering (⇒ discard it)."""
+    return any(pattern.search(text) for pattern in _META_SHAPED)
+
+
 def _looks_action_shaped(text: str) -> bool:
     """True iff the generated prose carries a machine action/tool-call shape (⇒ discard it)."""
     return any(pattern.search(text) for pattern in _ACTION_SHAPED)
@@ -194,7 +215,8 @@ class Sparky:
         prompt position. It is fenced and labelled as data, exactly like ``context_hint``.
 
         Returns ``fell_back=True`` (empty body) on a refusal, an empty generation, an
-        action-shaped generation, or any upstream LLM failure. It NEVER raises: the general
+        action-shaped generation, a META-shaped generation (leaked deliberation — seen live on
+        the free pool), or any upstream LLM failure. It NEVER raises: the general
         branch must degrade to the caller's static help text, not to a broken chat turn.
         """
         user_content = f"message={message.strip()}"
@@ -215,6 +237,6 @@ class Sparky:
             # Rate limit, transport error, exhausted retries — degrade, never break the stream.
             return SparkyReply(body="", fell_back=True)
         body = result.text.strip()
-        if result.refused or not body or _looks_action_shaped(body):
+        if result.refused or not body or _looks_action_shaped(body) or _looks_meta_shaped(body):
             return SparkyReply(body="", fell_back=True)
         return SparkyReply(body=_clamp(body))
