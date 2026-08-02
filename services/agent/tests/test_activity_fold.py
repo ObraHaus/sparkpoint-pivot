@@ -290,7 +290,8 @@ async def test_skip_forever_statuses_advance_silently_and_never_fold() -> None:
 
 
 async def test_a_failing_exec_source_skips_without_touching_its_cursor() -> None:
-    memory = _FakeMemory(cursor={"v": 1, "execs": {"ts": "2026-08-01T00:00:00+00:00", "deferred": []}})
+    sub = {"ts": "2026-08-01T00:00:00+00:00", "deferred": []}
+    memory = _FakeMemory(cursor={"v": 1, "execs": dict(sub)})
     result = await fold_activity(
         _folder2(memory, _FakeFlows([_deposit()]), _FakeExecs(boom=True)),
         owner=_OWNER,
@@ -298,4 +299,4 @@ async def test_a_failing_exec_source_skips_without_touching_its_cursor() -> None
     )
     assert result.folded == 1 and "execs" in result.skipped_sources
     _, cursor = memory.appends[0]
-    assert cursor["execs"] == {"ts": "2026-08-01T00:00:00+00:00", "deferred": []}, "untouched"
+    assert cursor["execs"] == sub, "untouched"
