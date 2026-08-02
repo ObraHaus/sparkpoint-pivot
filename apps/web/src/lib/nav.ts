@@ -59,8 +59,6 @@ export const INFORMATION_GROUP_KEY = "information";
 export const SECONDARY: NavNode[] = [
   { route: "swap", label: "Swap", icon: "swap", keywords: ["swap tokens", "trade"] },
   { route: "bridge", label: "Bridge", icon: "refresh", keywords: ["bridge assets", "move between networks"] },
-  { route: "automation", label: "Automation", icon: "zap", keywords: ["revoke automation", "session key"] },
-  { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
   {
     key: INFORMATION_GROUP_KEY,
     label: "Information",
@@ -71,10 +69,21 @@ export const SECONDARY: NavNode[] = [
       { route: "fees", label: "Fees", icon: "coins", keywords: ["how we make money", "pricing", "costs"] },
       { route: "learn", label: "Learn", icon: "book", keywords: ["guides", "education", "glossary"] },
       { route: "srk", label: "SRK", icon: "coins", keywords: ["token", "sparkpoint token"] },
+      { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
     ],
   },
-  { route: "premium", label: "Premium", icon: "zap", keywords: ["upgrade", "subscription", "faucet", "claim srk"] },
-  { route: "settings", label: "Settings", icon: "settings", keywords: ["preferences", "mandate", "account"] },
+  { route: "settings", label: "Settings", icon: "settings", keywords: ["preferences", "mandate", "account", "premium", "plan", "automation", "session key"] },
+];
+
+/**
+ * Routes that intentionally left the nav (client decision, Aug 2 evening) but MUST stay
+ * reachable — they now surface inside Settings (Premium → Account tab; Automation → Security
+ * tab) and remain deep-linkable. The ⌘K palette keeps them searchable via these entries so
+ * "premium"/"automation" still find their pages.
+ */
+export const OFF_NAV_DESTINATIONS: NavItem[] = [
+  { route: "premium", label: "Premium", icon: "zap", keywords: ["upgrade", "subscription", "faucet", "claim srk", "plan"] },
+  { route: "automation", label: "Automation", icon: "zap", keywords: ["revoke automation", "session key", "hands-off"] },
 ];
 
 /**
@@ -169,7 +178,14 @@ export function resolveGroupOpen(
  * Information group must never remove it from search), then notifications. Deduped by route.
  */
 export function commandActions(): NavItem[] {
-  const ordered = [EXIT_ITEM, PERMISSIONS_ITEM, ...PRIMARY, ...navLeaves(SECONDARY), NOTIFICATIONS_ITEM];
+  const ordered = [
+    EXIT_ITEM,
+    PERMISSIONS_ITEM,
+    ...PRIMARY,
+    ...navLeaves(SECONDARY),
+    ...OFF_NAV_DESTINATIONS,
+    NOTIFICATIONS_ITEM,
+  ];
   const seen = new Set<string>();
   return ordered.filter((a) => (seen.has(a.route) ? false : (seen.add(a.route), true)));
 }

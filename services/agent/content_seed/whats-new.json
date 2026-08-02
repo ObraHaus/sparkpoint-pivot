@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "tidier-menu-and-labels-that-stay-put",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A tidier side menu — and changelog labels that stay put",
+      "body": "Two pieces of housekeeping from your feedback.\n\nThe side menu is slimmer: Changelog now lives inside the Information section, and Premium and Automation have moved out of the menu entirely — into Settings, where they belong. Your plan (with its renewal date) sits under Settings → Account, and your automation session keys under Settings → Security, which now shows their real state instead of a fixed line. Nothing was removed: every page is still there, one tap deeper, and the ⌘K search still finds them by name.\n\nAnd the little New / Fixed / Improved labels on these very updates will no longer occasionally vanish. Some entries were written with wording our display didn't recognise, and it responded by showing nothing — twice now. The fix is structural: labels are normalised wherever they enter the system, a check now rejects any future update written with unrecognised wording before it can ship, and the display itself will always choose a sensible label rather than none.",
+      "cta_label": "See the new menu",
+      "cta_href": "/changelog",
+      "published_at": "2026-08-02T18:45:00Z",
+      "active": true
+    },
+    {
       "slug": "premium-pages-know-you-are-premium",
       "type": "changelog",
       "tag": "Fixed",
@@ -37,7 +48,7 @@
     {
       "slug": "sparky-notices-what-you-do-not-just-what-you-say",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "Sparky now notices what you do on the platform — not just what you say in chat",
       "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
       "cta_label": "See what Sparky remembers",
@@ -48,7 +59,7 @@
     {
       "slug": "sparky-remembers-what-youve-done-together",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "Sparky now remembers what you've done together — see and clear it in Settings",
       "body": "Until now, every new conversation started from a blank slate. Sparky could follow along within a single chat, but the moment you opened a new one it had no idea you'd ever spoken — which is a strange thing for an assistant you talk to every day.\n\nSparky now keeps a short running note of what you've done together: the questions you've asked, the strategies it suggested, when you looked at your portfolio. It's brief by design — a couple of lines per exchange, and only the most recent ones are kept — and it's built from what actually happened on screen rather than from a second pass of the AI guessing at a summary. Ask \"what did we look at last time?\" in a brand-new chat and you'll get a real answer.\n\nYou can see exactly what it remembers, and erase all of it, under Settings → Memory. The list shows the notes word for word — not a tidied-up version — because you should be able to check what the assistant is working from. Only you can see your own; there's no admin view of it anywhere.\n\nOne thing worth being plain about: this memory is context for conversation and suggestions only. It never authorises anything, it can't make a move eligible that wouldn't be otherwise, and it is never involved in moving your funds — every transaction still goes through the same checks and still has to be signed by you.\n\nWe also fixed a related quirk in the same pass: Sparky would sometimes talk about its own reference material instead of just answering (\"the notes you provided don't say who I am\"). It answers directly now.",
       "cta_label": "Open Settings",
@@ -59,7 +70,7 @@
     {
       "slug": "get-srk-from-the-faucet-on-premium",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "Get test SRK in one click — the faucet now lives on Premium",
       "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
       "cta_label": "Open Premium",
@@ -70,7 +81,7 @@
     {
       "slug": "premium-is-now-10000-srk-per-month",
       "type": "changelog",
-      "tag": "Changed",
+      "tag": "Improved",
       "title": "Premium is now 10,000 SRK per month",
       "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
       "cta_label": "See Premium",
@@ -81,7 +92,7 @@
     {
       "slug": "apply-for-alpha-access-instead-of-a-dead-end",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "Not on the list? You can now apply — instead of hitting a wall",
       "body": "Until now, connecting a wallet that wasn't on the alpha list told you so and left you there. That was the end of the road.\n\nNow, two things happen. First, we check automatically whether your wallet holds at least **1,000,000 SRK on Ethereum mainnet** — if it does, you're let straight in on that same sign-in, no form and no waiting. If not, you get a short application: how to reach you, what to call you, and why you'd like access. A person reviews it, and you can come back any time to check the status or update your answers.\n\nTwo notes on the details. The mainnet check is a single read of your public balance — nothing is signed, nothing is spent, and if that check is unavailable for any reason you simply see the application form rather than being blocked. And whatever happens with access, the **withdraw / exit** path stays exactly where it was on that screen: getting your funds out is never behind a form.",
       "cta_label": "Check your access",
@@ -92,7 +103,7 @@
     {
       "slug": "side-menu-regrouped-nothing-hidden",
       "type": "changelog",
-      "tag": "Changed",
+      "tag": "Improved",
       "title": "The side menu is tidier — and nothing was hidden",
       "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
       "cta_label": "Open the app",
@@ -169,7 +180,7 @@
     {
       "slug": "real-morpho-vault-live-on-testnet",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "A real Morpho vault is now live on our test network — the stand-in is gone",
       "body": "Until today the \"Morpho\" vault you could see on our test network was a demo. Its underlying contract was a mock we had written for testing, and anyone on that network could have moved its share price. We closed it to new deposits last week and said so plainly. Withdrawals were never affected.\n\nIt has now been replaced by the real thing: a vault built on **Morpho's own audited contract**, created by Morpho's own factory, putting funds to work in a genuine Morpho lending market. We wrote none of the code that holds the money — that is the point. Our job is to configure and curate it, not to reinvent custody.\n\nSome specifics we think you should be able to check rather than take on trust:\n\n- **Control sits with a 2-of-3 multisig, not one key.** Ownership, curation and the emergency role were all handed to it, and every sensitive change is behind a 3-day delay you can watch on chain.\n- **We permanently gave up the ability to block your shares or your money.** Morpho's contract lets an operator install \"gates\" that can stop shares or assets from moving. We renounced those controls irreversibly, so no future decision by us — or by anyone — can put one back. Nothing we do can ever stand between you and your exit.\n- **We charge no fee on it yet.** The vault's own performance and management fees both read zero on chain right now.\n- **Its yield figure is shown as unavailable, not as 0%.** Morpho's data service doesn't cover test networks at all, so we would have to invent a number to show one. We would rather show nothing than something untrue.\n\nOne honest caveat worth stating: this vault does **not** keep a \"high-water mark\". On the Aave vault, if your balance dips and recovers you pay nothing until you're back above your previous best. Here, a gain after a loss still counts as a gain for that period — so it can be charged even while you're below your previous high. That difference is not in our favour to explain, which is exactly why we're explaining it.\n\nThis is on our test network only. Nothing changes for real funds.",
       "cta_label": "Open the vault",

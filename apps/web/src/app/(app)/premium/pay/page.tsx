@@ -11,12 +11,13 @@
  * an "unavailable" state (no sign action) when SRK is unset on the active chain.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type Address, erc20Abi, formatUnits, type Hex } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
-import { premiumStatusView, shortfallPurpose, type PremiumStatus } from "@/lib/premium/tierStatus";
+import { shortfallPurpose } from "@/lib/premium/tierStatus";
+import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import {
   derivePremiumPayState,
   PREMIUM_PRICE_SRK_BASE,
@@ -77,31 +78,6 @@ async function verifyPayment(txHash: string): Promise<VerifyState> {
     }
   }
   return { kind: "error", message: "Still confirming on-chain — your payment is safe; check back shortly." };
-}
-
-/** The wallet's own plan (self-scoped, fail-open) — an active subscriber is EXTENDING. */
-function useSelfPremiumStatus(): PremiumStatus {
-  const [status, setStatus] = useState<PremiumStatus>({ active: false, untilLabel: null });
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const r = await fetch("/api/agent/usage/self", {
-          headers: { "x-chain-id": "84532" },
-          cache: "no-store",
-        });
-        if (!r.ok || !alive) return;
-        const u = (await r.json()) as { tier?: string; expiresAt?: string | null };
-        if (alive) setStatus(premiumStatusView(u.tier, u.expiresAt));
-      } catch {
-        /* advisory only — the page falls back to the upgrade framing */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return status;
 }
 
 export default function Page() {

@@ -15,6 +15,38 @@ export const TAG_TINT: Record<string, string> = {
   Announcement: "var(--primary)",
 };
 
+/** Synonym → canonical, mirroring the agent-side ingest normalizer. */
+const TAG_SYNONYMS: Record<string, string> = {
+  new: "New",
+  added: "New",
+  add: "New",
+  fixed: "Fixed",
+  fix: "Fixed",
+  bugfix: "Fixed",
+  hotfix: "Fixed",
+  improved: "Improved",
+  improvement: "Improved",
+  changed: "Improved",
+  change: "Improved",
+  updated: "Improved",
+  update: "Improved",
+  announcement: "Announcement",
+};
+
+/**
+ * Display normalizer — the LAST line of defence for the chip. The client twice found entries
+ * rendering without their New/Fixed/Improved tag (off-vocabulary tags were nulled at ingest;
+ * that path is fixed agent-side, and the seed is CI-checked — but rows written before the fix,
+ * or by any future writer, still flow through here). A changelog entry always gets a chip;
+ * anything unrecognizable reads as "Improved", the least-specific honest claim.
+ */
+export function displayTag(raw: string | null | undefined): string {
+  if (typeof raw === "string" && raw.trim()) {
+    return TAG_SYNONYMS[raw.trim().toLowerCase()] ?? "Improved";
+  }
+  return "Improved";
+}
+
 export function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -37,11 +69,12 @@ export function Cta({ label, href }: { label: string; href: string }) {
 }
 
 export function EntryCard({ entry }: { entry: ContentEntry }) {
-  const tint = entry.tag ? (TAG_TINT[entry.tag] ?? "var(--muted-foreground)") : null;
+  const tag = displayTag(entry.tag);
+  const tint = TAG_TINT[tag] ?? "var(--info)";
   return (
     <div className="card card-pad" style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        {entry.tag && tint && (
+        {(
           <span
             className="pill"
             style={{
@@ -52,7 +85,7 @@ export function EntryCard({ entry }: { entry: ContentEntry }) {
               background: `color-mix(in srgb, ${tint} 12%, transparent)`,
             }}
           >
-            {entry.tag}
+            {tag}
           </span>
         )}
         <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>

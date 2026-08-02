@@ -22,6 +22,8 @@ import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useMandate, useSparkyMemory, useClearSparkyMemory } from "@/lib/agent/useAgent";
+import { useSessionKeys } from "@/lib/automation/useSessionKey";
+import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { useNotifPrefs, useDisplayPrefs } from "@/lib/settings/usePrefs";
 import type { NotifKey } from "@/lib/settings/prefs";
 
@@ -273,6 +275,8 @@ export default function Page() {
   const { resolvedTheme, setTheme } = useTheme();
   const { wallet, disconnectWallet } = useNetwork();
   const [tab, setTab] = useState<Tab>("account");
+  const premium = useSelfPremiumStatus();
+  const sessionKeys = useSessionKeys();
   const { prefs: notif, setNotif } = useNotifPrefs();
   const { prefs: display, setDensity, setReducedMotion } = useDisplayPrefs();
 
@@ -324,6 +328,19 @@ export default function Page() {
               <span className="pill ghosty" style={{ cursor: "default" }}>
                 Base
               </span>
+            </div>
+            <div className="setrow">
+              <div>
+                <div style={{ fontWeight: 600 }}>Plan</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  {premium.active
+                    ? `Premium${premium.untilLabel ? ` — active until ${premium.untilLabel}` : ""}`
+                    : "Free — fully capable, forever. Premium adds advanced capability."}
+                </div>
+              </div>
+              <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("premium"))}>
+                {premium.active ? "Manage plan" : "See Premium"}
+              </button>
             </div>
             <div className="setrow">
               <div>
@@ -420,7 +437,11 @@ export default function Page() {
               <div>
                 <div style={{ fontWeight: 600 }}>Active session keys</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
-                  None — you sign every move.
+                  {sessionKeys.active
+                    ? `1 active grant — expires ${new Date(sessionKeys.active.validUntil * 1000).toLocaleDateString()} — instantly revocable, on-chain scoped.`
+                    : sessionKeys.loaded
+                      ? "None — you sign every move."
+                      : "You sign every move unless you grant one."}
                 </div>
               </div>
               <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("automation"))}>

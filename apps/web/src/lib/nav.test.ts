@@ -16,6 +16,7 @@ import {
   PERMISSIONS_ITEM,
   PRIMARY,
   resolveGroupOpen,
+  OFF_NAV_DESTINATIONS,
   SECONDARY,
   toHref,
   type NavGroup,
@@ -35,34 +36,33 @@ const LEGACY_SECONDARY_ROUTES = [
   "settings",
 ];
 
-test("regroup keeps every legacy route reachable (nothing hidden, only moved)", () => {
+test("every destination stays reachable: nav routes + the off-nav Settings-surfaced pair", () => {
+  // Client decision (Aug 2 evening): Premium and Automation leave the rail — they surface inside
+  // Settings (Account / Security) and stay deep-linkable + ⌘K-searchable. Everything else that
+  // was ever in the secondary nav is still IN it.
   const routes = navRoutes(SECONDARY);
+  const offNav = OFF_NAV_DESTINATIONS.map((n) => n.route);
   for (const r of LEGACY_SECONDARY_ROUTES) {
-    assert.ok(routes.includes(r), `legacy route "${r}" disappeared from the secondary nav`);
+    assert.ok(
+      routes.includes(r) || offNav.includes(r),
+      `route "${r}" is neither in the nav nor a tracked off-nav destination`,
+    );
   }
-  // Changelog used to be hardcoded in each surface; it is now a first-class top-level entry.
-  assert.ok(routes.includes("changelog"));
+  assert.deepEqual(offNav, ["premium", "automation"]);
+  assert.ok(routes.includes("changelog"), "changelog lives on (inside Information)");
 });
 
-test("top-level order is the decided one: Swap, Bridge, Automation, Changelog, Information, Premium, Settings", () => {
+test("top-level order is the decided one: Swap, Bridge, Information, Settings", () => {
   const top = SECONDARY.map((n) => (isNavGroup(n) ? `group:${n.key}` : n.route));
-  assert.deepEqual(top, [
-    "swap",
-    "bridge",
-    "automation",
-    "changelog",
-    `group:${INFORMATION_GROUP_KEY}`,
-    "premium",
-    "settings",
-  ]);
+  assert.deepEqual(top, ["swap", "bridge", `group:${INFORMATION_GROUP_KEY}`, "settings"]);
 });
 
-test("the Information group holds exactly Trust Center, Outcome Log, Fees, Learn, SRK", () => {
+test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Changelog", () => {
   const group = SECONDARY.find((n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY);
   assert.ok(group);
   assert.deepEqual(
     group.children.map((c) => c.route),
-    ["trust", "outcomes", "fees", "learn", "srk"],
+    ["trust", "outcomes", "fees", "learn", "srk", "changelog"],
   );
 });
 
@@ -84,14 +84,12 @@ test("navLeaves flattens groups in source order", () => {
   assert.deepEqual(leaves, [
     "swap",
     "bridge",
-    "automation",
-    "changelog",
     "trust",
     "outcomes",
     "fees",
     "learn",
     "srk",
-    "premium",
+    "changelog",
     "settings",
   ]);
 });
