@@ -22,18 +22,26 @@ swaps/faucet by ``owner`` (the signing wallet — US3). Identical strings today 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 from .activity import (
+    EXEC_SKIP_FOREVER,
+    EXEC_TERMINAL_SUCCESS,
+    MAX_DEFERRED_EXECS,
     ActivityEvent,
     format_line,
     merge_and_dedup,
     normalize_tx,
     plan_fold,
 )
+from .db.executions import ExecutionStore
 from .db.user_memory import FoldColumnMissing, MemoryStore
 from .db.vault_flows import VaultFlowReader
+
+#: The exec sub-cursor's epoch — reads "everything" on a first fold without a NULL-vs-ts branch.
+_EXEC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 #: Per-source read bound BEFORE merge/sample/cap — keeps a hyperactive wallet's fold O(small).
 SOURCE_READ_LIMIT = 25
@@ -60,8 +68,9 @@ class ActivityFolder:
     flows: VaultFlowReader | None = None
     #: (network_id, vault_address) pairs to read flows from — today one: ('base', <vault>).
     flow_targets: tuple[tuple[str, str], ...] = ()
-    #: Extension points (US2/US3): see fold_activity for their contracts.
-    executions: Any = None
+    #: US2 — app-signed executions (keyed by ``account.account``).
+    executions: ExecutionStore | None = None
+    #: Extension points (US3): see fold_activity for their contracts.
     swaps: Any = None
     swap_networks: tuple[str, ...] = ()
     faucet_probe: Any = None
@@ -106,6 +115,105 @@ async def _read_flow_events(
     return events, skipped
 
 
+@dataclass(frozen=True)
+class _ExecRead:
+    """One exec-source read: the fold candidates + what the sub-cursor advance needs to know."""
+
+    events: list[ActivityEvent]
+    #: (id, at) of every row seen, by disposition. ``ts`` may only advance past a row that is
+    #: folded, skipped-forever, or carried in ``deferred`` — anything else must stay re-readable.
+    pending: list[tuple[str, datetime]]
+    settled: list[tuple[str, datetime, str | None]]
+    seen_max: datetime
+    #: True iff the read returned ANY row — even all-skip-forever reads must advance ``ts``,
+    #: or those rows would be re-read on every fold forever.
+    saw_rows: bool = False
+
+
+async def _read_exec_events(
+    folder: ActivityFolder, account: str, cursor: dict[str, Any] | None
+) -> tuple[_ExecRead | None, list[str]]:
+    """US2: executions since the exec sub-cursor. ``(None, skipped)`` when unwired or failed —
+    the sub-cursor then stays untouched, so nothing is lost."""
+    if folder.executions is None:
+        return None, []
+    sub = ((cursor or {}).get("execs") or {}) if cursor is not None else {}
+    after_raw = sub.get("ts")
+    try:
+        after = datetime.fromisoformat(after_raw) if isinstance(after_raw, str) else _EXEC_EPOCH
+    except ValueError:
+        after = _EXEC_EPOCH
+    deferred_ids = []
+    deferred_raw = sub.get("deferred") or []
+    for item in deferred_raw if isinstance(deferred_raw, list) else []:
+        try:
+            deferred_ids.append(UUID(str(item)))
+        except ValueError:
+            continue
+    try:
+        rows = await folder.executions.list_by_account_since(
+            account, after, deferred_ids, limit=SOURCE_READ_LIMIT
+        )
+    except Exception:
+        return None, ["execs"]
+    read = _ExecRead(events=[], pending=[], settled=[], seen_max=after)
+    seen_max = after
+    for row in rows:
+        at = row.created_at if row.created_at.tzinfo else row.created_at.replace(tzinfo=UTC)
+        seen_max = max(seen_max, at)
+        if row.status in EXEC_TERMINAL_SUCCESS or row.status == "reverted":
+            read.events.append(
+                ActivityEvent(
+                    source="exec",
+                    kind=row.action_kind,
+                    at=at,
+                    via_sparky=True,
+                    reverted=row.status == "reverted",
+                    tx=normalize_tx(row.tx_hash),
+                    position=str(row.id),
+                )
+            )
+            read.settled.append((str(row.id), at, normalize_tx(row.tx_hash)))
+        elif row.status in EXEC_SKIP_FOREVER:
+            pass  # advances silently — chat already remembered the proposal
+        else:
+            read.pending.append((str(row.id), at))
+    return _ExecRead(read.events, read.pending, read.settled, seen_max, bool(rows)), []
+
+
+def _exec_sub_cursor(
+    read: _ExecRead, folded: tuple[ActivityEvent, ...], *, first_fold: bool
+) -> dict[str, Any]:
+    """The advanced exec sub-cursor (research R5), safe against the fold's line cap.
+
+    ``deferred`` carries pending rows AND settled rows whose events were cut by the cap, so
+    ``ts`` can advance past everything seen without losing either. If the carry overflows its
+    bound, ``ts`` is held back to just before the oldest uncarried row (strict ``>`` read makes
+    it re-readable). First fold keeps jump-to-head semantics (the sample is a taste — D1): only
+    genuinely-pending rows are carried.
+    """
+    folded_exec_ids = {e.position for e in folded if e.source == "exec"}
+    # A dedup-merged exec folds AS ITS FLOW (source="flow") — cover it by tx hash, or the
+    # settled row would be carried and re-folded as a duplicate line next turn.
+    folded_txs = {e.tx for e in folded if e.tx}
+    if first_fold:
+        carry = [(rid, at) for rid, at in read.pending]
+    else:
+        unfolded_settled = [
+            (rid, at)
+            for rid, at, tx in read.settled
+            if rid not in folded_exec_ids and (tx is None or tx not in folded_txs)
+        ]
+        carry = sorted(read.pending + unfolded_settled, key=lambda p: p[1])
+    kept = carry[:MAX_DEFERRED_EXECS]
+    dropped = carry[MAX_DEFERRED_EXECS:]
+    if dropped:
+        ts = min(at for _, at in dropped) - timedelta(microseconds=1)
+    else:
+        ts = read.seen_max
+    return {"ts": ts.isoformat(), "deferred": [rid for rid, _ in kept]}
+
+
 async def fold_activity(folder: ActivityFolder, *, owner: str, account: str) -> FoldResult:
     """One lazy fold for this user. Returns, never raises (see the module contract)."""
     try:
@@ -121,17 +229,30 @@ async def fold_activity(folder: ActivityFolder, *, owner: str, account: str) -> 
         events.extend(flow_events)
         skipped.extend(flow_skipped)
 
-        # US2 (executions) and US3 (swaps + faucet) extend here.
+        exec_read, exec_skipped = await _read_exec_events(folder, account, cursor)
+        if exec_read is not None:
+            events.extend(exec_read.events)
+        skipped.extend(exec_skipped)
 
-        if not events and cursor is not None:
+        # US3 (swaps + faucet) extends here.
+
+        exec_saw_something = exec_read is not None and exec_read.saw_rows
+        if not events and cursor is not None and not exec_saw_something:
             # Steady state with nothing new — no write at all (the common case must be free).
             return FoldResult(folded=0, skipped_sources=tuple(skipped))
 
         deduped = merge_and_dedup(events)
         plan = plan_fold(deduped, cursor)
+        new_cursor = dict(plan.cursor)
+        if exec_read is not None:
+            # Overlay the exec sub-cursor — it needs source-private knowledge (pending rows +
+            # cap-cut settled rows), which plan_fold deliberately doesn't have (data-model §4).
+            new_cursor["execs"] = _exec_sub_cursor(
+                exec_read, plan.events, first_fold=plan.first_fold
+            )
         lines = [format_line(e) for e in plan.events]
         try:
-            await folder.memory.append_with_cursor(owner, lines, plan.cursor)
+            await folder.memory.append_with_cursor(owner, lines, new_cursor)
         except FoldColumnMissing:
             return FoldResult(disabled=True)
         return FoldResult(

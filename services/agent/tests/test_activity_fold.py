@@ -159,3 +159,143 @@ async def test_result_is_json_serializable_free_of_surprises() -> None:
     assert json.dumps(
         {"folded": result.folded, "skipped": list(result.skipped_sources)}
     )
+
+
+# ── US2 · executions: via-Sparky labeling, reverted, deferred-pending ───────────
+
+_E1 = "11111111-1111-1111-1111-1111111111e1"
+
+
+class _FakeExecs:
+    def __init__(self, rows: list[Any] | None = None, *, boom: bool = False):
+        self.rows = rows or []
+        self.boom = boom
+
+    async def list_by_account_since(
+        self, account: str, after_ts: Any, deferred_ids: Any, limit: int = 25
+    ) -> list[Any]:
+        if self.boom:
+            raise RuntimeError("executions db down")
+        deferred = {str(d) for d in deferred_ids}
+        return [
+            r
+            for r in self.rows
+            if r.created_at > after_ts or str(r.id) in deferred
+        ]
+
+
+def _exec_row(
+    rid: str,
+    status: str = "confirmed",
+    tx: str | None = "0x" + "ab" * 32,
+    at: datetime | None = None,
+    kind: str = "vault_deposit",
+) -> Any:
+    from dataclasses import dataclass as _dc
+
+    @_dc
+    class _Row:
+        id: str
+        action_kind: str
+        status: str
+        tx_hash: str | None
+        created_at: datetime
+
+    return _Row(id=rid, action_kind=kind, status=status, tx_hash=tx, created_at=at or _AT)
+
+
+def _folder2(memory: _FakeMemory, flows: _FakeFlows, execs: _FakeExecs) -> ActivityFolder:
+    folder = _folder(memory, flows)
+    folder.executions = execs  # type: ignore[assignment]
+    return folder
+
+
+async def test_flow_with_matching_exec_folds_once_via_sparky() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    tx = "0x" + "ab" * 32
+    result = await fold_activity(
+        _folder2(memory, _FakeFlows([_deposit(tx=tx)]), _FakeExecs([_exec_row(_E1, tx=tx)])),
+        owner=_OWNER,
+        account=_ACCOUNT,
+    )
+    assert result.folded == 1
+    lines, cursor = memory.appends[0]
+    assert lines == ["deposited 500.00 USDC into the vault (via Sparky's plan, Aug 1)"]
+    assert cursor["execs"]["deferred"] == []
+
+
+async def test_exec_only_kind_folds_standalone() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    row = _exec_row(_E1, kind="session_key_grant", tx=None)
+    result = await fold_activity(
+        _folder2(memory, _FakeFlows(), _FakeExecs([row])), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 1
+    assert memory.appends[0][0] == ["granted a session key (via Sparky's plan, Aug 1)"]
+
+
+async def test_reverted_exec_folds_the_gentle_line() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    row = _exec_row(_E1, status="reverted", kind="vault_withdraw", tx="0x" + "cd" * 32)
+    result = await fold_activity(
+        _folder2(memory, _FakeFlows(), _FakeExecs([row])), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 1
+    assert memory.appends[0][0] == [
+        "a vault withdrawal you signed didn't go through (reverted, Aug 1)"
+    ]
+
+
+async def test_pending_exec_defers_then_folds_exactly_once_when_terminal() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    pending = _exec_row(_E1, status="submitted")
+    execs = _FakeExecs([pending])
+    first = await fold_activity(
+        _folder2(memory, _FakeFlows(), execs), owner=_OWNER, account=_ACCOUNT
+    )
+    assert first.folded == 0, "pending must not fold yet"
+    _, cursor = memory.appends[0]
+    assert cursor["execs"]["deferred"] == [_E1], "…but it is carried, not lost"
+    # The row terminalizes; created_at is now BEHIND ts, so only the deferred carry finds it.
+    execs.rows = [_exec_row(_E1, status="confirmed")]
+    second = await fold_activity(
+        _folder2(memory, _FakeFlows(), execs), owner=_OWNER, account=_ACCOUNT
+    )
+    assert second.folded == 1
+    lines, cursor2 = memory.appends[1]
+    assert lines == ["made a vault deposit (via Sparky's plan, Aug 1)"]
+    assert cursor2["execs"]["deferred"] == []
+    third = await fold_activity(
+        _folder2(memory, _FakeFlows(), execs), owner=_OWNER, account=_ACCOUNT
+    )
+    assert third.folded == 0 and len(memory.appends) == 2, "exactly once"
+
+
+async def test_skip_forever_statuses_advance_silently_and_never_fold() -> None:
+    memory = _FakeMemory(cursor={"v": 1})
+    rows = [_exec_row(f"11111111-1111-1111-1111-1111111111a{i}", status=s) for i, s in enumerate(
+        ["built", "policy_rejected", "declined", "dropped"]
+    )]
+    execs = _FakeExecs(rows)
+    result = await fold_activity(
+        _folder2(memory, _FakeFlows(), execs), owner=_OWNER, account=_ACCOUNT
+    )
+    assert result.folded == 0
+    _, cursor = memory.appends[0]
+    assert cursor["execs"]["deferred"] == []
+    again = await fold_activity(
+        _folder2(memory, _FakeFlows(), execs), owner=_OWNER, account=_ACCOUNT
+    )
+    assert again.folded == 0 and len(memory.appends) == 1, "ts advanced past skip rows"
+
+
+async def test_a_failing_exec_source_skips_without_touching_its_cursor() -> None:
+    memory = _FakeMemory(cursor={"v": 1, "execs": {"ts": "2026-08-01T00:00:00+00:00", "deferred": []}})
+    result = await fold_activity(
+        _folder2(memory, _FakeFlows([_deposit()]), _FakeExecs(boom=True)),
+        owner=_OWNER,
+        account=_ACCOUNT,
+    )
+    assert result.folded == 1 and "execs" in result.skipped_sources
+    _, cursor = memory.appends[0]
+    assert cursor["execs"] == {"ts": "2026-08-01T00:00:00+00:00", "deferred": []}, "untouched"

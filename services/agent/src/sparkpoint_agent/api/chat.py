@@ -61,6 +61,7 @@ from ..coordinator import (
 )
 from ..db import get_database
 from ..db.conversations import ConversationStore
+from ..db.executions import ExecutionStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
 from ..knowledge import default_citation_retriever, default_grounder
@@ -520,19 +521,18 @@ class _NoopMemorySink(_MemorySink):
 
 
 def _activity_folder(chain_id: int) -> ActivityFolder | None:
-    """The 028 fold sources for one chain — vault flows today (US2/US3 extend). ``None`` when
-    the chain has no deployed vault (nothing to fold)."""
+    """The 028 fold sources for one chain — vault flows + app-signed executions (US3 adds
+    swaps/faucet). Executions fold even on a chain with no deployed vault."""
     config = get_agent_config().for_chain(chain_id)
     db = get_database()
     targets: tuple[tuple[str, str], ...] = ()
     if config.vault_address:
         targets = ((_network_id(chain_id), config.vault_address),)
-    if not targets:
-        return None
     return ActivityFolder(
         memory=MemoryStore(db),
-        flows=VaultFlowReader(db),
+        flows=VaultFlowReader(db) if targets else None,
         flow_targets=targets,
+        executions=ExecutionStore(db),
     )
 
 
