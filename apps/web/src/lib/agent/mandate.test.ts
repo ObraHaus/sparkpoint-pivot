@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mandateView, timelineLabel, mandateDrift } from "./mandate.ts";
+import { mandateView, timelineLabel, mandateDrift, hasSavedMandate } from "./mandate.ts";
 
 test("maps a conservative wire mandate to tier 1 + real goal/timeline/slippage", () => {
   const v = mandateView({
@@ -50,4 +50,22 @@ test("drift: realized ≤ target is on-plan; exceeding is above-plan; missing is
   assert.equal(mandateDrift(1, 3), "above_plan");
   assert.equal(mandateDrift(undefined, 1), "unknown");
   assert.equal(mandateDrift(1, undefined), "unknown");
+});
+
+test("hasSavedMandate: only a real persisted mandate counts as onboarded", () => {
+  // §3.1 answers 200 with `{"mandate": null}` when the user has none — that is a NO, and it must
+  // not be confused with the read having failed (the caller fails open on the latter).
+  assert.equal(hasSavedMandate({ mandate: null }), false);
+  assert.equal(hasSavedMandate({ mandate: { riskProfile: "conservative", version: 1 } }), true);
+  assert.equal(hasSavedMandate({}), false);
+  assert.equal(hasSavedMandate(undefined), false);
+  assert.equal(hasSavedMandate(null), false);
+  assert.equal(hasSavedMandate("nope"), false);
+  assert.equal(hasSavedMandate({ mandate: "nope" }), false);
+});
+
+test("hasSavedMandate agrees with mandateView, so /verify and Settings can't disagree", () => {
+  for (const wire of [null, undefined, {}, { riskProfile: "growth" }, { version: 3 }]) {
+    assert.equal(hasSavedMandate({ mandate: wire }), mandateView(wire) !== null);
+  }
 });
