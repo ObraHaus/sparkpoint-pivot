@@ -103,6 +103,15 @@ export interface AddressBook {
    */
   readonly premiumTreasury?: Address;
   /**
+   * §faucet (026) — the standalone `SrkFaucet` dispenser on this chain: a pre-funded contract that
+   * hands testers a fixed amount of the SRK utility token on a per-address cooldown, so they can try
+   * the Premium purchase. A PLAIN optional field (NOT a policy `TargetRef`) — it is a user-signed
+   * `claim()` target that holds only its own float and has zero authority over user funds.
+   * Undefined ⇒ no faucet on this chain and the Premium page says so honestly rather than offering a
+   * button that cannot work. Testnet-only by nature (SRK has a fixed supply and is hand-distributed).
+   */
+  readonly srkFaucet?: Address;
+  /**
    * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
    * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
    * A PLAIN optional field, NOT a policy `TargetRef`. A plain holder — zero fund-movement power (N5).

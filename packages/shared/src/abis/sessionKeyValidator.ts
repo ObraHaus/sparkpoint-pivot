@@ -55,7 +55,7 @@ export const sessionKeyValidatorAbi = [
     "name": "policyModule",
     "outputs": [
       {
-        "internalType": "contract PolicyModule",
+        "internalType": "address",
         "name": "",
         "type": "address"
       }
@@ -131,7 +131,7 @@ export const sessionKeyValidatorAbi = [
         "type": "uint256"
       }
     ],
-    "stateMutability": "nonpayable",
+    "stateMutability": "view",
     "type": "function"
   }
 ] as const;

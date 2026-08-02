@@ -9,12 +9,14 @@ import {
 const SRK = "0x2dF90304126560F01Dd6EafB508B69c033dFeD52";
 const TREASURY = "0xCB135893C84876aab9E10792b56e5bEa91dc578f";
 
-test("price is the configured 500 SRK value — never the retired mock 320/500", () => {
-  // The whole-token price is 500 and the base price is exactly 500 * 1e18 — not 320, not a bare 500.
-  assert.equal(PREMIUM_PRICE_SRK_WHOLE, 500n);
-  assert.equal(PREMIUM_PRICE_SRK_BASE, 500n * 10n ** 18n);
+test("price is the client-decided 10,000 SRK value — never the retired 320/500", () => {
+  // The whole-token price is 10,000 and the base price is exactly 10000 * 1e18 — never a bare 10000
+  // (that would be 1e-14 SRK), and never the superseded 500 or the retired mock 320.
+  assert.equal(PREMIUM_PRICE_SRK_WHOLE, 10_000n);
+  assert.equal(PREMIUM_PRICE_SRK_BASE, 10_000n * 10n ** 18n);
   assert.notEqual(PREMIUM_PRICE_SRK_BASE, 320n);
-  assert.notEqual(PREMIUM_PRICE_SRK_BASE, 500n);
+  assert.notEqual(PREMIUM_PRICE_SRK_BASE, 500n * 10n ** 18n);
+  assert.notEqual(PREMIUM_PRICE_SRK_BASE, 10_000n);
   assert.equal(derivePremiumPayState({ srk: SRK, treasury: TREASURY }).price, PREMIUM_PRICE_SRK_BASE);
 });
 
@@ -42,7 +44,9 @@ test("no allowance is involved — the payment is a single plain transfer (SC-00
 test("low + shortfall computed from real balance vs price", () => {
   const s = derivePremiumPayState({ srk: SRK, treasury: TREASURY, balance: 200n * 10n ** 18n });
   assert.equal(s.low, true);
-  assert.equal(s.shortfall, 300n * 10n ** 18n);
+  assert.equal(s.shortfall, PREMIUM_PRICE_SRK_BASE - 200n * 10n ** 18n);
+  // At the current 10,000-SRK price that is 9,800 SRK short — two faucet claims away.
+  assert.equal(s.shortfall, 9_800n * 10n ** 18n);
 
   const ok = derivePremiumPayState({ srk: SRK, treasury: TREASURY, balance: PREMIUM_PRICE_SRK_BASE });
   assert.equal(ok.low, false);

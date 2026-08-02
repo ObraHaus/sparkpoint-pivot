@@ -22,7 +22,7 @@ import { useNotifPrefs } from "@/lib/settings/usePrefs";
 import { useSessionKeys } from "@/lib/automation/useSessionKey";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
-import { toHref } from "@/lib/nav";
+import { commandActions, matchesQuery, navLeaves, SECONDARY, toHref, type NavItem } from "@/lib/nav";
 import { NetworkLogo } from "@/components/ui/NetworkLogo";
 
 /** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
@@ -463,6 +463,13 @@ function NetworkMenu({ go, close }: { go: (r: string) => void; toast: (m: string
   );
 }
 
+/** Avatar-menu screen entries, resolved from the nav config (single source of truth). */
+const _SECONDARY_LEAVES = navLeaves(SECONDARY);
+const _leafFor = (route: string): NavItem =>
+  _SECONDARY_LEAVES.find((n) => n.route === route) ?? { route, label: route, icon: "grid" };
+const SETTINGS_ITEM = _leafFor("settings");
+const LEARN_ITEM = _leafFor("learn");
+
 function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string) => void }) {
   const { wallet, disconnectWallet } = useNetwork();
   const { session } = useSession();
@@ -477,9 +484,10 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
         </div>
       </div>
       <MenuItem icon="user" label="Account" onClick={() => go("settings/account")} />
-      <MenuItem icon="settings" label="Settings" onClick={() => go("settings")} />
-      <MenuItem icon="sliders" label="Mandate" onClick={() => go("settings")} />
-      <MenuItem icon="book" label="Learn" onClick={() => go("learn")} />
+      {/* Screen entries come from nav.ts so this menu can't drift away from the rail/palette. */}
+      <MenuItem icon={SETTINGS_ITEM.icon} label={SETTINGS_ITEM.label} onClick={() => go(SETTINGS_ITEM.route)} />
+      <MenuItem icon="sliders" label="Mandate" onClick={() => go(SETTINGS_ITEM.route)} />
+      <MenuItem icon={LEARN_ITEM.icon} label={LEARN_ITEM.label} onClick={() => go(LEARN_ITEM.route)} />
       {/* Only admins see the admin entry — for everyone else the surface is a 404 (invisible). */}
       {session?.admin && <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />}
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "6px 6px 4px" }} />
@@ -503,22 +511,12 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
   );
 }
 
-const CMDK_ACTIONS: [string, string, string][] = [
-  ["Withdraw now", "door", "trust/exit"],
-  ["Prove it — permissions", "shieldcheck", "trust/permissions"],
-  ["Go to Chat", "chat", "chat"],
-  ["Open Portfolio", "portfolio", "portfolio"],
-  ["Open Vault", "vault", "vault"],
-  ["Swap tokens", "swap", "swap"],
-  ["Bridge Base ↔ Sui", "refresh", "bridge"],
-  ["Fees / how we make money", "coins", "fees"],
-  ["Premium", "zap", "premium"],
-  ["Strategies", "strategies", "strategies"],
-  ["Trust Center", "shieldcheck", "trust"],
-  ["Revoke automation", "zap", "automation"],
-  ["Outcome Log", "activity", "outcomes"],
-  ["Settings", "settings", "settings"],
-];
+/**
+ * The palette is DERIVED from `nav.ts` (it used to be a hand-maintained 14-entry copy that had
+ * already lost SRK, Learn and Changelog). Group children are flattened in, so collapsing the
+ * Information group in the rail never removes anything from search.
+ */
+const CMDK_ACTIONS: NavItem[] = commandActions();
 
 function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => void; go: (r: string) => void }) {
   const [q, setQ] = useState("");
@@ -527,7 +525,7 @@ function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => v
     const t = window.setTimeout(() => inputRef.current?.focus(), 60);
     return () => window.clearTimeout(t);
   }, []);
-  const matches = CMDK_ACTIONS.filter((a) => a[0].toLowerCase().includes(q.toLowerCase()));
+  const matches = CMDK_ACTIONS.filter((a) => matchesQuery(a, q));
   return (
     <div className={"dialog" + (show ? " show" : "")} role="dialog" aria-label="Command palette">
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--border-soft)" }}>
@@ -546,9 +544,9 @@ function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => v
       <div style={{ maxHeight: 340, overflow: "auto", padding: 8 }}>
         {matches.length ? (
           matches.map((a) => (
-            <button key={a[2]} className="menu-item" style={{ width: "100%" }} onClick={() => go(a[2])}>
-              <Icon name={a[1]} size={16} />
-              {a[0]}
+            <button key={a.route} className="menu-item" style={{ width: "100%" }} onClick={() => go(a.route)}>
+              <Icon name={a.icon} size={16} />
+              {a.label}
             </button>
           ))
         ) : (

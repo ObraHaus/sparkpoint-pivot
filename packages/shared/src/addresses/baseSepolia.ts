@@ -146,6 +146,15 @@ export const baseSepolia: AddressBook = {
   // `srk` is filled by script/DeploySRK.s.sol at deploy time; undefined ⇒ the pay surface shows an
   // honest "SRK unavailable on this network" state rather than a fabricated value.
   srk: "0x2dF90304126560F01Dd6EafB508B69c033dFeD52",
+  // ── SRK faucet (feature 026) — deployed + funded 2026-08-02 via script/DeploySrkFaucet.s.sol ──
+  // A SEPARATE dispenser, never a token change: `SparkPointTestToken` has a fixed supply, no mint
+  // function and no owner (a spec-012 property with a fuzz test asserting it). The faucet holds a
+  // hand-transferred 10,000,000 SRK float and pays 5,000 SRK per address per 24h. Owner = deployer;
+  // parameter admins = deployer + the client demo wallet 0x32Ed…e8b5, who sign setClaimAmount /
+  // setCooldown from /admin/faucet with their OWN wallet (the agent is keyless and can never do it).
+  //   deploy tx 0x83c82c18c81df7ade6fc62851f0e8f8ca6437b61a422ca326f975827dfcfaa13
+  //   fund tx   0x98af2d6409504cbb914a8cf9f83abce1bcfc0fdab7b50e1e53d0346606cc63d3
+  srkFaucet: "0x93766a1C6c2076F658710770549af34Ac46dB2a9",
   // ── Fee treasury Safe (feature 014, 2-of-3, deployed 2026-07-22: deployer + 0x867E + 0x122D) ──
   // The dedicated multisig that receives all protocol fees. The vault's on-chain feeRecipient() was
   // re-pointed here via the Timelock, so the perf fee AND the Base-Sepolia swap fee (which falls back

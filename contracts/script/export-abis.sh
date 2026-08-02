@@ -32,6 +32,7 @@ CONTRACTS=(
   "AccountFactory:AccountFactory:accountFactory"
   "SessionKeyValidator:SessionKeyValidator:sessionKeyValidator"
   "PolicyModule:PolicyModule:policyModule"
+  "SrkFaucet:SrkFaucet:srkFaucet"
 )
 
 if [ ! -d "$OUT" ]; then

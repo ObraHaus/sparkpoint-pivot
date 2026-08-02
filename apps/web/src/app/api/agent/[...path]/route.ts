@@ -58,6 +58,18 @@ const FORWARD_REQUEST_HEADERS = [
 /** First path segment of endpoints exempt from the beta gate (read-only liveness/readiness only). */
 const STATUS_PATHS = new Set(["readyz", "healthz"]);
 
+/**
+ * 026 — the ONE write surface a signed-in but NON-BETA wallet may reach: its own alpha access
+ * application (`/access/application`). Without this, the form at /verify could never be submitted,
+ * because the beta gate below 403s every agent call for exactly the wallets that need to apply.
+ *
+ * Kept as narrow as it can be: a single first segment, still session-authenticated (the owner is
+ * derived from the verified cookie below, never client-asserted), and the agent side is one
+ * upsert-your-own-row endpoint with server-side length caps. `/admin/access/*` is NOT exempt — it
+ * starts with `admin` and still requires beta plus the agent's own admin gate.
+ */
+const NON_BETA_PATHS = new Set(["access"]);
+
 /** Build a §1.5 error envelope Response the client's `parseErrorEnvelope` understands. */
 function envelope(code: string, httpStatus: number, message: string, retryable: boolean): Response {
   return new Response(
@@ -94,7 +106,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // liveness/readiness probes are exempt (admin routes need beta too — admin implies beta, and the
   // agent additionally enforces admin). Honest 403, never a silent pass. Never gates /exit,/trust
   // (those don't route through here — direct RPC, N2).
-  if (!STATUS_PATHS.has(path[0] ?? "") && !claims.beta) {
+  const head = path[0] ?? "";
+  if (!STATUS_PATHS.has(head) && !NON_BETA_PATHS.has(head) && !claims.beta) {
     // Machine code stays BETA_NOT_ENABLED (stable API contract); only the human message tracks the
     // current stage wording — the app is in alpha, so don't tell a user they're "not in the beta".
     return envelope("BETA_NOT_ENABLED", 403, "Alpha access required — your wallet isn't in the alpha yet.", false);

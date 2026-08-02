@@ -38,5 +38,6 @@
   "circleUsdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   "SparkPointUsdcYieldV2": "0x756C41dD33481620EbCB0357F759d31c9eE72170",
   "SparkPointUsdcYieldV2Adapter": "0x4C4dCd2e2Bb985a606C1e7d4822bB330637D8E24",
-  "SparkPointUsdcYieldV2MarketId": "0x01351cf859346bbae655f1c9da71ba0e9ad201dd79a276c28f34e574386b0bfb"
+  "SparkPointUsdcYieldV2MarketId": "0x01351cf859346bbae655f1c9da71ba0e9ad201dd79a276c28f34e574386b0bfb",
+  "SrkFaucet": "0x93766a1C6c2076F658710770549af34Ac46dB2a9"
 }

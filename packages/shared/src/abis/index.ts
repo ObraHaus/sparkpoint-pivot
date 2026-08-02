@@ -11,3 +11,4 @@ export { sparkPointAccountAbi } from "./sparkPointAccount";
 export { accountFactoryAbi } from "./accountFactory";
 export { sessionKeyValidatorAbi } from "./sessionKeyValidator";
 export { policyModuleAbi } from "./policyModule";
+export { srkFaucetAbi } from "./srkFaucet";
