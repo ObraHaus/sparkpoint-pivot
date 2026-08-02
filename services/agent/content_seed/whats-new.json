@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "premium-purchase-actually-completes-now",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Premium purchases now complete — the first real one caught a day-one bug",
+      "body": "The very first real Premium purchase on the alpha did everything right: the SRK payment went through on-chain, to the right place, for the right amount. Then our server fell over granting the subscription — \"Unexpected error\" — leaving the buyer paid-up but not upgraded. Not acceptable, and now fixed.\n\nThe cause was a one-line date-arithmetic bug in how we compute your subscription's expiry — present since the Premium feature shipped, and invisible until a real purchase exercised it. It's fixed, and we verified the fix by replaying that exact real payment: the subscription granted, backdated correctly to the original purchase.\n\nIf a purchase ever fails to grant again, your payment is never lost: every payment is verified from the blockchain itself, so a replay can always complete the grant after the fact — which is exactly what we did here.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T17:30:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-keeps-its-thinking-to-itself",
       "type": "changelog",
       "tag": "Fixed",
