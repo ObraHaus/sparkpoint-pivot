@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from ..data.log_source import VaultFlow
 from .pool import Database
@@ -55,6 +56,22 @@ WHERE network_id = $1 AND address = $2 AND lower(decoded->>'owner') = lower($3)
   AND decoded->>'kind' IN ('deposit', 'withdraw')
 ORDER BY block_number DESC, log_index DESC
 LIMIT $4
+""".strip()
+# 028 activity fold — the OLDEST-first delta strictly after a (block, log) high-water mark.
+_LIST_FLOWS_SINCE = """
+SELECT decoded->>'kind' AS kind,
+       decoded->>'assets' AS assets,
+       decoded->>'shares' AS shares,
+       block_number,
+       encode(tx_hash, 'hex') AS tx_hash,
+       log_index,
+       created_at
+FROM onchain_events
+WHERE network_id = $1 AND address = $2 AND lower(decoded->>'owner') = lower($3)
+  AND decoded->>'kind' IN ('deposit', 'withdraw')
+  AND (block_number, log_index) > ($4, $5)
+ORDER BY block_number ASC, log_index ASC
+LIMIT $6
 """.strip()
 
 
@@ -131,6 +148,9 @@ class FlowRow:
     block_number: int
     log_index: int  # intra-block ordering — the true on-chain execution order within a block
     tx_hash: str  # 0x… hex
+    #: Indexer receipt time (028 fold reads carry it for day-granular line dates); ``None`` on
+    #: the pre-028 projections that never selected it.
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -412,6 +432,35 @@ class VaultFlowReader:
                 block_number=int(r["block_number"]),
                 log_index=int(r["log_index"]),
                 tx_hash="0x" + str(r["tx_hash"]),
+            )
+            for r in rows
+        ]
+
+    async def list_flows_since(
+        self,
+        network_id: str,
+        vault: str,
+        owner: str,
+        after: tuple[int, int] | None,
+        limit: int = 25,
+    ) -> list[FlowRow]:
+        """The owner's flows STRICTLY AFTER ``after`` = (block_number, log_index), OLDEST first —
+        the 028 activity-fold delta read. ``None`` reads from the beginning (first fold; the fold
+        itself samples/caps, this just bounds the scan). Includes ``created_at`` so the fold can
+        date lines (day-granular; indexer receipt time, minutes of lag at most)."""
+        block, log = after if after is not None else (-1, -1)
+        rows = await self.db.fetch(
+            _LIST_FLOWS_SINCE, network_id, vault.lower(), owner, block, log, limit
+        )
+        return [
+            FlowRow(
+                kind=str(r["kind"]),
+                assets=int(r["assets"]),
+                shares=int(r["shares"]),
+                block_number=int(r["block_number"]),
+                log_index=int(r["log_index"]),
+                tx_hash="0x" + str(r["tx_hash"]),
+                created_at=r["created_at"],
             )
             for r in rows
         ]
