@@ -11,11 +11,12 @@
  * an "unavailable" state (no sign action) when SRK is unset on the active chain.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type Address, erc20Abi, formatUnits, type Hex } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { premiumStatusView, shortfallPurpose, type PremiumStatus } from "@/lib/premium/tierStatus";
 import {
   derivePremiumPayState,
   PREMIUM_PRICE_SRK_BASE,
@@ -78,8 +79,34 @@ async function verifyPayment(txHash: string): Promise<VerifyState> {
   return { kind: "error", message: "Still confirming on-chain — your payment is safe; check back shortly." };
 }
 
+/** The wallet's own plan (self-scoped, fail-open) — an active subscriber is EXTENDING. */
+function useSelfPremiumStatus(): PremiumStatus {
+  const [status, setStatus] = useState<PremiumStatus>({ active: false, untilLabel: null });
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch("/api/agent/usage/self", {
+          headers: { "x-chain-id": "84532" },
+          cache: "no-store",
+        });
+        if (!r.ok || !alive) return;
+        const u = (await r.json()) as { tier?: string; expiresAt?: string | null };
+        if (alive) setStatus(premiumStatusView(u.tier, u.expiresAt));
+      } catch {
+        /* advisory only — the page falls back to the upgrade framing */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return status;
+}
+
 export default function Page() {
   const router = useRouter();
+  const premium = useSelfPremiumStatus();
   const { address, chainId, isConnected } = useAccount();
   const owner = address as Address | undefined;
 
@@ -141,8 +168,12 @@ export default function Page() {
       </a>
       <div className="pagehead">
         <div>
-          <h1>Upgrade to Premium</h1>
-          <div className="sub">A subscription payment in SRK — not a vault fee. Cancel anytime.</div>
+          <h1>{premium.active ? "Extend Premium" : "Upgrade to Premium"}</h1>
+          <div className="sub">
+            {premium.active
+              ? `Premium is active${premium.untilLabel ? ` until ${premium.untilLabel}` : ""} — paying again adds a month on top.`
+              : "A subscription payment in SRK — not a vault fee. Cancel anytime."}
+          </div>
         </div>
       </div>
 
@@ -236,8 +267,8 @@ export default function Page() {
               >
                 <Icon name="alert" size={16} />
                 <span>
-                  You need <b>{Number(formatUnits(pay.shortfall, 18)).toLocaleString()} more SRK</b> for the
-                  first month. This never blocks any free feature.
+                  You need <b>{Number(formatUnits(pay.shortfall, 18)).toLocaleString()} more SRK</b>{" "}
+                  {shortfallPurpose(premium)}. This never blocks any free feature.
                 </span>
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
