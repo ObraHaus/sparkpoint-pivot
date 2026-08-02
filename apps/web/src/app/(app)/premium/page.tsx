@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -155,10 +156,12 @@ export default function Page() {
             Premium
           </div>
           <div className="pp tnum">
-            {PREMIUM_PRICE_SRK_WHOLE.toString()} SRK
+            {Number(PREMIUM_PRICE_SRK_WHOLE).toLocaleString()} SRK
             <span style={{ fontSize: 14, color: "var(--muted-foreground)", fontWeight: 500 }}> /mo</span>
           </div>
-          <div className="psub">≈ $12.00 / month · cancel anytime</div>
+          {/* No USD figure: there is no oracle for SRK, and the old illustrative "≈ $12.00" peg was
+              pinned to the superseded 500-SRK price. Priced in SRK only. */}
+          <div className="psub">Priced in SRK · cancel anytime</div>
           <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
             Deeper analysis, advanced vaults, higher limits, analytics &amp; alerts.
           </div>
@@ -171,6 +174,10 @@ export default function Page() {
           </button>
         </div>
       </div>
+
+      {/* 026: the live SRK balance + the faucet live HERE (the acquire path sits next to the price);
+          /srk is now a purely informational token explainer. */}
+      <SrkFaucetCard />
 
       <UsageThisPeriod />
 

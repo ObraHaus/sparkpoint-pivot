@@ -2,6 +2,50 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "get-srk-from-the-faucet-on-premium",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Get test SRK in one click — the faucet now lives on Premium",
+      "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
+      "cta_label": "Open Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:00:00Z",
+      "active": true
+    },
+    {
+      "slug": "premium-is-now-10000-srk-per-month",
+      "type": "changelog",
+      "tag": "Changed",
+      "title": "Premium is now 10,000 SRK per month",
+      "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:05:00Z",
+      "active": true
+    },
+    {
+      "slug": "apply-for-alpha-access-instead-of-a-dead-end",
+      "type": "changelog",
+      "tag": "Added",
+      "title": "Not on the list? You can now apply — instead of hitting a wall",
+      "body": "Until now, connecting a wallet that wasn't on the alpha list told you so and left you there. That was the end of the road.\n\nNow, two things happen. First, we check automatically whether your wallet holds at least **1,000,000 SRK on Ethereum mainnet** — if it does, you're let straight in on that same sign-in, no form and no waiting. If not, you get a short application: how to reach you, what to call you, and why you'd like access. A person reviews it, and you can come back any time to check the status or update your answers.\n\nTwo notes on the details. The mainnet check is a single read of your public balance — nothing is signed, nothing is spent, and if that check is unavailable for any reason you simply see the application form rather than being blocked. And whatever happens with access, the **withdraw / exit** path stays exactly where it was on that screen: getting your funds out is never behind a form.",
+      "cta_label": "Check your access",
+      "cta_href": "/verify",
+      "published_at": "2026-08-02T09:10:00Z",
+      "active": true
+    },
+    {
+      "slug": "side-menu-regrouped-nothing-hidden",
+      "type": "changelog",
+      "tag": "Changed",
+      "title": "The side menu is tidier — and nothing was hidden",
+      "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
+      "cta_label": "Open the app",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T09:15:00Z",
+      "active": true
+    },
+    {
       "slug": "chat-history-recording-fixed-behind-the-scenes",
       "type": "changelog",
       "tag": "Fixed",

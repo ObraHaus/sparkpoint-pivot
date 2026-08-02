@@ -5,6 +5,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.test.ts", "src/**/*.test.mts"],
+  "//include": "next-env.d.ts carries Next's ambient module declarations (e.g. image imports). Without it a test that TYPE-imports an app module which transitively reaches an asset import fails to resolve it — the base tsconfig gets these for free, this one overrides `include` and must ask.",
+  "include": ["next-env.d.ts", "src/**/*.test.ts", "src/**/*.test.mts"],
   "exclude": ["node_modules"]
 }

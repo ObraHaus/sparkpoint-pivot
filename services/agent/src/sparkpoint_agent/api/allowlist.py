@@ -16,22 +16,29 @@ Non-custody: this is an ACCESS gate only. It never returns a signable artifact a
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
+from ..chain.srk_gate import build_gate_from_env
 from ..db import get_database
-from ..db.allowlist import ADMIN_ROLE, AllowlistStore
+from ..db.allowlist import ADMIN_ROLE, BETA_ROLE, AllowlistStore
 from .errors import ApiError, ErrorCode
 from .mandate import get_account
 from .security import AccountContext
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["allowlist"])
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 Role = Literal["beta", "admin"]
+
+#: Recorded as the actor on an auto-grant, so the audit log distinguishes it from a human add.
+SRK_GATE_ACTOR = "srk-gate"
 
 
 def get_allowlist_store() -> AllowlistStore:
@@ -76,6 +83,42 @@ async def allowlist_status(
     """Return ``{beta, admin}`` for the caller-scoped wallet (``X-Owner``). Not admin-gated —
     a wallet may always read its own access status (the SIWE login path uses this)."""
     return await store.status(account.owner)
+
+
+@router.post("/allowlist/srk-gate-check")
+async def srk_gate_check(
+    account: Annotated[AccountContext, Depends(get_account)],
+    store: Annotated[AllowlistStore, Depends(get_allowlist_store)],
+) -> dict[str, object]:
+    """026 — auto-admit a wallet holding ≥ the threshold of SRK on ETHEREUM MAINNET.
+
+    Called by the web SIWE ``/verify`` step (server-only S2S) for a wallet that came back
+    ``beta: false``, BEFORE the session cookie is minted, so a qualifying holder gets in on the
+    same login rather than on the next one. The wallet is ``X-Owner`` (server-scoped, never a body
+    field), so nobody can gate-check someone else's balance into their own session.
+
+    FAIL-OPEN by contract: an unset gate, an unreachable RPC or a malformed response all return
+    ``{"qualified": false, ...}``. It never raises and never blocks a login — the worst case is
+    that the wallet is shown the application form, which is the default experience anyway.
+
+    Non-custody: grants the ACCESS role only, exactly like an admin add, and is audit-logged with
+    ``actor='srk-gate'``. It never touches /exit, /trust or the withdraw path (N2).
+    """
+    gate = build_gate_from_env()
+    if gate is None:
+        return {"qualified": False, "reason": "not_configured", "granted": False}
+
+    result = await gate.check(account.owner)
+    if not result.qualified:
+        return {"qualified": False, "reason": result.reason, "granted": False}
+
+    granted = False
+    try:
+        await store.add(account.owner, BETA_ROLE, actor=SRK_GATE_ACTOR)
+        granted = True
+    except Exception:  # noqa: BLE001 - a DB hiccup must degrade to the form, never 500 a login
+        logger.warning("srk-gate: qualified wallet could not be added to the beta allowlist")
+    return {"qualified": True, "reason": result.reason, "granted": granted}
 
 
 @router.get("/admin/allowlist")

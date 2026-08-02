@@ -2,30 +2,26 @@
 
 import Link from "next/link";
 import { Icon } from "@/lib/icons";
-import { SECONDARY } from "@/lib/nav";
+import { EXIT_ITEM, SECONDARY, toHref } from "@/lib/nav";
+import { NavTree } from "./NavTree";
 import { TipWidget } from "./TipWidget";
 
 export function TrustRail({ active }: { active: string }) {
   return (
     <aside className="railnav">
       <div className="rail-label">Trust &amp; control</div>
-      {SECONDARY.map((n) => (
-        <Link key={n.route} href={"/" + n.route} className={"navlink" + (active === n.route ? " active" : "")}>
-          <Icon name={n.icon} size={18} />
-          {n.label}
-          {n.route === "outcomes" && <span className="badge-sm">3</span>}
-        </Link>
-      ))}
-      {/* Spacer pins the tip widget + changelog + exit to the bottom of the rail. */}
+      <NavTree
+        nodes={SECONDARY}
+        active={active}
+        renderBadge={(route) => (route === "outcomes" ? <span className="badge-sm">3</span> : null)}
+      />
+      {/* Spacer pins the tip widget + exit to the bottom of the rail. The exit link is deliberately
+          OUTSIDE the nav tree: it can never end up inside a collapsed group (N2). */}
       <div style={{ flex: 1 }} />
       <TipWidget />
-      <Link href="/changelog" className={"navlink" + (active === "changelog" ? " active" : "")}>
-        <Icon name="book" size={18} />
-        Changelog
-      </Link>
-      <Link href="/trust/exit" className="navlink exit">
-        <Icon name="door" size={18} />
-        Withdraw / Exit
+      <Link href={toHref(EXIT_ITEM.route)} className="navlink exit">
+        <Icon name={EXIT_ITEM.icon} size={18} />
+        {EXIT_ITEM.label}
       </Link>
     </aside>
   );

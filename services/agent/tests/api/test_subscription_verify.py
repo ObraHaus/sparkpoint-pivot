@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from sparkpoint_agent.api.errors import ApiError, ErrorCode
 from sparkpoint_agent.api.security import AccountContext
 from sparkpoint_agent.api.subscription import (
+    PREMIUM_PRICE_SRK_DEFAULT_RAW,
     PurchaseSubmit,
     get_payment_verifier,
     verify_purchase,
@@ -117,3 +118,30 @@ def test_verifier_fails_closed_when_unconfigured(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ApiError) as ei:
         get_payment_verifier(_account())
     assert ei.value.code == ErrorCode.VALIDATION_ERROR
+
+
+def test_default_price_is_10000_srk_in_base_units() -> None:
+    """026: the client-decided price, in BASE UNITS.
+
+    A bare ``10000`` would be 1e-14 SRK and would accept dust as a full month of Premium.
+    """
+    assert PREMIUM_PRICE_SRK_DEFAULT_RAW == 10_000 * 10**18
+    assert PREMIUM_PRICE_SRK_DEFAULT_RAW != 10_000
+    assert PREMIUM_PRICE_SRK_DEFAULT_RAW != 500 * 10**18  # the superseded price
+
+
+def test_unset_price_env_falls_back_to_the_canonical_price_never_to_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing PREMIUM_PRICE_SRK must never make Premium free (or cheaper than intended)."""
+    monkeypatch.setenv("SRK_ADDRESS_84532", "0x" + "11" * 20)
+    monkeypatch.setenv("PREMIUM_TREASURY_ADDRESS", "0x" + "22" * 20)
+    monkeypatch.setenv("BASE_SEPOLIA_RPC_URL", "https://rpc.invalid")
+    monkeypatch.delenv("PREMIUM_PRICE_SRK", raising=False)
+
+    verifier = get_payment_verifier(_account())
+    assert verifier.price_raw == PREMIUM_PRICE_SRK_DEFAULT_RAW
+
+    # An explicitly set env still wins (the operator remains in control).
+    monkeypatch.setenv("PREMIUM_PRICE_SRK", str(7_000 * 10**18))
+    assert get_payment_verifier(_account()).price_raw == 7_000 * 10**18

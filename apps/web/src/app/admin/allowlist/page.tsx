@@ -20,6 +20,15 @@ interface AuditEntry {
   actor: string | null;
   at: string;
 }
+/** 026 — one pending access application as the agent serves it. */
+interface ApplicationRow {
+  address: string;
+  contact: string;
+  name: string;
+  reason: string;
+  status: string;
+  submittedAt: string;
+}
 
 const CHAIN_HEADERS = { "x-chain-id": "84532" };
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
@@ -40,6 +49,138 @@ async function listAudit(): Promise<AuditEntry[]> {
   });
   if (!r.ok) return [];
   return ((await r.json()).entries ?? []) as AuditEntry[];
+}
+
+/**
+ * 026 — access applications from wallets that weren't on the allowlist. Approving is exactly the
+ * `beta` add above (the agent does it server-side and audit-logs it identically), so this panel
+ * adds a review queue, not a second access mechanism. Denying grants nothing and revokes nothing.
+ */
+function PendingApplications({ onDecided }: { onDecided: () => Promise<void> }) {
+  const [apps, setApps] = useState<ApplicationRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agent/admin/access/applications?status=pending", {
+        headers: CHAIN_HEADERS,
+        cache: "no-store",
+      });
+      // 404 = this agent doesn't serve the endpoint yet (migration 0029 not deployed): show the
+      // empty state, never an error — the rest of the page must keep working.
+      setApps(r.ok ? (((await r.json()).applications ?? []) as ApplicationRow[]) : []);
+    } catch {
+      setApps([]);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  const decide = useCallback(
+    async (address: string, approve: boolean) => {
+      setBusy(address);
+      setNote(null);
+      try {
+        const r = await fetch(
+          `/api/agent/admin/access/applications/${approve ? "approve" : "deny"}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", ...CHAIN_HEADERS },
+            body: JSON.stringify({ address }),
+          },
+        );
+        if (!r.ok) throw new Error(`${approve ? "Approve" : "Deny"} failed (${r.status})`);
+        setNote({
+          kind: "ok",
+          text: `${approve ? "Approved" : "Denied"} ${short(address)}${approve ? " — added to beta." : "."}`,
+        });
+        await load();
+        if (approve) await onDecided();
+      } catch (e) {
+        setNote({ kind: "err", text: e instanceof Error ? e.message : "Decision failed" });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load, onDecided],
+  );
+
+  return (
+    <div className="chartcard" style={{ marginTop: 14 }}>
+      <div className="ch">
+        <span className="ct">
+          Pending applications <span className="prov">{apps.length}</span>
+        </span>
+        <span className="prov">approve = add to beta</span>
+      </div>
+      <div style={{ padding: "4px 2px" }}>
+        {apps.length === 0 ? (
+          <div className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>
+            {loaded ? "No applications waiting for review." : "Loading…"}
+          </div>
+        ) : (
+          apps.map((a) => (
+            <div key={a.address} style={{ padding: "10px 8px", borderTop: "1px solid var(--border-soft)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span className="mono" style={{ fontSize: 12.5, flex: "1 1 320px", wordBreak: "break-all" }}>
+                  {a.address}
+                </span>
+                <span className="muted" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                  {a.submittedAt ? new Date(a.submittedAt).toLocaleString() : ""}
+                </span>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={busy !== null}
+                  onClick={() => void decide(a.address, true)}
+                >
+                  <Icon name="check" size={14} /> Approve
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy !== null}
+                  onClick={() => void decide(a.address, false)}
+                >
+                  <Icon name="x" size={14} /> Deny
+                </button>
+              </div>
+              <div style={{ fontSize: 12.5, marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                <span>
+                  <span className="muted">Name / alias: </span>
+                  {a.name}
+                </span>
+                <span>
+                  <span className="muted">Contact: </span>
+                  {a.contact}
+                </span>
+                <span style={{ lineHeight: 1.5 }}>
+                  <span className="muted">Reason: </span>
+                  {a.reason}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+        {note && (
+          <div
+            style={{
+              padding: "6px 8px",
+              fontSize: 12.5,
+              color: note.kind === "ok" ? "var(--gain)" : "var(--loss, #ff6b6b)",
+            }}
+          >
+            {note.text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function Page() {
@@ -261,6 +402,9 @@ export default function Page() {
         {column("Beta wallets", beta, "beta")}
         {column("Admin wallets", admins, "admin")}
       </div>
+
+      <PendingApplications onDecided={refresh} />
+
 
       <div className="chartcard" style={{ marginTop: 14 }}>
         <div className="ch">

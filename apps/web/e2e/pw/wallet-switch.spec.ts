@@ -60,10 +60,18 @@ test.describe("SIWE session stays bound to the connected wallet", () => {
 
     // Sign in as the non-allowlisted wallet → honestly blocked, and (the trap) no sign-in CTA.
     await clickSignIn(page);
-    await expect(page.locator("#vsteps")).toContainText("Beta access · not in the alpha yet", {
+    // Stage-driven copy (stageCopy.label / .adjective) — assert the shape, not a pinned "Beta".
+    await expect(page.locator("#vsteps")).toContainText(/access · not in the \w+ yet/, {
       timeout: 25_000,
     });
     await expect(page.locator("a:has-text('Sign in with wallet')")).toHaveCount(0);
+
+    // 026: the blocked branch is no longer a DEAD END — it now offers the access-application form,
+    // and (N2) the /exit escape hatch is still right there beside it, not behind the form.
+    await expect(page.locator("#app-contact")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#app-name")).toBeVisible();
+    await expect(page.locator("#app-reason")).toBeVisible();
+    await expect(page.locator("a:has-text('Withdraw via /exit')")).toBeVisible();
 
     // Switch to the allowlisted wallet in the "extension". The app must drop the stale session.
     await switchAndAwaitLogout(page, 1);
