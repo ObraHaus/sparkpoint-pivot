@@ -314,3 +314,69 @@ async def test_an_answer_that_merely_mentions_a_limit_still_cites_its_sources() 
         "what are vault shares?",
     )
     assert any(w["type"] == "citation" for w in wires)
+
+
+# ── 029/FR-003 · a literacy turn that degraded must not pose as an explanation ──
+
+
+async def test_a_topic_without_its_own_default_admits_failure_instead_of_generic_copy() -> None:
+    """The verification run asked "Is the Aave vault safe?" and got back:
+
+        "SparkPoint is a non-custodial assistant: it can suggest and simulate strategies…"
+
+    True, unrelated, and indistinguishable from an assistant that didn't understand the question.
+    That generic line is the LAST-RESORT default for a topic with no pre-written answer, so
+    reaching it means the turn failed — and a failed turn must look failed.
+    """
+    dag = _dag(sparky_llm=_RecordingComplete())
+    # Force the LEARN branch with a topic that has no entry in DEFAULT_TIPS.
+    dag.planner = Planner(
+        llm=_StructuredLlm(
+            StructuredResult(
+                ok=True, value=Intent(kind=IntentKind.LEARN, topic="aave_vault_safety")
+            )
+        )
+    )
+    dag.literacy = Literacy(llm=_ExplodingComplete())
+    wires = await _run(dag, "Is the Aave vault safe?")
+
+    assert not any(w["type"] == "tip" for w in wires), "no generic card standing in for an answer"
+    assert [w["message"] for w in wires if w["type"] == "error"] == [_GENERAL_FAILURE]
+
+
+async def test_a_topic_with_a_real_default_still_answers_from_it() -> None:
+    # `what_is_apy` has a pre-written answer that genuinely answers the question — degrade to it
+    # rather than erroring, because the user gets a correct explanation either way.
+    from sparkpoint_agent.agents.literacy import DEFAULT_TIPS
+
+    dag = _dag(sparky_llm=_RecordingComplete())
+    dag.planner = Planner(
+        llm=_StructuredLlm(
+            StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="what_is_apy"))
+        )
+    )
+    dag.literacy = Literacy(llm=_ExplodingComplete())
+    wires = await _run(dag, "what is APY?")
+
+    tips = [w for w in wires if w["type"] == "tip"]
+    assert len(tips) == 1
+    assert tips[0]["body"] == DEFAULT_TIPS["what_is_apy"]
+    assert not any(w["type"] == "error" for w in wires)
+
+
+async def test_a_degraded_tip_is_retried_before_being_given_up_on() -> None:
+    llm = _FlakyComplete(good="A vault is as safe as its contracts and its lending market are.")
+    dag = _dag(sparky_llm=_RecordingComplete())
+    dag.planner = Planner(
+        llm=_StructuredLlm(
+            StructuredResult(
+                ok=True, value=Intent(kind=IntentKind.LEARN, topic="aave_vault_safety")
+            )
+        )
+    )
+    dag.literacy = Literacy(llm=llm)
+    wires = await _run(dag, "Is the Aave vault safe?")
+
+    assert llm.calls == 2, "one attempt, then one retry"
+    tips = [w for w in wires if w["type"] == "tip"]
+    assert len(tips) == 1 and "contracts" in tips[0]["body"]

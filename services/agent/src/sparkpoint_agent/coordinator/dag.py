@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..agents import guardrail
-from ..agents.literacy import Literacy
+from ..agents.literacy import DEFAULT_TIPS, Literacy
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender
 from ..agents.sparky import Sparky
@@ -535,6 +535,15 @@ class CoordinatorDag:
             context = _format_grounding(passages) if passages else None
             card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
             yield ToolStepBlock("Explaining that", "done")
+            # 029/FR-003 — a tip that degraded to the GENERIC line is not an answer to the
+            # question that was asked. "Is the Aave vault safe?" came back as "SparkPoint is a
+            # non-custodial assistant…": true, unrelated, and indistinguishable from an assistant
+            # that did not understand. A topic with its OWN pre-written default is different —
+            # that default genuinely answers it — so only the general-fallback case is surfaced
+            # as a failure.
+            if card.fell_back and card.topic not in DEFAULT_TIPS:
+                yield ErrorBlock("UPSTREAM_UNAVAILABLE", _GENERAL_FAILURE)
+                return
             yield TipBlock(card.topic, card.body)
             # 029/FR-014 — cite only what the answer could actually have drawn on. A canned
             # fallback tip and a decline are both ungrounded in the retrieved passages.

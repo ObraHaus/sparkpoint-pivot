@@ -21,6 +21,7 @@ answer. The guard now lives in ``guard_text`` and BOTH paths import it.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -28,6 +29,8 @@ from ..llm import AsyncClaudeClient, Effort
 from .guard_text import is_unusable
 
 EFFORT: Effort = "low"
+
+_logger = logging.getLogger(__name__)
 
 
 def _no_persona() -> str:
@@ -122,22 +125,42 @@ class Literacy:
     ) -> TipCard:
         """Explain ``topic`` as a non-signable :class:`TipCard`, fail-closed.
 
-        A refusal or empty generation returns the pre-written default for the topic (or the
-        general fallback), so the surfaced tip is always safe and non-empty. ``user`` is the
-        verified wallet (LiteLLM per-user budget/attribution key) — identity only, never authority.
+        RETRIES ONCE before giving up (029, same rule as the general branch). The verification
+        run caught "Is the Aave vault safe?" answering with the GENERIC fallback — "SparkPoint is
+        a non-custodial assistant…" — which is true, unrelated, and reads as though the assistant
+        did not understand the question. The model itself answered that topic correctly on every
+        direct attempt, so a single degraded turn was being converted straight into a non-answer.
+
+        Only a topic with its OWN pre-written default degrades silently: that default is a real
+        answer to the question asked. A topic without one degrades to the general line and is
+        marked ``fell_back`` so the caller can decline to dress it up with citations, and callers
+        that can do better (the DAG's LEARN branch) surface an honest error instead.
         """
         key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
         user_content = f"concept={key}"
         if context_hint:
             user_content = f"{user_content}\ncontext={context_hint}"
-        result = await self.llm.complete(
-            system=self._system(),
-            messages=[{"role": "user", "content": user_content}],
-            effort=self.effort,
-            user=user,
+        for attempt in (1, 2):
+            try:
+                result = await self.llm.complete(
+                    system=self._system(),
+                    messages=[{"role": "user", "content": user_content}],
+                    effort=self.effort,
+                    user=user,
+                )
+            except Exception:
+                # An upstream transport failure is a DEGRADED turn, not a crash. Sparky's prose
+                # path already treats it that way; this one propagated, so a gateway blip on a
+                # literacy turn tore down the whole SSE stream and the user got the generic
+                # mid-stream failure block instead of an answer or an honest, retryable error.
+                # (BaseException — e.g. a cancelled request — deliberately still propagates.)
+                _logger.info("literacy_upstream_error topic=%s attempt=%d", key, attempt)
+                continue
+            body = result.text.strip()
+            if not (result.refused or is_unusable(body)):
+                return TipCard(topic=key, body=body, fell_back=False)
+            if attempt == 1:
+                _logger.info("literacy_retry: first tip attempt degraded for topic=%s", key)
+        return TipCard(
+            topic=key, body=DEFAULT_TIPS.get(key, DEFAULT_TIPS[FALLBACK_TOPIC]), fell_back=True
         )
-        body = result.text.strip()
-        fell_back = result.refused or is_unusable(body)
-        if fell_back:
-            body = DEFAULT_TIPS.get(key, DEFAULT_TIPS[FALLBACK_TOPIC])
-        return TipCard(topic=key, body=body, fell_back=fell_back)
