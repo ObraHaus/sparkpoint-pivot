@@ -228,6 +228,7 @@ export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onRevi
             onReview={onReview}
             onSign={onSign}
             onCite={onCite}
+            onRetry={onRetry}
           />
         ) : (
           <StepGroup key={i} entry={entry} cards={cards} />
@@ -321,11 +322,14 @@ function LiveBlock({
   onReview,
   onSign,
   onCite,
+  onRetry,
 }: {
   card: ChatCard;
   onReview: (intent: InlineIntent) => void;
   onSign: (action: ProposedAction) => void;
   onCite: () => void;
+  /** Re-send the message this turn failed on — offered on an `error` block (029/FR-001). */
+  onRetry?: () => void;
 }) {
   // Fail-closed: an unvalidated / malformed block renders inert, never actionable.
   if (card.status === "inert") return <InertNotice message={card.message} />;
@@ -488,7 +492,11 @@ function LiveBlock({
       );
 
     case "error":
-      return <InertNotice message={block.message} />;
+      // 029/FR-001 — an error BLOCK is a failed turn just as much as a failed request is, and
+      // must read the same way: a distinct card that admits the failure and offers a retry. It
+      // used to render as a flat inert notice with no way forward, so the honest general-branch
+      // error and the mid-stream failure both looked like an assistant that had given up.
+      return <TurnError message={block.message} code={block.code} onRetry={onRetry} />;
 
     default:
       return <InertNotice message={REJECTED_FALLBACK} />;
