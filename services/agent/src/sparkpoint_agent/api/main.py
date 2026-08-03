@@ -278,6 +278,49 @@ async def _seed_changelog(db: object) -> None:
         logger.warning("whats_new_seed_skipped (table missing or DB error)")
 
 
+async def _index_changelog(db: object) -> None:
+    """Index the published changelog into the corpus, so shipping an update also TEACHES Sparky.
+
+    WHY THIS EXISTS. 031 made the changelog readable by the assistant and said so to users in the
+    changelog itself — *"every future update teaches it automatically. Nobody has to remember a
+    separate step."* That was not true: the only caller of ``ingest_changelog`` was the manual
+    Admin → Re-ingest button, so ``_seed_changelog`` above published each new entry to the page
+    while leaving it invisible to every answer. Caught when 032's own entry reached the page and
+    not the corpus.
+
+    Runs in the BACKGROUND and after the seed, never inline: embedding is a third-party network
+    call, and boot must not wait on one — a slow provider would fail the container healthcheck and
+    take the whole agent down over a search index. Best-effort throughout; ``ingest_changelog``
+    skips entries already indexed unchanged, so an ordinary restart costs nothing.
+    """
+    try:
+        import os
+
+        from ..db.content_entries import ContentEntryStore
+        from ..knowledge.changelog_ingest import CHANGELOG_SOURCE_KIND, ingest_changelog
+        from ..knowledge.embeddings import openai_embedder
+        from ..knowledge.store import PgChunkStore
+
+        embedder = openai_embedder()
+        if embedder is None:
+            # No embedding backend configured (local/dev): the page still works, only search is
+            # unavailable — which is already true of the whole corpus, so say it once and move on.
+            logger.info("changelog_index_skipped (no embedder configured)")
+            return
+        written = await ingest_changelog(
+            ContentEntryStore(db),  # type: ignore[arg-type]
+            store=PgChunkStore(db, source_kind=CHANGELOG_SOURCE_KIND),  # type: ignore[arg-type]
+            embedder=embedder,
+            source_ref=os.environ.get("SPARKPOINT_GIT_SHA") or os.environ.get("GIT_SHA") or "boot",
+        )
+        logger.info("changelog_indexed entries=%d", len(written))
+    except Exception as exc:  # noqa: BLE001 — a search index must never cost the agent its boot
+        logger.warning(
+            "changelog_index_skipped (%s: %s) — the changelog page is unaffected",
+            type(exc).__name__, exc,
+        )
+
+
 _INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
 
 
@@ -508,6 +551,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     index_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     apy_task: asyncio.Task[None] | None = None
+    changelog_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
     # A deployment-shape check, independent of every dependency — so it must run BEFORE (and
     # regardless of) the DB connect, which is allowed to fail (023, FR-023-019).
@@ -525,6 +569,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Feature 006: ingest content_seed/whats-new.json into content_entries so one repo file
         # feeds the in-app changelog. Best-effort; content only (N2).
         await _seed_changelog(db)
+        # 033: index those same entries into the corpus, so shipping an update also teaches Sparky
+        # rather than only publishing a page. Background — embedding is a third-party call and boot
+        # must never wait on one. Content only (N2).
+        changelog_task = asyncio.create_task(_index_changelog(db))
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
@@ -553,6 +601,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             notif_task.cancel()
         if apy_task is not None:
             apy_task.cancel()
+        if changelog_task is not None:
+            changelog_task.cancel()
         for task in swap_fee_tasks:
             task.cancel()
         if db is not None:

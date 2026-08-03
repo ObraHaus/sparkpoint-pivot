@@ -11,7 +11,7 @@ missing tag a CI failure with a message that names the entry, so the bug class c
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sparkpoint_agent.content_seed import _normalize_tag, load_entries
@@ -70,3 +70,58 @@ def test_the_normalizer_maps_the_synonyms_that_burned_us() -> None:
     assert _normalize_tag(None, "changelog") == "Improved"
     assert _normalize_tag("mystery", "changelog") == "Improved"
     assert _normalize_tag(None, "announcement") == "Announcement"
+
+
+# ── 033: the committed feed must read as a record, not a schedule ─────────────
+
+
+def test_no_seed_entry_is_dated_in_the_future() -> None:
+    """Four entries shipped forward-dated — the times were written as local wall-clock and stored
+    as UTC, so the three newest releases sat hours ahead of the clock and one landed on tomorrow's
+    date for anyone reading in Asia/Manila. Backdating is the supported use; forward-dating was an
+    accident nothing looked for."""
+    from datetime import datetime
+
+    from sparkpoint_agent.content_seed import load_entries
+
+    now = datetime.now(UTC)
+    ahead = []
+    for entry in load_entries():
+        raw = entry.get("published_at")
+        if not raw:
+            continue
+        when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        if when > now:
+            ahead.append(f"{entry['slug']} @ {raw}")
+
+    assert not ahead, (
+        "these committed entries are dated AHEAD of the clock — published_at is UTC, and it "
+        "exists for BACKdating so the timeline reads honestly:\n  " + "\n  ".join(ahead)
+    )
+
+
+def test_the_loader_warns_about_a_future_date_rather_than_dropping_it() -> None:
+    """A warning, not a refusal: scheduling ahead is legitimate and a seed load must never fail
+    over a timestamp. But the mistake has to be visible somewhere, and the boot log is where."""
+    import logging
+
+    from sparkpoint_agent.content_seed import _warn_if_future_dated
+
+    logger = logging.getLogger("sparkpoint_agent.content_seed")
+    records: list[logging.LogRecord] = []
+    handler = logging.Handler()
+    handler.emit = records.append  # type: ignore[method-assign]
+    logger.addHandler(handler)
+    try:
+        _warn_if_future_dated({"slug": "later", "published_at": "2099-01-01T00:00:00Z"})
+        _warn_if_future_dated({"slug": "earlier", "published_at": "2020-01-01T00:00:00Z"})
+        _warn_if_future_dated({"slug": "none"})
+        _warn_if_future_dated({"slug": "garbage", "published_at": "not a date"})
+    finally:
+        logger.removeHandler(handler)
+
+    warned = [r for r in records if r.levelno >= logging.WARNING]
+    assert len(warned) == 1, "only the future-dated entry warns"
+    assert "later" in warned[0].getMessage()
