@@ -54,7 +54,7 @@ tested without a browser, pinned with the verbatim string or figure observed liv
 - [x] T030 `CHANGELOG.md` + a client-facing `content_seed/whats-new.json` entry (canonical tag — the 132 gate requires both surfaces).
 - [x] T031 Full gates: agent pytest/ruff/strict-mypy + web tests/tsc/typecheck:test/eslint.
 - [x] T032 Apply 0033 → deploy agent → deploy web → poll ~3 min for `exited:unhealthy`.
-- [ ] T033 Live matrix per quickstart §3 (SC-001…SC-010), then re-run the 029 battery unchanged.
+- [x] T033 Live matrix per quickstart §3 (SC-001…SC-010), then re-run the 029 battery unchanged.
 - [x] T034 PR to develop with the before/after table.
 
 ## Dependencies
