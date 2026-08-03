@@ -130,8 +130,19 @@ async def run_once(*, trigger: str = "schedule") -> RunResult:
         async with db.acquire() as conn:
             got = await conn.fetchval("SELECT pg_try_advisory_lock($1)", RUN_LOCK_KEY)
             if not got:
+                # FR-002: a concurrent attempt declines AND RECORDS that it declined. Found by the
+                # first live verification — the decline was real (the lock held) but invisible, so
+                # an admin who pressed the button twice saw one run and no explanation for the
+                # other. "It silently did nothing" and "it declined because one was already
+                # running" look identical from the console, and only one of them is fine.
                 logger.info("self_authoring_skipped (another run holds the lock)")
-                return RunResult(OUTCOME_LOCKED, "another run is already in flight")
+                detail = "another run was already in flight"
+                try:
+                    declined = await store.open_run(trigger=trigger)
+                    await store.close_run(declined, outcome=OUTCOME_LOCKED, detail=detail)
+                except Exception:  # noqa: BLE001 — failing to record a decline is not worth raising
+                    logger.warning("self_authoring_decline_unrecorded")
+                return RunResult(OUTCOME_LOCKED, detail)
             try:
                 return await execute_run(
                     store=store,

@@ -64,6 +64,24 @@ KNOWN_SOURCES: frozenset[str] = frozenset(
     }
 )
 
+#: What a label is CALLED when a person reads it. Found in live output: the first run published
+#: "aave_supply_apy_bps_mainnet on Base mainnet: 3.48%" — a database column name, in a document
+#: written for users. A label without an entry here falls back to a de-underscored form, so a new
+#: label reads badly rather than breaking, and the fix is one line.
+LABEL_NAMES: dict[str, str] = {
+    "aave_supply_apy_bps_mainnet": "Aave's USDC supply rate",
+    "vault_net_apy_bps_testnet": "our vault's rate, net of the performance fee",
+    "vault_performance_fee_bps": "our vault's performance fee (charged only on profit)",
+    "managed_usdc_apy_bps_range_mainnet": "managed USDC vaults, low end of the range",
+    "morpho_net_apy_bps": "Morpho's net rate after its whole fee chain",
+}
+
+
+def label_name(label: str) -> str:
+    """A label as a person would say it."""
+    return LABEL_NAMES.get(label, label.replace("_", " "))
+
+
 STATUS_OK = "ok"
 STATUS_REFUSED = "refused"
 STATUS_IMPLAUSIBLE = "implausible"
@@ -125,9 +143,10 @@ class Evidence:
             who = self.attribution or "an external source"
             return f"{who} says: “{(self.quote or '').strip()}”"
         chain = chain_name(self.chain_id)
+        name = label_name(self.label)
         if not chain:
-            return f"{self.label}: {self.value}"
-        return f"{self.label} on {chain}: {format_bps(self.value)}"
+            return f"{name}: {self.value}"
+        return f"{name} on {chain}: {format_bps(self.value)}"
 
 
 def chain_name(chain_id: int | None) -> str:

@@ -66,7 +66,7 @@ async def fetch_chain(config: Any) -> list[Evidence]:
     out: list[Evidence] = []
     try:
         from ..chain.aave_rate import AavePoolReader
-        from ..chain.vault_reader import HttpxJsonRpcTransport
+        from ..chain.vault_reader import HttpxJsonRpcTransport, VaultReader
 
         if not (config.rpc_url and config.aave_pool_address and config.aave_reserve_usdc_address):
             # Not configured on this deployment. An honest absence, not an error — the same
@@ -96,6 +96,25 @@ async def fetch_chain(config: Any) -> list[Evidence]:
                     payload={"raw": str(bps)},
                 )
             )
+        # The fee, read from the vault itself rather than from a constant. Found by the first live
+        # run: `self-authored-vault-fee-comparison` needs this label and nothing produced it, so a
+        # document the client specifically asked for could never be written. A defined document
+        # with no source is worse than no document — it looks like a feature that quietly failed.
+        if config.vault_address:
+            vault = VaultReader(
+                vault_address=config.vault_address,
+                transport=HttpxJsonRpcTransport(config.rpc_url, timeout=_TIMEOUT_S),
+            )
+            fee_bps = await vault.performance_fee_bps()
+            if is_plausible_apy_bps(fee_bps):
+                out.append(
+                    Evidence(
+                        source=SOURCE_CHAIN,
+                        label="vault_performance_fee_bps",
+                        value=Decimal(str(fee_bps)),
+                        chain_id=BASE_SEPOLIA,
+                    )
+                )
     except Exception as exc:  # noqa: BLE001 — an unreachable RPC means no figure, never a guess
         logger.warning("selfauthor_chain_read_failed (%s: %s)", type(exc).__name__, exc)
         out.append(
