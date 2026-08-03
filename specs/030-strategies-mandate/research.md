@@ -3,24 +3,26 @@
 Decisions taken before implementation, with what was rejected and why. Every "current behaviour"
 claim was verified against the live alpha deployment or by reading the code path, not assumed.
 
-## R1 — How the second strategy comes back
+## R1 — WITHDRAWN: "the second strategy is silently dropped"
 
-**Decision.** Resolve `aave_v3_pool` in `_build_chain_context` from `config.aave_pool_address`,
-which is already loaded and already used by `_read_aave_gross_bps`.
+**This decision was based on a false premise and has been withdrawn.** It claimed `AAVE_SUPPLY`
+never resolved because `_build_chain_context` populates `resolved_targets` with the vault alone,
+and that resolving the pool from config would restore a missing second card.
 
-**Why.** `AAVE_SUPPLY` is on the policy allowlist with `target_ref="aave_v3_pool"`, and
-`build_action` returns `None` the moment `resolve_target_ref` cannot find it. The candidate has been
-constructed and discarded on every request since the endpoint was written. Nothing about the
-permitted set changes — the allowlist already names this target; the request context simply never
-told it the address.
+**What is actually true.** `resolve_target_ref` falls back to the static address book when a ref is
+not overridden, and Base Sepolia's book carries `aavePool`. `AAVE_SUPPLY` has always resolved; the
+live API returns both strategies, both approved, and did so before any change in this feature.
 
-**Rejected.** Adding a new allowlist entry (the entry exists); reading the address from chain
-(already in config); making the resolution map dynamic (a curation surface, forbidden by
-Principle VII).
+**How the error happened**, recorded so the same shape is easier to catch next time: the live API
+response was read through `head -60`, which truncated the second item, and the resolution path was
+read in `_build_chain_context` without following `resolve_target_ref` to its fallback. Two partial
+reads agreeing with each other is not corroboration.
 
-**Fail-closed property preserved.** A chain without a configured pool resolves nothing and the
-candidate is dropped exactly as today — one strategy, no error. That is the Robinhood 46630 case,
-which has no Aave at all.
+**What was done about it.** The `_build_chain_context` change is reverted. It was not merely
+unnecessary — an env-sourced override would WIN over the address book, so the two could drift apart
+silently, and the book is what the on-chain `PolicyModule` mirrors. The tests written for it now
+assert the truth instead: both strategies build, the vault from the override map and the Aave pool
+from the book, and a chain with no Aave deployment drops that candidate fail-closed.
 
 ## R2 — Per-strategy risk class, and the tautology it fixes
 

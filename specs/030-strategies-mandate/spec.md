@@ -11,13 +11,20 @@ deployment using the test wallet — none is theoretical.
 
 Two surfaces the product leans on are, from a user's seat, close to empty.
 
-**The strategies screen promises a comparison and delivers a list of one.** A second strategy is
-written, permitted by the safety rules, and configured — but it is discarded before it ever reaches
-the screen, silently, every time. Everything the page does to express choice ("Best fit · #1",
-"#2 vs your goal") is scaffolding around a comparison that has never once happened. Worse, because
-the assistant is asked to explain why one option beats another when only one exists, it invents the
-difference: the live rationale sells "leveraging vault aggregation … rather than passive lending"
-for a strategy that *is* passive lending.
+**The strategies screen ranks two options and tells the user almost nothing true about either.**
+The risk rating on every card is a constant. The sentence about how a strategy fits the user's plan
+is a constant — a wallet whose plan is growth-oriented is told "lower risk, steady yield". The rate
+is a percentage with no indication of what it means in money, next to no baseline. Choosing an
+option forgets which one was chosen. And because the two options are never actually differentiated
+by anything the screen carries, the assistant invents a difference: the live rationale sells
+"leveraging vault aggregation … rather than passive lending" for a strategy that *is* passive
+lending.
+
+*(Correction, recorded deliberately: an earlier draft of this spec claimed the screen could only
+ever show ONE strategy because the second was silently dropped. That was wrong. It came from a
+truncated read of the live API response plus reading one resolution path and missing the address-book
+fallback in `resolve_target_ref`. The live API returns both strategies, approved, and has all along.
+The defects below are the ones that are real, and each was re-verified against live alpha.)*
 
 **The plan a user sets is collected in detail and then read by almost nothing.** Of six things the
 mandate captures, one genuinely functions. The rest are stored, displayed, and consulted by no
@@ -47,8 +54,9 @@ carries through to a review step that already knows which was chosen and for how
 **Acceptance Scenarios**:
 
 1. **Given** a signed-in wallet on a network where both options are available, **When** the user
-   opens the strategies screen, **Then** two options are shown, each ranked, each with the safety
-   check applied identically, and each stating what it costs and who manages it.
+   opens the strategies screen, **Then** both options are shown, each ranked, each with the safety
+   check applied identically, and each stating what it costs and who manages it — the last of
+   which the screen could not say at all before.
 2. **Given** the two options, **When** the user reads either card, **Then** the card states what the
    money would earn in a year on *their own balance*, alongside the alternative of leaving it idle.
 3. **Given** a user who chooses an option, **When** they proceed to review it, **Then** the review
@@ -164,7 +172,7 @@ an estimate.
 ### Functional Requirements
 
 - **FR-001**: The strategies surface MUST present every strategy that is permitted and available on
-  the current network, not a subset silently reduced by a resolution failure.
+  the current network, and MUST state what distinguishes them.
 - **FR-002**: Each presented strategy MUST pass the same deterministic safety evaluation as any
   other, and MUST be actionable only when that evaluation approves it.
 - **FR-003**: Each strategy MUST state what it costs the user and who manages the position, so the

@@ -5,19 +5,23 @@
 
 ## Summary
 
-Three defects sit under this feature, and only the first is what it looks like.
+> **CORRECTION (recorded, not quietly edited).** The first draft of this plan led with
+> "`/strategies` shows one card because `_build_chain_context` resolves only the vault". **That was
+> wrong.** `resolve_target_ref` falls back to the static address book, which carries `aavePool` on
+> Base Sepolia, so `AAVE_SUPPLY` has always resolved. The live API returns both strategies,
+> approved. The error came from a truncated (`head -60`) read of the API response combined with
+> reading one resolution path and missing the fallback. The `_build_chain_context` change written
+> against that premise has been REVERTED — overriding a book address from env would let the two
+> diverge silently, and the book is what the on-chain PolicyModule mirrors.
 
-1. **`/strategies` shows one card** because `api/recommendations._build_chain_context` populates
-   `resolved_targets` with the vault alone. `build_action` then returns `None` for `AAVE_SUPPLY` —
-   its `aave_v3_pool` ref cannot resolve — and `_build_yield_candidates` drops it without a trace.
-   One line of resolution restores the second card; everything else on the page becomes honest only
-   after that.
+Two defects sit under this feature, plus a screen full of constants.
 
-2. **The displayed risk and fit are constants** in `lib/agent/recView.ts` (`risk: 1`, a hardcoded
+1. **The displayed risk and fit are constants** in `lib/agent/recView.ts` (`risk: 1`, a hardcoded
    `fit` string) and in the chat card (`<RiskChip tier={1} />`). Neither reads the strategy or the
-   mandate.
+   mandate, so the page's whole promise — *ranked against your plan* — is delivered by a sentence
+   that never reads the plan.
 
-3. **The mandate's one real power is unreachable.** `build_action` stamps
+2. **The mandate's one real power is unreachable.** `build_action` stamps
    `risk_class=risk_profile` — the *user's own* mandate profile — onto every candidate, and
    `evaluate.py` step 5 then compares `action.risk_class > mandate.max_risk_class`. Both sides come
    from the same value, so the comparison is `X > X` and **can never reject**. The mandate check has
@@ -52,7 +56,6 @@ every new read fails open with a once-per-process warning
 
 | Area | Files |
 |---|---|
-| Second strategy resolves | `services/agent/src/sparkpoint_agent/api/recommendations.py` (`_build_chain_context` resolves `aave_v3_pool` from `config.aave_pool_address`) |
 | Per-strategy risk class | `services/agent/src/sparkpoint_agent/agents/recommender.py` (`build_action` takes the strategy's own class; `_YIELD_STRATEGIES` carries it) |
 | Strategy metadata on the wire | `services/agent/src/sparkpoint_agent/api/recommendations.py` + `coordinator/chat_blocks.py` (`riskTier`, `feeStance`, `managedBy`) |
 | Rationale guard | `services/agent/src/sparkpoint_agent/agents/recommender.py` (`_AGGRESSIVE_RE` — `leverag(e\|ing\|ed)`) |

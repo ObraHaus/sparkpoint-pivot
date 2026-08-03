@@ -415,10 +415,15 @@ def test_genuine_internal_error_still_500(monkeypatch: pytest.MonkeyPatch) -> No
     app.dependency_overrides.clear()
 
 
-# ── 030/R1 · the second strategy finally resolves ─────────────────────────────
+# ── 030 · both strategies build, and the resolution path is the address book ──
 
 from sparkpoint_agent.api.security import AccountContext  # noqa: E402
-from sparkpoint_agent.policy import CapHeadroom  # noqa: E402
+from sparkpoint_agent.policy import (  # noqa: E402
+    ActionType,
+    Asset,
+    CapHeadroom,
+    RiskProfile,
+)
 
 _USER_030 = "0x32Ed4400C5BBB394712c482F1207886d8C22e8b5"
 _BIG_CAPS = CapHeadroom(per_user=10**15, total=10**15, vault=10**15)
@@ -428,41 +433,57 @@ def _account(chain_id: int = 84532) -> AccountContext:
     return AccountContext(account=_USER_030, owner=_USER_030, chain_id=chain_id)
 
 
-def test_both_strategies_resolve_when_the_pool_is_configured() -> None:
-    """/strategies has shown exactly one card for its whole life.
+def test_both_yield_strategies_build_on_base_sepolia() -> None:
+    """`/strategies` is a two-option comparison, and both options must actually build.
 
-    `AAVE_SUPPLY` was on the allowlist and in the candidate set, but `_build_chain_context` only
-    ever put the vault into `resolved_targets`, so `build_action` returned None for it on every
-    request and the candidate was dropped without a trace.
+    The vault comes from `resolved_targets` (a deploy-time address the static book cannot know);
+    the Aave pool comes from the ADDRESS BOOK, inside `resolve_target_ref`. Pinned here because
+    the two resolve by different routes and only one of them is visible in this module.
     """
-    from sparkpoint_agent.api.recommendations import _AAVE_POOL_TARGET_REF, _build_chain_context
+    from sparkpoint_agent.agents.recommender import _YIELD_STRATEGIES, build_action
+    from sparkpoint_agent.api.recommendations import _build_chain_context
 
     config = AgentConfig(
         chain_id=84532,
         rpc_url=None,
         vault_address="0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
         database_url=None,
-        aave_pool_address="0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27",
     )
-    chain = _build_chain_context(
-        _account(), config, _BIG_CAPS, 1000, False
-    )
-    assert _AAVE_POOL_TARGET_REF in chain.resolved_targets
-    assert "sparkpoint_vault" in chain.resolved_targets
+    chain = _build_chain_context(_account(), config, _BIG_CAPS, 1000, False)
+    # Only the vault is overridden — everything else resolves from the book.
+    assert list(chain.resolved_targets) == ["sparkpoint_vault"]
+
+    built = [
+        action_type
+        for action_type, asset, risk_class in _YIELD_STRATEGIES
+        if build_action(
+            chain_id=84532,
+            action_type=action_type,
+            asset=asset,
+            amount=100_000_000,
+            user_account=_USER_030,
+            resolved_targets=chain.resolved_targets,
+            risk_profile=RiskProfile.GROWTH,
+            risk_class=risk_class,
+        )
+        is not None
+    ]
+    assert ActionType.VAULT_DEPOSIT in built
+    assert ActionType.AAVE_SUPPLY in built, "the Aave pool resolves from the address book"
 
 
-def test_a_chain_without_an_aave_pool_still_resolves_only_the_vault() -> None:
-    """Robinhood 46630 has no Aave deployment at all — one strategy, and no error."""
-    from sparkpoint_agent.api.recommendations import _AAVE_POOL_TARGET_REF, _build_chain_context
+def test_a_chain_without_an_aave_deployment_drops_that_candidate_silently() -> None:
+    """Robinhood 46630 has no Aave at all — one strategy, fail-closed, no error."""
+    from sparkpoint_agent.agents.recommender import build_action
 
-    config = AgentConfig(
+    action = build_action(
         chain_id=46630,
-        rpc_url=None,
-        vault_address="0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
-        database_url=None,
+        action_type=ActionType.AAVE_SUPPLY,
+        asset=Asset.USDC,
+        amount=100_000_000,
+        user_account=_USER_030,
+        resolved_targets={},
+        risk_profile=RiskProfile.CONSERVATIVE,
+        risk_class=RiskProfile.CONSERVATIVE,
     )
-    chain = _build_chain_context(
-        _account(46630), config, _BIG_CAPS, 1000, False
-    )
-    assert _AAVE_POOL_TARGET_REF not in chain.resolved_targets
-    assert "sparkpoint_vault" in chain.resolved_targets
+    assert action is None
