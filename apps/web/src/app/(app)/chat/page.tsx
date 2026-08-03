@@ -24,6 +24,7 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
 import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
+import { ERROR_FOLLOW_UPS, STARTER_CHIPS, followUps } from "@/lib/chat/followups";
 import { ExecutionDrawer } from "@/components/execution/ExecutionDrawer";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 import {
@@ -77,16 +78,29 @@ type Turn =
       failedMessage?: string;
     };
 
-const EMPTY_CHIPS = [
-  "What's in my wallet?",
-  "Find steady, lower-risk yield",
-  "Put my idle USDC to work",
-  "Swap ETH → USDC",
-  "Bridge to Sui",
-  "Is the Aave vault safe?",
-  "Explain vault shares",
-  "How do you keep my funds safe?",
-];
+// 037 — the empty-thread chips live with the follow-up logic now, so the two sets are chosen
+// together rather than drifting apart in separate files.
+const EMPTY_CHIPS: string[] = [...STARTER_CHIPS];
+
+/**
+ * 037 — the signals a finished turn offers, read off its own blocks.
+ *
+ * Inert cards are skipped: a block that failed validation tells us nothing about what was
+ * discussed, and guessing from one would be guessing from noise.
+ */
+function followUpsFor(userMessage: string, cards: ChatCard[]): string[] {
+  const blockTypes: string[] = [];
+  const tipTopics: string[] = [];
+  const stepLabels: string[] = [];
+  for (const card of cards) {
+    if (card.status === "inert") continue;
+    const block = card.block;
+    blockTypes.push(block.type);
+    if (block.type === "tip") tipTopics.push(block.topic);
+    if (block.type === "tool_step") stepLabels.push(block.label);
+  }
+  return followUps({ userMessage, blockTypes, tipTopics, stepLabels });
+}
 
 let UID = 0;
 const nextId = () => ++UID;
@@ -437,8 +451,19 @@ export default function ChatPage() {
           patch((x) => ({ ...x, cards: [...x.cards, card] }));
         }
         patch((x) => ({ ...x, streaming: false }));
+        // 037 — suggest what to do NEXT, from what actually just happened. The scripted demo paths
+        // had done this all along; a real turn left the starter chips up, so after being told
+        // what was in your wallet the thread still offered "What's in my wallet?".
+        setTurns((all) => {
+          const turn = all.find((x) => x.id === turnId);
+          if (turn?.kind === "live") setChips(followUpsFor(text, turn.cards));
+          return all;
+        });
         void refreshHistory(); // a live turn may have created/renamed a persisted thread
       } catch (e) {
+        // A failed turn had no conversation, so it gets no follow-ups about one: "What's the risk?"
+        // under a failure reads as though nothing went wrong.
+        setChips([...ERROR_FOLLOW_UPS]);
         const message =
           e instanceof AgentApiError ? e.message : "The assistant is unavailable right now. Nothing moved.";
         // 029: keep the CODE and the original message. The renderer replaces internal envelopes

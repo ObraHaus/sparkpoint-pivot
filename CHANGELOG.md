@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (037 — the chat suggests what to do next)
+- **The chips under the composer now change with the conversation.** They were fixed: after being told what was in your wallet, the thread still offered "What's in my wallet?" — which is worse than offering nothing, because it says the assistant was not listening. The scripted demo paths had done this properly all along; a real turn never updated them, so the feature existed and only the demo could see it.
+- Suggestions are **derived from what actually happened in the turn** — the concept just explained, the stage the agent was seen running, the kind of answer it gave — ordered most-specific first.
+- **Never the question that was just asked**, including the same question in different words: "explain the performance fee" and "what is a performance fee" are one question, and offering one after the other is the exact failure this replaces.
+- **The exit is always one tap away and never the headline.** "How do I withdraw everything?" is appended last, in the space left over, so the product's central promise is never buried and never pushed.
+- **A failed turn gets no follow-ups about the conversation**, because it did not have one. "What's the risk?" under a failure reads as though nothing went wrong.
+- Derived rather than model-generated, deliberately: asking a model would cost a call, add latency at the exact moment the answer lands, and — the real problem — cheerfully suggest things this product cannot do. A suggestion that leads to "I can't help with that" is worse than silence, because the user trusted it. Every suggestion is a question the assistant demonstrably answers, most of them the deterministic routes 029 and 031 built so those answers could not drift.
+
 ### Changed (036 — the chat says what it is doing while it does it)
 - **The waiting state was a pulsing dot and the word "Working…"**, which answers none of the three questions somebody has while they wait: is it alive, what is it doing, how long has this been going. It is now the brand mark animating, the step the agent says it is on, and a clock — plus a line naming the wait once it passes ten seconds, because silence past that reads as stuck rather than slow.
 - The step is **not invented**: it is the agent's own `tool_step` label, the same six strings that already form the trace above a finished answer. The waiting row and the trace share one projection, so they cannot disagree about what a step is.
