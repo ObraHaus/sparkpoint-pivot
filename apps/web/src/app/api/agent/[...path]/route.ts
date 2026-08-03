@@ -160,6 +160,24 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
         connection: "keep-alive",
         // Defeat proxy/response buffering so events flush as they arrive.
         "x-accel-buffering": "no",
+        // 036 — AND declare the body already encoded, which is what actually stops it.
+        //
+        // `no-transform` and `x-accel-buffering` were both already set, and the stream was STILL
+        // being buffered end-to-end for every browser. Measured against the live deployment on the
+        // same question:
+        //
+        //     plain request                       tool_step 2.7s · 10.1s · 17.8s · answer 17.8s
+        //     Accept-Encoding: gzip, deflate, br  EVERYTHING at 21.2s
+        //
+        // A browser always sends that header, so no user had ever seen this stream arrive
+        // incrementally: the compressor held every event until the response closed. It was
+        // invisible because the old waiting state was the single static word "Working…", which
+        // looks identical whether anything is streaming or not — the progress trace only appeared
+        // once the turn was already over, which is precisely when it is of no use.
+        //
+        // `identity` says the body is already in its final encoding, so nothing downstream may
+        // re-encode (and therefore buffer) it. Compression stays on for every other response.
+        "content-encoding": "identity",
       },
     });
   }
