@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (036 — the chat says what it is doing while it does it)
+- **The waiting state was a pulsing dot and the word "Working…"**, which answers none of the three questions somebody has while they wait: is it alive, what is it doing, how long has this been going. It is now the brand mark animating, the step the agent says it is on, and a clock — plus a line naming the wait once it passes ten seconds, because silence past that reads as stuck rather than slow.
+- The step is **not invented**: it is the agent's own `tool_step` label, the same six strings that already form the trace above a finished answer. The waiting row and the trace share one projection, so they cannot disagree about what a step is.
+- A **finished** step is deliberately never named. Between stages the honest answer is "Thinking…", because a label with an ellipsis after it is a claim about the present tense.
+- The live region announces **the step only**. A clock inside `aria-live` makes a screen reader read a number once a second for the length of the turn — technically accessible, practically unusable. The clock is `aria-hidden`, and the elapsed time is offered once, in words, when the wait gets long. The mark honours `prefers-reduced-motion`.
+- **The running stage is no longer drawn twice.** It appeared in the trace *and* in the waiting row directly beneath it, so the screen read "Checking the knowledge base…" / "Checking the knowledge base… 11s" — a stutter rather than progress. The trace now keeps the stages that are done; the live one belongs to the waiting row alone. Once the turn ends this no longer applies: a stage still marked running at that point never completed, and hiding it would erase the only evidence of where the turn stopped.
+
+### Fixed (036 — the chat stream was buffered end-to-end for every browser)
+- Found while building the above: the step label never changed, because the steps never arrived until the turn was over. Measured against the live deployment, same question, one variable:
+  ```
+  plain request                       tool_step 2.7s · 10.1s · 17.8s · answer 17.8s
+  Accept-Encoding: gzip, deflate, br  EVERYTHING at 21.2s
+  ```
+- A browser always sends that header, so **no user had ever seen this stream arrive incrementally** — a twenty-second turn showed nothing at all until the end. The proxy route already set `cache-control: no-transform` **and** `x-accel-buffering: no`, and neither stopped it. `content-encoding: identity` does: it declares the body already in its final encoding, so nothing downstream may re-encode — and therefore re-buffer — it. Compression stays on for every other response.
+- It stayed hidden because the old waiting state was one static word, which looks identical whether anything is streaming or not. The trace did render, but only once the turn was already over, which is exactly when it is of no use.
+
 ### Fixed (035 — the System console reported an outage that was not happening)
 - **"Base RPC — Down" was false, and had been since 2026-07-30.** Feature 023 renamed the agent's readiness check `base_rpc` to `chain_rpc` (so the checks describe the chain a deployment actually serves) and added `chain_identity`. The admin System panel kept reading `base_rpc`. The field was optional on the panel's side, so `undefined` was legal TypeScript — and `undefined ? up : down` renders **"Down"**. Nothing errored and nothing was logged; the one screen an operator checks during an incident was confidently wrong for five weeks, and it was noticed because a person looked at it and asked.
 - Verified healthy at the time of the fix: `eth_chainId` → 84532, `eth_blockNumber` → 44,998,642, and the agent reading block 44,998,643 one second later. `/readyz` reports every check true.

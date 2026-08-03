@@ -103,6 +103,14 @@ export function planTranscript(
       }
     }
     if (superseded) continue;
+    // 036 — while the turn is live, the RUNNING stage is already the waiting row: the animated
+    // mark, that same label, and the clock. Rendering it here too printed the step twice, one line
+    // above the other, which reads as a stutter rather than as progress. The trace keeps the
+    // stages that are DONE; the live one belongs to the waiting row alone.
+    //
+    // Once the turn ends this no longer applies — a stage still marked `running` at that point
+    // never completed, and hiding it would erase the only evidence of where the turn stopped.
+    if (streaming && item.status === "running") continue;
     group = group ?? [];
     group.push(i);
   }

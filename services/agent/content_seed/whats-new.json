@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-shows-its-working",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky now shows you what it's doing while it thinks",
+      "body": "While Sparky works on an answer you'll now see the step it's actually on — reading your portfolio, checking its knowledge base, and so on — with a timer, instead of the word \"Working…\" and nothing else.\n\nThere's a bigger fix underneath it. Sparky's replies were supposed to arrive piece by piece, but something between the assistant and your browser was holding the whole reply back and delivering it in one go at the end. So a twenty-second answer looked like twenty seconds of nothing. That's fixed: the steps now appear as they happen.\n\nWe only found it because the old waiting message looked exactly the same whether anything was arriving or not. A placeholder that can't be wrong hides whether the thing behind it works.",
+      "cta_label": "Ask Sparky something",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T15:01:35Z",
+      "active": true
+    },
+    {
       "slug": "the-system-page-was-crying-wolf",
       "type": "changelog",
       "tag": "Fixed",

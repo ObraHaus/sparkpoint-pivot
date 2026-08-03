@@ -106,3 +106,44 @@ test("the summary line is singular for one step", () => {
   assert.equal(stepsSummary(1), "Worked through 1 step");
   assert.equal(stepsSummary(3), "Worked through 3 steps");
 });
+
+// ── 036: the live stage belongs to the waiting row, not the trace ────────────
+
+test("036 — the RUNNING stage is not also drawn in the trace while streaming", () => {
+  // It was rendered twice: once here and once in the waiting row directly beneath, so the screen
+  // read "Checking the knowledge base…" / "Checking the knowledge base… 11s" — a stutter, not
+  // progress.
+  const plan = planTranscript(
+    [
+      { type: "tool_step", label: "Understanding your request", status: "done" },
+      { type: "tool_step", label: "Checking the knowledge base", status: "running" },
+    ],
+    { streaming: true },
+  );
+  const steps = plan.find((p) => p.kind === "steps") as { indices: readonly number[] };
+  assert.deepEqual([...steps.indices], [0], "only the finished stage stays in the trace");
+});
+
+test("036 — once the turn ends, a stage left running IS shown", () => {
+  // A stage still marked running when the stream stops never completed. Hiding it would erase the
+  // only evidence of where the turn actually stopped.
+  const plan = planTranscript(
+    [{ type: "tool_step", label: "Checking the knowledge base", status: "running" }],
+    { streaming: false },
+  );
+  const steps = plan.find((p) => p.kind === "steps") as { indices: readonly number[] };
+  assert.deepEqual([...steps.indices], [0]);
+});
+
+test("036 — a finished turn's trace is unchanged", () => {
+  const plan = planTranscript(
+    [
+      { type: "tool_step", label: "Understanding your request", status: "done" },
+      { type: "tool_step", label: "Explaining that", status: "done" },
+    ],
+    { streaming: false },
+  );
+  const steps = plan.find((p) => p.kind === "steps") as { indices: readonly number[]; collapsed: boolean };
+  assert.deepEqual([...steps.indices], [0, 1]);
+  assert.equal(steps.collapsed, true);
+});
