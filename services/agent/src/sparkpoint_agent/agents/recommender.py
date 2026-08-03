@@ -527,21 +527,30 @@ class Recommender:
         return rationale
 
     def _template_rationale(self, action_type: ActionType, ctx: ProposalContext) -> str:
-        """A safe, non-fabricated fallback rationale built only from injected data."""
+        """A safe, non-fabricated fallback rationale built only from injected data.
+
+        030 — the "capital-preservation" clause used to be UNCONDITIONAL, so a growth mandate got
+        "Matches your growth, capital-preservation mandate" — a contradiction inside a single
+        phrase, live on alpha. Exactly the defect class 029 removed from the plan summary and 030
+        removed from the settings copy: a fixed stance clause welded to a variable risk profile.
+        The strategy is genuinely conservative whatever the user's mandate says, so the sentence
+        now describes the STRATEGY's posture and states how it sits against the mandate, rather
+        than attributing a stance to a mandate that may not hold it.
+        """
         profile = ctx.risk_profile.value
+        # How this (conservative) strategy sits against the user's stated risk level.
+        fit = (
+            "Within your conservative mandate"
+            if ctx.risk_profile is RiskProfile.CONSERVATIVE
+            else f"More conservative than your {profile} mandate allows"
+        )
         if ctx.gross_apy_bps is not None:
             gross = f"{ctx.gross_apy_bps / 100:.2f}% gross APY"
             if action_type is ActionType.VAULT_DEPOSIT and ctx.projected_apy_bps is not None:
                 net = f"~{ctx.projected_apy_bps / 100:.2f}% net of the profit-only fee"
-                return (
-                    f"Matches your {profile}, capital-preservation mandate; {gross}, {net} "
-                    "(0% on principal)."
-                )
-            return f"Matches your {profile} mandate; USDC yield at {gross}."
-        return (
-            f"Matches your {profile} mandate; USDC yield via the 0-management, profit-only "
-            "vault."
-        )
+                return f"{fit}; {gross}, {net} (0% on principal)."
+            return f"{fit}; USDC yield at {gross}."
+        return f"{fit}; USDC yield via the 0-management, profit-only vault."
 
     def _rank_prompt(
         self, built: list[tuple[ActionType, Action]], ctx: ProposalContext

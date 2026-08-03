@@ -175,6 +175,29 @@ def test_the_rationale_that_shipped_is_replaced_not_displayed() -> None:
     assert "conservative" in out.lower(), "the replacement states the card's ACTUAL risk stance"
 
 
+def test_the_replacement_does_not_contradict_itself_for_a_growth_mandate() -> None:
+    """Observed live on alpha: "Matches your growth, capital-preservation mandate."
+
+    A fixed stance clause welded to a variable risk profile — the same defect 029 removed from the
+    plan summary. The template describes the STRATEGY's posture and how it sits against the
+    mandate, rather than attributing a stance to a mandate that may not hold it.
+    """
+    from dataclasses import replace as dc_replace
+
+    rec = Recommender(llm=_StructuredLlm({}))
+    growth_ctx = dc_replace(_ctx(), risk_profile=RiskProfile.GROWTH)
+    out = rec._consistent_rationale(LIVE_CONTRADICTION, ActionType.VAULT_DEPOSIT, growth_ctx)
+    assert "growth, capital-preservation" not in out
+    assert "more conservative than your growth mandate allows" in out.lower()
+
+
+def test_a_conservative_mandate_reads_as_within_it() -> None:
+    # `_ctx()` in this file is a CONSERVATIVE mandate, so this is the default path.
+    out = _rationale_for(LIVE_CONTRADICTION)
+    assert "within your conservative mandate" in out.lower()
+    assert "more conservative than" not in out.lower()
+
+
 def test_other_risk_contradictions_are_caught_too() -> None:
     for text in (
         "A higher-risk play for bigger upside.",
