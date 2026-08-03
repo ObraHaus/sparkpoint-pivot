@@ -47,3 +47,21 @@ test("the result is ALWAYS a finite positive integer", () => {
     assert.ok(!String(out).includes("NaN"));
   }
 });
+
+test("the default is a chain SparkPoint actually operates on, not a hardcoded id", async () => {
+  // Regression: the default was `8453` (Base mainnet), where CHAIN_META says offersVault:false
+  // and switchable:false — audit-gated. While the NaN bug was live the fallback never fired, so
+  // nobody noticed; the moment the guard worked, every read asserted a chain with no deployment
+  // and the agent 503'd all of them. The default must therefore come from the chain metadata.
+  const { CHAIN_META } = await import("@sparkpoint/shared/chains");
+  const meta = CHAIN_META[DEFAULT_CHAIN_ID];
+  assert.ok(meta, `DEFAULT_CHAIN_ID ${DEFAULT_CHAIN_ID} must be a known chain`);
+  assert.equal(meta.offersVault, true, "a default read chain must have a vault deployed");
+  assert.equal(meta.switchable, true, "…and be one a user can actually be on");
+});
+
+test("a chain the user is genuinely on is passed through, even a gated one", () => {
+  // Honesty cuts both ways: if the wallet really is on Base mainnet, say so and let the agent
+  // and the network gate respond. Only the FALLBACK was ever wrong.
+  assert.equal(resolveChainId(8453), 8453);
+});

@@ -202,8 +202,16 @@ function buildHeaders(
   // the identity builder already guards this, but a future identity source must not be able to
   // put a non-finite value on the wire again. `String(NaN)` === "NaN", which the agent refuses
   // and which the user saw rendered as an assistant message on 7/7 requests.
+  //
+  // A malformed value is DROPPED rather than replaced with a guessed chain. Guessing here is what
+  // turned the NaN bug into a wave of 503s: this module cannot know which chain the deployment
+  // operates on, and asserting the wrong one produces reads against a chain with no deployment.
+  // Omitting the header lets the agent answer with its own §1.6 error, which the chat now renders
+  // as an honest, retryable failure — a truthful "we don't know" beats a confident wrong answer.
   const chainId = Number(identity.chainId);
-  headers.set("X-Chain-Id", String(Number.isFinite(chainId) && chainId > 0 ? chainId : 8453));
+  if (Number.isFinite(chainId) && Number.isInteger(chainId) && chainId > 0) {
+    headers.set("X-Chain-Id", String(chainId));
+  }
   headers.set("Accept", opts.accept === "sse" ? "text/event-stream" : "application/json");
   if (opts.hasBody) headers.set("Content-Type", "application/json");
   if (opts.idempotencyKey) headers.set("Idempotency-Key", opts.idempotencyKey);

@@ -53,7 +53,7 @@
 - [x] T026 Living docs — `CHANGELOG.md` + a client-facing `whats-new.json` entry (canonical tag, per the 132 gate).
 - [x] T027 Full gates: agent pytest/ruff/strict-mypy + web tests/typecheck:test/tsc/eslint.
 - [ ] T028 Re-run the Aug-3 battery + knowledge quiz per quickstart §2 with the harness header-repair DISABLED; record results against SC-001…SC-008.
-- [ ] T029 PR to develop with the before/after table.
+- [x] T029 PR to develop with the before/after table.
 
 ## Dependencies
 

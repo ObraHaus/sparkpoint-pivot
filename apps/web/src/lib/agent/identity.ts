@@ -15,10 +15,22 @@
  * that way so web unit tests can load it), and there is no React here — `node --test` runs this.
  */
 
-import { isSupportedChain } from "@sparkpoint/shared/chains";
+import { SWITCHABLE_CHAINS, isSupportedChain } from "@sparkpoint/shared/chains";
 
-/** Where reads land when the wallet hasn't told us a usable chain yet. */
-export const DEFAULT_CHAIN_ID = 8453;
+/**
+ * Where reads land when the wallet hasn't told us a usable chain yet.
+ *
+ * DERIVED, not hardcoded. This was `8453` (Base mainnet) — and Base mainnet is exactly the chain
+ * SparkPoint does NOT operate on today: `CHAIN_META[8453]` is `offersVault: false` and
+ * `switchable: false`, pending the external audit. While the `NaN` bug was live the fallback never
+ * actually fired (`??` skipped it), so the wrong value was invisible; the moment the guard started
+ * working, every read asserted a chain with no deployment and the agent 503'd the lot. A default
+ * has to be a chain the product is actually on, so it is read from the chain metadata: the first
+ * chain the app both offers a vault on and lets a user switch to (Base Sepolia today). When Base
+ * mainnet opens, it becomes switchable and this follows automatically.
+ */
+export const DEFAULT_CHAIN_ID: number =
+  SWITCHABLE_CHAINS.find((c) => c.offersVault)?.chainId ?? SWITCHABLE_CHAINS[0]?.chainId ?? 84532;
 
 /**
  * The chain id to send, given whatever the wallet layer currently reports.
