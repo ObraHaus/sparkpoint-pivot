@@ -1,0 +1,42 @@
+-- 0034_knowledge_source_kinds.sql — feature 031: two new `memory_source` values so the assistant
+-- can read what the team publishes, and can keep its own research separate from documentation a
+-- person wrote. Additive, forward-only. Apply with PGCLIENTENCODING=UTF8.
+--
+-- WHY. The assistant reads exactly one corpus (`knowledge`). Two other bodies of writing the team
+-- publishes are invisible to it:
+--
+--   * the in-app changelog (`content_entries`) — which is why, asked "what shipped this week?", it
+--     can only point at a page it cannot read;
+--   * the tip databank (`tip` chunks) — already embedded, but deliberately excluded from advisory
+--     retrieval since 0012.
+--
+-- Indexing them is the point of the client's decision: every future release then teaches the
+-- assistant automatically, with no separate step for anyone to forget.
+--
+-- `self_authored` keeps the assistant's own daily research in its own bucket. That separation is
+-- what makes it (a) revocable in one statement, (b) excludable from the input to the next
+-- generation run — a loop that reads its own output drifts — and (c) LABELLABLE in a citation, so a
+-- reader can tell "SparkPoint research note" from "Aave documentation". Without a distinct kind,
+-- an assistant-written note would be indistinguishable from a document a person wrote, which is
+-- how a citation stops meaning anything.
+--
+-- ⚠️ PERSONA IS DELIBERATELY ABSENT. It has no `memory_source` value, no embedding and no chunks
+-- (see 0013): it is trusted SYSTEM instruction text, not retrievable content. The admin console
+-- gains a persona SECTION in this feature; the corpus does not. Making it retrievable would let it
+-- be quoted back and cited, which is a trust-boundary break, not a feature.
+--
+-- ⚠️ POSTGRES ENUM CONSTRAINT: `ALTER TYPE ... ADD VALUE` cannot run inside a transaction block in
+-- older servers and the new value is not usable until the transaction commits. Each ADD VALUE is
+-- therefore its own statement, matching 0006 and 0012, and no code may write these kinds until
+-- this migration is applied — the writers check for the value and degrade (warned once) if absent.
+--
+-- ORDERING: order-insensitive both directions. Old code never names these values. New code that
+-- meets an old schema catches `InvalidTextRepresentationError` on the cast, warns once, and skips
+-- that source — retrieval simply stays as it is today.
+--
+-- ROLLBACK: Postgres cannot DROP an enum value. Rolling back means ceasing to write these kinds
+-- and deleting their rows: DELETE FROM memory_chunks WHERE source_kind IN ('changelog',
+-- 'self_authored'); the values remain in the type, unused and harmless.
+
+ALTER TYPE memory_source ADD VALUE IF NOT EXISTS 'changelog';
+ALTER TYPE memory_source ADD VALUE IF NOT EXISTS 'self_authored';

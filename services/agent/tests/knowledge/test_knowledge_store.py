@@ -90,8 +90,12 @@ async def test_search_binds_cosine_topk_and_maps_hits() -> None:
     assert "embedding <=> $1::vector" in query
     assert "1 - (embedding <=> $1::vector) AS score" in query
     assert args[0] == "[0.1,0.2,0.3]"
-    assert args[1] == "knowledge"
+    # 031 — a SET of kinds, not one. Retrieval used to be scoped to `knowledge` alone, which is why
+    # published updates and tips were invisible to every answer.
+    assert args[1] == ["knowledge", "changelog", "tip", "self_authored"]
+    assert "persona" not in args[1], "persona is SYSTEM instruction text, never retrievable"
     assert args[2] == 5
+    assert "user_id IS NULL" in query, "operational memory can never reach an advisory citation"
     # JSONB metadata parsed whether asyncpg returned text or a dict.
     assert hits[0].metadata == {"source": "a"}
     assert hits[1].metadata == {"source": "b"}
@@ -103,3 +107,37 @@ async def test_search_zero_k_short_circuits() -> None:
     store = PgChunkStore(fake)  # type: ignore[arg-type]
     assert await store.search([0.1], 0) == []
     assert fake.fetched == []
+
+
+# ── 031 · what an advisory answer may read ────────────────────────────────────
+
+
+async def test_search_carries_the_source_kind_through_to_the_hit() -> None:
+    """A citation must be able to say WHAT it is citing.
+
+    Without this a note the assistant wrote about itself is indistinguishable from documentation a
+    person wrote — which is how a citation stops meaning anything.
+    """
+    rows = [
+        {"content": "c", "metadata": {}, "score": 0.9, "source_kind": "self_authored"},
+        {"content": "d", "metadata": {}, "score": 0.8, "source_kind": "changelog"},
+    ]
+    store = PgChunkStore(_FakeExecutor(fetch_rows=rows))  # type: ignore[arg-type]
+    hits = await store.search([0.1], 5)
+    assert [h.source_kind for h in hits] == ["self_authored", "changelog"]
+
+
+async def test_a_hit_without_a_kind_defaults_to_knowledge() -> None:
+    """Pre-031 rows (and any caller constructing a hit directly) stay valid."""
+    rows = [{"content": "c", "metadata": {}, "score": 0.9}]
+    store = PgChunkStore(_FakeExecutor(fetch_rows=rows))  # type: ignore[arg-type]
+    assert (await store.search([0.1], 5))[0].source_kind == "knowledge"
+
+
+def test_persona_is_not_a_retrievable_kind() -> None:
+    """Pinned deliberately. The persona is trusted SYSTEM instruction text with no chunks at all;
+    making it retrievable would let it be quoted back to a user and cited as a source."""
+    from sparkpoint_agent.knowledge.store import RETRIEVABLE_SOURCE_KINDS
+
+    assert "persona" not in RETRIEVABLE_SOURCE_KINDS
+    assert set(RETRIEVABLE_SOURCE_KINDS) == {"knowledge", "changelog", "tip", "self_authored"}
