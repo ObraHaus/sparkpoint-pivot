@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-does-its-own-research",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now does its own research",
+      "body": "Sparky can now look up what's happening in the market each day and write down what it learns, so its answers about yields and how our vault compares get better over time.\n\nIt keeps a small set of notes and rewrites them, rather than adding a new one every day. That sounds like a detail and isn't: an assistant that accumulates notes forever gets *worse* at answering, because every new note competes with the documentation that already answers you correctly. Keeping the set small is what stops that.\n\nEvery figure says which network it came from, and you'll see why that matters immediately: the alpha runs on a test network where rates are a fraction of the live market. Sparky states both and never puts them side by side as if they were choices — one is a demonstration, the other is what the same strategy earns where the money is real.\n\nAnything Sparky writes itself is labelled as its own research and not yet reviewed by a person, the same way it already labels our documentation and these release notes. It's reference material: it never changes what you're offered, what you can sign, or your ability to withdraw.",
+      "cta_label": "Ask Sparky about yields",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T08:09:34Z",
+      "active": true
+    },
+    {
       "slug": "sparky-learns-every-update-on-its-own",
       "type": "changelog",
       "tag": "Fixed",

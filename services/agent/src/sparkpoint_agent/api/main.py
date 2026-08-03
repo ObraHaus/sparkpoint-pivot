@@ -41,6 +41,7 @@ from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
 from .admin_persona import router as admin_persona_router
 from .admin_revenue import router as admin_revenue_router
+from .admin_self_authoring import router as admin_self_authoring_router
 from .admin_uptime import router as admin_uptime_router
 from .admin_usage import router as admin_usage_router
 from .admin_vaults import router as admin_vaults_router
@@ -276,6 +277,25 @@ async def _seed_changelog(db: object) -> None:
         await seed_changelog(ContentEntryStore(db))  # type: ignore[arg-type]
     except Exception:
         logger.warning("whats_new_seed_skipped (table missing or DB error)")
+
+
+async def _self_authoring_loop() -> None:
+    """034 — the daily self-authoring schedule, wrapped so nothing can escape into boot.
+
+    The loop itself is fail-open; this wrapper exists for the same reason 033's does: a background
+    writer must never be able to prevent the service from starting or take it down later.
+    """
+    try:
+        from .self_authoring_runner import daily_loop
+
+        await daily_loop()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "self_authoring_loop_stopped (%s: %s) — everything else is unaffected",
+            type(exc).__name__, exc,
+        )
 
 
 async def _index_changelog(db: object) -> None:
@@ -552,6 +572,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     notif_task: asyncio.Task[None] | None = None
     apy_task: asyncio.Task[None] | None = None
     changelog_task: asyncio.Task[None] | None = None
+    selfauthor_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
     # A deployment-shape check, independent of every dependency — so it must run BEFORE (and
     # regardless of) the DB connect, which is allowed to fail (023, FR-023-019).
@@ -573,6 +594,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # rather than only publishing a page. Background — embedding is a third-party call and boot
         # must never wait on one. Content only (N2).
         changelog_task = asyncio.create_task(_index_changelog(db))
+        # 034: Sparky's daily self-authoring. Background and lock-guarded — it calls a model and an
+        # embedding provider on every run, so without pg_try_advisory_lock every extra worker and
+        # every restart would run it again. Ships DISABLED; the first run happens because an admin
+        # chose it. Content only (N2), never on the withdraw path.
+        selfauthor_task = asyncio.create_task(_self_authoring_loop())
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
@@ -603,6 +629,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             apy_task.cancel()
         if changelog_task is not None:
             changelog_task.cancel()
+        if selfauthor_task is not None:
+            selfauthor_task.cancel()
         for task in swap_fee_tasks:
             task.cancel()
         if db is not None:
@@ -709,6 +737,10 @@ app.include_router(access_router)
 app.include_router(admin_llm_router)
 # §R2 admin Obsidian console (/admin/knowledge/*) — admin-gated corpus view/edit/reingest.
 app.include_router(admin_knowledge_router)
+# Feature 034 self-authoring console (/admin/self-authoring/*) — admin-gated control over what
+# Sparky may read, whether it publishes, and which unflattering findings have been released.
+# Reference material only: nothing it writes reaches the policy gate or the withdraw path (N2).
+app.include_router(admin_self_authoring_router)
 # Sparky persona console (/admin/persona*) — admin-gated view/edit/revert of Sparky's character.
 # Trusted SYSTEM content, isolated from the RAG corpus; never on the policy/action path (N2).
 app.include_router(admin_persona_router)
