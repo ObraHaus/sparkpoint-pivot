@@ -37,6 +37,31 @@ cd <scratch> && node knowledge-quiz.mjs               # 14 knowledge questions, 
 **Important**: run the battery with the harness's in-page header repair REMOVED (or assert its
 counter is 0) — the point of SC-001 is that the repair is no longer needed.
 
+**What the first verification run actually caught (Aug 3, post-deploy).** Recording it here because
+it is the argument for running the battery at all, rather than trusting a green suite:
+
+1. **The fix's own fallback was wrong.** `DEFAULT_CHAIN_ID` was the hardcoded `8453` (Base
+   mainnet) — a chain `CHAIN_META` marks `offersVault: false` / `switchable: false`, pending the
+   audit. While the `NaN` bug was live that fallback never executed (`??` skipped straight past
+   it), so the wrong constant was invisible and every unit test passed. The moment the guard
+   worked, every read asserted Base mainnet and the agent 503'd `/chat`, `/portfolio` and
+   `/notifications`. Proven rather than inferred: `X-Chain-Id: 8453` → 503 "The vault RPC is
+   unreachable"; `84532` → 200. **Generalises: repairing a guard ACTIVATES a fallback that was
+   previously dead code — audit the fallback value in the same change.**
+2. **The live-APY route could only ever decline.** The chat context provider never passed
+   `gross_bps`, so `market.gross_apy_bps` was permanently `None` and FR-006 always took its
+   honest-unavailable branch — while `/recommendations`, assembled from the same helpers, quoted
+   0.44% at the same moment.
+
+Neither was reachable from a unit test: the first needs a real deployment's chain to be wrong, the
+second needs two endpoints compared against each other on the same wallet.
+
+**Ops step the spec assumed away**: `knowledge_seed` is NOT ingested at boot (unlike
+`content_seed`). After deploying a corpus change, run `POST /admin/knowledge/reingest` or
+`python -m sparkpoint_agent.knowledge.ingest_cli`, or the assistant keeps answering from the old
+corpus with no error anywhere. 029 took it from 6 sources / 25 chunks to 9 / 44. Now in
+`DEPLOYMENT.md`.
+
 ## 3. Deploy notes (coordinator)
 
 - No migration. No new env.
