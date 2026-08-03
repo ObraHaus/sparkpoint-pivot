@@ -36,6 +36,28 @@ _FIRST_TICK_DELAY_S = 300.0
 
 SELF_AUTHORED_KIND = "self_authored"
 
+#: The gateway alias this job uses, so its model traffic is separable from users' chat.
+#:
+#: WHY ITS OWN ALIAS. Before this, the job ran on `sparkpoint-chat` — which points at two `:free`
+#: OpenRouter deployments shared with every user's chat. So a six-document run competed with real
+#: conversations for the same free pool and the same virtual-key rate limit, and there was no way to
+#: tell from the gateway which spend was whose. A dedicated alias separates the traffic, gives the
+#: job a model chosen for THIS task, and makes its usage legible in the gateway's Activity view.
+#:
+#: DELIBERATELY NO FALLBACK TO THE CHAT ALIASES. `sparkpoint-chat-premium` falls back to
+#: `sparkpoint-chat`, and copying that here would reintroduce exactly the coupling this removes: a
+#: self-authoring run failing over onto the users' pool. Letting it fail is better — a failed run
+#: writes nothing and leaves the published documents untouched, which is already the safe outcome.
+SELF_AUTHORING_ALIAS_ENV = "SELF_AUTHORING_MODEL_ALIAS"
+DEFAULT_SELF_AUTHORING_ALIAS = "sparkpoint-selfauthor"
+
+
+def self_authoring_alias() -> str:
+    """Which gateway alias the job asks for. Overridable so a rollback is an env change."""
+    import os
+
+    return (os.getenv(SELF_AUTHORING_ALIAS_ENV) or "").strip() or DEFAULT_SELF_AUTHORING_ALIAS
+
 
 def _chunk_store() -> Any:
     from ..knowledge import PgChunkStore
@@ -105,9 +127,27 @@ async def _search(question: str, k: int) -> list[Any]:
 
 
 def _llm() -> Any:
-    from ..llm import AsyncClaudeClient
+    """The model client for this job, bound to its OWN alias.
 
-    return AsyncClaudeClient.from_env()
+    ⚠️ `AsyncClaudeClient.from_env(model=...)` CANNOT be used here: on the gateway path it discards
+    the `model` argument entirely and uses `gateway_from_env()`'s alias (`LITELLM_MODEL`). Passing
+    an alias to `from_env` looks like it works and silently does nothing — so the gateway client is
+    constructed explicitly instead.
+
+    Off the gateway (local dev, or an Anthropic credential) there are no aliases, so the ordinary
+    resolution applies and this job shares whatever chat uses. That is correct: the separation being
+    bought here is a gateway concept.
+    """
+    from ..llm import AsyncClaudeClient
+    from ..llm.claude import gateway_from_env
+
+    gateway = gateway_from_env()
+    if gateway is None:
+        return AsyncClaudeClient.from_env()
+    base_url, api_key, _chat_alias = gateway
+    alias = self_authoring_alias()
+    logger.info("self_authoring_model alias=%s", alias)
+    return AsyncClaudeClient.for_gateway(base_url, api_key, model=alias)
 
 
 async def run_once(*, trigger: str = "schedule") -> RunResult:

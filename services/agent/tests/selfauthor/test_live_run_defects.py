@@ -8,13 +8,39 @@ rather than declaring done at green.
 
 from __future__ import annotations
 
+import ast
 import inspect
 from decimal import Decimal
+
+import pytest
 
 from sparkpoint_agent.api import self_authoring_runner
 from sparkpoint_agent.selfauthor import sources
 from sparkpoint_agent.selfauthor.documents import DOCUMENTS
 from sparkpoint_agent.selfauthor.evidence import Evidence, label_name
+
+
+def _code_only(module: object) -> str:
+    """A module's executable source, with docstrings and comments removed.
+
+    A source scan that includes prose will match the comment explaining the rule it is testing —
+    which passes, reads correctly, and checks nothing.
+    """
+    tree = ast.parse(inspect.getsource(module))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                if isinstance(body[0].value.value, str):
+                    node.body = body[1:] or [ast.Pass()]
+    return ast.unparse(tree)
+
+
+def test_the_guard_that_strips_prose_actually_strips_it() -> None:
+    """A helper this load-bearing must be shown to work, or the tests above are decoration."""
+    stripped = _code_only(self_authoring_runner)
+    assert "reintroduce exactly the coupling" not in stripped, "docstrings are gone"
+    assert "pg_try_advisory_lock" in stripped, "real code survives"
 
 
 def test_a_published_figure_never_shows_a_database_column_name() -> None:
@@ -121,3 +147,67 @@ def test_a_market_rate_still_names_its_chain() -> None:
         source="defillama", label="aave_supply_apy_bps_mainnet", value=Decimal("348"), chain_id=8453
     )
     assert "Base mainnet" in rate.describe()
+
+
+# ── the dedicated model alias ────────────────────────────────────────────────
+
+
+def test_from_env_really_does_discard_its_model_argument_on_the_gateway_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The trap, demonstrated rather than described.
+
+    `AsyncClaudeClient.from_env(model=...)` looks like it selects an alias. On the gateway path it
+    discards the argument and uses `gateway_from_env()`'s alias instead — so the job would have
+    kept running on the users' chat alias while the code read as though it had its own."""
+    from sparkpoint_agent.llm.client import AsyncClaudeClient
+
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://gateway.invalid")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LITELLM_MODEL", "sparkpoint-chat")
+
+    ignored = AsyncClaudeClient.from_env(model="sparkpoint-selfauthor")
+    assert ignored.model == "sparkpoint-chat", "the argument is discarded — this is the trap"
+
+
+def test_the_job_actually_gets_its_own_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The behaviour that matters: the client this job builds asks the gateway for ITS alias."""
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://gateway.invalid")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LITELLM_MODEL", "sparkpoint-chat")
+
+    client = self_authoring_runner._llm()
+    assert client.model == "sparkpoint-selfauthor"
+
+
+def test_the_alias_is_overridable_without_a_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rollback should be an env change, not a release."""
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://gateway.invalid")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    monkeypatch.setenv("SELF_AUTHORING_MODEL_ALIAS", "sparkpoint-chat-premium")
+    assert self_authoring_runner._llm().model == "sparkpoint-chat-premium"
+
+
+def test_the_job_asks_for_its_own_alias_and_it_is_overridable() -> None:
+    assert self_authoring_runner.DEFAULT_SELF_AUTHORING_ALIAS == "sparkpoint-selfauthor"
+    assert self_authoring_runner.self_authoring_alias() == "sparkpoint-selfauthor"
+
+
+def test_the_job_never_falls_back_onto_the_users_chat_alias() -> None:
+    """Copying premium's fallback would reintroduce exactly the coupling the dedicated alias
+    removes. A failed run writes nothing, which is already the safe outcome.
+
+    Scans the CODE with docstrings and comments stripped — the first version of this test matched
+    the very comment explaining the ban, which is a test that reads correctly and checks nothing.
+    """
+    assert "sparkpoint-chat" not in _code_only(self_authoring_runner)
+
+
+def test_a_writer_that_returns_nothing_is_COUNTED_not_silent() -> None:
+    """A misconfigured alias degrades every document to figures-only. That is a reasonable outcome
+    and an invisible one — it looks exactly like a quiet day."""
+    from sparkpoint_agent.selfauthor import run as run_module
+
+    src = inspect.getsource(run_module.execute_run)
+    assert "documentsWithoutProse" in src
+    assert "selfauthor_prose_missing" in src

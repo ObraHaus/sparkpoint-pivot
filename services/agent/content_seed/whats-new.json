@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparkys-research-gets-its-own-engine",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky's research no longer competes with your chat",
+      "body": "The daily research Sparky writes for itself now runs on its own model, separate from the one that answers you.\n\nBefore this they shared, which meant a research run could slow down or interrupt real conversations — and we had no way to tell, from the outside, which was which. Now they're independent: your chat is unaffected by whatever the research job is doing, and if the research model has a bad day it simply writes nothing rather than borrowing yours.\n\nWe also tested the model properly rather than trusting its reputation. The first two we tried both failed on the thing that matters most here — one restated figures it had been told not to, and the other named a competitor's product. Neither shipped. The pair we settled on came through sixteen out of sixteen checks clean, including a test written specifically to tempt them into breaking the rules.",
+      "cta_label": "See what Sparky has written",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T12:19:53Z",
+      "active": true
+    },
+    {
       "slug": "sparky-does-its-own-research",
       "type": "changelog",
       "tag": "New",

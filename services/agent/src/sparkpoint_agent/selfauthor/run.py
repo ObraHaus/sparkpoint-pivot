@@ -170,12 +170,19 @@ async def execute_run(
 
         staged: list[tuple[str, str, str, list[dict[str, Any]]]] = []
         withheld_total = 0
+        # A model that is unreachable or misconfigured degrades each document to figures-only —
+        # which is a reasonable outcome but an INVISIBLE one: it looks exactly like a quiet day.
+        # Counting it means a wrong alias or a dead provider shows up in the console as a number
+        # rather than as documents that mysteriously stopped saying anything.
+        without_prose = 0
 
         for spec in DOCUMENTS:
             if not has_what_it_needs(spec, usable):
                 continue
             relevant = [e for e in usable if e.label in spec.needs or e.is_prose]
             body, proposed = ("", []) if not news else await _write(llm, spec, relevant)
+            if news and not body:
+                without_prose += 1
             filtered = filter_claims(proposed, findings, permitted_evidence=permitted_labels)
             withheld_total += len(filtered.withheld)
             for withholding in filtered.withheld:
@@ -194,6 +201,13 @@ async def execute_run(
             )
 
         stats["claimsWithheld"] = withheld_total
+        stats["documentsWithoutProse"] = without_prose
+        if without_prose:
+            logger.warning(
+                "selfauthor_prose_missing count=%d — the writer returned nothing for these; the "
+                "documents still carry their figures, but check the model alias and the gateway",
+                without_prose,
+            )
 
         if not staged:
             result = RunResult(OUTCOME_NO_EVIDENCE, "no document had the evidence it needs", stats)
