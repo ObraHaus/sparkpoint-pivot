@@ -19,7 +19,8 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { capNoun } from "@/lib/stage";
 import { StatusTag } from "@/components/ui/status-tag";
-import { useRecommendationsView, type RecView } from "@/lib/agent/useAgent";
+import { useRecommendationsView, usePortfolioView, type RecView } from "@/lib/agent/useAgent";
+import { isTestnetRate, projectAnnual, projectionSummary, TESTNET_RATE_NOTE } from "@/lib/strategy/projection";
 import "@/components/screens/strategies.css";
 
 /** Mock strategies mapped into the shared RecView shape (offline fallback). */
@@ -35,6 +36,7 @@ const MOCK_RECS: RecView[] = data.recs.map((r, i) => ({
   signable: r.apy > 0,
   best: i === 0,
   citations: [],
+  cost: "",
   apyKnown: r.apy > 0, // a genuine 0-APY cash mock still reads "no yield (cash)"
 }));
 
@@ -48,6 +50,12 @@ export default function Page() {
   const testnet = chainId === 84532 || chainId === 46630;
   const liveRecs = useRecommendationsView();
   const recs = liveRecs ?? MOCK_RECS;
+  // 030 — the user's own money, so a card can answer "what would this do for ME" instead of
+  // showing a percentage and leaving the arithmetic to them. netWorth is a 2-dp USD figure;
+  // USDC base units are 6 dp.
+  const portfolio = usePortfolioView();
+  const balanceBaseUnits =
+    typeof portfolio?.netWorth === "number" ? Math.round(portfolio.netWorth * 1_000_000) : null;
   // useRecommendationsView returns null offline (→ MOCK_RECS) and [] when live-but-nothing-clears.
   const usingMock = liveRecs === null;
 
@@ -84,8 +92,14 @@ export default function Page() {
         }}
       >
         <Icon name="info" size={18} />
+        {/* 030 — this line used to claim one strategy unconditionally, which was true only
+            because a second one was being silently dropped. It now describes what is actually
+            on screen. */}
         <span style={{ fontSize: 13, color: "var(--muted-foreground)" }}>
-          Only the lower-risk Aave vault is live today. Higher-risk strategies will rank here as more vaults open.
+          {recs.length > 1
+            ? "Both options put USDC into the same Aave v3 market. What differs is the fee and who manages the position."
+            : "Only the lower-risk Aave vault is live on this network. More strategies rank here as further vaults open."}
+          {testnet ? ` ${TESTNET_RATE_NOTE}` : ""}
         </span>
       </div>
       {recs.map((r, i) => (
@@ -145,12 +159,44 @@ export default function Page() {
               </span>
             )}
           </div>
+          {/* 030 — what it costs and who runs it: the only real difference between the live
+              strategies, and the thing the page could never say before. */}
+          {r.cost && (
+            <div style={{ fontSize: 12.5, color: "var(--foreground)", marginBottom: 6 }}>{r.cost}</div>
+          )}
+          {/* 030 — money, not just percent. A missing balance or rate shows nothing rather than
+              "$0.00/yr", which would read as a claim about the strategy. */}
+          {(() => {
+            const line = projectionSummary(
+              projectAnnual(balanceBaseUnits, r.apyKnown ? Math.round(r.apy * 100) : null),
+            );
+            return line ? (
+              <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginBottom: 6 }}>
+                {line}
+              </div>
+            ) : null;
+          })()}
           <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginBottom: 14 }}>
-            Estimates, not guarantees.
+            Projection at today&apos;s rate — an estimate, not a guarantee.
+            {isTestnetRate(chainId) ? " Test-network rates sit near zero." : ""}
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
             {r.signable ? (
-              <button className="btn btn-primary btn-md" onClick={() => router.push(toHref("confirm/deposit"))}>
+              <button
+                className="btn btn-primary btn-md"
+                onClick={() => {
+                  // 030/FR-009 — carry BOTH the amount and the recommendation id. This link used
+                  // to be a bare route, so the user re-entered an amount they had just been shown
+                  // AND the Outcome Log could not attribute the resulting deposit back to the
+                  // recommendation it came from — the 020 rec→transaction→outcome chain was broken
+                  // at this entry point.
+                  const params = new URLSearchParams();
+                  if (r.amountBaseUnits) params.set("assets", r.amountBaseUnits);
+                  if (r.id) params.set("rec", r.id);
+                  const qs = params.toString();
+                  router.push(`${toHref("confirm/deposit")}${qs ? `?${qs}` : ""}`);
+                }}
+              >
                 Review this move
               </button>
             ) : (

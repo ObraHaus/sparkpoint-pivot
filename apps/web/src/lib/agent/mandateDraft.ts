@@ -16,6 +16,20 @@ export interface OnboardingAnswers {
   timeline: string | null;
   riskAns: string | null;
   riskTier: number;
+  /**
+   * 030 — asked on the plan step, where the user is already reviewing and adjusting.
+   *
+   * `exposureLimit` is whole USDC. It is the field 029's advice boundary already tells users to
+   * set ("how much you're willing to put at risk") and which, until now, the mandate could not
+   * hold at all.
+   *
+   * A goal target is ATOMIC: an amount without a date is not a goal and is not sent. "Reach a
+   * target — hit a specific amount" used to store the bare label, so nothing could ever say
+   * whether the user was on track.
+   */
+  exposureLimit?: string;
+  goalTargetAmount?: string;
+  goalTargetDate?: string;
 }
 
 const TIER_NAMES: Record<number, string> = {
@@ -79,5 +93,23 @@ export function buildMandateDraft(a: OnboardingAnswers): MandateDraft {
     },
     summaryText: `${TIER_NAMES[tier]} (${tier}/5), ${TIER_STANCE[tier] ?? TIER_STANCE[1]}.`,
     version: 1,
+    // 030 — the tier the user actually chose, so Settings and the summary can stop disagreeing
+    // about whether "growth" means 4 or 5.
+    riskTier: tier,
+    ...(exposureBaseUnits(a.exposureLimit) ? { exposureLimitUsdc: exposureBaseUnits(a.exposureLimit)! } : {}),
+    // Atomic: both, or neither reaches the wire.
+    ...(goalBaseUnits(a.goalTargetAmount) && a.goalTargetDate
+      ? { goalTargetUsdc: goalBaseUnits(a.goalTargetAmount)!, goalTargetDate: a.goalTargetDate }
+      : {}),
   };
 }
+
+/** Whole USDC → base units (6 dp), or `undefined` when the field is blank or not a positive number. */
+function exposureBaseUnits(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const trimmed = text.trim();
+  if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) return undefined;
+  return `${Number(trimmed) * 1_000_000}`;
+}
+
+const goalBaseUnits = exposureBaseUnits;

@@ -34,6 +34,9 @@ interface Answers {
   goal: string | null;
   timeline: string | null;
   riskAns: string | null;
+  exposureLimit?: string;
+  goalTargetAmount?: string;
+  goalTargetDate?: string;
   riskTier: number;
 }
 
@@ -63,6 +66,9 @@ export default function OnboardingPage() {
     goal: null,
     timeline: null,
     riskAns: null,
+    exposureLimit: "",
+    goalTargetAmount: "",
+    goalTargetDate: "",
     riskTier: 1,
   });
   const [whyOpen, setWhyOpen] = useState(false);
@@ -595,6 +601,56 @@ function renderStream(
               Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, {tierStance(t)}, target{" "}
               {goal.toLowerCase().includes("yield") ? "steady USDC yield" : "goal-aligned yield"}. The AI will only
               suggest moves that fit this. <b>You approve and sign each one.</b>
+            </div>
+            {/* 030 — the two questions the mandate could never answer. Asked here, on the plan
+                step, where the user is already reviewing and adjusting: two extra chat turns
+                would have been more friction for less. Both are OPTIONAL — a blank field means
+                "not stated", which every reader treats differently from zero. */}
+            <div className="mslider" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="slabel" style={{ display: "block" }}>
+                  Most you&apos;re willing to put at risk <span className="muted">(optional)</span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="muted">$</span>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="e.g. 500"
+                    value={answers.exposureLimit ?? ""}
+                    onChange={(e) => set({ exposureLimit: e.target.value })}
+                    style={{ width: 140 }}
+                  />
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    Sparky won&apos;t suggest moves beyond this.
+                  </span>
+                </span>
+              </label>
+              {/* A goal is atomic — an amount without a date is not a goal, so neither is sent
+                  unless both are given. */}
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="slabel" style={{ display: "block" }}>
+                  Saving toward a specific amount? <span className="muted">(optional)</span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className="muted">$</span>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="e.g. 10000"
+                    value={answers.goalTargetAmount ?? ""}
+                    onChange={(e) => set({ goalTargetAmount: e.target.value })}
+                    style={{ width: 140 }}
+                  />
+                  <span className="muted" style={{ fontSize: 12 }}>by</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={answers.goalTargetDate ?? ""}
+                    onChange={(e) => set({ goalTargetDate: e.target.value })}
+                  />
+                </span>
+              </label>
             </div>
             <div className="mslider">
               <div className="slabel">

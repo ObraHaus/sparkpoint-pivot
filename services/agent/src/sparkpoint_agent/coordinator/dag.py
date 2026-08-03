@@ -41,7 +41,7 @@ from typing import Any, Protocol
 from ..agents import guardrail
 from ..agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, default_tip
 from ..agents.planner import Intent, IntentKind, Planner
-from ..agents.recommender import Candidate, ProposalContext, Recommender
+from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -701,6 +701,9 @@ class CoordinatorDag:
         self, stamped: StampedCandidate, chain: ChainContext, *, rank: int
     ) -> RecommendationBlock:
         candidate = stamped.candidate
+        risk_tier, fee_stance, managed_by = strategy_meta(
+            candidate.action_type, candidate.action.risk_class
+        )
         return RecommendationBlock(
             rec_id=stamped.rec_id,
             title=candidate.title,
@@ -712,6 +715,9 @@ class CoordinatorDag:
             ),
             policy=policy_stamp(stamped.verdict),
             citations=candidate.citations,
+            risk_tier=risk_tier,
+            fee_stance=fee_stance,
+            managed_by=managed_by,
         )
 
     @staticmethod

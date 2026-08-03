@@ -119,6 +119,14 @@ class RecommendationItem(BaseModel):
     grossApyBps: int | None = None
     projectedApyBps: int | None = None
     performanceFeeBps: int = GOVERNANCE.performance_fee.default_bps
+    # 030 — the card's truthful metadata. `riskTier` is the STRATEGY's own 1..5 tier: before this
+    # the wire carried nothing, so /strategies hardcoded tier 1 on every card. `feeStance` and
+    # `managedBy` state the only real difference between the live strategies (both supply USDC to
+    # Aave v3; the vault adds a fee and management, not risk), so the comparison the page promises
+    # can be honest rather than invented.
+    riskTier: int = 1
+    feeStance: str = "unknown"
+    managedBy: str = "unknown"
     asOf: str
     stale: bool
 
@@ -322,6 +330,11 @@ def _build_chain_context(
     resolved_targets: dict[str, str] = {}
     if config.vault_address:
         resolved_targets[_VAULT_TARGET_REF] = config.vault_address
+    # NOTE (030): only the VAULT belongs here. Every other allowlisted target — the Aave pool
+    # included — resolves from the static address book inside `resolve_target_ref`; this map is
+    # for deploy-time-determined addresses the book cannot know. Overriding a book address from
+    # env would let the two DIVERGE silently, and the book is what the on-chain PolicyModule
+    # mirrors.
     # Net-of-perf-fee projection from the live gross Aave rate; None stays None (honest, no feed).
     projected = None if gross_bps is None else round(gross_bps * (10_000 - fee_bps) / 10_000)
     return ChainContext(
@@ -393,6 +406,9 @@ def _to_item(block: RecommendationBlock, chain: ChainContext, *, stale: bool) ->
         grossApyBps=market.gross_apy_bps,
         projectedApyBps=market.projected_apy_bps,
         performanceFeeBps=market.performance_fee_bps,
+        riskTier=int(block.risk_tier),
+        feeStance=block.fee_stance,
+        managedBy=block.managed_by,
         asOf=_now_iso(),
         stale=stale,
     )

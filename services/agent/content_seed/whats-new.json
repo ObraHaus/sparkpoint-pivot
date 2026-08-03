@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "strategies-that-actually-compare",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Strategies you can actually compare — and a plan that means something",
+      "body": "Two screens that looked finished were quietly doing very little. Both are fixed.\n\n**Strategies now shows you a choice.** It always promised one — \"ranked against your plan\", \"best fit #1\" — but a second option was being dropped before it ever reached the page, every single time. You'll now see the SparkPoint vault alongside supplying directly to Aave, with the actual difference spelled out: the vault manages the position and takes 10% of the yield you earn (never your principal); going direct costs you no SparkPoint fee but you look after it yourself. We'd rather tell you that than quietly hide the cheaper option.\n\n**And it tells you what that means in money.** Not just \"0.4% APY\" — what that earns on your balance over a year, next to what leaving it idle earns, which is nothing. Test-network rates sit near zero and the page now says so, instead of leaving you to conclude the product doesn't work.\n\n**Your plan can finally hold what we keep asking you for.** Sparky has been telling people to \"set a mandate — how much you're willing to put at risk\", and there was nowhere to put that number. Now there is. You can also say what you're saving toward and by when, and what you intend to add over time — and see how far along you are. To be clear, that last one is a note of your intention, for projections and reminders: nothing moves without you signing it.\n\n**And you can change one thing without redoing everything.** Editing your plan used to mean re-answering every onboarding question to adjust a single setting. Each part is now editable on its own, in Settings.\n\nA few smaller repairs came with it: the risk badge on a strategy is now that strategy's actual risk rather than a fixed number; the line about how a strategy fits your plan is now based on your plan; picking a strategy carries your choice through to the review step instead of starting over; and plans that described themselves contradictorily — \"High risk (5/5), capital-preservation-first\" — read correctly now, including ones saved before today.",
+      "cta_label": "See your strategies",
+      "cta_href": "/strategies",
+      "published_at": "2026-08-03T14:00:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-answers-straight",
       "type": "changelog",
       "tag": "Improved",

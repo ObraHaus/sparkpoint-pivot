@@ -21,6 +21,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
@@ -271,3 +272,105 @@ def test_onboarding_turn_issues_session_id(
     assert resp.status_code == 200
     done = next(b for b in _sse_blocks(resp.text) if "sessionId" in b)
     assert done["sessionId"].startswith("onb_")
+
+
+# ── 030 · the plan can hold what the assistant tells people to set ────────────
+
+
+def _body_030(**over: object) -> dict:
+    body = {
+        "goals": [{"kind": "reach_target", "label": "Reach a target"}],
+        "riskProfile": "growth",
+        "riskParams": {"maxSlippageBps": 50, "drawdownTolerance": "high", "horizonMonths": 48},
+        "summaryText": "High risk (5/5), growth-first.",
+    }
+    body.update(over)  # type: ignore[arg-type]
+    return body
+
+
+def test_an_exposure_limit_finally_has_somewhere_to_live() -> None:
+    """029's advice boundary tells users "set a mandate — how much you're willing to put at
+    risk". Until 030 the schema had no such field, so the assistant was directing people at
+    something that did not exist."""
+    from sparkpoint_agent.api.mandate import MandateBody, _to_write
+
+    write = _to_write(MandateBody(**_body_030(exposureLimitUsdc="500000000")))
+    assert write.exposure_limit_usdc == 500_000_000
+    assert write.exposure_limit_pct_bps is None
+
+
+def test_the_percentage_form_is_accepted_too() -> None:
+    from sparkpoint_agent.api.mandate import MandateBody, _to_write
+
+    write = _to_write(MandateBody(**_body_030(exposureLimitPctBps=2500)))
+    assert write.exposure_limit_pct_bps == 2500
+    assert write.exposure_limit_usdc is None
+
+
+def test_stating_the_limit_twice_is_refused() -> None:
+    """Two limits invite disagreement and nothing here can decide which the user meant."""
+    from sparkpoint_agent.api.mandate import MandateBody
+
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(exposureLimitUsdc="500000000", exposureLimitPctBps=2500))
+
+
+def test_a_goal_is_atomic_amount_and_date_or_neither() -> None:
+    """"Reach a target — hit a specific amount" used to store the bare label with no amount and
+    no date, so nothing could ever say whether the user was on track. Half a goal is worse than
+    none, because it looks set."""
+    from sparkpoint_agent.api.mandate import MandateBody
+
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(goalTargetUsdc="10000000000"))
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(goalTargetDate="2027-03-01"))
+
+    ok = MandateBody(**_body_030(goalTargetUsdc="10000000000", goalTargetDate="2027-03-01"))
+    assert ok.goalTargetUsdc == "10000000000"
+
+
+def test_a_zero_target_or_limit_is_refused_rather_than_stored() -> None:
+    from sparkpoint_agent.api.mandate import MandateBody
+
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(exposureLimitUsdc="0"))
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(goalTargetUsdc="0", goalTargetDate="2027-03-01"))
+
+
+def test_contribution_is_an_intent_with_a_bounded_vocabulary() -> None:
+    from sparkpoint_agent.api.mandate import MandateBody, _to_write
+
+    write = _to_write(
+        MandateBody(**_body_030(contribution={"amountUsdc": "200000000", "cadence": "monthly"}))
+    )
+    assert write.contribution == {"amountUsdc": "200000000", "cadence": "monthly"}
+
+    with pytest.raises(ValidationError):
+        MandateBody(**_body_030(contribution={"amountUsdc": "200000000", "cadence": "hourly"}))
+
+
+def test_a_pre_030_body_still_validates_and_stores_nothing_new() -> None:
+    """Every existing client keeps working, and absence stays absence — never zero."""
+    from sparkpoint_agent.api.mandate import MandateBody, _to_write
+
+    write = _to_write(MandateBody(**_body_030()))
+    assert write.exposure_limit_usdc is None
+    assert write.exposure_limit_pct_bps is None
+    assert write.goal_target_usdc is None
+    assert write.goal_target_date is None
+    assert write.allowed_protocols is None
+    assert write.contribution is None
+    assert write.risk_tier_display is None
+
+
+def test_the_chosen_tier_is_persisted_alongside_the_profile() -> None:
+    """Three scales were in play: onboarding showed 1..5, the server stored three profiles, and
+    the web mapped growth back to 4 — so a user who picked 5 saw 5/5 in their summary and 4/5 in
+    Settings. The chosen tier is now stored, display-only; the gate still reads riskProfile."""
+    from sparkpoint_agent.api.mandate import MandateBody, _to_write
+
+    write = _to_write(MandateBody(**_body_030(riskTier=5)))
+    assert write.risk_tier_display == 5
+    assert write.risk_tier == "growth", "the policy vocabulary is unchanged"

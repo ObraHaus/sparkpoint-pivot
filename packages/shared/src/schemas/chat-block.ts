@@ -78,6 +78,18 @@ export const RecommendationBlockSchema = z
     proposedAction: ProposedActionSchema,
     policy: ChatPolicyStampSchema,
     citations: z.array(CitationSchema),
+    /**
+     * 030 — the strategy's OWN risk tier (1..5), its fee stance and who manages the position.
+     *
+     * OPTIONAL, and that is load-bearing in both directions: this schema is `.strict()`, so a
+     * NEW agent talking to an OLD web build would have every recommendation card rejected and
+     * rendered inert if these were unknown keys — and an OLD agent talking to a new build must
+     * still validate, which it does because they are optional. The renderer falls back to the
+     * pre-030 display when they are absent.
+     */
+    riskTier: z.number().int().min(1).max(5).optional(),
+    feeStance: z.string().optional(),
+    managedBy: z.string().optional(),
   })
   .strict();
 

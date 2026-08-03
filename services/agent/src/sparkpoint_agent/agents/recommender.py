@@ -49,10 +49,20 @@ _logger = logging.getLogger(__name__)
 #: candidate. Matched against the MODEL's rationale only; the deterministic template replaces it.
 #: Deliberately narrow: "higher yield" is a fine thing to say about a lending rate, whereas
 #: "aggressive", "high-risk" and "speculative" describe a strategy this product does not offer.
+#: 030 — widened. 029's pattern used ``\bleverage[d]?\b``, which cannot match "leveraging"
+#: (there is no word boundary before "ing"), and the live rationale on alpha read:
+#:
+#:     "…aligns with your growth mandate by leveraging vault aggregation to seek higher returns
+#:      than passive lending."
+#:
+#: …on a strategy that IS passive lending. The deeper cause was that the model was asked to
+#: differentiate two candidates when only one existed (see 030/R1–R3); the guard should still
+#: have caught it. "aggregation" is included because it describes a strategy shape this product
+#: does not have — the constitution defers multi-strategy and cross-vault routing entirely.
 _AGGRESSIVE_RE = re.compile(
     r"\baggressive(?:ly)?\b|\bhigh(?:er)?[- ]risk\b|\bspeculative\b|\bhigh[- ]octane\b|"
-    r"\brisk(?:y|ier)\b|\bleverage[d]?\b|\bvolatil(?:e|ity)\b|\bmaximis(?:e|ing)\b|"
-    r"\bmaximiz(?:e|ing)\b",
+    r"\brisk(?:y|ier)\b|\bleverag(?:e|ed|es|ing)\b|\bvolatil(?:e|ity)\b|"
+    r"\bmaximis(?:e|ing)\b|\bmaximiz(?:e|ing)\b|\baggregation\b|\boutperform\w*\b",
     re.IGNORECASE,
 )
 
@@ -69,10 +79,67 @@ _ASSET_DECIMALS: dict[Asset, int] = {Asset.USDC: 6, Asset.ETH: 18}
 # The code-fixed yield candidate set for a RECOMMEND turn (whitelist only; FR-016). The
 # vault is the flagship; a bare Aave supply is the raw alternative. Swaps are proposed
 # only on an explicit build command (they need a live price simulation to be signable).
-_YIELD_STRATEGIES: tuple[tuple[ActionType, Asset], ...] = (
-    (ActionType.VAULT_DEPOSIT, Asset.USDC),
-    (ActionType.AAVE_SUPPLY, Asset.USDC),
+#
+# 030 — each entry now carries the strategy's OWN intrinsic risk class, which is a different
+# thing from the user's mandate profile. Before this, ``build_action`` was handed the mandate
+# profile and stamped it onto the candidate as ``risk_class``; policy step 5 then evaluated
+# ``action.risk_class > mandate.max_risk_class`` with both sides derived from the same value.
+# ``X > X`` is never true, so the mandate check COULD NOT REJECT on the recommendation path —
+# the mandate's only real authority has been a no-op since it was written. It also left the UI
+# with nothing truthful to render a per-strategy risk badge from, which is why the web hardcoded
+# tier 1 on every card.
+#
+# Both entries below are genuinely CONSERVATIVE — supplying USDC to Aave v3, directly or through
+# a vault that does exactly that. So every current verdict is unchanged and the mechanism becomes
+# real for the first strategy that isn't. This is a tightening: an action can now be rejected
+# where it could not be, and none can be approved that previously was not.
+_YIELD_STRATEGIES: tuple[tuple[ActionType, Asset, RiskProfile], ...] = (
+    (ActionType.VAULT_DEPOSIT, Asset.USDC, RiskProfile.CONSERVATIVE),
+    (ActionType.AAVE_SUPPLY, Asset.USDC, RiskProfile.CONSERVATIVE),
 )
+
+#: 030 — what a strategy COSTS and who carries it. This is the only real difference between the
+#: two live strategies: both supply USDC to Aave v3, and the vault adds a fee and management
+#: rather than risk or return. Stating it plainly is what lets the comparison be honest instead
+#: of invented — the live rationale before 030 sold "leveraging vault aggregation … rather than
+#: passive lending" for a strategy that IS passive lending, because the model was asked to
+#: differentiate two things when only one existed.
+#:
+#: Derived in code from the constitutionally FIXED allowlist. Not configuration, not a curation
+#: surface (Principle VII).
+STRATEGY_COST: dict[ActionType, tuple[str, str]] = {
+    # (feeStance, managedBy)
+    ActionType.VAULT_DEPOSIT: ("managed_fee", "sparkpoint"),
+    ActionType.AAVE_SUPPLY: ("no_platform_fee", "self"),
+}
+
+#: RiskProfile → the 1..5 tier the UI renders. Mirrors the web's mapping so one number means one
+#: thing on both sides (030/R6). Before this, every card hardcoded tier 1 because the wire carried
+#: nothing truthful to render.
+RISK_TIER: dict[RiskProfile, int] = {
+    RiskProfile.CONSERVATIVE: 1,
+    RiskProfile.BALANCED: 3,
+    RiskProfile.GROWTH: 4,
+}
+
+
+def strategy_meta(action_type: ActionType, risk_class: RiskProfile) -> tuple[int, str, str]:
+    """``(riskTier, feeStance, managedBy)`` for a candidate — the card's truthful metadata.
+
+    An unlisted action type reports its honest risk tier with an unknown cost stance rather than
+    guessing, so a future strategy cannot silently inherit the vault's fee copy.
+    """
+    fee_stance, managed_by = STRATEGY_COST.get(action_type, ("unknown", "unknown"))
+    return RISK_TIER.get(risk_class, 1), fee_stance, managed_by
+
+
+#: The intrinsic risk class of an action type, for the explicit-build path (which does not go
+#: through ``_YIELD_STRATEGIES``). Anything unlisted falls back to the user's mandate profile —
+#: the pre-030 behaviour — so no path becomes MORE permissive by omission.
+_STRATEGY_RISK_CLASS: dict[ActionType, RiskProfile] = {
+    ActionType.VAULT_DEPOSIT: RiskProfile.CONSERVATIVE,
+    ActionType.AAVE_SUPPLY: RiskProfile.CONSERVATIVE,
+}
 
 _DEFAULT_TITLE: dict[ActionType, str] = {
     ActionType.VAULT_DEPOSIT: "Deposit USDC into the profit-only Aave Yield Vault",
@@ -163,6 +230,7 @@ def build_action(
     user_account: str,
     resolved_targets: dict[str, str],
     risk_profile: RiskProfile,
+    risk_class: RiskProfile | None = None,
     max_slippage_bps: int | None = None,
 ) -> Action | None:
     """Build the canonical policy :class:`Action` for an allowlisted strategy, or ``None``.
@@ -171,6 +239,12 @@ def build_action(
     target is undeployed on this chain (fail-closed — an unrepresentable candidate is never
     surfaced). ``recipient`` is pinned to ``user_account`` (N1); ``selector`` / ``target`` /
     ``route_factory`` come straight from the policy constants the gate will re-check.
+
+    ``risk_class`` (030) is the STRATEGY's own risk, which the policy gate compares against the
+    mandate. It is deliberately separate from ``risk_profile`` — the USER's mandate — because
+    passing the same value for both made the mandate check ``X > X`` and therefore unable ever to
+    reject. When omitted it falls back to the strategy map, and finally to ``risk_profile``, which
+    reproduces the pre-030 behaviour exactly rather than becoming more permissive by omission.
     """
     constants = get_policy_constants(chain_id)
     matched = None
@@ -197,7 +271,7 @@ def build_action(
         amount=amount,
         decimals=_ASSET_DECIMALS[asset],
         recipient=user_account,  # pinned in code — the model can never redirect funds (N1)
-        risk_class=risk_profile,
+        risk_class=risk_class or _STRATEGY_RISK_CLASS.get(action_type, risk_profile),
         max_slippage_bps=slippage,
         route_factory=route_factory,
     )
@@ -381,7 +455,7 @@ class Recommender:
     ) -> list[tuple[ActionType, Action]]:
         amount = intent.amount or ctx.suggested_amount or DEFAULT_SUGGEST_AMOUNT
         built: list[tuple[ActionType, Action]] = []
-        for action_type, asset in _YIELD_STRATEGIES:
+        for action_type, asset, risk_class in _YIELD_STRATEGIES:
             action = build_action(
                 chain_id=ctx.chain_id,
                 action_type=action_type,
@@ -390,6 +464,7 @@ class Recommender:
                 user_account=ctx.user_account,
                 resolved_targets=ctx.resolved_targets,
                 risk_profile=ctx.risk_profile,
+                risk_class=risk_class,
                 max_slippage_bps=ctx.default_max_slippage_bps,
             )
             if action is not None:
