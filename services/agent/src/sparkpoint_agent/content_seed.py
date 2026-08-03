@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,10 +114,41 @@ def load_entries() -> list[dict[str, Any]]:
     return out
 
 
+def _warn_if_future_dated(entry: dict[str, Any]) -> None:
+    """033 — a publish date in the future is nearly always a mistake, so say so.
+
+    ``published_at`` exists so the timeline can be BACKdated and read honestly. Four entries
+    shipped forward-dated instead, because the times were written as local wall-clock and stored
+    as UTC — putting the newest releases hours ahead of the clock, and one of them on tomorrow's
+    date for anyone reading in Asia/Manila. Nothing rejected it, because nothing looked.
+
+    A warning, not a refusal: scheduling an entry ahead is a legitimate thing to want, and a seed
+    load must never fail over a timestamp. This just makes the mistake visible in the boot log.
+    """
+    raw = entry.get("published_at")
+    if not raw:
+        return
+    try:
+        when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    if when > datetime.now(UTC):
+        logger.warning(
+            "whats_new_future_dated slug=%s published_at=%s — this entry is dated AHEAD of the "
+            "clock. If that was not deliberate, it was probably written as local time; the field "
+            "is UTC.",
+            entry.get("slug"),
+            raw,
+        )
+
+
 async def seed_changelog(store: ContentEntryStore) -> dict[str, int]:
     """UPSERT every seed entry by slug. Returns counts {inserted, updated, adopted, skipped}."""
     counts = {"inserted": 0, "updated": 0, "adopted": 0, "skipped": 0}
     for entry in load_entries():
+        _warn_if_future_dated(entry)
         try:
             result = await store.upsert_seed(**entry)
         except Exception:

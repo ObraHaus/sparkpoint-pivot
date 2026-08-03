@@ -29,7 +29,7 @@ import logging
 from typing import Any, Protocol
 
 from .embeddings import Embedder
-from .ingestion import IngestResult, ingest_note
+from .ingestion import IngestResult, chunk_note, ingest_note, parse_note
 from .store import ChunkStore
 
 _logger = logging.getLogger(__name__)
@@ -92,6 +92,35 @@ def entry_slug(entry: dict[str, Any]) -> str:
     return f"changelog-{slug}" if slug else f"changelog-{entry.get('id', 'unknown')}"
 
 
+async def _is_already_indexed(store: ChunkStore, source: str, text: str) -> bool:
+    """Whether this entry's chunks are already in the corpus, byte-identical.
+
+    Embedding is a paid network call, and this now runs on every boot — including the restarts
+    that follow an unhealthy deploy. Re-embedding forty unchanged release notes each time is pure
+    waste, and a crash loop would turn it into repeated waste against a third party.
+
+    The comparison runs the REAL chunker over the rendered text, so what it compares is exactly
+    what an ingest would write — not an approximation of it. Anything unexpected (a store without
+    the read, a DB error, no existing chunks) answers "not indexed", so the failure mode is a
+    needless re-embed rather than a silently stale corpus.
+    """
+    reader = getattr(store, "get_source_chunks", None)
+    if reader is None:
+        return False
+    try:
+        existing = await reader(source)
+    except Exception as exc:  # noqa: BLE001 — an unreadable corpus just means "re-index it"
+        _logger.warning(
+            "changelog_index_check_failed source=%s (%s: %s) — re-indexing",
+            source, type(exc).__name__, exc,
+        )
+        return False
+    if not existing:
+        return False
+    want = [c.text for c in chunk_note(parse_note(text, source=source))]
+    return want == [h.content for h in existing]
+
+
 async def ingest_changelog(
     source: ChangelogSource,
     *,
@@ -104,13 +133,18 @@ async def ingest_changelog(
 
     Best-effort by contract: a single entry that fails to embed is logged and skipped rather than
     aborting the run, because a partially-indexed changelog is strictly better than none and this
-    is never on a user's path. Returns whatever was written.
+    is never on a user's path. Returns whatever was written — entries already indexed unchanged
+    are skipped and therefore absent from the result.
     """
     entries = await source.list_changelog(limit)
     results: list[IngestResult] = []
+    skipped = 0
     for entry in entries:
         text = render_entry(entry)
         if not text:
+            continue
+        if await _is_already_indexed(store, entry_slug(entry), text):
+            skipped += 1
             continue
         try:
             results.append(
@@ -133,5 +167,8 @@ async def ingest_changelog(
                 type(exc).__name__,
                 exc,
             )
-    _logger.info("changelog_ingest complete entries=%d indexed=%d", len(entries), len(results))
+    _logger.info(
+        "changelog_ingest complete entries=%d indexed=%d unchanged=%d",
+        len(entries), len(results), skipped,
+    )
     return results

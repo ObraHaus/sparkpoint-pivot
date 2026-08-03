@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-learns-every-update-on-its-own",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now learns every update on its own",
+      "body": "Ask Sparky what shipped recently and it will now include the newest releases — including this one — without anyone pressing anything.\n\nAn earlier note here promised exactly that, and it turned out not to be true. Sparky could read the changelog, but only after an admin manually rebuilt its index. So each new update was published to this page and stayed invisible to Sparky until someone remembered a step nobody had been told about. We found it the obvious way: yesterday's update appeared here, and Sparky still hadn't heard of it.\n\nLearning now happens as part of every release, and it is careful about it — an update Sparky has already read is skipped rather than re-read, so this costs nothing when nothing has changed.\n\nWe also corrected the dates on the last four entries. They were written in local time and stored as UTC, which put them hours ahead of the clock — the most recent one was showing tomorrow's date. They now read as the record they're meant to be.",
+      "cta_label": "Ask Sparky what's new",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T06:36:15Z",
+      "active": true
+    },
+    {
       "slug": "one-place-to-manage-what-sparky-knows",
       "type": "changelog",
       "tag": "Improved",
@@ -9,7 +20,7 @@
       "body": "Everything you write for Sparky now lives on a single page, in five clearly labelled sections: your documentation, Sparky's persona, its own research notes, the updates you publish here, and the tips that appear around the app.\n\nThey used to be spread across three separate screens with three different shapes, so keeping Sparky's answers current meant knowing which page held what. Nothing about how they work has changed — they've just been gathered in one place, and each section now says plainly what it is and who wrote it. That last part matters more than it sounds: the persona is Sparky's character rather than reference material, and it is deliberately never quoted back as a source.\n\nYour existing links still work. The old Tips and Updates addresses take you straight to the right section, and both still have their own entries in the menu.\n\nYou'll also find a new Self-authored section. It is a preview only — nothing is being generated yet, and it says so. It shows where Sparky's own daily research will appear once we've finished designing how it works, which is a conversation about what a note is allowed to claim rather than a coding job.",
       "cta_label": "Open the knowledge console",
       "cta_href": "/admin/knowledge",
-      "published_at": "2026-08-03T19:30:00Z",
+      "published_at": "2026-08-03T06:10:00Z",
       "active": true
     },
     {
@@ -20,7 +31,7 @@
       "body": "Ask Sparky what changed recently and it will tell you, instead of pointing you at this page.\n\nUntil now the assistant read one set of documents and nothing else — so the updates you're reading right now were invisible to it, along with the short explainers that appear around the app. Both are now part of what it reads. The useful consequence: every future update teaches it automatically. Nobody has to remember a separate step, which means it won't be forgotten.\n\nYou'll also see clearer sourcing under its answers. Where an answer draws on something, the note now says what kind of thing it was — our documentation, a release note like this one, an explainer, or Sparky's own research. That last one matters: if Sparky is quoting itself, you should be able to see that rather than mistake it for something we wrote and checked.",
       "cta_label": "Ask Sparky what's new",
       "cta_href": "/chat",
-      "published_at": "2026-08-03T17:00:00Z",
+      "published_at": "2026-08-03T05:35:00Z",
       "active": true
     },
     {
@@ -31,7 +42,7 @@
       "body": "Two screens that looked finished were quietly doing very little. Both are fixed.\n\n**Strategies now shows you a choice.** It always promised one — \"ranked against your plan\", \"best fit #1\" — but a second option was being dropped before it ever reached the page, every single time. You'll now see the SparkPoint vault alongside supplying directly to Aave, with the actual difference spelled out: the vault manages the position and takes 10% of the yield you earn (never your principal); going direct costs you no SparkPoint fee but you look after it yourself. We'd rather tell you that than quietly hide the cheaper option.\n\n**And it tells you what that means in money.** Not just \"0.4% APY\" — what that earns on your balance over a year, next to what leaving it idle earns, which is nothing. Test-network rates sit near zero and the page now says so, instead of leaving you to conclude the product doesn't work.\n\n**Your plan can finally hold what we keep asking you for.** Sparky has been telling people to \"set a mandate — how much you're willing to put at risk\", and there was nowhere to put that number. Now there is. You can also say what you're saving toward and by when, and what you intend to add over time — and see how far along you are. To be clear, that last one is a note of your intention, for projections and reminders: nothing moves without you signing it.\n\n**And you can change one thing without redoing everything.** Editing your plan used to mean re-answering every onboarding question to adjust a single setting. Each part is now editable on its own, in Settings.\n\nA few smaller repairs came with it: the risk badge on a strategy is now that strategy's actual risk rather than a fixed number; the line about how a strategy fits your plan is now based on your plan; picking a strategy carries your choice through to the review step instead of starting over; and plans that described themselves contradictorily — \"High risk (5/5), capital-preservation-first\" — read correctly now, including ones saved before today.",
       "cta_label": "See your strategies",
       "cta_href": "/strategies",
-      "published_at": "2026-08-03T14:00:00Z",
+      "published_at": "2026-08-03T04:35:00Z",
       "active": true
     },
     {
@@ -42,7 +53,7 @@
       "body": "We spent a night putting the assistant through the same twenty questions a new user would ask, in a real browser, and fixed everything that read badly. Most of it was not the thinking — it was the answering.\n\n**It no longer talks past you.** Ask what's in your wallet and it now tells you about your wallet: your ETH, your SRK and your idle USDC, alongside anything you have deposited. Ask what you've paid in fees and you get the actual fee schedule — plus an honest note that there is no per-wallet total to show, and why. Ask for the current APY and you get today's figure, not a lecture on what an APY is. Ask whether it can buy something for you automatically and it explains how signing really works here, instead of opening a swap.\n\n**It knows what it is now.** Asked about SRK, the faucet, the Trust Center, the changelog, or its own memory, it used to draw a blank — once even denying it remembers anything between conversations, which it does. It can answer all of that now.\n\n**It won't advise you into a corner.** Asked whether to put your life savings in, it declines to give financial advice, explains why concentrating everything in one place is the real risk, and offers to help you set a limit instead of handing you two things to buy.\n\n**And when something goes wrong, it says so.** A failed turn used to look like a vague, unhelpful answer. Now it reads as what it is — a failure, with a Try again button, and a clear note that nothing was signed or changed. Refreshing the page also drops you back into the conversation you were in, the thinking steps tidy themselves away once an answer arrives, and the little internal labels that occasionally showed up above tips are gone.",
       "cta_label": "Open the assistant",
       "cta_href": "/chat",
-      "published_at": "2026-08-03T09:00:00Z",
+      "published_at": "2026-08-03T02:00:00Z",
       "active": true
     },
     {
