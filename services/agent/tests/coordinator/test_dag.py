@@ -28,6 +28,7 @@ from sparkpoint_agent.coordinator.dag import (
     MandateView,
     MarketData,
     PortfolioView,
+    TokenBalanceLite,
 )
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom
@@ -188,6 +189,61 @@ async def test_chat_portfolio_emits_snapshot_and_summary() -> None:
     snap = next(w for w in wires if w["type"] == "portfolio_snapshot")
     assert snap["positions"][0]["valueUsd"] == "100.25"
     assert any(w["type"] == "text" and "100.25" in w["markdown"] for w in wires)
+
+
+# ── 029/FR-004: the wallet sentence ───────────────────────────────────────────
+
+
+async def _portfolio_text(view: PortfolioView) -> str:
+    dag = _dag(intent=Intent(kind=IntentKind.PORTFOLIO), portfolio=view)
+    wires = await _collect(dag, "what's in my wallet?", _chain())
+    return next(w["markdown"] for w in wires if w["type"] == "text")
+
+
+async def test_wallet_answer_names_native_tokens_and_idle_usdc() -> None:
+    # The exact holdings the Aug-3 tester had, none of which the old answer mentioned.
+    text = await _portfolio_text(
+        PortfolioView(
+            positions=(PositionLite(venue="vault", asset="0xUSDC", value_usd="250.00"),),
+            net_worth_usd="300.00",
+            idle_usdc=50_000_000,
+            native_wei=8_400_000_000_000_000,
+            native_symbol="ETH",
+            tokens=(TokenBalanceLite(symbol="SRK", raw=6_000 * 10**18, decimals=18),),
+        )
+    )
+    assert "0.0084 ETH" in text
+    assert "6,000 SRK" in text
+    assert "$50.00 in idle USDC" in text
+    assert text.count("In your wallet") == 1, "one wallet sentence, not one clause per holding"
+
+
+async def test_an_empty_wallet_produces_no_dangling_clause() -> None:
+    text = await _portfolio_text(PortfolioView(net_worth_usd="0.00"))
+    assert "In your wallet" not in text
+    assert text.endswith(".")
+
+
+async def test_a_lone_holding_reads_as_a_sentence_not_a_list() -> None:
+    text = await _portfolio_text(
+        PortfolioView(net_worth_usd="0.00", native_wei=8_400_000_000_000_000)
+    )
+    assert "In your wallet you also have 0.0084 ETH." in text
+    assert " and " not in text.split("In your wallet")[1]
+
+
+async def test_wallet_amounts_are_exact_integer_math_never_a_float() -> None:
+    # 18-dp values exceed double precision — 1 wei short of 1 ETH must not round UP to "1".
+    text = await _portfolio_text(
+        PortfolioView(net_worth_usd="0.00", native_wei=10**18 - 1, native_symbol="ETH")
+    )
+    assert "0.9999 ETH" in text
+    assert "1 ETH" not in text
+
+
+async def test_dust_below_display_precision_is_not_shown_as_a_bare_zero() -> None:
+    text = await _portfolio_text(PortfolioView(net_worth_usd="0.00", native_wei=1))
+    assert "0 ETH" in text, "1 wei rounds to 0 at 4dp — reported honestly, not as 0.0000"
 
 
 # ── run_chat: RECOMMEND (happy) ───────────────────────────────────────────────

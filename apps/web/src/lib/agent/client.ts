@@ -198,7 +198,12 @@ function buildHeaders(
   const headers = new Headers();
   headers.set("X-Account", identity.account);
   headers.set("X-Owner", identity.owner);
-  headers.set("X-Chain-Id", String(identity.chainId));
+  // 029, belt-and-braces (kept dependency-free — this module deliberately imports nothing):
+  // the identity builder already guards this, but a future identity source must not be able to
+  // put a non-finite value on the wire again. `String(NaN)` === "NaN", which the agent refuses
+  // and which the user saw rendered as an assistant message on 7/7 requests.
+  const chainId = Number(identity.chainId);
+  headers.set("X-Chain-Id", String(Number.isFinite(chainId) && chainId > 0 ? chainId : 8453));
   headers.set("Accept", opts.accept === "sse" ? "text/event-stream" : "application/json");
   if (opts.hasBody) headers.set("Content-Type", "application/json");
   if (opts.idempotencyKey) headers.set("Idempotency-Key", opts.idempotencyKey);

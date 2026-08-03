@@ -9,6 +9,14 @@ this agent can never surface something the user could sign.
 Fail-closed: the model writes the body, but a refusal or an empty generation falls back
 to a pre-written, safe default explanation — the user always gets a correct tip, never a
 fabricated or empty one. Effort LOW (research.md §6 tiering; explanation is mechanical).
+
+029 — the fallback now also covers a META-SHAPED generation. The 028 hotfix taught the
+conversational agent to discard answers that talk about their own inputs, but the literacy path
+kept its own copy of the fail-closed logic and so kept leaking: the Aug-3 battery watched a tip
+card render "I don't have information about 'srktoken' in the reference notes provided". That
+sentence tells a user two things they should never learn — that there are "reference notes", and
+that the assistant is reasoning about its retrieval — and it does so in the confident voice of an
+answer. The guard now lives in ``guard_text`` and BOTH paths import it.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
+from .guard_text import is_unusable
 
 EFFORT: Effort = "low"
 
@@ -84,6 +93,10 @@ class TipCard:
 
     topic: str
     body: str
+    #: 029/FR-014 — True when ``body`` is the pre-written default rather than a generated answer.
+    #: The caller uses this to decide whether attaching the retrieved sources would be honest: a
+    #: canned tip is not grounded in the passages that happened to be retrieved for the question.
+    fell_back: bool = False
 
 
 @dataclass
@@ -124,6 +137,7 @@ class Literacy:
             user=user,
         )
         body = result.text.strip()
-        if result.refused or not body:
+        fell_back = result.refused or is_unusable(body)
+        if fell_back:
             body = DEFAULT_TIPS.get(key, DEFAULT_TIPS[FALLBACK_TOPIC])
-        return TipCard(topic=key, body=body)
+        return TipCard(topic=key, body=body, fell_back=fell_back)

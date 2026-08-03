@@ -20,7 +20,8 @@ NON-CUSTODY (why this is safe to add to the chat path):
   the recommender, the policy gate, or any action type.
 * **Action-shaped output is refused, not rendered.** A prompt-injected or confused model that
   tries to emit a serialized action / tool-call payload as prose trips
-  :func:`_looks_action_shaped` and the whole answer is discarded in favour of the caller's
+  :func:`~sparkpoint_agent.agents.guard_text.is_unusable` and the whole answer is discarded
+  in favour of the caller's
   canned fallback. Belt and braces over the structural guarantee above.
 * **Fail-soft, never fail-hard.** A refusal, an empty generation, a scrubbed answer, or ANY
   upstream LLM exception returns ``fell_back=True`` with an empty body — the caller substitutes
@@ -35,12 +36,12 @@ model pool, and the branch is latency-sensitive (it is what a user hits when the
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort, LlmResult
 from ..memory import SPARKY_DIGEST_CHARS, render_digest
+from .guard_text import is_unusable
 
 EFFORT: Effort = "low"
 
@@ -107,40 +108,8 @@ SYSTEM = (
 #: nothing here matches ordinary conversational wording. These match only machine shapes:
 #: the wire key itself, a JSON type discriminator, an on-wire action-type slug, or a calldata-
 #: length hex blob. Any hit discards the whole answer (fail-closed to the caller's canned text).
-_ACTION_SHAPED: tuple[re.Pattern[str], ...] = (
-    re.compile(r"proposedaction", re.IGNORECASE),
-    re.compile(r"\"type\"\s*:", re.IGNORECASE),
-    re.compile(r"\bvault_(?:deposit|withdraw|redeem)\b", re.IGNORECASE),
-    re.compile(r"\b(?:aerodrome_swap|aave_(?:supply|withdraw))\b", re.IGNORECASE),
-    # calldata / a raw signature — never conversational prose (a 40-hex ADDRESS is allowed).
-    re.compile(r"\b0x[0-9a-fA-F]{64,}\b"),
-)
 
 
-#: Markers that the "answer" is the model's INTERNAL DELIBERATION leaked as prose — observed
-#: LIVE on the free pool ("We need to answer the user: … Use only the reference notes and
-#: memory data. We must not mention instructions…"). The prompt already forbids narrating the
-#: background material (the 027 Radar-2 rule), but a weak model can violate a prompt; only a
-#: deterministic discard cannot be argued with. High precision: these phrases are how a model
-#: talks ABOUT the conversation, never how Sparky talks IN it (second person, no self-narration).
-_META_SHAPED: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\breference notes?\b", re.IGNORECASE),
-    re.compile(r"\bmemory data\b", re.IGNORECASE),
-    re.compile(r"\bwe (?:need|must|should) (?:to )?(?:answer|not|only|avoid)\b", re.IGNORECASE),
-    re.compile(r"\bthe user(?:'s)? (?:asks?|asked|question|message|wants)\b", re.IGNORECASE),
-    re.compile(r"\bUSER_MEMORY\b"),
-    re.compile(r"\bsystem prompt\b", re.IGNORECASE),
-)
-
-
-def _looks_meta_shaped(text: str) -> bool:
-    """True iff the prose narrates the prompt/reasoning instead of answering (⇒ discard it)."""
-    return any(pattern.search(text) for pattern in _META_SHAPED)
-
-
-def _looks_action_shaped(text: str) -> bool:
-    """True iff the generated prose carries a machine action/tool-call shape (⇒ discard it)."""
-    return any(pattern.search(text) for pattern in _ACTION_SHAPED)
 
 
 def _clamp(text: str) -> str:
@@ -237,6 +206,7 @@ class Sparky:
             # Rate limit, transport error, exhausted retries — degrade, never break the stream.
             return SparkyReply(body="", fell_back=True)
         body = result.text.strip()
-        if result.refused or not body or _looks_action_shaped(body) or _looks_meta_shaped(body):
+        # 029: one SHARED guard for every prose agent (see agents/guard_text.py).
+        if result.refused or is_unusable(body):
             return SparkyReply(body="", fell_back=True)
         return SparkyReply(body=_clamp(body))

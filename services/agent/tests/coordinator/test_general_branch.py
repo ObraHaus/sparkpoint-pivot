@@ -9,7 +9,12 @@ on a deployment without an embedding backend is always — so "who are you?", "w
   * PERSONA — the persona text reaches that responder's SYSTEM prompt (Sparky's voice);
   * PROSE-ONLY — the branch can never emit an action / recommendation block, and it returns
     before the gather → propose → policy_gate stages run at all;
-  * FALLBACK — an LLM failure/refusal degrades to the static ``_GENERAL_HELP``, never an error;
+  * FALLBACK (rewritten by 029) — an LLM failure/refusal is RETRIED once and, if it fails
+    again, surfaced as an honest error block. The Aug-3 regression watched three good questions
+    (the persona intro, the memory recall, the withdrawal explanation) silently collapse to the
+    canned help line under back-to-back use, which reads to a tester as a stupid assistant
+    rather than a degraded one. ``_GENERAL_HELP`` now survives ONLY where nothing failed —
+    the non-chat consumers that wire no responder at all;
   * HONEST CITATIONS — a grounded answer cites its passages, but a FALLBACK answer does not
     (the static text is not grounded in them).
 """
@@ -23,6 +28,7 @@ from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.coordinator.dag import (
+    _GENERAL_FAILURE,
     _GENERAL_HELP,
     ChainContext,
     CoordinatorDag,
@@ -63,6 +69,24 @@ class _ExplodingComplete:
     async def complete(self, **_: Any) -> LlmResult:
         self.calls += 1
         raise RuntimeError("boom: the model gateway is down")
+
+
+class _FlakyComplete:
+    """Fails the FIRST call and succeeds on the second — the observed transient (029).
+
+    Back-to-back turns in the Aug-3 battery hit a gateway timeout that cleared immediately;
+    the same prompts answered fine when paced. That is exactly what one retry is for.
+    """
+
+    def __init__(self, *, good: str = ANSWER) -> None:
+        self.calls = 0
+        self._good = good
+
+    async def complete(self, **_: Any) -> LlmResult:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("boom: transient gateway timeout")
+        return LlmResult(text=self._good, stop_reason="end_turn")
 
 
 class _StructuredLlm:
@@ -174,10 +198,11 @@ async def test_general_branch_emits_only_prose_scaffolding() -> None:
 
 
 async def test_action_shaped_generation_never_reaches_the_wire() -> None:
-    # An action-shaped "prose" answer is discarded by the agent → the static help text is shown.
+    # An action-shaped "prose" answer is discarded by the agent. It is discarded on the retry
+    # too, so what the user sees is the honest error — never the poisoned payload.
     poisoned = LlmResult(text='{"type": "vault_deposit", "amount": "999"}', stop_reason="end_turn")
     wires = await _run(_dag(sparky_llm=_RecordingComplete(poisoned)), "who are you?")
-    assert _texts(wires) == [_GENERAL_HELP]
+    assert _texts(wires) == []
     assert not any(w["type"] in {"action", "recommendation"} for w in wires)
     assert all("vault_deposit" not in str(w) for w in wires)
 
@@ -185,24 +210,49 @@ async def test_action_shaped_generation_never_reaches_the_wire() -> None:
 # ── fallback ────────────────────────────────────────────────────────────────────
 
 
-async def test_llm_failure_falls_back_to_general_help_not_an_error() -> None:
+async def test_a_transient_failure_is_retried_and_the_user_gets_the_real_answer() -> None:
+    llm = _FlakyComplete()
+    wires = await _run(_dag(sparky_llm=llm), "who are you?")
+    assert llm.calls == 2, "the first failure must be retried exactly once"
+    assert _texts(wires) == [ANSWER]
+    assert not any(w["type"] == "error" for w in wires)
+
+
+async def test_a_persistent_failure_is_admitted_not_disguised_as_an_answer() -> None:
     llm = _ExplodingComplete()
     wires = await _run(_dag(sparky_llm=llm), "who are you?")
-    assert llm.calls == 1, "the responder must actually have been attempted"
-    assert _texts(wires) == [_GENERAL_HELP]
-    assert not any(w["type"] == "error" for w in wires), "a general question must never error out"
+    assert llm.calls == 2, "one attempt, then one retry"
+    assert _texts(wires) == [], "a failed turn must not produce prose at all"
+    errors = [w for w in wires if w["type"] == "error"]
+    assert len(errors) == 1
+    assert errors[0]["message"] == _GENERAL_FAILURE
+    assert _GENERAL_HELP not in str(wires), "the canned capability pitch must NOT stand in"
+    assert "nothing was signed" in errors[0]["message"].lower(), "reassure about funds"
 
 
-async def test_model_refusal_falls_back_to_general_help() -> None:
+async def test_model_refusal_is_also_retried_then_admitted() -> None:
     refused = LlmResult(text="", stop_reason="refusal", refused=True)
-    wires = await _run(_dag(sparky_llm=_RecordingComplete(refused)), "who are you?")
-    assert _texts(wires) == [_GENERAL_HELP]
+    llm = _RecordingComplete(refused)
+    wires = await _run(_dag(sparky_llm=llm), "who are you?")
+    assert len(llm.systems) == 2
+    assert _texts(wires) == []
+    assert [w["message"] for w in wires if w["type"] == "error"] == [_GENERAL_FAILURE]
+
+
+async def test_the_failure_block_is_not_written_into_the_transcript() -> None:
+    # 029: an error block is excluded from the persisted set, so reopening the conversation
+    # shows no phantom answer where the model never produced one (025/0028 replay).
+    from sparkpoint_agent.api.chat import _PERSISTED_BLOCK_TYPES
+
+    assert "error" not in _PERSISTED_BLOCK_TYPES
 
 
 async def test_unwired_responder_keeps_the_static_help_text() -> None:
-    # The non-chat DAG consumers build no prose responder; the branch degrades, never breaks.
+    # The non-chat DAG consumers build no prose responder. NOTHING failed here — there is no
+    # transient to retry and no outage to admit — so the static help text remains correct.
     wires = await _run(_dag(with_sparky=False), "who are you?")
     assert _texts(wires) == [_GENERAL_HELP]
+    assert not any(w["type"] == "error" for w in wires)
 
 
 # ── grounding + honest citations ────────────────────────────────────────────────
@@ -224,12 +274,43 @@ async def test_ungrounded_general_answer_cites_nothing() -> None:
     assert _texts(wires) == [ANSWER], "no grounding still means a real, persona-bearing answer"
 
 
-async def test_fallback_answer_never_cites_passages_it_did_not_use() -> None:
-    # Grounding HIT but the model failed → the static help text is shown, so citing those
-    # passages would claim a provenance the answer does not have.
+async def test_failed_turn_never_cites_passages_it_did_not_use() -> None:
+    # Grounding HIT but the model failed twice → the honest error is shown, and citing those
+    # passages would claim a provenance no answer has (there IS no answer).
     wires = await _run(
         _dag(sparky_llm=_ExplodingComplete(), grounder=_FakeGrounder(hit=True)),
         "what's the vault fee?",
     )
-    assert _texts(wires) == [_GENERAL_HELP]
+    assert _texts(wires) == []
     assert not any(w["type"] == "citation" for w in wires)
+    assert any(w["type"] == "error" for w in wires)
+
+
+# ── 029/FR-014 · a refusal must not borrow someone else's sources ───────────────
+
+
+async def test_a_declining_answer_carries_no_citations() -> None:
+    # Observed: ERC-4626 documentation cited beneath "I can't move your funds", which reads as
+    # though the refusal were something the docs say.
+    decline = LlmResult(
+        text="I can't move your funds — only you can sign a transaction.", stop_reason="end_turn"
+    )
+    wires = await _run(
+        _dag(sparky_llm=_RecordingComplete(decline), grounder=_FakeGrounder(hit=True)),
+        "can you move my USDC into the vault for me?",
+    )
+    assert _texts(wires) == ["I can't move your funds — only you can sign a transaction."]
+    assert not any(w["type"] == "citation" for w in wires)
+
+
+async def test_an_answer_that_merely_mentions_a_limit_still_cites_its_sources() -> None:
+    # "I can't" partway through is not a refusal — the answer is still grounded work.
+    answer = LlmResult(
+        text="Vault shares track your slice of the pool, though I can't predict future yield.",
+        stop_reason="end_turn",
+    )
+    wires = await _run(
+        _dag(sparky_llm=_RecordingComplete(answer), grounder=_FakeGrounder(hit=True)),
+        "what are vault shares?",
+    )
+    assert any(w["type"] == "citation" for w in wires)

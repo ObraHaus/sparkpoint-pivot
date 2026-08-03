@@ -17,7 +17,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useOnboarding, mandateSaveHint, type MandateSaveFailure } from "@/lib/agent/useAgent";
-import { buildMandateDraft } from "@/lib/agent/mandateDraft";
+import { buildMandateDraft, tierStance } from "@/lib/agent/mandateDraft";
 
 /** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
 const STEP_LABELS = ["Connect", "Experience", "Goal", "Timeline", "Risk", "Your plan"] as const;
@@ -566,7 +566,7 @@ function renderStream(
       return (
         <AiTurn>
           <div className="ai-text">
-            Here&apos;s your plan — capital-preservation-first. You can adjust it anytime.
+            Here&apos;s your plan — {tierStance(t)}. You can adjust it anytime.
           </div>
           <div className="mandate" id="mandate">
             <div className="mhead">
@@ -590,7 +590,9 @@ function renderStream(
               </span>
             </div>
             <div className="mpara" id="mpara">
-              Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, capital preservation first, target{" "}
+              {/* 029/FR-015 — the stance follows the tier the user picked; it used to be
+                  hardcoded, so tier 5 read "High risk (5/5), capital preservation first". */}
+              Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, {tierStance(t)}, target{" "}
               {goal.toLowerCase().includes("yield") ? "steady USDC yield" : "goal-aligned yield"}. The AI will only
               suggest moves that fit this. <b>You approve and sign each one.</b>
             </div>
@@ -639,7 +641,7 @@ function renderStream(
               <div className={"whybody" + (whyOpen ? " open" : "")} id="whybody">
                 You chose to {answers.riskAns ? answers.riskAns.toLowerCase() : "hold through a drop"} after a 20% drop,
                 with a {answers.timeline || "medium"} horizon. That maps to a {TIER_NAMES[t].toLowerCase()} profile —
-                steady, capital-preservation-first.
+                {" "}{tierStance(t)}.
               </div>
             </div>
           </div>

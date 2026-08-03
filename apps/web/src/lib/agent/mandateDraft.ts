@@ -26,6 +26,28 @@ const TIER_NAMES: Record<number, string> = {
   5: "High risk",
 };
 
+/**
+ * The stance clause for each tier (029/FR-015).
+ *
+ * The summary used to end in a hardcoded "capital-preservation-first." for EVERY tier, so a user
+ * who deliberately picked the highest risk setting was shown "High risk (5/5),
+ * capital-preservation-first." as their own plan. A plan that contradicts itself is worse than a
+ * blunt one: the user cannot tell which half the system will actually act on. The clause now
+ * follows the tier they chose.
+ */
+export const TIER_STANCE: Record<number, string> = {
+  1: "capital-preservation-first",
+  2: "capital-preservation-first",
+  3: "balanced between growth and protection",
+  4: "growth-leaning, with more variability accepted",
+  5: "growth-first, accepting larger swings",
+};
+
+/** The stance clause for a 1..5 tier — the single source of truth for this sentence. */
+export function tierStance(tier: number): string {
+  return TIER_STANCE[tier] ?? TIER_STANCE[1];
+}
+
 export function buildMandateDraft(a: OnboardingAnswers): MandateDraft {
   const tier = a.riskTier || 1;
   // Server accepts ONLY conservative | moderate | growth (api/mandate.py
@@ -55,7 +77,7 @@ export function buildMandateDraft(a: OnboardingAnswers): MandateDraft {
       drawdownTolerance: tier <= 2 ? "low" : tier <= 3 ? "medium" : "high",
       horizonMonths,
     },
-    summaryText: `${TIER_NAMES[tier]} (${tier}/5), capital-preservation-first.`,
+    summaryText: `${TIER_NAMES[tier]} (${tier}/5), ${TIER_STANCE[tier] ?? TIER_STANCE[1]}.`,
     version: 1,
   };
 }
