@@ -24,7 +24,13 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking";
 import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
-import { ERROR_FOLLOW_UPS, STARTER_CHIPS, followUps } from "@/lib/chat/followups";
+import {
+  ERROR_FOLLOW_UPS,
+  STARTER_CHIPS,
+  followUps,
+  followUpsForThread,
+  type ThreadTurn,
+} from "@/lib/chat/followups";
 import { ExecutionDrawer } from "@/components/execution/ExecutionDrawer";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 import {
@@ -88,6 +94,39 @@ const EMPTY_CHIPS: string[] = [...STARTER_CHIPS];
  * Inert cards are skipped: a block that failed validation tells us nothing about what was
  * discussed, and guessing from one would be guessing from noise.
  */
+/**
+ * 039 — a reopened conversation, reduced to what the suggestions need.
+ *
+ * The same projection as a live turn, applied to every assistant turn in the thread, so a thread
+ * picked up from the sidebar gets chips about where it actually got to rather than the starters.
+ */
+function threadTurnsFor(turns: Turn[]): ThreadTurn[] {
+  const out: ThreadTurn[] = [];
+  for (const t of turns) {
+    if (t.kind === "user") {
+      out.push({ role: "user", text: t.text });
+      continue;
+    }
+    if (t.kind === "live") {
+      const blockTypes: string[] = [];
+      const tipTopics: string[] = [];
+      const stepLabels: string[] = [];
+      for (const card of t.cards) {
+        if (card.status === "inert") continue;
+        blockTypes.push(card.block.type);
+        if (card.block.type === "tip") tipTopics.push(card.block.topic);
+        if (card.block.type === "tool_step") stepLabels.push(card.block.label);
+      }
+      out.push({ role: "assistant", blockTypes, tipTopics, stepLabels });
+      continue;
+    }
+    // A pre-025 row replays as a text summary with no blocks — still an assistant turn, so the
+    // thread does not read as new; it simply has no topic to go deeper on.
+    if (t.kind === "ai") out.push({ role: "assistant" });
+  }
+  return out;
+}
+
 function followUpsFor(userMessage: string, cards: ChatCard[]): string[] {
   const blockTypes: string[] = [];
   const tipTopics: string[] = [];
@@ -489,22 +528,24 @@ export default function ChatPage() {
         // through the SAME fail-closed validator and the SAME renderer as the live stream, so a
         // reopened conversation shows real cards instead of "[proposed action: aerodrome_swap]".
         // A turn without blocks — every pre-025 row — still replays as its text summary.
-        setTurns(
-          replayTurns(c.turns).map((t) =>
-            t.kind === "user"
-              ? { id: nextId(), kind: "user" as const, text: t.text }
-              : t.kind === "cards"
-                ? {
-                    id: nextId(),
-                    kind: "live" as const,
-                    // Streaming is over: a replayed turn is complete by definition.
-                    cards: t.cards.map((b) => parseCardValue(b)),
-                    streaming: false,
-                  }
-                : { id: nextId(), kind: "ai" as const, text: t.text },
-          ),
+        const replayed: Turn[] = replayTurns(c.turns).map((t) =>
+          t.kind === "user"
+            ? { id: nextId(), kind: "user" as const, text: t.text }
+            : t.kind === "cards"
+              ? {
+                  id: nextId(),
+                  kind: "live" as const,
+                  // Streaming is over: a replayed turn is complete by definition.
+                  cards: t.cards.map((b) => parseCardValue(b)),
+                  streaming: false,
+                }
+              : { id: nextId(), kind: "ai" as const, text: t.text },
         );
-        setChips(EMPTY_CHIPS);
+        setTurns(replayed);
+        // 039 — a saved conversation is not a new one. It used to reset to the starters, so a
+        // thread that had spent ten turns on fees reopened offering "What's in my wallet?".
+        const resumed = followUpsForThread(threadTurnsFor(replayed));
+        setChips(resumed.length ? resumed : EMPTY_CHIPS);
       } catch {
         setTurns([{ id: nextId(), kind: "ai", text: "Couldn’t load that conversation." }]);
       }

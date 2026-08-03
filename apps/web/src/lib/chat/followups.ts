@@ -162,6 +162,59 @@ export function followUps(turn: TurnShape): string[] {
   return out;
 }
 
+/** One turn of a thread, as much of it as the suggestions need. */
+export interface ThreadTurn {
+  readonly role: "user" | "assistant";
+  /** The user's words, on a user turn. */
+  readonly text?: string;
+  readonly blockTypes?: readonly string[];
+  readonly tipTopics?: readonly string[];
+  readonly stepLabels?: readonly string[];
+}
+
+/**
+ * 039 — the suggestions for a thread REOPENED from history.
+ *
+ * A conversation only got contextual chips while it was being typed into. Reopen it from the
+ * sidebar and the starters came back — "What's in my wallet?" under a thread that had spent ten
+ * turns on fees, as though none of it had happened. A saved conversation is not a new one, and the
+ * whole point of these chips is to know where you are.
+ *
+ * Reads the LAST assistant turn and the user message that prompted it, so the same rules apply as
+ * they did live: go deeper on what was discussed, and never offer back the question just asked.
+ * Returns `[]` when the thread offers nothing to go on, which is the caller's signal to show the
+ * starters — an empty conversation genuinely IS a new one.
+ */
+export function followUpsForThread(turns: readonly ThreadTurn[]): string[] {
+  let assistant: ThreadTurn | null = null;
+  let askedIndex = -1;
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    if (turns[i].role === "assistant") {
+      assistant = turns[i];
+      askedIndex = i;
+      break;
+    }
+  }
+  if (!assistant) return [];
+
+  // The user message that prompted it — so "never suggest what was just asked" still holds on a
+  // reopened thread, which is where it is most jarring: the answer is right there on screen.
+  let userMessage = "";
+  for (let i = askedIndex - 1; i >= 0; i -= 1) {
+    if (turns[i].role === "user") {
+      userMessage = turns[i].text ?? "";
+      break;
+    }
+  }
+
+  return followUps({
+    userMessage,
+    blockTypes: assistant.blockTypes ?? [],
+    tipTopics: assistant.tipTopics,
+    stepLabels: assistant.stepLabels,
+  });
+}
+
 /**
  * An errored turn gets no suggestions about the conversation — it did not have one.
  *
