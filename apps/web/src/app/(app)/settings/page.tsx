@@ -493,7 +493,7 @@ export default function Page() {
   const premium = useSelfPremiumStatus();
   const sessionKeys = useSessionKeys();
   const { prefs: notif, setNotif } = useNotifPrefs();
-  const { prefs: display, setDensity, setReducedMotion } = useDisplayPrefs();
+  const { prefs: display, setDensity, setReducedMotion, setExpandSources } = useDisplayPrefs();
 
   const isLight = resolvedTheme === "light";
 
@@ -612,6 +612,29 @@ export default function Page() {
                 </button>
                 <button className={isLight ? "active" : ""} onClick={() => setTheme("light")}>
                   Light
+                </button>
+              </div>
+            </div>
+            <div className="setrow">
+              <div>
+                <div style={{ fontWeight: 600 }}>Sources under answers</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  Sparky always cites what an answer rests on. Folded away by default so the answer
+                  leads — the card still shows how many sources there are, and opens on one tap.
+                </div>
+              </div>
+              <div className="seg">
+                <button
+                  className={!display.expandSources ? "active" : ""}
+                  onClick={() => setExpandSources(false)}
+                >
+                  Folded
+                </button>
+                <button
+                  className={display.expandSources ? "active" : ""}
+                  onClick={() => setExpandSources(true)}
+                >
+                  Always open
                 </button>
               </div>
             </div>

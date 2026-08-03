@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (038 — the Sources card folds away by default)
+- **It regularly ran longer than the answer it supported** — a two-sentence reply followed by six citations quoting two hundred characters each, so the thing the user actually asked for was the smallest object on the screen. The card now opens folded, showing the word "Sources" and a count.
+- **Collapsed, not hidden, and the distinction is the whole design.** These citations are the product's evidence that an answer came from somewhere; 029 exists because an unsourced answer is indistinguishable from an invented one. Deleting them to reduce clutter would trade the trust proposition for tidiness. The count is most of what they tell you at a glance — *"this answer rests on four things"* — and the rest is one tap away.
+- Built as a `<details>` element rather than component state: open/closed is the browser's job, and it comes keyboard-operable and correctly announced without any of that being written by hand.
+- **Settings → Appearance → "Sources under answers"** switches between *Folded* and *Always open*, per device, alongside Theme and Density.
+- The preference is read by the component rather than stamped on `<html>` like density and reduced motion — a second copy on the document would be a second source of truth that could disagree with the first.
+- An existing whole-shape assertion on the stored preferences blob caught the new field rather than letting it appear silently, and blobs written before this preference existed still load, with the fields they do have untouched.
+
 ### Added (037 — the chat suggests what to do next)
 - **The chips under the composer now change with the conversation.** They were fixed: after being told what was in your wallet, the thread still offered "What's in my wallet?" — which is worse than offering nothing, because it says the assistant was not listening. The scripted demo paths had done this properly all along; a real turn never updated them, so the feature existed and only the demo could see it.
 - Suggestions are **derived from what actually happened in the turn** — the concept just explained, the stage the agent was seen running, the kind of answer it gave — ordered most-specific first.

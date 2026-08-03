@@ -17,6 +17,8 @@
 
 import { useEffect, useState } from "react";
 
+import { useDisplayPrefs } from "@/lib/settings/usePrefs";
+
 import { Icon } from "@/lib/icons";
 import { RiskChip } from "@/components/ui/risk-chip";
 import type { ChatCard } from "@/lib/agent/cards";
@@ -168,6 +170,58 @@ function TurnError({
 }
 
 /** One trace row for a `tool_step` block — the summarized reasoning trace (never raw CoT). */
+/**
+ * 038 — the evidence behind an answer, folded away by default.
+ *
+ * It regularly ran longer than the answer it supported: a two-sentence reply followed by six
+ * citations quoting two hundred characters each, so the thing the user actually asked for was the
+ * smallest object on the screen.
+ *
+ * COLLAPSED, NOT HIDDEN — and the distinction is the whole design. These citations are the
+ * product's evidence that an answer came from somewhere; 029 exists because an unsourced answer is
+ * indistinguishable from an invented one. Deleting them to reduce clutter would trade the trust
+ * proposition for tidiness. So the card still states how many sources there are, still says the
+ * word "Sources", and opens on one tap — and an admin who wants them always open says so once in
+ * Settings → Appearance.
+ *
+ * A `<details>` element rather than state: it is open/closed by the browser, keyboard-operable and
+ * announced correctly without any of that being written here.
+ */
+function SourcesCard({ sources }: { sources: { provider: string; field: string; value: string }[] }) {
+  const { prefs } = useDisplayPrefs();
+  const count = sources.length;
+  return (
+    <details className="ccard" data-card="cite" open={prefs.expandSources}>
+      <summary
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+          listStyle: "none",
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        <Icon name="book" size={13} />
+        {/* The count is the point of the collapsed state: "this answer rests on four things" is
+            most of what the citations tell you, and it fits on one line. */}
+        Sources
+        <span style={{ fontWeight: 400, color: "var(--muted-foreground)", fontSize: 12.5 }}>
+          {count === 1 ? "1 source" : `${count} sources`}
+        </span>
+      </summary>
+      <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 8 }}>
+        {sources.map((s, k) => (
+          <div key={k}>
+            {s.provider} · {s.field}: {s.value}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function ToolStepRow({ label, status }: { label: string; status: "running" | "done" | "error" }) {
   return (
     <div className="think">
@@ -497,20 +551,7 @@ function LiveBlock({
     }
 
     case "citation":
-      return (
-        <div className="ccard" data-card="cite">
-          <div className="ch">
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Sources</span>
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-            {block.sources.map((s, k) => (
-              <div key={k}>
-                {s.provider} · {s.field}: {s.value}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+      return <SourcesCard sources={block.sources} />;
 
     case "error":
       // 029/FR-001 — an error BLOCK is a failed turn just as much as a failed request is, and

@@ -35,6 +35,7 @@ export function useNotifPrefs(): { prefs: NotifPrefs; setNotif: (key: NotifKey, 
 export function useDisplayPrefs(): {
   prefs: DisplayPrefs;
   setDensity: (density: Density) => void;
+  setExpandSources: (expand: boolean) => void;
   setReducedMotion: (on: boolean) => void;
 } {
   const [raw, setRaw] = useLocalState<DisplayPrefs>(DISPLAY_STORAGE_KEY, DEFAULT_DISPLAY_PREFS);
@@ -47,5 +48,10 @@ export function useDisplayPrefs(): {
     (on: boolean) => setRaw({ ...coerceDisplayPrefs(raw), reducedMotion: on }),
     [raw, setRaw],
   );
-  return { prefs, setDensity, setReducedMotion };
+  const setExpandSources = useCallback(
+    (on: boolean) => setRaw({ ...coerceDisplayPrefs(raw), expandSources: on }),
+    [raw, setRaw],
+  );
+
+  return { prefs, setDensity, setReducedMotion, setExpandSources };
 }
