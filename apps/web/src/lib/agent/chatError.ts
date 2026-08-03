@@ -41,6 +41,14 @@ const INTERNAL_MARKERS = [
   /\brequestid\b/i,
   /\btraceback\b/i,
   /\bnonetype\b/i,
+  // Observed during the 029 verification run, rendered to the user verbatim:
+  //   "The vault RPC is unreachable; the quote is temporarily unavailable (retryable)."
+  // Every word after "The vault" is ours, not theirs. A user does not know what an RPC is and
+  // cannot act on "(retryable)" — the honest, actionable version is that something on our side
+  // failed, nothing was signed, and they can try again.
+  /\brpc\b/i,
+  /\(retryable\)/i,
+  /\bfail-closed\b/i,
 ];
 
 /** Codes that always indicate plumbing, whatever the message says. */

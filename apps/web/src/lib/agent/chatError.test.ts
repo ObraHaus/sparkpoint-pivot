@@ -57,3 +57,20 @@ test("no copy blames the user for our defect", () => {
     assert.ok(!/your (connection|browser|wallet) (is|was)/i.test(message));
   }
 });
+
+test("infrastructure vocabulary is replaced with something a user can act on", () => {
+  // Observed live during the 029 verification run — rendered as the assistant's whole answer.
+  const live = "The vault RPC is unreachable; the quote is temporarily unavailable (retryable).";
+  assert.equal(isInternalEnvelope(live, "UPSTREAM_UNAVAILABLE"), true);
+  const view = chatErrorCopy(live, "UPSTREAM_UNAVAILABLE");
+  assert.ok(!/rpc/i.test(view.message), view.message);
+  assert.ok(!/retryable/i.test(view.message), "don't hand the user our jargon for 'try again'");
+  assert.ok(/nothing was signed/i.test(view.message));
+  assert.equal(view.retryable, true);
+});
+
+test("an honest refusal written for users still passes through", () => {
+  const refusal = "I'm not able to help with that request.";
+  assert.equal(isInternalEnvelope(refusal, "REFUSAL"), false);
+  assert.equal(chatErrorCopy(refusal, "REFUSAL").message, refusal);
+});
