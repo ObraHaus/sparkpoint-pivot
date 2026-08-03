@@ -75,12 +75,63 @@ DEFAULT_TIPS: dict[str, str] = {
         "cannot move your money. Every action is calldata your own wallet signs, and you "
         "can exit directly on-chain even if the app is offline."
     ),
+    # 029 — the two topics the verification run watched degrade into the generic line. Both have
+    # stable, knowable answers, and one of them is the EXIT PATH: a user asking how to get their
+    # money out must never be met with a shrug, whatever the model is doing.
+    "how_to_withdraw": (
+        "You can withdraw at any time — there is no lock-up and no notice period. Open the Vault "
+        "page, choose Withdraw, enter an amount (or take everything), and sign in your wallet. "
+        "The vault is an ERC-4626 contract, so redeeming is a direct on-chain call: it works even "
+        "if the SparkPoint app is offline, and nobody can stop or delay it. You are charged 0% to "
+        "withdraw and 0% on your principal."
+    ),
+    "vault_safety": (
+        "The SparkPoint vault is non-custodial: it holds your USDC in a smart contract that only "
+        "you can withdraw from, and it supplies that USDC to Aave v3 to earn yield. The real "
+        "risks are smart-contract risk (in the vault and in Aave), and a variable rate that can "
+        "fall. Deposits are not insured and returns are not guaranteed. What is guaranteed is "
+        "control: SparkPoint holds no keys and cannot move your funds."
+    ),
     FALLBACK_TOPIC: (
         "SparkPoint is a non-custodial assistant: it can suggest and simulate strategies, "
         "but only you can sign a transaction, and you keep control of your funds at all "
         "times."
     ),
 }
+
+#: Keyword → pre-written topic, for the model-authored slugs we cannot enumerate. The planner
+#: invents topic keys freely (``aave_vault_safety``, ``how_to_withdraw``, ``is_aave_vault_safe``),
+#: so an exact-key lookup misses almost every real one. Ordered: first match wins.
+_TOPIC_ALIASES: tuple[tuple[str, str], ...] = (
+    ("withdraw", "how_to_withdraw"),
+    ("redeem", "how_to_withdraw"),
+    ("exit", "how_to_withdraw"),
+    ("safe", "vault_safety"),
+    ("safety", "vault_safety"),
+    ("risk", "vault_safety"),
+    ("apy", "what_is_apy"),
+    ("slippage", "what_is_slippage"),
+    ("custod", "what_is_non_custodial"),
+    ("performance_fee", "what_is_a_performance_fee"),
+    ("vault", "what_is_a_vault"),
+)
+
+
+def default_tip(topic: str) -> str:
+    """The best pre-written answer for ``topic`` — exact key, then keyword, then the general line.
+
+    029: an exact-key lookup missed nearly every real topic, because the planner writes its own
+    slugs. The verification run caught "How do I withdraw everything?" degrading to the generic
+    "SparkPoint is a non-custodial assistant…" line — a shrug, on the exit path.
+    """
+    if topic in DEFAULT_TIPS:
+        return DEFAULT_TIPS[topic]
+    lowered = topic.lower()
+    for needle, key in _TOPIC_ALIASES:
+        if needle in lowered:
+            return DEFAULT_TIPS[key]
+    return DEFAULT_TIPS[FALLBACK_TOPIC]
+
 
 SYSTEM = (
     "You are SparkPoint's financial-literacy tutor. Explain the given DeFi concept in two "
@@ -161,6 +212,4 @@ class Literacy:
                 return TipCard(topic=key, body=body, fell_back=False)
             if attempt == 1:
                 _logger.info("literacy_retry: first tip attempt degraded for topic=%s", key)
-        return TipCard(
-            topic=key, body=DEFAULT_TIPS.get(key, DEFAULT_TIPS[FALLBACK_TOPIC]), fell_back=True
-        )
+        return TipCard(topic=key, body=default_tip(key), fell_back=True)

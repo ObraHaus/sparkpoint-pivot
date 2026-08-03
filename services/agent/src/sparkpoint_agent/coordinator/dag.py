@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..agents import guardrail
-from ..agents.literacy import DEFAULT_TIPS, Literacy
+from ..agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, default_tip
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender
 from ..agents.sparky import Sparky
@@ -541,7 +541,7 @@ class CoordinatorDag:
             # that did not understand. A topic with its OWN pre-written default is different —
             # that default genuinely answers it — so only the general-fallback case is surfaced
             # as a failure.
-            if card.fell_back and card.topic not in DEFAULT_TIPS:
+            if card.fell_back and default_tip(card.topic) is DEFAULT_TIPS[FALLBACK_TOPIC]:
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", _GENERAL_FAILURE)
                 return
             yield TipBlock(card.topic, card.body)

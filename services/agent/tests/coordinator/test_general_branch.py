@@ -332,6 +332,48 @@ async def test_a_topic_without_its_own_default_admits_failure_instead_of_generic
     # Force the LEARN branch with a topic that has no entry in DEFAULT_TIPS.
     dag.planner = Planner(
         llm=_StructuredLlm(
+            StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="manila_weather"))
+        )
+    )
+    dag.literacy = Literacy(llm=_ExplodingComplete())
+    wires = await _run(dag, "what's the weather in Manila?")
+
+    assert not any(w["type"] == "tip" for w in wires), "no generic card standing in for an answer"
+    assert [w["message"] for w in wires if w["type"] == "error"] == [_GENERAL_FAILURE]
+
+
+async def test_the_exit_path_always_answers_even_when_the_model_is_down() -> None:
+    """The verification run watched "How do I withdraw everything?" degrade to the generic line.
+
+    A user asking how to get their money out must never be met with a shrug, whatever the model
+    is doing — the constitution's never-gate-the-exit rule applies to the ANSWER too, not only to
+    the transaction. The planner writes its own slugs, so the pre-written answer is matched on a
+    keyword rather than an exact key.
+    """
+    from sparkpoint_agent.agents.literacy import DEFAULT_TIPS as TIPS
+
+    dag = _dag(sparky_llm=_RecordingComplete())
+    dag.planner = Planner(
+        llm=_StructuredLlm(
+            StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="how_to_withdraw"))
+        )
+    )
+    dag.literacy = Literacy(llm=_ExplodingComplete())
+    wires = await _run(dag, "How do I withdraw everything?")
+
+    tips = [w for w in wires if w["type"] == "tip"]
+    assert len(tips) == 1, "the exit path answers, it never errors out"
+    assert tips[0]["body"] == TIPS["how_to_withdraw"]
+    assert "withdraw at any time" in tips[0]["body"]
+    assert "0%" in tips[0]["body"]
+
+
+async def test_a_safety_question_falls_back_to_a_real_answer_about_risk() -> None:
+    from sparkpoint_agent.agents.literacy import DEFAULT_TIPS as TIPS
+
+    dag = _dag(sparky_llm=_RecordingComplete())
+    dag.planner = Planner(
+        llm=_StructuredLlm(
             StructuredResult(
                 ok=True, value=Intent(kind=IntentKind.LEARN, topic="aave_vault_safety")
             )
@@ -340,8 +382,10 @@ async def test_a_topic_without_its_own_default_admits_failure_instead_of_generic
     dag.literacy = Literacy(llm=_ExplodingComplete())
     wires = await _run(dag, "Is the Aave vault safe?")
 
-    assert not any(w["type"] == "tip" for w in wires), "no generic card standing in for an answer"
-    assert [w["message"] for w in wires if w["type"] == "error"] == [_GENERAL_FAILURE]
+    tips = [w for w in wires if w["type"] == "tip"]
+    assert len(tips) == 1
+    assert tips[0]["body"] == TIPS["vault_safety"]
+    assert "not insured" in tips[0]["body"], "a safety answer must name the real risks"
 
 
 async def test_a_topic_with_a_real_default_still_answers_from_it() -> None:
