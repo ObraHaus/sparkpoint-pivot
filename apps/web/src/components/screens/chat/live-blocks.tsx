@@ -25,6 +25,7 @@ import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport"
 import { chatErrorCopy } from "@/lib/agent/chatError";
 import { tipLabel } from "@/lib/agent/tipLabel";
 import { planTranscript, type TranscriptItem } from "@/lib/chat/steps";
+import { parseRichText } from "@/lib/chat/richText";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
 /**
@@ -245,6 +246,29 @@ export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onRevi
   );
 }
 
+/**
+ * An assistant answer, with the little formatting it is allowed (029).
+ *
+ * The block's field is called `markdown` and was rendered as a raw string, so `**bold**` showed
+ * its asterisks and blank lines collapsed — the advice boundary and the automation answer, both
+ * deliberately multi-paragraph, arrived as one unbroken wall of text. Parsed by a pure function
+ * into data and mapped to elements here: no HTML is ever interpreted, so model-authored text
+ * cannot inject markup.
+ */
+function AnswerText({ markdown }: { markdown: string }) {
+  const paragraphs = parseRichText(markdown);
+  if (paragraphs.length === 0) return null;
+  return (
+    <div className="ctext">
+      {paragraphs.map((para, i) => (
+        <p key={i} style={{ margin: i === 0 ? 0 : "0.7em 0 0" }}>
+          {para.map((seg, j) => (seg.bold ? <strong key={j}>{seg.text}</strong> : <span key={j}>{seg.text}</span>))}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /** The projection {@link planTranscript} needs, taken from a validated card. */
 function toTranscriptItem(card: ChatCard): TranscriptItem {
   if (card.status === "inert") return { type: "inert" };
@@ -310,7 +334,7 @@ function LiveBlock({
 
   switch (block.type) {
     case "text":
-      return <div className="ctext">{block.markdown}</div>;
+      return <AnswerText markdown={block.markdown} />;
 
     case "tool_step":
       return <ToolStepRow label={block.label} status={block.status} />;
