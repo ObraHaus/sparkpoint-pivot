@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .claims import Claim
-from .evidence import TESTNET_CHAIN_IDS, Evidence
+from .evidence import TESTNET_CHAIN_IDS, Evidence, is_term
 
 STATUS_DRAFT = "draft"
 STATUS_PUBLISHED = "published"
@@ -123,10 +123,26 @@ def _figures_section(items: list[Evidence]) -> list[str]:
     if not figures:
         return []
 
-    live = [e for e in figures if e.chain_id not in TESTNET_CHAIN_IDS]
-    test = [e for e in figures if e.chain_id in TESTNET_CHAIN_IDS]
+    # Our own terms are not market rates and must not be grouped by chain. A fee rendered under
+    # "on the testnet this alpha runs on", beneath a disclaimer that those figures are "not a
+    # forecast", reads as though our 10% will be different on mainnet. It will not be.
+    terms = [e for e in figures if is_term(e.label)]
+    market = [e for e in figures if not is_term(e.label)]
+
+    live = [e for e in market if e.chain_id not in TESTNET_CHAIN_IDS]
+    test = [e for e in market if e.chain_id in TESTNET_CHAIN_IDS]
 
     lines: list[str] = []
+    if terms:
+        lines.append("**Our own terms**")
+        lines.append("")
+        lines += [f"- {e.describe()}" for e in terms]
+        lines.append("")
+        lines.append(
+            "These are our terms, not a market rate. They do not change between the testnet and "
+            "the live market."
+        )
+        lines.append("")
     if live:
         lines.append("**In the live market**")
         lines.append("")

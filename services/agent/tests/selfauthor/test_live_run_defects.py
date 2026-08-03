@@ -74,3 +74,50 @@ def test_a_declined_run_is_RECORDED_not_merely_returned() -> None:
     assert "open_run" in tail, "a declined run must open a row"
     assert "close_run" in tail, "and close it with the outcome"
     assert "OUTCOME_LOCKED" in tail
+
+
+def test_our_own_fee_is_not_presented_as_a_testnet_market_rate() -> None:
+    """The second live run rendered the performance fee under "On the testnet this alpha runs on",
+    beneath the disclaimer that those figures "come from a handful of test wallets" and "are not a
+    forecast".
+
+    Both statements are true of a market rate and false of a fee. Read together, they implied our
+    10% fee is a testnet artifact that will be different on mainnet. It will not be — and a reader
+    making a decision on that would have been misled by us, in exactly the dimension this feature
+    exists to protect.
+    """
+    from sparkpoint_agent.selfauthor.documents import render_document, spec_for
+
+    spec = spec_for("self-authored-vault-fee-comparison")
+    assert spec is not None
+    fee = Evidence(
+        source="chain", label="vault_performance_fee_bps", value=Decimal("1000"), chain_id=84532
+    )
+    rate = Evidence(
+        source="defillama", label="aave_supply_apy_bps_mainnet", value=Decimal("348"), chain_id=8453
+    )
+    text = render_document(spec, evidence=[fee, rate], claims=[])
+
+    assert "Our own terms" in text
+    assert "do not change between the testnet and the live market" in text
+    # The fee must appear ABOVE the testnet caveat, not inside it.
+    # No testnet MARKET rate in this document, so no testnet block at all.
+    assert "On the testnet this alpha runs on" not in text
+    assert text.index("performance fee") < text.index("Aave's USDC supply rate")
+
+
+def test_a_fee_carries_no_chain_clause() -> None:
+    """A fee is our term, not something a market on some chain decided."""
+    fee = Evidence(
+        source="chain", label="vault_performance_fee_bps", value=Decimal("1000"), chain_id=84532
+    )
+    assert "Base Sepolia" not in fee.describe()
+    assert "10.00%" in fee.describe()
+
+
+def test_a_market_rate_still_names_its_chain() -> None:
+    """The terms/rates split must not weaken the rule it sits beside."""
+    rate = Evidence(
+        source="defillama", label="aave_supply_apy_bps_mainnet", value=Decimal("348"), chain_id=8453
+    )
+    assert "Base mainnet" in rate.describe()

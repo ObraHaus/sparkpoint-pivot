@@ -77,9 +77,25 @@ LABEL_NAMES: dict[str, str] = {
 }
 
 
+#: Labels that describe OUR OWN TERMS rather than a market rate.
+#:
+#: Found by the second live run: the performance fee rendered under "On the testnet this alpha runs
+#: on", beneath the disclaimer that those figures "come from a handful of test wallets" and "are not
+#: a forecast". Both statements are true of a market rate and false of a fee. Read together they
+#: implied our 10% fee is a testnet artifact that will be different on mainnet. It will not be, and
+#: a reader making a decision on that would have been misled by us — in exactly the dimension this
+#: feature exists to protect.
+TERM_LABELS: frozenset[str] = frozenset({"vault_performance_fee_bps"})
+
+
 def label_name(label: str) -> str:
     """A label as a person would say it."""
     return LABEL_NAMES.get(label, label.replace("_", " "))
+
+
+def is_term(label: str) -> bool:
+    """Whether this figure is one of our own terms rather than a rate a market set."""
+    return label in TERM_LABELS
 
 
 STATUS_OK = "ok"
@@ -142,8 +158,11 @@ class Evidence:
         if self.is_prose:
             who = self.attribution or "an external source"
             return f"{who} says: “{(self.quote or '').strip()}”"
-        chain = chain_name(self.chain_id)
         name = label_name(self.label)
+        if is_term(self.label):
+            # No chain clause: a fee is our term, not something a market on some chain decided.
+            return f"{name}: {format_bps(self.value)}"
+        chain = chain_name(self.chain_id)
         if not chain:
             return f"{name}: {self.value}"
         return f"{name} on {chain}: {format_bps(self.value)}"
