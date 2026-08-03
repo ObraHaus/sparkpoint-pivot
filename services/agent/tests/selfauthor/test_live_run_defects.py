@@ -12,9 +12,9 @@ import inspect
 from decimal import Decimal
 
 from sparkpoint_agent.api import self_authoring_runner
+from sparkpoint_agent.selfauthor import sources
 from sparkpoint_agent.selfauthor.documents import DOCUMENTS
 from sparkpoint_agent.selfauthor.evidence import Evidence, label_name
-from sparkpoint_agent.selfauthor import sources
 
 
 def test_a_published_figure_never_shows_a_database_column_name() -> None:
@@ -59,7 +59,7 @@ def test_every_document_can_actually_be_written() -> None:
     ]
     assert not orphans, (
         "these documents can never be written, because nothing produces the evidence they "
-        f"require:\n  " + "\n  ".join(orphans)
+        "require:\n  " + "\n  ".join(orphans)
     )
 
 
