@@ -20,7 +20,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { TipsPanel } from "@/components/admin/TipsPanel";
 import { UpdatesPanel } from "@/components/admin/UpdatesPanel";
-import { SelfAuthoredPreview } from "@/components/admin/SelfAuthoredPreview";
+import { SelfAuthoredPanel } from "@/components/admin/SelfAuthoredPanel";
 import { Icon } from "@/lib/icons";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
@@ -106,7 +106,7 @@ type AdminTab = "knowledge" | "persona" | "self-authored" | "updates" | "tips";
 const TABS: { id: AdminTab; label: string; hint: string }[] = [
   { id: "knowledge", label: "Knowledge", hint: "Documentation you write. Sparky answers from it." },
   { id: "persona", label: "Persona", hint: "Sparky's character. Never part of the corpus." },
-  { id: "self-authored", label: "Self-authored", hint: "Sparky's own research. Not built yet." },
+  { id: "self-authored", label: "Self-authored", hint: "Sparky's own research, written daily. You control what it reads." },
   { id: "updates", label: "Updates", hint: "The in-app changelog. Sparky reads it." },
   { id: "tips", label: "Tips", hint: "Sidebar explainers. Sparky reads them." },
 ];
@@ -166,7 +166,7 @@ function KnowledgeConsole() {
 
       {tab === "knowledge" && <KnowledgePanel />}
       {tab === "persona" && <PersonaPanel />}
-      {tab === "self-authored" && <SelfAuthoredPreview />}
+      {tab === "self-authored" && <SelfAuthoredPanel />}
       {tab === "updates" && <UpdatesPanel />}
       {tab === "tips" && <TipsPanel />}
     </>
