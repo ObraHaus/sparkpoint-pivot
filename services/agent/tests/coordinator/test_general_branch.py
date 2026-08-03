@@ -343,16 +343,16 @@ async def test_a_topic_without_its_own_default_admits_failure_instead_of_generic
 
 
 async def test_the_exit_path_always_answers_even_when_the_model_is_down() -> None:
-    """The verification run watched "How do I withdraw everything?" degrade to the generic line.
-
-    A user asking how to get their money out must never be met with a shrug, whatever the model
+    """A user asking how to get their money out must never be met with a shrug, whatever the model
     is doing — the constitution's never-gate-the-exit rule applies to the ANSWER too, not only to
-    the transaction. The planner writes its own slugs, so the pre-written answer is matched on a
-    keyword rather than an exact key.
-    """
-    from sparkpoint_agent.agents.literacy import DEFAULT_TIPS as TIPS
+    the transaction.
 
-    dag = _dag(sparky_llm=_RecordingComplete())
+    030 achieved this by degrading to a pre-written tip when the model failed. 031 strengthened it:
+    the question is now answered from CODE before the classifier or any model is consulted, so
+    there is nothing left to fail. The assertion follows the stronger guarantee — a `text` block,
+    produced with every model in the DAG deliberately broken.
+    """
+    dag = _dag(sparky_llm=_ExplodingComplete())
     dag.planner = Planner(
         llm=_StructuredLlm(
             StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="how_to_withdraw"))
@@ -361,11 +361,11 @@ async def test_the_exit_path_always_answers_even_when_the_model_is_down() -> Non
     dag.literacy = Literacy(llm=_ExplodingComplete())
     wires = await _run(dag, "How do I withdraw everything?")
 
-    tips = [w for w in wires if w["type"] == "tip"]
-    assert len(tips) == 1, "the exit path answers, it never errors out"
-    assert tips[0]["body"] == TIPS["how_to_withdraw"]
-    assert "withdraw at any time" in tips[0]["body"]
-    assert "0%" in tips[0]["body"]
+    texts = [w["markdown"] for w in wires if w["type"] == "text"]
+    assert len(texts) == 1, "the exit path answers, whatever the models are doing"
+    assert "withdraw at any time" in texts[0].lower()
+    assert "0%" in texts[0]
+    assert not any(w["type"] == "error" for w in wires)
 
 
 async def test_a_safety_question_falls_back_to_a_real_answer_about_risk() -> None:

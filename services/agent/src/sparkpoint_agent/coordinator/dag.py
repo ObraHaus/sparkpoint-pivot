@@ -528,6 +528,14 @@ class CoordinatorDag:
             yield TextBlock(_whats_new_answer(recent))
             return
 
+        # 031 — the exit question, answered deterministically before the classifier can route it
+        # somewhere else. An explicit amount ("withdraw 100 USDC") is a COMMAND and still builds.
+        if _HOW_TO_EXIT_RE.search(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(_HOW_TO_EXIT_ANSWER)
+            return
+
         direct = _direct_answer(message, chain)
         if direct is not None:
             yield ToolStepBlock("Understanding your request", "running")
@@ -1055,6 +1063,30 @@ def _is_decline(answer: str) -> bool:
     """True when the answer opens by declining — so it must not carry citations."""
     return bool(_DECLINE_RE.search(answer.strip()))
 
+
+#: 031 — HOW DO I WITHDRAW. A question, not a command: "withdraw 100 USDC" must still build an
+#: action. Deterministic because the classifier is not, and this is the one question where a
+#: wrong-shaped answer is least acceptable — observed live returning a PORTFOLIO summary, and on
+#: an earlier run a generic "SparkPoint is a non-custodial assistant" line. The constitution's
+#: never-gate-the-exit rule applies to the ANSWER, not only to the transaction.
+_HOW_TO_EXIT_RE = re.compile(
+    r"\b(?:how (?:do|can|would) i|how to|how does .{0,20}work for)\b[^.?!]{0,40}"
+    r"\b(?:withdraw|redeem|cash\s?out|take .{0,15}out|get .{0,15}(?:out|back)|exit|unstake)\b",
+    re.IGNORECASE,
+)
+
+#: The withdrawal answer. Code-authored: every claim here is a property of the contract, not a
+#: model's recollection of one.
+_HOW_TO_EXIT_ANSWER = (
+    "You can withdraw at any time — there's no lock-up and no notice period.\n\n"
+    "Open the **Vault** page, choose **Withdraw**, enter an amount (or take everything), and sign "
+    "in your wallet. That's it: the money goes straight back to your own address.\n\n"
+    "Two things worth knowing. It costs **0% to withdraw** and **0% on your principal** — the only "
+    "fee is a share of the yield you actually earned. And because the vault is a standard ERC-4626 "
+    "contract, redeeming is a direct on-chain call: it works even if the SparkPoint app is "
+    "offline, and nobody here can pause, delay or refuse it.\n\n"
+    "Tell me an amount and I'll set it up for you to sign."
+)
 
 #: 031 — "what shipped / what's new / what changed recently". Deliberately narrow: a question
 #: about a SPECIFIC feature still goes to retrieval, where the indexed entries now live.

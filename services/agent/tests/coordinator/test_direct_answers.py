@@ -346,3 +346,62 @@ async def test_without_a_provider_the_route_is_simply_not_taken() -> None:
     assert dag.changelog is None
     text = _text(await _run(dag, "what's new?"))
     assert "Some prose." in text
+
+
+# ── 031 · the exit question, answered deterministically ───────────────────────
+
+
+async def test_how_do_i_withdraw_answers_about_withdrawing() -> None:
+    """Observed live returning a PORTFOLIO summary, and on an earlier run a generic
+    "SparkPoint is a non-custodial assistant" line — for the single most safety-critical question
+    in the product. The classifier is not deterministic; this answer now is."""
+    dag = _dag(Intent(kind=IntentKind.PORTFOLIO))
+    text = _text(await _run(dag, "How do I withdraw everything?"))
+
+    assert "portfolio" not in text.lower()
+    assert "withdraw at any time" in text.lower()
+    assert "no lock-up" in text.lower()
+    assert "0%" in text
+
+
+async def test_the_withdrawal_answer_states_what_cannot_be_done_to_the_user() -> None:
+    """Every claim is a property of the contract, not a model's recollection of one."""
+    text = _text(await _run(_dag(Intent(kind=IntentKind.OTHER)), "how can I get my money out?"))
+    lower = text.lower()
+    assert "erc-4626" in lower
+    assert "even if the sparkpoint app is offline" in lower
+    assert "pause, delay or refuse" in lower
+
+
+async def test_every_way_of_asking_takes_the_route() -> None:
+    for message in (
+        "How do I withdraw?",
+        "how to cash out",
+        "how can I take my money out",
+        "how do I get my funds back?",
+        "how do I exit the vault",
+    ):
+        text = _text(await _run(_dag(Intent(kind=IntentKind.PORTFOLIO)), message))
+        assert "withdraw at any time" in text.lower(), message
+
+
+async def test_a_withdrawal_COMMAND_still_builds_rather_than_explaining() -> None:
+    """"withdraw 100 USDC" is an instruction, not a question — it must reach the build path."""
+    dag = _dag(
+        Intent(
+            kind=IntentKind.BUILD_ACTION,
+            action_type=ActionType.VAULT_WITHDRAW,
+            asset=Asset.USDC,
+            amount=100_000_000,
+        )
+    )
+    text = _text(await _run(dag, "withdraw 100 USDC"))
+    assert "withdraw at any time" not in text.lower()
+
+
+async def test_a_deposit_question_is_not_captured_by_the_exit_route() -> None:
+    prose = _CompleteLlm("Depositing works like this.")
+    dag = _dag(Intent(kind=IntentKind.OTHER), prose=prose)
+    text = _text(await _run(dag, "how do I deposit?"))
+    assert "withdraw at any time" not in text.lower()
+    assert "Depositing works like this." in text
