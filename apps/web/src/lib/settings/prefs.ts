@@ -25,6 +25,19 @@ export type Density = "comfortable" | "compact";
 export interface DisplayPrefs {
   density: Density;
   reducedMotion: boolean;
+  /**
+   * 038 — whether a chat answer's Sources card opens expanded.
+   *
+   * OFF by default. The card frequently ran longer than the answer it supported: a two-sentence
+   * reply followed by six citations, each quoting two hundred characters, so the thing the user
+   * asked for was the smallest object on the screen.
+   *
+   * Collapsed, NOT hidden. The citations are the product's evidence that an answer came from
+   * somewhere — 029 exists because an unsourced answer is indistinguishable from an invented one.
+   * Removing them to reduce clutter would trade the trust proposition for tidiness, so the card
+   * still says how many sources there are and opens on one tap.
+   */
+  expandSources: boolean;
 }
 
 /** localStorage keys — versioned + `sp.` namespaced to match sp.swap.imported.v1 / sp-theme. */
@@ -43,6 +56,7 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   density: "comfortable",
   reducedMotion: false,
+  expandSources: false,
 };
 
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
@@ -59,7 +73,7 @@ export function coerceNotifPrefs(raw: unknown): NotifPrefs {
   return out;
 }
 
-/** Same for display prefs — only the two known fields, each validated against its domain. */
+/** Same for display prefs — only the known fields, each validated against its own domain. */
 export function coerceDisplayPrefs(raw: unknown): DisplayPrefs {
   const out: DisplayPrefs = { ...DEFAULT_DISPLAY_PREFS };
   if (raw && typeof raw === "object") {
@@ -67,6 +81,8 @@ export function coerceDisplayPrefs(raw: unknown): DisplayPrefs {
     if (d === "comfortable" || d === "compact") out.density = d;
     const rm = (raw as Record<string, unknown>).reducedMotion;
     if (isBool(rm)) out.reducedMotion = rm;
+    const es = (raw as Record<string, unknown>).expandSources;
+    if (isBool(es)) out.expandSources = es;
   }
   return out;
 }

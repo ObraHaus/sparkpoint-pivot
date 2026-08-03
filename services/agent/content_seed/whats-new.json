@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sources-fold-away-by-default",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sources now fold away, so the answer leads",
+      "body": "Sparky still cites everything it uses — but the Sources card no longer takes up more room than the answer itself. It now appears folded, showing how many sources an answer rests on, and opens with one tap.\n\nWe didn't remove the citations, and we won't. Being able to check where an answer came from is the difference between an answer and a guess. What changed is only which of the two you see first.\n\nIf you'd rather always see them in full, there's a switch in Settings → Appearance: \"Sources under answers\". It's per device, so your phone and your laptop can differ.",
+      "cta_label": "Open Appearance settings",
+      "cta_href": "/settings",
+      "published_at": "2026-08-03T22:28:41Z",
+      "active": true
+    },
+    {
       "slug": "sparky-suggests-what-to-ask-next",
       "type": "changelog",
       "tag": "Improved",
