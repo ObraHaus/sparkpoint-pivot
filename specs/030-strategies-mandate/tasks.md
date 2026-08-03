@@ -7,10 +7,10 @@ tested without a browser, pinned with the verbatim string or figure observed liv
 
 ## Phase 1: Foundation — candidates that exist, and a gate that can bite
 
-- [ ] T001 `services/agent/src/sparkpoint_agent/agents/recommender.py` — give `_YIELD_STRATEGIES` a per-strategy `RiskProfile`; `build_action` takes `risk_class` as a parameter distinct from the user's mandate profile (R2).
-- [ ] T002 `services/agent/tests/policy/test_risk_class_parity.py` — verdict, reason codes and full check trace byte-identical before/after for both strategies × all three mandate profiles; plus a synthetic over-risk action that now REJECTS where it previously could not (proves the tautology is gone).
-- [ ] T003 `services/agent/src/sparkpoint_agent/api/recommendations.py` — `_build_chain_context` resolves `aave_v3_pool` from `config.aave_pool_address` (R1).
-- [ ] T004 [P] `services/agent/tests/api/test_recommendations.py` — two candidates on a chain with both configured; exactly one when the pool address is absent (the 46630 case), with no error.
+- [x] T001 `services/agent/src/sparkpoint_agent/agents/recommender.py` — give `_YIELD_STRATEGIES` a per-strategy `RiskProfile`; `build_action` takes `risk_class` as a parameter distinct from the user's mandate profile (R2).
+- [x] T002 `services/agent/tests/policy/test_risk_class_parity.py` — verdict, reason codes and full check trace byte-identical before/after for both strategies × all three mandate profiles; plus a synthetic over-risk action that now REJECTS where it previously could not (proves the tautology is gone).
+- [x] T003 `services/agent/src/sparkpoint_agent/api/recommendations.py` — `_build_chain_context` resolves `aave_v3_pool` from `config.aave_pool_address` (R1).
+- [x] T004 [P] `services/agent/tests/api/test_recommendations.py` — two candidates on a chain with both configured; exactly one when the pool address is absent (the 46630 case), with no error.
 
 ## Phase 2: User Story 1 — a real choice between real options (P1)
 

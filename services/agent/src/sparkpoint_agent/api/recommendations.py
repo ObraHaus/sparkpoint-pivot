@@ -83,6 +83,8 @@ router = APIRouter(tags=["recommendations"])
 # deposit candidate is representable; without it, that candidate is dropped (fail-closed)
 # and only the bare Aave supply (a statically-known target) can surface.
 _VAULT_TARGET_REF = "sparkpoint_vault"
+#: The allowlist's ref for the Aave v3 pool (`policy/constants.py` AllowlistEntry.target_ref).
+_AAVE_POOL_TARGET_REF = "aave_v3_pool"
 
 # A generous ceiling for the detail recompute — there are only a couple of yield
 # strategies, so this never truncates while finding a rec by id.
@@ -322,6 +324,16 @@ def _build_chain_context(
     resolved_targets: dict[str, str] = {}
     if config.vault_address:
         resolved_targets[_VAULT_TARGET_REF] = config.vault_address
+    # 030/R1 — resolve the Aave pool too. `AAVE_SUPPLY` has been on the policy allowlist (with
+    # `target_ref="aave_v3_pool"`) and in the recommender's candidate set since both were written,
+    # but this map only ever carried the vault. `build_action` therefore returned None for it on
+    # EVERY request, and `/strategies` — a screen whose entire language is comparison — has shown
+    # exactly one card for its whole life. The address is already loaded and already used by
+    # `_read_aave_gross_bps`; nothing about the PERMITTED set changes here, the allowlist already
+    # names this target. A chain without a pool configured (Robinhood 46630 has no Aave at all)
+    # resolves nothing and the candidate is dropped exactly as before — fail-closed, no error.
+    if config.aave_pool_address:
+        resolved_targets[_AAVE_POOL_TARGET_REF] = config.aave_pool_address
     # Net-of-perf-fee projection from the live gross Aave rate; None stays None (honest, no feed).
     projected = None if gross_bps is None else round(gross_bps * (10_000 - fee_bps) / 10_000)
     return ChainContext(
