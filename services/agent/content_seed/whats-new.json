@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "one-place-to-manage-what-sparky-knows",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "One place to manage what Sparky knows",
+      "body": "Everything you write for Sparky now lives on a single page, in five clearly labelled sections: your documentation, Sparky's persona, its own research notes, the updates you publish here, and the tips that appear around the app.\n\nThey used to be spread across three separate screens with three different shapes, so keeping Sparky's answers current meant knowing which page held what. Nothing about how they work has changed — they've just been gathered in one place, and each section now says plainly what it is and who wrote it. That last part matters more than it sounds: the persona is Sparky's character rather than reference material, and it is deliberately never quoted back as a source.\n\nYour existing links still work. The old Tips and Updates addresses take you straight to the right section, and both still have their own entries in the menu.\n\nYou'll also find a new Self-authored section. It is a preview only — nothing is being generated yet, and it says so. It shows where Sparky's own daily research will appear once we've finished designing how it works, which is a conversation about what a note is allowed to claim rather than a coding job.",
+      "cta_label": "Open the knowledge console",
+      "cta_href": "/admin/knowledge",
+      "published_at": "2026-08-03T19:30:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-reads-the-changelog",
       "type": "changelog",
       "tag": "Improved",

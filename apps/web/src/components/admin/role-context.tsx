@@ -96,9 +96,14 @@ export const NAV_HREF: Record<NavKey, string> = {
   allowlist: "/admin/allowlist",
   usage: "/admin/usage",
   gateway: "/admin/gateway",
+  // 032 — knowledge, updates and tips are three SECTIONS of one console now. The nav keeps all
+  // three entries, deep-linked: an admin looking for "Tips" still finds "Tips" and lands on the
+  // right section, rather than having to learn that tips now live inside Knowledge. Deep links
+  // rather than the legacy routes so there is no redirect hop; `/admin/tips` and `/admin/updates`
+  // still resolve for existing bookmarks.
   knowledge: "/admin/knowledge",
-  updates: "/admin/updates",
-  tips: "/admin/tips",
+  updates: "/admin/knowledge?section=updates",
+  tips: "/admin/knowledge?section=tips",
   uptime: "/admin/uptime",
   diagnostics: "/admin/diagnostics",
   tvl: "/admin/tvl",

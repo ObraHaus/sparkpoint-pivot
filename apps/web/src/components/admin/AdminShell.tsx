@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Icon, SparkMark } from "@/lib/icons";
 import { StageBadge } from "@/components/ui/stage-badge";
@@ -137,9 +137,20 @@ function RoleSwitch() {
   );
 }
 
-/** map the current pathname to the active nav key. */
-function activeNav(pathname: string): NavKey {
+/** map the current location to the active nav key.
+ *
+ * 032 — three nav entries now point at ONE page with a `?section=`, so the pathname alone cannot
+ * tell them apart: without the section, clicking "Tips" would highlight "Knowledge". The section
+ * is matched first, then the pathname as before. */
+export function activeNav(pathname: string, section?: string | null): NavKey {
+  if (pathname === "/admin/knowledge" && section) {
+    const bySection: Record<string, NavKey> = { updates: "updates", tips: "tips" };
+    const key = bySection[section];
+    if (key) return key;
+  }
   const entry = (Object.entries(NAV_HREF) as [NavKey, string][])
+    // Compare paths only — a deep-linked href carries a query the pathname never will.
+    .map(([key, href]) => [key, href.split("?")[0]] as [NavKey, string])
     // longest href first so /admin/users wins over /admin
     .sort((a, b) => b[1].length - a[1].length)
     .find(([, href]) => pathname === href || pathname.startsWith(href + "/"));
@@ -149,6 +160,7 @@ function activeNav(pathname: string): NavKey {
 function Shell({ children }: { children: ReactNode }) {
   const { role } = useAdminRole();
   const pathname = usePathname() || "/admin";
+  const searchParams = useSearchParams();
   const { resolvedTheme, setTheme } = useTheme();
   const [navOpen, setNavOpen] = useState(false);
   // Dismissible scaffold notice — once closed, the panel matches the design 1:1.
@@ -166,7 +178,7 @@ function Shell({ children }: { children: ReactNode }) {
   const r = ROLES[role];
   const primary = r.nav.filter((n) => !["cfg", "audit"].includes(n));
   const admin = r.nav.filter((n) => ["cfg", "audit"].includes(n));
-  const cur = activeNav(pathname);
+  const cur = activeNav(pathname, searchParams?.get("section"));
   const closeNav = () => setNavOpen(false);
 
   return (
