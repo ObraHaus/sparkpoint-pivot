@@ -1,98 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
 /**
- * Admin → Audit log (Phase B.1: REAL data, no fabrication).
- *
- * Wired to the agent's append-only allowlist audit (`/admin/allowlist/audit` via the BFF) — the
- * only admin-action audit that actually exists today (every beta/admin add/remove/seed). A broader
- * admin-action audit (logins, exports, config changes) is not yet instrumented and is honestly NOT
- * shown as if it were. Empty state is shown honestly when there are no changes.
+ * 035 — this screen is now a section of a console. A REDIRECT rather than a copy of the
+ * panel: one home per screen, so the two can never drift apart, and every bookmark an
+ * operator wrote down still lands in the right place.
  */
-
-import { useCallback, useEffect, useState } from "react";
-
-interface AuditEntry {
-  action: string;
-  address: string;
-  role: string;
-  actor: string | null;
-  at: string;
-}
-
 export default function Page() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
-
-  const refresh = useCallback(async () => {
-    try {
-      const r = await fetch("/api/agent/admin/allowlist/audit?limit=100", {
-        headers: { "x-chain-id": "84532" },
-        cache: "no-store",
-      });
-      if (!r.ok) throw new Error(String(r.status));
-      setEntries(((await r.json()) as { entries?: AuditEntry[] }).entries ?? []);
-      setState("ok");
-    } catch {
-      setState("error");
-    }
-  }, []);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refresh();
-  }, [refresh]);
-
-  return (
-    <>
-      <div className="pghead">
-        <div>
-          <h1>Audit log</h1>
-          <div className="sub">
-            Append-only record of allowlist changes (add / remove / seed of beta &amp; admin wallets).
-            Broader admin-action auditing is not yet instrumented.
-          </div>
-        </div>
-        <span className={`pill ${state === "ok" ? "ok" : state === "loading" ? "info" : "amber"}`}>
-          <span className="led" />
-          {state === "loading" ? "Loading…" : state === "error" ? "Unavailable" : `${entries.length} entries`}
-        </span>
-      </div>
-      <div className="panel">
-        {entries.length === 0 ? (
-          <div className="muted" style={{ padding: "14px 4px", fontSize: 13 }}>
-            {state === "loading"
-              ? "Loading…"
-              : state === "error"
-                ? "Couldn’t load the audit log."
-                : "No allowlist changes recorded yet."}
-          </div>
-        ) : (
-          <table className="adtbl">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Role</th>
-                <th>Wallet</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e, i) => (
-                <tr key={i}>
-                  <td className="mono">{new Date(e.at).toLocaleString()}</td>
-                  <td className="mono">{e.actor ?? "—"}</td>
-                  <td>
-                    <span className={`pill ${e.action === "remove" ? "amber" : "ok"}`}>{e.action}</span>
-                  </td>
-                  <td>{e.role}</td>
-                  <td className="mono" style={{ wordBreak: "break-all" }}>{e.address}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </>
-  );
+  redirect("/admin/system?section=audit");
 }

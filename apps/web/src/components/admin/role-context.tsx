@@ -10,29 +10,16 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 
+// 035 — the nav map lives in a PURE leaf module so its rule can be tested directly rather than
+// re-implemented in a test file. Re-exported here so existing importers are unaffected.
+import { NAVMETA, NAV_HREF, type NavKey } from "@/lib/admin/nav";
+
+export { NAVMETA, NAV_HREF };
+export type { NavKey };
+
 export type RoleKey = "super" | "ops" | "stake" | "client";
 
-/** nav keys, in source order. */
-export type NavKey =
-  | "overview"
-  | "users"
-  | "allowlist"
-  | "usage"
-  | "gateway"
-  | "knowledge"
-  | "updates"
-  | "tips"
-  | "uptime"
-  | "diagnostics"
-  | "tvl"
-  | "vaults"
-  | "faucet"
-  | "revenue"
-  | "system"
-  | "killswitch"
-  | "stake"
-  | "cfg"
-  | "audit";
+
 
 export interface RoleDef {
   label: string;
@@ -44,17 +31,17 @@ export interface RoleDef {
 export const ROLES: Record<RoleKey, RoleDef> = {
   super: {
     label: "Super-Admin",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "diagnostics", "tvl", "vaults", "faucet", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "gateway", "knowledge", "vault", "faucet", "revenue", "system", "stake"],
     home: "overview",
   },
   ops: {
     label: "Ops / Internal",
-    nav: ["overview", "users", "allowlist", "usage", "gateway", "knowledge", "updates", "tips", "uptime", "diagnostics", "tvl", "vaults", "faucet", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "gateway", "knowledge", "vault", "faucet", "revenue", "system", "stake"],
     home: "overview",
   },
   stake: {
     label: "Stakeholder",
-    nav: ["overview", "tvl", "revenue", "stake"],
+    nav: ["overview", "vault", "revenue", "stake"],
     home: "stake",
   },
   client: {
@@ -64,58 +51,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   },
 };
 
-/** NAVMETA — [label, icon name] per nav key. The source admin file shipped its
- *  own icon paths; here we map each to the closest icon in @/lib/icons (most are
- *  path-identical: overview=grid, usage=activity, system=shield, cfg=settings). */
-export const NAVMETA: Record<NavKey, [string, string]> = {
-  overview: ["Overview", "grid"],
-  users: ["Users", "user"],
-  allowlist: ["Allowlist", "shieldcheck"],
-  usage: ["Usage", "activity"],
-  gateway: ["LLM gateway", "zap"],
-  knowledge: ["Knowledge", "book"],
-  updates: ["Updates", "bell"],
-  tips: ["Tips", "info"],
-  uptime: ["Uptime", "activity"],
-  diagnostics: ["Diagnostics", "flask"],
-  tvl: ["TVL / Vault", "vault"],
-  vaults: ["Vaults", "vault"],
-  faucet: ["SRK faucet", "coins"],
-  revenue: ["Revenue", "portfolio"],
-  system: ["System", "shield"],
-  killswitch: ["Kill-switch", "pause"],
-  stake: ["Stakeholder", "coins"],
-  cfg: ["Limits & Tiers", "settings"],
-  audit: ["Audit log", "book"],
-};
 
-/** route href per nav key (the App Router equivalent of the source's `screen`). */
-export const NAV_HREF: Record<NavKey, string> = {
-  overview: "/admin",
-  users: "/admin/users",
-  allowlist: "/admin/allowlist",
-  usage: "/admin/usage",
-  gateway: "/admin/gateway",
-  // 032 — knowledge, updates and tips are three SECTIONS of one console now. The nav keeps all
-  // three entries, deep-linked: an admin looking for "Tips" still finds "Tips" and lands on the
-  // right section, rather than having to learn that tips now live inside Knowledge. Deep links
-  // rather than the legacy routes so there is no redirect hop; `/admin/tips` and `/admin/updates`
-  // still resolve for existing bookmarks.
-  knowledge: "/admin/knowledge",
-  updates: "/admin/knowledge?section=updates",
-  tips: "/admin/knowledge?section=tips",
-  uptime: "/admin/uptime",
-  diagnostics: "/admin/diagnostics",
-  tvl: "/admin/tvl",
-  vaults: "/admin/vaults",
-  faucet: "/admin/faucet",
-  revenue: "/admin/revenue",
-  system: "/admin/system",
-  killswitch: "/admin/killswitch",
-  stake: "/admin/stake",
-  cfg: "/admin/config",
-  audit: "/admin/audit",
-};
+
+
 
 interface AdminRoleCtx {
   role: RoleKey;

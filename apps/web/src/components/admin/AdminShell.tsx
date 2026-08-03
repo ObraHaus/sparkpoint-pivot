@@ -14,7 +14,9 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
+import { activeNav } from "@/lib/admin/nav";
 import { useTheme } from "next-themes";
 import { Icon, SparkMark } from "@/lib/icons";
 import { StageBadge } from "@/components/ui/stage-badge";
@@ -142,25 +144,10 @@ function RoleSwitch() {
  * 032 — three nav entries now point at ONE page with a `?section=`, so the pathname alone cannot
  * tell them apart: without the section, clicking "Tips" would highlight "Knowledge". The section
  * is matched first, then the pathname as before. */
-export function activeNav(pathname: string, section?: string | null): NavKey {
-  if (pathname === "/admin/knowledge" && section) {
-    const bySection: Record<string, NavKey> = { updates: "updates", tips: "tips" };
-    const key = bySection[section];
-    if (key) return key;
-  }
-  const entry = (Object.entries(NAV_HREF) as [NavKey, string][])
-    // Compare paths only — a deep-linked href carries a query the pathname never will.
-    .map(([key, href]) => [key, href.split("?")[0]] as [NavKey, string])
-    // longest href first so /admin/users wins over /admin
-    .sort((a, b) => b[1].length - a[1].length)
-    .find(([, href]) => pathname === href || pathname.startsWith(href + "/"));
-  return entry ? entry[0] : "overview";
-}
 
 function Shell({ children }: { children: ReactNode }) {
   const { role } = useAdminRole();
   const pathname = usePathname() || "/admin";
-  const searchParams = useSearchParams();
   const { resolvedTheme, setTheme } = useTheme();
   const [navOpen, setNavOpen] = useState(false);
   // Dismissible scaffold notice — once closed, the panel matches the design 1:1.
@@ -176,9 +163,10 @@ function Shell({ children }: { children: ReactNode }) {
   const isLight = mounted && resolvedTheme === "light";
 
   const r = ROLES[role];
-  const primary = r.nav.filter((n) => !["cfg", "audit"].includes(n));
-  const admin = r.nav.filter((n) => ["cfg", "audit"].includes(n));
-  const cur = activeNav(pathname, searchParams?.get("section"));
+  // 035 — the "Admin" sub-group held exactly `cfg` and `audit`, and both are now sections of a
+  // console. A heading over an empty list is worse than no heading, so the split goes with them.
+  const primary = r.nav;
+  const cur = activeNav(pathname);
   const closeNav = () => setNavOpen(false);
 
   return (
@@ -237,10 +225,6 @@ function Shell({ children }: { children: ReactNode }) {
             </span>
           </button>
           {primary.map((n) => (
-            <NavItem key={n} nav={n} active={cur === n} onNav={closeNav} />
-          ))}
-          {admin.length ? <div className="seclbl">Admin</div> : null}
-          {admin.map((n) => (
             <NavItem key={n} nav={n} active={cur === n} onNav={closeNav} />
           ))}
           <button className="navtheme" type="button" onClick={() => setTheme(isLight ? "dark" : "light")}>

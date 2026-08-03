@@ -16,10 +16,10 @@
  * corpus feeds ONLY the assistant's prose (literacy / explainer / rationale), never the policy gate.
  */
 
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { TipsPanel } from "@/components/admin/TipsPanel";
 import { UpdatesPanel } from "@/components/admin/UpdatesPanel";
+import { AdminSections } from "@/components/admin/SectionTabs";
 import { SelfAuthoredPanel } from "@/components/admin/SelfAuthoredPanel";
 import { Icon } from "@/lib/icons";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
@@ -101,75 +101,42 @@ async function mutationError(r: Response): Promise<string> {
  *   4. Updates        — the in-app changelog. Since 031, indexed and readable by the assistant.
  *   5. Tips           — the sidebar explainer databank. Likewise readable since 031.
  */
-type AdminTab = "knowledge" | "persona" | "self-authored" | "updates" | "tips";
-
-const TABS: { id: AdminTab; label: string; hint: string }[] = [
-  { id: "knowledge", label: "Knowledge", hint: "Documentation you write. Sparky answers from it." },
-  { id: "persona", label: "Persona", hint: "Sparky's character. Never part of the corpus." },
-  { id: "self-authored", label: "Self-authored", hint: "Sparky's own research, written daily. You control what it reads." },
-  { id: "updates", label: "Updates", hint: "The in-app changelog. Sparky reads it." },
-  { id: "tips", label: "Tips", hint: "Sidebar explainers. Sparky reads them." },
-];
-
-const isTab = (v: string | null): v is AdminTab => TABS.some((t) => t.id === v);
-
 export default function Page() {
   return (
-    <Suspense fallback={<div style={{ padding: 24, opacity: 0.7 }}>Loading console…</div>}>
-      <KnowledgeConsole />
-    </Suspense>
-  );
-}
-
-function KnowledgeConsole() {
-  // `?section=` makes every section deep-linkable, which is what lets `/admin/tips` and
-  // `/admin/updates` keep working as redirects rather than breaking existing bookmarks.
-  const params = useSearchParams();
-  const requested = params.get("section");
-  const [tab, setTab] = useState<AdminTab>(isTab(requested) ? requested : "knowledge");
-
-  const tabButton = (t: AdminTab, label: string) => (
-    <button
-      key={t}
-      role="tab"
-      aria-selected={tab === t}
-      onClick={() => setTab(t)}
-      style={{
-        padding: "8px 18px",
-        borderRadius: 8,
-        border: tab === t ? "1px solid var(--accent, #6a8bff)" : "1px solid var(--border-soft)",
-        background: tab === t ? "var(--accent, #6a8bff)" : "var(--surface-2, rgba(127,127,127,.12))",
-        color: tab === t ? "#fff" : "var(--foreground)",
-        fontWeight: 600,
-        fontSize: 14,
-        cursor: "pointer",
-        lineHeight: 1.4,
-      }}
-    >
-      {label}
-    </button>
-  );
-
-  const active = TABS.find((t) => t.id === tab);
-  return (
-    <>
-      <div
-        style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}
-        role="tablist"
-        aria-label="Knowledge console section"
-      >
-        {TABS.map((t) => tabButton(t.id, t.label))}
-      </div>
-      {/* Each section says what it IS and who wrote it — the distinction that decides whether an
-          admin should edit it, and (for persona vs the rest) whether Sparky can quote it. */}
-      <div style={{ fontSize: 12.5, opacity: 0.75, marginBottom: 16 }}>{active?.hint}</div>
-
-      {tab === "knowledge" && <KnowledgePanel />}
-      {tab === "persona" && <PersonaPanel />}
-      {tab === "self-authored" && <SelfAuthoredPanel />}
-      {tab === "updates" && <UpdatesPanel />}
-      {tab === "tips" && <TipsPanel />}
-    </>
+    <AdminSections
+      sections={[
+        {
+          id: "knowledge",
+          label: "Knowledge",
+          hint: "Documentation you write. Sparky answers from it.",
+          render: () => <KnowledgePanel />,
+        },
+        {
+          id: "persona",
+          label: "Persona",
+          hint: "Sparky's character. Never part of the corpus.",
+          render: () => <PersonaPanel />,
+        },
+        {
+          id: "self-authored",
+          label: "Self-authored",
+          hint: "Sparky's own research, written daily. You control what it reads.",
+          render: () => <SelfAuthoredPanel />,
+        },
+        {
+          id: "updates",
+          label: "Updates",
+          hint: "The in-app changelog. Sparky reads it.",
+          render: () => <UpdatesPanel />,
+        },
+        {
+          id: "tips",
+          label: "Tips",
+          hint: "Sidebar explainers. Sparky reads them.",
+          render: () => <TipsPanel />,
+        },
+      ]}
+    />
   );
 }
 

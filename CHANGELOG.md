@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (035 — the admin nav is nine entries instead of nineteen)
+- **Screens that are read together are now sections of one console.** The menu had nineteen entries, most of them a single screen, and the grouping was something you had to *know* rather than something you could see: the kill-switch was not under System, a user's tier was not under Users, and "TVL / Vault" and "Vaults" sat next to each other with nothing in either label to say which was the live figures and which was the registry.
+  - **Users & access** — User analytics · AI usage · Allowlist · Limits and tiers
+  - **Vault** — Overview (the live figures) · Config (the registry)
+  - **System** — System · Uptime · Diagnostics · Kill-switch · Audit log
+  - **Knowledge** keeps its five sections from 032, now on the same shared component rather than its own copy.
+- **Updates and Tips left the menu.** They have been sections of the Knowledge console since 032; keeping separate nav entries for them meant the menu still described the old shape.
+- **Nothing was removed — only the way in changed.** All ten former routes still resolve, as redirects rather than second copies, so there is exactly one home per screen and the two cannot drift apart. Every bookmark an operator wrote down still lands on the right section.
+- The **Admin** sub-heading is gone with the two entries it held (Limits & Tiers, Audit log), both now sections. A heading over an empty list is worse than no heading.
+
+### Fixed (035)
+- **The nav rule is now tested against the code that ships.** `activeNav` and the nav map moved to a pure leaf module, because the previous test re-implemented the rule and said so in a comment — a test carrying its own copy of the logic passes when the copy is right, which is not the question anyone is asking. The legacy-route table moved with it, so a test can assert that every old route still lands on a console section that exists.
+
 ### Changed (034 — self-authoring gets its own model, chosen on evidence)
 - **The job no longer runs on the users' chat pool.** It used `sparkpoint-chat`, which points at two **`:free`** OpenRouter deployments shared with every user's conversation — so a six-document run competed with real chat for the same free pool and the same virtual-key rate limit, and nothing in the gateway could tell whose spend was whose. It now asks for its own alias, `sparkpoint-selfauthor`, overridable via `SELF_AUTHORING_MODEL_ALIAS` so a rollback is an env change rather than a release.
 - **Deliberately no fallback onto the chat aliases.** `sparkpoint-chat-premium` falls back to `sparkpoint-chat`, and copying that here would reintroduce exactly the coupling this removes. Letting it fail is better: a failed run writes nothing and leaves the published documents untouched, which is already the safe outcome.
