@@ -82,7 +82,12 @@ def dedupe_key(
     wallet: str, strategy_kind: str, proposed_action: dict[str, Any], policy_version: str
 ) -> str:
     """A stable content hash → one durable record per distinct advice (canonical json, sorted)."""
-    canonical = json.dumps(proposed_action, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(
+        proposed_action,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
     raw = f"{wallet.lower()}|{strategy_kind}|{canonical}|{policy_version}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -176,7 +181,7 @@ class RecommendationStore:
             rec.strategy_kind,
             rec.title,
             rec.rationale,
-            json.dumps(rec.proposed_action),
+            json.dumps(rec.proposed_action, ensure_ascii=False),
             rec.rank,
             rec.mandate_version,
             rec.policy_version,

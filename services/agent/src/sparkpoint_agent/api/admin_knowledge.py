@@ -9,6 +9,7 @@ each mutation is audit-logged. This is a knowledge/access surface — it never t
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from typing import Annotated, Any
 
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..db import get_database
+from ..db.content_entries import ContentEntryStore
 from ..db.knowledge_notes import KnowledgeNoteStore
 from ..knowledge import (
     EMBEDDING_MODEL_VERSION,
@@ -27,17 +29,21 @@ from ..knowledge import (
     scan_for_pii,
     source_uuid,
 )
+from ..knowledge.changelog_ingest import CHANGELOG_SOURCE_KIND, ingest_changelog
+from ..knowledge.store import KNOWLEDGE_SOURCE_KIND
 from .allowlist import require_admin
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
 
 router = APIRouter(tags=["admin-knowledge"])
+_logger = logging.getLogger(__name__)
 
 _INGEST_TIMEOUT_S = 90.0
 
 
-def _chunk_store() -> PgChunkStore:
-    return PgChunkStore(get_database())
+def _chunk_store(source_kind: str = KNOWLEDGE_SOURCE_KIND) -> PgChunkStore:
+    """A chunk store bound to the kind being WRITTEN. Reads span every retrievable kind (031)."""
+    return PgChunkStore(get_database(), source_kind=source_kind)
 
 
 def _note_store() -> KnowledgeNoteStore:
@@ -157,11 +163,29 @@ async def reingest(admin: Annotated[AccountContext, Depends(require_admin)]) -> 
         ),
         timeout=_INGEST_TIMEOUT_S * 4,
     )
+    # 031 — the published changelog is indexed in the same run, so "what shipped this week?" is a
+    # real answer rather than a pointer at a page the assistant cannot read. Best-effort and
+    # isolated: a failure here must not lose the seed corpus re-ingest that already succeeded.
+    changelog: list[dict[str, Any]] = []
+    try:
+        entries = await asyncio.wait_for(
+            ingest_changelog(
+                ContentEntryStore(get_database()),
+                store=_chunk_store(CHANGELOG_SOURCE_KIND),
+                embedder=embedder,
+                source_ref=_git_sha(),
+            ),
+            timeout=_INGEST_TIMEOUT_S * 4,
+        )
+        changelog = [{"source": r.source, "written": r.written} for r in entries]
+    except Exception:  # noqa: BLE001 — the seed re-ingest is the primary job and already ran
+        _logger.warning("changelog_reingest_failed (seed corpus re-ingest unaffected)")
     # One transaction for the whole re-ingest audit trail (atomic — never a half-written log, B5).
     await notes.record_many("reingest", [r.source for r in report.results], admin.owner)
     return {
         "ok": True,
         "ingested": [{"source": r.source, "written": r.written} for r in report.results],
+        "changelog": changelog,
         "skipped_admin_owned": sorted(skip),
     }
 

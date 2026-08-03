@@ -16,15 +16,51 @@ path (research.md §7 "Memory never feeds the policy layer").
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
+from asyncpg.exceptions import InvalidTextRepresentationError
+
 # The dedicated ``memory_source`` member for the Obsidian knowledge corpus. Migration 0006 adds
 # ``'knowledge'`` and 0007 backfills the prior ``'literacy_tip'`` shim rows to it (T123). Real
 # provenance (note slug, section, tags, wikilinks, git sha) rides in the ``metadata`` JSONB.
 KNOWLEDGE_SOURCE_KIND = "knowledge"
+
+#: 031 — every source kind an ADVISORY answer may draw on.
+#:
+#: Retrieval used to be scoped to `knowledge` alone, so two bodies of writing the team publishes
+#: were invisible to the assistant: the in-app changelog (which is why "what shipped this week?"
+#: could only point at a page) and the tip databank. Indexing them is the point — every future
+#: release then teaches the assistant with no separate step to forget.
+#:
+#: ⚠️ PERSONA IS DELIBERATELY ABSENT and must stay absent. It has no source kind, no embedding and
+#: no chunks: it is trusted SYSTEM instruction text, not retrievable content. Adding it here would
+#: let it be quoted back and cited — a trust-boundary break, not a feature.
+#:
+#: Operational memory (`memory_chunks` rows with a `user_id`) is excluded structurally, not by this
+#: list: every search also requires `user_id IS NULL`.
+RETRIEVABLE_SOURCE_KINDS: tuple[str, ...] = ("knowledge", "changelog", "tip", "self_authored")
+
+#: The kinds that exist before migration 0034. Used only as the degraded fallback.
+_PRE_031_KINDS: tuple[str, ...] = ("knowledge", "tip")
+
+_logger = logging.getLogger(__name__)
+_warned_pre_031 = False
+
+
+def _warn_pre_031_enum() -> None:
+    """Warn once that 0034 is unapplied, then keep serving with the kinds that exist."""
+    global _warned_pre_031
+    if not _warned_pre_031:
+        _warned_pre_031 = True
+        _logger.warning(
+            "knowledge_pre_031_enum: migration 0034 is not applied, so published updates and "
+            "self-authored notes are not searchable yet. Retrieval continues over the existing "
+            "kinds. Logged once per process."
+        )
 
 # The dedicated ``memory_source`` member for the sidebar TIP databank (migration 0012). Kept
 # SEPARATE from ``'knowledge'`` so a curated UI tip can NEVER surface in an assistant RAG citation
@@ -63,6 +99,11 @@ class ChunkHit:
     content: str
     metadata: dict[str, Any]
     score: float
+    #: 031 — which body of writing this came from ("knowledge" | "changelog" | "tip" |
+    #: "self_authored"). Carried through to the citation so a reader can tell documentation a
+    #: person wrote from a note the assistant wrote about itself. Defaults to the pre-031 value so
+    #: every existing construction stays valid.
+    source_kind: str = "knowledge"
 
 
 @runtime_checkable
@@ -119,14 +160,18 @@ WHERE source_id = $1 AND source_kind = $2::memory_source AND id <> ALL($3::uuid[
 """.strip()
 
 # Cosine search: ``<=>`` is pgvector cosine DISTANCE; ``1 - distance`` is similarity.
-# Order by distance ascending (nearest first). Scoped to the knowledge source_kind so
-# operational-memory chunks never leak into an advisory citation.
+# Order by distance ascending (nearest first).
+#
+# 031 — searches a SET of kinds rather than one, so published updates and tips reach an answer.
+# `user_id IS NULL` is the structural guarantee that operational memory can never leak into an
+# advisory citation, and it is unchanged: it does not depend on which kinds are listed.
 _SEARCH_SQL = """
 SELECT content,
        metadata,
+       source_kind::text AS source_kind,
        1 - (embedding <=> $1::vector) AS score
 FROM memory_chunks
-WHERE source_kind = $2::memory_source
+WHERE source_kind = ANY($2::memory_source[])
   AND user_id IS NULL
 ORDER BY embedding <=> $1::vector
 LIMIT $3
@@ -197,7 +242,12 @@ class PgChunkStore:
                 row.content,
                 to_vector_literal(row.embedding),
                 row.embedding_model,
-                json.dumps(row.metadata, sort_keys=True),
+                # SQL_ASCII (standing since 025/#125): this database's jsonb parser HARD-REJECTS
+                # \uXXXX escapes above ASCII, and `json.dumps` escapes by default. Chunk metadata
+                # carries the note TITLE — so any document whose title contains an em-dash or a
+                # curly quote failed to index, silently. Found while indexing the changelog: the
+                # entries that failed were precisely the well-written ones.
+                json.dumps(row.metadata, sort_keys=True, ensure_ascii=False),
             )
             written += 1
         return written
@@ -209,16 +259,33 @@ class PgChunkStore:
         return _rows_affected(status)
 
     async def search(self, embedding: Sequence[float], k: int) -> list[ChunkHit]:
+        """Nearest chunks across every RETRIEVABLE kind (031), not just this store's own kind.
+
+        A store is constructed for one kind because that is what it WRITES; what an advisory answer
+        may READ is a wider, separate question. Conflating the two is what kept published updates
+        and tips out of every answer.
+
+        Degrades honestly on an un-migrated database: the new enum values do not exist yet, the
+        cast raises, and the search falls back to the kinds that do exist. Retrieval then behaves
+        exactly as it did before 031 rather than failing.
+        """
         if k <= 0:
             return []
-        records = await self._db.fetch(
-            _SEARCH_SQL, to_vector_literal(embedding), self._source_kind, k
-        )
+        try:
+            records = await self._db.fetch(
+                _SEARCH_SQL, to_vector_literal(embedding), list(RETRIEVABLE_SOURCE_KINDS), k
+            )
+        except InvalidTextRepresentationError:
+            _warn_pre_031_enum()
+            records = await self._db.fetch(
+                _SEARCH_SQL, to_vector_literal(embedding), list(_PRE_031_KINDS), k
+            )
         return [
             ChunkHit(
                 content=str(rec["content"]),
                 metadata=_as_dict(rec["metadata"]),
                 score=float(rec["score"]),
+                source_kind=str(rec["source_kind"]) if "source_kind" in rec else "knowledge",
             )
             for rec in records
         ]

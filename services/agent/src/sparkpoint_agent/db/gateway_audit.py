@@ -33,7 +33,9 @@ class GatewayAuditStore:
         self, action: str, subject: str, actor: str | None, detail: dict[str, Any] | None = None
     ) -> None:
         act = (actor or "").lower() or None
-        await self.db.execute(_INSERT_SQL, action, subject, act, json.dumps(detail or {}))
+        await self.db.execute(
+            _INSERT_SQL, action, subject, act, json.dumps(detail or {}, ensure_ascii=False)
+        )
 
     async def recent(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self.db.fetch(_READ_SQL, max(1, min(limit, 500)))

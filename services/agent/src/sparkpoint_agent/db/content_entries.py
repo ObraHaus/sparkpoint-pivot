@@ -140,7 +140,10 @@ class ContentEntryStore:
                 _INSERT_SQL, type_, title, body, tag, cta_label, cta_href, is_active, act,
                 _parse_ts(published_at),
             )
-            await conn.execute(_AUDIT_SQL, "create", str(new_id), act, json.dumps({"type": type_}))
+            await conn.execute(_AUDIT_SQL, "create", str(new_id), act, json.dumps(
+                {"type": type_},
+                ensure_ascii=False),
+            )
         return int(new_id)
 
     async def update(
@@ -167,7 +170,10 @@ class ContentEntryStore:
                 _parse_ts(published_at), act,
             )
             await conn.execute(
-                _AUDIT_SQL, "update", str(entry_id), act, json.dumps({"type": type_})
+                _AUDIT_SQL, "update", str(entry_id), act, json.dumps(
+                    {"type": type_},
+                    ensure_ascii=False,
+                )
             )
 
     async def delete(self, entry_id: int, *, actor: str | None) -> None:
@@ -175,7 +181,10 @@ class ContentEntryStore:
         act = (actor or "").lower() or None
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(_DELETE_SQL, entry_id)
-            await conn.execute(_AUDIT_SQL, "delete", str(entry_id), act, json.dumps({}))
+            await conn.execute(_AUDIT_SQL, "delete", str(entry_id), act, json.dumps(
+                {},
+                ensure_ascii=False),
+            )
 
     async def upsert_seed(
         self,
@@ -207,7 +216,7 @@ class ContentEntryStore:
                 )
                 await conn.execute(
                     _AUDIT_SQL, "update", str(existing["id"]), "seed",
-                    json.dumps({"slug": slug, "src": "whats-new"}),
+                    json.dumps({"slug": slug, "src": "whats-new"}, ensure_ascii=False),
                 )
                 return "updated"
             legacy = await conn.fetchrow(_FIND_LEGACY_SQL, type_, title)
@@ -222,7 +231,10 @@ class ContentEntryStore:
                 )
                 await conn.execute(
                     _AUDIT_SQL, "update", str(legacy["id"]), "seed",
-                    json.dumps({"slug": slug, "src": "whats-new", "adopted": True}),
+                    json.dumps(
+                        {"slug": slug, "src": "whats-new", "adopted": True},
+                        ensure_ascii=False,
+                    ),
                 )
                 return "adopted"
             new_id = await conn.fetchval(
@@ -231,7 +243,7 @@ class ContentEntryStore:
             )
             await conn.execute(
                 _AUDIT_SQL, "create", str(new_id), "seed",
-                json.dumps({"slug": slug, "src": "whats-new"}),
+                json.dumps({"slug": slug, "src": "whats-new"}, ensure_ascii=False),
             )
             return "inserted"
 

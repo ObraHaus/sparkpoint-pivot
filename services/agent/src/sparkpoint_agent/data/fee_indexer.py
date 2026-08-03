@@ -835,4 +835,4 @@ def _row_from_record(record: Any) -> FeeEventRow:
 
 
 def _json_dumps(payload: Mapping[str, Any]) -> str:
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False)

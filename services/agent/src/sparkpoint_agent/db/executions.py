@@ -181,7 +181,10 @@ class ExecutionStore:
             _hex_to_bytes(tx_hash),
             block_number,
             (str(gas_used) if gas_used is not None else None),
-            (json.dumps(realized_amounts) if realized_amounts is not None else None),
+            (json.dumps(
+                realized_amounts,
+                ensure_ascii=False) if realized_amounts is not None else None,
+            ),
             reverted_reason,
         )
 

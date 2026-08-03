@@ -97,7 +97,7 @@ def sim_insert_args(intent_bundle_id: UUID, sim: SimulationInsert) -> tuple[Any,
         (str(sim.expected_fees_raw) if sim.expected_fees_raw is not None else None),
         sim.price_impact_bps,
         sim.estimated_slippage_bps,
-        json.dumps(sim.balance_deltas),
+        json.dumps(sim.balance_deltas, ensure_ascii=False),
         sim.passed,
         sim.raw_sim_ref,
     )

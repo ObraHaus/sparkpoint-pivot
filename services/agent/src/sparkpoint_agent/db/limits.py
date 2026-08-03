@@ -200,7 +200,7 @@ class LimitsStore:
                         "priorityWeight": priority_weight,
                         "modelAlias": model_alias,
                     }
-                ),
+                , ensure_ascii=False),
             )
 
     # -- tier assignment -----------------------------------------------------
@@ -242,7 +242,7 @@ class LimitsStore:
                         "source": source,
                         "expires_at": expires_at.isoformat() if expires_at else None,
                     }
-                ),
+                , ensure_ascii=False),
             )
 
     async def revoke(self, address: str, *, actor: str | None) -> None:
@@ -250,7 +250,9 @@ class LimitsStore:
         act = _norm(actor) or None
         async with self.db.acquire() as conn, conn.transaction():
             await conn.execute(_REVOKE_SQL, addr)
-            await conn.execute(_AUDIT_SQL, "revoke", addr, act, json.dumps({}))
+            await conn.execute(
+                _AUDIT_SQL, "revoke", addr, act, json.dumps({}, ensure_ascii=False)
+            )
 
     async def seed_premium(self, addresses: list[str]) -> int:
         """Idempotently seed premium wallets from ``PREMIUM_ALLOWLIST``. Returns NEW rows added."""
@@ -263,7 +265,11 @@ class LimitsStore:
                 result = await conn.execute(_SEED_ASSIGN_SQL, addr)
                 if result.endswith("1"):  # "INSERT 0 1" => a new row (not a conflict no-op)
                     await conn.execute(
-                        _AUDIT_SQL, "seed", addr, "env-seed", json.dumps({"tier": "premium"})
+                        _AUDIT_SQL,
+                        "seed",
+                        addr,
+                        "env-seed",
+                        json.dumps({"tier": "premium"}, ensure_ascii=False),
                     )
                     added += 1
         return added
@@ -292,7 +298,9 @@ class LimitsStore:
         subject: str | None,
         detail: dict[str, Any] | None = None,
     ) -> None:
-        await self.db.execute(_EVENT_SQL, verdict, metric, tier, subject, json.dumps(detail or {}))
+        await self.db.execute(
+            _EVENT_SQL, verdict, metric, tier, subject, json.dumps(detail or {}, ensure_ascii=False)
+        )
 
     async def usage_by_tier(self, window_start: datetime) -> list[dict[str, Any]]:
         """Per-tier consumption for one window: active wallets + total turns."""
