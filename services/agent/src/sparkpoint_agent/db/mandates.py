@@ -26,7 +26,6 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from asyncpg import Record
-from asyncpg.exceptions import UndefinedColumnError
 
 from .pool import Database
 
@@ -128,6 +127,38 @@ class MandateRecord:
 
 _logger = logging.getLogger(__name__)
 _warned_pre_030 = False
+
+#: Tri-state cache of "does this database have the 0033 columns?" — `None` until first probed.
+#:
+#: ⚠️ WHY A PROBE AND NOT A try/except AROUND THE INSERT. The obvious implementation — attempt the
+#: 030 INSERT, catch `UndefinedColumnError`, retry the pre-030 one — CANNOT WORK, and unit tests
+#: with fakes will happily say it does. The insert runs inside a transaction, and Postgres aborts
+#: the entire transaction on any statement error: every subsequent command in it fails with
+#: `InFailedSQLTransactionError`, including the retry. Verified against the real un-migrated
+#: database, which is the only place this shows up.
+#:
+#: So the capability is resolved BEFORE the transaction opens, once per process, and the choice of
+#: statement is made from the answer. A failed probe resolves to False, because the pre-030
+#: statement works against both schemas and losing four new fields beats losing the user's plan.
+_has_030_schema: bool | None = None
+
+
+async def _probe_030_schema(conn: Any) -> bool:
+    """Does this database have the 0033 columns? Cached per process, fail-safe to ``False``."""
+    global _has_030_schema
+    if _has_030_schema is None:
+        try:
+            _has_030_schema = bool(
+                await conn.fetchval(
+                    "SELECT true FROM information_schema.columns "
+                    "WHERE table_name = 'mandates' AND column_name = 'exposure_limit_usdc'"
+                )
+            )
+        except Exception:  # noqa: BLE001 — a probe that cannot run means "assume not migrated"
+            _has_030_schema = False
+        if not _has_030_schema:
+            _warn_pre_030_schema()
+    return _has_030_schema
 
 
 def _warn_pre_030_schema() -> None:
@@ -298,6 +329,10 @@ class PgMandateStore:
         prior confirmed row, inserts the new confirmed row, and repoints
         ``users.active_mandate_id`` — all in a single transaction.
         """
+        # Resolved BEFORE the transaction — see `_has_030_schema`. A failed statement inside a
+        # transaction poisons every later statement in it, so this cannot be a try/except.
+        async with self.db.acquire() as probe_conn:
+            has_030 = await _probe_030_schema(probe_conn)
         async with self.db.acquire() as conn, conn.transaction():
             user_id = await conn.fetchval(
                 "INSERT INTO users (eoa_address) VALUES ($1) "
@@ -334,7 +369,7 @@ class PgMandateStore:
                 json.dumps(write.risk_params, ensure_ascii=False),
                 write.summary_text,
             )
-            try:
+            if has_030:
                 row = await conn.fetchrow(
                     _INSERT_SQL,
                     *base_args,
@@ -350,11 +385,9 @@ class PgMandateStore:
                     else json.dumps(write.contribution, ensure_ascii=False),
                     write.risk_tier_display,
                 )
-            except UndefinedColumnError:
-                # 0033 not applied yet. Saving the plan matters more than saving the four new
-                # fields, so the write degrades to the pre-030 shape and warns once. The 025/0028
-                # lesson: "new agent on old schema" must never cost the user their data.
-                _warn_pre_030_schema()
+            else:
+                # 0033 not applied. Saving the plan matters more than saving the four new fields
+                # (025/0028 lesson: "new agent on old schema" must never cost the user their data).
                 row = await conn.fetchrow(_INSERT_SQL_PRE_030, *base_args)
             assert row is not None  # noqa: S101 — INSERT ... RETURNING always yields a row
             await conn.execute(
@@ -369,11 +402,13 @@ class PgMandateStore:
         self, *, owner_eoa: str, network_id: str
     ) -> MandateRecord | None:
         """The user's active (confirmed, highest-version) mandate, or ``None`` (§3.1)."""
-        try:
-            row = await self.db.fetchrow(_SELECT_ACTIVE_SQL, owner_eoa, network_id)
-        except UndefinedColumnError:
-            _warn_pre_030_schema()
-            row = await self.db.fetchrow(_SELECT_ACTIVE_SQL_PRE_030, owner_eoa, network_id)
+        # Same probe as the write path. This read is NOT in a transaction, so a try/except would
+        # work here — but using one mechanism for both keeps the two paths from disagreeing about
+        # what the schema supports, and avoids a guaranteed error log on every read.
+        async with self.db.acquire() as conn:
+            has_030 = await _probe_030_schema(conn)
+        sql = _SELECT_ACTIVE_SQL if has_030 else _SELECT_ACTIVE_SQL_PRE_030
+        row = await self.db.fetchrow(sql, owner_eoa, network_id)
         return row_to_record(row) if row is not None else None
 
     async def list_active_owners(

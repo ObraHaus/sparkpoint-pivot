@@ -103,3 +103,49 @@ def test_stated_fields_round_trip_to_the_wire() -> None:
     assert wire["allowedProtocols"] == ["aave_v3"]
     assert wire["contribution"]["cadence"] == "monthly"
     assert wire["riskTier"] == 5, "the tier the user actually chose, not the profile's default"
+
+
+def test_the_schema_capability_is_resolved_before_the_transaction_opens() -> None:
+    """The bug this design exists to avoid, found only against a real database.
+
+    The obvious implementation is: attempt the 030 INSERT, catch `UndefinedColumnError`, retry the
+    pre-030 one. It CANNOT WORK. The insert runs inside a transaction, and Postgres aborts the
+    whole transaction on any statement error — every later command in it, including the retry,
+    fails with `InFailedSQLTransactionError`. Unit tests with fakes report success either way,
+    which is exactly why this was only caught by running it against the un-migrated database.
+
+    So the capability is probed BEFORE the transaction opens. This test pins the structure, since
+    a well-meaning refactor back to try/except would look tidier and be silently broken.
+    """
+    import inspect
+
+    from sparkpoint_agent.db import mandates
+
+    source = inspect.getsource(mandates.PgMandateStore.persist)
+    probe_at = source.index("_probe_030_schema")
+    transaction_at = source.index("conn.transaction()")
+    assert probe_at < transaction_at, (
+        "the schema probe must happen BEFORE the transaction opens — a failed statement inside a "
+        "transaction poisons every statement after it"
+    )
+    assert "except UndefinedColumnError" not in source, (
+        "a try/except around the insert cannot recover inside an aborted transaction"
+    )
+
+
+def test_a_failed_probe_assumes_the_older_schema() -> None:
+    """Fail-safe direction: the pre-030 statement works against BOTH schemas, so an unanswerable
+    probe must resolve to False. Losing four new fields beats losing the user's plan."""
+    import asyncio
+
+    from sparkpoint_agent.db import mandates
+
+    class _Broken:
+        async def fetchval(self, *_a: object, **_k: object) -> object:
+            raise RuntimeError("probe unavailable")
+
+    mandates._has_030_schema = None
+    try:
+        assert asyncio.run(mandates._probe_030_schema(_Broken())) is False
+    finally:
+        mandates._has_030_schema = None
