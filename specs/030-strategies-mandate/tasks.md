@@ -14,22 +14,22 @@ tested without a browser, pinned with the verbatim string or figure observed liv
 
 ## Phase 2: User Story 1 — a real choice between real options (P1)
 
-- [ ] T005 `services/agent/src/sparkpoint_agent/api/recommendations.py` + `coordinator/chat_blocks.py` — carry `riskTier`, `feeStance`, `managedBy` on the recommendation wire (data-model.md).
-- [ ] T006 [P] `apps/web/src/lib/strategy/projection.ts` — NEW leaf: projected annual earnings from balance × net rate in exact integer arithmetic, the idle baseline, and honest absence when either input is missing (R4).
-- [ ] T007 [P] `apps/web/src/lib/strategy/projection.test.ts` — $1,503.26 at 0.40% ⇒ "$6.01"; no balance ⇒ "—" not "$0.00"; no rate ⇒ no projection; never a float.
-- [ ] T008 `apps/web/src/app/(app)/strategies/page.tsx` — render both cards with fee stance and who manages the position; money framing next to the idle baseline; the testnet-rates note.
-- [ ] T009 `apps/web/src/app/(app)/strategies/page.tsx` — "Review this move" carries the amount AND the recommendation id into `/confirm/deposit` (FR-009).
-- [ ] T010 [P] `apps/web/src/app/(app)/confirm/[intent]/RouteConfirm.tsx` — accept and thread the recommendation id so the built transaction stays attributable.
-- [ ] T011 [P] `apps/web/src/lib/agent/recView.test.ts` — a single-strategy chain still renders without phantom ranking; two strategies rank 1 and 2.
+- [x] T005 `services/agent/src/sparkpoint_agent/api/recommendations.py` + `coordinator/chat_blocks.py` — carry `riskTier`, `feeStance`, `managedBy` on the recommendation wire (data-model.md).
+- [x] T006 [P] `apps/web/src/lib/strategy/projection.ts` — NEW leaf: projected annual earnings from balance × net rate in exact integer arithmetic, the idle baseline, and honest absence when either input is missing (R4).
+- [x] T007 [P] `apps/web/src/lib/strategy/projection.test.ts` — $1,503.26 at 0.40% ⇒ "$6.01"; no balance ⇒ "—" not "$0.00"; no rate ⇒ no projection; never a float.
+- [x] T008 `apps/web/src/app/(app)/strategies/page.tsx` — render both cards with fee stance and who manages the position; money framing next to the idle baseline; the testnet-rates note.
+- [x] T009 `apps/web/src/app/(app)/strategies/page.tsx` — "Review this move" carries the amount AND the recommendation id into `/confirm/deposit` (FR-009).
+- [x] T010 [P] `apps/web/src/app/(app)/confirm/[intent]/RouteConfirm.tsx` — accept and thread the recommendation id so the built transaction stays attributable.
+- [x] T011 [P] `apps/web/src/lib/agent/recView.test.ts` — a single-strategy chain still renders without phantom ranking; two strategies rank 1 and 2.
 
 ## Phase 3: User Story 2 — the screen tells the truth about my plan (P1)
 
-- [ ] T012 `apps/web/src/lib/agent/recView.ts` — `risk` from the strategy's own tier; `fit` derived from the saved mandate (FR-006, FR-007).
-- [ ] T013 [P] `apps/web/src/lib/agent/recView.test.ts` — a growth mandate is never told "lower risk, steady yield"; the fit line changes when the mandate changes; the risk badge follows the strategy.
-- [ ] T014 [P] `apps/web/src/components/screens/chat/live-blocks.tsx` — the chat recommendation card reads the block's risk tier instead of `tier={1}`.
-- [ ] T015 `apps/web/src/lib/agent/mandate.ts` — `mandateDrift` gains `below_plan` (R7), with copy that observes rather than urges.
-- [ ] T016 [P] `apps/web/src/lib/agent/mandate.test.ts` — growth mandate + tier-1 holdings ⇒ `below_plan`; conservative + tier-1 ⇒ `on_plan`; unknown inputs ⇒ `unknown`; below-plan copy never suggests taking more risk.
-- [ ] T017 [P] `services/agent/src/sparkpoint_agent/agents/recommender.py` — widen `_AGGRESSIVE_RE` to `leverag(?:e|ed|ing)` + the observed phrasing; test with the verbatim live rationale (R9).
+- [x] T012 `apps/web/src/lib/agent/recView.ts` — `risk` from the strategy's own tier; `fit` derived from the saved mandate (FR-006, FR-007).
+- [x] T013 [P] `apps/web/src/lib/agent/recView.test.ts` — a growth mandate is never told "lower risk, steady yield"; the fit line changes when the mandate changes; the risk badge follows the strategy.
+- [x] T014 [P] `apps/web/src/components/screens/chat/live-blocks.tsx` — the chat recommendation card reads the block's risk tier instead of `tier={1}`.
+- [x] T015 `apps/web/src/lib/agent/mandate.ts` — `mandateDrift` gains `below_plan` (R7), with copy that observes rather than urges.
+- [x] T016 [P] `apps/web/src/lib/agent/mandate.test.ts` — growth mandate + tier-1 holdings ⇒ `below_plan`; conservative + tier-1 ⇒ `on_plan`; unknown inputs ⇒ `unknown`; below-plan copy never suggests taking more risk.
+- [x] T017 [P] `services/agent/src/sparkpoint_agent/agents/recommender.py` — widen `_AGGRESSIVE_RE` to `leverag(?:e|ed|ing)` + the observed phrasing; test with the verbatim live rationale (R9).
 
 ## Phase 4: User Story 3 — a plan I can state, and change (P1)
 

@@ -49,10 +49,20 @@ _logger = logging.getLogger(__name__)
 #: candidate. Matched against the MODEL's rationale only; the deterministic template replaces it.
 #: Deliberately narrow: "higher yield" is a fine thing to say about a lending rate, whereas
 #: "aggressive", "high-risk" and "speculative" describe a strategy this product does not offer.
+#: 030 — widened. 029's pattern used ``\bleverage[d]?\b``, which cannot match "leveraging"
+#: (there is no word boundary before "ing"), and the live rationale on alpha read:
+#:
+#:     "…aligns with your growth mandate by leveraging vault aggregation to seek higher returns
+#:      than passive lending."
+#:
+#: …on a strategy that IS passive lending. The deeper cause was that the model was asked to
+#: differentiate two candidates when only one existed (see 030/R1–R3); the guard should still
+#: have caught it. "aggregation" is included because it describes a strategy shape this product
+#: does not have — the constitution defers multi-strategy and cross-vault routing entirely.
 _AGGRESSIVE_RE = re.compile(
     r"\baggressive(?:ly)?\b|\bhigh(?:er)?[- ]risk\b|\bspeculative\b|\bhigh[- ]octane\b|"
-    r"\brisk(?:y|ier)\b|\bleverage[d]?\b|\bvolatil(?:e|ity)\b|\bmaximis(?:e|ing)\b|"
-    r"\bmaximiz(?:e|ing)\b",
+    r"\brisk(?:y|ier)\b|\bleverag(?:e|ed|es|ing)\b|\bvolatil(?:e|ity)\b|"
+    r"\bmaximis(?:e|ing)\b|\bmaximiz(?:e|ing)\b|\baggregation\b|\boutperform\w*\b",
     re.IGNORECASE,
 )
 
@@ -87,6 +97,41 @@ _YIELD_STRATEGIES: tuple[tuple[ActionType, Asset, RiskProfile], ...] = (
     (ActionType.VAULT_DEPOSIT, Asset.USDC, RiskProfile.CONSERVATIVE),
     (ActionType.AAVE_SUPPLY, Asset.USDC, RiskProfile.CONSERVATIVE),
 )
+
+#: 030 — what a strategy COSTS and who carries it. This is the only real difference between the
+#: two live strategies: both supply USDC to Aave v3, and the vault adds a fee and management
+#: rather than risk or return. Stating it plainly is what lets the comparison be honest instead
+#: of invented — the live rationale before 030 sold "leveraging vault aggregation … rather than
+#: passive lending" for a strategy that IS passive lending, because the model was asked to
+#: differentiate two things when only one existed.
+#:
+#: Derived in code from the constitutionally FIXED allowlist. Not configuration, not a curation
+#: surface (Principle VII).
+STRATEGY_COST: dict[ActionType, tuple[str, str]] = {
+    # (feeStance, managedBy)
+    ActionType.VAULT_DEPOSIT: ("managed_fee", "sparkpoint"),
+    ActionType.AAVE_SUPPLY: ("no_platform_fee", "self"),
+}
+
+#: RiskProfile → the 1..5 tier the UI renders. Mirrors the web's mapping so one number means one
+#: thing on both sides (030/R6). Before this, every card hardcoded tier 1 because the wire carried
+#: nothing truthful to render.
+RISK_TIER: dict[RiskProfile, int] = {
+    RiskProfile.CONSERVATIVE: 1,
+    RiskProfile.BALANCED: 3,
+    RiskProfile.GROWTH: 4,
+}
+
+
+def strategy_meta(action_type: ActionType, risk_class: RiskProfile) -> tuple[int, str, str]:
+    """``(riskTier, feeStance, managedBy)`` for a candidate — the card's truthful metadata.
+
+    An unlisted action type reports its honest risk tier with an unknown cost stance rather than
+    guessing, so a future strategy cannot silently inherit the vault's fee copy.
+    """
+    fee_stance, managed_by = STRATEGY_COST.get(action_type, ("unknown", "unknown"))
+    return RISK_TIER.get(risk_class, 1), fee_stance, managed_by
+
 
 #: The intrinsic risk class of an action type, for the explicit-build path (which does not go
 #: through ``_YIELD_STRATEGIES``). Anything unlisted falls back to the user's mandate profile —

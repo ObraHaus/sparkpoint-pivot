@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mandateView, timelineLabel, mandateDrift, hasSavedMandate } from "./mandate.ts";
+import { mandateView, timelineLabel, mandateDrift, driftLabel, hasSavedMandate } from "./mandate.ts";
 
 test("maps a conservative wire mandate to tier 1 + real goal/timeline/slippage", () => {
   const v = mandateView({
@@ -44,12 +44,14 @@ test("timelineLabel buckets months honestly", () => {
   assert.equal(timelineLabel(36), "3 years");
 });
 
-test("drift: realized ≤ target is on-plan; exceeding is above-plan; missing is unknown", () => {
+test("drift: matching is on-plan; exceeding is above-plan; missing is unknown", () => {
   assert.equal(mandateDrift(1, 1), "on_plan"); // tier-1 vault vs conservative
-  assert.equal(mandateDrift(3, 1), "on_plan"); // conservative vault under a moderate mandate
   assert.equal(mandateDrift(1, 3), "above_plan");
   assert.equal(mandateDrift(undefined, 1), "unknown");
   assert.equal(mandateDrift(1, undefined), "unknown");
+  // 030 — holding BELOW the mandate used to be folded into "on plan", which hid the only case
+  // the indicator could ever have flagged with one strategy live. It is now distinguishable.
+  assert.equal(mandateDrift(3, 1), "below_plan");
 });
 
 test("hasSavedMandate: only a real persisted mandate counts as onboarded", () => {
@@ -68,4 +70,34 @@ test("hasSavedMandate agrees with mandateView, so /verify and Settings can't dis
   for (const wire of [null, undefined, {}, { riskProfile: "growth" }, { version: 3 }]) {
     assert.equal(hasSavedMandate({ mandate: wire }), mandateView(wire) !== null);
   }
+});
+
+// ── 030 · drift can finally say the thing that matters ────────────────────────
+
+test("a growth plan holding only the tier-1 vault reads BELOW plan, not 'on plan'", () => {
+  // The pre-030 rule was `realized > target`, so with one tier-1 strategy live it could only ever
+  // say "on plan". The case it could not express is the one that matters most right now.
+  assert.equal(mandateDrift(4, 1), "below_plan");
+  assert.equal(mandateDrift(5, 1), "below_plan");
+});
+
+test("the other verdicts are unchanged", () => {
+  assert.equal(mandateDrift(1, 1), "on_plan");
+  assert.equal(mandateDrift(1, 4), "above_plan");
+  assert.equal(mandateDrift(undefined, 1), "unknown");
+  assert.equal(mandateDrift(1, undefined), "unknown");
+});
+
+test("below-plan copy observes; it never urges more risk", () => {
+  const copy = driftLabel("below_plan").toLowerCase();
+  for (const nudge of ["should", "consider taking", "increase your risk", "you could earn"]) {
+    assert.ok(!copy.includes(nudge), `${nudge} in: ${copy}`);
+  }
+  assert.match(copy, /that's fine/);
+});
+
+test("every status has copy except unknown, which stays silent", () => {
+  assert.ok(driftLabel("above_plan").length > 0);
+  assert.ok(driftLabel("on_plan").length > 0);
+  assert.equal(driftLabel("unknown"), "");
 });

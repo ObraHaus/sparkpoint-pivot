@@ -226,3 +226,32 @@ async def test_withdraw_everything_is_answered_not_lectured() -> None:
         text = _text(await _run(message)).lower()
         assert "not a financial adviser" not in text, message
         assert "concentrates" not in text, message
+
+
+# ── 030 · the guard gap the live wire exposed ─────────────────────────────────
+
+#: Verbatim from GET /recommendations on alpha, 3 Aug — on a passive lending position.
+LIVE_LEVERAGING = (
+    "This strategy aligns with your growth mandate by leveraging vault aggregation to seek "
+    "higher returns than passive lending."
+)
+
+
+def test_the_leveraging_rationale_that_shipped_is_replaced() -> None:
+    """029's pattern was `\\bleverage[d]?\\b`, which cannot match "leveraging" — no word boundary
+    before "ing". So this reached the wire unchallenged, describing a passive USDC supply as a
+    leveraged, aggregating, higher-return strategy."""
+    out = _rationale_for(LIVE_LEVERAGING)
+    assert out != LIVE_LEVERAGING
+    assert "leveraging" not in out.lower()
+    assert "aggregation" not in out.lower()
+
+
+def test_every_inflection_of_leverage_is_caught() -> None:
+    for text in (
+        "leverages the vault",
+        "a leveraged position",
+        "leveraging the pool",
+        "leverage it",
+    ):
+        assert _rationale_for(text) != text, text

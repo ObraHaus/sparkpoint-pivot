@@ -106,15 +106,42 @@ export function hasSavedMandate(body: unknown): boolean {
   return mandateView(wire as MandateWire | null | undefined) !== null;
 }
 
-/** Risk drift = live realized tier vs the mandate's target ceiling tier. The mandate only
- * NARROWS allowed risk, so holding AT or BELOW the mandate tier is on-plan; only exceeding
- * it is a drift. `unknown` when either input is absent. */
-export type DriftStatus = "on_plan" | "above_plan" | "unknown";
+/** Risk drift = live realized tier vs the mandate's target tier.
+ *
+ * 030 — this gained `below_plan`. The old rule was `realized > target`, so with only a tier-1
+ * strategy live it could ONLY ever say "on plan", and the one case that matters right now — a
+ * growth-mandate user sitting entirely in the most conservative product available — could not be
+ * expressed at all. Holding below the mandate is not a violation and must never read as one;
+ * see {@link driftLabel}. `unknown` when either input is absent. */
+export type DriftStatus = "on_plan" | "above_plan" | "below_plan" | "unknown";
 
 export function mandateDrift(
   targetTier: number | undefined,
   realizedTier: number | undefined,
 ): DriftStatus {
   if (typeof targetTier !== "number" || typeof realizedTier !== "number") return "unknown";
-  return realizedTier > targetTier ? "above_plan" : "on_plan";
+  if (realizedTier > targetTier) return "above_plan";
+  if (realizedTier < targetTier) return "below_plan";
+  return "on_plan";
+}
+
+/**
+ * The sentence to show for a drift status.
+ *
+ * 030 — `below_plan` is new, and its wording matters more than the others. A user holding
+ * something safer than their plan permits has done nothing wrong; the product's job is to note
+ * the fact and point at the plan, NOT to suggest taking more risk. 029's advice boundary applies
+ * here too — SparkPoint does not tell people how much risk to take.
+ */
+export function driftLabel(status: DriftStatus): string {
+  switch (status) {
+    case "above_plan":
+      return "Above the risk level your plan allows.";
+    case "below_plan":
+      return "More conservative than your plan allows — that's fine, and you can adjust the plan.";
+    case "on_plan":
+      return "In line with your plan.";
+    default:
+      return "";
+  }
 }

@@ -27,6 +27,14 @@ export interface RecommendationDto {
   policy?: { status?: string };
   /** §2.6 provenance set — real Obsidian citations (or on-chain reads). */
   citations?: unknown;
+  /** 030 — the STRATEGY's own 1..5 risk tier. Absent on a pre-030 agent. */
+  riskTier?: number;
+  /** 030 — `"managed_fee"` | `"no_platform_fee"`. */
+  feeStance?: string;
+  /** 030 — `"sparkpoint"` | `"self"`. */
+  managedBy?: string;
+  /** The action the card would build, read for its amount. */
+  proposedAction?: { amount?: string; type?: string };
 }
 
 /**
@@ -42,9 +50,14 @@ export interface RecView {
   thesis: string;
   /** Net (projected) APY %, 0 ⇒ rendered as "no yield (cash)". */
   apy: number;
-  /** Risk tier for the RiskChip (only the lower-risk Aave vault is live today). */
+  /** The STRATEGY's own risk tier for the RiskChip. */
   risk: number;
+  /** How this strategy sits against the user's saved plan — derived, never asserted. */
   fit: string;
+  /** What it costs and who runs it — the only real difference between the live strategies. */
+  cost: string;
+  /** The amount the card would deposit, in base units, carried into the confirm step. */
+  amountBaseUnits?: string;
   signable: boolean;
   best: boolean;
   citations: RecCitation[];
@@ -79,17 +92,71 @@ export function parseCitations(raw: unknown): RecCitation[] {
   return out;
 }
 
-/** Map one §3.4 `RecommendationItem` (`r`) at display index `i` to a `RecView`. */
-export function toRecView(r: RecommendationDto, i: number): RecView {
+/**
+ * What a strategy costs and who runs it.
+ *
+ * 030 — this is the ONLY real difference between the two live strategies: both supply USDC to
+ * Aave v3, and the vault adds a fee and management rather than risk or return. Before this the
+ * page had no way to say so, so the model invented a difference instead ("leveraging vault
+ * aggregation … rather than passive lending", on a passive lending position).
+ */
+function costLine(feeStance: string | undefined): string {
+  if (feeStance === "managed_fee") {
+    return "Managed for you · 10% of yield, profit only, 0% on your principal";
+  }
+  if (feeStance === "no_platform_fee") {
+    return "No SparkPoint fee · you manage the position yourself";
+  }
+  return "";
+}
+
+/**
+ * How this strategy sits against the plan the user actually set.
+ *
+ * 030 — this string used to be hardcoded, so a wallet whose mandate was GROWTH was told
+ * "Fits your plan: lower risk, steady yield". The page's entire promise is "ranked against your
+ * plan"; it was delivered by a sentence that never read the plan.
+ *
+ * The wording is deliberately careful in the below-plan case: sitting in something safer than
+ * your mandate permits is an observation, never a prompt to take more risk (029's advice
+ * boundary still applies).
+ */
+function fitLine(strategyTier: number, mandateTier: number | undefined, isTop: boolean): string {
+  if (typeof mandateTier !== "number" || !Number.isFinite(mandateTier)) {
+    return isTop ? "Ranked best against the strategies available." : "An alternative posture.";
+  }
+  if (strategyTier > mandateTier) {
+    return "Above the risk level your plan allows.";
+  }
+  if (strategyTier < mandateTier) {
+    return `More conservative than your plan allows (${strategyTier}/5 vs your ${mandateTier}/5).`;
+  }
+  return `Matches your plan's risk level (${mandateTier}/5).`;
+}
+
+/**
+ * Map one §3.4 `RecommendationItem` (`r`) at display index `i` to a `RecView`.
+ *
+ * `mandateTier` is the user's saved plan tier. It is optional so a signed-out or plan-less view
+ * still renders — but when it is present, the fit line and the risk comparison follow it rather
+ * than a constant.
+ */
+export function toRecView(r: RecommendationDto, i: number, mandateTier?: number): RecView {
   const isTop = r.rank === 1 || i === 0;
+  // 030: the strategy's OWN tier. A pre-030 agent omits it; fall back to 1, which is what the
+  // page hardcoded anyway, so an old agent degrades to the old display rather than to a wrong one.
+  const risk = typeof r.riskTier === "number" && r.riskTier >= 1 && r.riskTier <= 5 ? r.riskTier : 1;
   return {
     id: r.recId ?? `rec_${i}`,
     rankLabel: isTop ? "Best fit · #1 vs your goal" : `#${r.rank ?? i + 1} vs your goal`,
     title: r.title ?? "Strategy",
     thesis: r.rationale ?? "",
     apy: typeof r.projectedApyBps === "number" ? r.projectedApyBps / 100 : 0,
-    risk: 1,
-    fit: isTop ? "Fits your plan: lower risk, steady yield." : "Conservative, capital-preservation-first.",
+    risk,
+    fit: fitLine(risk, mandateTier, isTop),
+    cost: costLine(r.feeStance),
+    amountBaseUnits:
+      typeof r.proposedAction?.amount === "string" ? r.proposedAction.amount : undefined,
     // Non-custody: signable ⟺ the deterministic policy approved it (§2.7).
     signable: r.policy?.status === "approved",
     best: i === 0,

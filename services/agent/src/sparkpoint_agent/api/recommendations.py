@@ -121,6 +121,14 @@ class RecommendationItem(BaseModel):
     grossApyBps: int | None = None
     projectedApyBps: int | None = None
     performanceFeeBps: int = GOVERNANCE.performance_fee.default_bps
+    # 030 — the card's truthful metadata. `riskTier` is the STRATEGY's own 1..5 tier: before this
+    # the wire carried nothing, so /strategies hardcoded tier 1 on every card. `feeStance` and
+    # `managedBy` state the only real difference between the live strategies (both supply USDC to
+    # Aave v3; the vault adds a fee and management, not risk), so the comparison the page promises
+    # can be honest rather than invented.
+    riskTier: int = 1
+    feeStance: str = "unknown"
+    managedBy: str = "unknown"
     asOf: str
     stale: bool
 
@@ -405,6 +413,9 @@ def _to_item(block: RecommendationBlock, chain: ChainContext, *, stale: bool) ->
         grossApyBps=market.gross_apy_bps,
         projectedApyBps=market.projected_apy_bps,
         performanceFeeBps=market.performance_fee_bps,
+        riskTier=int(block.risk_tier),
+        feeStance=block.fee_stance,
+        managedBy=block.managed_by,
         asOf=_now_iso(),
         stale=stale,
     )

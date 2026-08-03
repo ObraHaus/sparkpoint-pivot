@@ -26,7 +26,7 @@ import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createAgentClient, AgentApiError, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
-import { mandateView, mandateDrift, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
+import { mandateView, mandateDrift, driftLabel, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/mandateSave";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
@@ -407,6 +407,9 @@ interface RecommendationsResponse {
  */
 export function useRecommendationsView(): RecView[] | null {
   const { client, online, identity } = useAgentClient();
+  // 030 — the card's fit line is derived from the user's SAVED plan, not asserted. Before this
+  // it was a hardcoded string, so a growth mandate was told "Fits your plan: lower risk".
+  const mandate = useMandate();
   const query = useQuery({
     queryKey: ["agent", "recommendations", identity?.account, identity?.chainId],
     enabled: online,
@@ -420,7 +423,8 @@ export function useRecommendationsView(): RecView[] | null {
   const recs = query.data?.recommendations;
   if (!Array.isArray(recs)) return null;
 
-  return recs.map((r, i) => toRecView(r, i));
+  const mandateTier = mandate.status === "ready" ? mandate.mandate.tier : undefined;
+  return recs.map((r, i) => toRecView(r, i, mandateTier));
 }
 
 /* ── POST /onboarding/turn + POST /mandate (§3.1) ──────────────────────────── */
@@ -566,7 +570,7 @@ export function useMandate(): MandateState {
 }
 
 /** Re-export the pure drift helper so screens import mandate wiring from one place. */
-export { mandateDrift, type DriftStatus };
+export { mandateDrift, driftLabel, type DriftStatus };
 
 /** Re-exported so the onboarding dock imports the save outcome + its copy from one place. */
 export { mandateSaveHint } from "@/lib/agent/mandateSave";

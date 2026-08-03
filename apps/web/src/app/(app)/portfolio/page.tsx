@@ -23,7 +23,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
-import { usePortfolioView, useMandate, mandateDrift } from "@/lib/agent/useAgent";
+import { usePortfolioView, useMandate, mandateDrift, driftLabel } from "@/lib/agent/useAgent";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
@@ -325,6 +325,18 @@ export default function Page() {
                 <span style={{ fontWeight: 600, color: "var(--caution)" }}>
                   Above your plan{" "}
                   <Note text="higher risk" title={`Your live holdings sit above your ${mandate.mandate.riskLabel.toLowerCase()} (${mandate.mandate.tier}/5) mandate ceiling.`} />
+                </span>
+              ) : drift === "below_plan" ? (
+                /* 030 — the case the indicator could never express. A growth mandate holding only
+                   the tier-1 vault is not a violation, so this is deliberately NEUTRAL, not a
+                   warning colour, and the copy observes rather than urging more risk (029's
+                   advice boundary applies here too). */
+                <span style={{ fontWeight: 600 }} title={driftLabel("below_plan")}>
+                  More conservative than your plan{" "}
+                  <Note
+                    text="not a problem"
+                    title={`Your holdings sit at tier 1 while your plan allows ${mandate.mandate.tier}/5. That is fine — adjust the plan in Settings if it no longer matches you.`}
+                  />
                 </span>
               ) : (
                 <span style={{ fontWeight: 600, color: "var(--gain)" }} title={`Within your ${mandate.mandate.riskLabel.toLowerCase()} (${mandate.mandate.tier}/5) mandate. Risk-tier drift only; idle cash under-earns your yield goal.`}>

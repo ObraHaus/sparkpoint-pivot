@@ -248,6 +248,13 @@ class RecommendationBlock(ChatBlock):
     proposed_action: dict[str, Any]
     policy: ChatPolicyStamp
     citations: tuple[Citation, ...] = ()
+    #: 030 — the card's truthful metadata. `risk_tier` is the STRATEGY's own 1..5 tier (the web
+    #: hardcoded 1 on every card because the wire carried nothing); `fee_stance` and `managed_by`
+    #: state the only real difference between the live strategies, so the comparison need not be
+    #: invented. Defaults keep every pre-030 construction valid.
+    risk_tier: int = 1
+    fee_stance: str = "unknown"
+    managed_by: str = "unknown"
 
     def to_wire(self) -> dict[str, Any]:
         return {
@@ -260,6 +267,9 @@ class RecommendationBlock(ChatBlock):
             "proposedAction": self.proposed_action,
             "policy": self.policy.to_wire(),
             "citations": [c.to_wire() for c in self.citations],
+            "riskTier": self.risk_tier,
+            "feeStance": self.fee_stance,
+            "managedBy": self.managed_by,
         }
 
 

@@ -356,7 +356,10 @@ function LiveBlock({
             <b>{block.title}</b> — {block.rationale}
           </div>
           <div className="crow">
-            <RiskChip tier={1} />
+            {/* 030 — the strategy's OWN tier. This was hardcoded to 1 on every card because the
+                wire carried nothing truthful to render; a pre-030 agent omits it and falls back
+                to the same 1, so an old agent degrades to the old display rather than a wrong one. */}
+            <RiskChip tier={typeof block.riskTier === "number" ? block.riskTier : 1} />
             {block.citations.length > 0 && (
               <span className="cite" onClick={onCite} style={{ cursor: "pointer" }}>
                 <Icon name="check" size={10} /> {block.citations.length}{" "}

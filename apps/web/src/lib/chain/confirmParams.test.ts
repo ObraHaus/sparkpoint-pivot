@@ -30,3 +30,31 @@ test("tolerates surrounding whitespace in an otherwise-integer amount", () => {
   const p = parseConfirmParams(new URLSearchParams("assets=%20100%20"));
   assert.equal(p.assets, 100n);
 });
+
+test("030 — the recommendation id survives the link from /strategies", () => {
+  // Before 030 the strategies link carried neither an amount nor a rec id, so a deposit started
+  // there could never be attributed back to the recommendation in the Outcome Log.
+  const p = parseConfirmParams(
+    new URLSearchParams("assets=100000000&rec=1ad4c33b-6a44-4e7c-868b-6fa682afac76"),
+  );
+  assert.equal(p.assets, 100000000n);
+  assert.equal(p.recommendationId, "1ad4c33b-6a44-4e7c-868b-6fa682afac76");
+});
+
+test("030 — a malformed recommendation id is dropped, never forwarded", () => {
+  for (const raw of ["", "   ", "a b", "<script>", "x".repeat(65), "rec/../../etc"]) {
+    assert.equal(
+      parseConfirmParams(new URLSearchParams(`rec=${encodeURIComponent(raw)}`)).recommendationId,
+      undefined,
+      raw,
+    );
+  }
+  assert.equal(parseConfirmParams(new URLSearchParams("")).recommendationId, undefined);
+});
+
+test("030 — a plain rec_ slug is accepted", () => {
+  assert.equal(
+    parseConfirmParams(new URLSearchParams("rec=rec_vault_deposit")).recommendationId,
+    "rec_vault_deposit",
+  );
+});

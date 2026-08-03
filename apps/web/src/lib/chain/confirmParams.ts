@@ -22,6 +22,27 @@ export interface ConfirmParams {
   readonly shares: bigint | undefined;
   /** The raw `?vault=` selection, forwarded verbatim to `resolveSelectedVault` (null ⇒ launch). */
   readonly vaultSelected: string | null;
+  /**
+   * 030 — the recommendation this confirm was started from, so the resulting transaction stays
+   * attributable in the Outcome Log.
+   *
+   * `/strategies` used to link here with no amount and no recommendation id at all, so a deposit
+   * begun from the strategies screen could never be linked back to the recommendation the user
+   * acted on — the rec→transaction→outcome chain (feature 020) was broken at that entry point,
+   * and the "by recommendation" view simply never saw those deposits.
+   *
+   * Validated as an opaque id: it is echoed into a request, so it is length-bounded and
+   * restricted to id-safe characters rather than forwarded verbatim.
+   */
+  readonly recommendationId: string | undefined;
+}
+
+/** A recommendation id, or `undefined`. Ids are UUIDs or `rec_<slug>`; anything else is dropped. */
+function parseRecommendationId(v: string | null): string | undefined {
+  if (v === null) return undefined;
+  const s = v.trim();
+  if (!s || s.length > 64) return undefined;
+  return /^[A-Za-z0-9_-]+$/.test(s) ? s : undefined;
 }
 
 /** Parse one raw-base-unit param into a POSITIVE bigint, else `undefined`. Never throws. */
@@ -39,5 +60,6 @@ export function parseConfirmParams(src: ParamSource): ConfirmParams {
     assets: parsePositiveBaseUnits(src.get("assets")),
     shares: parsePositiveBaseUnits(src.get("shares")),
     vaultSelected: src.get("vault"),
+    recommendationId: parseRecommendationId(src.get("rec")),
   };
 }

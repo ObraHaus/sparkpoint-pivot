@@ -422,3 +422,51 @@ async def test_recommend_stage_order() -> None:
         "Checking strategies against your guardrails",
         "Checking strategies against your guardrails",
     ]
+
+
+# ── 030 · the card's truthful metadata reaches the wire ───────────────────────
+
+
+async def test_recommendation_blocks_carry_per_strategy_risk_and_cost() -> None:
+    """Before 030 the wire carried nothing about a strategy's own risk or cost.
+
+    The web therefore hardcoded `risk: 1` and a fixed "fit" string on every card, and the model
+    was asked to explain a difference the wire could not express — which is how "leveraging vault
+    aggregation … rather than passive lending" ended up on a passive lending position.
+    """
+    dag = _dag(intent=Intent(kind=IntentKind.RECOMMEND), mandate=MandateView(version=1))
+    wires = await _collect(dag, "where can I earn yield?", _chain(market=MarketData()))
+    recs = [w for w in wires if w["type"] == "recommendation"]
+    assert recs, "the recommend branch must produce cards"
+
+    for r in recs:
+        assert r["riskTier"] == 1, "both live strategies are conservative — tier 1"
+        assert r["feeStance"] in {"managed_fee", "no_platform_fee"}
+        assert r["managedBy"] in {"sparkpoint", "self"}
+
+    kinds = {r["proposedAction"]["type"]: r for r in recs}
+    if "vault_deposit" in kinds:
+        assert kinds["vault_deposit"]["feeStance"] == "managed_fee"
+        assert kinds["vault_deposit"]["managedBy"] == "sparkpoint"
+    if "aave_supply" in kinds:
+        assert kinds["aave_supply"]["feeStance"] == "no_platform_fee"
+        assert kinds["aave_supply"]["managedBy"] == "self"
+
+
+def test_strategy_meta_never_guesses_a_cost_stance_for_an_unknown_strategy() -> None:
+    """A future strategy must not silently inherit the vault's fee copy."""
+    from sparkpoint_agent.agents.recommender import strategy_meta
+    from sparkpoint_agent.policy import RiskProfile
+
+    tier, fee, managed = strategy_meta(ActionType.AERODROME_SWAP, RiskProfile.CONSERVATIVE)
+    assert tier == 1
+    assert fee == "unknown" and managed == "unknown"
+
+
+def test_risk_tier_follows_the_strategys_own_class_not_the_mandate() -> None:
+    from sparkpoint_agent.agents.recommender import strategy_meta
+    from sparkpoint_agent.policy import RiskProfile
+
+    assert strategy_meta(ActionType.VAULT_DEPOSIT, RiskProfile.CONSERVATIVE)[0] == 1
+    assert strategy_meta(ActionType.VAULT_DEPOSIT, RiskProfile.BALANCED)[0] == 3
+    assert strategy_meta(ActionType.VAULT_DEPOSIT, RiskProfile.GROWTH)[0] == 4
