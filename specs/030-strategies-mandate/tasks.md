@@ -45,9 +45,9 @@ tested without a browser, pinned with the verbatim string or figure observed liv
 
 ## Phase 5: User Story 4 — progress toward what I'm saving for (P2)
 
-- [ ] T027 [P] `apps/web/src/lib/goal/progress.ts` — NEW leaf: share of target, time remaining, on-pace judgement, shortfall (R8).
-- [ ] T028 [P] `apps/web/src/lib/goal/progress.test.ts` — target met reads met; a past date reads passed, not negative; unreachable states the shortfall; no target ⇒ an invitation, never a fabricated figure.
-- [ ] T029 `apps/web/src/app/(app)/portfolio/page.tsx` — render progress when a target exists; invite one when it does not; label it a projection at current rates.
+- [x] T027 [P] `apps/web/src/lib/goal/progress.ts` — NEW leaf: share of target, time remaining, on-pace judgement, shortfall (R8).
+- [x] T028 [P] `apps/web/src/lib/goal/progress.test.ts` — target met reads met; a past date reads passed, not negative; unreachable states the shortfall; no target ⇒ an invitation, never a fabricated figure.
+- [x] T029 `apps/web/src/app/(app)/portfolio/page.tsx` — render progress when a target exists; invite one when it does not; label it a projection at current rates.
 
 ## Phase 6: Polish & verification
 

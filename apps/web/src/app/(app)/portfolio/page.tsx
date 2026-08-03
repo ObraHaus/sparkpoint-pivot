@@ -24,6 +24,8 @@ import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { usePortfolioView, useMandate, mandateDrift, driftLabel } from "@/lib/agent/useAgent";
+import { goalProgress } from "@/lib/goal/progress";
+import { formatUsdc } from "@/lib/strategy/projection";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
@@ -132,6 +134,34 @@ export default function Page() {
   const targetTier = mandate.status === "ready" ? mandate.mandate.tier : undefined;
   const realizedTier = live ? (d.vaultValue > 0 ? 1 : 0) : undefined;
   const drift = mandateDrift(targetTier, realizedTier);
+
+  // 030/US4 — derived from real balances and the plan's stated target. `null` when no target is
+  // set, which the row renders as an invitation rather than a fabricated 0%.
+  const goalTargetUsdc =
+    mandate.status === "ready" ? mandate.mandate.goalTargetUsdc : undefined;
+  const goal = goalProgress({
+    targetBaseUnits: goalTargetUsdc ? Number(goalTargetUsdc) : null,
+    targetDate: mandate.status === "ready" ? mandate.mandate.goalTargetDate : null,
+    balanceBaseUnits: live ? Math.round(d.totalUsd * 1_000_000) : null,
+    // Kept pure: the render never calls Date.now(). This is the only clock read on the page.
+    today: new Date().toISOString().slice(0, 10),
+    contribution:
+      mandate.status === "ready" && mandate.mandate.contribution
+        ? {
+            amountBaseUnits: Number(mandate.mandate.contribution.amountUsdc),
+            cadence: mandate.mandate.contribution.cadence,
+          }
+        : null,
+  });
+  const goalTitle = !goal
+    ? ""
+    : goal.met
+      ? "You have reached the target you set."
+      : goal.pace === "short"
+        ? `At your stated contribution you would still be $${formatUsdc(goal.paceShortfallBaseUnits)} short by the target date. A projection at today's rate, not a promise.`
+        : goal.pace === "on_track"
+          ? "Your stated contribution reaches the target by the date, at today's rate. A projection, not a promise."
+          : `$${formatUsdc(goal.shortfallBaseUnits)} to go, ${goal.monthsRemaining} month(s) left. Add a contribution plan in Settings to see whether you're on pace.`;
 
   // §history — REAL position-value series from the agent's on-chain flow index. The range selector
   // filters the time window; if the window has <2 points (sparse testnet data) we fall back to the
@@ -356,6 +386,30 @@ export default function Page() {
           <div className="rp-row">
             <span className="muted">Largest position</span>
             <span style={{ fontWeight: 600 }}>{loading ? "…" : largest}</span>
+          </div>
+          {/* 030/US4 — progress toward the thing the user actually said they were saving for.
+              Until this feature "Reach a target — hit a specific amount" stored the bare label
+              with no amount and no date, so nothing could ever answer "am I on track?". */}
+          <div className="rp-row">
+            <span className="muted">Goal progress</span>
+            {goal ? (
+              <span style={{ fontWeight: 600 }} title={goalTitle}>
+                {goal.met
+                  ? "Target reached"
+                  : `${goal.pct}% of $${formatUsdc(Number(goalTargetUsdc))}`}
+                {!goal.met && goal.overdue ? " · date passed" : ""}
+              </span>
+            ) : mandate.status === "ready" ? (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => router.push(toHref("settings"))}
+                title="Set a target and a date in Settings → Mandate to track progress here."
+              >
+                Set a target
+              </button>
+            ) : (
+              <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
+            )}
           </div>
           <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
             Capital-preservation-first. The audited Aave vault is the lowest tier on our scale.{" "}
