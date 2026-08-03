@@ -262,3 +262,14 @@ def test_a_run_repairs_prose_less_documents_even_when_nothing_moved() -> None:
     src = _code_only(run_module.execute_run)
     assert "_has_prose" in src
     assert "selfauthor_repairing_degraded" in inspect.getsource(run_module.execute_run)
+
+
+def test_the_orphan_sweep_runs_on_every_tick_not_only_at_boot() -> None:
+    """Sweeping only at boot fixes the runs orphaned BEFORE this process started and leaves every
+    later one showing as live forever — the same invisible-failure shape the sweep exists to
+    remove. Observed: two runs sat "Running…" for half an hour each, killed by a deploy's container
+    swap, while later runs took the lock and finished normally."""
+    src = inspect.getsource(self_authoring_runner.daily_loop)
+    sweep_at = src.index("close_orphaned_runs")
+    loop_at = src.index("while True:")
+    assert loop_at < sweep_at, "the sweep must be inside the loop, not only before it"
