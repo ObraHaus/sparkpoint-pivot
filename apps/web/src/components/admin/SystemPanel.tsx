@@ -20,43 +20,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { tilesFrom, type ReadyzDetail } from "@/lib/admin/systemTiles";
 import { Icon } from "@/lib/icons";
 
 /** The live guardian of the deployed Base-Sepolia vault (OZ TimelockController). */
 const GUARDIAN_TIMELOCK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
-
-type Tone = "ok" | "amber" | "info";
-type Tile = { label: string; tone: Tone; value: string };
-
-interface ReadyzDetail {
-  ready?: boolean;
-  checks?: { sim_fork?: boolean; base_rpc?: boolean; llm?: boolean; postgres?: boolean };
-}
-
-function tilesFrom(state: "loading" | "ok" | "error", d: ReadyzDetail | null): Tile[] {
-  const reachable = state === "ok" && d !== null;
-  const c = d?.checks ?? {};
-  const yn = (ok: boolean | undefined, up: string, down: string): Tile => ({
-    label: "",
-    tone: ok ? "ok" : "amber",
-    value: ok ? up : down,
-  });
-  const t = (label: string, tile: Tile): Tile => ({ ...tile, label });
-  if (state === "loading") {
-    return ["Agent service", "Base RPC", "Simulator (Anvil fork)", "Database", "LLM gateway (LiteLLM)"].map((label) => ({
-      label,
-      tone: "info" as Tone,
-      value: "checking…",
-    }));
-  }
-  return [
-    t("Agent service", { label: "", tone: reachable ? "ok" : "amber", value: reachable ? "Up" : "Unreachable" }),
-    t("Base RPC", yn(reachable && c.base_rpc, "Healthy", "Down")),
-    t("Simulator (Anvil fork)", yn(reachable && c.sim_fork, "Available", "Down")),
-    t("Database", yn(reachable && c.postgres, "Connected", "Down")),
-    t("LLM gateway (LiteLLM)", yn(reachable && c.llm, "Live", "Down")),
-  ];
-}
 
 export function SystemPanel() {
   const router = useRouter();

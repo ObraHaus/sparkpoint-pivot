@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (035 — the System console reported an outage that was not happening)
+- **"Base RPC — Down" was false, and had been since 2026-07-30.** Feature 023 renamed the agent's readiness check `base_rpc` to `chain_rpc` (so the checks describe the chain a deployment actually serves) and added `chain_identity`. The admin System panel kept reading `base_rpc`. The field was optional on the panel's side, so `undefined` was legal TypeScript — and `undefined ? up : down` renders **"Down"**. Nothing errored and nothing was logged; the one screen an operator checks during an incident was confidently wrong for five weeks, and it was noticed because a person looked at it and asked.
+- Verified healthy at the time of the fix: `eth_chainId` → 84532, `eth_blockNumber` → 44,998,642, and the agent reading block 44,998,643 one second later. `/readyz` reports every check true.
+- **The general fix: absence is not failure.** A check the agent did not send now reads *"not reported"*, and an unreachable agent shows its dependencies as *"unknown"* rather than inventing four outages there is no evidence for. Reporting a missing field as a failure is how a panel cries wolf, and an operator who learns to ignore a red tile is how a real outage gets missed.
+- **`chain_identity` is now displayed.** 023 added it and nothing surfaced it, though it is the check that matters most: an RPC that answers while reporting the *wrong chain* passes every liveness test there is.
+- **Both ends of the contract are pinned.** The tile logic moved to a pure leaf module with tests covering the exact payload that caused the false alarm, and an agent test asserts `/readyz` emits exactly the checks the console renders — naming the console, and the file, in its failure message. Renaming a check stays possible; it just has to be a decision taken with both ends in view rather than something that quietly half-lands.
+
 ### Changed (035 — the admin nav is nine entries instead of nineteen)
 - **Screens that are read together are now sections of one console.** The menu had nineteen entries, most of them a single screen, and the grouping was something you had to *know* rather than something you could see: the kill-switch was not under System, a user's tier was not under Users, and "TVL / Vault" and "Vaults" sat next to each other with nothing in either label to say which was the live figures and which was the registry.
   - **Users & access** — User analytics · AI usage · Allowlist · Limits and tiers

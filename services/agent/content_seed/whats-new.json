@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "the-system-page-was-crying-wolf",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The system page was reporting an outage that wasn't happening",
+      "body": "The admin System page had been showing \"Base RPC — Down\" since the end of July. The connection was fine the whole time.\n\nA while back we renamed one of the health checks so it describes the network a deployment is actually on. The page kept asking for the old name, got nothing back, and displayed nothing as a failure. No error, no log — just a red light next to something that was working.\n\nBeyond fixing the name, the page now tells the difference between \"this is broken\" and \"we didn't get an answer about this\". They look the same on a status board and they are not the same thing, and a page that raises false alarms is a page people stop reading — which is exactly when a real problem gets missed.\n\nIt also now shows whether the connected network is the one we expect. That check existed but was never displayed, and it's the one that matters most: a connection can answer perfectly while being pointed at the wrong network.",
+      "cta_label": "Open the system page",
+      "cta_href": "/admin/system",
+      "published_at": "2026-08-03T14:02:02Z",
+      "active": true
+    },
+    {
       "slug": "a-shorter-admin-menu",
       "type": "changelog",
       "tag": "Improved",
