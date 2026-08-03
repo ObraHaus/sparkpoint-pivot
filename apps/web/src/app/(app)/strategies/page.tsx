@@ -5,9 +5,9 @@
  *
  * Faithful 1:1 port of the design's `strategies` screen
  * (docs/design-handover/showcase/screens/strategies.js). Each card from data.recs
- * is ranked against the mandate (lower risk, capital-preservation-first, steady
- * yield), shows net APY / risk / fit, and carries a "Why this?" rationale that
- * expands. Markup, classes, and copy are reproduced verbatim.
+ * is ranked against the user's REAL mandate (030 — the risk tier and the fit line are derived,
+ * not the constants this screen shipped with), shows net APY / risk / fit / what it costs, what
+ * it would earn on the user's own balance, and carries a "Why this?" rationale that expands.
  */
 
 import { useState } from "react";
@@ -211,15 +211,19 @@ export default function Page() {
           <div className={"whybd" + (open[i] ? " open" : "")}>
             {usingMock ? (
               <>
-                Ranked against your mandate (lower risk, capital-preservation-first, steady yield).{" "}
+                {/* Mock path only — example figures, no real mandate to contradict. */}
+                Ranked against a lower-risk example plan.{" "}
                 {r.best
                   ? `Raises yield without changing your risk tier; stays 100% in the audited Aave vault; satisfies your ${capNoun} and slippage guardrails.`
                   : "A conservative posture — less earning, more flexibility. Honest tradeoff, shown so you can choose."}
               </>
             ) : (
               <>
-                {r.thesis ||
-                  "Ranked against your mandate (lower risk, capital-preservation-first, steady yield)."}
+                {/* 030 — this fallback used to ASSERT the user's mandate was
+                    "lower risk, capital-preservation-first" whatever they had actually set. The
+                    same defect as the plan summary and the template rationale, in a third place.
+                    `r.fit` is derived from the real plan. */}
+                {r.thesis || r.fit}
                 {r.citations.length > 0 && (
                   <div style={{ marginTop: 8 }}>
                     <div style={{ fontWeight: 600, color: "var(--foreground)", marginBottom: 4 }}>Sources</div>
