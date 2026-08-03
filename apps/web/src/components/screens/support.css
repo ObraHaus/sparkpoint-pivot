@@ -1,7 +1,10 @@
 /* support.css — Outcomes, Learn, SRK, Settings, Notifications.
    The `const css` block from docs/design-handover/showcase/screens/support.js, verbatim. */
 .settabs{display:flex;gap:4px;border-bottom:1px solid var(--border-soft);margin-bottom:22px;overflow-x:auto;}
-.settab{padding:11px 14px;font-size:13.5px;font-weight:500;color:var(--muted-foreground);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+/* 038 — now real <button>s (they were clickable divs, unreachable by keyboard). A button brings
+   its own background, border and font, so those are reset here: the tab looks exactly as it did,
+   and gains focus, Enter/Space and a correct announcement. */
+.settab{padding:11px 14px;font-size:13.5px;font-weight:500;color:var(--muted-foreground);cursor:pointer;border:0;border-bottom:2px solid transparent;white-space:nowrap;background:none;font-family:inherit;line-height:inherit;}
 .settab.active{color:var(--foreground);border-bottom-color:var(--primary);}
 .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--border-soft);}
 .setrow:last-child{border-bottom:none;}

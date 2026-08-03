@@ -513,15 +513,23 @@ export default function Page() {
           <Icon name="logout" size={15} /> Log out
         </button>
       </div>
-      <div className="settabs">
+      {/* 038 — these were clickable <div>s: no role, no tabIndex, no key handler. A keyboard user
+          could not change tab at all, which meant every setting behind one was unreachable — found
+          while adding a control to Appearance, when a role-based selector could not see the tab.
+          Real <button>s in a tablist: focusable, operable with Enter and Space for free, and
+          announced as what they are. */}
+      <div className="settabs" role="tablist" aria-label="Settings sections">
         {SETTABS.map((t) => (
-          <div
+          <button
+            type="button"
+            role="tab"
+            aria-selected={t[0] === tab}
             className={"settab " + (t[0] === tab ? "active" : "")}
             key={t[0]}
             onClick={() => setTab(t[0])}
           >
             {t[1]}
-          </div>
+          </button>
         ))}
       </div>
       <div className="card card-pad">

@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The preference is read by the component rather than stamped on `<html>` like density and reduced motion — a second copy on the document would be a second source of truth that could disagree with the first.
 - An existing whole-shape assertion on the stored preferences blob caught the new field rather than letting it appear silently, and blobs written before this preference existed still load, with the fields they do have untouched.
 
+### Fixed (038 — the settings tabs could not be reached by keyboard)
+- **They were clickable `<div>`s**: no role, no `tabIndex`, no key handler. A keyboard user could not change tab at all, which meant every setting behind one — the mandate, memory, notifications, appearance, security — was unreachable without a mouse. Found while adding a control to Appearance, when a role-based selector could not see the tab to click it.
+- They are real `<button>`s in a `role="tablist"` now: focusable, operable with Enter and Space for free, and announced as what they are. The visual is unchanged — a button brings its own background, border and font, so those are reset in the stylesheet.
+
 ### Added (037 — the chat suggests what to do next)
 - **The chips under the composer now change with the conversation.** They were fixed: after being told what was in your wallet, the thread still offered "What's in my wallet?" — which is worse than offering nothing, because it says the assistant was not listening. The scripted demo paths had done this properly all along; a real turn never updated them, so the feature existed and only the demo could see it.
 - Suggestions are **derived from what actually happened in the turn** — the concept just explained, the stage the agent was seen running, the kind of answer it gave — ordered most-specific first.
