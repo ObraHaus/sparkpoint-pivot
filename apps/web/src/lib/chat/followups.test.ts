@@ -48,11 +48,20 @@ test("a recommendation invites the questions worth asking about one", () => {
   assert.ok(out.includes("What's the risk?"), out.join(" | "));
 });
 
-test("the exit is always one tap away, and never the headline", () => {
-  // The product's central promise. It should never be buried — and never pushed either.
+test("the exit takes the last slot when there is room, and is never the headline", () => {
   const out = followUps(turn({ userMessage: "hello" }));
-  assert.ok(out.includes("How do I withdraw everything?"), out.join(" | "));
+  assert.equal(out[out.length - 1], "How do I withdraw everything?", out.join(" | "));
   assert.notEqual(out[0], "How do I withdraw everything?", "it sits last, not first");
+});
+
+test("the exit never displaces a suggestion that is about the conversation", () => {
+  // It is already one tap away from every screen — the left nav carries "Withdraw / Exit"
+  // permanently and the banner carries "Exit anytime". Reachability is not what these chips are
+  // for, so burning a contextual slot on it every turn would cost relevance and buy nothing.
+  const out = followUps(turn({ userMessage: "explain fees", tipTopics: ["performance_fee"] }));
+  assert.equal(out.length, MAX_FOLLOW_UPS);
+  assert.ok(!out.includes("How do I withdraw everything?"), out.join(" | "));
+  assert.ok(out.every((c) => /fee|pay|water|vault paying/i.test(c)), out.join(" | "));
 });
 
 test("asking about withdrawing does not suggest asking about withdrawing", () => {

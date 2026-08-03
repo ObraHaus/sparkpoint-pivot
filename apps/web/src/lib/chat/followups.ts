@@ -47,11 +47,15 @@ export const STARTER_CHIPS = [
 ] as const;
 
 /**
- * Always available, never pushed.
+ * Offered when the conversation leaves room, never at the cost of a relevant suggestion.
  *
- * The exit is the product's central promise, so the way out should never be more than one tap
- * away — but leading with it after every answer would be strange, so it sits last and only when
- * there is room.
+ * The exit is the product's central promise, and it is ALREADY one tap away from every screen: the
+ * left nav carries "Withdraw / Exit" permanently and the top banner carries "Exit anytime". So
+ * reachability is not what these chips are for, and spending one of four contextual slots on it
+ * after every single answer would cost relevance and buy nothing.
+ *
+ * It therefore takes the last slot only when fewer than four topical suggestions exist — which is
+ * most turns — and never displaces one that is actually about the conversation.
  */
 const EXIT = "How do I withdraw everything?";
 
