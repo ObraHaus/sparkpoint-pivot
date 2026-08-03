@@ -33,15 +33,15 @@ tested without a browser, pinned with the verbatim string or figure observed liv
 
 ## Phase 4: User Story 3 — a plan I can state, and change (P1)
 
-- [ ] T018 `services/agent/migrations/0033_mandate_goal_and_limits.py` — additive nullable columns per data-model.md; MIGRATIONS.md entry.
-- [ ] T019 `services/agent/src/sparkpoint_agent/db/mandates.py` — persist and read the new fields; `ensure_ascii=False` on both jsonb writes; `UndefinedColumnError` degrades to pre-030 behaviour with a once-per-process warning.
-- [ ] T020 `services/agent/src/sparkpoint_agent/api/mandate.py` — accept the new fields; reject a target-seeking goal missing amount or date (FR-011); percent-form exposure with no wallet value is *not stated*, never resolved against a guess.
-- [ ] T021 [P] `services/agent/tests/api/test_mandate.py` — round-trip all four; a legacy mandate with none of them still loads and behaves as pre-030; a half-specified goal is refused.
-- [ ] T022 `apps/web/src/lib/agent/mandateDraft.ts` — carry the new fields; persist the chosen 1..5 tier alongside the profile (R6).
-- [ ] T023 `apps/web/src/app/onboarding/page.tsx` — ask for the exposure limit, and for the target amount + date when the goal is target-seeking; contribution intent phrased so it can never read as automatic (FR-013).
-- [ ] T024 `apps/web/src/app/(app)/settings/page.tsx` — `MandateTab` becomes per-field editable; saving one field never re-asks the others (FR-014).
-- [ ] T025 [P] `apps/web/src/lib/agent/mandate.ts` — one risk scale end to end; the summary is derived at display time so legacy self-contradictory strings stop being authoritative (R6, FR-016).
-- [ ] T026 [P] `apps/web/src/lib/agent/mandate.test.ts` — mandate v6's exact stored string no longer reaches the screen; tier round-trips 1..5; a growth plan never renders "capital-preservation-first".
+- [x] T018 `services/agent/migrations/0033_mandate_goal_and_limits.py` — additive nullable columns per data-model.md; MIGRATIONS.md entry.
+- [x] T019 `services/agent/src/sparkpoint_agent/db/mandates.py` — persist and read the new fields; `ensure_ascii=False` on both jsonb writes; `UndefinedColumnError` degrades to pre-030 behaviour with a once-per-process warning.
+- [x] T020 `services/agent/src/sparkpoint_agent/api/mandate.py` — accept the new fields; reject a target-seeking goal missing amount or date (FR-011); percent-form exposure with no wallet value is *not stated*, never resolved against a guess.
+- [x] T021 [P] `services/agent/tests/api/test_mandate.py` — round-trip all four; a legacy mandate with none of them still loads and behaves as pre-030; a half-specified goal is refused.
+- [x] T022 `apps/web/src/lib/agent/mandateDraft.ts` — carry the new fields; persist the chosen 1..5 tier alongside the profile (R6).
+- [x] T023 `apps/web/src/app/onboarding/page.tsx` — ask for the exposure limit, and for the target amount + date when the goal is target-seeking; contribution intent phrased so it can never read as automatic (FR-013).
+- [x] T024 `apps/web/src/app/(app)/settings/page.tsx` — `MandateTab` becomes per-field editable; saving one field never re-asks the others (FR-014).
+- [x] T025 [P] `apps/web/src/lib/agent/mandate.ts` — one risk scale end to end; the summary is derived at display time so legacy self-contradictory strings stop being authoritative (R6, FR-016).
+- [x] T026 [P] `apps/web/src/lib/agent/mandate.test.ts` — mandate v6's exact stored string no longer reaches the screen; tier round-trips 1..5; a growth plan never renders "capital-preservation-first".
 
 ## Phase 5: User Story 4 — progress toward what I'm saving for (P2)
 

@@ -21,7 +21,15 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 import { StatusTag } from "@/components/ui/status-tag";
-import { useMandate, useSparkyMemory, useClearSparkyMemory } from "@/lib/agent/useAgent";
+import {
+  useMandate,
+  useUpdateMandate,
+  useSparkyMemory,
+  useClearSparkyMemory,
+  mandateSaveHint,
+  type MandateView,
+} from "@/lib/agent/useAgent";
+import { formatUsdc } from "@/lib/strategy/projection";
 import { useSessionKeys } from "@/lib/automation/useSessionKey";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { useNotifPrefs, useDisplayPrefs } from "@/lib/settings/usePrefs";
@@ -103,23 +111,123 @@ function MandateTab() {
   }
 
   const m = mandate.mandate;
+  return <MandateFields m={m} />;
+}
+
+/**
+ * The plan, editable field by field (030/FR-014).
+ *
+ * This tab was entirely read-only and its "Edit" button re-ran the whole conversational
+ * onboarding flow — so changing one slippage value meant re-answering the drawdown question. For
+ * a plan the product wants people to maintain, that is the wrong friction.
+ *
+ * Each row saves independently. The agent stores mandates as an immutable version series, so a
+ * save forks a new confirmed version carrying every field the user did not touch.
+ */
+function MandateFields({ m }: { m: MandateView }) {
+  const { update, pending } = useUpdateMandate();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (patch: Parameters<typeof update>[0]) => {
+    setError(null);
+    const outcome = await update(patch);
+    if (outcome.ok) setEditing(null);
+    else setError(mandateSaveHint(outcome.failure));
+  };
+
   return (
     <>
       <div className="setrow">
         <div>
-          <div style={{ fontWeight: 600 }}>Risk tier</div>
-          <div className="muted" style={{ fontSize: 12.5 }}>{m.riskLabel} · {m.tier}/5 · {m.riskBlurb}</div>
+          <div style={{ fontWeight: 600 }}>Your plan</div>
+          {/* 030 — DERIVED, not the stored string. Mandate v6 on alpha still stores
+              "High risk (5/5), capital-preservation-first."; deriving retires that whole class
+              of contradiction without a data migration. */}
+          <div className="muted" style={{ fontSize: 12.5 }}>{m.summary}</div>
         </div>
         <RiskChip tier={m.tier} />
       </div>
-      <div className="setrow">
-        <div><div style={{ fontWeight: 600 }}>Goal</div></div>
-        <span>{m.goal}</span>
-      </div>
-      <div className="setrow">
-        <div><div style={{ fontWeight: 600 }}>Timeline</div></div>
-        <span>{m.timeline}</span>
-      </div>
+
+      <EditableRow
+        label="Risk level"
+        hint="How much variation you're willing to accept. Only ever narrows what may be proposed."
+        value={`${m.riskLabel} · ${m.tier}/5`}
+        editing={editing === "risk"}
+        onEdit={() => setEditing("risk")}
+        onCancel={() => setEditing(null)}
+        pending={pending}
+      >
+        <select
+          className="input"
+          defaultValue={String(m.tier)}
+          onChange={(e) => void save({ riskTier: Number(e.target.value) })}
+          aria-label="Risk level"
+        >
+          {[1, 2, 3, 4, 5].map((t) => (
+            <option key={t} value={t}>{t}/5</option>
+          ))}
+        </select>
+      </EditableRow>
+
+      <EditableRow
+        label="Most I'm willing to put at risk"
+        hint="Caps what Sparky will suggest. Your on-chain limits still apply on top of this."
+        value={m.exposureLimitUsdc ? `$${formatUsdc(Number(m.exposureLimitUsdc))}` : "Not set"}
+        editing={editing === "exposure"}
+        onEdit={() => setEditing("exposure")}
+        onCancel={() => setEditing(null)}
+        pending={pending}
+      >
+        <AmountInput
+          placeholder="e.g. 500"
+          initial={m.exposureLimitUsdc}
+          onSave={(base) => void save({ exposureLimitUsdc: base })}
+          onClear={() => void save({ exposureLimitUsdc: null })}
+        />
+      </EditableRow>
+
+      <EditableRow
+        label="What I'm saving for"
+        hint="A target and a date, so the product can show you how far along you are."
+        value={
+          m.goalTargetUsdc && m.goalTargetDate
+            ? `$${formatUsdc(Number(m.goalTargetUsdc))} by ${m.goalTargetDate}`
+            : "Not set"
+        }
+        editing={editing === "goal"}
+        onEdit={() => setEditing("goal")}
+        onCancel={() => setEditing(null)}
+        pending={pending}
+      >
+        <GoalInput
+          initialAmount={m.goalTargetUsdc}
+          initialDate={m.goalTargetDate}
+          onSave={(amount, date) => void save({ goalTargetUsdc: amount, goalTargetDate: date })}
+          onClear={() => void save({ goalTargetUsdc: null, goalTargetDate: null })}
+        />
+      </EditableRow>
+
+      <EditableRow
+        label="What I plan to add"
+        hint="Used for projections and reminders only — nothing moves without you signing it."
+        value={
+          m.contribution
+            ? `$${formatUsdc(Number(m.contribution.amountUsdc))} ${m.contribution.cadence}`
+            : "Not set"
+        }
+        editing={editing === "contribution"}
+        onEdit={() => setEditing("contribution")}
+        onCancel={() => setEditing(null)}
+        pending={pending}
+      >
+        <ContributionInput
+          initial={m.contribution}
+          onSave={(c) => void save({ contribution: c })}
+          onClear={() => void save({ contribution: null })}
+        />
+      </EditableRow>
+
       <div className="setrow">
         <div>
           <div style={{ fontWeight: 600 }}>Max slippage</div>
@@ -128,13 +236,120 @@ function MandateTab() {
         <span>{m.maxSlippageBps !== undefined ? `${(m.maxSlippageBps / 100).toFixed(2)}%` : "—"}</span>
       </div>
       <div className="setrow">
-        <div>
-          <div style={{ fontWeight: 600 }}>Edit your plan</div>
-          <div className="muted" style={{ fontSize: 12.5 }}>Re-runs the review &amp; confirm steps.</div>
+        <div><div style={{ fontWeight: 600 }}>Timeline</div></div>
+        <span>{m.timeline}</span>
+      </div>
+
+      {error && (
+        <div className="setrow">
+          <span style={{ fontSize: 12.5, color: "var(--loss)" }}>{error}</span>
         </div>
-        <Link className="btn btn-primary btn-md" href="/onboarding">Edit mandate</Link>
+      )}
+      <div className="setrow">
+        <div>
+          <div style={{ fontWeight: 600 }}>Start over</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>Re-runs the full review &amp; confirm steps.</div>
+        </div>
+        <Link className="btn btn-outline btn-md" href="/onboarding">Redo onboarding</Link>
       </div>
     </>
+  );
+}
+
+/** One plan row: a value, an Edit affordance, and the editor inline when open. */
+function EditableRow({
+  label, hint, value, editing, onEdit, onCancel, pending, children,
+}: {
+  label: string; hint: string; value: string; editing: boolean;
+  onEdit: () => void; onCancel: () => void; pending: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className="setrow" style={{ alignItems: editing ? "flex-start" : "center" }}>
+      <div>
+        <div style={{ fontWeight: 600 }}>{label}</div>
+        <div className="muted" style={{ fontSize: 12.5, maxWidth: 420 }}>{hint}</div>
+        {editing && <div style={{ marginTop: 8 }}>{children}</div>}
+      </div>
+      {editing ? (
+        <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={pending}>Cancel</button>
+      ) : (
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span>{value}</span>
+          <button className="btn btn-outline btn-sm" onClick={onEdit}>Edit</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A USDC amount in whole dollars, converted to base units on save. */
+function AmountInput({
+  placeholder, initial, onSave, onClear,
+}: { placeholder: string; initial?: string; onSave: (base: string) => void; onClear: () => void }) {
+  const [text, setText] = useState(initial ? String(Math.trunc(Number(initial) / 1_000_000)) : "");
+  const base = /^\d+$/.test(text.trim()) && Number(text) > 0 ? `${Number(text) * 1_000_000}` : null;
+  return (
+    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input className="input" inputMode="numeric" placeholder={placeholder} value={text}
+             onChange={(e) => setText(e.target.value)} style={{ width: 140 }} aria-label="Amount in USDC" />
+      <button className="btn btn-primary btn-sm" disabled={!base} onClick={() => base && onSave(base)}>Save</button>
+      {initial && <button className="btn btn-ghost btn-sm" onClick={onClear}>Clear</button>}
+    </span>
+  );
+}
+
+/** A goal is atomic: the Save button stays disabled until BOTH an amount and a date are given. */
+function GoalInput({
+  initialAmount, initialDate, onSave, onClear,
+}: {
+  initialAmount?: string; initialDate?: string;
+  onSave: (amount: string, date: string) => void; onClear: () => void;
+}) {
+  const [amount, setAmount] = useState(
+    initialAmount ? String(Math.trunc(Number(initialAmount) / 1_000_000)) : "",
+  );
+  const [date, setDate] = useState(initialDate ?? "");
+  const base = /^\d+$/.test(amount.trim()) && Number(amount) > 0 ? `${Number(amount) * 1_000_000}` : null;
+  const ready = base !== null && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  return (
+    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input className="input" inputMode="numeric" placeholder="e.g. 10000" value={amount}
+             onChange={(e) => setAmount(e.target.value)} style={{ width: 140 }} aria-label="Target amount in USDC" />
+      <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)}
+             aria-label="Target date" />
+      <button className="btn btn-primary btn-sm" disabled={!ready}
+              onClick={() => ready && base && onSave(base, date)}>Save</button>
+      {initialAmount && <button className="btn btn-ghost btn-sm" onClick={onClear}>Clear</button>}
+    </span>
+  );
+}
+
+/** A stated intention to add money. Deliberately worded so it cannot read as automatic. */
+function ContributionInput({
+  initial, onSave, onClear,
+}: {
+  initial?: { amountUsdc: string; cadence: string };
+  onSave: (c: { amountUsdc: string; cadence: string }) => void; onClear: () => void;
+}) {
+  const [amount, setAmount] = useState(
+    initial ? String(Math.trunc(Number(initial.amountUsdc) / 1_000_000)) : "",
+  );
+  const [cadence, setCadence] = useState(initial?.cadence ?? "monthly");
+  const base = /^\d+$/.test(amount.trim()) && Number(amount) > 0 ? `${Number(amount) * 1_000_000}` : null;
+  return (
+    <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input className="input" inputMode="numeric" placeholder="e.g. 200" value={amount}
+             onChange={(e) => setAmount(e.target.value)} style={{ width: 120 }} aria-label="Contribution amount" />
+      <select className="input" value={cadence} onChange={(e) => setCadence(e.target.value)}
+              aria-label="How often">
+        {["weekly", "fortnightly", "monthly", "quarterly"].map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
+      <button className="btn btn-primary btn-sm" disabled={!base}
+              onClick={() => base && onSave({ amountUsdc: base, cadence })}>Save</button>
+      {initial && <button className="btn btn-ghost btn-sm" onClick={onClear}>Clear</button>}
+    </span>
   );
 }
 

@@ -22,11 +22,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..agents.literacy import Literacy
 from ..agents.planner import Planner
@@ -90,6 +91,19 @@ class RiskParamsBody(BaseModel):
     horizonMonths: int = Field(gt=0)
 
 
+class ContributionBody(BaseModel):
+    """030 — a STATED INTENTION to add money, used for projection and reminders.
+
+    It creates no standing authority and schedules nothing. The product holds no power to move
+    funds on a timer and this does not create one: every top-up is still a transaction the user
+    signs, or one bounded by a scoped session key they granted. Copy that implies otherwise is a
+    defect (FR-013).
+    """
+
+    amountUsdc: str = Field(pattern=r"^\d+$")
+    cadence: str = Field(pattern=r"^(weekly|fortnightly|monthly|quarterly)$")
+
+
 class MandateBody(BaseModel):
     """§3.1 confirmed-mandate body (also the shape of a ``mandate_draft.mandate``).
 
@@ -102,6 +116,37 @@ class MandateBody(BaseModel):
     riskParams: RiskParamsBody
     summaryText: str
     version: int | None = None
+    # 030 — all OPTIONAL. Absence means the user did not state it, which every reader must treat
+    # differently from zero: a zero exposure limit would forbid every proposal.
+    exposureLimitUsdc: str | None = Field(default=None, pattern=r"^\d+$")
+    exposureLimitPctBps: int | None = Field(default=None, ge=1, le=10000)
+    goalTargetUsdc: str | None = Field(default=None, pattern=r"^\d+$")
+    goalTargetDate: date | None = None
+    allowedProtocols: list[str] | None = None
+    contribution: ContributionBody | None = None
+    #: The 1..5 tier the user actually chose. Display-only — the policy gate reads `riskProfile`.
+    riskTier: int | None = Field(default=None, ge=1, le=5)
+
+    @model_validator(mode="after")
+    def _validate_030_fields(self) -> MandateBody:
+        # A goal is ATOMIC. "Reach a target — hit a specific amount" used to be stored as the bare
+        # label with no amount and no date, so nothing in the product could ever tell the user
+        # whether they were on track. Half a goal is worse than none: it looks set.
+        if (self.goalTargetUsdc is None) != (self.goalTargetDate is None):
+            raise ValueError(
+                "a goal target needs BOTH goalTargetUsdc and goalTargetDate, or neither"
+            )
+        if self.goalTargetUsdc is not None and int(self.goalTargetUsdc) <= 0:
+            raise ValueError("goalTargetUsdc must be greater than zero")
+        # One exposure limit, not two. Storing both invites the two to disagree, and nothing here
+        # can decide which the user meant.
+        if self.exposureLimitUsdc is not None and self.exposureLimitPctBps is not None:
+            raise ValueError(
+                "state the exposure limit as an amount OR a percentage of wallet, not both"
+            )
+        if self.exposureLimitUsdc is not None and int(self.exposureLimitUsdc) <= 0:
+            raise ValueError("exposureLimitUsdc must be greater than zero")
+        return self
 
     @field_validator("riskProfile")
     @classmethod
@@ -192,6 +237,15 @@ def _to_write(body: MandateBody) -> MandateWrite:
             "horizonMonths": horizon,
         },
         summary_text=body.summaryText,
+        # 030 — None stays None all the way down. Never coerced to 0, which would read as a
+        # stated limit of nothing rather than as "not stated" (FR-021).
+        exposure_limit_usdc=None if body.exposureLimitUsdc is None else int(body.exposureLimitUsdc),
+        exposure_limit_pct_bps=body.exposureLimitPctBps,
+        goal_target_usdc=None if body.goalTargetUsdc is None else int(body.goalTargetUsdc),
+        goal_target_date=body.goalTargetDate,
+        allowed_protocols=body.allowedProtocols,
+        contribution=None if body.contribution is None else body.contribution.model_dump(),
+        risk_tier_display=body.riskTier,
     )
 
 

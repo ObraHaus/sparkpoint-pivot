@@ -21,12 +21,12 @@
  * §3.3 (/portfolio), §3.4 (/recommendations); tasks.md T070/T075/T081/T082.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createAgentClient, AgentApiError, type AgentClient, type AgentIdentity } from "@/lib/agent/client";
-import { mandateView, mandateDrift, driftLabel, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
+import { mandateView, mandateSummary, mandateDrift, driftLabel, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/mandateSave";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
@@ -436,6 +436,14 @@ export interface MandateDraft {
   riskParams: { maxSlippageBps: number; drawdownTolerance: string; horizonMonths: number };
   summaryText: string;
   version: number;
+  /** 030 — all optional; omitted means the user never stated it (never zero). */
+  riskTier?: number;
+  exposureLimitUsdc?: string;
+  exposureLimitPctBps?: number;
+  goalTargetUsdc?: string;
+  goalTargetDate?: string;
+  allowedProtocols?: string[];
+  contribution?: { amountUsdc: string; cadence: string };
 }
 
 export interface OnboardingDriver {
@@ -527,6 +535,91 @@ export function useOnboarding(): OnboardingDriver {
   return { online, runReview, confirmMandate };
 }
 
+/* ── 030 · editing ONE field of a saved plan ───────────────────────────────── */
+
+/** The fields Settings can change individually. Everything else is carried over untouched. */
+export interface MandatePatch {
+  riskTier?: number;
+  maxSlippageBps?: number;
+  horizonMonths?: number;
+  exposureLimitUsdc?: string | null;
+  exposureLimitPctBps?: number | null;
+  goalTargetUsdc?: string | null;
+  goalTargetDate?: string | null;
+  contribution?: { amountUsdc: string; cadence: string } | null;
+}
+
+/**
+ * Change one thing about a saved plan.
+ *
+ * 030/FR-014 — Settings → Mandate was entirely read-only, and its "Edit" button re-ran the whole
+ * conversational onboarding flow. Adjusting one slippage value meant re-answering the drawdown
+ * question. For a plan the product wants people to MAINTAIN, that is the wrong friction.
+ *
+ * The agent stores mandates as an immutable version series, so an edit is a new confirmed version
+ * built from the current one plus the change — not a partial write. That keeps the audit trail
+ * intact and means nothing can be lost by editing one field.
+ *
+ * `null` explicitly CLEARS a field; `undefined` leaves it alone. The distinction matters because
+ * absence means "never stated" and must be reachable again after a value has been set.
+ */
+export function useUpdateMandate(): {
+  update: (patch: MandatePatch) => Promise<MandateSaveOutcome>;
+  pending: boolean;
+} {
+  const { confirmMandate } = useOnboarding();
+  const mandate = useMandate();
+  const [pending, setPending] = useState(false);
+
+  const update = useCallback(
+    async (patch: MandatePatch): Promise<MandateSaveOutcome> => {
+      if (mandate.status !== "ready") {
+        return { ok: false, failure: { kind: "offline" } };
+      }
+      const m = mandate.mandate;
+      const tier = patch.riskTier ?? m.tier;
+      const pick = <T,>(next: T | null | undefined, current: T | undefined): T | undefined =>
+        next === null ? undefined : (next ?? current);
+
+      setPending(true);
+      try {
+        return await confirmMandate({
+          goals: m.goals.length > 0 ? m.goals : [{ kind: "steady_yield", label: m.goal }],
+          riskProfile: tier <= 2 ? "conservative" : tier <= 3 ? "moderate" : "growth",
+          riskParams: {
+            maxSlippageBps: patch.maxSlippageBps ?? m.maxSlippageBps ?? 50,
+            drawdownTolerance: m.drawdownTolerance ?? (tier <= 2 ? "low" : tier <= 3 ? "medium" : "high"),
+            horizonMonths: patch.horizonMonths ?? horizonMonthsOf(m) ?? 12,
+          },
+          // Derived, so an edit can never re-save the stale self-contradictory string.
+          summaryText: mandateSummary(tier),
+          riskTier: tier,
+          exposureLimitUsdc: pick(patch.exposureLimitUsdc, m.exposureLimitUsdc),
+          exposureLimitPctBps: pick(patch.exposureLimitPctBps, m.exposureLimitPctBps),
+          goalTargetUsdc: pick(patch.goalTargetUsdc, m.goalTargetUsdc),
+          goalTargetDate: pick(patch.goalTargetDate, m.goalTargetDate),
+          allowedProtocols: m.allowedProtocols,
+          contribution: pick(patch.contribution, m.contribution),
+          version: 1,
+        } as MandateDraft);
+      } finally {
+        setPending(false);
+      }
+    },
+    [confirmMandate, mandate],
+  );
+
+  return { update, pending };
+}
+
+/** The horizon in months, recovered from the human timeline the view carries. */
+function horizonMonthsOf(m: MandateView): number | undefined {
+  const years = /([\d.]+) year/.exec(m.timeline);
+  if (years) return Math.round(parseFloat(years[1]) * 12);
+  const months = /(\d+) month/.exec(m.timeline);
+  return months ? parseInt(months[1], 10) : undefined;
+}
+
 /* ── GET /mandate (§3.1) — the user's real persisted plan ───────────────────── */
 
 interface MandateResponse {
@@ -570,7 +663,7 @@ export function useMandate(): MandateState {
 }
 
 /** Re-export the pure drift helper so screens import mandate wiring from one place. */
-export { mandateDrift, driftLabel, type DriftStatus };
+export { mandateDrift, driftLabel, mandateSummary, type DriftStatus, type MandateView };
 
 /** Re-exported so the onboarding dock imports the save outcome + its copy from one place. */
 export { mandateSaveHint } from "@/lib/agent/mandateSave";
