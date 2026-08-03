@@ -257,3 +257,92 @@ async def test_direct_answers_never_call_a_model() -> None:
     ):
         await _run(_dag(Intent(kind=IntentKind.OTHER), prose=prose), message)
     assert prose.calls == 0, "these shapes are code-authored — a model cannot mis-say them"
+
+
+# ── 031 · "what's new?" is a recency question, and a vector search has no clock ─
+
+
+async def test_whats_new_answers_from_the_source_in_date_order() -> None:
+    """The live failure this route exists to fix.
+
+    Indexing the changelog let the assistant QUOTE a release note — but the nearest three chunks
+    are not the newest three, so it answered: "…a recent fix to how updates sort at the top. There
+    aren't any other updates listed there yet." With forty entries published. Confidently false is
+    a worse failure than the honest "I don't have a changelog" it replaced.
+    """
+    entries = [
+        {
+            "title": "Sparky now knows what we shipped",
+            "publishedAt": "2026-08-03",
+            "tag": "Improved",
+        },
+        {
+            "title": "Strategies you can actually compare",
+            "publishedAt": "2026-08-03",
+            "tag": "Improved",
+        },
+        {"title": "Sparky answers straight", "publishedAt": "2026-08-03", "tag": "Fixed"},
+    ]
+
+    async def _changelog() -> list[dict[str, object]]:
+        return entries
+
+    dag = _dag(Intent(kind=IntentKind.OTHER))
+    dag.changelog = _changelog
+    text = _text(await _run(dag, "what shipped this week?"))
+
+    for entry in entries:
+        assert entry["title"] in text
+    assert "aren't any other updates" not in text
+    assert "2026-08-03" in text
+
+
+async def test_every_phrasing_of_the_question_takes_the_route() -> None:
+    async def _changelog() -> list[dict[str, object]]:
+        return [{"title": "A release", "publishedAt": "2026-08-03"}]
+
+    for message in (
+        "what's new?",
+        "what changed recently?",
+        "what did you ship lately?",
+        "what did you fix recently?",
+        "show me the changelog",
+        "any recent updates?",
+    ):
+        dag = _dag(Intent(kind=IntentKind.OTHER))
+        dag.changelog = _changelog
+        assert "A release" in _text(await _run(dag, message)), message
+
+
+async def test_an_empty_changelog_says_so_rather_than_inventing() -> None:
+    async def _empty() -> list[dict[str, object]]:
+        return []
+
+    dag = _dag(Intent(kind=IntentKind.OTHER))
+    dag.changelog = _empty
+    text = _text(await _run(dag, "what's new?")).lower()
+    assert "nothing has been published" in text
+
+
+async def test_a_question_about_a_SPECIFIC_feature_still_goes_to_retrieval() -> None:
+    """The route is deliberately narrow. "How does the vault fee work?" is not a recency question
+    and must keep its grounded, citable answer."""
+    prose = _CompleteLlm("The vault charges 10% of yield.")
+    dag = _dag(Intent(kind=IntentKind.OTHER), prose=prose)
+
+    async def _changelog() -> list[dict[str, object]]:
+        raise AssertionError("a feature question must not take the what's-new route")
+
+    dag.changelog = _changelog
+    assert prose.calls == 0
+    text = _text(await _run(dag, "how does the vault fee work?"))
+    assert "10% of yield" in text
+
+
+async def test_without_a_provider_the_route_is_simply_not_taken() -> None:
+    """The non-chat consumers wire no changelog; they must behave exactly as before."""
+    prose = _CompleteLlm("Some prose.")
+    dag = _dag(Intent(kind=IntentKind.OTHER), prose=prose)
+    assert dag.changelog is None
+    text = _text(await _run(dag, "what's new?"))
+    assert "Some prose." in text

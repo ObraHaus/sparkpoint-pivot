@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -322,6 +322,9 @@ class CoordinatorDag:
     # ``tests/api/test_chat_wiring.py`` pins that, so a wiring regression can't silently
     # reinstate the canned-line bug.
     sparky: Sparky | None = None
+    #: 031 — an async read of the newest published updates, injected by the chat wiring. ``None``
+    #: for the non-chat consumers, which simply do not take the "what's new" route.
+    changelog: Callable[[], Awaitable[Sequence[Mapping[str, Any]]]] | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -512,6 +515,19 @@ class CoordinatorDag:
         # observed classifier routing was wrong (fees → portfolio card, live APY → a definition
         # of APY, "do it automatically" → a swap card). Answered deterministically, before the
         # model is consulted, so the SHAPE of the reply cannot drift.
+        # 031 — "what's new?" is a RECENCY question, and cosine similarity has no notion of
+        # recency. Indexing the changelog (031) let the assistant quote a release note, but the
+        # nearest 3 chunks are not the newest 3, so the live answer read: "…a recent fix to how
+        # updates sort at the top. There aren't any other updates listed there yet." — with forty
+        # entries published. That is a worse failure than the honest "I don't have a changelog" it
+        # replaced, because it is confidently false. Answered from the source, in date order.
+        if _WHATS_NEW_RE.search(message) and self.changelog is not None:
+            yield ToolStepBlock("Checking what shipped recently", "running")
+            recent = await self.changelog()
+            yield ToolStepBlock("Checking what shipped recently", "done")
+            yield TextBlock(_whats_new_answer(recent))
+            return
+
         direct = _direct_answer(message, chain)
         if direct is not None:
             yield ToolStepBlock("Understanding your request", "running")
@@ -1038,6 +1054,43 @@ _DECLINE_RE = re.compile(
 def _is_decline(answer: str) -> bool:
     """True when the answer opens by declining — so it must not carry citations."""
     return bool(_DECLINE_RE.search(answer.strip()))
+
+
+#: 031 — "what shipped / what's new / what changed recently". Deliberately narrow: a question
+#: about a SPECIFIC feature still goes to retrieval, where the indexed entries now live.
+_WHATS_NEW_RE = re.compile(
+    r"\bwhat(?:'s|s| is| are| has| have)?\s+(?:new|changed|shipped|updated)\b|"
+    r"\b(?:recent|latest)\s+(?:updates?|changes?|releases?|features?)\b|"
+    r"\bwhat did you (?:ship|change|fix|release)\b|\bchangelog\b",
+    re.IGNORECASE,
+)
+
+
+def _whats_new_answer(entries: Sequence[Mapping[str, Any]]) -> str:
+    """The most recent releases, in date order, straight from the source.
+
+    Deterministic on purpose. A vector search returns the nearest chunks, not the newest, so it
+    cannot answer "what shipped THIS WEEK" — and a model handed three arbitrary entries will
+    reasonably conclude those are all of them.
+    """
+    if not entries:
+        return (
+            "Nothing has been published to the changelog yet. When it is, you'll find it under "
+            "Information → Changelog."
+        )
+    lines = ["Here's what shipped most recently:", ""]
+    for entry in entries[:5]:
+        title = str(entry.get("title") or "").strip()
+        when = str(entry.get("publishedAt") or entry.get("published_at") or "")[:10]
+        tag = str(entry.get("tag") or "").strip()
+        stamp = " · ".join(x for x in (when, tag) if x)
+        lines.append(f"- **{title}**{f' ({stamp})' if stamp else ''}")
+    lines += [
+        "",
+        "The full history is under Information → Changelog. Ask me about any of these and I can "
+        "explain what changed.",
+    ]
+    return "\n".join(lines)
 
 
 def _direct_answer(message: str, chain: ChainContext) -> str | None:

@@ -63,6 +63,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..db import get_database
+from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
 from ..db.executions import ExecutionStore
 from ..db.swap_fees import PgSwapFeeEventStore
@@ -310,6 +311,16 @@ class _VaultChatPortfolioProvider:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+async def _recent_changelog() -> list[dict[str, Any]]:
+    """The newest published updates, newest first. Fail-open to empty — the assistant then says
+    so honestly rather than failing the turn."""
+    try:
+        return await ContentEntryStore(get_database()).list_changelog(8)
+    except Exception:  # noqa: BLE001 — a changelog read must never cost the user their answer
+        _warn_once("chat_changelog_unavailable")
+        return []
+
+
 def get_coordinator_dag(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
@@ -342,6 +353,12 @@ def get_coordinator_dag(
         # static help line. Same trusted-persona composition, same prose-only boundary: its output
         # is wrapped in a `text` block, which cannot carry an action or a policy stamp.
         sparky=Sparky(llm=client, persona_provider=get_persona),
+        # 031 — "what's new?" is a RECENCY question and cosine similarity has no clock. Indexing
+        # the changelog let the assistant QUOTE a release note, but the nearest chunks are not the
+        # newest ones, so it answered "there aren't any other updates listed there yet" with forty
+        # published. Read the newest directly instead; fail-open to None, which simply restores
+        # the retrieval-only behaviour.
+        changelog=_recent_changelog,
         portfolio_provider=_VaultChatPortfolioProvider(reader, config),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
