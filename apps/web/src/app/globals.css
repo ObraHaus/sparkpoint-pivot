@@ -150,6 +150,23 @@ button{font-family:inherit;}
   background-size:200% 100%;animation:sp-shimmer 1.2s linear infinite;border-radius:6px;}
 @media (prefers-reduced-motion: reduce){ .ai-dot{animation:none;} .skel{animation:none;} }
 
+/* 036 — the chat waiting state: animated mark + the step + a clock.
+   The mark BREATHES rather than spins. A spinning logo reads as a generic loader and stops being
+   the brand; a slow scale-and-glow reads as alive, which is the one thing the row has to say. */
+@keyframes sp-breathe{
+  0%,100%{transform:scale(.9);filter:drop-shadow(0 0 0 var(--spark-glow));opacity:.75;}
+  50%{transform:scale(1.06);filter:drop-shadow(0 0 6px var(--spark-glow));opacity:1;}
+}
+.thinking-row{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:13px;
+  color:var(--muted-foreground);}
+.thinking-mark{display:inline-flex;animation:sp-breathe 1.6s ease-in-out infinite;
+  transform-origin:center;line-height:0;}
+.thinking-label{color:var(--foreground);opacity:.9;}
+/* Tabular figures so the clock does not shuffle its own text sideways as the digits change. */
+.thinking-clock{font-variant-numeric:tabular-nums;font-size:12px;opacity:.7;}
+.thinking-note{font-size:12px;opacity:.7;margin:2px 0 0 27px;}
+@media (prefers-reduced-motion: reduce){ .thinking-mark{animation:none;} }
+
 /* ===========================================================================
    Authenticated shell + shared screen atoms (ported verbatim from app.css)
    =========================================================================== */

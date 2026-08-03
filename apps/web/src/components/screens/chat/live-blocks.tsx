@@ -15,6 +15,8 @@
  * notice — no sign path is ever offered off client state.
  */
 
+import { useEffect, useState } from "react";
+
 import { Icon } from "@/lib/icons";
 import { RiskChip } from "@/components/ui/risk-chip";
 import type { ChatCard } from "@/lib/agent/cards";
@@ -24,6 +26,7 @@ import { HandsOffAction } from "@/components/screens/chat/HandsOffAction";
 import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport";
 import { chatErrorCopy } from "@/lib/agent/chatError";
 import { tipLabel } from "@/lib/agent/tipLabel";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 import { planTranscript, type TranscriptItem } from "@/lib/chat/steps";
 import { parseRichText } from "@/lib/chat/richText";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
@@ -213,11 +216,33 @@ export interface LiveBlocksProps {
   onCite: () => void;
 }
 
+
+/**
+ * When the current turn started.
+ *
+ * Captured on the first render in which the turn is streaming and held until it stops, so the clock
+ * counts THIS turn rather than however long the component has been mounted — a distinction that
+ * only shows up on the second question in a conversation, which is exactly where nobody looks.
+ */
+function useTurnStart(streaming: boolean): number {
+  const [startedAt, setStartedAt] = useState(0);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (streaming) setStartedAt(Date.now());
+  }, [streaming]);
+  return startedAt;
+}
+
 export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onReview, onSign, onCite }: LiveBlocksProps) {
+  // 036 — when this turn started, so the waiting row can show a clock. Captured on the first render
+  // in which the turn is streaming and held until it stops, so the count is of THIS turn rather
+  // than of however long the component has been mounted.
+  const startedAt = useTurnStart(streaming);
   // 029/FR-012 — the trace is progress feedback, not transcript. Deduplicate the running/done
   // pair each stage emits, and once the turn is finished collapse the whole run behind one line
   // so the ANSWER is what the eye lands on. Planned by a pure, unit-tested function.
-  const plan = planTranscript(cards.map(toTranscriptItem), { streaming });
+  const items = cards.map(toTranscriptItem);
+  const plan = planTranscript(items, { streaming });
   return (
     <>
       {plan.map((entry, i) =>
@@ -234,14 +259,7 @@ export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onRevi
           <StepGroup key={i} entry={entry} cards={cards} />
         ),
       )}
-      {streaming && (
-        <div className="think">
-          <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--muted-foreground)", padding: "3px 0" }}>
-            <span className="ai-dot" />
-            <span>Working…</span>
-          </div>
-        </div>
-      )}
+      {streaming && <ThinkingIndicator cards={items} startedAt={startedAt} />}
       {error && <TurnError message={error} code={errorCode} onRetry={onRetry} />}
     </>
   );
