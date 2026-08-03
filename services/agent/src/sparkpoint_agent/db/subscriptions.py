@@ -110,6 +110,6 @@ class SubscriptionStore:
                         "tx_hash": th,
                         "expires_at": new_expiry.isoformat(),
                     }
-                ),
+                , ensure_ascii=False),
             )
             return new_expiry

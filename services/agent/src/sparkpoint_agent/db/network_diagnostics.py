@@ -140,7 +140,7 @@ class PgNetworkDiagnosticStore:
             list(cap.injected_names),
             cap.user_agent,
             cap.build_id,
-            json.dumps(cap.raw),
+            json.dumps(cap.raw, ensure_ascii=False),
         )
         return int(new_id)
 

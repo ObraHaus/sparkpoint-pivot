@@ -104,7 +104,7 @@ class PgVaultFlowStore:
                         "assets": str(f.assets),
                         "shares": str(f.shares),
                     }
-                )
+                , ensure_ascii=False)
                 status = await conn.execute(
                     _UPSERT_EVENT,
                     network_id,
