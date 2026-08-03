@@ -301,3 +301,44 @@ async def test_a_zero_srk_balance_is_omitted_rather_than_reported_as_zero(
     reader = _FakeReader(idle=0, token_balances={srk: 0})
     view = await _VaultChatPortfolioProvider(reader, _config()).read(await _chain(reader))
     assert view.tokens == ()
+
+
+@pytest.mark.asyncio
+async def test_chat_chain_context_carries_the_live_rate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """029/FR-006 — chat must be able to quote the APY, not only decline to.
+
+    The chat context provider built its ChainContext WITHOUT `gross_bps`, so `market.gross_apy_bps`
+    was always None and "what's the current APY?" could only answer "I can't read it right now" —
+    while /recommendations, built from the same helpers, was quoting a real figure at the same
+    moment. Verified live on alpha before this fix.
+    """
+    from sparkpoint_agent.api import chat as chat_mod
+
+    async def _fake_rate(_config: AgentConfig) -> int:
+        return 44
+
+    monkeypatch.setattr(chat_mod, "_read_aave_gross_bps", _fake_rate)
+    reader = _FakeReader(shares=0, idle=0, fee_bps=1000)
+    provider = chat_mod._VaultChatChainProvider(reader, _config())
+    chain = await provider.context(_account(), surface="chat")
+
+    assert chain.market.gross_apy_bps == 44
+    # Net = gross × (1 − fee). 44 bps at a 10% performance fee ⇒ 40 bps, rounded, exact ints.
+    assert chain.market.projected_apy_bps == 40
+    assert chain.market.performance_fee_bps == 1000
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_rate_leaves_the_context_honest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sparkpoint_agent.api import chat as chat_mod
+
+    async def _no_rate(_config: AgentConfig) -> None:
+        return None
+
+    monkeypatch.setattr(chat_mod, "_read_aave_gross_bps", _no_rate)
+    provider = chat_mod._VaultChatChainProvider(_FakeReader(), _config())
+    chain = await provider.context(_account(), surface="chat")
+    assert chain.market.gross_apy_bps is None
+    assert chain.market.projected_apy_bps is None, "never derive a projection from nothing"

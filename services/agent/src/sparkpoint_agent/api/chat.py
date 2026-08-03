@@ -77,6 +77,7 @@ from .quota import require_within_quota
 from .recommendations import (
     _build_chain_context,
     _network_id,
+    _read_aave_gross_bps,
     _read_gate_inputs,
     get_agent_config,
     get_mandate_provider,
@@ -186,7 +187,15 @@ class _VaultChatChainProvider:
 
     async def context(self, account: AccountContext, *, surface: str) -> ChainContext:
         caps, fee_bps, stale = await _read_gate_inputs(self._reader, account)
-        return _build_chain_context(account, self._config, caps, fee_bps, stale)
+        # 029/FR-006 — read the LIVE Aave gross rate here too. Chat previously omitted it, so
+        # `chain.market.gross_apy_bps` was always None and "what's the current APY?" could only
+        # ever answer "I can't read it right now" — while /recommendations, one call away, was
+        # quoting 0.44%. Best-effort and non-raising by contract: an unreadable rate stays None
+        # and the answer stays honest rather than fabricated.
+        gross_bps = await _read_aave_gross_bps(self._config)
+        return _build_chain_context(
+            account, self._config, caps, fee_bps, stale, gross_bps=gross_bps
+        )
 
 
 class _NoopFeedbackSink:
