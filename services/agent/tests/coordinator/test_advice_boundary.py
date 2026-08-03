@@ -209,3 +209,20 @@ def test_a_ranked_candidate_carries_the_corrected_rationale_end_to_end() -> None
     candidates = rec._assemble(built, ranking, _ctx())
     assert candidates, "the candidate must still be produced — only its prose changed"
     assert "aggressive" not in candidates[0].rationale.lower()
+
+
+# ── the exit path is never intercepted (constitution: never gate or slow withdrawal) ──
+
+
+async def test_withdraw_everything_is_answered_not_lectured() -> None:
+    # "everything" is an all-in marker, but this user is LEAVING. Meeting that with a lecture on
+    # concentration risk would be the opposite of the question, at the worst possible moment.
+    for message in (
+        "How do I withdraw everything?",
+        "I want to take all my money out",
+        "cash out my entire position",
+        "how do I redeem all of my shares?",
+    ):
+        text = _text(await _run(message)).lower()
+        assert "not a financial adviser" not in text, message
+        assert "concentrates" not in text, message

@@ -883,6 +883,18 @@ _ALL_IN_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: The withdraw path is NEVER intercepted (constitution: never gate or slow the exit). "How do I
+#: withdraw everything?" contains an all-in marker and would otherwise be met with a lecture about
+#: concentration risk — the exact opposite of what the user asked, at the exact moment being
+#: unhelpful is least acceptable. Checked BEFORE the boundary and short-circuits it.
+_EXIT_RE = re.compile(
+    r"\bwithdraw(?:al|als|ing)?\b|\bredeem\b|\bcash\s?out\b|\bexit\b|\bunstake\b|"
+    # "take all my money out", "pull it out", "get my funds back" — the verb and the particle are
+    # routinely separated by the thing being moved, so allow a short gap between them.
+    r"\b(?:take|pull|get|move|move)\b[^.?!]{0,30}\b(?:out|back)\b|\bsell\s+everything\b",
+    re.IGNORECASE,
+)
+
 #: The boundary itself: not advice, why concentration is the actual risk here, and the concrete
 #: thing the user CAN do instead. It ends by inviting a mandate because that is the product's real
 #: answer to "how much should I put in?" — a limit the user sets and the policy gate enforces.
@@ -1019,7 +1031,7 @@ def _direct_answer(message: str, chain: ChainContext) -> str | None:
     Order matters: the allocation boundary is checked FIRST, so "should I put my life savings in
     for that APY?" gets the boundary rather than a rate quote.
     """
-    if _ALL_IN_RE.search(message):
+    if _ALL_IN_RE.search(message) and not _EXIT_RE.search(message):
         return _ALL_IN_ANSWER
     if _FEES_PAID_RE.search(message):
         fee_bps = getattr(chain.market, "performance_fee_bps", None) if chain.market else None
