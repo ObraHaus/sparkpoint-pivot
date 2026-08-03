@@ -160,7 +160,24 @@ async def execute_run(
 
         figures = {e.label: e.value for e in usable if e.value is not None}
         previous = await store.previous_figures(run_id)
-        news = materially_changed(figures, previous)
+
+        # A document written while the model was unavailable carries its figures and no prose. On
+        # its own, "nothing material changed" would then leave it degraded FOREVER — no future run
+        # rewrites it until a rate happens to move. Observed exactly that: the free-model runs left
+        # every document prose-less, and the next healthy run reported `no_change` and walked past
+        # them. So a run also has news when it can repair something it previously failed to write.
+        previous_docs = {d.slug: d for d in await store.list_documents()}
+        degraded = [
+            slug for slug, doc in previous_docs.items()
+            if doc.status != "retired" and not _has_prose(doc.markdown)
+        ]
+        news = materially_changed(figures, previous) or bool(degraded)
+        if degraded and not materially_changed(figures, previous):
+            logger.info(
+                "selfauthor_repairing_degraded count=%d — these documents have figures but no "
+                "prose, so this run rewrites them even though the numbers have not moved",
+                len(degraded),
+            )
 
         findings = [
             Finding(topic=row.topic, summary=row.summary, status=row.status)
@@ -214,9 +231,8 @@ async def execute_run(
             await store.close_run(run_id, outcome=result.outcome, detail=result.detail, stats=stats)
             return result
 
-        # Snapshot before touching anything, so a failed self-check can be undone exactly.
-        previous_docs = {d.slug: d for d in await store.list_documents()}
-
+        # `previous_docs` above doubles as the pre-write snapshot, so a failed self-check can be
+        # undone exactly — one read, used for both.
         for slug, title, markdown, claims in staged:
             await store.upsert_document(
                 slug=slug, title=title, markdown=markdown, claims=claims, run_id=run_id
@@ -293,6 +309,26 @@ async def _write(llm: Any, spec: Any, evidence: list[Evidence]) -> tuple[str, li
     from .writer import write_document
 
     return await write_document(llm, spec, evidence)
+
+
+#: The heading the renderer always emits first. Prose, when there is any, sits between the standard
+#: preamble and this — so its absence is detectable without storing a flag that could go stale.
+_FIRST_SECTION = "**Our own terms**", "**In the live market**", "**On the testnet"
+
+
+def _has_prose(markdown: str) -> bool:
+    """Whether a rendered document contains the writer's prose, as opposed to figures alone.
+
+    Derived from the text rather than recorded as a flag: a flag would have to be kept in step with
+    every rewrite, and the one place it went stale would be the place it mattered.
+    """
+    text = markdown or ""
+    cut = min((text.index(h) for h in _FIRST_SECTION if h in text), default=len(text))
+    head = text[:cut]
+    # Everything above the first figures section is: title, the source line, the purpose line, and
+    # then the writer's prose if it produced any.
+    lines = [ln.strip() for ln in head.split("\n") if ln.strip() and not ln.startswith("#")]
+    return len(lines) > 2
 
 
 def _epoch(value: Any) -> float:

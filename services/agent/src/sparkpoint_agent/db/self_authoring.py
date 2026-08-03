@@ -181,6 +181,45 @@ class SelfAuthoringStore:
             _json(stats or {}),
         )
 
+    async def close_orphaned_runs(self, *, older_than_minutes: int = 30) -> int:
+        """Close out runs whose process died mid-flight.
+
+        A run that is interrupted — a deploy's container swap, a crash, a kill — leaves
+        `finished_at` NULL forever, and the console renders that as "Running…". So a DEAD run is
+        indistinguishable from a live one, permanently. Observed on run 5: the container was
+        replaced mid-run, the row stayed open, and the next run took the lock immediately and
+        finished in under a minute while the console still showed the first one in progress.
+
+        Only rows older than `older_than_minutes` are touched. A genuinely in-flight run is bounded
+        by the LLM retry budget (~60s per document, six documents), so half an hour is far outside
+        it — and the margin means a second process booting can never close a live run.
+        """
+        try:
+            result = await self._db.execute(
+                "UPDATE self_authoring_runs SET finished_at = now(), outcome = 'error', "
+                "detail = 'interrupted — the process ended before this run finished' "
+                "WHERE finished_at IS NULL "
+                "AND started_at < now() - ($1 || ' minutes')::interval",
+                str(older_than_minutes),
+            )
+        except (UndefinedTableError, UndefinedColumnError):
+            _warn_missing_once("close_orphaned_runs")
+            return 0
+        except Exception:  # noqa: BLE001 — housekeeping must never block a boot
+            logger.warning("self_authoring_orphan_sweep_failed")
+            return 0
+        try:
+            closed = int(str(result).rsplit(" ", 1)[-1])
+        except ValueError:
+            closed = 0
+        if closed:
+            logger.warning(
+                "self_authoring_orphaned_runs_closed count=%d — a previous run was interrupted "
+                "(deploy, restart or crash) and had been showing as still running",
+                closed,
+            )
+        return closed
+
     async def last_successful_start(self) -> Any:
         """When a run last STARTED successfully — the schedule's clock.
 

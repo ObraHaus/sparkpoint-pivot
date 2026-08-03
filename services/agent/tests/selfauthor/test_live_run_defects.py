@@ -211,3 +211,54 @@ def test_a_writer_that_returns_nothing_is_COUNTED_not_silent() -> None:
     src = inspect.getsource(run_module.execute_run)
     assert "documentsWithoutProse" in src
     assert "selfauthor_prose_missing" in src
+
+
+# ── two defects from the alias cutover ───────────────────────────────────────
+
+
+def test_an_interrupted_run_is_swept_at_boot() -> None:
+    """Observed on run 5: the container was replaced mid-run, the row stayed open, and the console
+    showed "Running…" indefinitely while the NEXT run took the lock and finished in under a minute.
+    A dead run must not be indistinguishable from a live one."""
+    src = _code_only(self_authoring_runner)
+    assert "close_orphaned_runs" in src, "the boot path must sweep interrupted runs"
+
+
+def test_the_sweep_cannot_close_a_genuinely_running_run() -> None:
+    """A live run is bounded by the retry budget — roughly a minute per document, six documents.
+    The threshold has to sit far outside that, so a second process booting can never close one."""
+    from sparkpoint_agent.db.self_authoring import SelfAuthoringStore
+
+    sig = inspect.signature(SelfAuthoringStore.close_orphaned_runs)
+    assert sig.parameters["older_than_minutes"].default >= 30
+
+
+_HEAD = "# T\n\nSource: a note.\n\nThe purpose."
+_FIGURES = "\n\n**In the live market**\n\n- x"
+
+
+@pytest.mark.parametrize(
+    ("markdown", "expected"),
+    [
+        (_HEAD + _FIGURES, False),
+        (_HEAD + "\n\nRates moved." + _FIGURES, True),
+        ("", False),
+    ],
+)
+def test_a_prose_less_document_is_detectable_from_its_text(markdown: str, expected: bool) -> None:
+    """Derived from the text, not recorded as a flag: a flag has to be kept in step with every
+    rewrite, and the one place it went stale would be the place it mattered."""
+    from sparkpoint_agent.selfauthor.run import _has_prose
+
+    assert _has_prose(markdown) is expected
+
+
+def test_a_run_repairs_prose_less_documents_even_when_nothing_moved() -> None:
+    """The free-model runs left every document with figures and no prose. Without this, the next
+    healthy run reports `no_change` and walks straight past them — degraded forever, until a rate
+    happens to move by itself."""
+    from sparkpoint_agent.selfauthor import run as run_module
+
+    src = _code_only(run_module.execute_run)
+    assert "_has_prose" in src
+    assert "selfauthor_repairing_degraded" in inspect.getsource(run_module.execute_run)

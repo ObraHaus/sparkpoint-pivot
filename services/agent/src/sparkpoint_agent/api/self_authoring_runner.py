@@ -204,6 +204,13 @@ async def run_once(*, trigger: str = "schedule") -> RunResult:
 
 async def daily_loop() -> None:
     """Ask every half hour whether a run is due. Background, fail-open, cancelled on shutdown."""
+    # Housekeeping first: a run interrupted by the deploy that started THIS process is still sitting
+    # open, and the console renders an open run as "Running…" indefinitely. Sweeping at boot is the
+    # natural place — by definition nothing is in flight here yet.
+    try:
+        await SelfAuthoringStore(get_database()).close_orphaned_runs()
+    except Exception as exc:  # noqa: BLE001 — housekeeping must never cost the loop its start
+        logger.warning("self_authoring_orphan_sweep_skipped (%s)", type(exc).__name__)
     await asyncio.sleep(_FIRST_TICK_DELAY_S)
     while True:
         try:
