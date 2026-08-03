@@ -16,7 +16,11 @@
  * corpus feeds ONLY the assistant's prose (literacy / explainer / rationale), never the policy gate.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { TipsPanel } from "@/components/admin/TipsPanel";
+import { UpdatesPanel } from "@/components/admin/UpdatesPanel";
+import { SelfAuthoredPreview } from "@/components/admin/SelfAuthoredPreview";
 import { Icon } from "@/lib/icons";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
@@ -81,17 +85,49 @@ async function mutationError(r: Response): Promise<string> {
   return body.error?.message ?? `Request failed (${r.status}).`;
 }
 
-type AdminTab = "knowledge" | "persona";
-
 /**
- * Admin → Knowledge & Persona. Two tabs over the same-origin BFF:
- *   - Knowledge: the RAG "second brain" (embedded corpus behind Sparky's explanations).
- *   - Persona:   Sparky's character (IDENTITY/SOUL/VOICE/BOUNDARIES/EXAMPLES) — TRUSTED system-prompt
- *                content, NOT the RAG corpus (never embedded, never on the policy/action path). Edits
- *                reload Sparky's voice live, no redeploy.
+ * 032 — the five bodies of writing an admin maintains, in one console.
+ *
+ * They used to live on three separate screens with three different shapes (`/admin/knowledge`,
+ * `/admin/tips`, `/admin/updates`), so maintaining what the assistant says meant learning three
+ * pages and remembering which one held what. The old routes still resolve — they redirect here —
+ * so no bookmark or nav link breaks.
+ *
+ * Ordered by who wrote it and how much the assistant leans on it:
+ *   1. Knowledge      — hand-written documentation. The corpus behind Sparky's explanations.
+ *   2. Persona        — Sparky's character. TRUSTED system-prompt content, deliberately NOT part
+ *                       of the corpus: never embedded, never retrievable, never citable.
+ *   3. Self-authored  — Sparky's own research. NOT BUILT YET (a preview only; see the panel).
+ *   4. Updates        — the in-app changelog. Since 031, indexed and readable by the assistant.
+ *   5. Tips           — the sidebar explainer databank. Likewise readable since 031.
  */
+type AdminTab = "knowledge" | "persona" | "self-authored" | "updates" | "tips";
+
+const TABS: { id: AdminTab; label: string; hint: string }[] = [
+  { id: "knowledge", label: "Knowledge", hint: "Documentation you write. Sparky answers from it." },
+  { id: "persona", label: "Persona", hint: "Sparky's character. Never part of the corpus." },
+  { id: "self-authored", label: "Self-authored", hint: "Sparky's own research. Not built yet." },
+  { id: "updates", label: "Updates", hint: "The in-app changelog. Sparky reads it." },
+  { id: "tips", label: "Tips", hint: "Sidebar explainers. Sparky reads them." },
+];
+
+const isTab = (v: string | null): v is AdminTab => TABS.some((t) => t.id === v);
+
 export default function Page() {
-  const [tab, setTab] = useState<AdminTab>("knowledge");
+  return (
+    <Suspense fallback={<div style={{ padding: 24, opacity: 0.7 }}>Loading console…</div>}>
+      <KnowledgeConsole />
+    </Suspense>
+  );
+}
+
+function KnowledgeConsole() {
+  // `?section=` makes every section deep-linkable, which is what lets `/admin/tips` and
+  // `/admin/updates` keep working as redirects rather than breaking existing bookmarks.
+  const params = useSearchParams();
+  const requested = params.get("section");
+  const [tab, setTab] = useState<AdminTab>(isTab(requested) ? requested : "knowledge");
+
   const tabButton = (t: AdminTab, label: string) => (
     <button
       key={t}
@@ -113,13 +149,26 @@ export default function Page() {
       {label}
     </button>
   );
+
+  const active = TABS.find((t) => t.id === tab);
   return (
     <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }} role="tablist" aria-label="Admin section">
-        {tabButton("knowledge", "Knowledge")}
-        {tabButton("persona", "Persona")}
+      <div
+        style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}
+        role="tablist"
+        aria-label="Knowledge console section"
+      >
+        {TABS.map((t) => tabButton(t.id, t.label))}
       </div>
-      {tab === "knowledge" ? <KnowledgePanel /> : <PersonaPanel />}
+      {/* Each section says what it IS and who wrote it — the distinction that decides whether an
+          admin should edit it, and (for persona vs the rest) whether Sparky can quote it. */}
+      <div style={{ fontSize: 12.5, opacity: 0.75, marginBottom: 16 }}>{active?.hint}</div>
+
+      {tab === "knowledge" && <KnowledgePanel />}
+      {tab === "persona" && <PersonaPanel />}
+      {tab === "self-authored" && <SelfAuthoredPreview />}
+      {tab === "updates" && <UpdatesPanel />}
+      {tab === "tips" && <TipsPanel />}
     </>
   );
 }

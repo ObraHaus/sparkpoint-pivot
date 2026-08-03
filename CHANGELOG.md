@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (032 — one knowledge console, five sections)
+- **`/admin/knowledge` now holds all five bodies of writing an admin maintains**: Knowledge · Persona · Self-authored · Updates · Tips. They lived on three separate screens with three different shapes, so maintaining what the assistant says meant learning three pages and remembering which one held what. The panels are unchanged — same APIs, same behaviour — only their mount point moved.
+- **Every old route still resolves.** `/admin/tips` and `/admin/updates` redirect into the console rather than being deleted, so bookmarks and anything an operator wrote down keep working. The nav keeps all three entries too, deep-linked with `?section=`: someone looking for "Tips" still finds "Tips" and lands on the right section, instead of having to learn that tips now live inside Knowledge.
+- **The active nav entry follows the section.** Three entries pointing at one page meant matching on the pathname alone would highlight "Knowledge" when the admin clicked "Tips"; the section is now matched first.
+- **Each section says what it is and who wrote it** — the distinction that decides whether an admin should edit it, and (for persona) whether the assistant can quote it at all.
+
+### Added (032)
+- **A Self-authored section, as a PREVIEW ONLY.** The daily generation job is deliberately not built — it gets its own planning session, because the questions that decide whether it is safe are design questions rather than coding ones. The panel is wired to nothing: no network call, fixed example rows, every control disabled, and a banner saying so in the admin's own words. A mockup that quietly reads a real endpoint is how a demo becomes a dependency by accident, and an admin who mistakes a preview for a live feature will assume notes are being generated when none are.
+- It also records the two constraints already settled for whenever it is built: every note grounded in something **fetched during that run**, and a run must not read previously self-authored notes as input — a loop that reads its own output drifts, confidently and in one direction.
+
 ### Added (031 — the assistant reads what the team publishes)
 - **Retrieval spans four bodies of writing, not one.** It was scoped to a single source kind, so the in-app changelog and the tip databank were invisible to every answer. That is why, asked *"what shipped this week?"*, the assistant could only point at a page it cannot read — the gap 029 could work around but not close. Published updates are now rendered to prose and indexed (`knowledge/changelog_ingest.py`), so **every future release teaches the assistant automatically**, with no separate step for anyone to forget. Verified live: "what did you fix in the chat recently?" now returns two real release notes with their dates.
 - **Citations say what kind of source they are** — hand-written documentation, a SparkPoint release note, an explainer, or a research note the assistant wrote itself (labelled *"written by Sparky, not yet reviewed"*). Without that, a note the assistant writes about itself is indistinguishable from third-party documentation, which is how a citation stops meaning anything.
