@@ -643,10 +643,23 @@ export default function ChatPage() {
           </div>
         )}
         {history.map((h) => (
+          // 039 — a saved conversation was a clickable <div>: no role, no tabIndex, no key
+          // handler, so it could not be opened from a keyboard at all. NOT converted to a
+          // <button>, because it contains the delete button and a button cannot nest inside one —
+          // the correct shape for a row with its own action is role + tabIndex + a key handler.
           <div
             key={h.id}
             className={"threaditem" + (h.id === activeConvId ? " active" : "")}
+            role="button"
+            tabIndex={0}
+            aria-current={h.id === activeConvId ? "true" : undefined}
             onClick={() => openConversation(h.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                void openConversation(h.id);
+              }
+            }}
             style={{ display: "flex", alignItems: "center", gap: 6 }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
