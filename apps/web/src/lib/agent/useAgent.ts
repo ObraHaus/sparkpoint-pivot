@@ -30,6 +30,7 @@ import { mandateView, mandateDrift, type MandateView, type MandateWire, type Dri
 import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/mandateSave";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
+import { resolveChainId } from "@/lib/agent/identity";
 import {
   toOutcomesView,
   toOutcomeDetailView,
@@ -50,7 +51,6 @@ import {
 } from "@/lib/agent/memoryView";
 
 /** Base mainnet chain id — the identity fallback when wagmi has no chain yet. */
-const DEFAULT_CHAIN_ID = 8453;
 
 /* ── identity + client ─────────────────────────────────────────────────────── */
 
@@ -65,7 +65,10 @@ export function useAgentIdentity(): AgentIdentity | null {
     if (!address) return null;
     // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the
     // service token server-side, so the browser never holds a credential (§1.2).
-    return { account: address, owner: address, chainId: chainId ?? DEFAULT_CHAIN_ID };
+    // 029: `?? DEFAULT` does NOT catch NaN — wagmi reported NaN mid-reconnect and the client
+    // sent `x-chain-id: NaN` on every request, which the agent refuses (and the refusal was
+    // rendered as an assistant message). resolveChainId covers absent/NaN/unsupported alike.
+    return { account: address, owner: address, chainId: resolveChainId(chainId) };
   }, [address, chainId]);
 }
 

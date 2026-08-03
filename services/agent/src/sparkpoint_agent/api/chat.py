@@ -60,6 +60,7 @@ from ..coordinator import (
     MandateProvider,
     PortfolioView,
     PositionLite,
+    TokenBalanceLite,
 )
 from ..db import get_database
 from ..db.conversations import ConversationStore
@@ -226,6 +227,16 @@ class _VaultChatPortfolioProvider:
             idle = await self._reader.token_balance_of(asset_addr, owner)
         except VaultUnavailable:
             return PortfolioView(stale=True)
+        # 029/FR-004 — the WALLET side of "what's in my wallet?". Read AFTER the vault reads and
+        # each in its own try: a native or SRK read outage must degrade that one line to silence,
+        # never blank out the position the user actually asked about. No USD valuation is applied
+        # (no price feed for ETH or SRK), so these never touch net_worth_usd.
+        native_wei: int | None = None
+        try:
+            native_wei = await self._reader.native_balance(owner)
+        except VaultUnavailable:
+            _warn_once("chat_native_balance_unavailable")
+        tokens = await self._notable_tokens(chain, owner)
         positions: list[PositionLite] = []
         if shares > 0:
             positions.append(
@@ -256,8 +267,33 @@ class _VaultChatPortfolioProvider:
         # net worth = vault value + idle wallet USDC (both 6dp USDC); ETH excluded (no USD feed).
         net = _fmt_units(vault_assets + idle, 6)
         return PortfolioView(
-            positions=tuple(positions), net_worth_usd=net, idle_usdc=idle, stale=False
+            positions=tuple(positions),
+            net_worth_usd=net,
+            idle_usdc=idle,
+            stale=False,
+            native_wei=native_wei,
+            native_symbol=_native_symbol(chain.chain_id),
+            tokens=tokens,
         )
+
+    async def _notable_tokens(
+        self, chain: ChainContext, owner: str
+    ) -> tuple[TokenBalanceLite, ...]:
+        """Non-USDC ERC-20s worth naming in a wallet answer — today, SRK where it is deployed.
+
+        Address comes from the same ``SRK_ADDRESS_<chainId>`` env the Premium verifier uses, so
+        there is one source of truth for "where SRK lives". Unset env ⇒ no line (a chain without
+        SRK is not an error). A balance read failure ⇒ no line, same reason.
+        """
+        srk = os.getenv(f"SRK_ADDRESS_{chain.chain_id}")
+        if not srk:
+            return ()
+        try:
+            raw = await self._reader.token_balance_of(srk, owner)
+        except VaultUnavailable:
+            _warn_once("chat_srk_balance_unavailable")
+            return ()
+        return (TokenBalanceLite(symbol="SRK", raw=raw, decimals=18),) if raw > 0 else ()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -426,6 +462,31 @@ def get_conversation_sink() -> _ConversationSink:
 #: ``_warn_append_failure``: fail-open persistence needs one loud line per failure mode, or
 #: "nothing is ever remembered" is indistinguishable from "this user has done nothing").
 _warned_memory_failure = False
+
+
+#: 029 — degraded WALLET reads that must not be logged on every turn. A missing native or SRK
+#: balance costs one prose clause, not the answer, so it is a warning once per process.
+_warned_reads: set[str] = set()
+
+
+def _warn_once(key: str) -> None:
+    """Warn the first time a named optional read degrades, then stay silent for the process."""
+    if key not in _warned_reads:
+        _warned_reads.add(key)
+        _logger.warning(
+            "%s: an optional wallet read is unavailable; the chat answer omits that line and "
+            "keeps serving. Logged once per process.",
+            key,
+        )
+
+
+#: Native coin symbol per chain — Base + Base Sepolia are ETH; Robinhood testnet 46630 is ETH too.
+#: A chain not listed falls back to "ETH" rather than inventing a ticker.
+_NATIVE_SYMBOLS: dict[int, str] = {8453: "ETH", 84532: "ETH", 46630: "ETH"}
+
+
+def _native_symbol(chain_id: int) -> str:
+    return _NATIVE_SYMBOLS.get(chain_id, "ETH")
 
 
 def _warn_memory_failure(exc: Exception) -> None:

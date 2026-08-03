@@ -57,3 +57,47 @@ test("summary reflects the shown tier; slippage + version are stable/advisory", 
   assert.equal(m.riskParams.maxSlippageBps, 50);
   assert.match(m.summaryText, /4\/5/);
 });
+
+test("the plan summary never contradicts the risk tier the user chose (029/FR-015)", () => {
+  // Shipped verbatim to a tester: "High risk (5/5), capital-preservation-first."
+  const high = buildMandateDraft({
+    experience: null,
+    goal: "Aggressive growth",
+    timeline: "3+ years",
+    riskAns: "Buy more",
+    riskTier: 5,
+  });
+  assert.match(high.summaryText, /High risk \(5\/5\)/);
+  assert.ok(
+    !/capital-preservation/i.test(high.summaryText),
+    `a high-risk plan must not claim capital preservation: ${high.summaryText}`,
+  );
+  assert.match(high.summaryText, /growth-first/);
+});
+
+test("a conservative plan still says capital-preservation-first", () => {
+  const low = buildMandateDraft({
+    experience: null,
+    goal: "Steady USDC yield",
+    timeline: "1-3 years",
+    riskAns: "Hold",
+    riskTier: 1,
+  });
+  assert.match(low.summaryText, /Lower risk \(1\/5\), capital-preservation-first\./);
+});
+
+test("every tier produces a summary that is internally consistent", () => {
+  for (const riskTier of [1, 2, 3, 4, 5]) {
+    const m = buildMandateDraft({
+      experience: null,
+      goal: "Steady USDC yield",
+      timeline: "1-3 years",
+      riskAns: "Hold",
+      riskTier,
+    });
+    assert.match(m.summaryText, new RegExp(`\\(${riskTier}/5\\)`));
+    if (riskTier >= 3) {
+      assert.ok(!/capital-preservation/i.test(m.summaryText), m.summaryText);
+    }
+  }
+});

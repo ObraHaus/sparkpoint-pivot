@@ -31,6 +31,7 @@ Stage contract (what each endpoint calls):
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -96,6 +97,16 @@ _CUSTODY_DRYRUN = SimulationInput(provider="viem_local", will_revert=False)
 # (the persona-bearing ``Sparky`` agent is — see the OTHER branch in ``run_chat``); it is what the
 # user gets when that LLM turn refuses, fails, or produces something unusable, so a general
 # question always gets an honest, non-custody answer instead of a broken turn.
+_logger = logging.getLogger(__name__)
+
+#: 029 — what the user sees when the prose turn failed TWICE. Deliberately NOT a capability
+#: pitch: it admits the failure, reassures about funds, and invites a retry, so "broken" is
+#: distinguishable from "unhelpful". Emitted as an ERROR block (never as an answer).
+_GENERAL_FAILURE = (
+    "I couldn't reach my model just then, so I don't have an answer for you — nothing was "
+    "signed or changed. Please try again in a moment."
+)
+
 _GENERAL_HELP = (
     "I can suggest and simulate USDC yield strategies within your guardrails, explain how "
     "things work, and show your portfolio — but only you can sign a transaction. What would "
@@ -167,14 +178,35 @@ class ChainContext:
 
 
 @dataclass(frozen=True)
+class TokenBalanceLite:
+    """A notable non-USDC ERC-20 the user holds (029). Raw base units + decimals so the DAG
+    formats it exactly — never a float, never a fabricated USD value (no oracle is wired)."""
+
+    symbol: str
+    raw: int
+    decimals: int
+
+
+@dataclass(frozen=True)
 class PortfolioView:
     """The enriched portfolio the ``gather`` stage reads (§3.3). ``idle_usdc`` is spare
-    balance in base units used as a notional suggested deposit amount."""
+    balance in base units used as a notional suggested deposit amount.
+
+    029 added the WALLET side — ``native_wei``/``native_symbol`` and ``tokens``. "What's in my
+    wallet?" previously answered with vault positions only, so a tester holding 0.0084 ETH and
+    6,000 SRK was told about neither. These are deliberately NOT folded into ``positions`` or
+    ``net_worth_usd``: the snapshot card is USD-valued and there is no price feed for ETH or
+    SRK, so putting them there would require inventing a number. They are reported in prose,
+    as amounts, which is the honest form.
+    """
 
     positions: tuple[PositionLite, ...] = ()
     net_worth_usd: str = "0.00"
     idle_usdc: int | None = None
     stale: bool = False
+    native_wei: int | None = None
+    native_symbol: str = "ETH"
+    tokens: tuple[TokenBalanceLite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -347,10 +379,13 @@ class CoordinatorDag:
         """The general/identity branch's prose answer + whether the MODEL produced it.
 
         Returns ``(_GENERAL_HELP, False)`` when no responder is wired (the non-chat DAG
-        consumers) or when the responder degraded — a refusal, an empty or action-shaped
-        generation, or an upstream LLM failure. The second element gates the citation block:
-        the static help text is not grounded in the retrieved passages, so it must never be
-        presented as if it were.
+        consumers), and ``(_GENERAL_FAILURE, False)`` when the responder degraded TWICE — a
+        refusal, an empty or action-shaped generation, or an upstream LLM failure. The second
+        element gates the citation block: neither fallback is grounded in the retrieved
+        passages, so neither must ever be presented as if it were.
+
+        The caller distinguishes the two by identity (``answer is _GENERAL_FAILURE``) and emits
+        the failure as an ERROR block, never as prose — see FR-003.
 
         ``memory_lines`` (027) is the user's cross-conversation digest, handed to the same prose
         turn as advisory context — this is what lets a NEW conversation answer "what did we do
@@ -359,14 +394,24 @@ class CoordinatorDag:
         carry a ProposedAction or a policy stamp.
         """
         if self.sparky is None:
+            # No responder wired (the non-chat DAG consumers) — there is nothing to retry and
+            # nothing failed, so the static help text is the honest answer here.
             return _GENERAL_HELP, False
         context = _format_grounding(passages) if passages else None
-        reply = await self.sparky.reply(
-            message, context_hint=context, user=user, memory_lines=memory_lines
-        )
-        if reply.fell_back or not reply.body:
-            return _GENERAL_HELP, False
-        return reply.body, True
+        # 029: RETRY ONCE, then be honest. The Aug-3 regression saw 3/20 turns under back-to-back
+        # use collapse to _GENERAL_HELP with no sign anything had failed — and they were the
+        # persona intro, the memory recall and the withdrawal explanation. A user cannot tell that
+        # apart from a stupid assistant, so they report the latter. One retry covers the observed
+        # transient (queue timeout when turns arrive quickly); a second failure is surfaced.
+        for attempt in (1, 2):
+            reply = await self.sparky.reply(
+                message, context_hint=context, user=user, memory_lines=memory_lines
+            )
+            if not reply.fell_back and reply.body:
+                return reply.body, True
+            if attempt == 1:
+                _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
+        return _GENERAL_FAILURE, False
 
     # -- stage 2: gather (portfolio + mandate reads) --------------------------
 
@@ -463,6 +508,17 @@ class CoordinatorDag:
             yield TextBlock(_BRIDGE_UNAVAILABLE_MESSAGE)
             return
 
+        # 029/FR-005..007 — three question shapes whose correct answer is known and whose
+        # observed classifier routing was wrong (fees → portfolio card, live APY → a definition
+        # of APY, "do it automatically" → a swap card). Answered deterministically, before the
+        # model is consulted, so the SHAPE of the reply cannot drift.
+        direct = _direct_answer(message, chain)
+        if direct is not None:
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(direct)
+            return
+
         yield ToolStepBlock("Understanding your request", "running")
         intent = await self.understand(
             message, surface=surface, user=user, history=history, memory_lines=memory_lines
@@ -480,7 +536,9 @@ class CoordinatorDag:
             card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
             yield ToolStepBlock("Explaining that", "done")
             yield TipBlock(card.topic, card.body)
-            if passages:
+            # 029/FR-014 — cite only what the answer could actually have drawn on. A canned
+            # fallback tip and a decline are both ungrounded in the retrieved passages.
+            if passages and not card.fell_back and not _is_decline(card.body):
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
@@ -506,10 +564,18 @@ class CoordinatorDag:
                 message, passages, user=user, memory_lines=memory_lines
             )
             yield ToolStepBlock(label, "done")
+            if answer is _GENERAL_FAILURE:
+                # 029/FR-003: a degraded turn must LOOK degraded. An ERROR block renders as the
+                # inline error state with a retry affordance, and (unlike a text block) is not
+                # persisted into the transcript — so a reopened conversation shows no phantom
+                # answer where the model never produced one.
+                yield ErrorBlock("UPSTREAM_UNAVAILABLE", answer)
+                return
             yield TextBlock(answer)
-            # Cite ONLY when the grounded answer actually came from the model. A fallback to the
-            # static help text is not grounded in those passages, so citing them would be a lie.
-            if passages and grounded:
+            # Cite ONLY when the grounded answer actually came from the model AND actually
+            # answered. A fallback is not grounded in those passages, and neither is a refusal
+            # (029/FR-014) — citing either would claim a provenance the text does not have.
+            if passages and grounded and not _is_decline(answer):
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
@@ -645,21 +711,56 @@ class CoordinatorDag:
         count = len(portfolio.positions)
         stale = " (some figures may be stale)" if portfolio.stale else ""
         noun = "position" if count == 1 else "positions"
-        # Idle cash = spare underlying USDC in the wallet (not in the vault) — an honest, separate
-        # line so the user sees what's deployed vs. what's available to deposit.
-        idle = portfolio.idle_usdc
-        idle_line = ""
-        if idle:
-            idle_line = f" You also have ${_fmt_usdc6(idle)} in idle USDC in your wallet."
         return (
             f"You're holding {count} {noun} worth about ${portfolio.net_worth_usd}"
-            f"{stale}.{idle_line}"
+            f"{stale}.{_wallet_line(portfolio)}"
         )
 
 
 def _explicit_ready(intent: Intent) -> bool:
     """True iff a directly-commanded action has all of action/asset/amount (else clarify)."""
     return intent.action_type is not None and intent.asset is not None and intent.amount is not None
+
+
+def _wallet_line(portfolio: PortfolioView) -> str:
+    """The wallet sentence: native coin, notable tokens, and idle USDC (029/FR-004).
+
+    Answers "what's in my wallet?" with what is actually IN the wallet — deployed capital is
+    the sentence before this one. Amounts only: ETH and SRK have no price feed here, and an
+    invented USD figure is worse than none. Empty string when the wallet holds nothing notable,
+    so the summary never trails a dangling "In your wallet:".
+    """
+    parts: list[str] = []
+    if portfolio.native_wei:
+        parts.append(f"{_fmt_units(portfolio.native_wei, 18, max_dp=4)} {portfolio.native_symbol}")
+    for token in portfolio.tokens:
+        if token.raw:
+            parts.append(f"{_fmt_units(token.raw, token.decimals, max_dp=2)} {token.symbol}")
+    if portfolio.idle_usdc:
+        parts.append(f"${_fmt_usdc6(portfolio.idle_usdc)} in idle USDC")
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        listed = parts[0]
+    else:
+        listed = f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f" In your wallet you also have {listed}."
+
+
+def _fmt_units(raw: int, decimals: int, *, max_dp: int) -> str:
+    """Exact integer formatting of ``raw`` base units — thousands-separated, ``max_dp`` decimals,
+    trailing zeros trimmed. Never a float: 18-dp values overflow double precision, and a wallet
+    balance shown wrong is worse than one not shown."""
+    if raw < 0:
+        raw = 0
+    scale = 10**decimals
+    whole, frac = divmod(raw, scale)
+    text = f"{whole:,}"
+    if max_dp > 0 and frac:
+        digits = str(frac).rjust(decimals, "0")[:max_dp].rstrip("0")
+        if digits:
+            text = f"{text}.{digits}"
+    return text
 
 
 def _fmt_usdc6(raw: int) -> str:
@@ -757,6 +858,177 @@ _BRIDGE_UNAVAILABLE_MESSAGE = (
     "page, or read your wallet on this network."
 )
 _BRIDGE_RE = re.compile(r"\bbridg(?:e|es|ed|ing)\b|\bcross[- ]?chain\b", re.IGNORECASE)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 029 — three questions that must be answered in the RIGHT SHAPE (FR-005..FR-007)
+#
+# The Aug-3 battery watched each of these get a confidently wrong-shaped reply: "how much have
+# I paid in fees?" returned the portfolio card, "what's the current APY on the vault?" got a
+# textbook definition of APY, and "can you buy ETH for me automatically?" got a swap card. A
+# classifier can be re-taught and still drift; these three shapes are narrow, high-traffic, and
+# their correct answers are known, so they route DETERMINISTICALLY here — same precedent as the
+# bridge guard above. No model call, so they cannot be mis-said either.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: 029/FR-008 — the personal-allocation question. "Should I put my life savings into this?" was
+#: answered with two ranked investment cards and no boundary at all: the product effectively told
+#: a stranger to concentrate their savings into one DeFi strategy. Matching requires an ALL-IN
+#: marker, not merely "should I" — an ordinary "should I deposit 100 USDC?" is a fair question and
+#: still gets recommendations.
+_ALL_IN_RE = re.compile(
+    r"\blife[- ]savings\b|\ball[- ]in\b|\bevery(?:thing|\s+penny|\s+cent|\s+dollar)\b|"
+    r"\b(?:all|100%)\s+(?:of\s+)?(?:my|our)\b|\b(?:my|our)\s+(?:whole|entire)\b|"
+    r"\bnet[- ]worth\b|\bsavings\b",
+    re.IGNORECASE,
+)
+
+#: The boundary itself: not advice, why concentration is the actual risk here, and the concrete
+#: thing the user CAN do instead. It ends by inviting a mandate because that is the product's real
+#: answer to "how much should I put in?" — a limit the user sets and the policy gate enforces.
+_ALL_IN_ANSWER = (
+    "I can't tell you to do that \u2014 I'm not a financial adviser, and how much of your money "
+    "belongs in any one place is a decision only you can make.\n\n"
+    "What I can tell you plainly: putting your savings into a single strategy concentrates every "
+    "risk in one place. Smart-contract risk, the underlying lending market, and a yield that can "
+    "fall as fast as it rose all land on the whole amount at once. Yields here are variable and "
+    "nothing is insured or guaranteed.\n\n"
+    "The usual approach is to decide a limit first and only then pick a strategy. If you set a "
+    "mandate \u2014 how much you're willing to put at risk, and how conservative you want to be "
+    "\u2014 I'll only ever suggest moves that fit inside it, and anything over that limit is "
+    "refused automatically rather than left to willpower. Want to set one?"
+)
+
+#: "have I paid fees?" — FIRST-PERSON fee questions only. A general "what's the vault fee?" is
+#: deliberately NOT matched: that one is answered from the knowledge corpus WITH citations.
+_FEES_PAID_RE = re.compile(
+    r"(?=.*\bfees?\b)(?=.*\b(?:i|me|my|we|us|our)\b)"
+    r"(?=.*\b(?:paid|pay|paying|charged|charge|charges|cost|costs|owe|owed|billed|taken)\b)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: "what's the CURRENT APY?" — a live-figure question, as opposed to "what is APY?", which is a
+#: genuine literacy question and must keep going to the tip path.
+_APY_LIVE_RE = re.compile(
+    r"(?=.*\b(?:apy|apr|yield rate|interest rate)\b)"
+    r"(?=.*\b(?:current|currently|right now|now|today|live|latest|paying|earning|vaults?)\b)",
+    re.IGNORECASE | re.DOTALL,
+)
+_APY_DEFINITION_RE = re.compile(
+    r"\bwhat(?:'s| is| are| does)\s+(?:an?\s+)?(?:apy|apr)\b|\bapy\s+mean|\bexplain\b|"
+    r"\bhow\s+(?:do(?:es)?|is)\s+(?:an?\s+)?(?:apy|apr)\b|\bdifference between\b",
+    re.IGNORECASE,
+)
+
+#: "can you do it FOR me / automatically?" — an automation question, not an order to trade.
+_AUTOMATION_RE = re.compile(
+    r"(?=.*\b(?:automatic|automatically|auto|autopilot|on my behalf|without me|"
+    r"set[- ]and[- ]forget|by yourself|yourself)\b)"
+    r"(?=.*\b(?:buy|sell|swap|trade|invest|deposit|withdraw|rebalance|manage|move|execute|"
+    r"sign|do)\b)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: What we can honestly say about fees a WALLET has paid. Per-wallet performance fees are share
+#: dilution to a shared recipient and are not indexed per user — the /fees page says exactly this,
+#: so the chat must not imply a personal figure exists. Naming the real schedule keeps the answer
+#: useful rather than a shrug.
+_FEES_PAID_ANSWER = (
+    "I can't show a per-wallet \u201cfees paid\u201d total \u2014 the vault's performance fee is "
+    "taken as share dilution to a shared recipient, so there's no truthful personal number to "
+    "read. What I can tell you is what you're charged: **0% on deposits, withdrawals and your "
+    "principal**, a **{fee}% performance fee** charged only on profit above your high-water mark, "
+    "and **0.20%** on swaps routed through SparkPoint. Premium is paid separately in SRK. The "
+    "Fees page breaks all of this down and reads the live fee parameters straight from the vault."
+)
+
+#: Automation: the honest non-custody answer (N1/N2). Session keys are real and shipped, so this
+#: neither over-promises an autonomous trader nor denies the capability the product has.
+_AUTOMATION_ANSWER = (
+    "Not on my own \u2014 I can never move your funds. Every transaction is signed by your "
+    "wallet, and I only ever prepare one for you to review and approve.\n\n"
+    "What you can do is grant a **session key**: a scoped, time-limited permission (specific "
+    "actions, specific limits) that lets a move go through without a fresh signature each time. "
+    "You create it, you set the scope, and you can revoke it at any moment from Settings \u2192 "
+    "Security. Even then it's bounded by your mandate and the same policy checks \u2014 there's "
+    "no mode where I trade your wallet freely.\n\n"
+    "For a one-off buy, tell me the amount and I'll set up the swap for you to sign."
+)
+
+
+def _apy_answer(chain: ChainContext) -> str:
+    """The live vault APY sentence — or an honest "I can't read it right now".
+
+    Never explains what an APY is: a user asking for the CURRENT figure already knows. The
+    projected (net) figure is what they earn, so it leads; gross and the fee follow when known.
+    """
+    market = chain.market
+    gross = getattr(market, "gross_apy_bps", None) if market else None
+    net = getattr(market, "projected_apy_bps", None) if market else None
+    fee_bps = getattr(market, "performance_fee_bps", None) if market else None
+    if net is None and gross is None:
+        return (
+            "I can't read the vault's live APY right now \u2014 the rate feed isn't answering, "
+            "and I'd rather say that than quote you a number I can't verify. The Vault page shows "
+            "the current rate whenever the feed is up."
+        )
+    headline = net if net is not None else gross
+    parts = [f"The vault is currently showing about **{_fmt_bps(headline)}% APY**"]
+    if net is not None and gross is not None and gross != net:
+        fee = f" after the {_fmt_bps(fee_bps)}% performance fee" if fee_bps else " after fees"
+        parts.append(f" net{fee} (gross {_fmt_bps(gross)}%)")
+    parts.append(
+        ". That's a variable rate from the underlying lending market \u2014 it moves with "
+        "borrowing demand, so it's a snapshot, not a promise."
+    )
+    return "".join(parts)
+
+
+def _fmt_bps(bps: int | None) -> str:
+    """Basis points → a percent string with at most 2 dp, trailing zeros trimmed (exact math)."""
+    if bps is None:
+        return "0"
+    whole, frac = divmod(max(0, int(bps)), 100)
+    text = f"{whole}"
+    if frac:
+        text = f"{text}.{frac:02d}".rstrip("0").rstrip(".")
+    return text
+
+
+#: 029/FR-014 — an answer that DECLINES is not an answer drawn from the corpus, so attaching a
+#: "Sources" block to it claims a provenance it does not have. The battery saw ERC-4626
+#: documentation cited beneath "I can't move your funds", which reads either as a non-sequitur or,
+#: worse, as though the refusal were something the docs say. Anchored to the opening clause, so an
+#: answer that merely contains "I can't" partway through still cites what it used.
+_DECLINE_RE = re.compile(
+    r"^\W*(?:i(?:'m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:'t|not)\b|"
+    r"i\s+don'?t\s+(?:have|hold|know)|that'?s\s+not\s+something|"
+    r"unfortunately\b|no,\s)",
+    re.IGNORECASE,
+)
+
+
+def _is_decline(answer: str) -> bool:
+    """True when the answer opens by declining — so it must not carry citations."""
+    return bool(_DECLINE_RE.search(answer.strip()))
+
+
+def _direct_answer(message: str, chain: ChainContext) -> str | None:
+    """The deterministic answer for one of the shapes above, or ``None`` to route normally.
+
+    Order matters: the allocation boundary is checked FIRST, so "should I put my life savings in
+    for that APY?" gets the boundary rather than a rate quote.
+    """
+    if _ALL_IN_RE.search(message):
+        return _ALL_IN_ANSWER
+    if _FEES_PAID_RE.search(message):
+        fee_bps = getattr(chain.market, "performance_fee_bps", None) if chain.market else None
+        return _FEES_PAID_ANSWER.format(fee=_fmt_bps(fee_bps) if fee_bps else "10")
+    if _AUTOMATION_RE.search(message):
+        return _AUTOMATION_ANSWER
+    if _APY_LIVE_RE.search(message) and not _APY_DEFINITION_RE.search(message):
+        return _apy_answer(chain)
+    return None
 
 
 def _action_supported_on_chain(chain_id: int, action_type: ActionType | None) -> bool:

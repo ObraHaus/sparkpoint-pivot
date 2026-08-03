@@ -26,6 +26,8 @@ INJECTED market data (never a fabricated APY).
 
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field, replace
 
 from ..knowledge import CitationRetriever  # T125 — recommender MAY import knowledge (advisory)
@@ -40,6 +42,19 @@ from ..policy import (
 )
 from ..wire import Citation
 from .planner import Intent, IntentKind
+
+_logger = logging.getLogger(__name__)
+
+#: 029/FR-009 — risk language that cannot honestly appear on a conservative, whitelist-only
+#: candidate. Matched against the MODEL's rationale only; the deterministic template replaces it.
+#: Deliberately narrow: "higher yield" is a fine thing to say about a lending rate, whereas
+#: "aggressive", "high-risk" and "speculative" describe a strategy this product does not offer.
+_AGGRESSIVE_RE = re.compile(
+    r"\baggressive(?:ly)?\b|\bhigh(?:er)?[- ]risk\b|\bspeculative\b|\bhigh[- ]octane\b|"
+    r"\brisk(?:y|ier)\b|\bleverage[d]?\b|\bvolatil(?:e|ity)\b|\bmaximis(?:e|ing)\b|"
+    r"\bmaximiz(?:e|ing)\b",
+    re.IGNORECASE,
+)
 
 # research.md §6 — the recommender is judgment-heavy.
 EFFORT: Effort = "high"
@@ -391,7 +406,8 @@ class Recommender:
         for index, (action_type, action) in enumerate(built):
             rank_info = ranking.get(action_type) if ranking is not None else None
             if rank_info is not None:
-                rank, title, rationale = rank_info.rank, rank_info.title, rank_info.rationale
+                rank, title = rank_info.rank, rank_info.title
+                rationale = self._consistent_rationale(rank_info.rationale, action_type, ctx)
             else:
                 rank = index + 1
                 title = _DEFAULT_TITLE.get(action_type, action_type.value)
@@ -412,6 +428,28 @@ class Recommender:
         # Sort best-first, then re-normalize to dense positive ranks (§2.7 rank ≥ 1).
         candidates.sort(key=lambda c: (c.rank, c.action_type.value))
         return tuple(replace(c, rank=i + 1) for i, c in enumerate(candidates))
+
+    def _consistent_rationale(
+        self, rationale: str, action_type: ActionType, ctx: ProposalContext
+    ) -> str:
+        """The model's rationale, unless its RISK language contradicts the card it sits on.
+
+        029/FR-009. The Aug-3 battery caught a card whose risk chip read "Lower · 1/5" while its
+        own rationale sold "higher returns … more aggressive yield generation tactics". Both were
+        on screen at once, so one of them was visibly lying — and a user cannot tell which. The
+        candidate SET here is whitelist-only and conservative by construction (USDC lending), so
+        the chip is the true statement and the prose is the drifting one. A rationale that reaches
+        for aggressive-risk language is therefore replaced by the deterministic template, which is
+        built only from injected data and cannot contradict anything.
+        """
+        if rationale and _AGGRESSIVE_RE.search(rationale):
+            _logger.info(
+                "rationale_risk_conflict: replaced a rationale whose risk language contradicted "
+                "the conservative candidate set (action=%s)",
+                action_type.value,
+            )
+            return self._template_rationale(action_type, ctx)
+        return rationale
 
     def _template_rationale(self, action_type: ActionType, ctx: ProposalContext) -> str:
         """A safe, non-fabricated fallback rationale built only from injected data."""

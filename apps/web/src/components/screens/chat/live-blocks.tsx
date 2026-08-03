@@ -22,6 +22,9 @@ import { clampProposedSlippageBps } from "@/lib/swap/math";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { HandsOffAction } from "@/components/screens/chat/HandsOffAction";
 import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport";
+import { chatErrorCopy } from "@/lib/agent/chatError";
+import { tipLabel } from "@/lib/agent/tipLabel";
+import { planTranscript, type TranscriptItem } from "@/lib/chat/steps";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
 /**
@@ -108,6 +111,58 @@ function InertNotice({ message }: { message: string }) {
   );
 }
 
+/**
+ * A FAILED turn (029). Deliberately not shaped like an answer: its own tinted card, an alert
+ * glyph, a "Something went wrong" heading and a Try again control. Before this, the agent's §1.5
+ * envelope was rendered in the prose slot, so "X-Account/X-Owner/X-Chain-Id are malformed or
+ * mismatched." appeared to be Sparky talking. `chatErrorCopy` guarantees the raw envelope never
+ * reaches the user; this component guarantees the failure never LOOKS like an answer.
+ */
+function TurnError({
+  message,
+  code,
+  onRetry,
+}: {
+  message: string;
+  code?: string;
+  onRetry?: () => void;
+}) {
+  const view = chatErrorCopy(message, code);
+  return (
+    <div
+      className="ccard"
+      data-card="turn-error"
+      role="status"
+      style={{
+        borderColor: "color-mix(in srgb, var(--caution) 32%, transparent)",
+        background: "color-mix(in srgb, var(--caution) 8%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+        <span style={{ color: "var(--caution)", display: "flex", marginTop: 1 }}>
+          <Icon name="alert" size={16} />
+        </span>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13.5 }}>Something went wrong</div>
+          <div className="cnote" style={{ marginTop: 3 }}>
+            {view.message}
+          </div>
+          {view.retryable && onRetry && (
+            <button
+              className="btn btn-outline btn-sm"
+              style={{ marginTop: 10 }}
+              onClick={onRetry}
+              type="button"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** One trace row for a `tool_step` block — the summarized reasoning trace (never raw CoT). */
 function ToolStepRow({ label, status }: { label: string; status: "running" | "done" | "error" }) {
   return (
@@ -142,8 +197,13 @@ function ToolStepRow({ label, status }: { label: string; status: "running" | "do
 export interface LiveBlocksProps {
   cards: ChatCard[];
   streaming: boolean;
-  /** Set when the stream failed pre-/mid-flight — rendered as an inert notice. */
+  /** Set when the stream failed pre-/mid-flight — rendered as a distinct ERROR state (029),
+   * never as assistant prose. */
   error?: string;
+  /** The §1.6 code behind `error`, so internal envelopes can be recognised and replaced. */
+  errorCode?: string;
+  /** Re-send the failed message (renders "Try again" when the failure is retryable). */
+  onRetry?: () => void;
   /** Open the chat's inline confirm for a signable proposed action (with its live amount). */
   onReview: (intent: InlineIntent) => void;
   /** Open the ExecutionDrawer (server IntentBundle chokepoint) for an approved VAULT action. */
@@ -152,12 +212,26 @@ export interface LiveBlocksProps {
   onCite: () => void;
 }
 
-export function LiveBlocks({ cards, streaming, error, onReview, onSign, onCite }: LiveBlocksProps) {
+export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onReview, onSign, onCite }: LiveBlocksProps) {
+  // 029/FR-012 — the trace is progress feedback, not transcript. Deduplicate the running/done
+  // pair each stage emits, and once the turn is finished collapse the whole run behind one line
+  // so the ANSWER is what the eye lands on. Planned by a pure, unit-tested function.
+  const plan = planTranscript(cards.map(toTranscriptItem), { streaming });
   return (
     <>
-      {cards.map((card, i) => (
-        <LiveBlock key={i} card={card} onReview={onReview} onSign={onSign} onCite={onCite} />
-      ))}
+      {plan.map((entry, i) =>
+        entry.kind === "card" ? (
+          <LiveBlock
+            key={i}
+            card={cards[entry.index]}
+            onReview={onReview}
+            onSign={onSign}
+            onCite={onCite}
+          />
+        ) : (
+          <StepGroup key={i} entry={entry} cards={cards} />
+        ),
+      )}
       {streaming && (
         <div className="think">
           <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--muted-foreground)", padding: "3px 0" }}>
@@ -166,8 +240,55 @@ export function LiveBlocks({ cards, streaming, error, onReview, onSign, onCite }
           </div>
         </div>
       )}
-      {error && <InertNotice message={error} />}
+      {error && <TurnError message={error} code={errorCode} onRetry={onRetry} />}
     </>
+  );
+}
+
+/** The projection {@link planTranscript} needs, taken from a validated card. */
+function toTranscriptItem(card: ChatCard): TranscriptItem {
+  if (card.status === "inert") return { type: "inert" };
+  const block = card.block;
+  return block.type === "tool_step"
+    ? { type: "tool_step", label: block.label, status: block.status }
+    : { type: block.type };
+}
+
+/** A run of progress rows: expanded while the turn is live, one summary line once it is done. */
+function StepGroup({
+  entry,
+  cards,
+}: {
+  entry: { indices: readonly number[]; collapsed: boolean; summary: string };
+  cards: ChatCard[];
+}) {
+  const rows = entry.indices.map((index) => {
+    const card = cards[index];
+    if (card.status === "inert" || card.block.type !== "tool_step") return null;
+    return <ToolStepRow key={index} label={card.block.label} status={card.block.status} />;
+  });
+  if (!entry.collapsed) return <>{rows}</>;
+  return (
+    <details className="think" data-card="steps">
+      <summary
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          fontSize: 12.5,
+          color: "var(--muted-foreground)",
+          padding: "3px 0",
+          cursor: "pointer",
+          listStyle: "none",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gain)" strokeWidth="3">
+          <path d="M5 13l4 4L19 7" />
+        </svg>
+        {entry.summary}
+      </summary>
+      {rows}
+    </details>
   );
 }
 
@@ -302,7 +423,8 @@ function LiveBlock({
             <span style={{ color: "var(--info)", display: "flex" }}>
               <Icon name="info" size={16} />
             </span>
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{block.topic}</span>
+            {/* 029/FR-010 — the topic is a ROUTING key (`vault_safety`); never show it raw. */}
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{tipLabel(block.topic)}</span>
           </div>
           <div style={{ fontSize: 13.5, lineHeight: 1.55, color: "var(--muted-foreground)" }}>{block.body}</div>
         </div>

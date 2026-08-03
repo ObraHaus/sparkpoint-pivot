@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-answers-straight",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky answers straight — and admits it when something breaks",
+      "body": "We spent a night putting the assistant through the same twenty questions a new user would ask, in a real browser, and fixed everything that read badly. Most of it was not the thinking — it was the answering.\n\n**It no longer talks past you.** Ask what's in your wallet and it now tells you about your wallet: your ETH, your SRK and your idle USDC, alongside anything you have deposited. Ask what you've paid in fees and you get the actual fee schedule — plus an honest note that there is no per-wallet total to show, and why. Ask for the current APY and you get today's figure, not a lecture on what an APY is. Ask whether it can buy something for you automatically and it explains how signing really works here, instead of opening a swap.\n\n**It knows what it is now.** Asked about SRK, the faucet, the Trust Center, the changelog, or its own memory, it used to draw a blank — once even denying it remembers anything between conversations, which it does. It can answer all of that now.\n\n**It won't advise you into a corner.** Asked whether to put your life savings in, it declines to give financial advice, explains why concentrating everything in one place is the real risk, and offers to help you set a limit instead of handing you two things to buy.\n\n**And when something goes wrong, it says so.** A failed turn used to look like a vague, unhelpful answer. Now it reads as what it is — a failure, with a Try again button, and a clear note that nothing was signed or changed. Refreshing the page also drops you back into the conversation you were in, the thinking steps tidy themselves away once an answer arrives, and the little internal labels that occasionally showed up above tips are gone.",
+      "cta_label": "Open the assistant",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T09:00:00Z",
+      "active": true
+    },
+    {
       "slug": "tidier-menu-and-labels-that-stay-put",
       "type": "changelog",
       "tag": "Improved",

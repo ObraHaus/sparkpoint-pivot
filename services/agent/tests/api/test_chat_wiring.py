@@ -39,7 +39,8 @@ class _FakeReader:
 
     def __init__(
         self, *, shares: int = 0, pps: int = 10**18, idle: int = 0, total_assets: int = 0,
-        fee_bps: int = 1000, unavailable: bool = False,
+        fee_bps: int = 1000, unavailable: bool = False, native: int = 0,
+        native_unavailable: bool = False, token_balances: dict[str, int] | None = None,
     ) -> None:
         self._shares = shares
         self._pps = pps
@@ -47,6 +48,11 @@ class _FakeReader:
         self._total = total_assets
         self._fee = fee_bps
         self._unavailable = unavailable
+        # 029 — the wallet side. ``token_balances`` keys are lower-case token addresses; anything
+        # not listed answers with ``idle`` (the pre-029 behaviour for the vault's USDC asset).
+        self._native = native
+        self._native_unavailable = native_unavailable
+        self._token_balances = {k.lower(): v for k, v in (token_balances or {}).items()}
 
     def _guard(self) -> None:
         if self._unavailable:
@@ -66,7 +72,15 @@ class _FakeReader:
 
     async def token_balance_of(self, token: str, owner: str) -> int:
         self._guard()
+        if token.lower() in self._token_balances:
+            return self._token_balances[token.lower()]
         return self._idle
+
+    async def native_balance(self, owner: str) -> int:
+        self._guard()
+        if self._native_unavailable:
+            raise VaultUnavailable(VaultUnavailableReason.RPC_UNREACHABLE, "test: native read down")
+        return self._native
 
     async def total_assets(self) -> int:
         self._guard()
@@ -226,3 +240,64 @@ def test_the_memory_endpoints_are_registered_and_session_scoped() -> None:
     assert "/memory/self" in paths
     assert "/memory/clear" in paths
     assert not any(p.startswith("/admin") and "memory" in p for p in paths)
+
+
+# ── 029/FR-004 · the WALLET side of the portfolio read ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_wallet_read_surfaces_native_and_srk_balances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The Aug-3 tester's actual wallet: 0.0084 ETH + 6,000 SRK + 50 idle USDC. Before 029 the
+    # answer to "what's in my wallet?" mentioned none of the first two.
+    srk = "0x2dF900000000000000000000000000000000dD52"
+    monkeypatch.setenv("SRK_ADDRESS_84532", srk)
+    reader = _FakeReader(
+        shares=250_000_000,
+        idle=50_000_000,
+        native=8_400_000_000_000_000,
+        token_balances={srk: 6_000 * 10**18},
+    )
+    view = await _VaultChatPortfolioProvider(reader, _config()).read(await _chain(reader))
+
+    assert view.native_wei == 8_400_000_000_000_000
+    assert view.native_symbol == "ETH"
+    assert [(t.symbol, t.raw, t.decimals) for t in view.tokens] == [("SRK", 6_000 * 10**18, 18)]
+    # Neither is USD-valued: net worth stays vault + idle USDC only (no ETH/SRK price feed).
+    assert view.net_worth_usd == "300.00"
+
+
+@pytest.mark.asyncio
+async def test_no_srk_env_means_no_token_line_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SRK_ADDRESS_84532", raising=False)
+    reader = _FakeReader(shares=250_000_000, idle=50_000_000, native=1)
+    view = await _VaultChatPortfolioProvider(reader, _config()).read(await _chain(reader))
+    assert view.tokens == ()
+    assert view.positions, "the vault position is unaffected by a chain without SRK"
+
+
+@pytest.mark.asyncio
+async def test_a_native_read_outage_costs_one_line_not_the_whole_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SRK_ADDRESS_84532", raising=False)
+    reader = _FakeReader(shares=250_000_000, idle=50_000_000, native_unavailable=True)
+    view = await _VaultChatPortfolioProvider(reader, _config()).read(await _chain(reader))
+    assert view.native_wei is None
+    assert view.stale is False, "a native outage must NOT mark the vault position stale"
+    assert view.net_worth_usd == "300.00"
+    assert len(view.positions) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_zero_srk_balance_is_omitted_rather_than_reported_as_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    srk = "0x2dF900000000000000000000000000000000dD52"
+    monkeypatch.setenv("SRK_ADDRESS_84532", srk)
+    reader = _FakeReader(idle=0, token_balances={srk: 0})
+    view = await _VaultChatPortfolioProvider(reader, _config()).read(await _chain(reader))
+    assert view.tokens == ()

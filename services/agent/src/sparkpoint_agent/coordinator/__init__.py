@@ -52,6 +52,7 @@ from .dag import (
     PortfolioView,
     RecommendationsResult,
     StampedCandidate,
+    TokenBalanceLite,
     advisory_context,
 )
 from .flows import (
@@ -109,6 +110,7 @@ __all__ = [
     "PortfolioProvider",
     "PortfolioSnapshotBlock",
     "PortfolioView",
+    "TokenBalanceLite",
     "PositionLite",
     "RecommendationBlock",
     "RecommendationsResult",

@@ -40,6 +40,11 @@ import {
 import { useAgentClient, usePortfolioView, useMandate } from "@/lib/agent/useAgent";
 import { parseCard, parseCardValue, type ChatCard } from "@/lib/agent/cards";
 import { replayTurns, type ConversationTurnDto } from "@/lib/agent/conversationReplay";
+import {
+  pickRestoreTarget,
+  readRememberedConversation,
+  rememberConversation,
+} from "@/lib/chat/lastConversation";
 import { AgentApiError } from "@/lib/agent/client";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
@@ -60,7 +65,17 @@ type Turn =
   // The single signing chokepoint for an approved AI-proposed VAULT action (feature 019 US2).
   | { id: number; kind: "sign"; action: ProposedAction }
   // A LIVE `/chat` turn: streamed, fail-closed ChatBlocks from the agent service.
-  | { id: number; kind: "live"; cards: ChatCard[]; streaming: boolean; error?: string };
+  | {
+      id: number;
+      kind: "live";
+      cards: ChatCard[];
+      streaming: boolean;
+      error?: string;
+      /** §1.6 code — lets the renderer recognise an internal envelope (029). */
+      errorCode?: string;
+      /** The message that failed, so "Try again" can resend it verbatim. */
+      failedMessage?: string;
+    };
 
 const EMPTY_CHIPS = [
   "What's in my wallet?",
@@ -389,6 +404,7 @@ export default function ChatPage() {
     if (online) void refreshHistory();
   }, [online, refreshHistory]);
 
+
   const sendLive = useCallback(
     async (text: string) => {
       if (!agentClient) {
@@ -409,7 +425,11 @@ export default function ChatPage() {
         for (;;) {
           const res = await gen.next();
           if (res.done) {
-            if (res.value?.conversationId) convRef.current = res.value.conversationId;
+            if (res.value?.conversationId) {
+              convRef.current = res.value.conversationId;
+              // A brand-new conversation becomes the one a refresh restores.
+              rememberConversation(res.value.conversationId);
+            }
             break;
           }
           // Each SSE block is validated fail-closed (invalid → inert, never actionable).
@@ -421,7 +441,10 @@ export default function ChatPage() {
       } catch (e) {
         const message =
           e instanceof AgentApiError ? e.message : "The assistant is unavailable right now. Nothing moved.";
-        patch((x) => ({ ...x, streaming: false, error: message }));
+        // 029: keep the CODE and the original message. The renderer replaces internal envelopes
+        // with honest copy, and "Try again" resends without the user retyping.
+        const errorCode = e instanceof AgentApiError ? e.code : undefined;
+        patch((x) => ({ ...x, streaming: false, error: message, errorCode, failedMessage: text }));
       }
     },
     [agentClient, respond, refreshHistory],
@@ -432,6 +455,7 @@ export default function ChatPage() {
       if (!agentClient) return;
       setActiveConvId(id);
       convRef.current = id;
+      rememberConversation(id);
       try {
         const c = await agentClient.request<{ turns?: ConversationTurnDto[] }>(
           `/conversations/${id}`,
@@ -462,6 +486,20 @@ export default function ChatPage() {
     },
     [agentClient],
   );
+
+  // 029/FR-013 — come back to the conversation the refresh interrupted. Runs ONCE, and only
+  // into an untouched screen: if the user has already started typing or opened something from
+  // the sidebar, restoring would yank the page out from under them.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!online || restoredRef.current || activeConvId || history.length === 0) return;
+    restoredRef.current = true;
+    const target = pickRestoreTarget(history, readRememberedConversation());
+    // Restoring is a REACTION to the history list arriving after mount — there is no
+    // render-time value to derive it from, so this is the effect the rule exists to allow.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (target) void openConversation(target);
+  }, [online, history, activeConvId, openConversation]);
 
   const deleteConversation = useCallback(
     async (id: string) => {
@@ -630,6 +668,8 @@ export default function ChatPage() {
                       cards={turn.cards}
                       streaming={turn.streaming}
                       error={turn.error}
+                      errorCode={turn.errorCode}
+                      onRetry={turn.failedMessage ? () => void send(turn.failedMessage!) : undefined}
                       onReview={pushInline}
                       onSign={pushSign}
                       onCite={openCite}
@@ -796,6 +836,10 @@ export default function ChatPage() {
   function startNewChat() {
     setActiveConvId(null);
     convRef.current = undefined;
+    // An explicit "new chat" is also an explicit "not that one" — so a refresh right after it
+    // must not drag the old conversation back.
+    rememberConversation(null);
+    restoredRef.current = true;
     setTurns(coldThread());
     setChips(EMPTY_CHIPS);
   }

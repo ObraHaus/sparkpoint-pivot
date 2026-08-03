@@ -263,7 +263,8 @@ async def test_leaked_reasoning_monologue_falls_back() -> None:
 
 
 async def test_meta_discard_catches_each_marker_family() -> None:
-    from sparkpoint_agent.agents.sparky import _looks_meta_shaped
+    # 029: the guard moved to the SHARED module (both prose agents use it).
+    from sparkpoint_agent.agents.guard_text import looks_meta_shaped as _looks_meta_shaped
 
     for bad in [
         "According to the reference notes you provided, I am Sparky.",
@@ -277,7 +278,8 @@ async def test_meta_discard_catches_each_marker_family() -> None:
 
 
 async def test_normal_second_person_answers_survive_the_meta_discard() -> None:
-    from sparkpoint_agent.agents.sparky import _looks_meta_shaped
+    # 029: the guard moved to the SHARED module (both prose agents use it).
+    from sparkpoint_agent.agents.guard_text import looks_meta_shaped as _looks_meta_shaped
 
     for good in [
         "Last time you asked about the vault, and you deposited 1.00 USDC yourself.",
