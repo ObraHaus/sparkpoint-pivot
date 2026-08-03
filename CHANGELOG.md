@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (039 — reopening a conversation reset its suggestions)
+- **A saved conversation is not a new one.** 037 gave the chips contextual follow-ups, but only while a thread was being typed into. Reopen one from the sidebar — or return to it after a refresh — and the starters came back: "What's in my wallet?" under a thread that had spent ten turns on fees, as though none of it had happened. The whole point of these chips is to know where you are, and reopening was exactly where they forgot.
+- The suggestions are now derived from the reopened thread's **last assistant turn and the user message that prompted it**, so the same rules apply as they did live: go deeper on what was actually discussed, and never offer back the question just asked — which is most jarring on a reopened thread, because the answer is right there on the screen.
+- An **empty** thread still shows the starters, because an empty conversation genuinely is a new one. A pre-025 turn that replays as a text summary has no topic to go deeper on, but still does not read as new.
+- Both entry points — the sidebar and the refresh-restore — go through one function, so the fix lands on both.
+
 ### Changed (038 — the Sources card folds away by default)
 - **It regularly ran longer than the answer it supported** — a two-sentence reply followed by six citations quoting two hundred characters each, so the thing the user actually asked for was the smallest object on the screen. The card now opens folded, showing the word "Sources" and a count.
 - **Collapsed, not hidden, and the distinction is the whole design.** These citations are the product's evidence that an answer came from somewhere; 029 exists because an unsourced answer is indistinguishable from an invented one. Deleting them to reduce clutter would trade the trust proposition for tidiness. The count is most of what they tell you at a glance — *"this answer rests on four things"* — and the rest is one tap away.
