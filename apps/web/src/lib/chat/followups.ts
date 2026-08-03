@@ -55,16 +55,33 @@ export const STARTER_CHIPS = [
  */
 const EXIT = "How do I withdraw everything?";
 
-/** Follow-ups by tip topic — the assistant just explained a concept, so go one level deeper. */
-const BY_TOPIC: Record<string, readonly string[]> = {
-  what_is_a_performance_fee: ["When would I pay nothing?", "How does our fee compare?", "What's the high-water mark?"],
-  what_is_apy: ["What's the vault paying now?", "Why is the alpha rate so low?", "Is that rate guaranteed?"],
-  what_is_a_vault: ["Is the Aave vault safe?", "What's the vault paying now?", "Explain vault shares"],
-  vault_safety: ["What happens if you disappear?", "Can you move my funds?", "Show me the proof"],
-  what_is_non_custodial: ["Can you move my funds?", "Show me the proof", "What happens if you disappear?"],
-  what_is_slippage: ["What slippage do you use?", "Swap ETH → USDC"],
-  how_to_withdraw: ["Is there a fee to withdraw?", "How long does it take?", "Show my portfolio"],
-};
+/**
+ * Follow-ups by tip topic — the assistant just explained a concept, so go one level deeper.
+ *
+ * Matched by SUBSTRING, not by exact key, and that is not laziness. The first version keyed off the
+ * agent's internal Python constant names and silently matched almost nothing: the wire actually
+ * carries `performance_fee` (not `what_is_a_performance_fee`) and `aave_vault_safety` (not
+ * `vault_safety`), so every fee question fell through to the generic list while every test passed.
+ * Only a live turn showed it.
+ *
+ * A substring rule survives the agent renaming a topic or adding a variant, and the fallback is
+ * still a real question rather than nothing. The observed wire values are pinned by a test.
+ */
+const BY_TOPIC: readonly (readonly [RegExp, readonly string[]])[] = [
+  [/fee/, ["When would I pay nothing?", "How does our fee compare?", "What's the high-water mark?"]],
+  [/apy|yield|rate/, ["What's the vault paying now?", "Why is the alpha rate so low?", "Is that rate guaranteed?"]],
+  [/safe|safety|risk/, ["What happens if you disappear?", "Can you move my funds?", "Show me the proof"]],
+  [/custod/, ["Can you move my funds?", "Show me the proof", "What happens if you disappear?"]],
+  [/slippage|swap/, ["What slippage do you use?", "Swap ETH → USDC"]],
+  [/withdraw|exit/, ["Is there a fee to withdraw?", "How long does it take?", "Show my portfolio"]],
+  [/vault|share/, ["Is the Aave vault safe?", "What's the vault paying now?", "Explain vault shares"]],
+];
+
+function forTopic(topic: string): readonly string[] {
+  const key = (topic || "").toLowerCase();
+  for (const [pattern, chips] of BY_TOPIC) if (pattern.test(key)) return chips;
+  return [];
+}
 
 /** Follow-ups by what the agent was seen doing. */
 const BY_STEP: Record<string, readonly string[]> = {
@@ -129,7 +146,7 @@ export function followUps(turn: TurnShape): string[] {
     }
   };
 
-  for (const topic of turn.tipTopics ?? []) add(BY_TOPIC[topic] ?? []);
+  for (const topic of turn.tipTopics ?? []) add(forTopic(topic));
   for (const label of turn.stepLabels ?? []) add(BY_STEP[label] ?? []);
   for (const type of turn.blockTypes) add(BY_BLOCK[type] ?? []);
   add(GENERIC);

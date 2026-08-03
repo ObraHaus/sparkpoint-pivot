@@ -98,3 +98,29 @@ test("the empty-thread chips still say what this thing is for", () => {
   assert.ok(STARTER_CHIPS.includes("What's in my wallet?"));
   assert.ok(STARTER_CHIPS.length >= 6, "a new user needs a spread, not three");
 });
+
+// ── the topic strings the agent ACTUALLY sends ───────────────────────────────
+
+test("the real wire topics are matched, not the agent's internal constant names", () => {
+  // Observed live, one turn each. The first version keyed off the Python constant names
+  // (`what_is_a_performance_fee`, `vault_safety`) and matched almost nothing: every fee question
+  // fell through to the generic list while every unit test passed. Only a live turn showed it.
+  const cases: [string, RegExp][] = [
+    ["performance_fee", /pay nothing|high-water|compare/i],
+    ["what_is_apy", /vault paying|alpha rate|guaranteed/i],
+    ["aave_vault_safety", /disappear|move my funds|proof/i],
+  ];
+  for (const [topic, expected] of cases) {
+    const out = followUps({ userMessage: "tell me", blockTypes: ["tip"], tipTopics: [topic] });
+    assert.ok(out.some((c) => expected.test(c)), `${topic} -> ${out.join(" | ")}`);
+  }
+});
+
+test("a renamed or unseen topic degrades to real questions, not to nothing", () => {
+  // The substring rule is what makes a rename survivable; the fallback is still useful.
+  const out = followUps({ userMessage: "x", blockTypes: ["tip"], tipTopics: ["some_new_fee_topic_v2"] });
+  assert.ok(out.some((c) => /pay nothing|high-water|compare/i.test(c)), out.join(" | "));
+
+  const unknown = followUps({ userMessage: "x", blockTypes: ["tip"], tipTopics: ["zzz_unmapped"] });
+  assert.ok(unknown.length > 0, "still offers something");
+});
