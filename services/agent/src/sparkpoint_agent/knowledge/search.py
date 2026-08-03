@@ -58,15 +58,37 @@ def _as_of_iso(updated: object) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+#: 031/FR-003 — how each kind of source introduces itself in a citation.
+#:
+#: Retrieval now spans four bodies of writing with genuinely different standing: documentation a
+#: person wrote, a release note the team published, a literacy tip, and a research note the
+#: assistant wrote about itself unattended. A citation that renders all four identically tells the
+#: reader nothing about which they are looking at — and the last one is exactly the case where
+#: that matters, because "here is where this came from" pointing at the model's own output is a
+#: claim of provenance the text does not have.
+_KIND_LABEL: dict[str, str] = {
+    "knowledge": "",  # the default; documentation carries its own title
+    "changelog": "SparkPoint release note",
+    "tip": "SparkPoint explainer",
+    "self_authored": "SparkPoint research note (written by Sparky, not yet reviewed)",
+}
+
+
 def hit_to_citation(hit: ChunkHit) -> Citation:
-    """Map one retrieved chunk to the shared wire :class:`Citation` (source + snippet)."""
+    """Map one retrieved chunk to the shared wire :class:`Citation` (source + snippet).
+
+    031 — the citation now says WHAT KIND of source it is, because retrieval spans four bodies of
+    writing whose standing differs. In particular a self-authored note announces itself as the
+    assistant's own unreviewed research, so automation never manufactures provenance.
+    """
     md = hit.metadata
     source = str(md.get("source") or "knowledge")
     title = str(md.get("title") or source)
     section = str(md.get("section") or "")
     updated = md.get("updated")
+    label = _KIND_LABEL.get(hit.source_kind, "")
     return Citation(
-        provider=title,
+        provider=f"{title} · {label}" if label else title,
         endpoint=f"obsidian://{source}",
         field=section,
         value=_snippet(hit.content),

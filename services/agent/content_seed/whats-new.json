@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-reads-the-changelog",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky now knows what we shipped",
+      "body": "Ask Sparky what changed recently and it will tell you, instead of pointing you at this page.\n\nUntil now the assistant read one set of documents and nothing else — so the updates you're reading right now were invisible to it, along with the short explainers that appear around the app. Both are now part of what it reads. The useful consequence: every future update teaches it automatically. Nobody has to remember a separate step, which means it won't be forgotten.\n\nYou'll also see clearer sourcing under its answers. Where an answer draws on something, the note now says what kind of thing it was — our documentation, a release note like this one, an explainer, or Sparky's own research. That last one matters: if Sparky is quoting itself, you should be able to see that rather than mistake it for something we wrote and checked.",
+      "cta_label": "Ask Sparky what's new",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T17:00:00Z",
+      "active": true
+    },
+    {
       "slug": "strategies-that-actually-compare",
       "type": "changelog",
       "tag": "Improved",

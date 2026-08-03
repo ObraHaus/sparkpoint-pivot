@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (031 — the assistant reads what the team publishes)
+- **Retrieval spans four bodies of writing, not one.** It was scoped to a single source kind, so the in-app changelog and the tip databank were invisible to every answer. That is why, asked *"what shipped this week?"*, the assistant could only point at a page it cannot read — the gap 029 could work around but not close. Published updates are now rendered to prose and indexed (`knowledge/changelog_ingest.py`), so **every future release teaches the assistant automatically**, with no separate step for anyone to forget. Verified live: "what did you fix in the chat recently?" now returns two real release notes with their dates.
+- **Citations say what kind of source they are** — hand-written documentation, a SparkPoint release note, an explainer, or a research note the assistant wrote itself (labelled *"written by Sparky, not yet reviewed"*). Without that, a note the assistant writes about itself is indistinguishable from third-party documentation, which is how a citation stops meaning anything.
+- **Migration 0034** adds the `changelog` and `self_authored` source kinds. Retrieval degrades honestly on an un-migrated database: the cast raises, it warns once, and searches the kinds that exist.
+- ⚠️ **The persona remains non-retrievable, and a test pins it.** It has no source kind, no embedding and no chunks — it is trusted SYSTEM instruction text. Making it searchable would let it be quoted back and cited, which is a trust-boundary break rather than a feature. The console gains a persona *section*; the corpus does not.
+
+### Fixed (031)
+- **A fifth instance of the SQL_ASCII jsonb bug (025/#125), and the worst-behaved one.** Chunk metadata carries the note title, and `json.dumps` escapes non-ASCII by default — so **any document whose title contains an em-dash or a curly quote failed to index, silently**. Found while indexing the changelog: 19 of 40 entries were being dropped, and they were precisely the well-written ones. Fixed with `ensure_ascii=False` and pinned by a test. Worth noting the pattern — this bug has now appeared in the assistant's turn writer, the mandate writer and the knowledge indexer; the next new jsonb write should be assumed guilty until checked.
+- **A best-effort handler that logged no reason.** The changelog indexer swallowed per-entry failures with only a slug in the log, which made a real encoding error indistinguishable from a shrug and cost a diagnosis round-trip. It now logs the exception.
+- **Reading the wrong key names.** The first version of the changelog renderer read `published_at`/`slug`, but the store returns camelCase and projects no slug — so the date silently vanished from every indexed chunk, which is the one field the module's own reasoning argues is essential ("what shipped *this week*" is a question about time, and a vector search has no clock). Caught against the live database, and pinned with a test using the shape the store actually returns.
+
 ### Fixed (030 — /strategies and the mandate, from the Aug-3 review)
 Every item below was reproduced against live alpha with the test wallet before it was touched (review artifact `9f7dd404`).
 

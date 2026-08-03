@@ -141,3 +141,22 @@ def test_persona_is_not_a_retrievable_kind() -> None:
 
     assert "persona" not in RETRIEVABLE_SOURCE_KINDS
     assert set(RETRIEVABLE_SOURCE_KINDS) == {"knowledge", "changelog", "tip", "self_authored"}
+
+
+def test_chunk_metadata_is_written_without_ascii_escapes() -> None:
+    """SQL_ASCII, the fifth instance of the same bug (025/#125).
+
+    The dev database's jsonb parser HARD-REJECTS \\uXXXX escapes above ASCII, and `json.dumps`
+    escapes by default. Chunk metadata carries the note TITLE — so any document titled with an
+    em-dash or a curly quote failed to index, silently. Found while indexing the changelog: the
+    entries that failed were precisely the well-written ones, and the failure looked like a
+    shrug rather than an encoding error.
+    """
+    import inspect
+
+    from sparkpoint_agent.knowledge import store as store_mod
+
+    source = inspect.getsource(store_mod.PgChunkStore.upsert_chunks)
+    assert "ensure_ascii=False" in source, (
+        "every jsonb write on a SQL_ASCII database must serialise with ensure_ascii=False"
+    )

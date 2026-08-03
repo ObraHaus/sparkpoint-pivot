@@ -218,3 +218,59 @@ async def test_recommender_without_knowledge_has_no_citations(
     result = await rec.propose(Intent(kind=IntentKind.RECOMMEND), _ctx())
     assert result.candidates
     assert all(cand.citations == () for cand in result.candidates)
+
+
+# ── 031 · a citation says WHAT it is citing ───────────────────────────────────
+
+
+def test_a_self_authored_note_announces_itself_in_the_citation() -> None:
+    """The safeguard the client's design implies.
+
+    Unattended authoring was approved; the protection is that a reader can tell the assistant's own
+    research from documentation a person wrote. A citation pointing at the model's own output while
+    looking identical to one pointing at Aave's docs is a claim of provenance the text does not
+    have — the FR-014 failure from 029, at scale.
+    """
+    from sparkpoint_agent.knowledge.search import hit_to_citation
+    from sparkpoint_agent.knowledge.store import ChunkHit
+
+    hit = ChunkHit(
+        content="Rates on Base moved this week.",
+        metadata={"source": "daily-rates", "title": "Daily rate note"},
+        score=0.9,
+        source_kind="self_authored",
+    )
+    citation = hit_to_citation(hit)
+    assert "Sparky" in citation.provider
+    assert "not yet reviewed" in citation.provider
+
+
+def test_each_kind_introduces_itself_distinctly() -> None:
+    from sparkpoint_agent.knowledge.search import hit_to_citation
+    from sparkpoint_agent.knowledge.store import ChunkHit
+
+    def provider(kind: str) -> str:
+        hit = ChunkHit(
+            content="x", metadata={"source": "s", "title": "T"}, score=1.0, source_kind=kind
+        )
+        return hit_to_citation(hit).provider
+
+    assert provider("changelog") != provider("tip")
+    assert provider("changelog") != provider("self_authored")
+    assert "release note" in provider("changelog")
+    assert "explainer" in provider("tip")
+
+
+def test_hand_written_documentation_is_unchanged() -> None:
+    """No decoration on the default kind — the title already says what it is, and every existing
+    citation must keep reading exactly as it did."""
+    from sparkpoint_agent.knowledge.search import hit_to_citation
+    from sparkpoint_agent.knowledge.store import ChunkHit
+
+    hit = ChunkHit(
+        content="x",
+        metadata={"source": "aave-v3-supply", "title": "Aave v3 Supply"},
+        score=1.0,
+    )
+    citation = hit_to_citation(hit)
+    assert citation.provider == "Aave v3 Supply"

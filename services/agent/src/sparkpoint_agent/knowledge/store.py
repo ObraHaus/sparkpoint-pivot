@@ -242,7 +242,12 @@ class PgChunkStore:
                 row.content,
                 to_vector_literal(row.embedding),
                 row.embedding_model,
-                json.dumps(row.metadata, sort_keys=True),
+                # SQL_ASCII (standing since 025/#125): this database's jsonb parser HARD-REJECTS
+                # \uXXXX escapes above ASCII, and `json.dumps` escapes by default. Chunk metadata
+                # carries the note TITLE — so any document whose title contains an em-dash or a
+                # curly quote failed to index, silently. Found while indexing the changelog: the
+                # entries that failed were precisely the well-written ones.
+                json.dumps(row.metadata, sort_keys=True, ensure_ascii=False),
             )
             written += 1
         return written

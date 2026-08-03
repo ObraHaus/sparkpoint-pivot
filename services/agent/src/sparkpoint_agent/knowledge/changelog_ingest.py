@@ -48,16 +48,27 @@ class ChangelogSource(Protocol):
     async def list_changelog(self, limit: int = ...) -> list[dict[str, Any]]: ...
 
 
+def _field(entry: dict[str, Any], *names: str) -> str:
+    """Read the first present key. ``ContentEntryStore`` returns camelCase (``publishedAt``) while
+    the seed file uses snake_case (``published_at``) — reading only one shape silently drops the
+    value, which is how the date went missing from the first version of this module."""
+    for name in names:
+        value = entry.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
 def render_entry(entry: dict[str, Any]) -> str:
     """One published update as prose an answer can quote.
 
     Deliberately states the date in words the model can reason about, and labels the entry as a
     SparkPoint release note so a retrieved chunk cannot be mistaken for third-party documentation.
     """
-    title = str(entry.get("title") or "").strip()
-    body = str(entry.get("body") or "").strip()
-    tag = str(entry.get("tag") or "").strip()
-    published = str(entry.get("published_at") or "")[:10]
+    title = _field(entry, "title").strip()
+    body = _field(entry, "body").strip()
+    tag = _field(entry, "tag").strip()
+    published = _field(entry, "publishedAt", "published_at")[:10]
 
     header = f"# {title}" if title else "# SparkPoint release note"
     lines = [header, ""]
@@ -75,7 +86,9 @@ def render_entry(entry: dict[str, Any]) -> str:
 
 def entry_slug(entry: dict[str, Any]) -> str:
     """The stable source id for an entry — its slug, which the seed and the admin editor share."""
-    slug = str(entry.get("slug") or "").strip()
+    slug = _field(entry, "slug").strip()
+    # `list_changelog` does not project a slug; the bigserial id is stable and unique, so it is a
+    # sound fallback — but prefer the slug where present so the seed and the database agree.
     return f"changelog-{slug}" if slug else f"changelog-{entry.get('id', 'unknown')}"
 
 
@@ -110,10 +123,15 @@ async def ingest_changelog(
                     source_kind=CHANGELOG_SOURCE_KIND,
                 )
             )
-        except Exception:  # noqa: BLE001 — one bad entry must not cost the rest
+        except Exception as exc:  # noqa: BLE001 — one bad entry must not cost the rest
+            # Log the REASON. The first version logged only the slug, which made a real failure
+            # indistinguishable from a shrug and cost a diagnosis round-trip.
             _logger.warning(
-                "changelog_ingest_entry_failed slug=%s (skipped; the rest still index)",
-                entry.get("slug"),
+                "changelog_ingest_entry_failed id=%s title=%r (%s: %s) — skipped, the rest index",
+                entry.get("id"),
+                _field(entry, "title")[:60],
+                type(exc).__name__,
+                exc,
             )
     _logger.info("changelog_ingest complete entries=%d indexed=%d", len(entries), len(results))
     return results

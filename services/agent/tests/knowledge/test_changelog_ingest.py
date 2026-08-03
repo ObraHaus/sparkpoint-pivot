@@ -31,6 +31,17 @@ ENTRY = {
     "published_at": "2026-08-03T14:00:00Z",
 }
 
+#: The shape `ContentEntryStore.list_changelog` ACTUALLY returns: camelCase, and no slug. The first
+#: version of this module read `published_at` and `slug`, so every date silently vanished from the
+#: indexed text — the one field the module's own docstring argues is essential.
+DB_ROW = {
+    "id": 100,
+    "title": "Strategies you can actually compare",
+    "tag": "Improved",
+    "body": "Two screens that looked finished were quietly doing very little.",
+    "publishedAt": "2026-08-03T14:00:00+00:00",
+}
+
 
 # ── rendering: what actually gets embedded ────────────────────────────────────
 
@@ -45,6 +56,18 @@ def test_the_date_is_in_the_text_because_a_vector_search_has_no_clock() -> None:
     """"What shipped THIS WEEK" is a question about time. If the date is not in the chunk, the
     answer cannot be specific about when — which is most of the question."""
     assert "2026-08-03" in render_entry(ENTRY)
+
+
+def test_the_date_survives_the_shape_the_DATABASE_actually_returns() -> None:
+    """Caught against the live database, not in review: the store returns camelCase and the first
+    version of this module read snake_case, so the date silently vanished from every chunk."""
+    assert "2026-08-03" in render_entry(DB_ROW)
+    assert "Strategies you can actually compare" in render_entry(DB_ROW)
+
+
+def test_a_row_without_a_slug_still_gets_a_stable_id() -> None:
+    """`list_changelog` does not project a slug; the bigserial id is stable and unique."""
+    assert entry_slug(DB_ROW) == "changelog-100"
 
 
 def test_the_entry_identifies_itself_as_a_sparkpoint_release_note() -> None:
