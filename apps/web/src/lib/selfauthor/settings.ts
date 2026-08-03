@@ -115,10 +115,14 @@ export function describeState(s: {
     s.allowedProseDomains.length === 0
       ? "no external pages"
       : `${s.allowedProseDomains.length} allowed ${s.allowedProseDomains.length === 1 ? "domain" : "domains"}`;
+  // "Publishing automatically, publishes immediately" was what the live screen actually said —
+  // `describeWindow` returns a verb phrase for 0, which reads as a stutter after "Publishing".
   const publishing =
     s.publishMode === "manual"
       ? "You publish each document yourself"
-      : `Publishing automatically, ${describeWindow(s.draftWindowHours)}`;
+      : s.draftWindowHours === 0
+        ? "Publishing automatically, as soon as a run writes them"
+        : `Publishing automatically, after ${describeWindow(s.draftWindowHours)}`;
   return `Reading ${s.allowedDataSources.length} data ${
     s.allowedDataSources.length === 1 ? "source" : "sources"
   } and ${prose}. ${publishing}.`;

@@ -130,6 +130,18 @@ test("an empty prose list is stated as a deliberate setting, not an omission", (
   assert.match(describeState({ ...ON, allowedProseDomains: [] }), /no external pages/);
 });
 
+test("a zero window does not read as a stutter", () => {
+  // The live screen said "Publishing automatically, publishes immediately" — `describeWindow`
+  // returns a verb phrase for 0, which reads badly straight after "Publishing".
+  const text = describeState({ ...ON, draftWindowHours: 0 });
+  assert.match(text, /as soon as a run writes them/);
+  assert.doesNotMatch(text, /automatically, publishes/);
+});
+
+test("a non-zero window reads as a duration", () => {
+  assert.match(describeState({ ...ON, draftWindowHours: 336 }), /after 2 weeks in draft/);
+});
+
 test("manual publishing says who does the publishing", () => {
   assert.match(describeState({ ...ON, publishMode: "manual" }), /You publish each document yourself/);
 });
