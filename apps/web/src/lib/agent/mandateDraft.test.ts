@@ -101,3 +101,52 @@ test("every tier produces a summary that is internally consistent", () => {
     }
   }
 });
+
+// ── 030 · the plan finally carries what the assistant asks users to set ───────
+
+const BASE = {
+  experience: null,
+  goal: "Reach a target",
+  timeline: "1–3 years",
+  riskAns: "Hold",
+  riskTier: 4,
+};
+
+test("an exposure limit reaches the wire in base units", () => {
+  const m = buildMandateDraft({ ...BASE, exposureLimit: "500" });
+  assert.equal(m.exposureLimitUsdc, "500000000");
+});
+
+test("a goal is atomic — an amount without a date is not sent at all", () => {
+  // "Reach a target — hit a specific amount" used to store the bare label with no amount and no
+  // date. Half a goal is worse than none, because it looks set.
+  const amountOnly = buildMandateDraft({ ...BASE, goalTargetAmount: "10000" });
+  assert.equal(amountOnly.goalTargetUsdc, undefined);
+  assert.equal(amountOnly.goalTargetDate, undefined);
+
+  const dateOnly = buildMandateDraft({ ...BASE, goalTargetDate: "2027-03-01" });
+  assert.equal(dateOnly.goalTargetUsdc, undefined);
+
+  const both = buildMandateDraft({
+    ...BASE,
+    goalTargetAmount: "10000",
+    goalTargetDate: "2027-03-01",
+  });
+  assert.equal(both.goalTargetUsdc, "10000000000");
+  assert.equal(both.goalTargetDate, "2027-03-01");
+});
+
+test("blank and malformed fields mean NOT STATED, never zero", () => {
+  for (const bad of ["", "   ", "0", "-5", "12.5", "abc"]) {
+    const m = buildMandateDraft({ ...BASE, exposureLimit: bad });
+    assert.equal(m.exposureLimitUsdc, undefined, bad);
+  }
+  const none = buildMandateDraft(BASE);
+  assert.equal(none.exposureLimitUsdc, undefined);
+  assert.equal(none.goalTargetUsdc, undefined);
+});
+
+test("the chosen tier is carried so Settings and the summary agree", () => {
+  assert.equal(buildMandateDraft({ ...BASE, riskTier: 5 }).riskTier, 5);
+  assert.equal(buildMandateDraft({ ...BASE, riskTier: 5 }).riskProfile, "growth");
+});
