@@ -31,6 +31,7 @@ import type { Address } from "viem";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { buildRedeemCall, vaultAddressFor } from "@/lib/chain/exit";
+import { exitPublicConfig, exitReadChainId } from "@/lib/chain/exitPublicConfig";
 import { explorerRoot } from "@/lib/chain/explorer";
 
 /** USDC/6dp formatting — plain, no design-system dep (this page must always render). */
@@ -62,10 +63,18 @@ export default function ExitPage() {
 
   const vault = chainId === undefined ? undefined : vaultAddressFor(chainId);
   const enabled = isConnected && !!address && !!vault;
-  const vaultContract = { address: vault as Address, abi: sparkPointVaultAbi } as const;
+  // 039: `chainId` is pinned per-read because exitPublicConfig has no connector — without it,
+  // reads would default to the config's FIRST chain, not the wallet's. Undefined (unsupported
+  // chain) is fine: every read below is already disabled then (`vault` is undefined too).
+  const readChainId = exitReadChainId(chainId);
+  const vaultContract = { address: vault as Address, abi: sparkPointVaultAbi, chainId: readChainId } as const;
 
-  // Direct-RPC reads (wagmi/react-query → configured RPC transport; NO agent/backend).
+  // Direct-RPC reads — 039: pinned to each chain's PUBLIC endpoint via `exitPublicConfig`
+  // (N2/FR-016). The app's main config routes browser reads through the SparkPoint-operated
+  // RPC proxy; this page must keep working with that proxy (and everything else we run) DOWN,
+  // so its reads never touch the proxied transports. Writes still go via the wallet below.
   const reads = useReadContracts({
+    config: exitPublicConfig,
     query: { enabled },
     contracts: [
       { ...vaultContract, functionName: "balanceOf", args: [address as Address] },
@@ -81,6 +90,7 @@ export default function ExitPage() {
   // Dependent read: the USDC those redeemable shares return now (already net of fee dilution).
   const previewRedeem = useReadContract({
     ...vaultContract,
+    config: exitPublicConfig,
     functionName: "previewRedeem",
     args: [redeemableShares ?? 0n],
     query: { enabled: enabled && redeemableShares !== undefined && redeemableShares > 0n },
@@ -91,7 +101,12 @@ export default function ExitPage() {
       : (previewRedeem.data as bigint | undefined);
 
   const { sendTransaction, data: txHash, isPending: sending, error: sendError, reset } = useSendTransaction();
-  const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  // Receipt watch is a READ — pinned public like the other reads (the wallet already sent the tx).
+  const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({
+    config: exitPublicConfig,
+    chainId: readChainId,
+    hash: txHash,
+  });
 
   // Feature 006: pause the force-refresh while a redemption is in flight (LOCKED). This is only a
   // SECONDARY net — /exit is ALSO hard-excluded from any auto-reload by pathname (see UpdateBanner),

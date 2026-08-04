@@ -1,0 +1,39 @@
+# sparkpoint-erpc — Coolify service (feature 039, specs/039-erpc-rpc-proxy).
+#
+# Deploy (operator-confirmed, tasks T004): create a Coolify docker-compose service from
+# this file on the same host as the agent + web apps, set the env below in the Coolify
+# service env, and attach the public FQDN for the `app` lane to port 4000.
+#
+# ERPC_IMAGE_TAG is REQUIRED and must be a specific release (check
+# https://github.com/erpc/erpc/releases at deploy time) — an SPOF for every chain read
+# does not get surprise upgrades, so `latest` is deliberately impossible here.
+
+services:
+  erpc:
+    image: "ghcr.io/erpc/erpc:${ERPC_IMAGE_TAG:?pin-a-release-tag--never-latest}"
+    restart: unless-stopped
+    volumes:
+      - ./erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "4000:4000"        # JSON-RPC — LAN + (via Coolify's proxy) the public `app` FQDN
+      - "4001:4001"        # Prometheus metrics — LAN ONLY; never attach a public domain
+    environment:
+      # Go GC headroom: ~90% of the container limit, or the OOM killer finds it first.
+      GOMEMLIMIT: "900MiB"
+      # Provider key + core-lane secret come from the Coolify service env (never committed):
+      BASE_SEPOLIA_ALCHEMY_URL: "${BASE_SEPOLIA_ALCHEMY_URL}"
+      ERPC_CORE_SECRET: "${ERPC_CORE_SECRET}"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      # eth_chainId through the open `app` lane — proves the proxy is serving, not just listening.
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- --header='Content-Type: application/json' --post-data='{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}' http://127.0.0.1:4000/app/evm/84532 | grep -q 0x14a34",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3

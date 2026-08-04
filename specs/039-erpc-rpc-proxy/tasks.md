@@ -7,9 +7,9 @@
 
 ## Phase 1: Setup — proxy IaC authored in-repo
 
-- [ ] T001 Author `ops/erpc/erpc.yaml`: projects `core` (secret auth) + `app` (CORS allowlist, own budget); upstreams alchemy-base-sepolia (budget `alchemy-free` 15 req/s, auto-tune, `ignoreMethods: [eth_getLogs]`), base-sepolia-public (`ignoreMethods`: the five AA methods; getLogs auto-split on), publicnode-eth (chain 1), robinhood-public (chain 46630); Stage-A finalized-only memory cache (512 MB); hedging/retry/timeout per plan artifact §5. Config invariants 1–7 of `contracts/proxy-endpoints.md` all hold; secrets via env interpolation only.
-- [ ] T002 [P] Author `ops/erpc/compose.yaml`: pinned `ghcr.io/erpc/erpc` tag (never `latest`), ports 4000 + 4001 (4001 LAN-only), `GOMEMLIMIT` ≈ 90% of the container memory limit, healthcheck wired.
-- [ ] T003 [P] Author `ops/erpc/ROLLBACK.md`: the authoritative before-values env table (from `contracts/proxy-endpoints.md` map + current live values), one-line restore per stage, ≤5 min drill script. This is the runbook the console links to.
+- [X] T001 Author `ops/erpc/erpc.yaml`: projects `core` (secret auth) + `app` (CORS allowlist, own budget); upstreams alchemy-base-sepolia (budget `alchemy-free` 15 req/s, auto-tune, `ignoreMethods: [eth_getLogs]`), base-sepolia-public (`ignoreMethods`: the five AA methods; getLogs auto-split on), publicnode-eth (chain 1), robinhood-public (chain 46630); Stage-A finalized-only memory cache (512 MB); hedging/retry/timeout per plan artifact §5. Config invariants 1–7 of `contracts/proxy-endpoints.md` all hold; secrets via env interpolation only.
+- [X] T002 [P] Author `ops/erpc/compose.yaml`: pinned `ghcr.io/erpc/erpc` tag (never `latest`), ports 4000 + 4001 (4001 LAN-only), `GOMEMLIMIT` ≈ 90% of the container memory limit, healthcheck wired.
+- [X] T003 [P] Author `ops/erpc/ROLLBACK.md`: the authoritative before-values env table (from `contracts/proxy-endpoints.md` map + current live values), one-line restore per stage, ≤5 min drill script. This is the runbook the console links to.
 
 ## Phase 2: Foundational — proxy live, zero consumers (quickstart Stage 0)
 
@@ -38,7 +38,7 @@
 **Goal**: browsers ride the `app` lane; the Alchemy key exists only server-side and is rotated.
 **Independent test**: served-bundle grep = 0 provider hits; old key dead; `/exit` works with the proxy stopped.
 
-- [ ] T013 [P] [US2] Pin `/exit` reads to public endpoints (N2/FR-016): give `apps/web/src/lib/chain/exit.ts` a dedicated viem client on the chain's public default RPC, ignoring `NEXT_PUBLIC_*` proxy values; adjust `apps/web/src/lib/chain/clients.ts` only if a helper is needed. Unit-test the client selection as a leaf module if extracted.
+- [X] T013 [P] [US2] Pin `/exit` reads to public endpoints (N2/FR-016): give `apps/web/src/lib/chain/exit.ts` a dedicated viem client on the chain's public default RPC, ignoring `NEXT_PUBLIC_*` proxy values; adjust `apps/web/src/lib/chain/clients.ts` only if a helper is needed. Unit-test the client selection as a leaf module if extracted.
 - [ ] T014 [US2] (operator-confirmed) Stage 3 cutover (after T013 is deployed): web env `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` → `https://<fqdn>/app/evm/84532`, server-side `BASE_SEPOLIA_RPC_URL` → core lane; redeploy web; verify the deploy actually served (fetch the page, not the deploy status).
 - [ ] T015 [US2] Verify quickstart Stage 3: CORS allows platform origin / refuses foreign (FR-008); real-browser sweep (swap-quote typing fan-out, `/fees` + `/trust` polls, faucet + premium balances); served JS chunks `grep -c 'g.alchemy.com'` = 0 (SC-002); `/exit` correct with proxy container stopped, then restart (SC-008); budget tile/metrics never exceed 15 req/s during the sweep (SC-004).
 - [ ] T016 [US2] (operator-confirmed) Rotate the Alchemy key in the provider dashboard; update Coolify service env + `ops/erpc/ROLLBACK.md`; confirm app healthy and the OLD key no longer authenticates (SC-002).
@@ -51,10 +51,10 @@
 **Independent test**: Playwright renders live tiles; proxy-down drill shows "unreachable" while the other five sections render; anonymous route hit → 404.
 **Note**: T017–T020 are code-parallel with Phases 3–4 (route reads target from env; panel handles unreachable) but merge only via Phase 6.
 
-- [ ] T017 [P] [US3] Create `apps/web/src/lib/admin/rpcProxyTiles.ts` — pure leaf (no `@/` value imports): parse the T006-captured series into `RpcProxySnapshot` (data-model.md §1) and derive tiles per the §2 contract (absent → "not reported", never amber; unknown upstream ids still render).
-- [ ] T018 [P] [US3] Create `apps/web/src/lib/admin/rpcProxyTiles.test.ts` pinning: the verbatim T006 metric names, tri-state derivation, clamping rules, and the unreachable/not-configured shapes; `typecheck:test` green.
-- [ ] T019 [US3] Create `apps/web/src/app/api/admin/rpc-proxy/route.ts` per `contracts/admin-metrics-api.md`: admin gate copied from the existing admin-only server surface (anonymous → 404), `RPC_PROXY_METRICS_URL` env, ~2 s fetch timeout, ~5 s response cache, typed JSON only (never raw metrics text), `reachable:false` as a 200 state.
-- [ ] T020 [US3] Create `apps/web/src/components/admin/RpcProxyPanel.tsx` (15 s poll): status tiles, upstream table (health dot + text, share, p50/p95, errors, breaker), cache hit-rate + traffic figures, read-only links (endpoints, metrics, Kuma, `ops/erpc/ROLLBACK.md`) — no mutating controls (FR-013); then register the sixth section `{ id: "rpc", label: "RPC proxy" }` in `apps/web/src/app/admin/system/page.tsx`.
+- [X] T017 [P] [US3] Create `apps/web/src/lib/admin/rpcProxyTiles.ts` — pure leaf (no `@/` value imports): parse the T006-captured series into `RpcProxySnapshot` (data-model.md §1) and derive tiles per the §2 contract (absent → "not reported", never amber; unknown upstream ids still render).
+- [X] T018 [P] [US3] Create `apps/web/src/lib/admin/rpcProxyTiles.test.ts` pinning: the verbatim T006 metric names, tri-state derivation, clamping rules, and the unreachable/not-configured shapes; `typecheck:test` green.
+- [X] T019 [US3] Create `apps/web/src/app/api/admin/rpc-proxy/route.ts` per `contracts/admin-metrics-api.md`: admin gate copied from the existing admin-only server surface (anonymous → 404), `RPC_PROXY_METRICS_URL` env, ~2 s fetch timeout, ~5 s response cache, typed JSON only (never raw metrics text), `reachable:false` as a 200 state.
+- [X] T020 [US3] Create `apps/web/src/components/admin/RpcProxyPanel.tsx` (15 s poll): status tiles, upstream table (health dot + text, share, p50/p95, errors, breaker), cache hit-rate + traffic figures, read-only links (endpoints, metrics, Kuma, `ops/erpc/ROLLBACK.md`) — no mutating controls (FR-013); then register the sixth section `{ id: "rpc", label: "RPC proxy" }` in `apps/web/src/app/admin/system/page.tsx`.
 - [ ] T021 [US3] Playwright spec (existing minted-`sp_session` pattern, `domcontentloaded` + long hydration budget): section renders live data; proxy-down drill → "unreachable" while the other five sections render; anonymous `/api/admin/rpc-proxy` → 404; spot-check 15 s staleness (SC-005).
 - [ ] T022 [US3] (operator-confirmed) Set web env `RPC_PROXY_METRICS_URL=http://sparkpoint-erpc:4001/metrics`.
 
@@ -69,8 +69,8 @@
 
 ## Phase 7: Polish & ship
 
-- [ ] T025 [P] Update `CHANGELOG.md` (developer entry: proxy, cutover stages, key rotation, console section) — FR-017.
-- [ ] T026 [P] Add the client-facing in-app entry to `services/agent/content_seed/whats-new.json` (semi-technical: reliability + key-hygiene framing, honest about what changed) — FR-017; both-surfaces gate applies, no direct-to-develop push.
+- [X] T025 [P] Update `CHANGELOG.md` (developer entry: proxy, cutover stages, key rotation, console section) — FR-017.
+- [X] T026 [P] Add the client-facing in-app entry to `services/agent/content_seed/whats-new.json` (semi-technical: reliability + key-hygiene framing, honest about what changed) — FR-017; both-surfaces gate applies, no direct-to-develop push.
 - [ ] T027 Run the full quickstart acceptance sweep (SC-001…SC-008 table) and check off; fix anything found before PR.
 - [ ] T028 (operator-confirmed) Open the PR `feat/039-erpc-rpc-proxy` → `develop` with the changelog gate satisfied; merge on approval; verify the web deploy actually served the new commit.
 
