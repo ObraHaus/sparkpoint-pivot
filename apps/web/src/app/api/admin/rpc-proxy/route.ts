@@ -1,11 +1,11 @@
 /**
- * 041 — admin-gated scrape of the RPC proxy's Prometheus metrics → typed JSON.
+ * 042 — admin-gated scrape of the RPC proxy's Prometheus metrics → typed JSON.
  *
  * The proxy's metrics port (4001) is LAN-only: raw exposition leaks upstream URLs and traffic
  * shape, so the browser NEVER sees it — this server route fetches it, parses the allowlisted
  * series (lib/admin/rpcProxyTiles), and returns only the typed snapshot.
  *
- * Contract (specs/041-erpc-rpc-proxy/contracts/admin-metrics-api.md):
+ * Contract (specs/042-erpc-rpc-proxy/contracts/admin-metrics-api.md):
  *   - no admin session ⇒ 404, indistinguishable from a nonexistent route (the repo's standing
  *     "all /admin/* are 404 to anonymous" posture);
  *   - RPC_PROXY_METRICS_URL unset ⇒ 200 {reachable:false, configured:false} — "not configured"

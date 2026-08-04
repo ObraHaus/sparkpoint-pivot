@@ -1,4 +1,4 @@
-# eRPC config — feature 041 (specs/041-erpc-rpc-proxy). Schema-validated against
+# eRPC config — feature 042 (specs/042-erpc-rpc-proxy). Schema-validated against
 # ghcr.io/erpc/erpc:0.1.1 by booting the container locally (the config is strict:
 # unknown keys are fatal, so a bad edit fails loudly at boot, never silently).
 #
@@ -6,7 +6,7 @@
 #   1. The five AA methods are ignoreMethods on every upstream except Alchemy (bundler pin).
 #   2. eth_getLogs is ignoreMethods on Alchemy (free tier caps ranges at 10 blocks);
 #      networks split oversized ranges on error (getLogsSplitOnError).
-#   3. Cache: ONLY `finality: finalized` policies may exist under feature 041 (Stage A).
+#   3. Cache: ONLY `finality: finalized` policies may exist under feature 042 (Stage A).
 #      Mutable-data ("realtime"/"unfinalized") caching is a SEPARATE future feature.
 #   4. Budgets: Alchemy hard-capped at 15 req/s (free tier ~ 19 eth_call/s ceiling);
 #      the browser lane carries its own budget.
@@ -39,7 +39,7 @@ database:
           maxTotalSize: "512MB"
     policies:
       # ---- Stage A: provably-immutable only. Finalized chain data never changes —
-      # never pay for it twice. NOTHING mutable may be cached under 041 (invariant 3).
+      # never pay for it twice. NOTHING mutable may be cached under 042 (invariant 3).
       - network: "*"
         method: "eth_chainId"
         finality: finalized

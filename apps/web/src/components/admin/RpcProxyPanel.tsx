@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 041 — Admin → System → RPC proxy. Every chain read rides the proxy; this section answers:
+ * 042 — Admin → System → RPC proxy. Every chain read rides the proxy; this section answers:
  * is it up, is the cache earning its keep, and which provider is actually serving traffic.
  *
  * READ-ONLY BY DESIGN (FR-013): the proxy's configuration is infrastructure-as-code

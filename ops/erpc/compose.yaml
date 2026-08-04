@@ -1,4 +1,4 @@
-# sparkpoint-erpc — Coolify service (feature 041, specs/041-erpc-rpc-proxy).
+# sparkpoint-erpc — Coolify service (feature 042, specs/042-erpc-rpc-proxy).
 #
 # Deploy (operator-confirmed, tasks T004): create a Coolify docker-compose service from
 # this file on the same host as the agent + web apps, set the env below in the Coolify

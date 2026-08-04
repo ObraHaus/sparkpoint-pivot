@@ -2,7 +2,7 @@
 
 **Branch**: `feat/039-erpc-rpc-proxy` | **Date**: 2026-08-04 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `/specs/041-erpc-rpc-proxy/spec.md`
+**Input**: Feature specification from `/specs/042-erpc-rpc-proxy/spec.md`
 
 ## Summary
 
@@ -46,7 +46,7 @@ Put a self-hosted **eRPC** proxy (single Go container) in front of every blockch
 ### Documentation (this feature)
 
 ```text
-specs/041-erpc-rpc-proxy/
+specs/042-erpc-rpc-proxy/
 ├── spec.md
 ├── checklists/requirements.md
 ├── plan.md              # This file

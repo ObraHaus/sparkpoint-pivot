@@ -63,13 +63,13 @@ export default function ExitPage() {
 
   const vault = chainId === undefined ? undefined : vaultAddressFor(chainId);
   const enabled = isConnected && !!address && !!vault;
-  // 041: `chainId` is pinned per-read because exitPublicConfig has no connector — without it,
+  // 042: `chainId` is pinned per-read because exitPublicConfig has no connector — without it,
   // reads would default to the config's FIRST chain, not the wallet's. Undefined (unsupported
   // chain) is fine: every read below is already disabled then (`vault` is undefined too).
   const readChainId = exitReadChainId(chainId);
   const vaultContract = { address: vault as Address, abi: sparkPointVaultAbi, chainId: readChainId } as const;
 
-  // Direct-RPC reads — 041: pinned to each chain's PUBLIC endpoint via `exitPublicConfig`
+  // Direct-RPC reads — 042: pinned to each chain's PUBLIC endpoint via `exitPublicConfig`
   // (N2/FR-016). The app's main config routes browser reads through the SparkPoint-operated
   // RPC proxy; this page must keep working with that proxy (and everything else we run) DOWN,
   // so its reads never touch the proxied transports. Writes still go via the wallet below.

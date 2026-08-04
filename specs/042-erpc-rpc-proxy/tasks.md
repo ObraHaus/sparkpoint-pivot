@@ -1,6 +1,6 @@
 # Tasks: RPC Proxy — resilient, cached chain access
 
-**Input**: Design documents from `/specs/041-erpc-rpc-proxy/` (plan.md, research.md, data-model.md, contracts/, quickstart.md)
+**Input**: Design documents from `/specs/042-erpc-rpc-proxy/` (plan.md, research.md, data-model.md, contracts/, quickstart.md)
 **Branch**: `feat/039-erpc-rpc-proxy`
 
 **Conventions**: `[P]` = parallelizable (different files, no pending dependency). `(operator-confirmed)` = a Coolify/infra/credential mutation — per repo rule it is proposed by the session and executed only on explicit operator confirmation. Every cutover task cites its quickstart gate; a stage does not start until the previous stage's gate passed.
@@ -15,7 +15,7 @@
 
 - [X] T004 (operator-confirmed) Create Coolify service `sparkpoint-erpc` from `ops/erpc/`, set `ERPC_CORE_SECRET` + provider URLs as service env, attach the public FQDN for the `app` lane.
 - [X] T005 Run quickstart Stage 0 checks 1–3: `eth_chainId` correct on every lane/network (0x14a34 / 0x1 / 0xb626), 2000-block finalized `eth_getLogs` succeeds then repeats as a cache hit, `sepolia.base.org` accepts eRPC's UA (no 403 in logs).
-- [X] T006 Capture the real `erpc_*` metric series names from `:4001/metrics` into `specs/041-erpc-rpc-proxy/research.md` (append a "Stage-0 captured metrics" block) — these are the ONLY names `rpcProxyTiles` may reference.
+- [X] T006 Capture the real `erpc_*` metric series names from `:4001/metrics` into `specs/042-erpc-rpc-proxy/research.md` (append a "Stage-0 captured metrics" block) — these are the ONLY names `rpcProxyTiles` may reference.
 - [X] T007 (operator-confirmed) Add the Uptime Kuma monitor for the proxy healthcheck (FR-018); confirm UP.
 
 **Checkpoint**: proxy serving all three networks, cache proven, metric names pinned, monitored — no production traffic touched yet.

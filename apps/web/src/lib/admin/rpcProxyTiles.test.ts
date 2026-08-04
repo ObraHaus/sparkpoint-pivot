@@ -1,5 +1,5 @@
 /**
- * 041 — pins the RPC-proxy section's two survival rules.
+ * 042 — pins the RPC-proxy section's two survival rules.
  *
  * 1. ABSENCE IS NOT FAILURE: a series the proxy never sent renders "not reported", never a red
  *    tile (the 035 lesson — a renamed readiness field rendered as a fake outage for five weeks).

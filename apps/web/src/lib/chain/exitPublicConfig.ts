@@ -1,7 +1,7 @@
 /**
- * 041 — the /exit page's PUBLIC-pinned read config (N2 / FR-016).
+ * 042 — the /exit page's PUBLIC-pinned read config (N2 / FR-016).
  *
- * Feature 041 routes the app's browser reads through the SparkPoint-operated RPC proxy
+ * Feature 042 routes the app's browser reads through the SparkPoint-operated RPC proxy
  * (`NEXT_PUBLIC_*_RPC_URL` → the proxy's `app` lane). That is correct everywhere EXCEPT the
  * withdraw-always escape hatch: /exit must keep working with every SparkPoint-operated
  * component offline — including the proxy — so its reads may not depend on those env values.

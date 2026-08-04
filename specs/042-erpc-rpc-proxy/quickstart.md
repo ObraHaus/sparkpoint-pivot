@@ -1,4 +1,4 @@
-# Quickstart: live verification per stage — feature 041
+# Quickstart: live verification per stage — feature 042
 
 Each stage gates the next. Every check is runnable by the operator (or the agent session) with no code knowledge beyond this file. `PXY` = LAN base `http://sparkpoint-erpc:4000`, `PUB` = public FQDN. Secrets come from the ops env, never pasted into shells that log.
 
