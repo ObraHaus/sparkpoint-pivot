@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "messages-send-one-at-a-time",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Your messages now send one at a time",
+      "body": "If you sent a second message while Sparky was still answering the first, both were being handled at once. That caused two problems.\n\nIn a brand-new chat, each of those messages started its own separate conversation. You'd see one thread on screen and find three in your sidebar afterwards, each named after a different message. In an existing chat, the replies could come back attached to the wrong questions, because neither message could see the other.\n\nNow a message you send while Sparky is working waits its turn. You'll see it sitting there, dimmed, with a note saying how many are waiting, and it goes out as soon as the current answer finishes — in the order you typed.\n\nThe suggestion buttons also step out of the way while an answer is on its way. They're for suggesting what to ask next, and until the answer arrives there isn't a next yet.\n\nIf something goes wrong mid-way, anything still waiting is kept rather than sent into the same problem — it stays on screen with a button to send it when you're ready.",
+      "cta_label": "Open chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-04T02:20:00Z",
+      "active": true
+    },
+    {
       "slug": "your-chats-grouped-and-searchable",
       "type": "changelog",
       "tag": "New",
