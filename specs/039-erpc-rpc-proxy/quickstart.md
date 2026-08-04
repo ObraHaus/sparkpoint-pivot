@@ -11,7 +11,7 @@ for c in 84532 1 46630; do curl -s "$PXY/core/evm/$c?secret=$ERPC_CORE_SECRET" \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'; echo; done
 curl -s "$PUB/app/evm/84532" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
-# EXPECT: 0x14a34, 0x1, 0xb616 respectively; app lane returns 0x14a34.
+# EXPECT: 0x14a34, 0x1, 0xb626 respectively; app lane returns 0x14a34.
 
 # 2. getLogs over a 2000-block finalized range via core → succeeds (auto-split visible in
 #    container logs); repeat the identical call → cache hit (second response markedly faster,

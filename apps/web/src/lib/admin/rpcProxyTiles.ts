@@ -22,14 +22,22 @@
 
 import type { Tile, Tone } from "./systemTiles";
 
-/** The Prometheus series this module reads — the ONLY place these names may appear. */
+/**
+ * The Prometheus series this module reads — the ONLY place these names may appear.
+ * PINNED at Stage 0 (2026-08-04) from the LIVE /metrics output of ghcr.io/erpc/erpc:0.1.1 —
+ * and the pin earned its keep immediately: the two cache names differed from the docs-derived
+ * guesses ("erpc_cache_get_hit_total" does not exist; "success" is in the real name), and the
+ * guessed rate-limit counter doesn't exist at all in 0.1.1 (verified by hammering a budget=1
+ * config: no local rate-limited counter moved), so that tile now reads the CORS-block counter —
+ * a series that exists and is a real abuse signal for the public lane.
+ */
 export const SERIES = {
   requestTotal: "erpc_upstream_request_total",
   durationSeconds: "erpc_upstream_request_duration_seconds", // histogram (_bucket/_sum/_count)
   errorsTotal: "erpc_upstream_request_errors_total",
-  rateLimitTotal: "erpc_rate_limits_total",
-  cacheHitTotal: "erpc_cache_get_hit_total",
-  cacheMissTotal: "erpc_cache_get_miss_total",
+  corsBlockedTotal: "erpc_cors_disallowed_origin_total",
+  cacheHitTotal: "erpc_cache_get_success_hit_total",
+  cacheMissTotal: "erpc_cache_get_success_miss_total",
 } as const;
 
 export type BreakerState = "closed" | "open" | "half-open";
@@ -56,7 +64,7 @@ export interface RpcProxySnapshot {
   scrapedAt: string;
   upstreams?: UpstreamStat[];
   cache?: { hitRatePct?: number; savedCalls?: number };
-  rateLimitEvents?: number;
+  corsBlocked?: number;
 }
 
 /* ------------------------------- Prometheus parsing ------------------------------- */
@@ -135,7 +143,7 @@ const pct = (part: number, whole: number): number | undefined =>
  */
 export function parseRpcProxyMetrics(
   text: string,
-): Pick<RpcProxySnapshot, "upstreams" | "cache" | "rateLimitEvents"> {
+): Pick<RpcProxySnapshot, "upstreams" | "cache" | "corsBlocked"> {
   const samples = parseLines(text);
 
   interface Acc {
@@ -157,7 +165,7 @@ export function parseRpcProxyMetrics(
   let sawRequestSeries = false;
   let cacheHits: number | undefined;
   let cacheMisses: number | undefined;
-  let rateLimitEvents: number | undefined;
+  let corsBlocked: number | undefined;
 
   for (const s of samples) {
     const up = upstreamOf(s.labels);
@@ -180,8 +188,8 @@ export function parseRpcProxyMetrics(
       cacheHits = (cacheHits ?? 0) + s.value;
     } else if (s.name === SERIES.cacheMissTotal) {
       cacheMisses = (cacheMisses ?? 0) + s.value;
-    } else if (s.name === SERIES.rateLimitTotal) {
-      rateLimitEvents = (rateLimitEvents ?? 0) + s.value;
+    } else if (s.name === SERIES.corsBlockedTotal) {
+      corsBlocked = (corsBlocked ?? 0) + s.value;
     }
   }
 
@@ -209,7 +217,7 @@ export function parseRpcProxyMetrics(
         }
       : undefined;
 
-  return { upstreams, cache, rateLimitEvents };
+  return { upstreams, cache, corsBlocked };
 }
 
 /* ------------------------------------- Tiles ------------------------------------- */
@@ -225,7 +233,7 @@ export function rpcProxyTilesFrom(
   state: "loading" | "ok" | "error",
   snap: RpcProxySnapshot | null,
 ): Tile[] {
-  const labels = ["RPC proxy", "Cache hit rate", "Calls saved by cache", "Rate-limit events", "Upstreams reporting"];
+  const labels = ["RPC proxy", "Cache hit rate", "Calls saved by cache", "Foreign-origin blocks", "Upstreams reporting"];
   if (state === "loading") {
     return labels.map((label) => ({ label, tone: "info" as Tone, value: "checking…" }));
   }
@@ -252,7 +260,7 @@ export function rpcProxyTilesFrom(
     proxy,
     fact("Cache hit rate", snap.cache?.hitRatePct, fmtPct),
     fact("Calls saved by cache", snap.cache?.savedCalls, fmtInt),
-    fact("Rate-limit events", snap.rateLimitEvents, fmtInt),
+    fact("Foreign-origin blocks", snap.corsBlocked, fmtInt),
     snap.upstreams === undefined
       ? { label: "Upstreams reporting", tone: "info", value: snap.reachable ? "not reported" : "—" }
       : {

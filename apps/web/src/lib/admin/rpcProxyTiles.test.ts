@@ -34,7 +34,7 @@ ${SERIES.durationSeconds}_sum{upstream="alchemy-base-sepolia"} 41.5
 ${SERIES.durationSeconds}_count{upstream="alchemy-base-sepolia"} 600
 ${SERIES.cacheHitTotal}{connector="mem"} 750
 ${SERIES.cacheMissTotal}{connector="mem"} 250
-${SERIES.rateLimitTotal}{budget="alchemy-free"} 17
+${SERIES.corsBlockedTotal}{project="app"} 17
 `;
 
 const snapshot = (over: Partial<RpcProxySnapshot>): RpcProxySnapshot => ({
@@ -74,7 +74,7 @@ test("parses per-upstream totals, error rate, share, and quantiles from the expo
 
   assert.equal(parsed.cache?.hitRatePct, 75);
   assert.equal(parsed.cache?.savedCalls, 750);
-  assert.equal(parsed.rateLimitEvents, 17);
+  assert.equal(parsed.corsBlocked, 17);
 });
 
 test("THE RULE: a series the proxy never sent is absent — not zero, not an outage", () => {
@@ -82,12 +82,12 @@ test("THE RULE: a series the proxy never sent is absent — not zero, not an out
     `${SERIES.requestTotal}{upstream="alchemy-base-sepolia",network="84532"} 10\n`,
   );
   assert.equal(parsed.cache, undefined, "no cache series ⇒ no cache object");
-  assert.equal(parsed.rateLimitEvents, undefined);
+  assert.equal(parsed.corsBlocked, undefined);
 
   const tiles = rpcProxyTilesFrom("ok", snapshot(parsed));
   assert.equal(tile(tiles, "Cache hit rate").tone, "info");
   assert.equal(tile(tiles, "Cache hit rate").value, "not reported");
-  assert.equal(tile(tiles, "Rate-limit events").value, "not reported");
+  assert.equal(tile(tiles, "Foreign-origin blocks").value, "not reported");
   // But what WAS reported renders as data:
   assert.equal(tile(tiles, "Upstreams reporting").value, "1/1 healthy");
 });

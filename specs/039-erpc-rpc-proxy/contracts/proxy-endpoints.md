@@ -8,8 +8,8 @@
 
 | Lane | Base | Auth | Networks served |
 |---|---|---|---|
-| `core` | `http://sparkpoint-erpc:4000` (LAN, Coolify network) | secret token (`ERPC_CORE_SECRET`, server-side only) | 84532, 1, 46630 |
-| `app` | `https://<public-fqdn>` (Coolify TLS) | none; CORS allowlist = platform origins; own budget | 84532 (46630 optional) |
+| `core` | `https://erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app` (Coolify TLS; also container-net `sparkpoint-erpc:4000`) | secret token (`ERPC_CORE_SECRET`, server-side only) | 84532, 1, 46630 |
+| `app` | `https://erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app` (same domain, no secret) | none; CORS allowlist = platform origins; own budget | 84532 (46630 optional) |
 
 Port **4001** (Prometheus metrics) is LAN-only, consumed exclusively by the admin route ([admin-metrics-api.md](admin-metrics-api.md)) and any future scraper.
 

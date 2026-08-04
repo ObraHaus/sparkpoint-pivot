@@ -68,3 +68,28 @@
 - Postgres cache connector (revisit with real hit-rate data).
 - Public FQDN choice: `rpc.aldrickb.app` default; a sparkpoint.io subdomain is one CORS line + one env later.
 - Indexer cursor-lag tile in the System section (separate small feature; noted during review).
+
+## Stage-0 captured facts (2026-08-04 — live boots of ghcr.io/erpc/erpc:0.1.1)
+
+**Deployment reality**: the Coolify host is a public VPS (139.59.99.233), NOT the home LAN —
+so no host ports are mapped at all. Both lanes ride the service's generated domain
+`erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app` through Coolify's TLS proxy (`core` protected by
+`?secret=`, `app` CORS-fenced + own budget); the metrics port 4001 has no domain and is
+reachable only container-to-container (`http://sparkpoint-erpc:4001/metrics`).
+
+**Schema corrections found by booting (the deploy IS the schema check)**: eRPC 0.1.1 rejects
+unknown top-level keys (no `x-*` anchor blocks — anchors now live inline), `failsafe` is a LIST,
+`getLogsSplitOnError` lives at `networkDefaults.evm` (not `integrity`), and `hedge` takes
+`{delay, maxCount}` (no quantile in 0.1.1). Coolify beta.434's service API additionally requires
+the compose to be pure ASCII (`mb_detect_encoding(..., 'ASCII')`) — the SQL_ASCII lesson in a
+new costume.
+
+**Verified locally before any traffic**: all three chains answer on `core` (0x14a34 / 0x1 /
+0xb626 — note 46630 = 0xb626, an earlier doc said 0xb616); no-secret is refused; CORS allows
+the platform origin and returns zero allow-headers to a foreign origin; a 2000-block
+`eth_getLogs` (5,878 logs) took 1652ms cold and **30ms cached** on the identical repeat;
+`eth_supportedEntryPoints` answers (Alchemy-only AA pin works); a budget=1 hammer showed
+failover keeps serving (11/25 during a 25-shot burst) — and revealed 0.1.1 has NO local
+rate-limit counter, so the console's fifth tile reads `erpc_cors_disallowed_origin_total`
+instead (D7 amended: pinned names now in `SERIES`, corrected from the doc-guessed cache names —
+the pin-don't-guess rule caught two wrong guesses exactly as designed).

@@ -62,7 +62,7 @@ test.describe("039 /admin/system → RPC proxy (live)", () => {
       "RPC proxy",
       "Cache hit rate",
       "Calls saved by cache",
-      "Rate-limit events",
+      "Foreign-origin blocks",
       "Upstreams reporting",
     ]) {
       await expect(page.locator(".kpi .k", { hasText: label })).toBeVisible();
