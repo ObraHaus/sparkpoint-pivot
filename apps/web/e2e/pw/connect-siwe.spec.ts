@@ -37,8 +37,12 @@ test.describe("connect → SIWE → session", () => {
     // The four verify steps all resolve green for an allowlisted wallet.
     await expect(page.locator("#vsteps")).toContainText("Signed in (SIWE) · verified");
     await expect(page.locator("#vsteps")).toContainText("Alpha access · eligible");
-    // The success CTA into the app is offered.
-    await expect(page.locator("a:has-text('Start onboarding')")).toBeVisible();
+    // The success CTA into the app is offered. An already-onboarded wallet (saved plan) is
+    // deliberately NOT told to "Start onboarding" — verify/page.tsx offers "Continue to app"
+    // instead, a branch this spec predated (caught live during the 039 Stage-2 run).
+    await expect(
+      page.locator("a").filter({ hasText: /Start onboarding|Continue to app/ }).first(),
+    ).toBeVisible();
   });
 
   test("an authenticated wallet can open a protected app route (live portfolio)", async ({ page }) => {

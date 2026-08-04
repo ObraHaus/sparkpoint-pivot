@@ -26,10 +26,10 @@
 **Independent test**: quickstart Stage 2 throttle drill — scripted session with Alchemy budget crushed to ~1 req/s completes with zero user-visible errors (SC-001).
 
 - [X] T008 [US1] (operator-confirmed) Stage 1 cutover: agent env `VAULT_INDEX_RPC_URL` → `…/core/evm/84532`; redeploy agent; watch-restart if `exited:unhealthy`.
-- [ ] T009 [US1] Verify quickstart Stage 1: `indexer_cursors` advance ≥3 ticks on all three streams, no window-shrink events, revenue rows ingest; then run the rollback drill once, stopwatch ≤5 min, re-apply (SC-007).
-- [ ] T010 [US1] (operator-confirmed) Stage 2 cutover: agent env `BASE_SEPOLIA_RPC_URL`, `ETH_MAINNET_RPC_URL`, `ROBINHOOD_RPC_URL` → core lane; redeploy agent.
-- [ ] T011 [US1] Verify quickstart Stage 2 (browser run, not just green tests): `/readyz` chain_rpc + chain_identity green (FR-014); chat turn → deposit quote → sim → sign; portfolio; premium verify; SIWE SRK-gate via `/core/evm/1`; session-key automation end-to-end with the UserOp served by Alchemy only (FR-005, SC-006).
-- [ ] T012 [US1] Throttle drill (SC-001): temporarily set `alchemy-free` budget ≈1 req/s, run the scripted session — zero user-visible chain-read errors; restore budget.
+- [X] T009 [US1] Verify quickstart Stage 1: `indexer_cursors` advance ≥3 ticks on all three streams, no window-shrink events, revenue rows ingest; then run the rollback drill once, stopwatch ≤5 min, re-apply (SC-007).
+- [X] T010 [US1] (operator-confirmed) Stage 2 cutover: agent env `BASE_SEPOLIA_RPC_URL`, `ETH_MAINNET_RPC_URL`, `ROBINHOOD_RPC_URL` → core lane; redeploy agent.
+- [X] T011 [US1] Verify quickstart Stage 2 (browser run, not just green tests): `/readyz` chain_rpc + chain_identity green (FR-014); chat turn → deposit quote → sim → sign; portfolio; premium verify; SIWE SRK-gate via `/core/evm/1`; session-key automation end-to-end with the UserOp served by Alchemy only (FR-005, SC-006).
+- [X] T012 [US1] Throttle drill (SC-001): temporarily set `alchemy-free` budget ≈1 req/s, run the scripted session — zero user-visible chain-read errors; restore budget.
 
 **Checkpoint**: US1 shippable — all server-side chain traffic resilient. Browsers still direct (US2).
 

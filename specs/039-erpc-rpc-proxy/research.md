@@ -93,3 +93,26 @@ failover keeps serving (11/25 during a 25-shot burst) — and revealed 0.1.1 has
 rate-limit counter, so the console's fifth tile reads `erpc_cors_disallowed_origin_total`
 instead (D7 amended: pinned names now in `SERIES`, corrected from the doc-guessed cache names —
 the pin-don't-guess rule caught two wrong guesses exactly as designed).
+
+## Stage-1/2 execution notes (2026-08-04)
+
+- **Stage 1**: all three indexer streams advanced through the core lane within two ticks
+  (base +208 / robinhood +1,260 blocks); rollback drill ran (env restore + restart cycle
+  well under 60s). `ROBINHOOD_INDEX_RPC_URL` was also set (the 46630 indexer's own env),
+  giving the 0.3s-block chain cached, retried reads.
+- **Stage 2**: `/readyz` green end-to-end (the 023 chain-identity assertion validating the
+  proxy); browser runs: SIWE mint + admit, live portfolio, non-allowlisted wallet through
+  the SRK gate (the one mainnet read, via `/core/evm/1`) to the honest block + application
+  form; deposit quote returning live chain values; AA path proven by Alchemy's own bundler
+  validation error arriving through the proxy. Two STALE E2E EXPECTATIONS surfaced and were
+  fixed (a pre-onboarded wallet gets "Continue to app" not "Start onboarding"; stage copy
+  says "Alpha" not "Beta") — the specs predated 026/029 copy changes; the product was right.
+- **Throttle drill (SC-001)**: with the Alchemy budget crushed to 1 req/s on the LIVE proxy,
+  5/5 agent deposit quotes (8 sequential chain reads each) succeeded via failover — slower
+  (~6s each), zero user-visible errors. **Cold-start finding**: the same drill run seconds
+  after a proxy restart failed 0/5 — for ~60s after boot, upstream scoring is cold and
+  failover is unreliable; additionally a chainId up-probe lies (it's answered from the
+  permanent cache). Probes must use `eth_blockNumber`; proxy restarts are brief degradation
+  windows (Kuma + the panel make them visible). Deferred from T011, recorded honestly: the
+  full session-key user journey (SC-006's browser run) and a premium payment verify — the
+  routing layer both depend on is proven (AA pin + receipt reads are the same reader class).
