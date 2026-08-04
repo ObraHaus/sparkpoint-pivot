@@ -1,0 +1,165 @@
+# eRPC config — feature 042 (specs/042-erpc-rpc-proxy). Schema-validated against
+# ghcr.io/erpc/erpc:0.1.1 by booting the container locally (the config is strict:
+# unknown keys are fatal, so a bad edit fails loudly at boot, never silently).
+#
+# INVARIANTS (contracts/proxy-endpoints.md — re-check on EVERY edit of this file):
+#   1. The five AA methods are ignoreMethods on every upstream except Alchemy (bundler pin).
+#   2. eth_getLogs is ignoreMethods on Alchemy (free tier caps ranges at 10 blocks);
+#      networks split oversized ranges on error (getLogsSplitOnError).
+#   3. Cache: ONLY `finality: finalized` policies may exist under feature 042 (Stage A).
+#      Mutable-data ("realtime"/"unfinalized") caching is a SEPARATE future feature.
+#   4. Budgets: Alchemy hard-capped at 15 req/s (free tier ~ 19 eth_call/s ceiling);
+#      the browser lane carries its own budget.
+#   5. `app` CORS allowlist contains platform origins only.
+#   6. Secrets/keys arrive via env interpolation — never a literal in this file.
+#   7. The image tag is pinned — never `latest`.
+#
+# NOTE ON ANCHORS: eRPC rejects unknown top-level keys (no x-* extension blocks), so the
+# shared upstream definitions are anchored at their first use (project `core`) and
+# referenced from `app`. Hedging note: hedge here carries maxCount 1 with a 200ms delay;
+# write submissions are verified single-shot by the Stage-2 session-key e2e (quickstart).
+
+logLevel: info
+
+server:
+  httpPort: 4000
+
+metrics:
+  enabled: true
+  port: 4001          # container-network only (no host port, no domain) — scraped by the
+                      # admin route and Uptime Kuma; raw metrics leak upstream URLs.
+
+database:
+  evmJsonRpcCache:
+    connectors:
+      - id: mem
+        driver: memory
+        memory:
+          maxItems: 200000
+          maxTotalSize: "512MB"
+    policies:
+      # ---- Stage A: provably-immutable only. Finalized chain data never changes —
+      # never pay for it twice. NOTHING mutable may be cached under 042 (invariant 3).
+      - network: "*"
+        method: "eth_chainId"
+        finality: finalized
+        ttl: 0
+        connector: mem
+      - network: "*"
+        method: "eth_getLogs"
+        finality: finalized
+        ttl: 0
+        connector: mem
+      - network: "*"
+        method: "eth_getBlockByNumber"
+        finality: finalized
+        ttl: 0
+        connector: mem
+      - network: "*"
+        method: "eth_getBlockByHash"
+        finality: finalized
+        ttl: 0
+        connector: mem
+      - network: "*"
+        method: "eth_getTransactionReceipt"
+        finality: finalized
+        ttl: 0
+        connector: mem
+      - network: "*"
+        method: "eth_getTransactionByHash"
+        finality: finalized
+        ttl: 0
+        connector: mem
+
+rateLimiters:
+  budgets:
+    - id: alchemy-free          # keep the paid provider inside its free tier: hard cap,
+      rules:                    # auto-tune on the upstream backs off further on errors.
+        - method: "*"
+          maxCount: 15
+          period: 1s
+    - id: app-public            # the browser lane's own ceiling — third-party abuse of
+      rules:                    # the public endpoint can never drain the Alchemy budget.
+        - method: "*"
+          maxCount: 100
+          period: 1s
+
+projects:
+  # ---------- core: agent + web server + indexers (secret-authed) ----------
+  - id: core
+    auth:
+      strategies:
+        - type: secret
+          secret:
+            value: "${ERPC_CORE_SECRET}"
+    networkDefaults:
+      evm:
+        getLogsSplitOnError: true             # invariant 2: arbitrary ranges, no window tuning
+      failsafe:
+        - timeout:
+            duration: 15s
+          retry:
+            maxAttempts: 3
+            backoffFactor: 1.5
+          hedge:
+            delay: 200ms
+            maxCount: 1
+    upstreams:
+      - &up-alchemy-84532
+        id: alchemy-base-sepolia
+        endpoint: "${BASE_SEPOLIA_ALCHEMY_URL}"     # full keyed URL, service env only
+        evm:
+          chainId: 84532
+        rateLimitBudget: alchemy-free
+        rateLimitAutoTune:
+          enabled: true
+          errorRateThreshold: 0.1
+        ignoreMethods:
+          - eth_getLogs                             # invariant 2: 10-block cap — don't even try
+      - &up-public-84532
+        id: base-sepolia-public
+        endpoint: "https://sepolia.base.org"
+        evm:
+          chainId: 84532
+        ignoreMethods:                              # invariant 1: AA lives on the bundler only
+          - eth_sendUserOperation
+          - eth_estimateUserOperationGas
+          - eth_getUserOperationReceipt
+          - eth_getUserOperationByHash
+          - eth_supportedEntryPoints
+      - id: publicnode-eth
+        endpoint: "https://ethereum-rpc.publicnode.com"
+        evm:
+          chainId: 1                                # SRK-gate reads: /core/evm/1
+      - id: robinhood-public
+        endpoint: "https://rpc.testnet.chain.robinhood.com"
+        evm:
+          chainId: 46630                            # no paid provider exists — but now cached + retried
+
+  # ---------- app: browsers (public HTTPS, CORS-fenced, no secret) ----------
+  - id: app
+    cors:
+      allowedOrigins:
+        - "https://alpha.sparkpoint.io"
+        - "https://*.aldrickb.app"
+      allowedMethods:
+        - POST
+        - OPTIONS
+      allowedHeaders:
+        - Content-Type
+    rateLimitBudget: app-public
+    networkDefaults:
+      evm:
+        getLogsSplitOnError: true
+      failsafe:
+        - timeout:
+            duration: 15s
+          retry:
+            maxAttempts: 3
+            backoffFactor: 1.5
+          hedge:
+            delay: 200ms
+            maxCount: 1
+    upstreams:                                      # browsers only ever need 84532 —
+      - *up-alchemy-84532                           # no mainnet, no Robinhood, no AA reachability
+      - *up-public-84532

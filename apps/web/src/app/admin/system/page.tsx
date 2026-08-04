@@ -14,6 +14,7 @@ import { AdminSections } from "@/components/admin/SectionTabs";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { DiagnosticsPanel } from "@/components/admin/DiagnosticsPanel";
 import { KillSwitchPanel } from "@/components/admin/KillSwitchPanel";
+import { RpcProxyPanel } from "@/components/admin/RpcProxyPanel";
 import { SystemPanel } from "@/components/admin/SystemPanel";
 import { UptimePanel } from "@/components/admin/UptimePanel";
 
@@ -50,6 +51,12 @@ export default function Page() {
           label: "Audit log",
           hint: "What admins did, and when.",
           render: () => <AuditLogPanel />,
+        },
+        {
+          id: "rpc",
+          label: "RPC proxy",
+          hint: "Every chain read rides the proxy. Health, cache, budget — live.",
+          render: () => <RpcProxyPanel />,
         },
       ]}
     />

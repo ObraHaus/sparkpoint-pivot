@@ -83,7 +83,8 @@ test.describe("SIWE session stays bound to the connected wallet", () => {
     // And completing SIWE as the allowlisted wallet now admits it.
     await clickSignIn(page);
     await expect(page.locator("#vtitle")).toHaveText("You're in.", { timeout: 25_000 });
-    await expect(page.locator("#vsteps")).toContainText("Beta access · eligible");
+    // Stage-driven copy (029 renamed the stage to alpha) — assert the shape, not a pinned stage.
+    await expect(page.locator("#vsteps")).toContainText(/\w+ access · eligible/);
   });
 
   test("REVERSE: allowlisted → switch to non-allowlisted stops passing the app gate", async ({
