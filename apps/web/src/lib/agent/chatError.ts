@@ -110,3 +110,45 @@ export function chatErrorCopy(
   }
   return { message: (message ?? "").trim(), retryable: true };
 }
+
+/* ── 041b · which turns may offer "Try again" ───────────────────────────────── */
+
+/**
+ * The projection this rule needs from a rendered turn.
+ *
+ * Structural on purpose — naming the card type here would drag `@sparkpoint/shared/schemas` in
+ * and this module would stop being loadable by `node --test`.
+ */
+export interface RetryableTurn {
+  /** The turn is still being written. */
+  readonly streaming: boolean;
+  /** Set when the REQUEST itself failed, so no stream ever started. */
+  readonly error?: string;
+  /** The `type` of each block this turn streamed, in order. Inert cards contribute nothing. */
+  readonly blockTypes: readonly string[];
+}
+
+/**
+ * Whether a finished turn should offer to send its message again.
+ *
+ * THE BUG THIS FIXES. A turn fails in two quite different ways, and only one of them was wired to
+ * the button. If the REQUEST fails there is no stream, the page catches it, and "Try again"
+ * appears. But when the agent reaches its model and the model does not answer — an HTTP 502 from
+ * the gateway, which is one turn in six on the free pool — the agent catches that itself and
+ * streams an `error` BLOCK. That arrives as an ordinary card on a perfectly successful HTTP
+ * response, so the page had no failed message to offer and the button never rendered.
+ *
+ * The card still said *"please try again"*. It just gave you nothing to press — and it was the
+ * common failure, not the rare one.
+ *
+ * Streaming turns are excluded: until the stream ends there may still be an answer coming, and a
+ * retry offered mid-turn invites a second message about a question that is still being answered.
+ */
+export function turnCanRetry(turn: RetryableTurn): boolean {
+  if (turn.streaming) return false;
+  if (turn.error) return true;
+  // ONLY an explicit error block. An inert card is a block we could not validate — it renders its
+  // own deliberately non-actionable notice (fail-closed), and the rest of the turn may be a
+  // perfectly good answer that nobody should be invited to re-ask.
+  return turn.blockTypes.includes("error");
+}

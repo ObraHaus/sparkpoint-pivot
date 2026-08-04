@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chatErrorCopy, isInternalEnvelope } from "./chatError.ts";
+import { chatErrorCopy, isInternalEnvelope, turnCanRetry } from "./chatError.ts";
 
 /** The exact string the Aug-3 regression saw rendered as Sparky's reply. */
 const LIVE_LEAK = "X-Account/X-Owner/X-Chain-Id are malformed or mismatched.";
@@ -73,4 +73,38 @@ test("an honest refusal written for users still passes through", () => {
   const refusal = "I'm not able to help with that request.";
   assert.equal(isInternalEnvelope(refusal, "REFUSAL"), false);
   assert.equal(chatErrorCopy(refusal, "REFUSAL").message, refusal);
+});
+
+/* ── 041b — which turns may offer "Try again" ───────────────────────────────── */
+
+test("041b — THE BUG: a turn that ended in an error BLOCK offers a retry", () => {
+  // The common failure. The agent reached its model, the model returned 502, the agent caught it
+  // and streamed an `error` block on a 200 response. The page had no failed message to offer, so
+  // the card said "please try again" with nothing to press.
+  assert.equal(
+    turnCanRetry({ streaming: false, blockTypes: ["tool_step", "error"] }),
+    true,
+  );
+});
+
+test("041b — a turn whose REQUEST failed still offers a retry", () => {
+  assert.equal(turnCanRetry({ streaming: false, error: "Upstream unavailable", blockTypes: [] }), true);
+});
+
+test("041b — a turn still streaming offers nothing, even once an error block has arrived", () => {
+  // There may yet be an answer, and a retry offered mid-turn invites a second message about a
+  // question that is still being answered.
+  assert.equal(turnCanRetry({ streaming: true, blockTypes: ["error"] }), false);
+  assert.equal(turnCanRetry({ streaming: true, blockTypes: [] }), false);
+});
+
+test("041b — a successful turn offers no retry", () => {
+  assert.equal(turnCanRetry({ streaming: false, blockTypes: ["tool_step", "text", "citation"] }), false);
+});
+
+test("041b — an INERT card alone is not a retryable failure", () => {
+  // Inert means a block we could not validate; it renders its own non-actionable notice by
+  // design, and the rest of the turn may be a perfectly good answer.
+  assert.equal(turnCanRetry({ streaming: false, blockTypes: ["text"] }), false);
+  assert.equal(turnCanRetry({ streaming: false, blockTypes: [] }), false);
 });
