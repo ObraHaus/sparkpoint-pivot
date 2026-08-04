@@ -37,6 +37,15 @@ import {
   followUpsForThread,
   type ThreadTurn,
 } from "@/lib/chat/followups";
+import {
+  IDLE,
+  decideSend,
+  queueNotice,
+  serialQueue,
+  suggestionsVisible,
+  type QueueSnapshot,
+  type SerialQueue,
+} from "@/lib/chat/sendQueue";
 import { ExecutionDrawer } from "@/components/execution/ExecutionDrawer";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 import {
@@ -71,7 +80,10 @@ type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "br
 
 /** A single rendered turn in the thread. */
 type Turn =
-  | { id: number; kind: "user"; text: string }
+  // 041 — `wait` is what makes queueing honest. A message shown in the thread with no further
+  // marking reads as sent; these have not been. "queued" is waiting its turn, "unsent" is one the
+  // queue never got to because an earlier message failed.
+  | { id: number; kind: "user"; text: string; wait?: "queued" | "unsent" }
   | { id: number; kind: "ai"; text: React.ReactNode; card?: CardKind }
   | { id: number; kind: "thinking"; steps: ThinkStep[]; then: () => void }
   | { id: number; kind: "inline"; intent: InlineIntent }
@@ -89,6 +101,13 @@ type Turn =
       /** The message that failed, so "Try again" can resend it verbatim. */
       failedMessage?: string;
     };
+
+/** 041 — a message the queue is holding, tied to the turn already rendered for it. */
+interface QueuedMessage {
+  /** The `Turn.id` of the user bubble, so the queue can mark it sending / unsent. */
+  id: number;
+  text: string;
+}
 
 // 037 — the empty-thread chips live with the follow-up logic now, so the two sets are chosen
 // together rather than drifting apart in separate files.
@@ -193,11 +212,22 @@ export default function ChatPage() {
   const [now, setNow] = useState(() => new Date(0));
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // 041 — one turn at a time. See `lib/chat/sendQueue.ts` for what parallel sends actually did.
+  const [queue, setQueue] = useState<QueueSnapshot>(IDLE);
+  /**
+   * Which conversation the in-flight send belongs to. Bumped by "New chat" and by opening a thread
+   * from the sidebar, so a stream started against the previous conversation cannot write its
+   * conversation id, its cards or its follow-up chips into the one now on screen.
+   */
+  const epochRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Feature 006: pause the force-refresh while a chat answer is streaming or an unsent draft exists
   // (BUSY — data loss, not funds). `streaming` is derived from the live turn's own flag.
   const streaming = turns.some((t) => t.kind === "live" && t.streaming);
-  useHoldCriticalOp(streaming || draft.trim().length > 0, "busy");
+  // 041 — a queued message is unsent work too, so the auto-reload waits for it exactly as it waits
+  // for a stream or an untyped draft. Reloading would discard it silently.
+  useHoldCriticalOp(streaming || queue.busy || queue.queued > 0 || draft.trim().length > 0, "busy");
 
   // The "Source" sheet opened by a citation chip (chat.js SP.openSheet('Source', …)).
   const [citeOpen, setCiteOpen] = useState(false);
@@ -272,7 +302,20 @@ export default function ChatPage() {
   const pushSign = useCallback((action: ProposedAction) => {
     setTurns((t) => [...t, { id: nextId(), kind: "sign", action }]);
   }, []);
+  // 041 — the scripted demo path is animated, not awaited, so the queue needs a completion signal
+  // from it. `thinkSeq` counts thinking turns created (synchronously, inside `respond`), and
+  // `thinkDone` is the queue's resolver, fired when the animation finishes. Without this the
+  // offline path would still send in parallel, and a fix that only works when connected is not a
+  // fix — it is a fix you cannot demonstrate.
+  const thinkSeq = useRef(0);
+  const thinkDone = useRef<(() => void) | null>(null);
+  const settleThink = useCallback(() => {
+    const resolve = thinkDone.current;
+    thinkDone.current = null;
+    resolve?.();
+  }, []);
   const think = useCallback((steps: ThinkStep[], then: () => void) => {
+    thinkSeq.current += 1;
     setTurns((t) => [...t, { id: nextId(), kind: "thinking", steps, then }]);
   }, []);
 
@@ -526,26 +569,39 @@ export default function ChatPage() {
 
 
   const sendLive = useCallback(
-    async (text: string) => {
+    async (text: string): Promise<boolean> => {
       if (!agentClient) {
         respond(text);
-        return;
+        return true;
       }
       const turnId = nextId();
+      // 041 — the conversation this send belongs to. If the user opens another thread or starts a
+      // new chat while it is in flight, everything below becomes a write into the wrong screen.
+      const epoch = epochRef.current;
+      const current = () => epochRef.current === epoch;
+      const controller = new AbortController();
+      abortRef.current = controller;
       setTurns((t) => [...t, { id: turnId, kind: "live", cards: [], streaming: true }]);
       const patch = (fn: (turn: Extract<Turn, { kind: "live" }>) => Extract<Turn, { kind: "live" }>) =>
         setTurns((t) => t.map((x) => (x.id === turnId && x.kind === "live" ? fn(x) : x)));
       try {
-        const gen = agentClient.streamChat({
-          message: text,
-          conversationId: convRef.current,
-          context: { surface: "chat" },
-          clientTime: new Date().toISOString(),
-        });
+        const gen = agentClient.streamChat(
+          {
+            message: text,
+            conversationId: convRef.current,
+            context: { surface: "chat" },
+            clientTime: new Date().toISOString(),
+          },
+          { signal: controller.signal },
+        );
         for (;;) {
           const res = await gen.next();
           if (res.done) {
-            if (res.value?.conversationId) {
+            if (res.value?.conversationId && current()) {
+              // THE FORK FIX. Until this line runs, `convRef.current` is undefined and the agent
+              // treats a missing id as "make a new conversation" — which is why parallel sends in a
+              // fresh chat each got their own thread. Serialising means the next message waits for
+              // exactly this assignment.
               convRef.current = res.value.conversationId;
               // A brand-new conversation becomes the one a refresh restores.
               rememberConversation(res.value.conversationId);
@@ -556,6 +612,9 @@ export default function ChatPage() {
           const card = parseCard(res.value);
           patch((x) => ({ ...x, cards: [...x.cards, card] }));
         }
+        // The user has moved on: the answer is persisted server-side and will be there when they
+        // reopen the thread, but nothing about it belongs on the screen they are looking at now.
+        if (!current()) return true;
         patch((x) => ({ ...x, streaming: false }));
         // 037 — suggest what to do NEXT, from what actually just happened. The scripted demo paths
         // had done this all along; a real turn left the starter chips up, so after being told
@@ -566,7 +625,11 @@ export default function ChatPage() {
           return all;
         });
         void refreshHistory(); // a live turn may have created/renamed a persisted thread
+        return true;
       } catch (e) {
+        // An abort is the user switching threads, not a failure — say nothing and leave the queue
+        // to be cleared by whoever switched.
+        if (controller.signal.aborted || !current()) return true;
         // A failed turn had no conversation, so it gets no follow-ups about one: "What's the risk?"
         // under a failure reads as though nothing went wrong.
         setChips([...ERROR_FOLLOW_UPS]);
@@ -576,14 +639,109 @@ export default function ChatPage() {
         // with honest copy, and "Try again" resends without the user retyping.
         const errorCode = e instanceof AgentApiError ? e.code : undefined;
         patch((x) => ({ ...x, streaming: false, error: message, errorCode, failedMessage: text }));
+        return false;
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
       }
     },
     [agentClient, respond, refreshHistory],
   );
 
+  /* ── 041 · the serial send queue ─────────────────────────────────────────── */
+
+  /**
+   * The offline keyword router as something the queue can await.
+   *
+   * `respond` dispatches an ANIMATION and returns immediately, so there is nothing to await. The
+   * completion signal is the thinking turn finishing — see `settleThink`.
+   */
+  const respondAsync = useCallback(
+    (text: string) =>
+      new Promise<void>((resolve) => {
+        const before = thinkSeq.current;
+        thinkDone.current = resolve;
+        respond(text);
+        // Every branch of the router animates a thinking turn today. If one ever stops doing so,
+        // the queue must not wedge forever waiting for an animation that will never run.
+        if (thinkSeq.current === before) settleThink();
+      }),
+    [respond, settleThink],
+  );
+
+  const markTurn = useCallback((id: number, wait: "queued" | "unsent" | undefined) => {
+    setTurns((all) => all.map((t) => (t.id === id && t.kind === "user" ? { ...t, wait } : t)));
+  }, []);
+  const markTurnRef = useRef(markTurn);
+  useEffect(() => {
+    markTurnRef.current = markTurn;
+  }, [markTurn]);
+
+  const runQueued = useCallback(
+    async (item: QueuedMessage) => {
+      markTurn(item.id, undefined); // it is going out now — stop calling it queued
+      if (online) {
+        // A rejected promise is how the queue learns to stop; `sendLive` has already rendered the
+        // honest error card and the per-turn "Try again".
+        if (!(await sendLive(item.text))) throw new Error("chat turn failed");
+      } else {
+        await respondAsync(item.text);
+      }
+    },
+    [markTurn, online, respondAsync, sendLive],
+  );
+
+  // The queue outlives every re-render (recreating it would drop whatever is waiting), so it calls
+  // the LATEST runner through a ref rather than closing over the one it was born with.
+  const runRef = useRef(runQueued);
+  useEffect(() => {
+    runRef.current = runQueued;
+  }, [runQueued]);
+
+  const [queueRunner] = useState<SerialQueue<QueuedMessage>>(() =>
+    serialQueue<QueuedMessage>({
+      run: (item) => runRef.current(item),
+      onChange: setQueue,
+      // Nothing typed is ever thrown away: what the queue never got to is marked unsent, with its
+      // text intact and a button to send it.
+      onHalted: (remaining) => remaining.forEach((m) => markTurnRef.current(m.id, "unsent")),
+    }),
+  );
+
+  /**
+   * Abandon everything in flight or waiting, because the screen is about to become a different
+   * conversation.
+   *
+   * ORDER MATTERS: clear the waiting messages BEFORE releasing the in-flight one. Aborting first
+   * would let the drain advance to the next queued message and send it — into the thread the user
+   * just navigated away from.
+   */
+  const resetSendQueue = useCallback(() => {
+    queueRunner.clear();
+    epochRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    settleThink(); // the demo animation is about to be unmounted; it will never report done
+  }, [queueRunner, settleThink]);
+
+  /** "New chat" — the LIVE surface: reset to the cold-start greeting (chat.js newchat handler). */
+  const startNewChat = useCallback(() => {
+    // 041 — whatever is queued was typed at the OLD conversation; sending it into a fresh one
+    // would answer it in the wrong place.
+    resetSendQueue();
+    setActiveConvId(null);
+    convRef.current = undefined;
+    // An explicit "new chat" is also an explicit "not that one" — so a refresh right after it
+    // must not drag the old conversation back.
+    rememberConversation(null);
+    restoredRef.current = true;
+    setTurns(coldThread());
+    setChips(EMPTY_CHIPS);
+  }, [resetSendQueue]);
+
   const openConversation = useCallback(
     async (id: string) => {
       if (!agentClient) return;
+      resetSendQueue();
       setActiveConvId(id);
       convRef.current = id;
       rememberConversation(id);
@@ -617,7 +775,7 @@ export default function ChatPage() {
         setTurns([{ id: nextId(), kind: "ai", text: "Couldn’t load that conversation." }]);
       }
     },
-    [agentClient],
+    [agentClient, resetSendQueue],
   );
 
   // 029/FR-013 — come back to the conversation the refresh interrupted. Runs ONCE, and only
@@ -646,21 +804,30 @@ export default function ChatPage() {
       if (convRef.current === id) startNewChat();
       void refreshHistory();
     },
-    [agentClient, refreshHistory],
+    [agentClient, refreshHistory, startNewChat],
   );
 
-  // ----- send (user turn + live stream, or the mock keyword router offline) -----
+  // ----- send: take the message, then let the queue decide when it goes out (041) -----
   const send = useCallback(
     (text: string) => {
-      if (!text || !text.trim()) return;
-      const t = text.trim();
-      setTurns((prev) => [...prev, { id: nextId(), kind: "user", text: t }]);
-      if (online) void sendLive(t);
-      else respond(t);
+      // The queue's OWN snapshot, not the React copy: two Enter presses in one tick both read the
+      // same stale state, and "is something already in flight?" is exactly the question that must
+      // not be answered from a stale copy.
+      const decision = decideSend(text, queueRunner.snapshot());
+      if (!decision.accepted) {
+        if (decision.reason === "full") toast(decision.notice);
+        return;
+      }
+      const id = nextId();
+      setTurns((prev) => [
+        ...prev,
+        { id, kind: "user", text: decision.text, wait: decision.waits ? "queued" : undefined },
+      ]);
+      queueRunner.push({ id, text: decision.text });
       setDraft("");
       if (taRef.current) taRef.current.style.height = "auto";
     },
-    [respond, online, sendLive],
+    [queueRunner, toast],
   );
 
   // card-action wiring shared by every card
@@ -838,12 +1005,36 @@ export default function ChatPage() {
               if (turn.kind === "user") {
                 return (
                   <div className="cturn user" key={turn.id}>
-                    <div className="cbubble-user">{turn.text}</div>
+                    <div className={"cbubble-user" + (turn.wait ? " waiting" : "")}>{turn.text}</div>
+                    {/* 041 — a bubble with no marking reads as sent. These have not been. */}
+                    {turn.wait === "queued" && (
+                      <div className="qmark">Queued — sends when the current answer finishes</div>
+                    )}
+                    {turn.wait === "unsent" && (
+                      <div className="qmark unsent">
+                        Not sent — the message before this one failed.{" "}
+                        <button className="qsend" onClick={() => send(turn.text)}>
+                          Send it now
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               }
               if (turn.kind === "thinking") {
-                return <ThinkingTurn key={turn.id} steps={turn.steps} onDone={turn.then} onTick={scrollDown} />;
+                return (
+                  <ThinkingTurn
+                    key={turn.id}
+                    steps={turn.steps}
+                    // 041 — the scripted path's completion signal: the answer appears, THEN the
+                    // queue is released for the next message.
+                    onDone={() => {
+                      turn.then();
+                      settleThink();
+                    }}
+                    onTick={scrollDown}
+                  />
+                );
               }
               if (turn.kind === "inline") {
                 return (
@@ -895,13 +1086,23 @@ export default function ChatPage() {
         </div>
 
         <div className="composer-wrap">
-          <div className="chips">
-            {chips.map((c) => (
-              <button className="chip" key={c} onClick={() => send(c)}>
-                {c}
-              </button>
-            ))}
-          </div>
+          {/* 041 — every chip is a send(), so showing them mid-turn was the product offering a way
+              to fire a parallel message. They also suggest what to ask NEXT, and until the answer
+              lands there is no "next" to suggest from. */}
+          {suggestionsVisible(queue) && (
+            <div className="chips">
+              {chips.map((c) => (
+                <button className="chip" key={c} onClick={() => send(c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+          {queueNotice(queue) && (
+            <div className="qnotice" aria-live="polite">
+              {queueNotice(queue)}
+            </div>
+          )}
           <div className="composer">
             <textarea
               ref={taRef}
@@ -1039,16 +1240,6 @@ export default function ChatPage() {
   );
 
   // "New chat" — the LIVE surface: reset to the cold-start greeting (chat.js newchat handler).
-  function startNewChat() {
-    setActiveConvId(null);
-    convRef.current = undefined;
-    // An explicit "new chat" is also an explicit "not that one" — so a refresh right after it
-    // must not drag the old conversation back.
-    rememberConversation(null);
-    restoredRef.current = true;
-    setTurns(coldThread());
-    setChips(EMPTY_CHIPS);
-  }
 }
 
 /** The AI turn chrome: avatar + name + body (the design's `aiTurn`). */
