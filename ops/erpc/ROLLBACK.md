@@ -1,4 +1,4 @@
-# RPC proxy — rollback runbook (feature 039)
+# RPC proxy — rollback runbook (feature 041)
 
 Every cutover stage is one or more **Coolify env values**; every rollback is restoring
 the previous value(s) and redeploying that one app. Target: **≤ 5 minutes** (SC-007).

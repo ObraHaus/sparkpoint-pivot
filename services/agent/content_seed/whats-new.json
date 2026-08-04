@@ -9,7 +9,29 @@
       "body": "Everything SparkPoint reads from the blockchain — your portfolio, vault quotes, swap prices — now travels through a proxy we operate. If our data provider slows down or fails, requests retry against a backup automatically, so a provider having a bad day no longer shows up as errors on your screen.\n\nTwo more things changed under the hood. Data that can never change (confirmed history) is now answered from a cache instead of being fetched again and again. And the access key for our data provider no longer ships inside the app your browser downloads — it stays on our servers, where a key belongs.\n\nOne thing deliberately did NOT change: the Exit page still talks to the public network directly, never through anything we run. Your withdrawal path depends on no SparkPoint server — including the new one.",
       "cta_label": null,
       "cta_href": null,
-      "published_at": "2026-08-04T00:00:00Z",
+      "published_at": "2026-08-04T07:10:00Z",
+      "active": true
+    },
+    {
+      "slug": "your-chats-grouped-and-searchable",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Your chats are now grouped by when — and searchable",
+      "body": "The conversation list in the sidebar is no longer one long column. It's grouped under Today, Yesterday, Previous 7 days, Previous 30 days, and then by month and year, with a count beside each heading and the time of each conversation on its row.\n\nThat last part matters more than it sounds: if you asked the same question five times, the five threads all had the same name and no way to tell them apart. We didn't rename them — you did ask the same thing — we just showed you when each one was.\n\nThere's also a search box, and it searches all of your chats rather than only the ones currently on screen.\n\nAnd one honest correction: the list only ever showed your 50 most recent conversations, and nothing said so — it simply stopped. If you have more, you'll now see exactly how many and can load them.",
+      "cta_label": "Open your chats",
+      "cta_href": "/chat",
+      "published_at": "2026-08-04T00:14:47Z",
+      "active": true
+    },
+    {
+      "slug": "reopened-chats-remember-where-they-were",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Reopened chats remember where they got to",
+      "body": "The suggestion buttons under the message box now stay relevant when you come back to an older conversation.\n\nUntil now they only knew about a conversation while you were typing in it. Open one from the sidebar, or come back after a refresh, and they reset to the same generic starters — so a thread that had spent ten messages on fees would greet you with \"What's in my wallet?\", as though none of it had happened.\n\nThey now pick up from the last thing that was actually discussed. A genuinely empty conversation still gets the starters, because that one really is new.",
+      "cta_label": "Open a saved chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-03T23:29:05Z",
       "active": true
     },
     {

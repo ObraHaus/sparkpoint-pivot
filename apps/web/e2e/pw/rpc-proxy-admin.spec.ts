@@ -3,7 +3,7 @@ import type { Hex } from "viem";
 import { installInjectedWallet } from "./injected-wallet";
 
 /**
- * Feature 039 — Admin → System → RPC proxy section (browser, fake injected wallet → SIWE →
+ * Feature 041 — Admin → System → RPC proxy section (browser, fake injected wallet → SIWE →
  * admin session). Read-only surface: the injected wallet signs only SIWE.
  *
  * What this guards:

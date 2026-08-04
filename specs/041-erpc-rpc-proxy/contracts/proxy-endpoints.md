@@ -31,7 +31,7 @@ Port **4001** (Prometheus metrics) is LAN-only, consumed exclusively by the admi
 
 1. **AA pin**: `eth_sendUserOperation`, `eth_estimateUserOperationGas`, `eth_getUserOperationReceipt`, `eth_getUserOperationByHash`, `eth_supportedEntryPoints` are `ignoreMethods` on every upstream except Alchemy (FR-005).
 2. **getLogs routing**: `eth_getLogs` is `ignoreMethods` on Alchemy; the serving upstream has auto-split enabled (FR-006).
-3. **Cache**: only `finality: finalized` policies may exist; no `realtime`/`unfinalized` entry may be added under feature 039 (FR-003).
+3. **Cache**: only `finality: finalized` policies may exist; no `realtime`/`unfinalized` entry may be added under feature 041 (FR-003).
 4. **Budgets**: Alchemy ≤15 req/s; the `app` lane carries its own budget (FR-007).
 5. **Origins**: `app` CORS allowlist contains only platform origins (FR-008).
 6. **Secrets**: provider keys and `ERPC_CORE_SECRET` are referenced via env interpolation — never committed literal (FR-009's spirit applies to the repo too).

@@ -1,5 +1,5 @@
 /**
- * 039 — the RPC-proxy console section's PURE core: Prometheus text → typed snapshot → tiles.
+ * 041 — the RPC-proxy console section's PURE core: Prometheus text → typed snapshot → tiles.
  *
  * LEAF on purpose (no `@/` value imports), like `systemTiles.ts` and for the same reason: the
  * contract this module encodes was the site of the console's worst bug — a renamed wire field

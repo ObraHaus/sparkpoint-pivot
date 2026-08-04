@@ -9,7 +9,13 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { ERROR_FOLLOW_UPS, MAX_FOLLOW_UPS, STARTER_CHIPS, followUps } from "./followups.ts";
+import {
+  ERROR_FOLLOW_UPS,
+  MAX_FOLLOW_UPS,
+  STARTER_CHIPS,
+  followUps,
+  followUpsForThread,
+} from "./followups.ts";
 
 const turn = (over: Partial<Parameters<typeof followUps>[0]> = {}) => ({
   userMessage: "",
@@ -132,4 +138,55 @@ test("a renamed or unseen topic degrades to real questions, not to nothing", () 
 
   const unknown = followUps({ userMessage: "x", blockTypes: ["tip"], tipTopics: ["zzz_unmapped"] });
   assert.ok(unknown.length > 0, "still offers something");
+});
+
+// ── 039: a reopened conversation is not a new one ────────────────────────────
+
+test("039 — reopening a thread keeps suggestions about where it got to", () => {
+  // The bug: a conversation only got contextual chips while it was being typed into. Reopen it
+  // from the sidebar and the starters came back — "What's in my wallet?" under a thread that had
+  // spent ten turns on fees, as though none of it had happened.
+  const out = followUpsForThread([
+    { role: "user", text: "hello" },
+    { role: "assistant", blockTypes: ["text"] },
+    { role: "user", text: "Explain the performance fee" },
+    { role: "assistant", blockTypes: ["tip"], tipTopics: ["performance_fee"] },
+  ]);
+  assert.ok(out.some((c) => /pay nothing|high-water|compare/i.test(c)), out.join(" | "));
+});
+
+test("039 — it reads the LAST exchange, not the first", () => {
+  const out = followUpsForThread([
+    { role: "user", text: "Explain the performance fee" },
+    { role: "assistant", blockTypes: ["tip"], tipTopics: ["performance_fee"] },
+    { role: "user", text: "how am I doing" },
+    { role: "assistant", blockTypes: ["text"], stepLabels: ["Reading your portfolio"] },
+  ]);
+  assert.ok(out.includes("Where's my risk concentrated?"), out.join(" | "));
+  assert.ok(!out.some((c) => /high-water/i.test(c)), "not the older topic: " + out.join(" | "));
+});
+
+test("039 — still never offers back the question that prompted the last answer", () => {
+  // Most jarring on a reopened thread, because the answer is right there on screen.
+  const out = followUpsForThread([
+    { role: "user", text: "What's in my wallet?" },
+    { role: "assistant", blockTypes: ["portfolio_snapshot"] },
+  ]);
+  assert.ok(!out.some((c) => /in my wallet/i.test(c)), out.join(" | "));
+});
+
+test("039 — an empty thread genuinely IS new, so it says so", () => {
+  // The caller shows the starters on an empty result — an empty conversation is a new one.
+  assert.deepEqual(followUpsForThread([]), []);
+  assert.deepEqual(followUpsForThread([{ role: "user", text: "hi" }]), []);
+});
+
+test("039 — a pre-025 turn with no blocks still gets usable suggestions", () => {
+  // Older rows replay as a text summary with no structured blocks. There is no topic to go deeper
+  // on, but the thread is still not new — generic beats starters.
+  const out = followUpsForThread([
+    { role: "user", text: "tell me about fees" },
+    { role: "assistant" },
+  ]);
+  assert.ok(out.length > 0, "offers something");
 });

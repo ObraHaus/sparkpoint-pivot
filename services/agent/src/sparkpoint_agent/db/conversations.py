@@ -47,11 +47,28 @@ _GET_TURNS_PRE_0028 = (
     "SELECT role, content, created_at FROM conversation_turns "
     "WHERE conversation_id = $1 ORDER BY id ASC"
 )
+#: 040 — the same query, now pageable and searchable.
+#:
+#: ⚠️ THE OWNERSHIP JOIN IS THE WHOLE SECURITY MODEL OF THIS READ. `JOIN users u ON u.id =
+#: c.user_id` + `WHERE u.eoa_address = $1` is what stops one wallet seeing another's. The
+#: search predicate goes INSIDE that scope and is bound as a parameter, never concatenated: a
+#: title search is exactly the shape of change that quietly widens a scope. A test asserts both.
+#:
+#: `$3` is NULL for "no search"; Postgres short-circuits the OR, so an unfiltered list costs what
+#: it always did.
 _LIST_CONVOS = (
     "SELECT c.id, c.title, c.created_at, c.updated_at, "
     "(SELECT count(*) FROM conversation_turns t WHERE t.conversation_id = c.id) AS turn_count "
     "FROM conversations c JOIN users u ON u.id = c.user_id "
-    "WHERE u.eoa_address = $1 ORDER BY c.updated_at DESC LIMIT $2"
+    "WHERE u.eoa_address = $1 AND ($3::text IS NULL OR c.title ILIKE $3) "
+    "ORDER BY c.updated_at DESC LIMIT $2 OFFSET $4"
+)
+
+#: How many exist in total, under the SAME ownership and search scope — so "Show 60 older" is a fact
+#: rather than an estimate, and a search says how many it actually matched.
+_COUNT_CONVOS = (
+    "SELECT count(*) FROM conversations c JOIN users u ON u.id = c.user_id "
+    "WHERE u.eoa_address = $1 AND ($2::text IS NULL OR c.title ILIKE $2)"
 )
 _GET_TURNS = (
     "SELECT role, content, blocks, created_at FROM conversation_turns "
@@ -153,8 +170,27 @@ class ConversationStore:
         rows = await self.db.fetch(_RECENT_TURNS, conversation_id, max(1, min(limit, 40)))
         return [(str(r["role"]), str(r["content"])) for r in reversed(rows)]
 
-    async def list_conversations(self, owner_eoa: str, *, limit: int = 50) -> list[dict[str, Any]]:
-        rows = await self.db.fetch(_LIST_CONVOS, owner_eoa, max(1, min(limit, 200)))
+    async def list_conversations(
+        self,
+        owner_eoa: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """One page of this wallet's conversations, newest activity first.
+
+        `query` matches the TITLE only. Searching message bodies is a different feature with
+        different privacy questions; the title is what the sidebar shows and what a person
+        remembers.
+        """
+        rows = await self.db.fetch(
+            _LIST_CONVOS,
+            owner_eoa,
+            max(1, min(limit, 200)),
+            _like(query),
+            max(0, offset),
+        )
         return [
             {
                 "id": str(r["id"]),
@@ -165,6 +201,19 @@ class ConversationStore:
             }
             for r in rows
         ]
+
+    async def count_conversations(self, owner_eoa: str, *, query: str | None = None) -> int:
+        """How many exist under the same scope — what makes "Show 60 older" a fact.
+
+        Fail-soft: a count that cannot be taken returns 0, which renders no control at all. Showing
+        an unknown remainder as "Show more" would be the vague version this feature exists to
+        replace, and inventing a number would be worse.
+        """
+        try:
+            return int(await self.db.fetchval(_COUNT_CONVOS, owner_eoa, _like(query)) or 0)
+        except Exception:  # noqa: BLE001 — a missing count must never cost the list itself
+            logger.warning("conversation_count_failed; the sidebar will not offer older pages")
+            return 0
 
     async def get_conversation(self, owner_eoa: str, conversation_id: str) -> dict[str, Any] | None:
         """The conversation + its turns — ONLY if owned by ``owner_eoa`` (else ``None`` → 404)."""
@@ -229,6 +278,25 @@ def _turn_wire(row: Any) -> dict[str, Any]:
         "blocks": _as_blocks(raw),
         "at": row["created_at"].isoformat(),
     }
+
+
+#: How long a search term may be. A title is short; anything longer is not a search, and an
+#: unbounded LIKE pattern is a cheap way to make the database work hard on someone else's behalf.
+MAX_QUERY_CHARS = 80
+
+
+def _like(query: str | None) -> str | None:
+    """A search term as a bound ILIKE pattern, or None for "no search".
+
+    `%` and `_` are ESCAPED: a user typing "50%" is looking for the characters "50%", not for
+    "anything starting with 50". Left unescaped, one wildcard in a term would quietly match
+    everything and the search would look broken in the least explicable way.
+    """
+    term = (query or "").strip()
+    if not term:
+        return None
+    escaped = term[:MAX_QUERY_CHARS].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 def _as_uuid(value: str) -> UUID | None:
