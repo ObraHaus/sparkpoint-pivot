@@ -179,7 +179,11 @@ visible, marked unsent, and can be sent.
 
 **Failure and abandonment**
 
-- **FR-011**: A failed turn MUST stop the queue rather than send the remaining messages.
+- **FR-011**: A turn that fails **at the transport** — no stream at all, an HTTP error, the agent
+  unreachable — MUST stop the queue rather than send the remaining messages into the same wall.
+  A turn that RUNS and returns an error block MUST NOT stop the queue: the assistant is reachable
+  and the next message may well succeed. Verified live — a burst of three produced fail · succeed ·
+  fail, so halting on the first would have suppressed an answer that worked.
 - **FR-012**: Messages the queue did not send MUST remain visible with their text intact, marked
   unsent, with an affordance to send.
 - **FR-013**: Changing conversation (opening a thread, or "New chat") MUST abandon the queue and the

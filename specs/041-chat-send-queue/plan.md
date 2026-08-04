@@ -94,3 +94,34 @@ decision and chip rules including the `busy:false, queued>0` sliver between turn
 
 Live, in a browser with an injected wallet (SC-001…SC-009): the three-message burst in a fresh chat
 must leave **one** conversation in the sidebar, correctly interleaved.
+
+### What the live run actually showed — **15/15**
+
+```
+burst sent in 827ms
+mid-burst: chips=0 · queued=2 · notice="2 messages waiting — they send one at a time"
+chat request spans (ms): [[0, 52633], [52633, 54208], [54200, 62350]]
+answer durations:        [52633, 1575, 8150]ms — a 827ms burst spread over 62.4s
+conversations: 118 -> 119          (a fork would have given +3)
+```
+
+Three notes on measuring it, each a correction to my own first attempt:
+
+1. **The first instrumentation was wrong and would have read as a failure.** It wrapped
+   `res.body.getReader()` to detect the end of each SSE stream; the hook never fired, so the
+   open-stream counter climbed to 3 and never came down — indistinguishable from three
+   simultaneous streams. Replaced with Playwright's own request lifecycle, which cannot be wrong
+   about when a request ended.
+2. **`requestfinished` fires on socket close, not on the `done` frame.** The client advances the
+   queue on the frame, which the server sends immediately before closing, so the next request
+   legitimately starts ~10ms before the previous socket is torn down. The tolerance is named
+   (500ms) and is tiny against turns tens of seconds apart.
+3. **A minimum-gap assertion was the wrong property.** It failed on a turn answered by a
+   deterministic route in 1.4s. A fast answer is not a violation; the property is ORDERING — each
+   send begins after the previous one ended.
+
+The run also surfaced a **pre-existing, unrelated** agent behaviour: a turn that returns an error
+block writes the user's question but no assistant row (`_ConversationSink.record` returns early when
+the summary is empty and no block is persistable). Across all conversations that is 315 user turns
+against 265 assistant turns — 50 turns that errored. Not introduced here and not corruption, but it
+is why an early run's transcript looked interleaved when it was not.
