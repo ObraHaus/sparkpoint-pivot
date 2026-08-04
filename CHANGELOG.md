@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (040 — chat history you can actually navigate)
+- **Conversations are grouped by when they last happened**: Today · Yesterday · Previous 7 days · Previous 30 days · then month names, then months carrying their year, then years. Each heading is sticky while you scroll and carries a count. Empty periods never render, so a new user sees one heading rather than seven empty ones.
+- Grouped by **last activity**, not creation, so a thread resumed this morning appears under Today — and the headings agree with the order the list was already sorted in. Boundaries are the reader's **local midnight**: computed with `setHours(0,0,0,0)` rather than by subtracting a day in milliseconds, which is wrong twice a year in any zone with daylight saving.
+- **The list stops claiming to have ended when it has not.** It was capped at fifty rows while the busiest wallet on alpha has 110 — sixty invisible, with nothing saying so. Grouping would have made that worse: a flat list that stops is ambiguous, but one that stops under "Previous 30 days" reads as a claim that nothing older exists. There is now a control that names the exact number remaining — *"Show 60 older conversations"* — and its **absence** is the statement that this is all of them.
+- **Search covers the whole history, not the loaded page.** Server-side, because a client-side filter would silently search only what is loaded, which looks identical to a working search right up to the moment it matters. Debounced, so typing five characters is not five requests.
+- **Identical titles are tellable apart.** Each row carries the time of its last activity — today as a clock time, older as a date. The titles are not rewritten, de-duplicated or invented: five threads called "Explain the performance fee" is honest, because the questions were identical. What was missing was a way to tell them apart, not different words.
+- Every row remains openable by keyboard, as 039 made it.
+
+### Changed (040)
+- `GET /conversations` gains `offset` and `q`, and returns `total`. The proposal said grouping needed nothing from the backend, and that was true of grouping alone — paging and search, which the client added, do. Additive, one endpoint, no migration.
+- ⚠️ The search predicate sits **inside** the existing per-wallet ownership join and is bound as a parameter, never concatenated. A title search is exactly the shape of change that quietly widens a scope, so two tests assert that neither search nor paging can reach another wallet's conversations. `%` and `_` in a search term are escaped — someone typing "50%" is looking for those characters, not for everything beginning with 50.
+
 ### Fixed (039 — reopening a conversation reset its suggestions)
 - **A saved conversation is not a new one.** 037 gave the chips contextual follow-ups, but only while a thread was being typed into. Reopen one from the sidebar — or return to it after a refresh — and the starters came back: "What's in my wallet?" under a thread that had spent ten turns on fees, as though none of it had happened. The whole point of these chips is to know where you are, and reopening was exactly where they forgot.
 - The suggestions are now derived from the reopened thread's **last assistant turn and the user message that prompted it**, so the same rules apply as they did live: go deeper on what was actually discussed, and never offer back the question just asked — which is most jarring on a reopened thread, because the answer is right there on the screen.

@@ -40,13 +40,31 @@ class _FakeStore:
     def seed(self, cid: str, owner: str, title: str) -> None:
         self.convos[cid] = {"owner": owner.lower(), "title": title, "turns": []}
 
-    async def list_conversations(self, owner_eoa: str, *, limit: int = 50) -> list[dict[str, Any]]:
+    def _mine(self, owner_eoa: str, query: str | None) -> list[tuple[str, dict[str, Any]]]:
+        """040 — ownership FIRST, then the search. The order is the security model: a search that
+        filtered before scoping would be a search across every wallet."""
+        rows = [(cid, c) for cid, c in self.convos.items() if c["owner"] == owner_eoa.lower()]
+        if query:
+            rows = [(cid, c) for cid, c in rows if query.lower() in c["title"].lower()]
+        return rows
+
+    async def list_conversations(
+        self,
+        owner_eoa: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = self._mine(owner_eoa, query)[offset : offset + limit]
         return [
             {"id": cid, "title": c["title"], "turnCount": len(c["turns"]),
              "createdAt": "t", "updatedAt": "t"}
-            for cid, c in self.convos.items()
-            if c["owner"] == owner_eoa.lower()
+            for cid, c in rows
         ]
+
+    async def count_conversations(self, owner_eoa: str, *, query: str | None = None) -> int:
+        return len(self._mine(owner_eoa, query))
 
     async def get_conversation(self, owner_eoa: str, conversation_id: str) -> dict[str, Any] | None:
         c = self.convos.get(conversation_id)
@@ -189,3 +207,99 @@ def test_persisted_blocks_are_not_leaked_to_a_foreign_caller(
     resp = client.get(f"/conversations/{cid}", headers=_headers(BOB))
     assert resp.status_code == 404
     assert "aerodrome_swap" not in resp.text
+
+
+# ── 040: paging, search, and the scope that must survive both ────────────────
+
+
+def test_040_a_page_is_bounded_and_the_total_says_how_many_exist(
+    client: TestClient,
+    store: _FakeStore,
+) -> None:
+    """The control says "Show 60 older conversations", not "Show more" — so the count has to be a
+    fact. Without it the sidebar cannot tell "this is all of them" from "this is the first page"."""
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    for i in range(12):
+        store.seed(f"c{i}", ALICE, f"conversation {i}")
+
+    body = client.get("/conversations?limit=5", headers=_headers(ALICE)).json()
+    assert len(body["conversations"]) == 5
+    assert body["total"] == 12
+
+
+def test_040_offset_returns_the_next_page_without_repeating_the_first(
+    client: TestClient,
+    store: _FakeStore,
+) -> None:
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    for i in range(12):
+        store.seed(f"c{i}", ALICE, f"conversation {i}")
+
+    first = client.get(
+        "/conversations?limit=5&offset=0",
+        headers=_headers(ALICE),
+    ).json()["conversations"]
+    second = client.get(
+        "/conversations?limit=5&offset=5",
+        headers=_headers(ALICE),
+    ).json()["conversations"]
+    assert {c["id"] for c in first}.isdisjoint({c["id"] for c in second})
+    assert len(second) == 5
+
+
+def test_040_search_filters_by_title(client: TestClient, store: _FakeStore) -> None:
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    store.seed("a", ALICE, "Explain the performance fee")
+    store.seed("b", ALICE, "What is in my wallet")
+
+    body = client.get("/conversations?q=performance", headers=_headers(ALICE)).json()
+    assert [c["id"] for c in body["conversations"]] == ["a"]
+    assert body["total"] == 1, "the total narrows to the search, so the control does not lie"
+
+
+def test_040_a_search_matching_nothing_is_an_empty_list_not_an_error(
+    client: TestClient,
+    store: _FakeStore,
+) -> None:
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    store.seed("a", ALICE, "Explain the performance fee")
+    body = client.get("/conversations?q=zzzznothing", headers=_headers(ALICE)).json()
+    assert body["conversations"] == []
+    assert body["total"] == 0
+
+
+def test_040_an_empty_search_is_not_a_search(client: TestClient, store: _FakeStore) -> None:
+    """A blank or whitespace `q` must return the full list, not zero results — the box is empty far
+    more often than it is filled."""
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    store.seed("a", ALICE, "Explain the performance fee")
+    for q in ("", "   "):
+        body = client.get(f"/conversations?q={q}", headers=_headers(ALICE)).json()
+        assert body["total"] == 1, f"q={q!r}"
+
+
+def test_040_SEARCH_NEVER_REACHES_ANOTHER_WALLET(client: TestClient, store: _FakeStore) -> None:
+    """The one that matters. A title search is exactly the shape of change that quietly widens a
+    scope: filter before you scope, and you have built a search across every user's
+    conversations."""
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    store.seed("mine", ALICE, "shared secret title")
+    store.seed("theirs", BOB, "shared secret title")
+
+    body = client.get("/conversations?q=shared", headers=_headers(ALICE)).json()
+    assert [c["id"] for c in body["conversations"]] == ["mine"]
+    assert body["total"] == 1
+
+
+def test_040_paging_never_reaches_another_wallet_either(
+    client: TestClient,
+    store: _FakeStore,
+) -> None:
+    store.convos.clear()  # this test owns its data; the fixture pre-seeds a row
+    store.seed("mine", ALICE, "a")
+    for i in range(10):
+        store.seed(f"theirs{i}", BOB, "b")
+
+    body = client.get("/conversations?limit=50&offset=0", headers=_headers(ALICE)).json()
+    assert [c["id"] for c in body["conversations"]] == ["mine"]
+    assert body["total"] == 1

@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "your-chats-grouped-and-searchable",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Your chats are now grouped by when — and searchable",
+      "body": "The conversation list in the sidebar is no longer one long column. It's grouped under Today, Yesterday, Previous 7 days, Previous 30 days, and then by month and year, with a count beside each heading and the time of each conversation on its row.\n\nThat last part matters more than it sounds: if you asked the same question five times, the five threads all had the same name and no way to tell them apart. We didn't rename them — you did ask the same thing — we just showed you when each one was.\n\nThere's also a search box, and it searches all of your chats rather than only the ones currently on screen.\n\nAnd one honest correction: the list only ever showed your 50 most recent conversations, and nothing said so — it simply stopped. If you have more, you'll now see exactly how many and can load them.",
+      "cta_label": "Open your chats",
+      "cta_href": "/chat",
+      "published_at": "2026-08-04T00:14:47Z",
+      "active": true
+    },
+    {
       "slug": "reopened-chats-remember-where-they-were",
       "type": "changelog",
       "tag": "Fixed",
