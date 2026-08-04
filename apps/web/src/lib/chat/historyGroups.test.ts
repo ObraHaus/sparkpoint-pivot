@@ -147,6 +147,26 @@ test("today's rows show a clock time — that is what distinguishes five identic
   assert.ok(!/Aug/.test(stamp), stamp);
 });
 
+test("YESTERDAY's rows show a clock time too — the heading already said which day", () => {
+  // Found in the live sidebar, not here: all 47 rows under "Yesterday" read "Aug 3", which
+  // distinguished nothing and repeated the heading. The five threads called "Explain the
+  // performance fee" were still indistinguishable, which is the requirement this exists for.
+  const stamp = rowTimestamp(row("a", at(2026, 8, 3, 9, 15)), NOW);
+  assert.ok(!/Aug/.test(stamp), stamp);
+  assert.match(stamp, /\d/);
+});
+
+test("two conversations in the same day-group are distinguishable", () => {
+  const morning = rowTimestamp(row("a", at(2026, 8, 3, 9, 15)), NOW);
+  const evening = rowTimestamp(row("b", at(2026, 8, 3, 21, 40)), NOW);
+  assert.notEqual(morning, evening);
+});
+
+test("a group that SPANS days keeps the date, because there the day is the difference", () => {
+  // "Previous 7 days" covers six of them, so an hour alone would not tell you which.
+  assert.match(rowTimestamp(row("a", at(2026, 8, 1)), NOW), /Aug/);
+});
+
 test("older rows show a date, because by then the hour is not what you remember", () => {
   assert.match(rowTimestamp(row("a", at(2026, 7, 2)), NOW), /Jul/);
 });

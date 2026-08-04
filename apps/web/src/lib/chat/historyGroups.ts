@@ -142,15 +142,22 @@ export function groupConversations<T extends HistoryRow>(
 /**
  * The time of last activity, for telling two identically-titled conversations apart.
  *
- * Today shows a clock time, because that is what distinguishes five threads all called "Explain the
- * performance fee" asked in one afternoon. Anything older shows a date, because by then the hour is
- * not what you remember.
+ * THE RULE IS "SAY WHAT THE HEADING DOES NOT". Today and Yesterday are single days, and their
+ * heading already names the day — so a date there is both useless and redundant, and the useful
+ * detail is the clock. Every other group spans several days or months, so there the date is what
+ * separates one row from the next.
+ *
+ * Caught by looking at the live sidebar rather than at the tests: all 47 rows under "Yesterday"
+ * read "Aug 3", which distinguished nothing and repeated the heading. The unit tests passed the
+ * whole time, because they asserted "today shows a time, older shows a date" — true, and useless
+ * for the one group where five identical titles actually sat.
  */
 export function rowTimestamp(row: HistoryRow, now: Date): string {
   const when = activityDate(row);
   if (!when) return "";
   const age = daysAgo(when, now);
-  if (age <= 0) {
+  if (age <= 1) {
+    // Today and Yesterday: the heading has the day, so the row gets the hour.
     return when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
   if (age < 365) {
