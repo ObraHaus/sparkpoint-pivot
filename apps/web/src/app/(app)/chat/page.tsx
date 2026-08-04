@@ -462,12 +462,12 @@ export default function ChatPage() {
    * the exact number remaining rather than saying "Show more" and leaving the question open.
    */
   const loadHistory = useCallback(
-    async ({ append = false, q = "" }: { append?: boolean; q?: string } = {}) => {
+    async ({ offset = 0, q = "" }: { offset?: number; q?: string } = {}) => {
       if (!agentClient) return;
+      const append = offset > 0;
       setHistoryBusy(true);
       setHistoryError(null);
       try {
-        const offset = append ? history.length : 0;
         const params = new URLSearchParams({ limit: String(HISTORY_PAGE), offset: String(offset) });
         if (q.trim()) params.set("q", q.trim());
         const r = await agentClient.request<{ conversations: HistoryRow[]; total?: number }>(
@@ -484,7 +484,13 @@ export default function ChatPage() {
         setHistoryBusy(false);
       }
     },
-    [agentClient, history.length],
+    // ⚠️ `history.length` MUST NOT be a dependency. It was, and the result was an effect that
+    // re-ran on its own output: appending a page changed the length, which changed this callback's
+    // identity, which changed `refreshHistory`, which re-fired the mount effect below and reloaded
+    // page one — so "Show 60 older conversations" appended fifty rows and then instantly threw them
+    // away. The row count went 50 → 50 and nothing errored. The offset is passed in by the caller
+    // instead, which keeps this stable.
+    [agentClient],
   );
 
   const refreshHistory = useCallback(
@@ -791,7 +797,7 @@ export default function ChatPage() {
             exist, and it always names the exact number remaining. */}
         {olderLabel(history.length, historyTotal) && (
           <button
-            onClick={() => void loadHistory({ append: true, q: historyQuery })}
+            onClick={() => void loadHistory({ offset: history.length, q: historyQuery })}
             disabled={historyBusy}
             style={{
               display: "block", width: "calc(100% - 20px)", margin: "6px 10px 2px",
