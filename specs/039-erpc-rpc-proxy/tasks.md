@@ -13,10 +13,10 @@
 
 ## Phase 2: Foundational — proxy live, zero consumers (quickstart Stage 0)
 
-- [ ] T004 (operator-confirmed) Create Coolify service `sparkpoint-erpc` from `ops/erpc/`, set `ERPC_CORE_SECRET` + provider URLs as service env, attach the public FQDN for the `app` lane.
-- [ ] T005 Run quickstart Stage 0 checks 1–3: `eth_chainId` correct on every lane/network (0x14a34 / 0x1 / 0xb626), 2000-block finalized `eth_getLogs` succeeds then repeats as a cache hit, `sepolia.base.org` accepts eRPC's UA (no 403 in logs).
-- [ ] T006 Capture the real `erpc_*` metric series names from `:4001/metrics` into `specs/039-erpc-rpc-proxy/research.md` (append a "Stage-0 captured metrics" block) — these are the ONLY names `rpcProxyTiles` may reference.
-- [ ] T007 (operator-confirmed) Add the Uptime Kuma monitor for the proxy healthcheck (FR-018); confirm UP.
+- [X] T004 (operator-confirmed) Create Coolify service `sparkpoint-erpc` from `ops/erpc/`, set `ERPC_CORE_SECRET` + provider URLs as service env, attach the public FQDN for the `app` lane.
+- [X] T005 Run quickstart Stage 0 checks 1–3: `eth_chainId` correct on every lane/network (0x14a34 / 0x1 / 0xb626), 2000-block finalized `eth_getLogs` succeeds then repeats as a cache hit, `sepolia.base.org` accepts eRPC's UA (no 403 in logs).
+- [X] T006 Capture the real `erpc_*` metric series names from `:4001/metrics` into `specs/039-erpc-rpc-proxy/research.md` (append a "Stage-0 captured metrics" block) — these are the ONLY names `rpcProxyTiles` may reference.
+- [X] T007 (operator-confirmed) Add the Uptime Kuma monitor for the proxy healthcheck (FR-018); confirm UP.
 
 **Checkpoint**: proxy serving all three networks, cache proven, metric names pinned, monitored — no production traffic touched yet.
 
@@ -25,7 +25,7 @@
 **Goal**: agent + indexer traffic rides the proxy; provider throttling becomes invisible.
 **Independent test**: quickstart Stage 2 throttle drill — scripted session with Alchemy budget crushed to ~1 req/s completes with zero user-visible errors (SC-001).
 
-- [ ] T008 [US1] (operator-confirmed) Stage 1 cutover: agent env `VAULT_INDEX_RPC_URL` → `…/core/evm/84532`; redeploy agent; watch-restart if `exited:unhealthy`.
+- [X] T008 [US1] (operator-confirmed) Stage 1 cutover: agent env `VAULT_INDEX_RPC_URL` → `…/core/evm/84532`; redeploy agent; watch-restart if `exited:unhealthy`.
 - [ ] T009 [US1] Verify quickstart Stage 1: `indexer_cursors` advance ≥3 ticks on all three streams, no window-shrink events, revenue rows ingest; then run the rollback drill once, stopwatch ≤5 min, re-apply (SC-007).
 - [ ] T010 [US1] (operator-confirmed) Stage 2 cutover: agent env `BASE_SEPOLIA_RPC_URL`, `ETH_MAINNET_RPC_URL`, `ROBINHOOD_RPC_URL` → core lane; redeploy agent.
 - [ ] T011 [US1] Verify quickstart Stage 2 (browser run, not just green tests): `/readyz` chain_rpc + chain_identity green (FR-014); chat turn → deposit quote → sim → sign; portfolio; premium verify; SIWE SRK-gate via `/core/evm/1`; session-key automation end-to-end with the UserOp served by Alchemy only (FR-005, SC-006).

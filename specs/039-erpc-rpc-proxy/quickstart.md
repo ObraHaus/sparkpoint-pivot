@@ -30,7 +30,7 @@ curl -s http://sparkpoint-erpc:4001/metrics | grep -oE '^erpc_[a-z_]+' | sort -u
 
 - `indexer_cursors` advance across ≥3 ticks (vault_flows + both swap-fee streams).
 - Agent logs: no window-shrink events; revenue rows still ingest.
-- Rollback drill once (restore var, restart, cursors still advance) — stopwatch it: **≤5 min** (SC-007).
+- Rollback drill once (restore var, restart, cursors still advance) — stopwatch it: **≤5 min** (SC-007). *Ran 2026-08-04: env restore + restart cycle well under 60s (readyz poll raced the queued restart, so the exact figure is coarse; the bound holds with wide margin).*
 
 ## Stage 2 — agent request path (agent env: 3 RPC vars)
 
