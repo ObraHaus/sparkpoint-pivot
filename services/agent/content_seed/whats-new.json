@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "try-again-appears-on-failed-answers",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "“Try again” now appears when an answer fails",
+      "body": "When Sparky can't complete an answer you get a card saying something went wrong and that nothing was signed or changed. That part was right — but on the most common kind of failure the card asked you to try again without giving you a button to do it.\n\nThere are two ways a message can fail. If the request never reaches us, you had a Try again button. If it reaches us and the model doesn't answer — which is what usually happens, and is a fault at the model provider rather than in your wallet or your funds — the button was missing.\n\nIt's there now, in both cases, and it resends exactly what you typed. Nothing about your funds is ever involved in a failed answer.",
+      "cta_label": "Open chat",
+      "cta_href": "/chat",
+      "published_at": "2026-08-04T08:13:53Z",
+      "active": true
+    },
+    {
       "slug": "chain-reads-ride-a-resilient-proxy",
       "type": "changelog",
       "tag": "Improved",

@@ -68,6 +68,7 @@ import {
   rememberConversation,
 } from "@/lib/chat/lastConversation";
 import { AgentApiError } from "@/lib/agent/client";
+import { turnCanRetry } from "@/lib/agent/chatError";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
 import { derivePortfolio } from "@/lib/portfolio/derive";
@@ -98,8 +99,15 @@ type Turn =
       error?: string;
       /** §1.6 code — lets the renderer recognise an internal envelope (029). */
       errorCode?: string;
-      /** The message that failed, so "Try again" can resend it verbatim. */
-      failedMessage?: string;
+      /**
+       * The message this turn was sent with, so "Try again" can resend it verbatim.
+       *
+       * 041b — ALWAYS set, where it used to be written only when the request threw. A turn that
+       * reached the model and got a 502 back streams an `error` BLOCK on a 200 response, so there
+       * was no failed message to offer and the button never rendered — on the failure that
+       * actually happens. Whether it may be offered is `turnCanRetry`, not whether this is set.
+       */
+      message: string;
     };
 
 /** 041 — a message the queue is holding, tied to the turn already rendered for it. */
@@ -581,7 +589,7 @@ export default function ChatPage() {
       const current = () => epochRef.current === epoch;
       const controller = new AbortController();
       abortRef.current = controller;
-      setTurns((t) => [...t, { id: turnId, kind: "live", cards: [], streaming: true }]);
+      setTurns((t) => [...t, { id: turnId, kind: "live", cards: [], streaming: true, message: text }]);
       const patch = (fn: (turn: Extract<Turn, { kind: "live" }>) => Extract<Turn, { kind: "live" }>) =>
         setTurns((t) => t.map((x) => (x.id === turnId && x.kind === "live" ? fn(x) : x)));
       try {
@@ -638,7 +646,7 @@ export default function ChatPage() {
         // 029: keep the CODE and the original message. The renderer replaces internal envelopes
         // with honest copy, and "Try again" resends without the user retyping.
         const errorCode = e instanceof AgentApiError ? e.code : undefined;
-        patch((x) => ({ ...x, streaming: false, error: message, errorCode, failedMessage: text }));
+        patch((x) => ({ ...x, streaming: false, error: message, errorCode }));
         return false;
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
@@ -753,19 +761,28 @@ export default function ChatPage() {
         // through the SAME fail-closed validator and the SAME renderer as the live stream, so a
         // reopened conversation shows real cards instead of "[proposed action: aerodrome_swap]".
         // A turn without blocks — every pre-025 row — still replays as its text summary.
-        const replayed: Turn[] = replayTurns(c.turns).map((t) =>
-          t.kind === "user"
-            ? { id: nextId(), kind: "user" as const, text: t.text }
-            : t.kind === "cards"
-              ? {
-                  id: nextId(),
-                  kind: "live" as const,
-                  // Streaming is over: a replayed turn is complete by definition.
-                  cards: t.cards.map((b) => parseCardValue(b)),
-                  streaming: false,
-                }
-              : { id: nextId(), kind: "ai" as const, text: t.text },
-        );
+        // 041b — an assistant turn carries the question it answered, so a retry offered on a
+        // reopened thread would resend the right message. In practice a replayed turn never
+        // carries an error block (a turn that errors writes no assistant row at all), so the
+        // button will not appear here — but the field must be true rather than empty.
+        let lastAsked = "";
+        const replayed: Turn[] = replayTurns(c.turns).map((t) => {
+          if (t.kind === "user") {
+            lastAsked = t.text;
+            return { id: nextId(), kind: "user" as const, text: t.text };
+          }
+          if (t.kind === "cards") {
+            return {
+              id: nextId(),
+              kind: "live" as const,
+              // Streaming is over: a replayed turn is complete by definition.
+              cards: t.cards.map((b) => parseCardValue(b)),
+              streaming: false,
+              message: lastAsked,
+            };
+          }
+          return { id: nextId(), kind: "ai" as const, text: t.text };
+        });
         setTurns(replayed);
         // 039 — a saved conversation is not a new one. It used to reset to the starters, so a
         // thread that had spent ten turns on fees reopened offering "What's in my wallet?".
@@ -1066,7 +1083,20 @@ export default function ChatPage() {
                       streaming={turn.streaming}
                       error={turn.error}
                       errorCode={turn.errorCode}
-                      onRetry={turn.failedMessage ? () => void send(turn.failedMessage!) : undefined}
+                      // 041b — offered on BOTH failures now: a request that threw, and a turn
+                      // that reached the model and streamed an error block back. The second is the
+                      // common one (a 502 from the gateway), and it was the one with no button.
+                      onRetry={
+                        turnCanRetry({
+                          streaming: turn.streaming,
+                          error: turn.error,
+                          blockTypes: turn.cards.flatMap((c) =>
+                            c.status === "valid" ? [c.block.type] : [],
+                          ),
+                        })
+                          ? () => send(turn.message)
+                          : undefined
+                      }
                       onReview={pushInline}
                       onSign={pushSign}
                       onCite={openCite}
