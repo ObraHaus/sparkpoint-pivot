@@ -125,3 +125,27 @@ block writes the user's question but no assistant row (`_ConversationSink.record
 the summary is empty and no block is persistable). Across all conversations that is 315 user turns
 against 265 assistant turns — 50 turns that errored. Not introduced here and not corruption, but it
 is why an early run's transcript looked interleaved when it was not.
+
+## 041b — the retry button (live-verified 5/5)
+
+Chasing that finding to its cause produced a second, smaller fix. See the spec addendum for the
+requirements; the implementation is one pure rule and one prop.
+
+`turnCanRetry` lives in `lib/agent/chatError.ts`, beside the rule about what a failed turn is
+allowed to SAY, and takes a **structural** input (`{streaming, error?, blockTypes}`) rather than the
+card type — naming `ChatCard` would pull `@sparkpoint/shared/schemas` in and the module would stop
+being loadable by `node --test`. The live turn now always carries `message`; the replay path threads
+the question each assistant turn answered.
+
+⚠️ **The deploy landed during an outage in another workstream.** The 042 eRPC proxy was returning
+504/hanging, and with chain reads failing the `/verify` gate settled on "wrong network" and would
+not admit anyone. The app's own diagnostics recorded it:
+
+```
+08:07:47  off-network     wagmi_chain=NULL   wallet_chain=NULL   status=connected
+08:07:28  signin-attempt  wagmi_chain=84532  wallet_chain=84532  mismatch=False
+```
+
+A wallet genuinely on 84532 alternating with a null read. Worth remembering as a shape: **a chain
+probe that times out is indistinguishable from a wrong chain unless the gate is written to tell
+them apart** — the same "absence is not failure" lesson as 035's phantom "Base RPC — Down".

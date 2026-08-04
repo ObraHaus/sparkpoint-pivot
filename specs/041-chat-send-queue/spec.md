@@ -228,6 +228,67 @@ visible, marked unsent, and can be sent.
 - **A failure stops the queue.** A failure here almost always means the assistant is unreachable,
   and draining more messages into it produces more identical error cards and more doomed requests.
 
+---
+
+## Addendum — 041b: the retry button was on the wrong failure
+
+Found while answering the client's follow-up (*"are we displaying an error message?"*). We were —
+honestly, and saying plainly that nothing was signed or changed. But the **"Try again" button was
+absent on the failure that actually happens**, so the card asked for something it did not offer.
+
+A turn fails in two ways and only one was wired:
+
+| | What the client sees | Button before 041b |
+|---|---|---|
+| The **request** fails (no stream, HTTP error) | error card | ✅ present |
+| The turn **runs** and the model doesn't answer | the same error card | ❌ absent |
+
+The second is the common one. The agent logs name it exactly:
+
+```
+llm_rate_limited    status=502 attempt=1/3 retry_after=None backoff=0.23s
+llm_rate_limited    status=502 attempt=2/3 retry_after=None backoff=0.14s
+llm_retry_exhausted status=502 attempts=3   retry_after=None elapsed=1.28s
+```
+
+An HTTP 502 from the LiteLLM → OpenRouter hop. **48 of 271 turns in the last 7 days (17.7%)**
+produced no answer.
+
+### Requirements
+
+- **FR-017**: A finished turn MUST offer to resend its message when it carries a transport error
+  **or** an `error` block.
+- **FR-018**: A turn still streaming MUST NOT offer a retry — there may yet be an answer, and a
+  retry mid-turn invites a second message about a question still being answered.
+- **FR-019**: An **inert** card MUST NOT count as a failure. It renders its own deliberately
+  non-actionable notice, and the rest of the turn may be a good answer nobody should be invited to
+  re-ask.
+- **FR-020**: A retry MUST resend the original message verbatim.
+
+### Success criteria — **live-verified 5/5 on alpha**
+
+- **SC-010**: A turn ending in an `error` block shows the error card. ✅
+- **SC-011**: The card still states that nothing was signed or changed. ✅
+- **SC-012**: That card offers "Try again". ✅
+- **SC-013**: Pressing it resends the same message, verbatim, as a real request. ✅
+- **SC-014**: The resent message appears as a new turn. ✅
+
+Forced rather than waited for: the harness fulfils the first `/chat` call with the exact SSE the
+agent emits on a 502 (`tool_step` → `error` → `done`), then **unroutes itself**, so the retry is a
+genuine live request. One turn in six is not a schedule you can test against.
+
+⚠️ Two harness corrections, both mine: the retry was counted inside the route handler that had just
+removed itself (so the one request under test was invisible), and the run began in a **restored**
+conversation that already contained the question, so a replayed bubble was counted as a new turn.
+
+### Known, not fixed
+
+The retry policy is documented as *"3 attempts / ~60s total"*, but the attempt cap fires first —
+`base_delay_s=0.5` with full jitter spends all three attempts in **under two seconds**, so the 60s
+budget is unreachable and a five-second gateway blip fails every time.
+
+---
+
 ## Out of scope
 
 - Coordinating sends across browser tabs or devices.
