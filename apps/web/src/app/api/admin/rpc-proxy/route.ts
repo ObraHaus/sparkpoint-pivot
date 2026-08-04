@@ -17,13 +17,28 @@
 
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
-import { parseRpcProxyMetrics, type RpcProxySnapshot } from "@/lib/admin/rpcProxyTiles";
+import { parseRpcProxyMetrics, type RpcProxySnapshot, type ScrapeFailure } from "@/lib/admin/rpcProxyTiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SCRAPE_TIMEOUT_MS = 2_000;
+// 4s: the metrics exposition is a few hundred KB and this VPS runs everything at once —
+// 2s tripped under load. Still far under the panel's 15s poll.
+const SCRAPE_TIMEOUT_MS = 4_000;
 const CACHE_MS = 5_000;
+
+/** Classify a scrape failure WITHOUT leaking raw error text (hosts, paths) to the client. */
+function classify(e: unknown): ScrapeFailure {
+  if (e instanceof Error) {
+    if (e.name === "TimeoutError" || e.name === "AbortError") return "timeout";
+    const cause = (e as { cause?: { code?: string } }).cause;
+    if (cause?.code === "ENOTFOUND" || cause?.code === "EAI_AGAIN") return "dns";
+    if (cause?.code === "ECONNREFUSED" || cause?.code === "ECONNRESET") return "refused";
+    const m = /^metrics scrape: HTTP (\d{3})$/.exec(e.message);
+    if (m) return `http_${Number(m[1])}` as ScrapeFailure;
+  }
+  return "fetch_failed";
+}
 
 /** Module-level share: last snapshot + when it was taken (per server process — that's the point). */
 let last: { atMs: number; body: RpcProxySnapshot } | null = null;
@@ -60,9 +75,13 @@ export async function GET(): Promise<Response> {
     });
     if (!res.ok) throw new Error(`metrics scrape: HTTP ${res.status}`);
     const text = await res.text();
-    body = { reachable: true, configured: true, scrapedAt, ...parseRpcProxyMetrics(text) };
-  } catch {
-    body = { reachable: false, configured: true, scrapedAt };
+    try {
+      body = { reachable: true, configured: true, scrapedAt, ...parseRpcProxyMetrics(text) };
+    } catch {
+      body = { reachable: false, configured: true, scrapedAt, reason: "parse" };
+    }
+  } catch (e) {
+    body = { reachable: false, configured: true, scrapedAt, reason: classify(e) };
   }
 
   last = { atMs: now, body };

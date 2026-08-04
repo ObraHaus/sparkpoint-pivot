@@ -55,6 +55,9 @@ export interface UpstreamStat {
   p95Ms?: number;
 }
 
+/** Why a scrape failed — the observer must be observable too, or "Unreachable" is a dead end. */
+export type ScrapeFailure = "timeout" | "dns" | "refused" | `http_${number}` | "fetch_failed" | "parse";
+
 export interface RpcProxySnapshot {
   /** false ⇒ the scrape failed (or isn't configured); the panel says so, nothing else breaks. */
   reachable: boolean;
@@ -62,6 +65,8 @@ export interface RpcProxySnapshot {
   configured: boolean;
   /** ISO-8601, stamped by the route from the server clock in UTC. */
   scrapedAt: string;
+  /** Present ONLY when reachable=false && configured: the classified failure, never raw details. */
+  reason?: ScrapeFailure;
   upstreams?: UpstreamStat[];
   cache?: { hitRatePct?: number; savedCalls?: number };
   corsBlocked?: number;
@@ -246,7 +251,12 @@ export function rpcProxyTilesFrom(
     ? { label: "RPC proxy", tone: "info", value: "not configured" }
     : snap.reachable
       ? { label: "RPC proxy", tone: "ok", value: "Up" }
-      : { label: "RPC proxy", tone: "amber", value: "Unreachable" };
+      : {
+          label: "RPC proxy",
+          tone: "amber",
+          // "Unreachable" alone is a dead end during an incident — name the failure class.
+          value: snap.reason ? `Unreachable (${snap.reason})` : "Unreachable",
+        };
 
   /** A numeric fact: shown when reported, "not reported" when the series is absent (rule 1). */
   const fact = (label: string, v: number | undefined, render: (n: number) => string): Tile =>

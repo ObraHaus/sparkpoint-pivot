@@ -144,3 +144,9 @@ test("malformed lines and NaN values are skipped, never clamped into fake zeros"
   );
   assert.equal(parsed.upstreams?.[0].requests, 7);
 });
+
+test("an unreachable snapshot carries its failure class into the tile", () => {
+  const tiles = rpcProxyTilesFrom("ok", snapshot({ reachable: false, reason: "dns" }));
+  assert.equal(tile(tiles, "RPC proxy").tone, "amber");
+  assert.equal(tile(tiles, "RPC proxy").value, "Unreachable (dns)");
+});
