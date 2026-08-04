@@ -25,6 +25,12 @@ import { ThinkingTurn, type ThinkStep } from "@/components/screens/chat/thinking
 import { InlineConfirm, type InlineIntent } from "@/components/screens/chat/inline-confirm";
 import { LiveBlocks } from "@/components/screens/chat/live-blocks";
 import {
+  groupConversations,
+  olderLabel,
+  rowTimestamp,
+  type HistoryRow,
+} from "@/lib/chat/historyGroups";
+import {
   ERROR_FOLLOW_UPS,
   STARTER_CHIPS,
   followUps,
@@ -177,7 +183,14 @@ export default function ChatPage() {
   // First load shows the same starter suggestions as "New chat" (EMPTY_CHIPS).
   const [chips, setChips] = useState<string[]>(EMPTY_CHIPS);
   // Persisted per-wallet chat history (B1): the user's real saved threads.
-  const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
+  // 040 — the API has always sent `updatedAt`, `createdAt` and `turnCount`; this narrowed them away
+  // to `{id, title}`, which is why the sidebar had nothing to say about when anything happened.
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date(0));
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
@@ -439,23 +452,71 @@ export default function ChatPage() {
 
   // ----- live send: stream ChatBlocks from POST /chat, rendered fail-closed -----
   // ----- persisted per-wallet history (B1) -----
-  const refreshHistory = useCallback(async () => {
-    if (!agentClient) return;
-    try {
-      const r = await agentClient.request<{ conversations: { id: string; title: string }[] }>(
-        "/conversations",
-      );
-      setHistory(r.conversations ?? []);
-    } catch {
-      /* history is a nicety — never block the chat on it */
-    }
-  }, [agentClient]);
+  const HISTORY_PAGE = 50;
+
+  /**
+   * 040 — one page of history, optionally searched.
+   *
+   * `append` adds a page rather than replacing the list, so "Show older" grows the sidebar instead
+   * of redrawing it under the reader. The total comes back with every page, so the control can name
+   * the exact number remaining rather than saying "Show more" and leaving the question open.
+   */
+  const loadHistory = useCallback(
+    async ({ append = false, q = "" }: { append?: boolean; q?: string } = {}) => {
+      if (!agentClient) return;
+      setHistoryBusy(true);
+      setHistoryError(null);
+      try {
+        const offset = append ? history.length : 0;
+        const params = new URLSearchParams({ limit: String(HISTORY_PAGE), offset: String(offset) });
+        if (q.trim()) params.set("q", q.trim());
+        const r = await agentClient.request<{ conversations: HistoryRow[]; total?: number }>(
+          `/conversations?${params.toString()}`,
+        );
+        const rows = r.conversations ?? [];
+        setHistory((prev) => (append ? [...prev, ...rows] : rows));
+        setHistoryTotal(r.total ?? rows.length);
+      } catch {
+        // A failure here must never take the sidebar with it: what is already loaded stays, and the
+        // failure is stated rather than looking like an empty history.
+        setHistoryError(append ? "Couldn't load older conversations." : "Couldn't load your chats.");
+      } finally {
+        setHistoryBusy(false);
+      }
+    },
+    [agentClient, history.length],
+  );
+
+  const refreshHistory = useCallback(
+    () => loadHistory({ q: historyQuery }),
+    [loadHistory, historyQuery],
+  );
 
   useEffect(() => {
     // Load the wallet's chat history when the live agent becomes available.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (online) void refreshHistory();
   }, [online, refreshHistory]);
+
+  useEffect(() => {
+    // The clock the grouping is computed against. Read once on mount and again every ten minutes,
+    // so a sidebar left open across midnight corrects itself rather than insisting it is still
+    // yesterday. Never read in render — that would make the component impure.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 600_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    // One request per pause in typing, not one per keystroke (FR-017).
+    if (!online) return;
+    const id = setTimeout(() => void loadHistory({ q: historyQuery }), 300);
+    return () => clearTimeout(id);
+    // `loadHistory` is deliberately omitted: it changes whenever the loaded length changes, which
+    // would re-fire the search on its own results.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyQuery, online]);
 
 
   const sendLive = useCallback(
@@ -642,46 +703,106 @@ export default function ChatPage() {
             Your chats
           </div>
         )}
-        {history.map((h) => (
-          // 039 — a saved conversation was a clickable <div>: no role, no tabIndex, no key
-          // handler, so it could not be opened from a keyboard at all. NOT converted to a
-          // <button>, because it contains the delete button and a button cannot nest inside one —
-          // the correct shape for a row with its own action is role + tabIndex + a key handler.
-          <div
-            key={h.id}
-            className={"threaditem" + (h.id === activeConvId ? " active" : "")}
-            role="button"
-            tabIndex={0}
-            aria-current={h.id === activeConvId ? "true" : undefined}
-            onClick={() => openConversation(h.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                void openConversation(h.id);
-              }
-            }}
-            style={{ display: "flex", alignItems: "center", gap: 6 }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="tt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {h.title}
-              </div>
-            </div>
-            <button
-              title="Delete conversation"
-              onClick={(e) => {
-                e.stopPropagation();
-                void deleteConversation(h.id);
-              }}
+        {history.length > 0 && (
+          <div style={{ padding: "2px 10px 8px" }}>
+            <input
+              value={historyQuery}
+              onChange={(e) => setHistoryQuery(e.target.value)}
+              placeholder="Search your chats…"
+              aria-label="Search your chats"
               style={{
-                background: "transparent", border: "none", cursor: "pointer",
-                color: "var(--muted-foreground)", padding: 2, flex: "none",
+                width: "100%", padding: "6px 9px", fontSize: 12.5, borderRadius: 7,
+                border: "1px solid var(--border-soft)", background: "var(--background)",
+                color: "var(--foreground)",
+              }}
+            />
+          </div>
+        )}
+
+        {groupConversations(history, now).map((group) => (
+          <div key={group.key}>
+            {/* Sticky, so the group you are scrolling through stays named at the top of the list. */}
+            <div
+              style={{
+                position: "sticky", top: 0, zIndex: 1, background: "var(--surface, var(--background))",
+                padding: "8px 10px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".05em",
+                textTransform: "uppercase", color: "var(--muted-foreground)",
               }}
             >
-              <Icon name="x" size={13} />
-            </button>
+              {group.label}{" "}
+              <span style={{ fontWeight: 500, opacity: 0.65 }}>· {group.count}</span>
+            </div>
+            {group.rows.map((h) => (
+              // 039 — role + tabIndex + key handler rather than a <button>, because the row contains
+              // its own delete button and a button cannot nest inside one.
+              <div
+                key={h.id}
+                className={"threaditem" + (h.id === activeConvId ? " active" : "")}
+                role="button"
+                tabIndex={0}
+                aria-current={h.id === activeConvId ? "true" : undefined}
+                onClick={() => openConversation(h.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    void openConversation(h.id);
+                  }
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {h.title}
+                  </div>
+                </div>
+                {/* 040 — what tells five threads called "Explain the performance fee" apart. The
+                    titles are honest; the time is the thing that actually differs. */}
+                <span style={{ fontSize: 10.5, opacity: 0.55, whiteSpace: "nowrap" }}>
+                  {rowTimestamp(h, now)}
+                </span>
+                <button
+                  title="Delete conversation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteConversation(h.id);
+                  }}
+                  style={{ background: "none", border: 0, cursor: "pointer", color: "inherit", opacity: 0.45, padding: 2 }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         ))}
+
+        {historyQuery.trim() && history.length === 0 && !historyBusy && (
+          <div style={{ padding: "10px 12px", fontSize: 12.5, color: "var(--muted-foreground)" }}>
+            No chats match “{historyQuery.trim()}”.
+          </div>
+        )}
+
+        {historyError && (
+          <div style={{ padding: "8px 12px", fontSize: 12.5, color: "var(--danger, #c1402e)" }}>
+            {historyError}
+          </div>
+        )}
+
+        {/* Its ABSENCE is a statement: it means this is all of them. So it renders only while more
+            exist, and it always names the exact number remaining. */}
+        {olderLabel(history.length, historyTotal) && (
+          <button
+            onClick={() => void loadHistory({ append: true, q: historyQuery })}
+            disabled={historyBusy}
+            style={{
+              display: "block", width: "calc(100% - 20px)", margin: "6px 10px 2px",
+              padding: "7px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              borderRadius: 7, border: "1px solid var(--border-soft)", background: "none",
+              color: "var(--primary)",
+            }}
+          >
+            {historyBusy ? "Loading…" : olderLabel(history.length, historyTotal)}
+          </button>
+        )}
       </aside>
 
       <div className="chatcol">

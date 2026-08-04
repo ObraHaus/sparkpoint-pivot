@@ -31,9 +31,25 @@ async def list_conversations(
     account: Annotated[AccountContext, Depends(get_account)],
     store: Annotated[ConversationStore, Depends(get_conversation_store)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    q: Annotated[str, Query(max_length=80)] = "",
 ) -> dict[str, Any]:
-    """The session wallet's conversations, most-recent first (history nav)."""
-    return {"conversations": await store.list_conversations(account.owner, limit=limit)}
+    """The session wallet's conversations, most-recent activity first (history nav).
+
+    040 — now pageable and searchable, because the sidebar groups by time and a grouped list that
+    silently stops at a page limit reads as a claim that nothing older exists. `total` is what lets
+    the client say "Show 60 older conversations" rather than the vague "Show more": the honest
+    number is the point of the control.
+
+    `q` matches the TITLE only, inside the same per-wallet ownership scope as the list itself.
+    """
+    query = q.strip() or None
+    return {
+        "conversations": await store.list_conversations(
+            account.owner, limit=limit, offset=offset, query=query
+        ),
+        "total": await store.count_conversations(account.owner, query=query),
+    }
 
 
 @router.get("/conversations/{conversation_id}")
