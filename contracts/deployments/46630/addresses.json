@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "Robinhood Chain testnet (46630) deployment record.",
+    "",
+    "This chain carries NO SparkPoint vault and NO Aave/Morpho deployment of any kind — the vault",
+    "path here is fail-closed by design (constitution v3.0.0 D3, packages/shared/src/chains:",
+    "offersVault=false). Nothing in this file is a deposit target or a policy target.",
+    "",
+    "What lives here is the testnet SRK utility token and its faucet, deployed so that the Sparky",
+    "Broker activation flow can be rehearsed on a single chain: the broker NFT lives on Robinhood",
+    "Chain, so the SRK it retires has to live here too or activation can never be atomic.",
+    "",
+    "`SRK` here is a SEPARATE deployment from the Base Sepolia SRK at 0x2dF9…eD52. Same contract,",
+    "same fixed supply, different chain — the two balances are unrelated and must never be added up.",
+    "Neither is the CoinMarketCap-listed mainnet SparkPoint token."
+  ],
+  "SRK": "0x4538B536b1da5940deC8e15048Ce07a053699B04",
+  "SrkFaucet": "0x39C38c86611FF3679802D5341E830c83DB7F4537"
+}

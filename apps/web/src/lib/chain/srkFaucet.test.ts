@@ -5,6 +5,8 @@ import {
   deriveSrkFaucetState,
   faucetErrorCopy,
   formatCountdown,
+  pickSrkFaucetChain,
+  type SrkFaucetChain,
   wholeSrk,
 } from "./srkFaucet.ts";
 
@@ -48,7 +50,9 @@ test("reads not back yet ⇒ NOT loaded and NOT claimable (no fabricated verdict
 });
 
 test("wallet not connected / wrong chain ⇒ blocked with the actionable reason", () => {
-  const s = deriveSrkFaucetState({ ...base, walletReady: false });
+  // The chain is passed IN. It used to be the literal "Base Sepolia" baked into the helper, which
+  // became wrong the moment 043 phase 1 put a second SRK faucet on Robinhood testnet.
+  const s = deriveSrkFaucetState({ ...base, walletReady: false, chainName: "Base Sepolia" });
   assert.equal(s.canClaim, false);
   assert.match(s.blockedReason ?? "", /Connect your wallet on Base Sepolia/);
 });
@@ -123,4 +127,60 @@ test("faucetErrorCopy turns the contract's custom errors into tester-readable co
   const long = "x".repeat(300);
   assert.equal(faucetErrorCopy(long).length, 158);
   assert.equal(faucetErrorCopy("User rejected the request."), "User rejected the request.");
+});
+
+// ── 043 phase 1: SRK exists on two chains, so the card has to choose one ──────────────────────
+const BASE_SEPOLIA: SrkFaucetChain = {
+  chainId: 84532,
+  name: "Base Sepolia",
+  srk: "0x2dF90304126560F01Dd6EafB508B69c033dFeD52",
+  faucet: "0x93766a1C6c2076F658710770549af34Ac46dB2a9",
+};
+const ROBINHOOD: SrkFaucetChain = {
+  chainId: 46630,
+  name: "Robinhood Testnet",
+  srk: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
+  faucet: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
+};
+const CHAINS = [BASE_SEPOLIA, ROBINHOOD];
+
+test("the card follows the connected wallet when that chain has a faucet", () => {
+  // A tester who switched to Robinhood to activate a broker must not be sent back to Base Sepolia.
+  assert.equal(pickSrkFaucetChain(CHAINS, 46630)?.chainId, 46630);
+  assert.equal(pickSrkFaucetChain(CHAINS, 84532)?.chainId, 84532);
+});
+
+test("an unknown / disconnected wallet falls back to the first configured chain, never blank", () => {
+  assert.equal(pickSrkFaucetChain(CHAINS, undefined)?.chainId, 84532);
+  assert.equal(pickSrkFaucetChain(CHAINS, 8453)?.chainId, 84532);
+});
+
+test("a chain without a faucet is never picked, even when the wallet is on it", () => {
+  const noFaucet: SrkFaucetChain = { chainId: 46630, name: "Robinhood Testnet" };
+  assert.equal(pickSrkFaucetChain([BASE_SEPOLIA, noFaucet], 46630)?.chainId, 84532);
+  assert.equal(pickSrkFaucetChain([noFaucet], 46630), undefined);
+  assert.equal(pickSrkFaucetChain([], 84532), undefined);
+});
+
+test("the two SRKs are different tokens — the picker never blends them", () => {
+  const a = pickSrkFaucetChain(CHAINS, 84532);
+  const b = pickSrkFaucetChain(CHAINS, 46630);
+  assert.notEqual(a?.srk, b?.srk);
+  assert.notEqual(a?.faucet, b?.faucet);
+});
+
+test("the wrong-network prompt names the chain being shown, not a hardcoded one", () => {
+  const off = { ...base, walletReady: false, nowSeconds: NOW };
+  assert.match(
+    deriveSrkFaucetState({ ...off, chainName: "Robinhood Testnet" }).blockedReason ?? "",
+    /Robinhood Testnet/,
+  );
+  assert.match(
+    deriveSrkFaucetState({ ...off, chainName: "Base Sepolia" }).blockedReason ?? "",
+    /Base Sepolia/,
+  );
+  // No chain name ⇒ stay generic rather than naming the wrong network.
+  const generic = deriveSrkFaucetState(off).blockedReason ?? "";
+  assert.doesNotMatch(generic, /Base Sepolia|Robinhood/);
+  assert.match(generic, /Connect your wallet/);
 });

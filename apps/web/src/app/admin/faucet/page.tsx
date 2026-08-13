@@ -13,16 +13,28 @@
  * The faucet holds only its own pre-transferred float and has zero authority over user funds.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatUnits, parseUnits, type Address, type Hex } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
 import { srkFaucetAbi } from "@sparkpoint/shared/abis";
 import { explorerTxUrl } from "@/lib/chain/explorer";
-import { faucetErrorCopy, formatCountdown, wholeSrk } from "@/lib/chain/srkFaucet";
+import {
+  faucetErrorCopy,
+  formatCountdown,
+  pickSrkFaucetChain,
+  type SrkFaucetChain,
+  wholeSrk,
+} from "@/lib/chain/srkFaucet";
 import { Icon } from "@/lib/icons";
 
-const SRK_CHAIN = 84532;
+/**
+ * Every chain carrying a faucet — mirrors `SrkFaucetCard`. 043 phase 1 added Robinhood testnet, and
+ * a faucet with no admin surface is a faucet nobody can pause or top up, so this page follows.
+ */
+type SrkChainId = typeof CHAIN_IDS.baseSepolia | typeof CHAIN_IDS.robinhoodTestnet;
+const SRK_CHAIN_IDS: readonly SrkChainId[] = [CHAIN_IDS.baseSepolia, CHAIN_IDS.robinhoodTestnet];
 
 type Setter = "claimAmount" | "cooldown";
 
@@ -34,10 +46,27 @@ function shortErr(e: unknown): string {
 export default function Page() {
   const { address, isConnected, chainId: walletChain } = useAccount();
   const owner = address as Address | undefined;
-  const faucet = getAddresses(SRK_CHAIN).srkFaucet as Address | undefined;
-  const onChain = isConnected && walletChain === SRK_CHAIN;
+  // The literal `chainId` type is carried through (the picker is generic) because wagmi's hooks
+  // accept only the chain ids the app is configured with, not a bare `number`.
+  const chains: readonly (SrkFaucetChain & { chainId: SrkChainId })[] = useMemo(
+    () =>
+      SRK_CHAIN_IDS.map((id) => ({
+        chainId: id,
+        name: chainName(id),
+        srk: getAddresses(id).srk,
+        faucet: getAddresses(id).srkFaucet,
+      })),
+    [],
+  );
+  // Follows the connected wallet by default; an explicit pick lets an admin READ the other chain's
+  // parameters without switching networks (the write still requires being on that chain).
+  const [picked, setPicked] = useState<SrkChainId>();
+  const active = pickSrkFaucetChain(chains, picked ?? walletChain);
+  const chainId = active?.chainId;
+  const faucet = active?.faucet as Address | undefined;
+  const onChain = isConnected && chainId !== undefined && walletChain === chainId;
 
-  const publicClient = usePublicClient({ chainId: SRK_CHAIN });
+  const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
 
   const [amountInput, setAmountInput] = useState("");
@@ -45,7 +74,7 @@ export default function Page() {
   const [busy, setBusy] = useState<Setter | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string; tx?: Hex } | null>(null);
 
-  const read = { address: faucet, abi: srkFaucetAbi, chainId: SRK_CHAIN } as const;
+  const read = { address: faucet, abi: srkFaucetAbi, chainId } as const;
   const on = { query: { enabled: !!faucet } } as const;
 
   const claimAmount = useReadContract({ ...read, functionName: "claimAmount", ...on });
@@ -80,7 +109,7 @@ export default function Page() {
         abi: srkFaucetAbi,
         functionName: which === "claimAmount" ? "setClaimAmount" : "setCooldown",
         args,
-        chainId: SRK_CHAIN,
+        chainId,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
       if (receipt.status === "reverted") {
@@ -121,7 +150,7 @@ export default function Page() {
     void send("cooldown", [seconds]);
   };
 
-  const txUrl = msg?.tx ? explorerTxUrl(SRK_CHAIN, msg.tx) : undefined;
+  const txUrl = msg?.tx ? explorerTxUrl(chainId, msg.tx) : undefined;
   const val = (v: bigint | undefined, fmt: (b: bigint) => string) => (v === undefined ? "…" : fmt(v));
 
   return (
@@ -132,8 +161,42 @@ export default function Page() {
           <div className="sub">
             The testnet SRK dispenser behind the Premium page. Parameters live on-chain — the agent is
             keyless and cannot change them, so YOUR connected wallet signs these edits.
+            {chains.filter((c) => c.faucet).length > 1 && (
+              <>
+                {" "}
+                Each network has its own faucet and its own SRK; you are looking at{" "}
+                <b>{active?.name}</b>.
+              </>
+            )}
           </div>
         </div>
+        {chains.filter((c) => c.faucet).length > 1 && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {chains
+              .filter((c) => c.faucet)
+              .map((c) => (
+                <button
+                  key={c.chainId}
+                  type="button"
+                  className="btn btn-sm"
+                  aria-pressed={c.chainId === chainId}
+                  onClick={() => {
+                    setPicked(c.chainId);
+                    setMsg(null);
+                    setAmountInput("");
+                    setCooldownInput("");
+                  }}
+                  style={{
+                    background: c.chainId === chainId ? "var(--surface-2)" : "transparent",
+                    color:
+                      c.chainId === chainId ? "var(--foreground)" : "var(--muted-foreground)",
+                  }}
+                >
+                  {c.name}
+                </button>
+              ))}
+          </div>
+        )}
       </div>
 
       {!faucet ? (
