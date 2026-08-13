@@ -40,8 +40,13 @@ makes selling it take Premium away.
   behaves exactly as today. Never a hardcoded address.
 - **T008** — Verify on the live chain per `quickstart.md` §US1, **including step 5** (`SELECT` proves
   no broker-sourced row exists). Steps 1–4 can pass while the bug is still present.
+  ⚠️ **Moved to after T013.** Found while building T002: the gate reads its candidate set from
+  `registry.activationsBy(wallet)`, so a *live* run needs the registry deployed. The plan's claim
+  that "US1 ships on its own" was true of the logic and the guarantee — both are proven by T001/T005
+  against a fake chain holding the real contract state — but not of the live pass. The build order
+  is unchanged and the reason for it stands; only this verification step moves.
 
-**Checkpoint:** US1 is demonstrably true. Nothing below can be trusted before this is.
+**Checkpoint:** US1 is demonstrably true in test. Nothing below can be trusted before this is.
 
 ---
 
@@ -66,17 +71,18 @@ makes selling it take Premium away.
 
 ---
 
-## Phase C — US3: mint *(P3)*
+## Phase C — US3: mint *(P3 — no longer blocked)*
 
-- **T015** — ⚠️ **Decide and write down how the mainnet-SRK holder gate is proven to a contract on
-  Robinhood Chain.** No contract can read another chain. The honest options — a signed allowlist
-  root, an operator-maintained on-chain allowlist, or UI-only gating accepted as advisory — differ in
-  **trust model**, so this is a design decision with a written rationale, not an implementation
-  detail. **Blocks T016.**
-- **T016** — `contracts/src/broker/BrokerSale.sol`. Per-wallet allocation here; the 10,000 cap stays
-  on the NFT (two caps eventually disagree). Testnet price/allocation are constructor arguments.
-- **T017** — `contracts/test/broker/BrokerSale.t.sol`: eligibility, allocation, cap-at-the-NFT, and
-  **I8 — a minted broker is never activated**.
+> **T015 is deleted.** It asked how a Robinhood contract could prove a *mainnet* SRK balance — a
+> cross-chain assertion no contract can make, and the feature's hardest unknown. The operator's
+> decision that the mint is **free and open** removes the gate entirely. A price and an allowlist are
+> both additive later without touching anything else.
+
+- **T016** — `contracts/src/broker/BrokerSale.sol`. **Free, open mint.** Owner-settable per-wallet
+  cap; the 10,000 cap stays on the NFT (two caps eventually disagree). `setSaleOpen` to close it.
+  No eligibility check, no payment leg, and therefore **no `payable` function** — nothing to strand.
+- **T017** — `contracts/test/broker/BrokerSale.t.sol`: the per-wallet cap, the NFT's supply cap
+  reached through the sale, sale-closed, and **I8 — a minted broker is never activated**.
 - **T018** — `script/DeployBrokerSale.s.sol`; deploy to 46630; `setMinter(sale)`; record.
 
 ---
@@ -102,6 +108,19 @@ makes selling it take Premium away.
 
 ---
 
+## Phase F — sunset the SRK subscription *(after C and D are live)*
+
+Ordered last on purpose: there must never be a window in which Premium has no path at all. Verified
+against the develop DB — **one** subscriber exists and it is our own test-user wallet `0x32Ed…e8b5`,
+so no real tester loses access.
+
+- **T029** — Retire the `/premium/pay` purchase surface. `resolve_tier` is **not** re-branched: it
+  stays "stored tier OR activated broker", which after this degenerates to "admin grant OR broker".
+- **T030** — Revoke the `srk`-sourced `wallet_tier` rows. ⚠️ **`source` matters** — `admin` and
+  `env-seed` grants live in the same table and MUST keep working.
+- **T031** — Copy pass: the faucet's stated purpose changes from *buying a month* to *activating a
+  broker*. Lead with the trade — the same 10,000 SRK now buys something permanent and sellable.
+
 ## Phase E — ship
 
 - **T025** — Both changelogs: `CHANGELOG.md` **and** `services/agent/content_seed/whats-new.json`.
@@ -122,7 +141,8 @@ makes selling it take Premium away.
 |---|---|---|
 | US1 — Premium dies with the sale | T001–T008 | FR-002 (never stored), FR-003 (short window) |
 | US2 — one-transaction activation | T009–T014 | FR-012 (no partial outcome), FR-013 (no custody) |
-| US3 — mint | T015–T018 | FR-018 (a mint never activates) |
+| US3 — mint | T016–T018 | FR-018 (a mint never activates) |
+| Sunset | T029–T031 | FR-004a (operational, not a code branch) |
 | US4 — the screens | T019–T024 | FR-019 (nothing invented), FR-021 ("retired") |
 
 ## Not in these tasks

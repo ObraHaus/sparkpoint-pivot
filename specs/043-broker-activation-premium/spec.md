@@ -105,18 +105,19 @@ a wallet holding a broker and enough SRK, then read `isActivated` and the dead a
 An eligible wallet mints a broker from the app.
 
 **Why this priority**: Nothing can be activated that was not first minted, so this gates the live
-journey — but it is P3 because the mint's commercial terms are **not decided** (see Assumptions), and
-because three brokers already exist on testnet, so stories 1 and 2 are fully testable without it.
+journey — but it is P3 because three brokers already exist on testnet, so stories 1 and 2 are fully
+testable without it. It is no longer *blocked*: the mint is free and open, which removed the
+cross-chain holder gate that was the feature's hardest unknown.
 
-**Independent Test**: Testable by minting from an eligible wallet and an ineligible one, and
-confirming the supply cap and per-wallet allocation both hold.
+**Independent Test**: Testable by minting until the per-wallet cap is hit, and confirming both that
+cap and the collection's 10,000 cap hold.
 
 **Acceptance Scenarios**:
 
-1. **Given** a wallet passes the eligibility check, **When** it mints, **Then** it receives a broker
-   and the minted count increases by one.
-2. **Given** a wallet does not pass the eligibility check, **When** it attempts to mint, **Then**
-   the transaction reverts and nothing is charged.
+1. **Given** any wallet, **When** it mints, **Then** it receives a broker and the minted count
+   increases by one. There is no eligibility check to fail.
+2. **Given** the sale is closed by the owner, **When** a wallet attempts to mint, **Then** the
+   transaction reverts.
 3. **Given** the collection's 10,000 cap is reached, **When** anyone attempts to mint, **Then** the
    transaction reverts.
 4. **Given** a wallet has already minted its allocation, **When** it attempts to mint again,
@@ -196,11 +197,50 @@ records what was chosen and — where it matters — what would change it.
   enough that a chat turn does not become a burst of chain reads; short enough that "you sold it and
   briefly kept access" is a minute, not a session. The number MUST be a stated constant, not an
   emergent property of some other cache.
-- **Q: Does minting require the SRK holder gate on testnet too?** → Yes. The gate reads **mainnet**
-  SRK regardless of which chain the mint happens on, so it behaves identically on testnet and is
-  testable there. Keeping it on means the eligibility path is exercised rather than assumed.
+- ~~**Q: Does minting require the SRK holder gate on testnet too?** → Yes.~~ **SUPERSEDED by Session
+  2026-08-13b** — the mint is free and open, with no holder gate at all. Left visible rather than
+  deleted because the reasoning that replaced it matters: the gate was a cross-chain assertion no
+  contract can make, and dropping it was cheaper and more honest than approximating it.
 - **Q: Can a broker be re-activated after a transfer clears it?** → Yes, and it costs SRK again. That
   is the product rule, not an edge case. No surface may describe activation as permanent.
+
+### Session 2026-08-13b — operator answers, and what they changed
+
+These supersede the corresponding entries above where they conflict.
+
+- **Q: What does the mint require?** → **Nothing. Free, open mint on testnet**, with a per-wallet cap
+  as the only limit. The ≥1,000,000 mainnet-SRK holder gate is **dropped**. This deletes the feature's
+  hardest open problem: that gate was a *cross-chain* assertion (mainnet balance, Robinhood contract)
+  that no contract can make, and it was the only thing blocking the mint work. A price and an
+  allowlist are both additive later.
+- **Q: Where do the price and per-wallet cap live — our contract or a launchpad?** → **Our contract.**
+  Researched at the operator's request: `anvil.clutch.market` is a permissionless NFT **liquidity**
+  protocol (sell NFTs into an AMM vault, borrow/stake against them), not a launchpad — its docs state
+  it never calls `mint()` and that minting, allowlists and supply are external concerns. It is a
+  useful **post-mint** venue and composes fine with a standard ERC-721. A true launchpad would mean
+  granting a third party the `minter` role over all 10,000, which is the one role this collection
+  deliberately keeps fail-closed.
+- **Q: What does activation cost on testnet?** → **10,000 SRK**, superseding the 1,000 chosen above.
+  That earlier choice existed to avoid confusion with the 10,000-SRK monthly Premium — and with the
+  subscription being sunset (below) there is nothing left to confuse it with. The parity becomes the
+  product story: the same 10,000 SRK that bought one month now buys something permanent and sellable.
+- **Q: What happens to the existing SRK Premium subscription?** → **It is sunset in favour of the
+  broker.** Verified against the develop database: there is **exactly one** subscriber and it is our
+  own test-user wallet `0x32Ed…e8b5` (1 payment, 1 subscription). No real tester loses access.
+  ⚠️ **The sunset is an operational step, not a code branch** — see FR-004a. And it happens **after**
+  mint and activation are live, so there is never a window in which Premium has no path at all.
+- **Q: Mainnet SRK?** → A **new** SRK contract, not the one deployed on Ethereum today; canonical-on-
+  Robinhood vs Ethereum-plus-bridge is still undecided. Mainnet stays out of scope. Two inputs were
+  passed back to the operator for whoever deploys it: **give it a real `burn`** (free now, impossible
+  later), and note that a *bridged* representation burns the wrapper while canonical supply stays
+  locked in the bridge — so "burned" is only literally true for a canonical deployment.
+- **Q: The art?** → The generator's output is a **placeholder**; the client's official art is still
+  being made and will be swapped in. Fine on testnet. ⚠️ On mainnet the provenance hash is a
+  constructor argument and immutable, so **the mainnet deploy must not happen until the art is
+  final** — otherwise the hash attests to art that no longer exists, and it is the one property of
+  this collection anyone can independently check. Swapping before then is a supported operation:
+  change the generator, watch `verify_frozen.py` fail, bump `art/frozen.json` in the same commit.
+  `freezeBaseURI()` stays uncalled until the art is final.
 
 ## Requirements *(mandatory)*
 
@@ -215,7 +255,13 @@ records what was chosen and — where it matters — what would change it.
 - **FR-003**: The system MUST re-derive the broker half at most one short cache window behind the
   chain, and that window MUST be measured in seconds, not hours.
 - **FR-004**: The system MUST leave the existing subscription path — payment verification, the
-  subscription record, and stored expiry — working unchanged.
+  subscription record, and stored expiry — working unchanged **in code**. `resolve_tier` stays
+  "stored tier OR activated broker", which after the sunset degenerates to "admin grant OR broker" —
+  correct, and with no new branching.
+- **FR-004a**: The subscription sunset MUST be an **operational** step, not a code branch: retire the
+  `/premium/pay` purchase surface and revoke the `srk`-sourced `wallet_tier` rows. Admin and
+  `env-seed` grants MUST keep working — they share the same table and are not subscriptions. It MUST
+  happen only after mint and activation are live and verified.
 - **FR-005**: The system MUST report **which** source qualifies a wallet, so a surface can name it.
 - **FR-006**: When the broker read is unavailable, the system MUST fall back to the stored
   subscription answer and MUST NOT fail the request, and MUST NOT report "no premium" as though it
@@ -241,8 +287,10 @@ records what was chosen and — where it matters — what would change it.
 
 **Mint**
 
-- **FR-016**: Minting MUST be gated on the existing SRK holder check.
-- **FR-017**: Minting MUST respect the collection's 10,000 cap and a per-wallet allocation.
+- **FR-016**: Minting MUST be **free and open** — no holder gate, no allowlist. The per-wallet cap is
+  the only restriction. (Superseded the SRK holder gate; see Session 2026-08-13b.)
+- **FR-017**: Minting MUST respect the collection's 10,000 cap and an owner-settable per-wallet cap.
+  The 10,000 cap stays enforced by the NFT — two caps eventually disagree.
 - **FR-018**: A minted broker MUST be unactivated.
 - **FR-019**: The mint interface MUST NOT display an invented price, allocation, or date. Where a
   term is undecided it MUST say so.
@@ -285,9 +333,8 @@ records what was chosen and — where it matters — what would change it.
 
 ## Assumptions
 
-- **The mint's commercial terms are undecided and are not invented here.** Price, allocation and
-  timing are the operator's to set. For testnet, an obviously fake value is used and labelled as
-  such. Mainnet mint is out of scope until those numbers exist.
+- **The mint is free and open on testnet**, per the operator, with a per-wallet cap as the only
+  limit. A price and an allowlist are additive and can be added without redeploying anything else.
 - **Royalties remain unset.** ERC-2981 is wired and reports zero. Setting it is an owner action, not
   a code change, and it was never discussed.
 - **Mainnet is out of scope for this feature.** The registry is same-chain, and a mainnet registry
@@ -298,12 +345,12 @@ records what was chosen and — where it matters — what would change it.
   backend key — **plus an explicit repair path**, because by then the holder has already paid. That
   fallback is a different spec, not a variation of this one, and its cost (a hot key, and a window
   where a holder has paid but is not activated) is the reason it is the fallback.
-- **The mainnet SRK may or may not have a real `burn`.** If it does, mainnet should prefer it over a
-  dead address — it is the only version where the word is literally true. Unverified; testnet SRK
-  demonstrably has none.
-- **The client has not re-approved the art.** The PRNG fix re-rolled every token after their first
-  review. This does not block testnet. It **does** block any mainnet mint, because the provenance
-  hash becomes a public promise at the first one.
+- **Mainnet will use a NEW SRK contract**, not the one on Ethereum today, so nothing about the
+  current token constrains this design. Testnet SRK demonstrably has no `burn` (selector absent from
+  the deployed bytecode), so testnet retires to a dead address.
+- **The current art is a placeholder.** The client's official art is still being made and will be
+  swapped in. This does not block testnet at all. It **does** block the mainnet **deploy** — not the
+  mint — because the provenance hash is a constructor argument and immutable from that moment.
 - Holders reaching these surfaces have a wallet session, so the in-app screens are not anonymous
   machine traffic.
 

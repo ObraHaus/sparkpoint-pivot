@@ -69,33 +69,34 @@ interface IBrokerActivationRegistry {
 
 ```solidity
 interface IBrokerSale {
-    event Minted(address indexed to, uint256 indexed tokenId, uint256 pricePaid);
+    event Minted(address indexed to, uint256 indexed tokenId);
     event SaleOpenSet(bool open);
+    event PerWalletCapSet(uint256 oldCap, uint256 newCap);
 
-    error NotEligible(address wallet);
-    error AllocationExhausted(address wallet, uint256 minted, uint256 allowance);
+    error WalletCapReached(address wallet, uint256 minted, uint256 cap);
     error SaleClosed();
-    error WrongPayment(uint256 sent, uint256 required);
 
-    function broker() external view returns (address);
-    function price() external view returns (uint256);           // testnet: an obviously fake, labelled value
-    function perWalletAllowance() external view returns (uint256);
+    function broker() external view returns (address);          // immutable
+    function perWalletCap() external view returns (uint256);
     function mintedBy(address wallet) external view returns (uint256);
     function saleOpen() external view returns (bool);
 
-    /// Mints one broker to the caller. Reverts if the caller fails the SRK holder gate, has used
-    /// its allocation, or the sale is closed. The 10,000 cap is enforced by the NFT, not here.
+    /// Mints one broker to the caller. FREE and OPEN — no holder gate, no allowlist, no payment.
+    /// Reverts only if the caller has used its per-wallet cap or the sale is closed. The 10,000
+    /// supply cap is enforced by the NFT, not re-implemented here.
     function mint() external;
 
     function setSaleOpen(bool open) external;                   // onlyOwner
+    function setPerWalletCap(uint256 newCap) external;          // onlyOwner
 }
 ```
 
-The eligibility gate mirrors `services/agent/src/sparkpoint_agent/chain/srk_gate.py` (≥ 1,000,000
-mainnet SRK). **How that mainnet balance is proven to a contract on Robinhood Chain is a Phase-2
-task** — it is a cross-chain assertion, and the honest options (a signed allowlist root, an operator-
-maintained on-chain allowlist, or gating in the UI only and accepting it is advisory) differ in trust
-model. It MUST NOT be hand-waved into "the contract reads mainnet", which no contract can do.
+**Free and open, by operator decision.** The earlier design gated this on the ≥1,000,000 mainnet-SRK
+holder check — which is a **cross-chain** assertion no contract can make. Dropping it removes the
+feature's hardest unknown rather than approximating it. A price or an allowlist is additive later.
+
+Note there is **no payment leg and therefore no `payable` function**: nothing can be sent to this
+contract, so nothing can be stranded in it.
 
 ## Invariants the tests must pin
 
@@ -109,5 +110,7 @@ model. It MUST NOT be hand-waved into "the contract reads mainnet", which no con
 | I6 | A holder can never be charged more than the `price()` they read (no price change between read and spend within one tx) | unit |
 | I7 | `activationsBy` is a superset of the wallet's currently-activated brokers, never a subset | invariant test |
 | I8 | Minting never sets `activatedAt` | sale test |
+| I11 | The sale has no `payable` function and holds no value | static + unit |
+| I12 | The per-wallet cap cannot be bypassed by minting from a contract or in a loop | fuzz |
 | I9 | The registry has no reachable path that transfers a broker | static + unit |
 | I10 | Total SRK supply is unchanged by an activation (it moves, it is not destroyed) | fuzz — this is why the word is "retired" |

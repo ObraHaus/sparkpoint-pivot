@@ -116,11 +116,17 @@ scanners raised on the NFT is the precedent).
 
 ### 2. `BrokerSale` (Solidity, new)
 
-The `minter`. Enforces the per-wallet allocation and defers the 10,000 cap to the NFT, which already
-owns it — re-implementing a cap is how two caps disagree. Gated on the SRK holder check. Price and
-allocation are constructor arguments so testnet can carry an obviously fake value without a code
-change. Owner can pause minting; pausing MUST NOT be able to touch activation, which is the other
+The `minter`. **Free and open** (operator decision): no holder gate, no allowlist, no payment leg —
+so no `payable` function and nothing to strand. It enforces an owner-settable per-wallet cap and
+defers the 10,000 cap to the NFT, which already owns it; re-implementing a cap is how two caps
+disagree. Owner can close the sale; closing MUST NOT be able to touch activation, which is the other
 contract's concern entirely.
+
+This is where the feature's hardest unknown went away. The original design gated the mint on the
+≥1,000,000 mainnet-SRK holder check — a **cross-chain** assertion (mainnet balance, Robinhood
+contract) that no contract can make, only approximate with a signed root, an operator-maintained
+allowlist, or UI-only advisory gating. Dropping the gate deletes that whole decision. Adding a price
+or an allowlist later is additive and touches nothing else.
 
 ### 3. Agent — `resolve_tier` gains a second source
 
@@ -232,11 +238,14 @@ Steps 1–2 deliver the feature's whole guarantee before any contract is written
 
 Recorded here so the plan does not silently absorb them:
 
-- **Mint price, allocation and timing** — blocks mainnet only. Testnet uses labelled placeholders.
-- **Royalties** — ERC-2981 reports zero. An owner action, never discussed.
-- **Canonical or bridged SRK on Robinhood mainnet** — required before a mainnet registry. If the
-  answer is no, the fallback is attested activation **plus a repair path**, which is a different
-  spec, not a variant of this one.
-- **Whether mainnet SRK has a real `burn`** — if it does, mainnet should prefer it to a dead address.
-- **Art re-approval** — blocks the mainnet mint, because the provenance hash becomes a public promise
-  at the first one.
+- **Mainnet mint terms** — free and open on testnet; mainnet terms are the operator's, later.
+- **Royalties** — ERC-2981 reports zero. An owner action, never discussed. Settable post-deploy, so
+  not a deploy gate — but a marketplace reads it once and caches, so decide before listing.
+- **Canonical vs bridged SRK on Robinhood mainnet** — a **new** SRK contract either way, so nothing
+  about today's token constrains this design. Two inputs given to the operator for its deployment:
+  give it a real `burn`; and note a *bridged* representation burns the wrapper while canonical supply
+  stays locked in the bridge, so "burned" is only literally true for a canonical deployment.
+- ⚠️ **The mainnet DEPLOY is gated on final art**, not the mint. The provenance hash is a constructor
+  argument and immutable from that moment; deploying against placeholder art would publish a
+  commitment to images that will not exist. Swapping art before then is fully supported — change the
+  generator, watch `verify_frozen.py` fail, bump `art/frozen.json` in the same commit.
