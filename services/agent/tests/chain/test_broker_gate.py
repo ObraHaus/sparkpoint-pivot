@@ -295,3 +295,89 @@ def test_the_cache_holds_the_chain_answer_not_a_tier() -> None:
     for entry in cached:
         assert isinstance(entry.result, BrokerGateResult)
         assert not hasattr(entry.result, "tier"), "the cache must not hold a tier"
+
+
+# ── several registries: the migration hazard this design already hit once ───────────────────
+
+
+class MultiChain(FakeChain):
+    """A chain with TWO registries — the shape after `setActivator` is re-pointed."""
+
+    def __init__(self, old: str, new: str, **kw: Any) -> None:
+        super().__init__(**kw)
+        self.per_registry: dict[str, dict[str, list[int]]] = {old.lower(): {}, new.lower(): {}}
+
+    def record(self, registry: str, holder: str, token_id: int) -> None:
+        self.per_registry[registry.lower()].setdefault(holder.lower(), []).append(token_id)
+
+    async def call(self, method: str, params: list[Any]) -> Any:
+        data = params[0]["data"]
+        if data[2:10] == "deb24aa6":  # activationsBy — answer PER registry
+            self.calls += 1
+            if self.fail_with is not None:
+                raise self.fail_with
+            to = params[0]["to"].lower()
+            who = "0x" + data[10:][24:64]
+            return _uint_array(self.per_registry.get(to, {}).get(who.lower(), []))
+        return await super().call(method, params)
+
+
+OLD_REGISTRY = "0x5370d06bFA9049234C471e0877e249D9322728FF"
+NEW_REGISTRY = "0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775"
+
+
+def test_an_activation_recorded_on_a_REPLACED_registry_still_counts() -> None:
+    """The hazard, reproduced from life.
+
+    On 46630 the registry was redeployed and `setActivator` re-pointed at it. Every activation
+    recorded on the old one was instantly orphaned — and there is NO recovery on-chain, because
+    the NFT still says those tokens are activated, so `activate` reverts `AlreadyActivated`.
+    A holder who had paid would silently stop qualifying.
+
+    Reading the union of every registry ever wired makes that survivable, and it is safe
+    precisely because the list is only a hint: the live ownerOf + activatedAt reads still decide.
+    """
+    chain = MultiChain(OLD_REGISTRY, NEW_REGISTRY, owners={3: HOLDER})
+    chain.activated_at[3] = 11_481_694
+    # Recorded before the swap; the new registry knows nothing about it.
+    chain.record(OLD_REGISTRY, HOLDER, 3)
+
+    only_new = BrokerGate(rpc=chain, broker=BROKER, registry=NEW_REGISTRY, cache_seconds=0)
+    assert asyncio.run(only_new.check(HOLDER)).qualified is False, "the orphaning is real"
+
+    both = BrokerGate(
+        rpc=chain, broker=BROKER, registry=f"{NEW_REGISTRY},{OLD_REGISTRY}", cache_seconds=0
+    )
+    result = asyncio.run(both.check(HOLDER))
+    assert result.qualified is True, "both registries must recover the paid-for activation"
+    assert result.token_id == 3
+
+
+def test_a_token_recorded_by_both_registries_is_only_scanned_once() -> None:
+    chain = MultiChain(OLD_REGISTRY, NEW_REGISTRY, owners={3: HOLDER})
+    chain.activated_at[3] = 11_481_694
+    chain.record(OLD_REGISTRY, HOLDER, 3)
+    chain.record(NEW_REGISTRY, HOLDER, 3)
+
+    gate = BrokerGate(
+        rpc=chain, broker=BROKER, registry=f"{NEW_REGISTRY},{OLD_REGISTRY}", cache_seconds=0
+    )
+    assert asyncio.run(gate.check(HOLDER)).qualified is True
+
+
+def test_blank_and_malformed_registry_entries_are_dropped_not_fatal() -> None:
+    chain = MultiChain(OLD_REGISTRY, NEW_REGISTRY, owners={3: HOLDER})
+    chain.activated_at[3] = 11_481_694
+    chain.record(NEW_REGISTRY, HOLDER, 3)
+
+    gate = BrokerGate(
+        rpc=chain, broker=BROKER, registry=f" {NEW_REGISTRY} , , nonsense ,", cache_seconds=0
+    )
+    assert gate.registries == [NEW_REGISTRY]
+    assert asyncio.run(gate.check(HOLDER)).qualified is True
+
+
+def test_no_valid_registry_at_all_is_unconfigured_not_a_crash() -> None:
+    gate = BrokerGate(rpc=FakeChain(), broker=BROKER, registry=" , nonsense ", cache_seconds=0)
+    assert gate.configured is False
+    assert asyncio.run(gate.check(HOLDER)).reason == "not_configured"

@@ -15,5 +15,6 @@
     "Neither is the CoinMarketCap-listed mainnet SparkPoint token."
   ],
   "SRK": "0x4538B536b1da5940deC8e15048Ce07a053699B04",
-  "SrkFaucet": "0x39C38c86611FF3679802D5341E830c83DB7F4537"
+  "SrkFaucet": "0x39C38c86611FF3679802D5341E830c83DB7F4537",
+  "BrokerActivationRegistry": "0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775"
 }

@@ -41,6 +41,8 @@ SEL_OWNER_OF = "0x6352211e"
 SEL_ACTIVATED_AT = "0xae9ec3cc"
 
 ENV_BROKER = "BROKER_NFT_ADDRESS"
+#: Comma-separated, newest FIRST. More than one because re-pointing the NFT's `activator` at a new
+#: registry ORPHANS the old one's record — see `registries` below.
 ENV_REGISTRY = "BROKER_REGISTRY_ADDRESS"
 ENV_RPC_URL = "BROKER_CHAIN_RPC_URL"
 ENV_CACHE_SECONDS = "BROKER_GATE_CACHE_SECONDS"
@@ -153,13 +155,28 @@ class BrokerGate:
 
     rpc: EthCallRpc
     broker: str
+    #: One registry, or several. **Several is the normal case over time**, and the reason is a
+    #: mistake this design already made once: re-pointing the NFT's `activator` at a new registry
+    #: leaves every prior activation recorded only on the OLD one. The NFT still says those tokens
+    #: are activated — `activate` even reverts `AlreadyActivated` — so there is no way to re-record
+    #: them, and a holder would silently lose Premium they paid for.
+    #:
+    #: Reading the union of every registry ever wired fixes that, and it lives here rather than in
+    #: the contract on purpose: the candidate list is only ever a HINT (the live `ownerOf` +
+    #: `activatedAt` reads are the authority), so merging hints cannot produce a wrong verdict — and
+    #: adding a registry costs an env change rather than a redeploy.
     registry: str
     cache_seconds: int = DEFAULT_CACHE_SECONDS
     _cache: dict[str, _Entry] = field(default_factory=dict, repr=False)
 
     @property
+    def registries(self) -> list[str]:
+        """Every configured registry address, newest first, invalid entries dropped."""
+        return [r for r in (x.strip() for x in self.registry.split(",")) if _is_address(r)]
+
+    @property
     def configured(self) -> bool:
-        return _is_address(self.broker) and _is_address(self.registry)
+        return _is_address(self.broker) and bool(self.registries)
 
     async def check(self, address: str, *, now: float | None = None) -> BrokerGateResult:
         """Never raises. Never grants on a read that did not happen."""
@@ -188,18 +205,34 @@ class BrokerGate:
             self._cache[key] = _Entry(result, stamp)
         return result
 
+    async def _candidates(self, address: str) -> list[int] | None:
+        """The union of every registry's hint, de-duplicated, newest registry first."""
+        seen: set[int] = set()
+        merged: list[int] = []
+        for registry in self.registries:
+            raw = await self.rpc.call(
+                "eth_call",
+                [
+                    {
+                        "to": registry.lower(),
+                        "data": _encode_address_arg(SEL_ACTIVATIONS_BY, address),
+                    },
+                    "latest",
+                ],
+            )
+            part = _decode_uint_array(raw)
+            if part is None:
+                return None
+            for token_id in part:
+                if token_id not in seen:
+                    seen.add(token_id)
+                    merged.append(token_id)
+                    if len(merged) >= MAX_CANDIDATES:
+                        return merged
+        return merged
+
     async def _read(self, address: str) -> BrokerGateResult:
-        raw = await self.rpc.call(
-            "eth_call",
-            [
-                {
-                    "to": self.registry.lower(),
-                    "data": _encode_address_arg(SEL_ACTIVATIONS_BY, address),
-                },
-                "latest",
-            ],
-        )
-        candidates = _decode_uint_array(raw)
+        candidates = await self._candidates(address)
         if candidates is None:
             return BrokerGateResult(False, "rpc_error")
 
@@ -269,7 +302,8 @@ def build_broker_gate_from_env(rpc_factory: Any = None) -> BrokerGate | None:
     rpc_url = (os.getenv(ENV_RPC_URL) or "").strip()
     broker = (os.getenv(ENV_BROKER) or "").strip()
     registry = (os.getenv(ENV_REGISTRY) or "").strip()
-    if not rpc_url or not _is_address(broker) or not _is_address(registry):
+    valid = [r for r in (x.strip() for x in registry.split(",")) if _is_address(r)]
+    if not rpc_url or not _is_address(broker) or not valid:
         return None
     if rpc_factory is None:
         from ..data.log_source import HttpxLogsRpc

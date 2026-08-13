@@ -125,6 +125,25 @@ Testers need SRK to exercise the Premium purchase, but `SparkPointTestToken` has
 - **Admins**: deployer + the client demo wallet `0x32Ed4400C5BBB394712c482F1207886d8C22e8b5`. Owner **or** an admin may `setClaimAmount` / `setCooldown`; only the owner may `withdraw` the float, manage admins or transfer ownership. The agent is provably **keyless**, so "admin-editable from the panel" means the connected admin **wallet** signs these setters from `/admin/faucet` — no backend is in the trust path.
 - Script: `contracts/script/DeploySrkFaucet.s.sol` (`--slow` is required — the deployer is a delegated EOA). Set `FAUCET_ADDRESS` to top the float up instead of deploying a new one. Recorded as `srkFaucet` in the Base Sepolia address book and `SrkFaucet` in `contracts/deployments/84532/addresses.json`.
 
+### Broker activation registry — feature 043 phase B (2026-08-13)
+
+The contract that retires SRK and activates a Sparky Broker in one user-signed transaction. It is the NFT's `activator` — the role deliberately left unset at deploy. It never holds a broker, never holds retired SRK, has no withdraw/sweep/rescue and **no `payable` function**, so nothing can be sent to it and nothing can be stranded in it.
+
+- **`BrokerActivationRegistry`** (live): `0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775` — deploy tx `0x9d79a545cfebb8c71fe96d2c89467d778dfabc95d7c91f281128ddfefdad9cd1` (block 100670158), wired via `setActivator`.
+- **Superseded first deploy**: `0x5370d06bFA9049234C471e0877e249D9322728FF` — deploy tx `0xf0b6967345ffc33be5fb661f271513aa9c7c4909a660b42bdeacae521b13e362`, `setActivator` tx `0x05df05bc661f7e2a562824fb7498577ece42f09bee1f4f885456f991579ae8c8`. Replaced within the hour; see the ⚠️ below — **it must stay in the agent's registry list forever.**
+- **Parameters**: `price` 10,000 SRK (owner-settable), `maxPrice` **100,000 SRK — IMMUTABLE**, `deadAddress` `0x…dEaD`, owner = deployer, `Ownable2Step`.
+- **Proven live, not just deployed** — activation tx `0xa808e27c903c11fc45329bd006455d2be5921919e6fe09518d21a1d915a2fdb0` (143,901 gas): 10,000 SRK moved holder → dead address, `activatedAt(3)` set, the registry left holding **zero** SRK, zero ETH and no broker, and SRK's `totalSupply` unchanged — which is exactly why every surface says *retired*, never *burned*.
+- **The atomicity property, live**: four failed activations in a row (already-activated ×2, not-the-owner, no-allowance) moved **not one wei**. There is no state in which SRK has left a holder and the broker is not activated.
+- **The product rule, live**: sold #3 → activation cleared → the seller stopped qualifying for Premium AND the buyer did not inherit it; reacquiring it did **not** restore the activation, and re-activating cost another 10,000 SRK.
+
+> ⚠️⚠️ **RE-POINTING `activator` ORPHANS EVERY PRIOR ACTIVATION — and there is no on-chain recovery.**
+> Learned the hard way here: the first registry was replaced (a de-duplication fix), and every activation it had recorded instantly became invisible. The NFT still reports those tokens as activated, so `activate` reverts `AlreadyActivated` and the record cannot be rebuilt — a holder who had paid would silently stop qualifying for Premium.
+>
+> The fix lives off-chain, where it costs an env change rather than a redeploy: **`BROKER_REGISTRY_ADDRESS` is a comma-separated list, newest first, and the agent reads the union.** That is safe because the list is only ever a HINT — the live `ownerOf` + `activatedAt` reads are the authority, so merging hints cannot produce a wrong verdict.
+>
+> **Never remove a registry from that list.** Current value:
+> `0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775,0x5370d06bFA9049234C471e0877e249D9322728FF`
+
 ### SRK + faucet on Robinhood testnet — feature 043 phase 1 (2026-08-13)
 
 The Sparky Broker NFT lives on **Robinhood Chain**, and activating a broker retires SRK. A burn on one chain cannot flip state on another in the same transaction, so the SRK a broker retires has to live on the broker's chain — that is what makes an atomic, backend-keyless activation registry possible. This is the same recipe as Base Sepolia, pointed at 46630.
