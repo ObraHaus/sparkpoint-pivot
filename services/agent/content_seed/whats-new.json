@@ -4,7 +4,7 @@
     {
       "slug": "srk-faucet-on-robinhood-testnet",
       "type": "changelog",
-      "tag": "Added",
+      "tag": "New",
       "title": "The SRK faucet now works on Robinhood Testnet too",
       "body": "The Get SRK faucet on the Premium page used to serve Base Sepolia only. It now serves Robinhood Testnet as well, from the same card — it follows whichever network your wallet is on, and you can look at the other one without switching first.\n\nWhy we did this: the Sparky Broker collection lives on Robinhood Chain, and activating a broker retires SRK. A blockchain transaction can only touch one network at a time, so for activation to happen in a single step — with no waiting and nothing for us to do on your behalf — the SRK has to live on the same network as the broker. This is that groundwork.\n\nOne thing worth knowing: each network has its own separate SRK. Balances do not carry across, and buying Premium still happens on Base Sepolia. If you are connected to Robinhood Testnet the Premium purchase page now says so plainly rather than offering you a payment that could not be completed.",
       "cta_label": "Open Premium",
