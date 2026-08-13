@@ -89,7 +89,6 @@ export default function Page() {
   const addrs = addressBookFor(chainId);
   const srk = addrs?.srk as Address | undefined;
   const treasury = addrs?.premiumTreasury as Address | undefined;
-  const configured = !!srk && !!treasury;
 
   const balRead = useReadContract({
     address: srk,
@@ -103,9 +102,13 @@ export default function Page() {
   const pay = derivePremiumPayState({
     srk,
     treasury,
+    chainId,
     balance: balRead.data as bigint | undefined,
   });
-  const { balance, low, balanceKnown } = pay;
+  // `configured` now includes the CHAIN, not just the addresses: SRK exists on more than one chain
+  // since 043 phase 1 (Robinhood testnet got its own for broker activation) but only Base Sepolia can
+  // be settled — see PREMIUM_SETTLEMENT_CHAIN_IDS. Never gate the buy on the addresses alone.
+  const { balance, low, balanceKnown, configured } = pay;
   const balanceStr = balanceKnown ? Number(formatUnits(balance, 18)).toLocaleString() : "…";
 
   const [verify, setVerify] = useState<VerifyState>({ kind: "idle" });
@@ -156,11 +159,17 @@ export default function Page() {
       {!configured ? (
         <div className="card card-pad">
           <div className="payrow">
-            <span className="muted">SRK on this network</span>
-            <span>Unavailable — Premium is on Base Sepolia (84532)</span>
+            <span className="muted">Premium on this network</span>
+            <span>Unavailable — Premium settles on Base Sepolia (84532)</span>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 10 }}>
-            Switch to Base Sepolia to pay in SRK. Every free feature keeps working regardless.
+            Switch to Base Sepolia to pay in SRK. Every free feature keeps working regardless.{" "}
+            {srk ? (
+              <>
+                The SRK on this network is a <b>separate</b> token — it is spendable here, but a
+                payment made with it could never be credited, so the buy stays closed.
+              </>
+            ) : null}
           </div>
         </div>
       ) : verify.kind === "granted" ? (

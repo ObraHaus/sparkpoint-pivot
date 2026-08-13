@@ -66,6 +66,36 @@ export const robinhoodTestnet: AddressBook = {
   weth: "0x33e4191705c386532ba27cBF171Db86919200B94",
   usdcFaucet: undefined,
 
+  // ── SRK + its faucet (043 phase 1) — deployed 2026-08-13 via script/DeploySRK.s.sol and
+  // script/DeploySrkFaucet.s.sol, the SAME recipe used on Base Sepolia, pointed at this chain.
+  //
+  // WHY SRK EXISTS HERE AT ALL: the Sparky Broker NFT lives on Robinhood Chain, and activating a
+  // broker retires SRK. A burn on one chain cannot flip state on another in the same transaction, so
+  // the SRK a broker retires has to live on the broker's chain or activation can never be atomic.
+  // This deployment is that rehearsal on testnet.
+  //
+  // ⚠️ THIS IS A SEPARATE TOKEN FROM THE BASE-SEPOLIA SRK at 0x2dF9…eD52. Same contract, same fixed
+  // 1e9 supply, different chain — the two balances are unrelated and must never be summed. Neither
+  // is the CoinMarketCap-listed mainnet SparkPoint token.
+  // The faucet holds a hand-transferred 10,000,000 SRK float and pays 5,000 SRK per address per 24h
+  // — identical parameters to Base Sepolia. Owner = deployer; parameter admins = deployer + the
+  // client demo wallet 0x32Ed…e8b5. A real user-signed claim + the cooldown revert were both proven
+  // on-chain at deploy time.
+  //   SRK   deploy tx 0xd43899516ff772d868e9448da8700f80d8b42fd1f81c3fe270f76ebcb49acd35
+  //   faucet deploy tx 0x48bf8afdc62740d2962ccb0dff0688810ac5ff3e9e60c6ebc96ab7ef34e1231c
+  //   faucet fund   tx 0xaee0169745e779c91e15e65115ae5e8c1e093c626d404a20f5c8eb58372f1f4c
+  srk: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
+  srkFaucet: "0x39C38c86611FF3679802D5341E830c83DB7F4537",
+
+  // ⚠️⚠️ `premiumTreasury` IS DELIBERATELY UNSET — do not fill it in because `feeTreasury` above is
+  // set and the Safe happens to exist here too. Premium is bought by transferring SRK and is then
+  // credited by `services/agent/.../chain/payment_verifier.py`, which is built with ONE `srk_address`
+  // and ONE RPC (`SRK_ADDRESS_84532`) — it can only ever see Base Sepolia. `/premium/pay` reads the
+  // address book for the CONNECTED chain and enables the buy on `srk && premiumTreasury`, so a
+  // `premiumTreasury` here would let a tester send real SRK on 46630 into a payment nobody can
+  // verify: money out, no Premium, no repair path. Leaving it undefined is what fails that closed.
+  // A guard test asserts this (`addresses.premium-parity.test.ts`).
+
   // ── SparkPoint contracts — vault is Base-only ⇒ undefined here (fail-closed) ──
   sparkPointAccountImpl: undefined,
   accountFactory: undefined,

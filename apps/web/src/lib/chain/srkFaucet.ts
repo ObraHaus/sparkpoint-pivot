@@ -17,6 +17,41 @@ export const DAY_SECONDS = 86_400;
  */
 export const SRK_FAUCET_ANCHOR = "srk-faucet";
 
+/**
+ * One chain the card can dispense on. Kept structural (no `@sparkpoint/shared` import) so this stays
+ * a LEAF module that `node --experimental-strip-types` can load — the shared barrels use
+ * extensionless internal imports and cannot be required from a `*.test.ts`.
+ */
+export interface SrkFaucetChain {
+  readonly chainId: number;
+  /** Display name, from the chain registry — never spelled out at a call site. */
+  readonly name: string;
+  /** The `SrkFaucet` on this chain; undefined ⇒ this chain is not offered. */
+  readonly faucet?: string;
+  /** The SRK token on this chain. */
+  readonly srk?: string;
+}
+
+/**
+ * Which chain the faucet card should show.
+ *
+ * Follows the connected wallet when that chain has a faucet, so a tester who switched to Robinhood
+ * to activate a broker is not told to go back to Base Sepolia. Otherwise falls back to the first
+ * configured chain, which keeps the card useful (and claimable after a network switch) rather than
+ * blank. `undefined` only when no chain has a faucet at all.
+ *
+ * ⚠️ Deliberately independent of `PREMIUM_SETTLEMENT_CHAIN_IDS`: a faucet dispenses a testnet token,
+ * which is safe on any chain that has one. Buying Premium with it is NOT — that gate lives in
+ * `premiumPay.ts` and must never be inferred from the presence of a faucet.
+ */
+export function pickSrkFaucetChain<T extends SrkFaucetChain>(
+  chains: readonly T[],
+  walletChainId: number | undefined,
+): T | undefined {
+  const offered = chains.filter((c) => Boolean(c.faucet));
+  return offered.find((c) => c.chainId === walletChainId) ?? offered[0];
+}
+
 export interface SrkFaucetInputs {
   /** The faucet address on the active chain — falsy ⇒ no faucet here (honest "unavailable"). */
   readonly faucet?: string;
@@ -32,6 +67,12 @@ export interface SrkFaucetInputs {
   readonly nowSeconds: number;
   /** Whether a wallet is connected AND on the faucet's chain. */
   readonly walletReady?: boolean;
+  /**
+   * The display name of the chain being shown, so the "connect your wallet on X" copy names the
+   * chain the card is actually pointed at. Omitted ⇒ the copy stays generic rather than naming the
+   * wrong network, which is what a hardcoded "Base Sepolia" did once SRK existed on two chains.
+   */
+  readonly chainName?: string;
 }
 
 export interface SrkFaucetState {
@@ -89,7 +130,10 @@ export function deriveSrkFaucetState(i: SrkFaucetInputs): SrkFaucetState {
 
   let blockedReason: string | undefined;
   if (!configured) blockedReason = "The SRK faucet isn’t deployed on this network.";
-  else if (!i.walletReady) blockedReason = "Connect your wallet on Base Sepolia to claim.";
+  else if (!i.walletReady)
+    blockedReason = i.chainName
+      ? `Connect your wallet on ${i.chainName} to claim.`
+      : "Connect your wallet on this network to claim.";
   else if (!loaded) blockedReason = "Reading the faucet…";
   else if (paused) blockedReason = "Claiming is paused right now.";
   else if (empty) blockedReason = "The faucet is out of SRK — an admin needs to top it up.";

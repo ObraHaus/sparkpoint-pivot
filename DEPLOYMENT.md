@@ -125,6 +125,18 @@ Testers need SRK to exercise the Premium purchase, but `SparkPointTestToken` has
 - **Admins**: deployer + the client demo wallet `0x32Ed4400C5BBB394712c482F1207886d8C22e8b5`. Owner **or** an admin may `setClaimAmount` / `setCooldown`; only the owner may `withdraw` the float, manage admins or transfer ownership. The agent is provably **keyless**, so "admin-editable from the panel" means the connected admin **wallet** signs these setters from `/admin/faucet` — no backend is in the trust path.
 - Script: `contracts/script/DeploySrkFaucet.s.sol` (`--slow` is required — the deployer is a delegated EOA). Set `FAUCET_ADDRESS` to top the float up instead of deploying a new one. Recorded as `srkFaucet` in the Base Sepolia address book and `SrkFaucet` in `contracts/deployments/84532/addresses.json`.
 
+### SRK + faucet on Robinhood testnet — feature 043 phase 1 (2026-08-13)
+
+The Sparky Broker NFT lives on **Robinhood Chain**, and activating a broker retires SRK. A burn on one chain cannot flip state on another in the same transaction, so the SRK a broker retires has to live on the broker's chain — that is what makes an atomic, backend-keyless activation registry possible. This is the same recipe as Base Sepolia, pointed at 46630.
+
+- **`SparkPointTestToken`** (SRK on 46630): `0x4538B536b1da5940deC8e15048Ce07a053699B04` — deploy tx `0xd43899516ff772d868e9448da8700f80d8b42fd1f81c3fe270f76ebcb49acd35` (block 100514125). Fixed 1e9 supply → deployer; **no mint, no owner** (both selectors probed on-chain and revert).
+- **`SrkFaucet`** on 46630: `0x39C38c86611FF3679802D5341E830c83DB7F4537` — deploy tx `0x48bf8afdc62740d2962ccb0dff0688810ac5ff3e9e60c6ebc96ab7ef34e1231c` (block 100514347).
+- **Float**: 10,000,000 SRK — fund tx `0xaee0169745e779c91e15e65115ae5e8c1e093c626d404a20f5c8eb58372f1f4c` (block 100514358). 2,000 claims at 5,000 SRK each. Same parameters and same admin roster as Base Sepolia (deployer + the client demo wallet `0x32Ed…e8b5`).
+- **Proven live, not just deployed**: a real user-signed `claim()` from the test wallet landed 5,000 SRK (tx `0xa5aca38d68c88bf4292936a3d0f542ef746a87318c39b5a09f421fb238e9cd1c`), dropping the float to 9,995,000 and `claimsRemaining` to 1,999; an immediate second claim reverted `CooldownActive(1786705379, 86390)`.
+- Recorded as `srk` / `srkFaucet` in `packages/shared/src/addresses/robinhoodTestnet.ts` and in `contracts/deployments/46630/addresses.json`.
+
+> ⚠️⚠️ **This SRK is a different token from the Base Sepolia SRK.** Same contract, same fixed supply, different chain and different address; balances do not carry across and must never be summed. **`premiumTreasury` is deliberately left unset on 46630** — `services/agent/.../chain/payment_verifier.py` is constructed with ONE `srk_address` and ONE RPC (`SRK_ADDRESS_84532`), so a Premium payment made on Robinhood could never be credited: money out, no Premium, no repair path. `/premium/pay` reads the address book for the **connected** chain, so the guard cannot be the absence of a field. `PREMIUM_SETTLEMENT_CHAIN_IDS` in `apps/web/src/lib/chain/premiumPay.ts` is the positive allowlist, and a unit test pins it. Adding a chain there is a claim that the verifier can settle it.
+
 ### Guardian → 2-of-3 Safe cutover — §6.2 multisig kill-switch (2026-07-24)
 
 The vault's `guardian()` stays the OZ **TimelockController** `0x0A21…d720` (unchanged). Its control was moved off the single deployer EOA onto a **dedicated 2-of-3 Gnosis Safe**, and the deployer **fully renounced** — so no single key can pause/unpause or change fees/caps anymore; only 2-of-3 of the guardian signers can, after the 60s timelock delay.
