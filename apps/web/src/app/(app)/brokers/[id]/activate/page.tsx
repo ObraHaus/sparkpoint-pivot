@@ -235,7 +235,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             </div>
             <div className="payrow">
               <span className="muted">You get</span>
-              <span>Premium, and a payout weight, while you hold this broker</span>
+              <span>Premium, for as long as you hold this broker</span>
             </div>
             <div className="payrow">
               <span className="muted">On sale</span>

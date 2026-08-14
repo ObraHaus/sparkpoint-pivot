@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  UNPLACED_DESTINATIONS,
   baseSegment,
   coerceNavGroupState,
   commandActions,
@@ -58,12 +57,14 @@ test("top-level order is the decided one: Swap, Bridge, Information, Settings", 
   assert.deepEqual(top, ["swap", "bridge", `group:${INFORMATION_GROUP_KEY}`, "settings"]);
 });
 
-test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Changelog", () => {
+test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Sparky Broker, Changelog", () => {
   const group = SECONDARY.find((n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY);
   assert.ok(group);
+  // 043 — Sparky Broker sits after SRK, deliberately: SRK is what you spend to activate one, so the
+  // two read in the order a holder meets them.
   assert.deepEqual(
     group.children.map((c) => c.route),
-    ["trust", "outcomes", "fees", "learn", "srk", "changelog"],
+    ["trust", "outcomes", "fees", "learn", "srk", "brokers", "changelog"],
   );
 });
 
@@ -90,6 +91,7 @@ test("navLeaves flattens groups in source order", () => {
     "fees",
     "learn",
     "srk",
+    "brokers",
     "changelog",
     "settings",
   ]);
@@ -167,20 +169,22 @@ test("toHref / baseSegment behaviour is unchanged by the regroup", () => {
   assert.equal(baseSegment("/"), "chat");
 });
 
-test("Sparky Broker is searchable and deep-linkable without taking a nav slot", () => {
-  // 043. It is deliberately NOT in OFF_NAV_DESTINATIONS: that list means "left the rail, now lives
-  // in Settings", and this route never had a slot to leave. Where a new product surface belongs in
-  // a rail the client deliberately slimmed is their decision, not a side effect of shipping.
-  const offNav = OFF_NAV_DESTINATIONS.map((n) => n.route);
-  assert.deepEqual(offNav, ["premium", "automation"], "the Settings-surfaced pair is unchanged");
+test("Sparky Broker has a real slot inside Information, and is searchable", () => {
+  // The operator asked for it in the rail (Trust & Control → Information), so it is a nav route now
+  // rather than the placeholder it shipped as. OFF_NAV_DESTINATIONS is untouched: that list means
+  // "left the rail, now lives in Settings", which was never true of this one.
+  const routes = navRoutes(SECONDARY);
+  assert.ok(routes.includes("brokers"), "it lives in the nav tree");
+  const info = SECONDARY.find((n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY);
+  assert.ok(info);
+  assert.ok(containsRoute(info.children, "brokers"), "specifically inside Information");
+  assert.deepEqual(
+    OFF_NAV_DESTINATIONS.map((n) => n.route),
+    ["premium", "automation"],
+    "the Settings-surfaced pair is unchanged",
+  );
 
   const palette = commandActions().map((a) => a.route);
   assert.ok(palette.includes("brokers"), "⌘K must find it");
   assert.equal(toHref("brokers"), "/brokers");
-
-  const item = UNPLACED_DESTINATIONS[0];
-  assert.ok(item !== undefined);
-  assert.ok(matchesQuery(item, "nft"), "searchable by what people would actually type");
-  assert.ok(matchesQuery(item, "mint"));
-  assert.ok(matchesQuery(item, "sparky"));
 });

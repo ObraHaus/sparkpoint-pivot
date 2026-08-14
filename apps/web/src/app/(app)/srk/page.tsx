@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
@@ -24,11 +25,15 @@ const FACTS: [string, string][] = [
   ],
   [
     "It buys one optional thing",
-    "A Premium subscription — deeper analysis, higher limits, advanced analytics. That is the whole utility surface.",
+    "Activating a Sparky Broker. You retire SRK once, and that broker carries Premium — deeper analysis, higher limits, advanced analytics — for as long as you hold it. That is the whole utility surface.",
   ],
   [
     "It is a testnet token with a fixed supply",
     "The alpha SRK is a plain 18-decimal ERC-20 deployed for testing. Its entire supply was minted once at creation: there is no mint function and no owner, so the supply can never change. It is deliberately NOT the older, exchange-listed SparkPoint token — only the name and symbol are shared, for familiarity.",
+  ],
+  [
+    "Retiring it does not destroy it",
+    "Activating a broker sends SRK to an address nobody controls. The token has no burn function, so the total supply is unchanged — which is why every surface says retired rather than burned.",
   ],
   [
     "It is not an investment",
@@ -47,6 +52,10 @@ export default function Page() {
           <div className="sub">A non-essential utility token. Nothing core depends on it.</div>
         </div>
       </div>
+
+      {/* 043 — the faucet lives HERE now, not on /premium. Premium is no longer something you buy
+          with SRK, so the acquire path belongs beside the token it hands out. */}
+      <SrkFaucetCard />
 
       <div
         className="card card-pad"

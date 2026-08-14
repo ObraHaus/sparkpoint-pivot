@@ -153,7 +153,7 @@ export default function Page() {
           <div className="sub">
             {premium.active
               ? `Premium is active${premium.untilLabel ? ` until ${premium.untilLabel}` : ""} — paying again adds a month on top.`
-              : "A subscription payment in SRK — not a vault fee. Cancel anytime."}
+              : "Premium now comes from an activated Sparky Broker, not a monthly payment."}
           </div>
         </div>
       </div>

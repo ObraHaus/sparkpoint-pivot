@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /premium — Subscriptions & Premium AI tier (Flow 10), paid in SRK. The free tier is
+ * /premium — the Premium AI tier, unlocked by an activated Sparky Broker (043). The free tier is
  * fully capable and never gated; the vault, deposits, yield, swaps, and withdraw-always
  * are always free. A free-vs-premium matrix and SRK-priced upgrade.
  *
@@ -11,7 +11,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { premiumSourceView, SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
@@ -165,7 +164,7 @@ export default function Page() {
           </div>
           {/* No USD figure: there is no oracle for SRK, and the old illustrative "≈ $12.00" peg was
               pinned to the superseded 500-SRK price. Priced in SRK only. */}
-          <div className="psub">Priced in SRK · cancel anytime</div>
+          <div className="psub">Unlocked by an activated Sparky Broker · nothing to renew</div>
           <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
             Deeper analysis, advanced vaults, higher limits, analytics &amp; alerts.
           </div>
@@ -210,29 +209,17 @@ export default function Page() {
               >
                 Activate a Sparky Broker
               </button>
-              {!SUBSCRIPTIONS_RETIRED && (
-                <button
-                  className="btn btn-outline btn-md"
-                  style={{ width: "100%", marginTop: 8 }}
-                  onClick={() => router.push(toHref("premium/pay"))}
-                >
-                  Or buy a month with SRK
-                </button>
-              )}
               <div
                 style={{ marginTop: 8, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}
               >
-                A broker keeps Premium on for as long as you hold it, with nothing to renew — and you
-                can sell it. The monthly SRK subscription it replaces is being retired.
+                You retire SRK once and the broker carries Premium for as long as you hold it. Nothing
+                renews, nothing expires, and you can sell the broker. The old monthly SRK subscription
+                it replaces has been retired.
               </div>
             </>
           )}
         </div>
       </div>
-
-      {/* 026: the live SRK balance + the faucet live HERE (the acquire path sits next to the price);
-          /srk is now a purely informational token explainer. */}
-      <SrkFaucetCard />
 
       <UsageThisPeriod />
 

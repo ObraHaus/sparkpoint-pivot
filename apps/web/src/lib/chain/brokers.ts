@@ -247,10 +247,13 @@ export function premiumSourceView(source: PremiumSource, tokenId?: number): Prem
     };
   }
   if (source === "stored") {
+    // Post-043-phase-F this is a GRANT, not a purchase. The monthly SRK subscription is retired, so
+    // "comes from a subscription — extend it" would point at a path that no longer exists. It may
+    // carry an expiry (a grant can be time-boxed) or not, so the caller decides whether to show one.
     return {
       headline: "Active",
-      detail: "Your Premium comes from a subscription.",
-      endsWhen: "It ends on its expiry date unless you extend it.",
+      detail: "Your Premium was granted directly to this wallet, rather than coming from a broker.",
+      endsWhen: "It ends on its expiry date, if it has one. Activating a broker makes it yours to keep.",
       showsExpiry: true,
     };
   }

@@ -165,7 +165,7 @@ export default function Page() {
           </h3>
           <ul>
             <li>
-              Advanced AI features, <b>paid in SRK</b> — a subscription payment, not a vault fee.
+              Advanced AI features, unlocked by <b>activating a Sparky Broker</b> with SRK — a one-time retirement, not a vault fee and not a subscription.
             </li>
             <li className="muted-li">
               The free tier stays fully usable. Premium never gates the vault, deposits, yield, or withdrawals.
