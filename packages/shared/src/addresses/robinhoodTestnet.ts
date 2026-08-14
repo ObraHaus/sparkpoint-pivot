@@ -118,6 +118,7 @@ export const robinhoodTestnet: AddressBook = {
   brokerNft: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
   brokerRegistry: "0xf081167b1DF61BAe096338b5716369894447a88E",
   brokerSale: "0x488268134af3d01E0672A9Ea17d529D4C5E275Dd",
+  brokerRevenueDistributor: "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420",
 
   // ── SparkPoint contracts — vault is Base-only ⇒ undefined here (fail-closed) ──
   sparkPointAccountImpl: undefined,

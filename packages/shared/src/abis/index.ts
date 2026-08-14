@@ -15,3 +15,4 @@ export { srkFaucetAbi } from "./srkFaucet";
 export { brokerActivationRegistryAbi } from "./brokerActivationRegistry";
 export { brokerSaleAbi } from "./brokerSale";
 export { sparkyBrokerAbi } from "./sparkyBroker";
+export { brokerRevenueDistributorAbi } from "./brokerRevenueDistributor";

@@ -5,10 +5,14 @@ import {
   brokerViews,
   COLLECTION_SIZE,
   deriveActivateState,
+  deriveClaimState,
   deriveMintState,
   formatSrk,
+  formatTokenAmount,
   premiumSourceView,
   RETIRED_VERB,
+  REVENUE_SHARE_CUSTODY_NOTE,
+  REVENUE_SHARE_DISCLOSURE,
   SUBSCRIPTIONS_RETIRED,
   TIER_ANALYST,
   TIER_ASSOCIATE,
@@ -330,4 +334,117 @@ test("tier ids match the registry's, so the wrong tier can never be charged", ()
   assert.equal(TIER_ANALYST, 1);
   assert.equal(TIER_ASSOCIATE, 2);
   assert.equal(TIER_PARTNER, 3);
+});
+
+/* ── 044 revenue share ───────────────────────────────────────────────────────────────────────
+ *
+ * The pot is empty and claiming is off, so nearly every one of these asserts an EMPTY state reads
+ * honestly. That is the state the screen is actually in, and getting it wrong is the whole risk:
+ * an empty pot dressed as a coming-soon teaser is a promise the product cannot keep.
+ * ─────────────────────────────────────────────────────────────────────────────────────────── */
+
+const DIST = "0x7f377fe96DaD2eEa494F0fb095233EF4aB438420";
+const READY = { distributor: DIST, walletReady: true } as const;
+
+test("044: with no distributor deployed the screen says so rather than showing an empty pot", () => {
+  const v = deriveClaimState({ walletReady: true });
+  assert.equal(v.status, "unconfigured");
+  assert.equal(v.canClaim, false);
+});
+
+test("044: no period opened reads as a plain fact, not an error and not a teaser", () => {
+  const v = deriveClaimState({ ...READY, periodCount: 0 });
+  assert.equal(v.status, "no-periods");
+  assert.equal(v.canClaim, false);
+  assert.match(v.headline, /nothing has been distributed/i);
+  // The words that would turn a description into a promise.
+  assert.doesNotMatch(`${v.headline} ${v.detail}`, /coming soon|stay tuned|soon|error|failed/i);
+});
+
+test("044: a holder is told their weight still counts, without being promised anything", () => {
+  const v = deriveClaimState({ ...READY, periodCount: 0, holdsActivatedBroker: true });
+  assert.match(v.detail, /recorded on-chain/i);
+  assert.doesNotMatch(v.detail, /earn|income|yield|return|per month|monthly|\$/i);
+});
+
+test("044: a funded-but-unpublished period says nobody can claim it, INCLUDING us", () => {
+  const v = deriveClaimState({ ...READY, periodCount: 1, published: false });
+  assert.equal(v.status, "not-published");
+  assert.equal(v.canClaim, false);
+  assert.match(v.detail, /including SparkPoint/i);
+});
+
+test("044: a wallet allocated nothing is told why, not left guessing", () => {
+  const v = deriveClaimState({
+    ...READY, periodCount: 1, published: true, allocation: 0n, alreadyClaimed: false,
+  });
+  assert.equal(v.status, "nothing-allocated");
+  assert.match(v.detail, /activated when the period closed/i);
+});
+
+test("044: an already-claimed period cannot be claimed twice from the UI either", () => {
+  const v = deriveClaimState({
+    ...READY, periodCount: 1, published: true, allocation: 5n, alreadyClaimed: true,
+  });
+  assert.equal(v.status, "already-claimed");
+  assert.equal(v.canClaim, false);
+});
+
+test("044: a real allocation is claimable", () => {
+  const v = deriveClaimState({
+    ...READY, periodCount: 1, published: true, allocation: 5n, alreadyClaimed: false,
+  });
+  assert.equal(v.status, "claimable");
+  assert.equal(v.canClaim, true);
+});
+
+test("044: nothing is claimable until every input has actually been read", () => {
+  // A button enabled on a partially-loaded page offers a transaction that reverts.
+  assert.equal(deriveClaimState({ ...READY }).canClaim, false);
+  assert.equal(deriveClaimState({ ...READY, periodCount: 1, published: true }).canClaim, false);
+  assert.equal(
+    deriveClaimState({ ...READY, periodCount: 1, published: true, allocation: 5n }).canClaim,
+    false,
+  );
+});
+
+test("044: amounts are exact and truncate rather than round up", () => {
+  assert.equal(formatTokenAmount(0n, 6, "USDC"), "0 USDC");
+  assert.equal(formatTokenAmount(2_180_725n, 6, "USDC"), "2.180725 USDC");
+  assert.equal(formatTokenAmount(1_000_000n, 6, "USDC"), "1 USDC");
+  assert.equal(formatTokenAmount(1n, 18, "USDC"), "0.000000000000000001 USDC");
+  assert.equal(formatTokenAmount(undefined, 6, "USDC"), "—");
+});
+
+test("044: the disclosure promises no rate, schedule or projection", () => {
+  const copy = `${REVENUE_SHARE_DISCLOSURE} ${REVENUE_SHARE_CUSTODY_NOTE}`;
+  assert.ok(copy.length > 0);
+  // The prototype that started this feature showed "+$14.00/month" against a pot holding 2.18
+  // test-USDC. These are the shapes that number could come back in.
+  assert.doesNotMatch(copy, /\$|%|per month|monthly|annual|APY|APR|estimate|projected|expect to/i);
+  assert.match(REVENUE_SHARE_DISCLOSURE, /nothing has been distributed/i);
+  // The custody claim is the part a holder cannot check by looking at the screen.
+  assert.match(REVENUE_SHARE_CUSTODY_NOTE, /no withdraw, sweep or rescue/i);
+  assert.match(REVENUE_SHARE_CUSTODY_NOTE, /rolls into the next period/i);
+});
+
+test("044: no user-facing claim copy uses earn/income/yield framing", () => {
+  const all = [
+    REVENUE_SHARE_DISCLOSURE,
+    REVENUE_SHARE_CUSTODY_NOTE,
+    ...(["no-periods", "not-published", "nothing-allocated", "already-claimed", "claimable"] as const).flatMap(
+      (_, idx) => {
+        const states = [
+          { ...READY, periodCount: 0 },
+          { ...READY, periodCount: 1, published: false },
+          { ...READY, periodCount: 1, published: true, allocation: 0n, alreadyClaimed: false },
+          { ...READY, periodCount: 1, published: true, allocation: 5n, alreadyClaimed: true },
+          { ...READY, periodCount: 1, published: true, allocation: 5n, alreadyClaimed: false },
+        ];
+        const v = deriveClaimState(states[idx]!);
+        return [v.headline, v.detail];
+      },
+    ),
+  ].join(" ");
+  assert.doesNotMatch(all, /\bearn\b|\bincome\b|\byield\b|\bdividend\b|\bprofit\b|\breturns\b/i);
 });
