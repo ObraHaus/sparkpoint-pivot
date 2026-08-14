@@ -84,7 +84,7 @@ function chromeFor(intent: ConfirmIntent): Chrome {
       return { title: "Confirm: Swap", badge: true, backLabel: "Back to chat", backRoute: "chat", cancelRoute: "chat" };
     case "premium":
       return {
-        title: "Confirm: Premium subscription",
+        title: "Confirm: activate a Sparky Broker",
         badge: false,
         backLabel: "Back",
         backRoute: "premium/pay",

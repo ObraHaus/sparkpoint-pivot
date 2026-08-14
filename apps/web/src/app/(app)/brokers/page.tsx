@@ -169,8 +169,9 @@ export default function Page() {
         <div>
           <h1>Sparky Broker</h1>
           <div className="sub">
-            10,000 brokers. Retiring SRK activates one: Premium, and a weight in every revenue
-            payout. Sell it and the activation clears — the next owner retires their own.
+            10,000 brokers. Retiring SRK activates one, permanently: Premium for as long as you hold
+            it, with nothing to renew. Sell it and the activation clears — the next owner retires
+            their own.
           </div>
         </div>
       </div>

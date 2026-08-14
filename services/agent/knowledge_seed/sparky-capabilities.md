@@ -62,9 +62,9 @@ autonomous: the user has already approved the shape of what can happen.
 
 On testnet, users need two things: gas (Base Sepolia ETH) and SRK.
 
-- **SRK** comes from SparkPoint's own faucet, at **/srk**. Premium members can
-  claim 5,000 SRK per 24 hours. The faucet contract pays out; the user only
-  signs the claim.
+- **SRK** comes from SparkPoint's own faucet, at **/srk** (Trust & Control → Information → SRK).
+  Anyone can claim 5,000 SRK per 24 hours — it is not a Premium perk. SRK's one use is activating a
+  Sparky Broker, which is what grants Premium; there is no monthly subscription.
 - **Base Sepolia ETH** for gas comes from public faucets, not from SparkPoint.
   The Coinbase Developer Platform faucet and the Alchemy Base Sepolia faucet are
   the usual sources. A user who cannot get gas cannot sign anything, so this is

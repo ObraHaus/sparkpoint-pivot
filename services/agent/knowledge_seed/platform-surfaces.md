@@ -67,11 +67,13 @@ Information section of the navigation.
 - **/portfolio** — positions, allocation and profit and loss.
 - **/vault** — the Aave yield vault: deposit, withdraw, current rate.
 - **/swap** — user-signed swaps, 0.20% routing fee.
-- **/premium** — the SRK balance, the faucet, and the subscription. See
+- **/brokers** (Trust & Control → Information → Sparky Broker) — mint a broker and activate it by retiring SRK; also lists the brokers you hold and whether each is activated.
+- **/premium** — the Premium tier and which source is currently paying for it. Premium comes from an activated Sparky Broker; the old monthly subscription is retired. See
   [[srk-and-premium]].
+- **/srk** (Information → SRK) — the token explainer and the **faucet** (5,000 SRK / 24h). The faucet moved here from /premium in 043, because Premium is no longer something you buy with SRK.
 - **/notifications** — alerts derived from real on-chain activity.
 - **Settings → Memory** — read or erase what Sparky remembers.
 - **Settings → Security** — active session keys, and revoking them.
-- **Settings → Account** — the subscription status.
+- **Settings → Account** — shows **Sparky Brokers**: whether Premium is on and which broker carries it.
 
 See [[sparky-capabilities]] for what the assistant itself can and cannot do.

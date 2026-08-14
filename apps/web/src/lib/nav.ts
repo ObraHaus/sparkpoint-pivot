@@ -68,7 +68,13 @@ export const SECONDARY: NavNode[] = [
       { route: "outcomes", label: "Outcome Log", icon: "activity", keywords: ["results", "attribution", "track record"] },
       { route: "fees", label: "Fees", icon: "coins", keywords: ["how we make money", "pricing", "costs"] },
       { route: "learn", label: "Learn", icon: "book", keywords: ["guides", "education", "glossary"] },
-      { route: "srk", label: "SRK", icon: "coins", keywords: ["token", "sparkpoint token"] },
+      { route: "srk", label: "SRK", icon: "coins", keywords: ["token", "sparkpoint token", "faucet", "claim srk"] },
+      {
+        route: "brokers",
+        label: "Sparky Broker",
+        icon: "zap",
+        keywords: ["nft", "broker", "mint", "activate", "membership", "collection", "premium"],
+      },
       { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
     ],
   },
@@ -84,26 +90,6 @@ export const SECONDARY: NavNode[] = [
 export const OFF_NAV_DESTINATIONS: NavItem[] = [
   { route: "premium", label: "Premium", icon: "zap", keywords: ["upgrade", "subscription", "faucet", "claim srk", "plan"] },
   { route: "automation", label: "Automation", icon: "zap", keywords: ["revoke automation", "session key", "hands-off"] },
-];
-
-/**
- * Surfaces that are searchable and deep-linkable but have NOT been given a nav slot (043).
- *
- * Distinct from `OFF_NAV_DESTINATIONS` on purpose — those are routes that LEFT the rail and now
- * surface inside Settings. Sparky Broker never had a slot: it is new, and where a new product
- * surface belongs in the rail is the client's call, not a side effect of shipping the feature. The
- * client slimmed this nav deliberately on Aug 2, so it is not re-fattened here without being asked.
- *
- * It stays fully reachable in the meantime: ⌘K-searchable via this list, deep-linkable, and linked
- * directly from /premium — which is where someone wondering how to get Premium already is.
- */
-export const UNPLACED_DESTINATIONS: NavItem[] = [
-  {
-    route: "brokers",
-    label: "Sparky Broker",
-    icon: "zap",
-    keywords: ["nft", "broker", "mint", "activate", "membership", "collection", "premium"],
-  },
 ];
 
 /**
@@ -204,7 +190,6 @@ export function commandActions(): NavItem[] {
     ...PRIMARY,
     ...navLeaves(SECONDARY),
     ...OFF_NAV_DESTINATIONS,
-    ...UNPLACED_DESTINATIONS,
     NOTIFICATIONS_ITEM,
   ];
   const seen = new Set<string>();

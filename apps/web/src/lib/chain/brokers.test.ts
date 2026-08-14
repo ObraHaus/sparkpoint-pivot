@@ -248,3 +248,54 @@ test("the retirement flag is ONE value, so the two Premium surfaces cannot contr
   assert.equal(typeof SUBSCRIPTIONS_RETIRED, "boolean");
   assert.equal(SUBSCRIPTIONS_RETIRED, true, "043 phase F — the broker replaces the subscription");
 });
+
+// ── the copy audit, as a test ───────────────────────────────────────────────────────────────
+
+test("no retired Premium framing survives in the copy this module owns", () => {
+  // The operator asked for a sweep of every surface that still described Premium as a monthly
+  // subscription. A grep proves the strings changed today; this keeps them changed.
+  const copy = [
+    ...([null, "stored", "broker"] as const).flatMap((s) => {
+      const v = premiumSourceView(s, 4);
+      return [v.headline, v.detail, v.endsWhen];
+    }),
+    deriveMintState({ ...mintBase, open: false }).blockedReason ?? "",
+    deriveMintState({ ...mintBase, sale: undefined }).blockedReason ?? "",
+    deriveActivateState({ ...actBase, balance: 0n }).blockedReason ?? "",
+    deriveActivateState({ ...actBase, alreadyActivated: true }).blockedReason ?? "",
+  ].join(" ");
+
+  // Bans the SELLING framing, not the word "subscription" itself — describing a legacy source
+  // accurately is exactly what these surfaces should do. What must not survive is any suggestion
+  // that Premium can still be bought, renewed or extended.
+  for (const retired of [
+    /buy a month/i,
+    /cancel anytime/i,
+    /per month/i,
+    /\brenew\b/i,
+    /\bextend it\b/i,
+    // "/mo" — the exact phrasing a plain "per month" grep MISSED. The live app was still showing
+    // "10,000 SRK /mo" on the Premium card after a source sweep said it was clean; only rendering
+    // the page caught it.
+    /\/mo\b/i,
+    /a month\b/i,
+    /burn/i,
+  ]) {
+    assert.doesNotMatch(copy, retired, `retired Premium framing: ${retired}`);
+  }
+});
+
+test("nothing here promises a revenue share, because none is built", () => {
+  // The activation copy used to say "Premium, and a payout weight". Revenue sharing has been
+  // DISCUSSED but not built, and a UI that promises it is making a commitment the product cannot
+  // keep. If it ships later, this test is the thing to delete deliberately.
+  const copy = ([null, "stored", "broker"] as const)
+    .flatMap((s) => {
+      const v = premiumSourceView(s, 4);
+      return [v.headline, v.detail, v.endsWhen];
+    })
+    .join(" ");
+  for (const promise of [/payout/i, /revenue/i, /weight/i, /dividend/i, /share of/i]) {
+    assert.doesNotMatch(copy, promise, `unbuilt promise: ${promise}`);
+  }
+});

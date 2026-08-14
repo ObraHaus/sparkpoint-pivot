@@ -554,15 +554,19 @@ export default function Page() {
             </div>
             <div className="setrow">
               <div>
-                <div style={{ fontWeight: 600 }}>Plan</div>
+                <div style={{ fontWeight: 600 }}>Sparky Brokers</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
+                  {/* 043 — Premium is no longer a plan you are on, it is a broker you hold. When it
+                      comes from one there is deliberately no date here: it ends on transfer. */}
                   {premium.active
-                    ? `Premium${premium.untilLabel ? ` — active until ${premium.untilLabel}` : ""}`
-                    : "Free — fully capable, forever. Premium adds advanced capability."}
+                    ? premium.source === "broker"
+                      ? `Premium — from an activated broker${premium.brokerTokenId !== undefined ? ` (#${String(premium.brokerTokenId).padStart(4, "0")})` : ""}, for as long as you hold it`
+                      : `Premium${premium.untilLabel ? ` — active until ${premium.untilLabel}` : ""}`
+                    : "Free — fully capable, forever. Activate a Sparky Broker to add Premium."}
                 </div>
               </div>
-              <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("premium"))}>
-                {premium.active ? "Manage plan" : "See Premium"}
+              <button className="btn btn-outline btn-md" onClick={() => router.push("/brokers")}>
+                {premium.active ? "Your brokers" : "Get a broker"}
               </button>
             </div>
             <div className="setrow">

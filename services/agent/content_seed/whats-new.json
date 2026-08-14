@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "premium-is-a-broker-not-a-subscription",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Premium is a broker you own, not a monthly bill",
+      "body": "We have gone through the whole app and rewritten everywhere that still described Premium as a monthly SRK subscription. It is not one any more.\n\nPremium now comes from a Sparky Broker you activate once. Nothing renews, nothing expires, and there is no date to remember — it stays on for as long as you hold the broker, and it ends if you sell it.\n\nA few practical changes while we were in there. The SRK faucet has moved from the Premium page to the SRK page, under Information — SRK's job now is activating a broker, so it sits with the token rather than next to a price. Sparky Broker has its own entry in the sidebar under Information. And your Settings page now shows Sparky Brokers, telling you which broker is carrying your Premium.\n\nOne correction worth being straight about: some earlier copy suggested that activating a broker earns you a share of platform revenue. That is not something we have built, so we have removed the claim. If it ever ships, we will say so plainly rather than leave it implied.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-14T03:19:46Z",
+      "active": true
+    },
+    {
       "slug": "sparky-broker-premium",
       "type": "changelog",
       "tag": "New",
