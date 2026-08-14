@@ -24,6 +24,7 @@ import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
 import { brokerSaleAbi, sparkyBrokerAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { brokerViews, deriveMintState, type BrokerToken } from "@/lib/chain/brokers";
+import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
@@ -38,8 +39,9 @@ const METADATA_ORIGIN =
  * enumerable**, so there is no `tokenOfOwnerByIndex` and no way to ask the contract which ids a
  * wallet holds. This page therefore checks ownership of ids `1..totalMinted`, batched.
  *
- * That is fine while the collection is small (testnet is single digits) and does NOT scale to
- * 10,000 — before a real mint this needs an indexer or a `Transfer`-log scan from the deploy block.
+ * That is now the FALLBACK path only: `GET /brokers/owned` (feature 044) walks `Transfer` logs in
+ * the agent and scales to the full 10,000. The scan runs when the indexer cannot answer, because
+ * the browser can still read the chain directly when the agent is down.
  * The cap below stops the page melting in the meantime; when it bites, the page says so instead of
  * silently showing a partial gallery, because a holder seeing 40 of their 60 brokers and being told
  * nothing is worse than being told the list is truncated.
@@ -84,8 +86,15 @@ export default function Page() {
   });
 
   const minted = totalMinted.data as bigint | undefined;
-  const scanCount = minted === undefined ? 0 : Math.min(Number(minted), OWNERSHIP_SCAN_LIMIT);
-  const truncated = minted !== undefined && Number(minted) > OWNERSHIP_SCAN_LIMIT;
+
+  // The indexer walks Transfer logs and scales to the full 10,000. The scan below is the fallback
+  // for when it cannot answer -- the browser can still read the chain directly even if the agent
+  // is down, and a bounded scan is correct while the collection is small.
+  const indexed = useIndexedBrokers(onChain);
+  const useScan = indexed.source === "scan";
+
+  const scanCount = !useScan || minted === undefined ? 0 : Math.min(Number(minted), OWNERSHIP_SCAN_LIMIT);
+  const truncated = useScan && minted !== undefined && Number(minted) > OWNERSHIP_SCAN_LIMIT;
   const ids = useMemo(() => Array.from({ length: scanCount }, (_, i) => BigInt(i + 1)), [scanCount]);
 
   const owners = useReadContracts({
@@ -94,12 +103,13 @@ export default function Page() {
   });
 
   const mine = useMemo(() => {
+    if (indexed.ids !== undefined) return indexed.ids.map((n) => BigInt(n));
     if (!owner || !owners.data) return [];
     return ids.filter((_, i) => {
       const r = owners.data?.[i];
       return r?.status === "success" && String(r.result).toLowerCase() === owner.toLowerCase();
     });
-  }, [ids, owners.data, owner]);
+  }, [indexed.ids, ids, owners.data, owner]);
 
   // Batched — N brokers cost ONE call rather than N, which is the reason `activationsOf` exists.
   const activations = useReadContract({

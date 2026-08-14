@@ -278,3 +278,34 @@ def from_block_from_env(default: int = 0) -> int:
         return max(0, int(raw.strip()))
     except ValueError:
         return default
+
+
+def build_broker_ledger_from_env(rpc_factory: Any = None) -> BrokerLedger | None:
+    """Construct from env, or ``None`` when unconfigured (⇒ callers report "unavailable").
+
+    Deliberately reads the SAME variables as ``broker_gate``, including the comma-separated
+    ``BROKER_REGISTRY_ADDRESS`` list. Two sources of truth for "which registries count" is exactly
+    how a holder who activated under a superseded registry gets silently dropped from one surface
+    but not another.
+
+    ⚠️ ``BROKER_INDEX_FROM_BLOCK`` matters here in a way it does not for the gate. Left at 0, a
+    scan of a 100-million-block chain exceeds ``MAX_CHUNKS`` and every answer degrades to ``None``.
+    Set it to the collection's deploy block.
+    """
+    from .broker_gate import ENV_BROKER, ENV_REGISTRY, ENV_RPC_URL, ENV_RPC_URL_FALLBACK
+
+    rpc_url = (os.getenv(ENV_RPC_URL) or os.getenv(ENV_RPC_URL_FALLBACK) or "").strip()
+    broker = (os.getenv(ENV_BROKER) or "").strip()
+    registry = (os.getenv(ENV_REGISTRY) or "").strip()
+    valid = [r for r in (x.strip() for x in registry.split(",")) if _is_address(r)]
+    if not rpc_url or not _is_address(broker) or not valid:
+        return None
+    if rpc_factory is None:
+        from ..data.log_source import HttpxLogsRpc
+
+        rpc: Any = HttpxLogsRpc(rpc_url)
+    else:
+        rpc = rpc_factory(rpc_url)
+    return BrokerLedger(
+        rpc=rpc, broker=broker, registries=valid, from_block=from_block_from_env()
+    )

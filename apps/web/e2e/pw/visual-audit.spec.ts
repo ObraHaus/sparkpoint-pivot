@@ -10,6 +10,10 @@
  *     npx playwright test e2e/pw/visual-audit.spec.ts --project=chromium
  */
 import { expect, test, type Page } from "@playwright/test";
+// ⚠️ ONE phrase list, shared with the PR-time guard (`src/lib/copy/copy-audit.test.ts`). Keeping a
+// second copy here is how the two drift: a phrase added after a live incident lands in one and not
+// the other, and the cheaper check silently stops covering it.
+import { appliesTo, RETIRED_PHRASES } from "../../src/lib/copy/retiredPhrases.ts";
 
 /**
  * The session comes from a REAL SIWE handshake done in Node (`e2e/__login.mjs`), not from driving
@@ -19,19 +23,6 @@ import { expect, test, type Page } from "@playwright/test";
  */
 const SESSION = process.env.PW_SP_SESSION;
 const SHOTS = process.env.PW_SHOT_DIR ?? "/tmp/shots";
-
-/** Phrases that must no longer appear anywhere a user can read them. */
-const RETIRED_PHRASES = [
-  /buy a month/i,
-  /cancel anytime/i,
-  /10,?000 SRK per month/i,
-  /Premium subscription/i,
-  /payout weight/i,
-  /weight in every revenue/i,
-  /comes from a subscription/i,
-  /SRK\s*\/mo/i,
-  /\/mo\b/,
-];
 
 async function authed(page: Page) {
   const host = new URL(process.env.PW_BASE_URL!).hostname;
@@ -44,12 +35,18 @@ test.describe("043 copy audit on the live app", () => {
   test.skip(!SESSION, "PW_SP_SESSION not set (run e2e/__login.mjs)");
   test.setTimeout(240_000);
 
-  for (const [name, path] of [
-    ["premium", "/premium"],
-    ["brokers", "/brokers"],
-    ["srk", "/srk"],
-    ["fees", "/fees"],
-    ["settings", "/settings"],
+  // ⚠️ Each route carries a MARKER it must actually render. Asserting only "no bad phrase appears"
+  // passes on a 404, a redirect to the holding page, and an empty shell — all of which contain no
+  // retired copy precisely because they contain nothing. A guard that cannot fail is not a guard.
+  for (const [name, path, marker] of [
+    ["premium", "/premium", /premium/i],
+    ["brokers", "/brokers", /sparky broker/i],
+    ["srk", "/srk", /SRK/],
+    ["fees", "/fees", /fee/i],
+    ["settings", "/settings", /sparky brokers/i],
+    // 044 — the claim screen. Its whole risk is copy: an empty pot must read as a fact, not a
+    // teaser, and no projected figure may ever appear next to it.
+    ["revenue", "/brokers/revenue", /nothing has been distributed/i],
   ] as const) {
     test(`${name} renders and carries no retired Premium copy`, async ({ page }) => {
       await authed(page);
@@ -60,8 +57,16 @@ test.describe("043 copy audit on the live app", () => {
       const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
       // If the gate bounced us, say so plainly rather than passing on an empty page.
       expect(page.url(), `${path} bounced to ${page.url()}`).toContain(path);
+      // ...and prove the page actually rendered its own content, not a shell that trivially
+      // contains none of the banned phrases.
+      expect(body, `${path} rendered no recognisable content — audit would be vacuous`).toMatch(
+        marker,
+      );
       for (const phrase of RETIRED_PHRASES) {
-        expect(body, `"${phrase}" still visible on ${path}`).not.toMatch(phrase);
+        if (!appliesTo(phrase, path)) continue;
+        expect(body, `"${phrase.pattern}" still visible on ${path} — ${phrase.why}`).not.toMatch(
+          phrase.pattern,
+        );
       }
     });
   }

@@ -46,6 +46,7 @@ from .admin_uptime import router as admin_uptime_router
 from .admin_usage import router as admin_usage_router
 from .admin_vaults import router as admin_vaults_router
 from .allowlist import router as allowlist_router
+from .brokers import router as brokers_router
 from .chat import router as chat_router
 from .content import router as content_router
 from .conversations import router as conversations_router
@@ -727,6 +728,12 @@ app.include_router(notifications_router)
 # status. The service signs nothing (N1/N3); the withdraw/exit path is never gated (N2).
 app.include_router(execution_router)
 app.include_router(sessions_router)
+# 044 brokers — which Sparky Brokers the CALLER holds, answered from Transfer logs because the
+# collection is solady ERC-721 and not enumerable. Read-only and advisory: never gates an exit or a
+# withdraw (N2), returns nothing signable, writes nothing. Reports "unavailable" rather than an
+# empty list when the chain cannot be read, because an empty gallery reads as "your brokers are
+# gone".
+app.include_router(brokers_router)
 # §B beta/admin allowlist — the SIWE login status check (/allowlist/status) + admin-gated
 # management (/admin/allowlist*). ACCESS gate only; never gates /exit, /trust, or withdraw (N2).
 app.include_router(allowlist_router)
