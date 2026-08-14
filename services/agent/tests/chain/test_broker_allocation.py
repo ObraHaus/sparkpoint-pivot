@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 from sparkpoint_agent.chain.broker_allocation import (
+    UnpricedActivations,
     build_allocation,
     build_tree,
     leaf_for,
@@ -192,3 +193,39 @@ def test_writes_the_parity_fixture_the_solidity_test_replays() -> None:
     )
     assert plan.total_allocated <= plan.pot
     assert len(plan.allocations) == 3
+
+
+# ── the orphaned-activation refusal ────────────────────────────────────────────────────────────
+
+
+def test_building_a_split_REFUSES_while_activated_brokers_have_no_weight() -> None:
+    """The live Robinhood testnet case: #1 and #4 are activated and unpriceable.
+
+    Publishing is irreversible, so an unpriceable activation must stop the build rather than
+    quietly resolve to "this holder gets nothing".
+    """
+    import pytest
+
+    with pytest.raises(UnpricedActivations) as err:
+        build_allocation(
+            period_id=1, token=USDC, pot=1_000, brokers=[_b(2, A, ANALYST)], weightless=(1, 4)
+        )
+    assert err.value.token_ids == (1, 4)
+    assert "permanently" in str(err.value)
+
+
+def test_excluding_them_is_possible_but_must_be_explicit() -> None:
+    plan = build_allocation(
+        period_id=1,
+        token=USDC,
+        pot=1_000,
+        brokers=[_b(2, A, ANALYST)],
+        weightless=(1, 4),
+        allow_unpriced=True,
+    )
+    assert plan.total_allocated == 1_000
+
+
+def test_no_weightless_brokers_needs_no_ceremony() -> None:
+    plan = build_allocation(period_id=1, token=USDC, pot=1_000, brokers=[_b(2, A, ANALYST)])
+    assert plan.total_allocated == 1_000

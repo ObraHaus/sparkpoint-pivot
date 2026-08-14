@@ -45,15 +45,27 @@ SEL_WEIGHT_OF = "0x0767d178"
 
 ENV_FROM_BLOCK = "BROKER_INDEX_FROM_BLOCK"
 
-#: `eth_getLogs` range per request. Providers cap this and the caps differ wildly (Alchemy's free
-#: tier allows 10 blocks; the Robinhood public node is far more generous). Chunking to a modest
-#: window means one conservative provider does not make the whole scan fail — and eRPC's
-#: split-on-error only helps for the providers it knows about.
-LOG_CHUNK = 5_000
+#: Starting `eth_getLogs` span. Deliberately large: the Robinhood public node accepts a
+#: 1,000,000-block range in one call, and a conservative fixed chunk turned a single request into
+#: ~100 sequential ones on a user-facing endpoint.
+#:
+#: ⚠️ Providers' caps differ wildly — Alchemy's free tier allows 10 blocks — so this is a STARTING
+#: point that narrows on rejection (see `_logs`), not a value that must be right everywhere.
+#: Guessing high and adapting down beats guessing low and being slow for everyone.
+LOG_CHUNK = 500_000
 
-#: Hard stop on how many chunks one scan will walk. A scan that would need more than this is a
-#: configuration problem (a `fromBlock` of 0 on a 100M-block chain), not something to grind through.
-MAX_CHUNKS = 400
+#: Floor for the adaptive narrowing. Below this a provider is not merely strict, something else is
+#: wrong, and halving forever would just be a slow failure.
+MIN_LOG_CHUNK = 500
+
+#: Request budget for ONE scan. This is a user-facing endpoint, so the bound is "what a page load
+#: can afford", not "what will eventually finish".
+#:
+#: At the default span that is 30M blocks of headroom — the collection was deployed ~500k blocks
+#: ago — while still refusing a `from_block` of 0 on a 100M-block chain, which would need 200
+#: sequential requests. ⚠️ Raising `LOG_CHUNK` without lowering this is how that misconfiguration
+#: stops being caught and becomes a very slow page instead of a clear failure.
+MAX_CHUNKS = 60
 
 
 class EthCallRpc(Protocol):
@@ -87,6 +99,29 @@ def _word(value: int) -> str:
 
 
 @dataclass(frozen=True)
+class ActivationScan:
+    """The activated set, plus the brokers that could not be priced.
+
+    ⚠️ `weightless` is the important field. A broker whose `activatedAt` is non-zero IS activated —
+    the holder paid — but if no registry in the list can report a `weightOf` for it, there is no
+    number to split a pot by. Dropping it silently would allocate that holder nothing, and once a
+    period is published that is permanent.
+
+    This is not hypothetical. On Robinhood testnet, brokers #1 and #4 are activated on the NFT while
+    both superseded registries **have no `weightOf` function at all** — they predate the 043c tiers,
+    so the call reverts rather than returning 0. The registry LIST cannot rescue them, because there
+    is no weight recorded anywhere to find.
+
+    So they are reported rather than discarded, and the caller must decide before publishing:
+    treat a pre-tier activation as Analyst (1.0x), require re-activation, or exclude it knowingly.
+    Any of those is defensible; doing it by accident is not.
+    """
+
+    activated: tuple[ActivatedBroker, ...]
+    weightless: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class ActivatedBroker:
     """One broker that is activated **right now**, with the holder and weight to prove it.
 
@@ -112,6 +147,8 @@ class BrokerLedger:
     #: The block the collection was deployed at. Scanning from 0 on a 100M-block chain is a
     #: configuration error, not a slow path — there is nothing before this block.
     from_block: int = 0
+    #: Starting span per `eth_getLogs`. Narrows automatically when a provider rejects it.
+    log_chunk: int = LOG_CHUNK
 
     # ── log walking ─────────────────────────────────────────────────────────────────────────
 
@@ -131,11 +168,12 @@ class BrokerLedger:
         """
         out: list[dict[str, Any]] = []
         start = self.from_block
+        span = self.log_chunk
         chunks = 0
         while start <= head:
             if chunks >= MAX_CHUNKS:
                 return None
-            end = min(start + LOG_CHUNK - 1, head)
+            end = min(start + span - 1, head)
             try:
                 got = await self.rpc.call(
                     "eth_getLogs",
@@ -148,7 +186,14 @@ class BrokerLedger:
                         }
                     ],
                 )
-            except Exception:  # noqa: BLE001 - a scan is best-effort; the caller degrades
+            except Exception:  # noqa: BLE001 - a rejected range is usually "too wide", not fatal
+                # Narrow and retry the SAME start. A provider that caps ranges says so by failing,
+                # and the cap is not knowable in advance — so it is discovered rather than
+                # configured. Below the floor, treat it as a real failure.
+                if span > MIN_LOG_CHUNK:
+                    span = max(MIN_LOG_CHUNK, span // 4)
+                    chunks += 1
+                    continue
                 return None
             if not isinstance(got, list):
                 return None
@@ -216,7 +261,16 @@ class BrokerLedger:
     # ── question 2: every activated broker, for the allocation ──────────────────────────────
 
     async def activated_brokers(self) -> list[ActivatedBroker] | None:
-        """Every broker activated **right now**, with its current holder and weight.
+        """Convenience wrapper over :meth:`scan_activations` returning only the priced brokers.
+
+        ⚠️ Prefer `scan_activations` when building an allocation: this drops weightless activations
+        on the floor, which is the exact silent exclusion this module exists to prevent.
+        """
+        scan = await self.scan_activations()
+        return None if scan is None else list(scan.activated)
+
+    async def scan_activations(self) -> ActivationScan | None:
+        """Every broker activated **right now**, split into priced and weightless.
 
         This is the input to a revenue period's allocation, so a partial answer is not acceptable:
         a missing holder is a holder who silently gets nothing. Any failure returns ``None`` and the
@@ -228,7 +282,9 @@ class BrokerLedger:
         if head is None:
             return None
 
-        candidates: list[int] = []
+        candidates: set[int] = set()
+
+        # 1. Every `Activated` event on every registry in the list.
         for registry in self.registries:
             if not _is_address(registry):
                 continue
@@ -240,10 +296,32 @@ class BrokerLedger:
                 if len(topics) < 3:
                     continue
                 token_id = _hex_to_int(topics[2])
-                if token_id is not None and token_id not in candidates:
-                    candidates.append(token_id)
+                if token_id is not None:
+                    candidates.add(token_id)
+
+        # 2. ⚠️ EVERY token that has ever moved, which is every token that exists.
+        #
+        # The event scan above is NOT sufficient and assuming it was is a real bug this caught:
+        # a superseded registry emits a DIFFERENT `Activated` signature (the 043c tiers added two
+        # arguments), so its topic0 differs and its activations never appear above at all. On
+        # Robinhood testnet that hides brokers #1 and #4, which are activated on the NFT right now.
+        #
+        # A missing candidate cannot even be reported as weightless — it is invisible, which is
+        # strictly worse. So the mint/transfer log is used as the population, and the NFT's own
+        # `activatedAt` decides. It costs one extra `eth_getLogs` and removes the whole class.
+        mints = await self._logs(self.broker, [TOPIC_TRANSFER], head)
+        if mints is None:
+            return None
+        for log in mints:
+            topics = log.get("topics") or []
+            if len(topics) < 4:
+                continue
+            token_id = _hex_to_int(topics[3])
+            if token_id is not None:
+                candidates.add(token_id)
 
         out: list[ActivatedBroker] = []
+        weightless: list[int] = []
         for token_id in sorted(candidates):
             # The chain decides, not the log: a broker activated last month may have been sold
             # since, which cleared its activation and its weight.
@@ -254,10 +332,12 @@ class BrokerLedger:
             if holder is None:
                 continue
             weight = await self._active_weight(token_id)
-            if weight is None or weight == 0:
+            if not weight:
+                # Activated, held, and unpriceable. Reported, never quietly dropped.
+                weightless.append(token_id)
                 continue
             out.append(ActivatedBroker(token_id=token_id, holder=holder, weight_bps=weight))
-        return out
+        return ActivationScan(activated=tuple(out), weightless=tuple(weightless))
 
     async def _active_weight(self, token_id: int) -> int | None:
         """`weightOf` from whichever registry currently knows this token. 0 when none does."""
