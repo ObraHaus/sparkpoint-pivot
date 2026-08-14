@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "copy-audit-in-ci",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "We now catch out-of-date wording before it reaches you",
+      "body": "Twice recently the app showed wording that was no longer true — the Premium card still said “10,000 SRK /mo” after that pricing was retired, and the SRK page said the faucet lived on the Premium page after it had moved.\n\nBoth slipped through because our automated search looked at the code, and in the code those sentences are broken into pieces. The page reads “10,000 SRK /mo”; the code has the price and the “/mo” in two separate places, so searching for the sentence found nothing.\n\nThere is now a check that reassembles the text the way you would actually read it, and it runs on every change before it can be merged. A second check loads the real site each week and reads the pages the same way, which catches wording that comes from our servers rather than the code.\n\nBoth are built so they cannot quietly pass: if a page fails to load, that is reported as a broken check rather than a clean one.",
+      "published_at": "2026-08-14T10:30:00Z"
+    },
+    {
       "slug": "brokers-gallery-indexer",
       "type": "changelog",
       "tag": "Improved",
