@@ -19,12 +19,21 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { erc20Abi, type Address, type Hex } from "viem";
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
 import { brokerActivationRegistryAbi, sparkyBrokerAbi } from "@sparkpoint/shared/abis";
 import { explorerTxUrl } from "@/lib/chain/explorer";
-import { brokerView, deriveActivateState, formatSrk } from "@/lib/chain/brokers";
+import {
+  brokerView,
+  deriveActivateState,
+  formatSrk,
+  TIER_ANALYST,
+  TIER_ASSOCIATE,
+  TIER_PARTNER,
+  TIER_WEIGHT_DISCLOSURE,
+  weightLabel,
+} from "@/lib/chain/brokers";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -61,15 +70,34 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
 
   const valid = Number.isInteger(tokenId) && tokenId > 0;
 
-  // The price, live from the chain. Refetched often enough that a long-open tab cannot quote a
-  // stale number at the moment the holder signs.
-  const price = useReadContract({
-    address: registry,
-    abi: brokerActivationRegistryAbi,
-    functionName: "price",
-    chainId: BROKER_CHAIN,
+  // 043c — three tiers. All grant IDENTICAL Premium; a higher one only records a larger payout
+  // weight, and nothing pays out yet (see TIER_WEIGHT_DISCLOSURE). Analyst is the default because
+  // it is the one that costs least for the thing every tier actually delivers.
+  const [tier, setTier] = useState<number>(TIER_ANALYST);
+
+  const tierReads = useReadContracts({
+    contracts: [TIER_ANALYST, TIER_ASSOCIATE, TIER_PARTNER].map((t) => ({
+      address: registry,
+      abi: brokerActivationRegistryAbi,
+      functionName: "tierConfig" as const,
+      args: [t],
+      chainId: BROKER_CHAIN,
+    })),
     query: { enabled: !!registry, refetchInterval: 15_000 },
   });
+
+  const tiers = [TIER_ANALYST, TIER_ASSOCIATE, TIER_PARTNER].map((id, i) => {
+    const r = tierReads.data?.[i];
+    const v = r?.status === "success" ? (r.result as readonly [bigint, number]) : undefined;
+    return {
+      id,
+      name: ["Analyst", "Associate", "Partner"][i]!,
+      price: v?.[0],
+      weightBps: v?.[1] === undefined ? undefined : Number(v[1]),
+    };
+  });
+  const selected = tiers.find((t) => t.id === tier);
+  const price = { data: selected?.price };
 
   const tokenOwner = useReadContract({
     address: nft,
@@ -132,11 +160,14 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     if (!registry || !srk || !publicClient) return;
     // Read the price ONE more time, immediately before signing. Everything above is display; this
     // is the number that will actually be charged.
-    const live = await publicClient.readContract({
+    // Re-read THIS TIER's price immediately before signing. Everything above is display; this is
+    // the number that will actually be charged.
+    const [live] = (await publicClient.readContract({
       address: registry,
       abi: brokerActivationRegistryAbi,
-      functionName: "price",
-    });
+      functionName: "tierConfig",
+      args: [tier],
+    })) as readonly [bigint, number];
     setErr(undefined);
     try {
       if (state.needsApproval) {
@@ -163,7 +194,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
         address: registry,
         abi: brokerActivationRegistryAbi,
         functionName: "activate",
-        args: [BigInt(tokenId)],
+        args: [BigInt(tokenId), tier],
         chainId: BROKER_CHAIN,
       });
       setTxHash(tx);
@@ -224,6 +255,54 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             style={{ width: "100%", height: "auto", borderRadius: 10, imageRendering: "pixelated" }}
           />
           <div>
+            {/* 043c — the tier picker. Every option carries the same Premium; the only difference
+                is a recorded payout weight, and nothing pays out yet. That is stated below the
+                options, not buried, because the gap between Analyst and Partner is 750,000 SRK. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+              {tiers.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTier(t.id)}
+                  aria-pressed={t.id === tier}
+                  disabled={busy}
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 10,
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    cursor: busy ? "default" : "pointer",
+                    background: t.id === tier ? "var(--gold-subtle)" : "var(--surface-2)",
+                    border: `1px solid ${t.id === tier ? "var(--warn)" : "var(--border-soft)"}`,
+                  }}
+                >
+                  <span style={{ fontWeight: 620, fontSize: 14 }}>{t.name}</span>
+                  <span className="tnum" style={{ fontSize: 13 }}>
+                    {formatSrk(t.price)}
+                  </span>
+                  <span
+                    className="mono"
+                    style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--muted-foreground)" }}
+                    title="Payout weight recorded on-chain. Nothing pays out yet."
+                  >
+                    weight {weightLabel(t.weightBps)}
+                  </span>
+                </button>
+              ))}
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--muted-foreground)",
+                  lineHeight: 1.5,
+                  marginTop: 2,
+                }}
+              >
+                {TIER_WEIGHT_DISCLOSURE}
+              </div>
+            </div>
+
             <div className="payrow">
               <span className="muted">You send</span>
               <span className="tnum">

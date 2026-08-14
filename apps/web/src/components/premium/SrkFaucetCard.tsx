@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * SrkFaucetCard — the live SRK balance + the one-click testnet faucet, on /premium (feature 026).
+ * SrkFaucetCard — the live SRK balance + the one-click testnet faucet, on /srk (043b moved it
+ * there from /premium: Premium is not bought with SRK any more, so the acquire path belongs beside
+ * the token it hands out rather than beside a price).
  *
  * Everything shown is an on-chain read of the deployed `SrkFaucet`; the claim is a user-signed
  * `claim()` — SparkPoint holds nothing and signs nothing (the agent is provably keyless and is not
@@ -32,7 +34,7 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 /**
  * The chains that carry a testnet SRK and a faucet, in preference order.
  *
- * Base Sepolia is first because it is where Premium settles. Robinhood testnet joined in 043 phase 1
+ * Base Sepolia is first for continuity; Robinhood testnet joined in 043 phase 1
  * with its OWN, unrelated SRK deployment: the Sparky Broker NFT lives on Robinhood Chain and
  * activating a broker retires SRK, and a burn on one chain cannot flip state on another in the same
  * transaction — so the SRK a broker retires has to live on the broker's chain.
@@ -291,8 +293,9 @@ export function SrkFaucetCard() {
         {offered.length > 1 && (
           <>
             {" "}
-            Each network has its <b>own</b> SRK, so balances don’t carry across: Base Sepolia SRK buys
-            Premium, Robinhood Testnet SRK is what a Sparky Broker retires to activate.
+            Each network has its <b>own</b> SRK, so balances don’t carry across. The one that
+            matters here is Robinhood Testnet SRK — that is what a Sparky Broker retires to
+            activate.
           </>
         )}
       </div>

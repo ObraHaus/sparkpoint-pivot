@@ -129,6 +129,44 @@ export function deriveMintState(i: MintState): MintVerdict {
   };
 }
 
+/** Tier ids as the registry defines them. `0` is not a tier. */
+export const TIER_ANALYST = 1;
+export const TIER_ASSOCIATE = 2;
+export const TIER_PARTNER = 3;
+
+export interface ActivationTier {
+  readonly id: number;
+  readonly name: string;
+  /** SRK retired at this tier, in base units. Read LIVE from the registry, never hardcoded. */
+  readonly price?: bigint;
+  /** Payout weight in basis points of 1.0x — 10000 = 1.0x, 33000 = 3.3x. */
+  readonly weightBps?: number;
+}
+
+/** "3.3×" from 33000 bps. Basis points exist because 3.3 is not an integer multiplier. */
+export function weightLabel(weightBps: number | undefined): string {
+  if (weightBps === undefined) return "…";
+  const x = weightBps / 10_000;
+  return `${Number.isInteger(x) ? x.toFixed(1) : String(x)}×`;
+}
+
+/**
+ * ⚠️⚠️ The sentence every tier picker MUST carry.
+ *
+ * A higher tier costs more SRK and records a larger payout weight — and **nothing pays out**. There
+ * is no epoch, no pot and no claim path in any deployed contract. Until one exists, choosing Partner
+ * over Analyst costs 4× the SRK and buys the holder nothing they can use today.
+ *
+ * Recording a weight is honest. Letting someone infer it earns them money is not, and the difference
+ * is 750,000 SRK of their money. If a payout ever ships, this constant is the thing to change — and
+ * a test asserts the disclosure is non-empty so it cannot be quietly deleted.
+ */
+export const TIER_WEIGHT_DISCLOSURE =
+  "All three tiers unlock exactly the same Premium. A higher tier records a larger payout weight — " +
+  "but revenue sharing is not built yet and nothing pays out today, so a higher tier buys you " +
+  "nothing you can use right now. Choose Analyst unless you specifically want the larger weight " +
+  "recorded on-chain for later.";
+
 export interface ActivateState {
   readonly registry?: string;
   /** `price()` in base units; `undefined` = not read yet. Read LIVE at signing, never hardcoded. */

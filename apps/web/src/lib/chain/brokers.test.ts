@@ -10,6 +10,11 @@ import {
   premiumSourceView,
   RETIRED_VERB,
   SUBSCRIPTIONS_RETIRED,
+  TIER_ANALYST,
+  TIER_ASSOCIATE,
+  TIER_PARTNER,
+  TIER_WEIGHT_DISCLOSURE,
+  weightLabel,
   wholeSrk,
 } from "./brokers.ts";
 
@@ -298,4 +303,31 @@ test("nothing here promises a revenue share, because none is built", () => {
   for (const promise of [/payout/i, /revenue/i, /weight/i, /dividend/i, /share of/i]) {
     assert.doesNotMatch(copy, promise, `unbuilt promise: ${promise}`);
   }
+});
+
+// ── tiers (043c) ────────────────────────────────────────────────────────────────────────────
+
+test("weights read as multipliers, and 3.3x survives the round trip", () => {
+  // Basis points exist precisely because 3.3 is not an integer — an integer multiplier would have
+  // silently become 3, quietly shrinking the top tier by 10%.
+  assert.equal(weightLabel(10_000), "1.0×");
+  assert.equal(weightLabel(20_000), "2.0×");
+  assert.equal(weightLabel(33_000), "3.3×");
+  assert.equal(weightLabel(undefined), "…", "an unread weight is never rendered as a number");
+});
+
+test("the tier disclosure says plainly that a higher tier buys nothing today", () => {
+  // The honesty guard. A holder choosing Partner over Analyst spends 750,000 more SRK; if the UI
+  // lets them infer that earns income, we have taken their money for a promise we have not built.
+  const d = TIER_WEIGHT_DISCLOSURE.toLowerCase();
+  assert.ok(d.length > 80, "a one-liner cannot carry this");
+  assert.match(d, /same premium/, "must say every tier unlocks the same Premium");
+  assert.match(d, /not built|nothing pays out/, "must say the payout does not exist");
+  assert.doesNotMatch(d, /\bearn\b|\bincome\b|\byield\b|\breturns\b/, "must not imply income");
+});
+
+test("tier ids match the registry's, so the wrong tier can never be charged", () => {
+  assert.equal(TIER_ANALYST, 1);
+  assert.equal(TIER_ASSOCIATE, 2);
+  assert.equal(TIER_PARTNER, 3);
 });

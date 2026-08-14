@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (043c — activation is tiered; the flat 10,000 SRK price is retired)
+- **Three tiers, chosen at signing**: Analyst 250,000 SRK (1.0×), Associate 500,000 (2.0×), Partner 1,000,000 (3.3×). **All three unlock exactly the same Premium** — a higher tier only records a larger payout weight.
+- Weights are **basis points of 1.0×**, because **3.3 is not an integer**: a plain multiplier would have silently become 3 and quietly shrunk the top tier by 10%.
+- A tier price of **0 disables that tier** rather than becoming a free activation carrying its weight — which, once a payout exists, would be free money. Retiring one tier is not retiring the sale.
+- `activeTierOf` and `weightOf` **read the chain**, so a sold broker carries no tier and no weight the instant it moves, even though the registry cannot observe the transfer and its raw record still remembers one. Safe by construction rather than by documentation.
+- New registry `0xf08116…a88E` on 46630. ⚠️ `BROKER_REGISTRY_ADDRESS` is now **three** addresses — a superseded registry is never removed, because re-pointing `activator` orphans its record with no on-chain recovery.
+
+### Fixed (043c — two stale pointers the rendered page caught)
+- `/srk` said *"your balance and the testnet faucet live on Premium"* — **on the page that now hosts the faucet**. The faucet card likewise said *"Base Sepolia SRK buys Premium"*, which it does not any more.
+- Both were invisible to a source grep and to the audit's phrase list; only looking at the deployed page found them.
+
+### Notes (043c)
+- ⚠️⚠️ **Revenue sharing is not built.** No deployed contract pays out — no epoch, no pot, no claim path. `weightBps` is recorded and nothing reads it for money. The activation screen states plainly that a higher tier buys nothing usable today, and a test asserts that disclosure names both facts. The Analyst→Partner gap is 750,000 SRK; an implied income would not be honest.
+
 ### Changed (043b — Premium reads as a Sparky Broker everywhere, and the AI knows it)
 - **Every surface that still sold Premium as a monthly SRK subscription now describes the broker.** `/premium` (the price card, the sub-line, the buy button), `/fees`, `/srk`, the confirm-flow title, and Settings — where the row is now **Sparky Brokers** and names the broker carrying Premium.
 - ⚠️ **The Premium card still read "10,000 SRK /mo · cancel anytime" after a source sweep said the app was clean.** The sweep looked for `per month` and `buy a month`; the markup says `/mo` in a separate span. Signing in to the deployed app and reading the rendered page is what caught it. The card now quotes **no number at all** — the activation price is owner-settable on-chain, so a figure baked into a marketing card is a second place for it to go stale; the real amount is read live from the registry at the moment of signing. Both the unit copy test and the live audit spec now ban `/mo` and `a month`.

@@ -69,12 +69,12 @@ export default function Page() {
       >
         <Icon name="info" size={16} />
         <span style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-          SRK never gates the vault, onboarding, or chat. The product works fully without it — this
-          page is informational only. Your balance and the testnet faucet live on{" "}
-          <Link href={toHref("premium")} style={{ color: "var(--primary)" }}>
-            Premium
+          SRK never gates the vault, onboarding, or chat. The product works fully without it. Its one
+          use is activating a{" "}
+          <Link href="/brokers" style={{ color: "var(--primary)" }}>
+            Sparky Broker
           </Link>
-          , next to the only thing SRK buys.
+          , which is what unlocks Premium — and the faucet above is how you get some.
         </span>
       </div>
 

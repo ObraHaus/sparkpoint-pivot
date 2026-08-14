@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "broker-activation-tiers",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Activating a broker now has three tiers",
+      "body": "When you activate a Sparky Broker you now choose a tier: Analyst (250,000 SRK), Associate (500,000) or Partner (1,000,000). The flat price is gone.\n\nRead this part before you choose. All three tiers unlock exactly the same Premium — every feature, identical. The only difference is a larger payout weight recorded against your broker on the blockchain.\n\nAnd we want to be blunt about what that weight does today: nothing. Revenue sharing is not built. There is no payout, no pot and no way to claim anything, so paying for Partner instead of Analyst costs you 750,000 more SRK and gets you nothing you can use right now. The only reason to choose a higher tier is if you specifically want the larger weight recorded for later, accepting that later may never come.\n\nWe would rather say that plainly than let the word \\u201cweight\\u201d do the implying.",
+      "cta_label": "See the brokers",
+      "cta_href": "/brokers",
+      "published_at": "2026-08-14T03:32:11Z",
+      "active": true
+    },
+    {
       "slug": "premium-is-a-broker-not-a-subscription",
       "type": "changelog",
       "tag": "Improved",
