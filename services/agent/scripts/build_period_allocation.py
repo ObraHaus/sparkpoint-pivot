@@ -85,7 +85,9 @@ async def main() -> int:
 
     if scan is None:
         print("REFUSING: the chain could not be fully read.", file=sys.stderr)
-        print("A partial scan silently drops holders, and publishing is permanent.", file=sys.stderr)
+        print(
+            "A partial scan silently drops holders, and publishing is permanent.", file=sys.stderr
+        )
         return 2
 
     print(f"scanned in {rpc.calls} rpc calls")
