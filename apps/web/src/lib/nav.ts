@@ -75,6 +75,16 @@ export const SECONDARY: NavNode[] = [
         icon: "zap",
         keywords: ["nft", "broker", "mint", "activate", "membership", "collection", "premium"],
       },
+      {
+        // Sits directly under Sparky Broker: you mint and activate one there, and this is the only
+        // thing an activated broker's weight is FOR. ⚠️ It shipped without a nav entry and was
+        // reachable only by typing the URL — the live copy audit navigates by direct URL, so it
+        // rendered the page happily and never noticed nothing linked to it.
+        route: "brokers/revenue",
+        label: "Revenue share",
+        icon: "coins",
+        keywords: ["revenue", "share", "claim", "payout", "distribution", "period", "broker"],
+      },
       { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
     ],
   },

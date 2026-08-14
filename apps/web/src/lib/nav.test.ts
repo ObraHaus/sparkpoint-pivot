@@ -57,14 +57,17 @@ test("top-level order is the decided one: Swap, Bridge, Information, Settings", 
   assert.deepEqual(top, ["swap", "bridge", `group:${INFORMATION_GROUP_KEY}`, "settings"]);
 });
 
-test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Sparky Broker, Changelog", () => {
+test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Sparky Broker, Revenue share, Changelog", () => {
   const group = SECONDARY.find((n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY);
   assert.ok(group);
   // 043 — Sparky Broker sits after SRK, deliberately: SRK is what you spend to activate one, so the
   // two read in the order a holder meets them.
+  // 044 — Revenue share sits directly under Sparky Broker: it is the only thing an activated
+  // broker's weight is FOR. ⚠️ It shipped with no nav entry at all and was reachable only by
+  // typing the URL, which is why this list is asserted rather than trusted.
   assert.deepEqual(
     group.children.map((c) => c.route),
-    ["trust", "outcomes", "fees", "learn", "srk", "brokers", "changelog"],
+    ["trust", "outcomes", "fees", "learn", "srk", "brokers", "brokers/revenue", "changelog"],
   );
 });
 
@@ -92,6 +95,7 @@ test("navLeaves flattens groups in source order", () => {
     "learn",
     "srk",
     "brokers",
+    "brokers/revenue",
     "changelog",
     "settings",
   ]);
@@ -187,4 +191,37 @@ test("Sparky Broker has a real slot inside Information, and is searchable", () =
   const palette = commandActions().map((a) => a.route);
   assert.ok(palette.includes("brokers"), "⌘K must find it");
   assert.equal(toHref("brokers"), "/brokers");
+});
+
+/* --------------------- no page ships without a way to reach it --------------------- */
+
+test("044: Revenue share is reachable from the nav, not only by typing the URL", () => {
+  // ⚠️ This page shipped, deployed and passed a live copy audit while NOTHING linked to it. The
+  // audit navigates by direct URL, so it rendered the page happily; a user browsing the app could
+  // not find it at all. "It works if you know the address" is not shipped.
+  assert.ok(containsRoute(SECONDARY, "brokers/revenue"), "it must be in the nav tree");
+  assert.ok(navRoutes(SECONDARY).includes("brokers/revenue"));
+  assert.equal(toHref("brokers/revenue"), "/brokers/revenue");
+
+  const group = SECONDARY.find(
+    (n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY,
+  );
+  assert.ok(group);
+  const routes = group.children.map((c) => c.route);
+  assert.equal(
+    routes.indexOf("brokers/revenue"),
+    routes.indexOf("brokers") + 1,
+    "it belongs directly under Sparky Broker — the weight you activate for is what this pays",
+  );
+});
+
+test("044: ⌘K finds revenue share by the words a holder would actually type", () => {
+  const item = navLeaves(SECONDARY).find((n) => n.route === "brokers/revenue");
+  assert.ok(item);
+  for (const term of ["revenue", "claim", "payout"]) {
+    assert.ok(
+      item.keywords?.includes(term),
+      `⌘K should find it by "${term}" — a holder looking for their money will not search "brokers"`,
+    );
+  }
 });
