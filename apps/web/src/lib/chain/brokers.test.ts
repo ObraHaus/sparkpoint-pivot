@@ -274,7 +274,11 @@ test("no retired Premium framing survives in the copy this module owns", () => {
     /per month/i,
     /\brenew\b/i,
     /\bextend it\b/i,
-    /comes from a subscription/i,
+    // "/mo" — the exact phrasing a plain "per month" grep MISSED. The live app was still showing
+    // "10,000 SRK /mo" on the Premium card after a source sweep said it was clean; only rendering
+    // the page caught it.
+    /\/mo\b/i,
+    /a month\b/i,
     /burn/i,
   ]) {
     assert.doesNotMatch(copy, retired, `retired Premium framing: ${retired}`);

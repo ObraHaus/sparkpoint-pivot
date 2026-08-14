@@ -10,10 +10,14 @@
  *     npx playwright test e2e/pw/visual-audit.spec.ts --project=chromium
  */
 import { expect, test, type Page } from "@playwright/test";
-import type { Hex } from "viem";
-import { installInjectedWallet } from "./injected-wallet";
 
-const PRIV = process.env.PW_TEST_PRIVKEY as Hex | undefined;
+/**
+ * The session comes from a REAL SIWE handshake done in Node (`e2e/__login.mjs`), not from driving
+ * the wallet in the browser. The injected-wallet path stalls at "Waiting for signature…" against the
+ * deployed app; the handshake itself is fine, so we do it where it works and hand the browser the
+ * resulting cookie. This is the same flow `e2e/auth.e2e.mjs` already proves server-side.
+ */
+const SESSION = process.env.PW_SP_SESSION;
 const SHOTS = process.env.PW_SHOT_DIR ?? "/tmp/shots";
 
 /** Phrases that must no longer appear anywhere a user can read them. */
@@ -24,22 +28,20 @@ const RETIRED_PHRASES = [
   /Premium subscription/i,
   /payout weight/i,
   /weight in every revenue/i,
+  /comes from a subscription/i,
+  /SRK\s*\/mo/i,
+  /\/mo\b/,
 ];
 
-async function auth(page: Page): Promise<void> {
-  await installInjectedWallet(page, { privateKey: PRIV!, chainId: 84532 });
-  // domcontentloaded, not networkidle: /verify holds a live connection so networkidle never settles
-  // on this infra. NOTE the control is an <a>, not a <button> — a getByRole("button") lookup finds
-  // nothing and silently times out, which is exactly how this spec failed the first time.
-  await page.goto("/verify", { waitUntil: "domcontentloaded" });
-  const signLink = page.locator("a:has-text('Sign in with wallet')");
-  await signLink.waitFor({ state: "visible", timeout: 40_000 });
-  await signLink.click();
-  await expect(page.locator("#vtitle")).toHaveText("You're in.", { timeout: 40_000 });
+async function authed(page: Page) {
+  const host = new URL(process.env.PW_BASE_URL!).hostname;
+  await page.context().addCookies([
+    { name: "sp_session", value: SESSION!, domain: host, path: "/", httpOnly: true, secure: true },
+  ]);
 }
 
 test.describe("043 copy audit on the live app", () => {
-  test.skip(!PRIV, "PW_TEST_PRIVKEY not set");
+  test.skip(!SESSION, "PW_SP_SESSION not set (run e2e/__login.mjs)");
   test.setTimeout(240_000);
 
   for (const [name, path] of [
@@ -50,7 +52,7 @@ test.describe("043 copy audit on the live app", () => {
     ["settings", "/settings"],
   ] as const) {
     test(`${name} renders and carries no retired Premium copy`, async ({ page }) => {
-      await auth(page);
+      await authed(page);
       await page.goto(path, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(9000);
       await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });

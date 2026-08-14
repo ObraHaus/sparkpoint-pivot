@@ -11,7 +11,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { premiumSourceView, SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
 import { Icon } from "@/lib/icons";
@@ -159,11 +158,16 @@ export default function Page() {
             Premium
           </div>
           <div className="pp tnum">
-            {Number(PREMIUM_PRICE_SRK_WHOLE).toLocaleString()} SRK
-            <span style={{ fontSize: 14, color: "var(--muted-foreground)", fontWeight: 500 }}> /mo</span>
+            SRK, once
+            <span style={{ fontSize: 14, color: "var(--muted-foreground)", fontWeight: 500 }}>
+              {" "}
+              · no expiry
+            </span>
           </div>
-          {/* No USD figure: there is no oracle for SRK, and the old illustrative "≈ $12.00" peg was
-              pinned to the superseded 500-SRK price. Priced in SRK only. */}
+          {/* 043 — deliberately NO number here. Premium is not sold by the month any more, and the
+              activation price is owner-settable on-chain: a figure baked into this card is a second
+              place for it to go stale. The real amount is read LIVE from the registry at the moment
+              of signing, on the activation screen. No USD figure either — there is no SRK oracle. */}
           <div className="psub">Unlocked by an activated Sparky Broker · nothing to renew</div>
           <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
             Deeper analysis, advanced vaults, higher limits, analytics &amp; alerts.
