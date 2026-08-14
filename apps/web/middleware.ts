@@ -39,15 +39,12 @@ const ALLOW_EXACT = new Set([
 const ALLOW_PREFIX = [
   "/_next/static",
   "/_next/image",
-  // 044: the published revenue allocations. These MUST stay reachable without a session, on a
-  // LOCKED deploy included — the whole point of publishing them (FR-010) is that a holder, or
-  // anyone at all, can recompute a period's split and check it against the on-chain Merkle root.
-  // An artifact you have to be logged in to read is not a public record.
+  // 044: the published revenue allocations, on a LOCKED deploy.
   //
-  // ⚠️ Nothing here is secret: every address and amount is derivable from the chain, and each
-  // claim transaction is public anyway. What would be a defect is this path silently 307ing to
-  // /coming-soon, which is what happens to anything added to apps/web that a machine needs to
-  // fetch (see the tokenURI/OG-bot class of bug).
+  // ⚠️ THIS LIST IS ONLY GATE 1. An entry here does nothing on develop, which is UNLOCKED and runs
+  // Gate 2 instead — so a path that needs to be public everywhere must ALSO be in `INFRA_PREFIX`
+  // below. Adding it here alone is exactly the mistake that shipped: the file was published,
+  // deployed and still 307'd for every anonymous fetch.
   "/allocations/",
 ];
 
@@ -78,7 +75,20 @@ const PUBLIC_EXACT = new Set([
 ]);
 
 /** Static/infra + API prefixes — always allowed (API routes self-enforce). */
-const INFRA_PREFIX = ["/_next", "/api", "/assets", "/wallets", "/fonts", "/images"];
+const INFRA_PREFIX = [
+  "/_next",
+  "/api",
+  "/assets",
+  "/wallets",
+  "/fonts",
+  "/images",
+  // 044: the published revenue allocations. A period's split is a claim about other people's
+  // money, so the document it was computed from has to be fetchable by anyone who wants to
+  // recompute the Merkle root and check it (FR-010). An artifact you must log in to read is not a
+  // public record. Nothing here is secret — every address and amount is derivable from the chain,
+  // and each claim transaction is public anyway.
+  "/allocations/",
+];
 
 /** The non-custody escape hatches — withdraw + trust center. NEVER gated by any auth (N2). */
 const ESCAPE_HATCH = ["/exit", "/trust"];
