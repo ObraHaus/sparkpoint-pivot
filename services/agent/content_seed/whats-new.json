@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "brokers-gallery-indexer",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Your brokers list loads without scanning the whole collection",
+      "body": "The Brokers page used to find your brokers by checking every token in the collection one by one. That works when there are a handful of them and would not have worked at ten thousand.\n\nIt now asks an index built from the blockchain’s own transfer history instead, so the page stays fast no matter how large the collection gets.\n\nThe old method is still there as a backup. If the index cannot be reached, the page falls back to reading the chain directly from your browser rather than showing you an empty list — we would rather it be slow than have it tell you that you own nothing when you do.",
+      "published_at": "2026-08-14T10:00:00Z"
+    },
+    {
       "slug": "broker-revenue-share-screen",
       "type": "changelog",
       "tag": "New",
