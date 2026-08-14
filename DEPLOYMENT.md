@@ -131,7 +131,9 @@ The agent resolves an activated broker as a source of Premium only once these ar
 behaves exactly as it did before 043** — the broker is simply not a premium source.
 
 ```
-BROKER_CHAIN_RPC_URL      = <eRPC /core/evm/46630?secret=…>  (or the public Robinhood testnet RPC)
+BROKER_CHAIN_RPC_URL      = (OPTIONAL — falls back to ROBINHOOD_RPC_URL, which the agent already
+                             has. Set it only if the collection ever moves off Robinhood Chain;
+                             two variables holding the same endpoint is just something to drift.)
 BROKER_NFT_ADDRESS        = 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
 BROKER_REGISTRY_ADDRESS   = 0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775,0x5370d06bFA9049234C471e0877e249D9322728FF
 BROKER_GATE_CACHE_SECONDS = 60

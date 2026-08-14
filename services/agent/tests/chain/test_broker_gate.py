@@ -381,3 +381,29 @@ def test_no_valid_registry_at_all_is_unconfigured_not_a_crash() -> None:
     gate = BrokerGate(rpc=FakeChain(), broker=BROKER, registry=" , nonsense ", cache_seconds=0)
     assert gate.configured is False
     assert asyncio.run(gate.check(HOLDER)).reason == "not_configured"
+
+
+def test_the_rpc_url_falls_back_to_the_chain_the_broker_is_on(monkeypatch: Any) -> None:
+    """One URL, not two. A second env var holding the same endpoint only creates drift."""
+    from sparkpoint_agent.chain import broker_gate as mod
+
+    monkeypatch.delenv(mod.ENV_RPC_URL, raising=False)
+    monkeypatch.setenv(mod.ENV_RPC_URL_FALLBACK, "https://rpc.testnet.chain.robinhood.com")
+    monkeypatch.setenv(mod.ENV_BROKER, BROKER)
+    monkeypatch.setenv(mod.ENV_REGISTRY, REGISTRY)
+    gate = mod.build_broker_gate_from_env(rpc_factory=lambda url: FakeChain())
+    assert gate is not None, "the Robinhood RPC already configured must be enough"
+
+    # An explicit override still wins, for the day the collection lives on another chain.
+    monkeypatch.setenv(mod.ENV_RPC_URL, "https://example.invalid")
+    assert mod.build_broker_gate_from_env(rpc_factory=lambda url: FakeChain()) is not None
+
+
+def test_no_rpc_at_all_leaves_the_gate_unbuilt(monkeypatch: Any) -> None:
+    from sparkpoint_agent.chain import broker_gate as mod
+
+    monkeypatch.delenv(mod.ENV_RPC_URL, raising=False)
+    monkeypatch.delenv(mod.ENV_RPC_URL_FALLBACK, raising=False)
+    monkeypatch.setenv(mod.ENV_BROKER, BROKER)
+    monkeypatch.setenv(mod.ENV_REGISTRY, REGISTRY)
+    assert mod.build_broker_gate_from_env(rpc_factory=lambda url: FakeChain()) is None

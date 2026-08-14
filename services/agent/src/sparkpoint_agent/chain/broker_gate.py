@@ -45,6 +45,10 @@ ENV_BROKER = "BROKER_NFT_ADDRESS"
 #: registry ORPHANS the old one's record — see `registries` below.
 ENV_REGISTRY = "BROKER_REGISTRY_ADDRESS"
 ENV_RPC_URL = "BROKER_CHAIN_RPC_URL"
+#: Fallback. The broker chain IS Robinhood today and the agent already has an RPC for it, so
+#: requiring a second variable holding the same URL only creates something to drift. Setting
+#: `BROKER_CHAIN_RPC_URL` overrides, for the day the collection lives somewhere else.
+ENV_RPC_URL_FALLBACK = "ROBINHOOD_RPC_URL"
 ENV_CACHE_SECONDS = "BROKER_GATE_CACHE_SECONDS"
 
 #: Long enough that a chat turn is not a burst of chain reads; short enough that "you sold it and
@@ -299,7 +303,7 @@ def build_broker_gate_from_env(rpc_factory: Any = None) -> BrokerGate | None:
     ``rpc_factory`` is injected in tests; production uses ``HttpxLogsRpc``, imported lazily so this
     module stays cheap and free of transport coupling — same pattern as ``srk_gate``.
     """
-    rpc_url = (os.getenv(ENV_RPC_URL) or "").strip()
+    rpc_url = (os.getenv(ENV_RPC_URL) or os.getenv(ENV_RPC_URL_FALLBACK) or "").strip()
     broker = (os.getenv(ENV_BROKER) or "").strip()
     registry = (os.getenv(ENV_REGISTRY) or "").strip()
     valid = [r for r in (x.strip() for x in registry.split(",")) if _is_address(r)]
