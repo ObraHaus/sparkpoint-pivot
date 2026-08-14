@@ -23,6 +23,7 @@ import {
   PREMIUM_PRICE_SRK_BASE,
   PREMIUM_PRICE_SRK_WHOLE,
 } from "@/lib/chain/premiumPay";
+import { SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
 import { SRK_FAUCET_ANCHOR } from "@/lib/chain/srkFaucet";
 import { type PremiumPayExec, useExecutePremiumTx } from "@/lib/chain/useExecutePremiumTx";
 import { Icon } from "@/lib/icons";
@@ -30,6 +31,7 @@ import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
 
 const VAULT_CHAIN = 84532;
+
 
 /** getAddresses throws on an unsupported chain (fail-closed) — swallow to an "unavailable" state. */
 function addressBookFor(chainId: number | undefined) {
@@ -156,7 +158,30 @@ export default function Page() {
         </div>
       </div>
 
-      {!configured ? (
+      {SUBSCRIPTIONS_RETIRED ? (
+        // 043 phase F — the SRK subscription is being retired in favour of the Sparky Broker. This
+        // page stays reachable (an old link, a bookmark, the ⌘K palette) but no longer sells: it
+        // explains the change and points at the thing that replaces it. Nothing is taken away
+        // mid-flow — the tier itself is unwound separately, and only after the broker path is live.
+        <div className="card card-pad">
+          <div className="payrow">
+            <span className="muted">Monthly Premium</span>
+            <span>Retired — a Sparky Broker replaces it</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
+            The same 10,000 SRK that used to buy one month now activates a Sparky Broker — and that
+            does not expire, does not renew, and can be sold. Premium stays on for as long as you
+            hold the activated broker.
+          </div>
+          <button
+            className="btn btn-primary btn-md"
+            style={{ width: "100%", marginTop: 14 }}
+            onClick={() => router.push("/brokers")}
+          >
+            Get a Sparky Broker
+          </button>
+        </div>
+      ) : !configured ? (
         <div className="card card-pad">
           <div className="payrow">
             <span className="muted">Premium on this network</span>

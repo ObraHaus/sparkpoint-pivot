@@ -87,6 +87,26 @@ export const OFF_NAV_DESTINATIONS: NavItem[] = [
 ];
 
 /**
+ * Surfaces that are searchable and deep-linkable but have NOT been given a nav slot (043).
+ *
+ * Distinct from `OFF_NAV_DESTINATIONS` on purpose — those are routes that LEFT the rail and now
+ * surface inside Settings. Sparky Broker never had a slot: it is new, and where a new product
+ * surface belongs in the rail is the client's call, not a side effect of shipping the feature. The
+ * client slimmed this nav deliberately on Aug 2, so it is not re-fattened here without being asked.
+ *
+ * It stays fully reachable in the meantime: ⌘K-searchable via this list, deep-linkable, and linked
+ * directly from /premium — which is where someone wondering how to get Premium already is.
+ */
+export const UNPLACED_DESTINATIONS: NavItem[] = [
+  {
+    route: "brokers",
+    label: "Sparky Broker",
+    icon: "zap",
+    keywords: ["nft", "broker", "mint", "activate", "membership", "collection", "premium"],
+  },
+];
+
+/**
  * Pinned items that are NOT part of the regroupable tree. The exit path in particular is pinned on
  * every surface and must never sit inside a collapsible group (N2 — never bury the way out).
  */
@@ -184,6 +204,7 @@ export function commandActions(): NavItem[] {
     ...PRIMARY,
     ...navLeaves(SECONDARY),
     ...OFF_NAV_DESTINATIONS,
+    ...UNPLACED_DESTINATIONS,
     NOTIFICATIONS_ITEM,
   ];
   const seen = new Set<string>();

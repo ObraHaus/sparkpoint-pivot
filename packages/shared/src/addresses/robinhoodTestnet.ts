@@ -96,6 +96,25 @@ export const robinhoodTestnet: AddressBook = {
   // verify: money out, no Premium, no repair path. Leaving it undefined is what fails that closed.
   // A guard test asserts this (`addresses.premium-parity.test.ts`).
 
+  // ── Sparky Broker (043) — the membership NFT and its two roles. Deployed 2026-08-13/14.
+  //
+  // A broker is NOT a vault or a yield position: it affects the Premium tier and nothing else, so
+  // none of this changes `offersVault(46630) === false` or the fail-closed vault path below.
+  //
+  //   brokerNft      the collection (10,000 cap, ids from 1). Metadata is served by its OWN deploy
+  //                  at brokers-dev.aldrickb.app — never from apps/web, whose middleware would
+  //                  silently 307 a marketplace crawler to a holding page.
+  //   brokerRegistry the `activator`: retires SRK and activates, atomically, user-signed.
+  //   brokerSale     the `minter`: free and open, per-wallet cap 5.
+  //
+  // ⚠️ `brokerRegistry` names only the CURRENT registry, for the app's write path. The AGENT must
+  // read every registry ever wired (`BROKER_REGISTRY_ADDRESS`, comma-separated) because re-pointing
+  // `setActivator` orphans the previous one's record with no on-chain recovery — a holder who paid
+  // would silently stop qualifying for Premium. Superseded: 0x5370d06bFA9049234C471e0877e249D9322728FF.
+  brokerNft: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
+  brokerRegistry: "0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775",
+  brokerSale: "0x488268134af3d01E0672A9Ea17d529D4C5E275Dd",
+
   // ── SparkPoint contracts — vault is Base-only ⇒ undefined here (fail-closed) ──
   sparkPointAccountImpl: undefined,
   accountFactory: undefined,

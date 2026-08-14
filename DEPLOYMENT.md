@@ -125,6 +125,58 @@ Testers need SRK to exercise the Premium purchase, but `SparkPointTestToken` has
 - **Admins**: deployer + the client demo wallet `0x32Ed4400C5BBB394712c482F1207886d8C22e8b5`. Owner **or** an admin may `setClaimAmount` / `setCooldown`; only the owner may `withdraw` the float, manage admins or transfer ownership. The agent is provably **keyless**, so "admin-editable from the panel" means the connected admin **wallet** signs these setters from `/admin/faucet` — no backend is in the trust path.
 - Script: `contracts/script/DeploySrkFaucet.s.sol` (`--slow` is required — the deployer is a delegated EOA). Set `FAUCET_ADDRESS` to top the float up instead of deploying a new one. Recorded as `srkFaucet` in the Base Sepolia address book and `SrkFaucet` in `contracts/deployments/84532/addresses.json`.
 
+### Agent env for the broker premium path — feature 043 (2026-08-14)
+
+The agent resolves an activated broker as a source of Premium only once these are set. **Unset ⇒ it
+behaves exactly as it did before 043** — the broker is simply not a premium source.
+
+```
+BROKER_CHAIN_RPC_URL      = (OPTIONAL — falls back to ROBINHOOD_RPC_URL, which the agent already
+                             has. Set it only if the collection ever moves off Robinhood Chain;
+                             two variables holding the same endpoint is just something to drift.)
+BROKER_NFT_ADDRESS        = 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
+BROKER_REGISTRY_ADDRESS   = 0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775,0x5370d06bFA9049234C471e0877e249D9322728FF
+BROKER_GATE_CACHE_SECONDS = 60
+```
+
+> ⚠️⚠️ `BROKER_REGISTRY_ADDRESS` is a **comma-separated list, newest first, and nothing is ever
+> removed from it.** Re-pointing the NFT's `activator` orphans every activation the previous registry
+> recorded, and there is no on-chain recovery — the NFT still reports those tokens activated, so
+> `activate` reverts and the record cannot be rebuilt. A holder who paid would silently stop
+> qualifying. Reading the union is safe because the list is only ever a hint; the live `ownerOf` +
+> `activatedAt` reads are the authority.
+
+### Broker sale (the free, open mint) — feature 043 phase C (2026-08-14)
+
+The NFT's `minter`, the second role left unset at deploy. **Free and open**: no price, no eligibility gate, no allowlist — an owner-settable per-wallet cap is the only restriction, and the collection's immutable 10,000 cap stays on the NFT rather than being re-implemented here.
+
+- **`BrokerSale`**: `0x488268134af3d01E0672A9Ea17d529D4C5E275Dd`, `perWalletCap` 5, open at deploy, owner = deployer, `Ownable2Step`. Wired via `setMinter`.
+- **Why free** — the mint was originally to be gated on holding ≥1,000,000 **mainnet** SRK, which is a cross-chain assertion no contract can make (the balance is on Ethereum, the contract is on Robinhood Chain). Every honest workaround is a different *trust model*, not a detail. The operator's decision to make the mint free deleted that question instead of approximating it. A price or an allowlist is additive later.
+- **Proven live**: a free mint from a normal wallet (93,674 gas) produced broker #4 **unactivated** (I8); minting to the cap then one more reverted `WalletCapReached(0x32Ed…e8b5, 5, 5)` with no state change; the full journey mint → activate then retired 10,000 SRK and flipped #4 to activated.
+
+> ⚠️ **A per-wallet cap is not a sybil defence and must not be described as one.** It bounds one address, and a free mint means a second address costs only gas. What actually bounds the collection is the NFT's immutable 10,000 supply cap — which a test exercises by exhausting the collection *through the sale* and asserting the next mint fails at the NFT, not at the sale.
+
+> ⚠️ **`_safeMint` makes the per-wallet cap re-entrant-sensitive.** The NFT mints with `_safeMint`, so a CONTRACT recipient receives `onERC721Received` mid-mint and can call `mint()` again. The sale therefore increments `mintedBy` **before** the external call; incrementing after would let one contract mint the whole collection in a single transaction. There is a test that mints from a deliberately re-entering contract and asserts the cap holds.
+
+### Broker activation registry — feature 043 phase B (2026-08-13)
+
+The contract that retires SRK and activates a Sparky Broker in one user-signed transaction. It is the NFT's `activator` — the role deliberately left unset at deploy. It never holds a broker, never holds retired SRK, has no withdraw/sweep/rescue and **no `payable` function**, so nothing can be sent to it and nothing can be stranded in it.
+
+- **`BrokerActivationRegistry`** (live): `0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775` — deploy tx `0x9d79a545cfebb8c71fe96d2c89467d778dfabc95d7c91f281128ddfefdad9cd1` (block 100670158), wired via `setActivator`.
+- **Superseded first deploy**: `0x5370d06bFA9049234C471e0877e249D9322728FF` — deploy tx `0xf0b6967345ffc33be5fb661f271513aa9c7c4909a660b42bdeacae521b13e362`, `setActivator` tx `0x05df05bc661f7e2a562824fb7498577ece42f09bee1f4f885456f991579ae8c8`. Replaced within the hour; see the ⚠️ below — **it must stay in the agent's registry list forever.**
+- **Parameters**: `price` 10,000 SRK (owner-settable), `maxPrice` **100,000 SRK — IMMUTABLE**, `deadAddress` `0x…dEaD`, owner = deployer, `Ownable2Step`.
+- **Proven live, not just deployed** — activation tx `0xa808e27c903c11fc45329bd006455d2be5921919e6fe09518d21a1d915a2fdb0` (143,901 gas): 10,000 SRK moved holder → dead address, `activatedAt(3)` set, the registry left holding **zero** SRK, zero ETH and no broker, and SRK's `totalSupply` unchanged — which is exactly why every surface says *retired*, never *burned*.
+- **The atomicity property, live**: four failed activations in a row (already-activated ×2, not-the-owner, no-allowance) moved **not one wei**. There is no state in which SRK has left a holder and the broker is not activated.
+- **The product rule, live**: sold #3 → activation cleared → the seller stopped qualifying for Premium AND the buyer did not inherit it; reacquiring it did **not** restore the activation, and re-activating cost another 10,000 SRK.
+
+> ⚠️⚠️ **RE-POINTING `activator` ORPHANS EVERY PRIOR ACTIVATION — and there is no on-chain recovery.**
+> Learned the hard way here: the first registry was replaced (a de-duplication fix), and every activation it had recorded instantly became invisible. The NFT still reports those tokens as activated, so `activate` reverts `AlreadyActivated` and the record cannot be rebuilt — a holder who had paid would silently stop qualifying for Premium.
+>
+> The fix lives off-chain, where it costs an env change rather than a redeploy: **`BROKER_REGISTRY_ADDRESS` is a comma-separated list, newest first, and the agent reads the union.** That is safe because the list is only ever a HINT — the live `ownerOf` + `activatedAt` reads are the authority, so merging hints cannot produce a wrong verdict.
+>
+> **Never remove a registry from that list.** Current value:
+> `0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775,0x5370d06bFA9049234C471e0877e249D9322728FF`
+
 ### SRK + faucet on Robinhood testnet — feature 043 phase 1 (2026-08-13)
 
 The Sparky Broker NFT lives on **Robinhood Chain**, and activating a broker retires SRK. A burn on one chain cannot flip state on another in the same transaction, so the SRK a broker retires has to live on the broker's chain — that is what makes an atomic, backend-keyless activation registry possible. This is the same recipe as Base Sepolia, pointed at 46630.

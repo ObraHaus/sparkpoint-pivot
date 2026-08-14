@@ -2,6 +2,17 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-broker-premium",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Premium now comes from a Sparky Broker",
+      "body": "There is a new way to get Premium, and it is better than the one it replaces.\n\nA Sparky Broker is one of 10,000 collectible desks on the SparkPoint floor. Minting one is free. Activating it retires 10,000 SRK — the same amount that used to buy a single month — and Premium then stays on for as long as you hold that broker. Nothing renews, nothing expires, and there is no date to remember.\n\nThe part worth understanding: the entitlement lives in the broker, not in your account. If you sell or transfer it, the activation clears and your Premium ends — and whoever receives it activates it themselves. That is deliberate. It is what makes a broker worth something to sell, and it is why we check the blockchain every time rather than writing your plan down somewhere.\n\nAn activated broker wears a gold frame. The picture and the entitlement are the same fact.\n\nThe old monthly SRK subscription is being retired in favour of this. Your Premium page now tells you which of the two is currently paying for your access, and what would end it.",
+      "cta_label": "See the brokers",
+      "cta_href": "/brokers",
+      "published_at": "2026-08-13T23:55:13Z",
+      "active": true
+    },
+    {
       "slug": "srk-faucet-on-robinhood-testnet",
       "type": "changelog",
       "tag": "New",

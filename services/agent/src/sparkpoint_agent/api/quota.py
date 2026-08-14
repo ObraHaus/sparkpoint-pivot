@@ -24,10 +24,12 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import Depends
 
+from ..chain.broker_gate import BrokerGate, build_broker_gate_from_env
 from ..db import Database, LimitsStore, get_database
 from ..llm.client import set_model_alias
 from ..llm.resilience import set_priority
@@ -61,17 +63,32 @@ _LIMIT_MESSAGE: dict[str, str] = {
 }
 
 
+@lru_cache(maxsize=1)
+def _broker_gate() -> BrokerGate | None:
+    """The 043 broker gate, built once per process (it owns a TTL cache; rebuilding drops it).
+
+    ``None`` when unconfigured, which is the pre-043 behaviour exactly: an activated broker simply
+    is not a source of premium until the addresses are set.
+    """
+    return build_broker_gate_from_env()
+
+
 def get_limits_store() -> LimitsStore:
     """The limits store, over the shared asyncpg pool (mirrors ``get_conversation_store``).
 
     Fail-OPEN at resolution: if no DB is configured (e.g. ``DATABASE_URL`` unset in a unit test, or
     limits not provisioned), return a store whose calls raise and are caught by
     ``check_and_consume`` — so the assistant is admitted rather than 500'd on a limits-infra gap.
+
+    043: the store also carries the broker gate, so an activated Sparky Broker resolves premium. The
+    gate is derived per request but the object is cached — its 60s TTL is per-process, and a fresh
+    gate every request would mean a chain read every request.
     """
+    gate = _broker_gate()
     try:
-        return LimitsStore(get_database())
+        return LimitsStore(get_database(), gate)
     except Exception:
-        return LimitsStore(cast(Database, None))
+        return LimitsStore(cast(Database, None), gate)
 
 
 def window_start(now: datetime | None = None) -> datetime:

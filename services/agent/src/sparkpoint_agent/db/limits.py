@@ -19,9 +19,13 @@ from typing import Any
 
 from asyncpg import Record
 
+from ..chain.broker_gate import BrokerGate
 from .pool import Database
 
 DEFAULT_TIER = "free"
+#: The tier an activated Sparky Broker confers (043). Named rather than inlined so the two places
+#: that grant it cannot drift apart.
+PREMIUM_TIER = "premium"
 METRICS = ("chat", "recs", "onboarding")
 
 _TIERS_SQL = (
@@ -123,6 +127,9 @@ class LimitsStore:
     """asyncpg-backed store for tier definitions, assignments, usage counters, and audit."""
 
     db: Database
+    #: 043 — an activated Sparky Broker is a live source of premium. Optional: `None` (the default)
+    #: means the agent resolves tiers exactly as it did before the feature existed.
+    broker_gate: BrokerGate | None = None
 
     # -- tier definitions ----------------------------------------------------
 
@@ -205,15 +212,66 @@ class LimitsStore:
 
     # -- tier assignment -----------------------------------------------------
 
-    async def resolve_tier(self, address: str) -> str:
-        """The wallet's tier, or the default (free) tier if unassigned. Fail-closed to default."""
+    async def _stored_tier(self, address: str) -> str:
+        """The tier written in `wallet_tier` — the pre-043 answer, unchanged."""
         tier = await self.db.fetchval(_RESOLVE_SQL, _norm(address))
         if tier:
             return str(tier)
         return await self.default_tier()
 
+    async def resolve_tier(self, address: str) -> str:
+        """The wallet's tier: the stored grant, OR premium from an activated Sparky Broker (043).
+
+        ⚠️ The broker half is **derived on every read and never written down**. Persisting it would
+        create a grant that outlives the sale that should end it — a holder sells their broker and a
+        stranger keeps the access. That is the one bug that makes the collection pointless, so the
+        NFT-derived answer deliberately has nowhere to be stored.
+
+        The gate is fail-closed and never raises, so an unreachable chain degrades to the stored
+        answer rather than failing the request or inventing a downgrade.
+        """
+        stored = await self._stored_tier(address)
+        if stored == PREMIUM_TIER or self.broker_gate is None:
+            return stored
+        if (await self.broker_gate.check(address)).qualified:
+            return PREMIUM_TIER
+        return stored
+
+    async def resolve_tier_source(self, address: str) -> dict[str, Any]:
+        """Which source is paying for this wallet's tier — so a surface can name it (FR-005).
+
+        The failure mode this exists to prevent is a holder who cannot tell why their access ended.
+        `source` is 'stored' (a purchase or an admin grant), 'broker', or None when the tier is the
+        default. When both qualify, 'stored' is reported: it is the one with an expiry the holder
+        may want to see, and the broker keeps the tier alive after it lapses either way.
+        """
+        stored = await self._stored_tier(address)
+        if stored == PREMIUM_TIER:
+            return {
+                "tier": stored,
+                "source": "stored",
+                "expiresAt": await self.resolve_expiry(address),
+                "tokenId": None,
+            }
+        if self.broker_gate is not None:
+            result = await self.broker_gate.check(address)
+            if result.qualified:
+                # No expiry, deliberately: a broker-sourced tier ends on transfer, not on a date.
+                return {
+                    "tier": PREMIUM_TIER,
+                    "source": "broker",
+                    "expiresAt": None,
+                    "tokenId": result.token_id,
+                }
+        return {"tier": stored, "source": None, "expiresAt": None, "tokenId": None}
+
     async def resolve_expiry(self, address: str) -> datetime | None:
-        """The wallet's current (future) tier expiry, or None (non-expiring / no grant)."""
+        """The wallet's current (future) STORED tier expiry, or None.
+
+        Unchanged by 043 on purpose: a broker-derived tier has no expiry — it ends when the broker
+        is
+        transferred — so it must never manufacture a date here.
+        """
         expiry: datetime | None = await self.db.fetchval(_EXPIRY_SQL, _norm(address))
         return expiry
 

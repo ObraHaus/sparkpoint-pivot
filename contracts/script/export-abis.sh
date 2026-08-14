@@ -33,6 +33,12 @@ CONTRACTS=(
   "SessionKeyValidator:SessionKeyValidator:sessionKeyValidator"
   "PolicyModule:PolicyModule:policyModule"
   "SrkFaucet:SrkFaucet:srkFaucet"
+  # 043 — the two roles the Sparky Broker collection deliberately leaves unset, plus the read
+  # surface of the collection itself. The NFT lives in a separate repo and is already deployed, so
+  # `ISparkyBrokerViews` exists here purely so its ABI is GENERATED rather than hand-written.
+  "BrokerActivationRegistry:BrokerActivationRegistry:brokerActivationRegistry"
+  "BrokerSale:BrokerSale:brokerSale"
+  "ISparkyBrokerViews:ISparkyBrokerViews:sparkyBroker"
 )
 
 if [ ! -d "$OUT" ]; then

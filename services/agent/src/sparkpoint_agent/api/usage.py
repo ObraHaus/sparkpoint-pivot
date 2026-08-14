@@ -11,7 +11,7 @@ defaults with ``configured: false`` rather than erroring.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -38,10 +38,13 @@ async def usage_self(
     """The caller's own allowance usage this period (tier + per-metric used/limit/remaining)."""
     owner = account.owner
     try:
-        tier = await store.resolve_tier(owner)
+        # 043 — one call answers both "what tier" and "which source is paying", so the two can
+        # never disagree on the page that has to explain them.
+        resolved = await store.resolve_tier_source(owner)
+        tier = str(resolved["tier"])
         tier_def = await store.get_tier(tier)
         ws = window_start()
-        expiry = await store.resolve_expiry(owner)
+        expiry = resolved["expiresAt"]
         metrics = []
         for metric, field in _METRICS.items():
             limit = int(tier_def[field]) if tier_def else 0
@@ -52,7 +55,12 @@ async def usage_self(
         return {
             "configured": tier_def is not None,
             "tier": tier,
-            "expiresAt": expiry.isoformat() if expiry else None,
+            "expiresAt": expiry.isoformat() if isinstance(expiry, datetime) else None,
+            # 'broker' | 'stored' | None. The Premium page names it, because the failure mode this
+            # prevents is a holder who cannot tell WHY their access ended.
+            "premiumSource": resolved["source"],
+            # The broker that qualifies them, so the page can say which one to keep.
+            "brokerTokenId": resolved["tokenId"],
             "resetAt": (ws + timedelta(days=1)).isoformat(),
             "metrics": metrics,
         }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  UNPLACED_DESTINATIONS,
   baseSegment,
   coerceNavGroupState,
   commandActions,
@@ -164,4 +165,22 @@ test("toHref / baseSegment behaviour is unchanged by the regroup", () => {
   assert.equal(toHref("srk"), "/srk");
   assert.equal(baseSegment("/vault/deposit"), "vault");
   assert.equal(baseSegment("/"), "chat");
+});
+
+test("Sparky Broker is searchable and deep-linkable without taking a nav slot", () => {
+  // 043. It is deliberately NOT in OFF_NAV_DESTINATIONS: that list means "left the rail, now lives
+  // in Settings", and this route never had a slot to leave. Where a new product surface belongs in
+  // a rail the client deliberately slimmed is their decision, not a side effect of shipping.
+  const offNav = OFF_NAV_DESTINATIONS.map((n) => n.route);
+  assert.deepEqual(offNav, ["premium", "automation"], "the Settings-surfaced pair is unchanged");
+
+  const palette = commandActions().map((a) => a.route);
+  assert.ok(palette.includes("brokers"), "⌘K must find it");
+  assert.equal(toHref("brokers"), "/brokers");
+
+  const item = UNPLACED_DESTINATIONS[0];
+  assert.ok(item !== undefined);
+  assert.ok(matchesQuery(item, "nft"), "searchable by what people would actually type");
+  assert.ok(matchesQuery(item, "mint"));
+  assert.ok(matchesQuery(item, "sparky"));
 });

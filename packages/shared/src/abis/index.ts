@@ -12,3 +12,6 @@ export { accountFactoryAbi } from "./accountFactory";
 export { sessionKeyValidatorAbi } from "./sessionKeyValidator";
 export { policyModuleAbi } from "./policyModule";
 export { srkFaucetAbi } from "./srkFaucet";
+export { brokerActivationRegistryAbi } from "./brokerActivationRegistry";
+export { brokerSaleAbi } from "./brokerSale";
+export { sparkyBrokerAbi } from "./sparkyBroker";
