@@ -7,8 +7,7 @@ checkable by someone who does not trust us (FR-010).
     uv run python scripts/build_period_allocation.py \
         --rpc https://rpc.testnet.chain.robinhood.com \
         --chain-id 46630 --period 1 \
-        --token 0x4538B5... --pot 1000000000000000000000 \
-        --out ../../allocations
+        --token 0x4538B5... --pot 1000000000000000000000
 
 ⚠️ **It does not publish.** It prints the root and total for a human to pass to
 `publishAllocations`, because that call is irreversible for the period and should not be a side
@@ -67,7 +66,12 @@ async def main() -> int:
     ap.add_argument("--registries", required=True, help="comma-separated, newest first")
     ap.add_argument("--from-block", type=int, required=True)
     ap.add_argument("--grandfather-bps", type=int, default=10_000)
-    ap.add_argument("--out", default="allocations")
+    # ⚠️ ONE home, deliberately. This artifact has to be BOTH the committed public record and the
+    # file the claim screen fetches, and keeping a canonical copy plus a served copy means two
+    # files that can disagree about who is owed what. `apps/web/public/` is committed, versioned
+    # and diffable like any other repo artifact, and it is the path that is actually served — so
+    # there is nothing to sync and nothing to forget to sync.
+    ap.add_argument("--out", default="../../apps/web/public/allocations")
     args = ap.parse_args()
 
     rpc = Rpc(args.rpc)
