@@ -205,6 +205,18 @@ export function formatSrk(baseUnits: bigint | undefined): string {
   return `${wholeSrk(baseUnits).toLocaleString()} SRK`;
 }
 
+/**
+ * 043 phase F — the SRK monthly subscription is retired in favour of the Sparky Broker.
+ *
+ * Lives HERE, in the leaf, because two surfaces depend on it: `/premium` must stop offering the buy,
+ * and `/premium/pay` must stop selling. Held in one page and copied to the other is how they end up
+ * contradicting each other — offering a purchase that the next screen says is retired.
+ *
+ * A flag rather than a deletion, deliberately: the whole purchase path stays in the tree and
+ * reversible while the broker route beds in on testnet, so undoing this is one line.
+ */
+export const SUBSCRIPTIONS_RETIRED = true;
+
 export type PremiumSource = "broker" | "stored" | null;
 
 export interface PremiumSourceView {

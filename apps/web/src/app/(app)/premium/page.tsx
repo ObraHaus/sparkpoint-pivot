@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
-import { premiumSourceView } from "@/lib/chain/brokers";
+import { premiumSourceView, SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
@@ -183,7 +183,7 @@ export default function Page() {
               >
                 {sourceView.detail} {sourceView.endsWhen}
               </div>
-              {premium.source === "broker" ? (
+              {premium.source === "broker" || SUBSCRIPTIONS_RETIRED ? (
                 <button
                   className="btn btn-outline btn-md"
                   style={{ width: "100%", marginTop: 8 }}
@@ -210,18 +210,20 @@ export default function Page() {
               >
                 Activate a Sparky Broker
               </button>
-              <button
-                className="btn btn-outline btn-md"
-                style={{ width: "100%", marginTop: 8 }}
-                onClick={() => router.push(toHref("premium/pay"))}
-              >
-                Or buy a month with SRK
-              </button>
+              {!SUBSCRIPTIONS_RETIRED && (
+                <button
+                  className="btn btn-outline btn-md"
+                  style={{ width: "100%", marginTop: 8 }}
+                  onClick={() => router.push(toHref("premium/pay"))}
+                >
+                  Or buy a month with SRK
+                </button>
+              )}
               <div
                 style={{ marginTop: 8, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}
               >
                 A broker keeps Premium on for as long as you hold it, with nothing to renew — and you
-                can sell it. A month is a month.
+                can sell it. The monthly SRK subscription it replaces is being retired.
               </div>
             </>
           )}

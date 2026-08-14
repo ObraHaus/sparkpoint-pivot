@@ -23,6 +23,7 @@ import {
   PREMIUM_PRICE_SRK_BASE,
   PREMIUM_PRICE_SRK_WHOLE,
 } from "@/lib/chain/premiumPay";
+import { SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
 import { SRK_FAUCET_ANCHOR } from "@/lib/chain/srkFaucet";
 import { type PremiumPayExec, useExecutePremiumTx } from "@/lib/chain/useExecutePremiumTx";
 import { Icon } from "@/lib/icons";
@@ -31,18 +32,6 @@ import "@/components/screens/premium.css";
 
 const VAULT_CHAIN = 84532;
 
-/**
- * 043 phase F — the SRK monthly subscription is retired in favour of the Sparky Broker.
- *
- * A flag rather than a deletion, deliberately: it keeps the whole purchase path in the tree and
- * reversible while the broker route beds in on testnet, and it makes the retirement one line to
- * undo rather than a revert. `resolve_tier` is NOT re-branched for this — it stays "stored grant OR
- * activated broker", which after the sunset simply degenerates to "admin grant OR broker".
- *
- * Verified before flipping: exactly ONE wallet held a purchased subscription on develop, and it was
- * our own test wallet. No real tester loses access.
- */
-const RETIRING_SUBSCRIPTIONS = true;
 
 /** getAddresses throws on an unsupported chain (fail-closed) — swallow to an "unavailable" state. */
 function addressBookFor(chainId: number | undefined) {
@@ -169,7 +158,7 @@ export default function Page() {
         </div>
       </div>
 
-      {RETIRING_SUBSCRIPTIONS ? (
+      {SUBSCRIPTIONS_RETIRED ? (
         // 043 phase F — the SRK subscription is being retired in favour of the Sparky Broker. This
         // page stays reachable (an old link, a bookmark, the ⌘K palette) but no longer sells: it
         // explains the change and points at the thing that replaces it. Nothing is taken away

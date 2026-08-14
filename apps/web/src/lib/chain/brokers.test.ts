@@ -9,6 +9,7 @@ import {
   formatSrk,
   premiumSourceView,
   RETIRED_VERB,
+  SUBSCRIPTIONS_RETIRED,
   wholeSrk,
 } from "./brokers.ts";
 
@@ -238,4 +239,12 @@ test("no copy this module produces ever says 'burn'", () => {
     deriveActivateState({ ...actBase, balance: 0n }).blockedReason ?? "",
   ].join(" ");
   assert.doesNotMatch(copy, /burn/i, "say retired: the supply does not change");
+});
+
+test("the retirement flag is ONE value, so the two Premium surfaces cannot contradict", () => {
+  // The bug this prevents is small and embarrassing: /premium offering "buy a month" while
+  // /premium/pay says the subscription is retired. Held in one page and copied to the other, that
+  // is exactly what happened — hence a single exported constant both read.
+  assert.equal(typeof SUBSCRIPTIONS_RETIRED, "boolean");
+  assert.equal(SUBSCRIPTIONS_RETIRED, true, "043 phase F — the broker replaces the subscription");
 });
