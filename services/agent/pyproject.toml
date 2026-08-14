@@ -11,6 +11,15 @@ dependencies = [
   "anthropic>=0.40",
   "asyncpg>=0.30",
   "eth-abi>=5.2.0",
+  # ⚠️ Deliberate divergence from this service's keccak-free convention (see the notes in
+  # chain/srk_gate.py, chain/faucet_probe.py, data/log_source.py and others: every selector and
+  # event topic is pinned as a constant precisely so no hash backend is needed).
+  #
+  # chain/broker_allocation.py cannot comply. It builds a Merkle tree over per-period allocations,
+  # and there is no constant to pin — the leaves depend on who held what when a period closed. The
+  # convention was "don't take the dependency when you don't need it", and here it is needed.
+  # Nothing else in the service may import keccak; the pinned-constant rule still stands everywhere.
+  "eth-hash[pycryptodome]>=0.7.0",
 ]
 
 [dependency-groups]
@@ -53,6 +62,12 @@ ignore_missing_imports = true
 # results to typed ints/strs/bools).
 [[tool.mypy.overrides]]
 module = ["eth_abi", "eth_abi.*"]
+implicit_reexport = true
+
+# eth-utils re-exports `keccak` the same way, and hits the same strict-mode rule. Used only by
+# chain/broker_allocation.py, whose return values are bound to `bytes` immediately.
+[[tool.mypy.overrides]]
+module = ["eth_utils", "eth_utils.*"]
 implicit_reexport = true
 
 [tool.pytest.ini_options]
