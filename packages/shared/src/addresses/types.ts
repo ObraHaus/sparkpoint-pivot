@@ -135,6 +135,18 @@ export interface AddressBook {
    */
   readonly brokerSale?: Address;
   /**
+   * §broker (044) — `BrokerRevenueDistributor`, the pot that pays activated broker holders.
+   *
+   * ⚠️ Deployed does NOT mean live. `claim` reverts until `publishAllocations` is called, so it
+   * ships in an off state that needs no flag to hold it there — and deliberately has no pause
+   * switch, which would mean the owner could freeze holders' claims. Undefined ⇒ the claim surface
+   * says revenue share is unavailable on this network, which is the honest answer.
+   *
+   * It has no withdraw, sweep, rescue or migrate path for anyone, including its owner. The only way
+   * value leaves is a holder claiming their own published allocation.
+   */
+  readonly brokerRevenueDistributor?: Address;
+  /**
    * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
    * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
    * A PLAIN optional field, NOT a policy `TargetRef`. A plain holder — zero fund-movement power (N5).

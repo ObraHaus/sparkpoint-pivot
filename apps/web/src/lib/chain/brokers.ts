@@ -302,3 +302,171 @@ export function premiumSourceView(source: PremiumSource, tokenId?: number): Prem
     showsExpiry: false,
   };
 }
+
+/* ────────────────────────────────────────────────────────────────────────────────────────────
+ * 044 — revenue share
+ *
+ * The distributor is deployed and CLAIMING IS OFF. Not behind a flag: `claim` reverts until a
+ * period is published, so the off state is structural. These helpers therefore spend most of their
+ * effort on describing an empty pot honestly, because that is the state the screen will be in for
+ * as long as anyone can currently foresee.
+ *
+ * ⚠️ The hard rule from the spec, and the reason this lives in a leaf module with tests: NO
+ * projected, illustrative, per-month or annualised figure may ever reach the screen. The only
+ * number a holder may see is what the chain says is claimable right now. If that is zero, the
+ * screen says zero. The prototype that started this feature showed "+$14.00/month" against a pot
+ * that has never held more than 2.18 test-USDC.
+ * ──────────────────────────────────────────────────────────────────────────────────────────── */
+
+/** A published period, as read from the distributor. */
+export interface PeriodView {
+  readonly periodId: number;
+  readonly token: string;
+  readonly tokenSymbol: string;
+  readonly tokenDecimals: number;
+  /** Total the period allocated across all holders. */
+  readonly totalAllocated: bigint;
+  /** 0 = not published. A period exists before it is published. */
+  readonly publishedAt: number;
+}
+
+export interface ClaimState {
+  /** The deployed distributor, or `undefined` when the app has none configured. */
+  readonly distributor?: string;
+  /** `periodCount()`. `undefined` = not read yet; 0 = no period has ever been opened. */
+  readonly periodCount?: number;
+  /** The wallet's allocation for the selected period, from the published inputs. */
+  readonly allocation?: bigint;
+  /** Has this wallet already claimed this period? */
+  readonly alreadyClaimed?: boolean;
+  /** Is the selected period published? An unpublished period cannot be claimed by anyone. */
+  readonly published?: boolean;
+  readonly walletReady?: boolean;
+  /** Does this wallet hold any activated broker? Drives which empty state is shown. */
+  readonly holdsActivatedBroker?: boolean;
+}
+
+export type ClaimStatus =
+  | "unconfigured"
+  | "loading"
+  | "no-periods"
+  | "not-published"
+  | "nothing-allocated"
+  | "already-claimed"
+  | "claimable";
+
+export interface ClaimVerdict {
+  readonly status: ClaimStatus;
+  readonly canClaim: boolean;
+  readonly headline: string;
+  readonly detail: string;
+}
+
+/**
+ * What the claim screen should say, and whether the button does anything.
+ *
+ * ⚠️ Every branch here is a state the product is actually in today except the last one. `claimable`
+ * is unreachable until someone publishes an allocation, so the copy that matters most is the copy
+ * for an empty pot — it must read as a plain fact, never as an error and never as a teaser.
+ * "Coming soon" is a promise; "nothing has been distributed" is a description.
+ */
+export function deriveClaimState(i: ClaimState): ClaimVerdict {
+  if (!i.distributor) {
+    return {
+      status: "unconfigured",
+      canClaim: false,
+      headline: "Revenue share is not available here",
+      detail: "This network has no distributor deployed.",
+    };
+  }
+  if (!i.walletReady || i.periodCount === undefined) {
+    return { status: "loading", canClaim: false, headline: "Checking…", detail: "" };
+  }
+  if (i.periodCount === 0) {
+    return {
+      status: "no-periods",
+      canClaim: false,
+      headline: "Nothing has been distributed yet",
+      detail:
+        i.holdsActivatedBroker === true
+          ? "Your broker's weight is recorded on-chain and will count when a period is distributed. No period has been opened, so there is nothing to claim."
+          : "No period has been opened, so there is nothing to claim.",
+    };
+  }
+  if (i.published === false) {
+    // Funded but not published: value is in the contract and provably not claimable by anyone,
+    // including us. Worth saying, because it is the more reassuring half of the truth.
+    return {
+      status: "not-published",
+      canClaim: false,
+      headline: "This period has not been published",
+      detail:
+        "Its allocation has not been committed yet, so nobody can claim from it — including SparkPoint.",
+    };
+  }
+  if (i.allocation === undefined || i.alreadyClaimed === undefined) {
+    return { status: "loading", canClaim: false, headline: "Checking…", detail: "" };
+  }
+  if (i.alreadyClaimed) {
+    return {
+      status: "already-claimed",
+      canClaim: false,
+      headline: "Already claimed",
+      detail: "You have claimed your share of this period.",
+    };
+  }
+  if (i.allocation === 0n) {
+    return {
+      status: "nothing-allocated",
+      canClaim: false,
+      headline: "Nothing allocated to this wallet",
+      detail:
+        "This period allocated nothing to you. Only brokers that were activated when the period closed receive a share.",
+    };
+  }
+  return {
+    status: "claimable",
+    canClaim: true,
+    headline: "Ready to claim",
+    detail: "This is the amount the published allocation recorded for this wallet.",
+  };
+}
+
+/**
+ * A token amount for display. Exact, never rounded up, and never annualised.
+ *
+ * Truncates rather than rounding: showing more than the chain will actually pay is the one error
+ * direction that turns into a support ticket about missing money.
+ */
+export function formatTokenAmount(
+  amount: bigint | undefined,
+  decimals: number,
+  symbol: string,
+): string {
+  if (amount === undefined) return "—";
+  if (amount === 0n) return `0 ${symbol}`;
+  const base = 10n ** BigInt(decimals);
+  const whole = amount / base;
+  const frac = amount % base;
+  if (frac === 0n) return `${whole.toString()} ${symbol}`;
+  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${whole.toString()}.${fracStr} ${symbol}`;
+}
+
+/**
+ * What the screen says about the pot itself.
+ *
+ * ⚠️ Deliberately carries no rate, no projection and no per-broker estimate. The honest answer to
+ * "what will I get?" today is "nothing has been distributed", and any number placed next to that
+ * sentence would be read as a forecast.
+ */
+export const REVENUE_SHARE_DISCLOSURE =
+  "Revenue share pays out whatever protocol revenue is actually distributed for a closed period, " +
+  "split by the payout weight recorded on each activated broker. Nothing has been distributed so " +
+  "far. There is no rate, no schedule and no projection — this page only ever shows what the " +
+  "contract says is claimable right now.";
+
+/** What the distributor cannot do. Stated because it is the part a holder cannot verify by looking. */
+export const REVENUE_SHARE_CUSTODY_NOTE =
+  "The distributor has no withdraw, sweep or rescue function. The only way value leaves it is a " +
+  "holder claiming their own share; anything unclaimed stays and rolls into the next period.";

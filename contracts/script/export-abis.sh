@@ -39,6 +39,9 @@ CONTRACTS=(
   "BrokerActivationRegistry:BrokerActivationRegistry:brokerActivationRegistry"
   "BrokerSale:BrokerSale:brokerSale"
   "ISparkyBrokerViews:ISparkyBrokerViews:sparkyBroker"
+  # 044 — the revenue pot. Deployed and deliberately OFF: `claim` reverts until an allocation is
+  # published, so no flag holds it there. Exported so the claim screen binds the deployed ABI.
+  "BrokerRevenueDistributor:BrokerRevenueDistributor:brokerRevenueDistributor"
 )
 
 if [ ! -d "$OUT" ]; then
