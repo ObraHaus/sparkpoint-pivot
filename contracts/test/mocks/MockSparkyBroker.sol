@@ -18,20 +18,49 @@ contract MockSparkyBroker {
     mapping(uint256 => uint64) public activatedAt;
 
     address public activator;
+    address public minter;
     uint256 public totalMinted;
 
+    /// @dev Small on purpose so the "supply cap is the NFT's, not the sale's" test is cheap. The
+    ///      real collection is 10,000; what matters is that the cap lives HERE and reverts here.
+    uint256 public constant MAX_SUPPLY = 10;
+
     error NotActivator();
+    error NotMinter();
     error AlreadyActivated();
     error NotMinted();
+    error SupplyExhausted();
 
     function setActivator(address newActivator) external {
         activator = newActivator;
     }
 
+    function setMinter(address newMinter) external {
+        minter = newMinter;
+    }
+
+    /// @dev Gated exactly as the real one is: `minter` unset means nothing can be minted. The real
+    ///      contract uses `_safeMint`, so a CONTRACT recipient gets an `onERC721Received` callback
+    ///      mid-mint and can re-enter the caller. Reproduced here, because the sale's per-wallet cap
+    ///      is only real if it survives that.
     function mint(address to) external returns (uint256 id) {
+        if (msg.sender != minter) revert NotMinter();
+        if (totalMinted >= MAX_SUPPLY) revert SupplyExhausted();
         id = ++totalMinted;
         _owners[id] = to;
         // NOTE: no activation on mint, ever — a fresh broker is unactivated.
+        if (to.code.length > 0) {
+            (bool ok, bytes memory ret) = to.call(
+                abi.encodeWithSignature(
+                    "onERC721Received(address,address,uint256,bytes)",
+                    msg.sender,
+                    address(0),
+                    id,
+                    ""
+                )
+            );
+            require(ok && bytes4(ret) == 0x150b7a02, "unsafe recipient");
+        }
     }
 
     function ownerOf(uint256 id) external view returns (address) {

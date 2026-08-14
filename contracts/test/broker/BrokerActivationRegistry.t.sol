@@ -41,6 +41,7 @@ contract BrokerActivationRegistryTest is Test {
         registry =
             new BrokerActivationRegistry(address(broker), address(srk), DEAD, MAX_PRICE, PRICE);
         broker.setActivator(address(registry));
+        broker.setMinter(address(this)); // the mock gates mint like the real one does
 
         srk.transfer(holder, 1_000_000 ether);
         vm.prank(holder);
