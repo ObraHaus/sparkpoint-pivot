@@ -289,6 +289,37 @@ async def test_activations_are_unioned_across_every_registry_ever_wired() -> Non
 
 
 @pytest.mark.asyncio
+async def test_an_activated_broker_with_NO_weight_anywhere_is_REPORTED_not_dropped() -> None:
+    """The live orphaning case, pinned.
+
+    On Robinhood testnet brokers #1 and #4 are activated on the NFT, but both superseded registries
+    predate the 043c tiers and expose no `weightOf` at all — the call reverts rather than returning
+    0. The registry LIST cannot rescue them because no weight was ever recorded.
+
+    Silently excluding them is how an allocation pays a holder who paid nothing at all, permanently.
+    So they surface, and the caller decides.
+    """
+    rpc = FakeRpc(
+        activated_logs=[_activated_log(ALICE, 1), _activated_log(BOB, 2)],
+        owners={1: ALICE, 2: BOB},
+        activated={1: 500, 2: 600},
+        weights={2: 10_000},  # #1 has no weight anywhere
+    )
+    scan = await _ledger(rpc).scan_activations()
+    assert scan is not None
+    assert [a.token_id for a in scan.activated] == [2]
+    assert scan.weightless == (1,), "an activated-but-unpriceable broker must be visible"
+
+
+@pytest.mark.asyncio
+async def test_the_convenience_wrapper_still_returns_only_priced_brokers() -> None:
+    rpc = FakeRpc(
+        activated_logs=[_activated_log(ALICE, 1)], owners={1: ALICE}, activated={1: 5}, weights={}
+    )
+    assert await _ledger(rpc).activated_brokers() == []
+
+
+@pytest.mark.asyncio
 async def test_a_burned_token_is_skipped_not_crashed() -> None:
     rpc = FakeRpc(
         activated_logs=[_activated_log(ALICE, 3)], owners={}, activated={3: 1}, weights={3: 10_000}
@@ -319,7 +350,7 @@ async def test_the_holder_is_lowercased_so_one_wallet_is_never_two_leaves() -> N
 @pytest.mark.asyncio
 async def test_the_scan_is_chunked_rather_than_one_unbounded_request() -> None:
     rpc = FakeRpc(head=12_000, owners={}, transfer_logs=[])
-    await _ledger(rpc).tokens_owned_by(BOB)
+    await _ledger(rpc, log_chunk=5_000).tokens_owned_by(BOB)
     assert len(rpc.log_calls) == 3
     assert rpc.log_calls[0]["fromBlock"] == hex(0)
     # Contiguous, no gap: a skipped block is a dropped holder.
@@ -329,8 +360,49 @@ async def test_the_scan_is_chunked_rather_than_one_unbounded_request() -> None:
 
 @pytest.mark.asyncio
 async def test_a_scan_that_would_run_forever_refuses() -> None:
-    """`from_block` left at 0 on a 100M-block chain is a config error, not a slow path."""
+    """`from_block` left at 0 on a 100M-block chain is a config error, not a slow path.
+
+    ⚠️ This is the test that keeps `LOG_CHUNK` and `MAX_CHUNKS` honest with each other. Raising the
+    span without lowering the budget silently turns this misconfiguration from a clear failure into
+    a page that makes 200 sequential requests.
+    """
     rpc = FakeRpc(head=100_000_000)
+    assert await _ledger(rpc).tokens_owned_by(BOB) is None
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_rejects_a_wide_range_is_adapted_to_not_given_up_on() -> None:
+    """Range caps differ wildly between providers and are not knowable in advance.
+
+    Alchemy's free tier allows 10 blocks; the Robinhood node accepts 1,000,000. So the span starts
+    wide and NARROWS on rejection, rather than being configured per provider — one conservative
+    provider must not make every scan slow, and one strict provider must not make it fail.
+    """
+
+    class PickyRpc(FakeRpc):
+        cap = 10_000
+
+        async def call(self, method: str, params: list[Any]) -> Any:
+            if method == "eth_getLogs":
+                spec = params[0]
+                span = int(spec["toBlock"], 16) - int(spec["fromBlock"], 16) + 1
+                if span > self.cap:
+                    raise RuntimeError("query returned more than 10000 results")
+            return await super().call(method, params)
+
+    rpc = PickyRpc(head=9_000, transfer_logs=[_transfer_log(BOB, 4)], owners={4: BOB})
+    assert await _ledger(rpc).tokens_owned_by(BOB) == [4]
+    # It narrowed rather than failing, and every accepted request was inside the cap.
+    assert all(
+        int(c["toBlock"], 16) - int(c["fromBlock"], 16) + 1 <= PickyRpc.cap
+        for c in rpc.log_calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_narrowing_stops_rather_than_halving_forever() -> None:
+    """Below the floor a provider is not merely strict — something else is wrong."""
+    rpc = FakeRpc(head=5_000, fail_logs=True)
     assert await _ledger(rpc).tokens_owned_by(BOB) is None
 
 

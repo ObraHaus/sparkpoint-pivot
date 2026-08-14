@@ -129,19 +129,50 @@ def proof_for(levels: list[list[bytes]], leaf: bytes) -> list[bytes]:
     return proof
 
 
+class UnpricedActivations(Exception):
+    """Raised when brokers are activated but carry no weight, and nobody has decided what to do.
+
+    ⚠️ This is a REFUSAL, not an error to catch and ignore. A broker whose `activatedAt` is non-zero
+    belongs to a holder who paid; if no registry can price it, building the split anyway allocates
+    them nothing — permanently, because a published period is immutable.
+
+    Live example: Robinhood testnet brokers #1 and #4 are activated on the NFT while both superseded
+    registries predate the 043c tiers and expose no `weightOf` at all, so the call reverts. The
+    registry list cannot rescue them; there is no weight recorded anywhere.
+
+    Resolve it deliberately — treat pre-tier activations as Analyst (1.0x), require re-activation,
+    or pass `allow_unpriced=True` to exclude them knowingly and on the record.
+    """
+
+    def __init__(self, token_ids: tuple[int, ...]) -> None:
+        super().__init__(
+            f"{len(token_ids)} broker(s) are activated but carry no weight: {list(token_ids)}. "
+            "Building a split now would allocate their holders nothing, permanently. Decide first, "
+            "or pass allow_unpriced=True to exclude them knowingly."
+        )
+        self.token_ids = token_ids
+
+
 def build_allocation(
     *,
     period_id: int,
     token: str,
     pot: int,
     brokers: list[ActivatedBroker],
+    weightless: tuple[int, ...] = (),
+    allow_unpriced: bool = False,
 ) -> AllocationPlan:
     """Compute a period's split. Pure — no chain access, so it is fully testable.
 
     `brokers` must be the COMPLETE set of activated brokers at close. The ledger returns ``None``
     rather than a partial list precisely so that a short list cannot reach this function: anyone
     missing here is silently allocated nothing, and publication makes that permanent.
+
+    `weightless` carries `ActivationScan.weightless` — brokers that are activated but unpriceable.
+    Passing them is what makes excluding them a DECISION rather than an accident.
     """
+    if weightless and not allow_unpriced:
+        raise UnpricedActivations(tuple(weightless))
     total_weight = sum(b.weight_bps for b in brokers)
 
     # A period with revenue but nobody to pay is a normal state, not an error. Nothing is allocated
