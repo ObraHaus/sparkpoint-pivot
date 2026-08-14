@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "revenue-share-nav-entry",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Revenue share is now in the menu",
+      "body": "The revenue share page existed and worked, but nothing in the app linked to it — you could only get there by typing the address. That is fixed: it is now under Information, directly below Sparky Broker, and the ⌘K search finds it if you type “revenue”, “claim” or “payout”.\n\nOur automated check missed this because it opens each page by its address, so the page looked perfectly healthy while being effectively invisible. The check now clicks through the menu instead, so a page that nothing links to will fail rather than pass.",
+      "published_at": "2026-08-14T12:02:58Z"
+    },
+    {
       "slug": "revenue-share-first-real-run",
       "type": "changelog",
       "tag": "New",

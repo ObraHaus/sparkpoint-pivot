@@ -31,6 +31,28 @@ async function authed(page: Page) {
   ]);
 }
 
+test.describe("044 every audited page is reachable by CLICKING, not just by URL", () => {
+  test.skip(!SESSION, "PW_SP_SESSION not set");
+  test.setTimeout(120_000);
+
+  // ⚠️ The copy audit below navigates by direct URL. That is right for checking copy and useless
+  // for checking reachability: /brokers/revenue shipped, deployed and passed the copy audit while
+  // NOTHING in the app linked to it. A user browsing could not find it at all.
+  test("revenue share can be reached from the nav", async ({ page }) => {
+    await authed(page);
+    await page.goto("/brokers", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(9000);
+
+    const link = page.getByRole("link", { name: /revenue share/i }).first();
+    await expect(link, "no nav link to revenue share — the page would be URL-only").toBeVisible({
+      timeout: 20_000,
+    });
+    await link.click();
+    await page.waitForURL(/\/brokers\/revenue/, { timeout: 20_000 });
+    await expect(page.locator("body")).toContainText(/revenue share/i);
+  });
+});
+
 test.describe("043 copy audit on the live app", () => {
   test.skip(!SESSION, "PW_SP_SESSION not set (run e2e/__login.mjs)");
   test.setTimeout(240_000);
