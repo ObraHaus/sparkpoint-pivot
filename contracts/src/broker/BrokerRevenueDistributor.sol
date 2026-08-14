@@ -27,9 +27,19 @@ import { Ownable, Ownable2Step } from "@openzeppelin/contracts/access/Ownable2St
 ///      already owed), so the contract can never owe more than it holds. A fuzz test asserts it.
 ///
 ///      **Rollover is what happens by default, not a feature that could be forgotten.** Value that
-///      is funded but never allocated, and value allocated but never claimed once a period is
-///      superseded, simply stays in the balance and raises `available()` for the next period.
-///      Nothing sweeps it anywhere, because nothing can.
+///      is funded but never allocated — the truncation remainder, or a period with no activated
+///      brokers — simply stays in the balance and raises `available()` for the next period. Nothing
+///      sweeps it anywhere, because nothing can.
+///
+///      ⚠️ **An allocation that was PUBLISHED but not claimed does NOT roll over, and must not.**
+///      `owed` only ever decreases by someone claiming, so a published share stays reserved for its
+///      holder indefinitely — they can claim it long after later periods have opened and closed.
+///      Rolling it into the next period would take one holder's earned share and hand it to other
+///      people, which is a worse outcome than leaving it untouched. This corrects an earlier version
+///      of this comment that claimed unclaimed allocations roll over; they never did, and
+///      `TwoPeriodRollover.t.sol` now pins the real behaviour. Proven on Robinhood testnet on
+///      2026-08-14: after period 2 was funded, `available()` excluded the still-owed share, and the
+///      holder claimed it afterwards in full.
 ///
 ///      **Why Merkle roots rather than on-chain enumeration.** `SparkyBroker` is not enumerable and
 ///      there are 10,000 of them; computing a weighted split on-chain is impossible. The split is

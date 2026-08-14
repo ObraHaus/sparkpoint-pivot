@@ -98,7 +98,12 @@ unfairness with someone else's money.
 1. **Given** any caller including the owner, **When** they attempt to withdraw funds other than by
    claiming an allocation, **Then** there is no function that permits it.
 2. **Given** a period whose allocations go unclaimed, **When** the next period is funded, **Then**
-   the remainder is available to that period rather than swept to any SparkPoint address.
+   the unclaimed share stays **reserved for its holder** — it is not swept to any SparkPoint address
+   and it is not re-allocated to other holders either. ⚠️ Corrected 2026-08-14 after the testnet
+   simulation: an earlier wording said the unclaimed remainder became *available to the next period*,
+   which the code never did and should not. Re-allocating it would take one holder's earned share
+   and hand it to other people. Only the **unallocated** remainder (truncation dust, or a period
+   with no activated brokers) raises `available()`.
 3. **Given** the owner, **When** they publish an allocation for a period already published, **Then**
    it reverts — a published period is immutable.
 
@@ -127,8 +132,10 @@ unfairness with someone else's money.
 - **FR-004**: The sum of a period's allocations MUST NOT exceed the amount funded for it.
 - **FR-005**: There MUST be **no** path by which anyone other than a claimant removes value —
   no withdraw, sweep, rescue or migrate, for the owner or anyone else.
-- **FR-006**: Unclaimed value MUST remain available to subsequent periods and MUST NOT be
-  transferable to a SparkPoint-controlled address.
+- **FR-006**: Value MUST NOT be transferable to a SparkPoint-controlled address under any
+  circumstances. **Unallocated** value (dust, or a period with no activated brokers) MUST remain
+  available to subsequent periods. **Published but unclaimed** value MUST stay reserved for its
+  holder indefinitely, claimable after later periods have opened — it MUST NOT be re-allocated.
 - **FR-007**: A published period MUST be immutable.
 - **FR-008**: Every surface MUST show only **actual, on-chain** claimable amounts. It MUST NOT show
   a projection, an illustrative figure, a rate, or a per-month number.

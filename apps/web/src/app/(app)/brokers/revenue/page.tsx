@@ -28,7 +28,7 @@
  * direction that becomes a support ticket about missing money.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -36,14 +36,23 @@ import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
 import { brokerRevenueDistributorAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import {
+  allocationUrl,
   deriveClaimState,
+  findAllocation,
   formatTokenAmount,
   REVENUE_SHARE_CUSTODY_NOTE,
   REVENUE_SHARE_DISCLOSURE,
+  type PublishedPeriod,
 } from "@/lib/chain/brokers";
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
+
+/** Minimal ERC-20 metadata reads — the period names its own units. */
+const erc20MetaAbi = [
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+] as const;
 
 export default function Page() {
   const { address, isConnected, chainId: walletChain } = useAccount();
@@ -79,24 +88,70 @@ export default function Page() {
     query: { enabled: !!distributor && !!latest && !!owner },
   });
 
+  const claimedAlready = useReadContract({
+    ...read,
+    functionName: "claimed",
+    args: latest && owner ? [latest, owner] : undefined,
+    query: { enabled: !!distributor && !!latest && !!owner },
+  });
+
   const periodRow = period.data?.[0]?.result as
     | readonly [Address, bigint, bigint, `0x${string}`, bigint]
     | undefined;
   const published = periodRow ? Number(periodRow[4]) > 0 : undefined;
+  const periodToken = periodRow?.[0];
+
+  // Read the units from the token the period is actually denominated in. Hardcoding "USDC" here
+  // would mislabel a period funded in anything else, which on testnet it currently is.
+  const meta = useReadContracts({
+    contracts: periodToken
+      ? [
+          { address: periodToken, abi: erc20MetaAbi, functionName: "symbol", chainId: BROKER_CHAIN },
+          { address: periodToken, abi: erc20MetaAbi, functionName: "decimals", chainId: BROKER_CHAIN },
+        ]
+      : [],
+    query: { enabled: !!periodToken },
+  });
+  const tokenSymbol = (meta.data?.[0]?.result as string | undefined) ?? "tokens";
+  const tokenDecimals = Number((meta.data?.[1]?.result as number | undefined) ?? 18);
 
   const { writeContractAsync } = useWriteContract();
 
-  // ⚠️ The wallet's own allocation and proof come from the PUBLISHED allocation document, not from
-  // the chain — a Merkle distributor stores only the root. No period has been published, so there
-  // is nothing to fetch and this is deliberately left undefined rather than faked.
-  const allocation: bigint | undefined = published === true ? 0n : undefined;
+  // ⚠️ The amount and proof come from the PUBLISHED document, not the chain — a Merkle distributor
+  // stores only the root. The document is served without a session on purpose: the split is a claim
+  // about other people's money, so anyone must be able to fetch it and recompute the root.
+  const [doc, setDoc] = useState<PublishedPeriod | undefined>();
+  const [docMissing, setDocMissing] = useState(false);
+  useEffect(() => {
+    if (!latest) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(allocationUrl(BROKER_CHAIN, Number(latest)));
+        if (!res.ok) throw new Error(String(res.status));
+        const body = (await res.json()) as PublishedPeriod;
+        if (!cancelled) setDoc(body);
+      } catch {
+        // A published period whose document we cannot fetch is NOT "you get nothing" — it is a
+        // missing artifact, and saying so is the only honest option. The claim stays disabled.
+        if (!cancelled) setDocMissing(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [latest]);
+
+  const mine = useMemo(() => findAllocation(doc, owner), [doc, owner]);
+  const allocation: bigint | undefined =
+    published !== true ? undefined : mine ? BigInt(mine.amount) : docMissing ? undefined : 0n;
 
   const verdict = deriveClaimState({
     distributor,
     periodCount: count,
     published,
     allocation,
-    alreadyClaimed: published === true ? false : undefined,
+    alreadyClaimed: claimedAlready.data as boolean | undefined,
     walletReady: onChain,
   });
 
@@ -131,8 +186,26 @@ export default function Page() {
               placed next to a claim button reads as "we owe you nothing", which is a different
               claim from "no period has been distributed". */}
           {verdict.status === "claimable" && allocation !== undefined && (
-            <p className="mt-4 text-3xl font-semibold tabular-nums">
-              {formatTokenAmount(allocation, 6, "USDC")}
+            <>
+              <p className="mt-4 text-3xl font-semibold tabular-nums">
+                {formatTokenAmount(allocation, tokenDecimals, tokenSymbol)}
+              </p>
+              {mine && mine.grandfatheredTokenIds.length > 0 && (
+                // Named on the screen, not just in the file. A weight nobody chose should be
+                // visible to the person it was applied to.
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Broker{mine.grandfatheredTokenIds.length > 1 ? "s" : ""}{" "}
+                  {mine.grandfatheredTokenIds.map((t) => `#${t}`).join(", ")} were activated before
+                  tiers existed, so they count at 1.0×.
+                </p>
+              )}
+            </>
+          )}
+
+          {docMissing && published === true && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              This period is published on-chain, but its allocation document could not be loaded, so
+              the amount cannot be shown. Nothing is lost — the claim stays open.
             </p>
           )}
 
@@ -145,7 +218,7 @@ export default function Page() {
                 address: distributor,
                 abi: brokerRevenueDistributorAbi,
                 functionName: "claim",
-                args: [latest, allocation, []],
+                args: [latest, allocation, (mine?.proof ?? []) as readonly `0x${string}`[]],
                 chainId: BROKER_CHAIN,
               });
             }}

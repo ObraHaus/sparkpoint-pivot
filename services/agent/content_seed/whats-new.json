@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "revenue-share-first-real-run",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Revenue share ran end to end on the testnet",
+      "body": "We funded a real pot on the test network and ran the whole thing: the money went in, the split was calculated from who actually holds an activated broker, and holders claimed their shares on-chain.\n\nTwo things we specifically wanted to prove, and did. A second attempt to claim the same period fails — nobody can take their share twice. And a holder who did not claim straight away could still claim in full after the next period had already opened: your share is set aside for you and does not expire.\n\nA note on older brokers: a couple were activated before the tier system existed, so they have no tier recorded. Rather than charge those holders again or leave them out, they count at 1.0×. Where that applies, the claim page says so on screen, and the published breakdown marks exactly which brokers it applied to.\n\nEvery period’s full breakdown is published so anyone can check the maths themselves against the blockchain — no login needed to read it. Claiming remains switched off for live revenue; there is still nothing real to distribute.",
+      "published_at": "2026-08-14T11:06:31Z"
+    },
+    {
       "slug": "brokers-gallery-live-fix",
       "type": "changelog",
       "tag": "Fixed",

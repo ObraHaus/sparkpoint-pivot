@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from sparkpoint_agent.chain.broker_allocation import (
     UnpricedActivations,
     build_allocation,
@@ -204,8 +206,6 @@ def test_building_a_split_REFUSES_while_activated_brokers_have_no_weight() -> No
     Publishing is irreversible, so an unpriceable activation must stop the build rather than
     quietly resolve to "this holder gets nothing".
     """
-    import pytest
-
     with pytest.raises(UnpricedActivations) as err:
         build_allocation(
             period_id=1, token=USDC, pot=1_000, brokers=[_b(2, A, ANALYST)], weightless=(1, 4)
@@ -229,3 +229,56 @@ def test_excluding_them_is_possible_but_must_be_explicit() -> None:
 def test_no_weightless_brokers_needs_no_ceremony() -> None:
     plan = build_allocation(period_id=1, token=USDC, pot=1_000, brokers=[_b(2, A, ANALYST)])
     assert plan.total_allocated == 1_000
+
+
+# ── grandfathering (operator decision, 14 Aug 2026) ────────────────────────────────────────────
+
+
+def test_a_grandfathered_broker_does_not_block_the_build() -> None:
+    """It carries a policy weight, so it is priced — unlike a genuinely unresolved one."""
+    plan = build_allocation(
+        period_id=1,
+        token=USDC,
+        pot=1_000,
+        brokers=[_b(1, A, ANALYST), _b(2, B, ANALYST)],
+        weightless=(1,),
+        grandfathered=(1,),
+    )
+    assert plan.total_allocated == 1_000
+
+
+def test_an_UNRESOLVED_broker_still_blocks_even_alongside_grandfathered_ones() -> None:
+    """Grandfathering one token must not quietly wave through a different unpriced one."""
+    with pytest.raises(UnpricedActivations) as err:
+        build_allocation(
+            period_id=1,
+            token=USDC,
+            pot=1_000,
+            brokers=[_b(1, A, ANALYST)],
+            weightless=(1, 7),
+            grandfathered=(1,),
+        )
+    assert err.value.token_ids == (7,)
+
+
+def test_the_published_doc_NAMES_which_weights_were_policy_not_purchase() -> None:
+    """A weight nobody paid for has to be auditable by anyone recomputing the split."""
+    plan = build_allocation(
+        period_id=1,
+        token=USDC,
+        pot=1_000,
+        brokers=[_b(1, A, ANALYST), _b(2, B, PARTNER)],
+        weightless=(1,),
+        grandfathered=(1,),
+    )
+    rows = {r["account"]: r for r in plan.to_publishable()["allocations"]}
+    assert rows[A]["grandfatheredTokenIds"] == [1]
+    assert rows[B]["grandfatheredTokenIds"] == []
+
+
+def test_grandfathering_gives_the_LOWEST_weight_not_a_generous_one() -> None:
+    """1.0x, the tier they never chose. A pre-tier holder must not outrank a paying Partner."""
+    from sparkpoint_agent.chain.broker_ledger import GRANDFATHER_WEIGHT_BPS
+
+    assert GRANDFATHER_WEIGHT_BPS == ANALYST
+    assert GRANDFATHER_WEIGHT_BPS < PARTNER

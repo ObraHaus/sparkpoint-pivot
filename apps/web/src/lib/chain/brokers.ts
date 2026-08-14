@@ -470,3 +470,50 @@ export const REVENUE_SHARE_DISCLOSURE =
 export const REVENUE_SHARE_CUSTODY_NOTE =
   "The distributor has no withdraw, sweep or rescue function. The only way value leaves it is a " +
   "holder claiming their own share; anything unclaimed stays and rolls into the next period.";
+
+
+/** One wallet's row in a published allocation document (044). */
+export interface PublishedAllocation {
+  readonly account: string;
+  readonly amount: string;
+  readonly weightBps: number;
+  readonly tokenIds: readonly number[];
+  readonly grandfatheredTokenIds: readonly number[];
+  readonly proof: readonly string[];
+}
+
+export interface PublishedPeriod {
+  readonly periodId: number;
+  readonly token: string;
+  readonly pot: string;
+  readonly totalWeightBps: number;
+  readonly totalAllocated: string;
+  readonly dust: string;
+  readonly merkleRoot: string;
+  readonly allocationCount: number;
+  readonly rule: string;
+  readonly leaf: string;
+  readonly allocations: readonly PublishedAllocation[];
+}
+
+/**
+ * This wallet's row in a published period, or `undefined` if it was allocated nothing.
+ *
+ * ⚠️ Compares lowercased. The builder lowercases every holder before grouping, precisely so one
+ * wallet cannot become two leaves — matching case-sensitively here would reintroduce that split at
+ * the last possible moment, and the symptom would be a holder told they have nothing to claim
+ * while their money sits in the contract.
+ */
+export function findAllocation(
+  period: PublishedPeriod | undefined,
+  wallet: string | undefined,
+): PublishedAllocation | undefined {
+  if (!period || !wallet) return undefined;
+  const want = wallet.toLowerCase();
+  return period.allocations.find((a) => a.account.toLowerCase() === want);
+}
+
+/** Where a period's published document lives. Static, session-free, independently checkable. */
+export function allocationUrl(chainId: number, periodId: number): string {
+  return `/allocations/${chainId}/period-${periodId}.json`;
+}

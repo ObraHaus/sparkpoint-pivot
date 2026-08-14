@@ -18,6 +18,7 @@
         1,
         4
       ],
+      "grandfatheredTokenIds": [],
       "proof": [
         "0x89c9bdb2808681934229238dc75fd83616c3c12426b06e1ceb7a59eb68851e26"
       ]
@@ -29,6 +30,7 @@
       "tokenIds": [
         2
       ],
+      "grandfatheredTokenIds": [],
       "proof": [
         "0x6af09d5e78ef12d47215c38c44157d5852965b823a3ca33189fefe7d1744885f",
         "0xd8f09742ca1e2f74405c053bd507956c7f00767f293adbfcc3fc684c92e94c70"
@@ -41,6 +43,7 @@
       "tokenIds": [
         3
       ],
+      "grandfatheredTokenIds": [],
       "proof": [
         "0x2155d7c57117123513843cbf50dd70c43764ec2922887242bef26d1cb9525014",
         "0xd8f09742ca1e2f74405c053bd507956c7f00767f293adbfcc3fc684c92e94c70"
