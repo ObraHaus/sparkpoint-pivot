@@ -26,14 +26,21 @@ services:
     deploy:
       resources:
         limits:
+          # THE self-heal, and it is not optional. GOMEMLIMIT above is a SOFT Go limit: without a
+          # hard cap nothing ever OOM-kills a bloated heap, so instead of exiting (and being
+          # restarted in seconds by `restart:` above) the process GC-thrashes and stalls for ~an
+          # hour. That is exactly what happened when the deployed Coolify service was missing this
+          # block — 16% downtime over 8 days, ~38 incidents, every one a 504 that healed itself.
           memory: 1g
-    healthcheck:
-      # eth_chainId through the open `app` lane — proves the proxy is serving, not just listening.
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO- --header='Content-Type: application/json' --post-data='{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}' http://127.0.0.1:4000/app/evm/84532 | grep -q 0x14a34",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    # NO healthcheck — deliberately, and do not "restore" one.
+    #
+    # `ghcr.io/erpc/erpc` is DISTROLESS: `docker inspect` shows entrypoint /erpc-server and user
+    # 65532, with no sh, wget, curl or busybox in the image. Both healthcheck forms need something
+    # to exec — CMD-SHELL needs /bin/sh, CMD needs a binary — so any probe written here can only
+    # fail, pinning the service to permanently-unhealthy and teaching everyone to ignore the status.
+    # (This file used to carry a `CMD-SHELL` wget probe that could never have passed.)
+    #
+    # It would not buy recovery either way: plain Compose does not restart an unhealthy container
+    # (only Swarm does). Liveness is asserted from OUTSIDE instead — Uptime Kuma on spark-mon polls
+    # the no-secret `app` lane with a real `eth_blockNumber` (NOT eth_chainId, which answers from the
+    # permanent cache and lies during the ~60s post-restart cold start).

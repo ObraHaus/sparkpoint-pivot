@@ -71,7 +71,10 @@ test.describe("011 vault picker (live)", () => {
     // fabricated APY (the big Net-APY number is "—", never an Aave rate).
     await expect(page.getByRole("heading", { name: /SparkPoint Morpho USDC/ })).toBeVisible();
     await expect(page.getByText("Morpho (external)")).toBeVisible();
-    await expect(page.getByText("net APY · not yet available")).toBeVisible();
+    // Exact copy from vault/page.tsx (`isMorphoVenue ? "net APY · unavailable" : …`). This assertion
+    // silently rotted for two weeks when 13cf8b6 shortened the label a day after this spec was last
+    // touched — if you change that string, change it here in the same commit.
+    await expect(page.getByText("net APY · unavailable")).toBeVisible();
     await expect(page.getByText("Aave supply rate")).toHaveCount(0);
 
     // 024: the wrapper is RETIRED, so the option is badged RETIRED rather than carrying the live
