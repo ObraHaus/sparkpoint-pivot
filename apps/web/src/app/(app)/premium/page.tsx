@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { PREMIUM_PRICE_SRK_WHOLE } from "@/lib/chain/premiumPay";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
+import { premiumSourceView } from "@/lib/chain/brokers";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
@@ -125,6 +126,7 @@ function UsageThisPeriod() {
 export default function Page() {
   const router = useRouter();
   const premium = useSelfPremiumStatus();
+  const sourceView = premiumSourceView(premium.source ?? null, premium.brokerTokenId);
   return (
     <div className="page page-narrow">
       <div className="pagehead">
@@ -170,24 +172,58 @@ export default function Page() {
           {premium.active ? (
             <>
               <button className="btn btn-primary btn-md" style={{ width: "100%", marginTop: 16 }} disabled>
-                Your current plan{premium.untilLabel ? ` — until ${premium.untilLabel}` : ""}
+                {sourceView.headline}
+                {sourceView.showsExpiry && premium.untilLabel ? ` — until ${premium.untilLabel}` : ""}
+              </button>
+              {/* 043 — say WHICH source is paying and what would end it. The failure this prevents
+                  is a holder whose access stops and who cannot tell why. A broker-sourced tier has
+                  no expiry: it ends on transfer, so no date is shown rather than a made-up one. */}
+              <div
+                style={{ marginTop: 8, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}
+              >
+                {sourceView.detail} {sourceView.endsWhen}
+              </div>
+              {premium.source === "broker" ? (
+                <button
+                  className="btn btn-outline btn-md"
+                  style={{ width: "100%", marginTop: 8 }}
+                  onClick={() => router.push("/brokers")}
+                >
+                  Your brokers
+                </button>
+              ) : (
+                <button
+                  className="btn btn-outline btn-md"
+                  style={{ width: "100%", marginTop: 8 }}
+                  onClick={() => router.push(toHref("premium/pay"))}
+                >
+                  Extend a month — pay in SRK
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                className="btn btn-primary btn-md"
+                style={{ width: "100%", marginTop: 16 }}
+                onClick={() => router.push("/brokers")}
+              >
+                Activate a Sparky Broker
               </button>
               <button
                 className="btn btn-outline btn-md"
                 style={{ width: "100%", marginTop: 8 }}
                 onClick={() => router.push(toHref("premium/pay"))}
               >
-                Extend a month — pay in SRK
+                Or buy a month with SRK
               </button>
+              <div
+                style={{ marginTop: 8, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}
+              >
+                A broker keeps Premium on for as long as you hold it, with nothing to renew — and you
+                can sell it. A month is a month.
+              </div>
             </>
-          ) : (
-            <button
-              className="btn btn-primary btn-md"
-              style={{ width: "100%", marginTop: 16 }}
-              onClick={() => router.push(toHref("premium/pay"))}
-            >
-              Upgrade — pay in SRK
-            </button>
           )}
         </div>
       </div>

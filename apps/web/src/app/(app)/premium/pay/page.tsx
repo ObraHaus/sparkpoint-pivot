@@ -31,6 +31,19 @@ import "@/components/screens/premium.css";
 
 const VAULT_CHAIN = 84532;
 
+/**
+ * 043 phase F — the SRK monthly subscription is retired in favour of the Sparky Broker.
+ *
+ * A flag rather than a deletion, deliberately: it keeps the whole purchase path in the tree and
+ * reversible while the broker route beds in on testnet, and it makes the retirement one line to
+ * undo rather than a revert. `resolve_tier` is NOT re-branched for this — it stays "stored grant OR
+ * activated broker", which after the sunset simply degenerates to "admin grant OR broker".
+ *
+ * Verified before flipping: exactly ONE wallet held a purchased subscription on develop, and it was
+ * our own test wallet. No real tester loses access.
+ */
+const RETIRING_SUBSCRIPTIONS = true;
+
 /** getAddresses throws on an unsupported chain (fail-closed) — swallow to an "unavailable" state. */
 function addressBookFor(chainId: number | undefined) {
   if (!chainId) return undefined;
@@ -156,7 +169,30 @@ export default function Page() {
         </div>
       </div>
 
-      {!configured ? (
+      {RETIRING_SUBSCRIPTIONS ? (
+        // 043 phase F — the SRK subscription is being retired in favour of the Sparky Broker. This
+        // page stays reachable (an old link, a bookmark, the ⌘K palette) but no longer sells: it
+        // explains the change and points at the thing that replaces it. Nothing is taken away
+        // mid-flow — the tier itself is unwound separately, and only after the broker path is live.
+        <div className="card card-pad">
+          <div className="payrow">
+            <span className="muted">Monthly Premium</span>
+            <span>Retired — a Sparky Broker replaces it</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
+            The same 10,000 SRK that used to buy one month now activates a Sparky Broker — and that
+            does not expire, does not renew, and can be sold. Premium stays on for as long as you
+            hold the activated broker.
+          </div>
+          <button
+            className="btn btn-primary btn-md"
+            style={{ width: "100%", marginTop: 14 }}
+            onClick={() => router.push("/brokers")}
+          >
+            Get a Sparky Broker
+          </button>
+        </div>
+      ) : !configured ? (
         <div className="card card-pad">
           <div className="payrow">
             <span className="muted">Premium on this network</span>

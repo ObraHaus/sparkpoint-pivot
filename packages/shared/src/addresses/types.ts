@@ -112,6 +112,29 @@ export interface AddressBook {
    */
   readonly srkFaucet?: Address;
   /**
+   * §broker (043) — the deployed `SparkyBroker` ERC-721 on this chain. A membership NFT, NOT a vault
+   * or a yield position: it affects the Premium tier and nothing else. A PLAIN optional field, never
+   * a policy `TargetRef` — no agent path reaches it. Undefined ⇒ the broker surfaces say so honestly
+   * rather than rendering an empty gallery.
+   */
+  readonly brokerNft?: Address;
+  /**
+   * §broker (043) — `BrokerActivationRegistry`, the NFT's `activator`: retires SRK and flips
+   * activation in ONE user-signed transaction. Holds no broker and no SRK.
+   *
+   * ⚠️ **Re-pointing the NFT's `activator` orphans every activation the previous registry recorded**,
+   * and there is no on-chain recovery (the NFT still reports those tokens activated, so `activate`
+   * reverts). The agent therefore reads a LIST of registries — see `BROKER_REGISTRY_ADDRESS` — and a
+   * superseded address must never be dropped from it. This field names the CURRENT one, for the app's
+   * write path only.
+   */
+  readonly brokerRegistry?: Address;
+  /**
+   * §broker (043) — `BrokerSale`, the NFT's `minter`. Free and open, bounded by an owner-settable
+   * per-wallet cap; the collection's immutable 10,000 supply cap lives on the NFT.
+   */
+  readonly brokerSale?: Address;
+  /**
    * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
    * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
    * A PLAIN optional field, NOT a policy `TargetRef`. A plain holder — zero fund-movement power (N5).

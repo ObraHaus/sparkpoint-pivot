@@ -24,8 +24,20 @@ export function useSelfPremiumStatus(): PremiumStatus {
           cache: "no-store",
         });
         if (!r.ok || !alive) return;
-        const u = (await r.json()) as { tier?: string; expiresAt?: string | null };
-        if (alive) setStatus(premiumStatusView(u.tier, u.expiresAt));
+        const u = (await r.json()) as {
+          tier?: string;
+          expiresAt?: string | null;
+          // 043 — which source is paying, so /premium can say what would END the access.
+          premiumSource?: "broker" | "stored" | null;
+          brokerTokenId?: number | null;
+        };
+        if (alive) {
+          setStatus({
+            ...premiumStatusView(u.tier, u.expiresAt),
+            source: u.premiumSource ?? null,
+            brokerTokenId: u.brokerTokenId ?? undefined,
+          });
+        }
       } catch {
         /* advisory only — fall back to the free rendering */
       }

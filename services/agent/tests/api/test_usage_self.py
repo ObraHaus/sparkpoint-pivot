@@ -44,6 +44,18 @@ class _FakeLimits:
     async def resolve_expiry(self, owner: str) -> object | None:
         return None
 
+    async def resolve_tier_source(self, owner: str) -> dict[str, Any]:
+        """043 — mirrors the real store: the tier AND which source is paying for it."""
+        if self.raise_on == "resolve":
+            raise RuntimeError("db down")
+        tier = "premium" if self.tier_def and self.tier_def.get("premium") else "free"
+        return {
+            "tier": tier,
+            "source": "stored" if tier == "premium" else None,
+            "expiresAt": None,
+            "tokenId": None,
+        }
+
     async def get_tier(self, tier: str) -> dict[str, Any] | None:
         return self.tier_def
 
@@ -85,3 +97,40 @@ def test_self_usage_honest_degrades_when_source_unavailable() -> None:
         r = client.get("/usage/self", headers=_headers(USER))
         assert r.status_code == 200
         assert r.json() == {"configured": False, "tier": "free", "metrics": []}
+
+
+def test_self_usage_names_which_source_is_paying_for_premium() -> None:
+    """043 FR-005 — the Premium page has to be able to say WHY access is on, and what ends it.
+
+    The failure mode this prevents is a holder whose access stops and who cannot tell whether a
+    subscription lapsed or a broker was transferred.
+    """
+    fake = _FakeLimits(
+        tier_def={"premium": True, "chatDailyLimit": 400, "recsDailyLimit": 100,
+                  "onboardingDailyLimit": 100},
+        usage=0,
+    )
+    for client in _override(fake):
+        body = client.get("/usage/self", headers=_headers(USER)).json()
+        assert body["tier"] == "premium"
+        assert body["premiumSource"] == "stored"
+        assert body["brokerTokenId"] is None
+
+
+def test_a_broker_sourced_premium_reports_the_token_and_no_expiry() -> None:
+    """A broker-derived tier ends on TRANSFER, not on a date — so it must never carry one."""
+
+    class _BrokerLimits(_FakeLimits):
+        async def resolve_tier_source(self, owner: str) -> dict[str, Any]:
+            return {"tier": "premium", "source": "broker", "expiresAt": None, "tokenId": 4}
+
+    fake = _BrokerLimits(
+        tier_def={"premium": True, "chatDailyLimit": 400, "recsDailyLimit": 100,
+                  "onboardingDailyLimit": 100},
+        usage=0,
+    )
+    for client in _override(fake):
+        body = client.get("/usage/self", headers=_headers(USER)).json()
+        assert body["premiumSource"] == "broker"
+        assert body["brokerTokenId"] == 4
+        assert body["expiresAt"] is None, "no fabricated expiry for something that ends on transfer"

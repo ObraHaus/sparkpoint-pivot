@@ -19,6 +19,13 @@ export interface PremiumStatus {
   readonly active: boolean;
   /** Human expiry ("Sep 2, 2026") when active and the wire date parses; null otherwise. */
   readonly untilLabel: string | null;
+  /**
+   * 043 — 'broker' | 'stored' | null. Which source is paying. `undefined` on the surfaces that
+   * never asked; those keep rendering exactly as they did before this feature.
+   */
+  readonly source?: "broker" | "stored" | null;
+  /** The activated broker that qualifies this wallet, when the source is 'broker'. */
+  readonly brokerTokenId?: number;
 }
 
 /** Map the `/usage/self` fields to a display status. Defensive on every field. */

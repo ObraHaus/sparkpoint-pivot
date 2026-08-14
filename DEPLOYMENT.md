@@ -125,6 +125,25 @@ Testers need SRK to exercise the Premium purchase, but `SparkPointTestToken` has
 - **Admins**: deployer + the client demo wallet `0x32Ed4400C5BBB394712c482F1207886d8C22e8b5`. Owner **or** an admin may `setClaimAmount` / `setCooldown`; only the owner may `withdraw` the float, manage admins or transfer ownership. The agent is provably **keyless**, so "admin-editable from the panel" means the connected admin **wallet** signs these setters from `/admin/faucet` — no backend is in the trust path.
 - Script: `contracts/script/DeploySrkFaucet.s.sol` (`--slow` is required — the deployer is a delegated EOA). Set `FAUCET_ADDRESS` to top the float up instead of deploying a new one. Recorded as `srkFaucet` in the Base Sepolia address book and `SrkFaucet` in `contracts/deployments/84532/addresses.json`.
 
+### Agent env for the broker premium path — feature 043 (2026-08-14)
+
+The agent resolves an activated broker as a source of Premium only once these are set. **Unset ⇒ it
+behaves exactly as it did before 043** — the broker is simply not a premium source.
+
+```
+BROKER_CHAIN_RPC_URL      = <eRPC /core/evm/46630?secret=…>  (or the public Robinhood testnet RPC)
+BROKER_NFT_ADDRESS        = 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2
+BROKER_REGISTRY_ADDRESS   = 0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775,0x5370d06bFA9049234C471e0877e249D9322728FF
+BROKER_GATE_CACHE_SECONDS = 60
+```
+
+> ⚠️⚠️ `BROKER_REGISTRY_ADDRESS` is a **comma-separated list, newest first, and nothing is ever
+> removed from it.** Re-pointing the NFT's `activator` orphans every activation the previous registry
+> recorded, and there is no on-chain recovery — the NFT still reports those tokens activated, so
+> `activate` reverts and the record cannot be rebuilt. A holder who paid would silently stop
+> qualifying. Reading the union is safe because the list is only ever a hint; the live `ownerOf` +
+> `activatedAt` reads are the authority.
+
 ### Broker sale (the free, open mint) — feature 043 phase C (2026-08-14)
 
 The NFT's `minter`, the second role left unset at deploy. **Free and open**: no price, no eligibility gate, no allowlist — an owner-settable per-wallet cap is the only restriction, and the collection's immutable 10,000 cap stays on the NFT rather than being re-implemented here.
