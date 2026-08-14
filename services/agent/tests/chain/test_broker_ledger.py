@@ -348,14 +348,49 @@ async def test_the_holder_is_lowercased_so_one_wallet_is_never_two_leaves() -> N
 
 
 @pytest.mark.asyncio
-async def test_the_scan_is_chunked_rather_than_one_unbounded_request() -> None:
+async def test_the_scan_covers_the_whole_range_with_no_gaps() -> None:
+    """A skipped block is a dropped holder, so coverage is asserted, not the request count.
+
+    The first call is a width PROBE against the newest blocks (providers cap ranges and the cap is
+    not knowable in advance), so the chunks are everything after it.
+    """
     rpc = FakeRpc(head=12_000, owners={}, transfer_logs=[])
     await _ledger(rpc, log_chunk=5_000).tokens_owned_by(BOB)
-    assert len(rpc.log_calls) == 3
-    assert rpc.log_calls[0]["fromBlock"] == hex(0)
-    # Contiguous, no gap: a skipped block is a dropped holder.
-    assert int(rpc.log_calls[1]["fromBlock"], 16) == int(rpc.log_calls[0]["toBlock"], 16) + 1
-    assert int(rpc.log_calls[-1]["toBlock"], 16) == 12_000
+
+    chunks = sorted(
+        (int(c["fromBlock"], 16), int(c["toBlock"], 16)) for c in rpc.log_calls[1:]
+    )
+    assert chunks[0][0] == 0, "starts at from_block"
+    assert chunks[-1][1] == 12_000, "reaches the head"
+    for (_, prev_end), (next_start, _) in zip(chunks, chunks[1:], strict=False):
+        assert next_start == prev_end + 1, "contiguous — no block may be skipped"
+
+
+@pytest.mark.asyncio
+async def test_chunks_are_fetched_concurrently_not_one_at_a_time() -> None:
+    """18 sequential round trips is ~9s on a page load; the same work concurrently is ~1s."""
+    import asyncio
+
+    class SlowRpc(FakeRpc):
+        def __init__(self, **kw: Any) -> None:
+            super().__init__(**kw)
+            self.inflight = 0
+            self.peak = 0
+
+        async def call(self, method: str, params: list[Any]) -> Any:
+            if method == "eth_getLogs":
+                self.inflight += 1
+                self.peak = max(self.peak, self.inflight)
+                await asyncio.sleep(0.01)
+                try:
+                    return await super().call(method, params)
+                finally:
+                    self.inflight -= 1
+            return await super().call(method, params)
+
+    rpc = SlowRpc(head=50_000, owners={}, transfer_logs=[])
+    await _ledger(rpc, log_chunk=5_000).tokens_owned_by(BOB)
+    assert rpc.peak > 1, "chunks must overlap in flight, not run strictly one after another"
 
 
 @pytest.mark.asyncio
