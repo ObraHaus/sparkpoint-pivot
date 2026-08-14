@@ -41,6 +41,9 @@ class WalletAllocation:
     token_ids: tuple[int, ...]
     weight_bps: int
     proof: tuple[str, ...] = ()
+    #: Brokers in `token_ids` whose weight was GRANDFATHERED rather than chosen by their holder.
+    #: Published, because a weight nobody paid for must be visible to anyone checking the split.
+    grandfathered: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,9 @@ class AllocationPlan:
                     "amount": str(a.amount),
                     "weightBps": a.weight_bps,
                     "tokenIds": list(a.token_ids),
+                    # Named so anyone recomputing the split can see which weights were policy
+                    # rather than purchase, and check the policy separately.
+                    "grandfatheredTokenIds": list(a.grandfathered),
                     "proof": list(a.proof),
                 }
                 for a in self.allocations
@@ -161,6 +167,7 @@ def build_allocation(
     brokers: list[ActivatedBroker],
     weightless: tuple[int, ...] = (),
     allow_unpriced: bool = False,
+    grandfathered: tuple[int, ...] = (),
 ) -> AllocationPlan:
     """Compute a period's split. Pure — no chain access, so it is fully testable.
 
@@ -171,8 +178,11 @@ def build_allocation(
     `weightless` carries `ActivationScan.weightless` — brokers that are activated but unpriceable.
     Passing them is what makes excluding them a DECISION rather than an accident.
     """
-    if weightless and not allow_unpriced:
-        raise UnpricedActivations(tuple(weightless))
+    # Grandfathered brokers ARE priced — they carry a policy weight — so they do not block the
+    # build. Anything still unpriced does.
+    unresolved = tuple(t for t in weightless if t not in set(grandfathered))
+    if unresolved and not allow_unpriced:
+        raise UnpricedActivations(unresolved)
     total_weight = sum(b.weight_bps for b in brokers)
 
     # A period with revenue but nobody to pay is a normal state, not an error. Nothing is allocated
@@ -199,12 +209,14 @@ def build_allocation(
     for account in sorted(by_wallet):
         held = by_wallet[account]
         weight = sum(b.weight_bps for b in held)
+        ids = tuple(sorted(b.token_id for b in held))
         rows.append(
             WalletAllocation(
                 account=account,
                 amount=pot * weight // total_weight,  # truncates ⇒ never over-promises
-                token_ids=tuple(sorted(b.token_id for b in held)),
+                token_ids=ids,
                 weight_bps=weight,
+                grandfathered=tuple(t for t in ids if t in set(grandfathered)),
             )
         )
 
@@ -221,6 +233,7 @@ def build_allocation(
             amount=r.amount,
             token_ids=r.token_ids,
             weight_bps=r.weight_bps,
+            grandfathered=r.grandfathered,
             proof=tuple("0x" + p.hex() for p in proof_for(levels, leaf)),
         )
         for r, leaf in zip(rows, leaves, strict=True)

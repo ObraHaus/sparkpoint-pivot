@@ -46,6 +46,19 @@ SEL_WEIGHT_OF = "0x0767d178"
 
 ENV_FROM_BLOCK = "BROKER_INDEX_FROM_BLOCK"
 ENV_LOG_CHUNK = "BROKER_LOG_CHUNK"
+ENV_GRANDFATHER_BPS = "BROKER_GRANDFATHER_WEIGHT_BPS"
+
+#: Weight given to an activation that predates tiers. **Operator decision, 14 Aug 2026: 1.0x.**
+#:
+#: A pre-tier holder paid for a permanent activation and still holds it, so they keep counting — at
+#: the LOWEST weight, because they never chose a tier and none can be invented for them. (It is
+#: generous per SRK spent: the old flat price was 10,000 SRK against Analyst's 250,000. The
+#: alternative was charging them again for something they already bought.)
+#:
+#: ⚠️ 0 disables grandfathering, which puts those brokers back in `weightless` and makes
+#: `build_allocation` refuse. That is the safe default for a NEW chain where no such policy has been
+#: decided — the number here is a decision, and it must stay a decision rather than an accident.
+GRANDFATHER_WEIGHT_BPS = 10_000
 
 #: Starting `eth_getLogs` span, overridable with ``BROKER_LOG_CHUNK``.
 #:
@@ -161,6 +174,8 @@ class BrokerLedger:
     from_block: int = 0
     #: Starting span per `eth_getLogs`. Narrows automatically when a provider rejects it.
     log_chunk: int = LOG_CHUNK
+    #: Weight for an activation no registry can price. 0 ⇒ report as `weightless` and refuse.
+    grandfather_bps: int = GRANDFATHER_WEIGHT_BPS
 
     # ── log walking ─────────────────────────────────────────────────────────────────────────
 
@@ -395,6 +410,15 @@ class BrokerLedger:
                     return token_id, None, False
                 weight = await self._active_weight(token_id)
             if not weight:
+                if self.grandfather_bps > 0:
+                    # Pre-tier activation, grandfathered by operator decision. Still surfaced in
+                    # `weightless` so the published allocation can name exactly who this applied to
+                    # — a weight nobody chose must be auditable, not invisible.
+                    return (
+                        token_id,
+                        ActivatedBroker(token_id, holder, self.grandfather_bps),
+                        True,
+                    )
                 # Activated, held, and unpriceable. Reported, never quietly dropped.
                 return token_id, None, True
             return token_id, ActivatedBroker(token_id, holder, weight), False
@@ -462,6 +486,7 @@ def build_broker_ledger_from_env(rpc_factory: Any = None) -> BrokerLedger | None
         registries=valid,
         from_block=from_block_from_env(),
         log_chunk=log_chunk_from_env(),
+        grandfather_bps=grandfather_bps_from_env(),
     )
 
 
@@ -476,5 +501,16 @@ def log_chunk_from_env(default: int = LOG_CHUNK) -> int:
         return default
     try:
         return max(MIN_LOG_CHUNK, int(raw.strip()))
+    except ValueError:
+        return default
+
+
+def grandfather_bps_from_env(default: int = GRANDFATHER_WEIGHT_BPS) -> int:
+    """`BROKER_GRANDFATHER_WEIGHT_BPS` — 0 disables grandfathering entirely."""
+    raw = os.getenv(ENV_GRANDFATHER_BPS)
+    if not raw or not raw.strip():
+        return default
+    try:
+        return max(0, int(raw.strip()))
     except ValueError:
         return default

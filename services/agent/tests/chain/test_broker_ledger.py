@@ -305,10 +305,32 @@ async def test_an_activated_broker_with_NO_weight_anywhere_is_REPORTED_not_dropp
         activated={1: 500, 2: 600},
         weights={2: 10_000},  # #1 has no weight anywhere
     )
-    scan = await _ledger(rpc).scan_activations()
+    # grandfather_bps=0 ⇒ no policy decided ⇒ surfaced and excluded, so the build refuses.
+    scan = await _ledger(rpc, grandfather_bps=0).scan_activations()
     assert scan is not None
     assert [a.token_id for a in scan.activated] == [2]
     assert scan.weightless == (1,), "an activated-but-unpriceable broker must be visible"
+
+
+@pytest.mark.asyncio
+async def test_a_pre_tier_activation_is_grandfathered_at_1_0x_when_the_policy_says_so() -> None:
+    """Operator decision, 14 Aug 2026: a pre-tier holder keeps counting, at the lowest weight.
+
+    They paid for a permanent activation and still hold it. The alternative was charging them
+    again for something already bought, or dropping them silently.
+    """
+    rpc = FakeRpc(
+        activated_logs=[_activated_log(ALICE, 1), _activated_log(BOB, 2)],
+        owners={1: ALICE, 2: BOB},
+        activated={1: 500, 2: 600},
+        weights={2: 33_000},  # #1 unpriceable, #2 a real Partner
+    )
+    scan = await _ledger(rpc, grandfather_bps=10_000).scan_activations()
+    assert scan is not None
+    assert [(a.token_id, a.weight_bps) for a in scan.activated] == [(1, 10_000), (2, 33_000)]
+    # ⚠️ STILL reported: a weight nobody chose has to be auditable in the published allocation,
+    # not silently indistinguishable from one a holder actually paid for.
+    assert scan.weightless == (1,)
 
 
 @pytest.mark.asyncio
@@ -316,7 +338,7 @@ async def test_the_convenience_wrapper_still_returns_only_priced_brokers() -> No
     rpc = FakeRpc(
         activated_logs=[_activated_log(ALICE, 1)], owners={1: ALICE}, activated={1: 5}, weights={}
     )
-    assert await _ledger(rpc).activated_brokers() == []
+    assert await _ledger(rpc, grandfather_bps=0).activated_brokers() == []
 
 
 @pytest.mark.asyncio

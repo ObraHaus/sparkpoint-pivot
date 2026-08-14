@@ -5,8 +5,10 @@ import {
   brokerViews,
   COLLECTION_SIZE,
   deriveActivateState,
+  allocationUrl,
   deriveClaimState,
   deriveMintState,
+  findAllocation,
   formatSrk,
   formatTokenAmount,
   premiumSourceView,
@@ -447,4 +449,27 @@ test("044: no user-facing claim copy uses earn/income/yield framing", () => {
     ),
   ].join(" ");
   assert.doesNotMatch(all, /\bearn\b|\bincome\b|\byield\b|\bdividend\b|\bprofit\b|\breturns\b/i);
+});
+
+test("044: a wallet's allocation is found regardless of address casing", () => {
+  // The builder lowercases holders so one wallet is one leaf. Matching case-sensitively here would
+  // reintroduce the split at the last moment — the holder would be told they have nothing while
+  // their money sits in the contract.
+  const period = {
+    periodId: 1, token: "0x0", pot: "1000", totalWeightBps: 2, totalAllocated: "1000",
+    dust: "0", merkleRoot: "0x0", allocationCount: 1, rule: "", leaf: "",
+    allocations: [{
+      account: "0x32ed4400c5bbb394712c482f1207886d8c22e8b5",
+      amount: "377358490566037735849", weightBps: 20000, tokenIds: [1, 4],
+      grandfatheredTokenIds: [1, 4], proof: ["0xabc"],
+    }],
+  } as const;
+  const mixed = "0x32Ed4400C5BBB394712c482F1207886d8C22e8b5";
+  assert.equal(findAllocation(period, mixed)?.amount, "377358490566037735849");
+  assert.equal(findAllocation(period, "0xdead"), undefined);
+  assert.equal(findAllocation(undefined, mixed), undefined);
+});
+
+test("044: the allocation url is stable and session-free", () => {
+  assert.equal(allocationUrl(46630, 1), "/allocations/46630/period-1.json");
 });

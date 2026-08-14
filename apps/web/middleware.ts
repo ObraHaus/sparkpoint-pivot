@@ -36,7 +36,20 @@ const ALLOW_EXACT = new Set([
   // no auth/DB). On UNLOCKED/develop it's already reachable via INFRA_PREFIX; this is parity.
   "/api/debug/network",
 ]);
-const ALLOW_PREFIX = ["/_next/static", "/_next/image"];
+const ALLOW_PREFIX = [
+  "/_next/static",
+  "/_next/image",
+  // 044: the published revenue allocations. These MUST stay reachable without a session, on a
+  // LOCKED deploy included — the whole point of publishing them (FR-010) is that a holder, or
+  // anyone at all, can recompute a period's split and check it against the on-chain Merkle root.
+  // An artifact you have to be logged in to read is not a public record.
+  //
+  // ⚠️ Nothing here is secret: every address and amount is derivable from the chain, and each
+  // claim transaction is public anyway. What would be a defect is this path silently 307ing to
+  // /coming-soon, which is what happens to anything added to apps/web that a machine needs to
+  // fetch (see the tokenURI/OG-bot class of bug).
+  "/allocations/",
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate 2 — Phase B access gate (runs only when UNLOCKED / develop).
