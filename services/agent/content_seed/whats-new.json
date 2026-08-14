@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "broker-orphaned-activations",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Two activated brokers were invisible to the revenue split",
+      "body": "While testing the revenue-share plumbing against the real blockchain, we found that two brokers which are genuinely activated were not showing up in the calculation at all — not as included, and not as excluded. They were simply invisible.\n\nThe cause: they were activated using an older version of our activation contract, which announces activations in a slightly different format than the current one. Our code was only listening for the new format.\n\nWe now build the list from the collection’s full ownership history instead, so a broker cannot be missed regardless of which version activated it.\n\nWe also found that those two brokers have no tier weight recorded anywhere, because the older contract predates tiers entirely. Rather than quietly leaving them out of any future split, the system now refuses to calculate one at all until a person decides how they should be treated. Nothing has been distributed and nothing is owed today, but a published split cannot be undone, so we would rather stop than guess.",
+      "published_at": "2026-08-14T11:00:00Z"
+    },
+    {
       "slug": "copy-audit-in-ci",
       "type": "changelog",
       "tag": "Improved",
