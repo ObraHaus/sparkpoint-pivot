@@ -146,6 +146,26 @@ BROKER_GATE_CACHE_SECONDS = 60
 > qualifying. Reading the union is safe because the list is only ever a hint; the live `ownerOf` +
 > `activatedAt` reads are the authority.
 
+### Tiered activation — feature 043c (2026-08-14)
+
+The flat 10,000 SRK activation is retired. Activation now has three tiers, chosen by the holder at the point of signing.
+
+| tier | price | weight | Premium |
+|---|---|---|---|
+| 1 · Analyst | 250,000 SRK | 1.0× | all of it |
+| 2 · Associate | 500,000 SRK | 2.0× | **identical** |
+| 3 · Partner | 1,000,000 SRK | 3.3× | **identical** |
+
+- **`BrokerActivationRegistry` (tiered)**: `0xf081167b1DF61BAe096338b5716369894447a88E`, wired via `setActivator`. `maxPrice` **5,000,000 SRK — IMMUTABLE**; each tier's price is owner-settable below it.
+- Weights are **basis points of 1.0×** (10000 / 20000 / 33000) because **3.3 is not an integer** — an integer multiplier would have silently become 3, quietly shrinking the top tier by 10%.
+- A tier price of **0 disables that tier** rather than making it a free activation carrying that tier's weight. Retiring one tier does not retire the sale.
+- Proven live: activated broker #8 at Partner — 1,000,000 SRK holder → `0x…dEaD`, `activeTierOf` 3, `weightOf` 33000, registry left holding zero. Selling it took `activeTierOf` and `weightOf` to **0** immediately, even though the registry's raw `_tierOf` still remembers 3 — both reads check the chain, so it is safe by construction rather than by documentation.
+
+> ⚠️⚠️ **REVENUE SHARING IS NOT BUILT.** No deployed contract pays anything out — there is no epoch, no pot and no claim path. `weightBps` is a number the registry writes down and nothing reads for money. **Until a payout exists, a higher tier costs more SRK and buys the holder nothing they can use.** The activation screen carries `TIER_WEIGHT_DISCLOSURE` saying exactly that, and a test asserts the disclosure names both facts ("same Premium", "not built"). The gap between Analyst and Partner is 750,000 SRK of someone's money; letting them infer it earns income would not be honest.
+
+> ⚠️ `BROKER_REGISTRY_ADDRESS` is now **three** addresses, newest first. Re-pointing `activator` orphans the previous registry's record with no on-chain recovery, so nothing is ever removed:
+> `0xf081167b…a88E` (tiered) · `0xD9506766…D775` (flat) · `0x5370d06b…28FF` (pre-dedup)
+
 ### Broker sale (the free, open mint) — feature 043 phase C (2026-08-14)
 
 The NFT's `minter`, the second role left unset at deploy. **Free and open**: no price, no eligibility gate, no allowlist — an owner-settable per-wallet cap is the only restriction, and the collection's immutable 10,000 cap stays on the NFT rather than being re-implemented here.

@@ -110,9 +110,13 @@ export const robinhoodTestnet: AddressBook = {
   // ⚠️ `brokerRegistry` names only the CURRENT registry, for the app's write path. The AGENT must
   // read every registry ever wired (`BROKER_REGISTRY_ADDRESS`, comma-separated) because re-pointing
   // `setActivator` orphans the previous one's record with no on-chain recovery — a holder who paid
-  // would silently stop qualifying for Premium. Superseded: 0x5370d06bFA9049234C471e0877e249D9322728FF.
+  // would silently stop qualifying for Premium.
+  //
+  // Superseded, and STILL IN THE AGENT'S LIST — never remove one:
+  //   0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775  (flat 10,000 SRK; replaced by tiers in 043c)
+  //   0x5370d06bFA9049234C471e0877e249D9322728FF  (pre-dedup)
   brokerNft: "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2",
-  brokerRegistry: "0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775",
+  brokerRegistry: "0xf081167b1DF61BAe096338b5716369894447a88E",
   brokerSale: "0x488268134af3d01E0672A9Ea17d529D4C5E275Dd",
 
   // ── SparkPoint contracts — vault is Base-only ⇒ undefined here (fail-closed) ──

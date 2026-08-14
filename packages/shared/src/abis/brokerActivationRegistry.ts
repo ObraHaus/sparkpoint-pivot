@@ -25,13 +25,83 @@ export const brokerActivationRegistryAbi = [
         "type": "uint256"
       },
       {
-        "internalType": "uint256",
-        "name": "initialPrice_",
-        "type": "uint256"
+        "internalType": "uint256[3]",
+        "name": "prices_",
+        "type": "uint256[3]"
+      },
+      {
+        "internalType": "uint32[3]",
+        "name": "weights_",
+        "type": "uint32[3]"
       }
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
+  },
+  {
+    "inputs": [],
+    "name": "TIER_ANALYST",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TIER_ASSOCIATE",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TIER_COUNT",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TIER_PARTNER",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "WEIGHT_ONE",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   },
   {
     "inputs": [],
@@ -46,6 +116,11 @@ export const brokerActivationRegistryAbi = [
         "internalType": "uint256",
         "name": "tokenId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
       }
     ],
     "name": "activate",
@@ -86,6 +161,25 @@ export const brokerActivationRegistryAbi = [
         "internalType": "uint256[]",
         "name": "",
         "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "activeTierOf",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -158,19 +252,6 @@ export const brokerActivationRegistryAbi = [
   },
   {
     "inputs": [],
-    "name": "price",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -179,12 +260,22 @@ export const brokerActivationRegistryAbi = [
   {
     "inputs": [
       {
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
+      },
+      {
         "internalType": "uint256",
-        "name": "newPrice",
+        "name": "price",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "weightBps",
+        "type": "uint32"
       }
     ],
-    "name": "setPrice",
+    "name": "setTier",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -205,6 +296,54 @@ export const brokerActivationRegistryAbi = [
   {
     "inputs": [
       {
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
+      }
+    ],
+    "name": "tierConfig",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "weightBps",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "name": "tiers",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "weightBps",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "newOwner",
         "type": "address"
@@ -213,6 +352,25 @@ export const brokerActivationRegistryAbi = [
     "name": "transferOwnership",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "weightOf",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -232,9 +390,21 @@ export const brokerActivationRegistryAbi = [
       },
       {
         "indexed": false,
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
         "internalType": "uint256",
         "name": "srkRetired",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "weightBps",
+        "type": "uint32"
       }
     ],
     "name": "Activated",
@@ -282,19 +452,25 @@ export const brokerActivationRegistryAbi = [
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "previousPrice",
-        "type": "uint256"
+        "indexed": true,
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "newPrice",
+        "name": "price",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "weightBps",
+        "type": "uint32"
       }
     ],
-    "name": "PriceSet",
+    "name": "TierSet",
     "type": "event"
   },
   {
@@ -379,6 +555,28 @@ export const brokerActivationRegistryAbi = [
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
+      }
+    ],
+    "name": "TierDisabled",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint8",
+        "name": "tier",
+        "type": "uint8"
+      }
+    ],
+    "name": "UnknownTier",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "ZeroAddress",
     "type": "error"
@@ -386,6 +584,11 @@ export const brokerActivationRegistryAbi = [
   {
     "inputs": [],
     "name": "ZeroMaxPrice",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroWeight",
     "type": "error"
   }
 ] as const;

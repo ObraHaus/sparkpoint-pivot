@@ -29,23 +29,71 @@ contract BrokerActivationRegistryTest is Test {
     address internal stranger = address(0xBEEF);
 
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
-    uint256 internal constant MAX_PRICE = 100_000 ether;
-    uint256 internal constant PRICE = 10_000 ether;
+    uint256 internal constant MAX_PRICE = 5_000_000 ether;
 
-    event Activated(address indexed holder, uint256 indexed tokenId, uint256 srkRetired);
-    event PriceSet(uint256 previousPrice, uint256 newPrice);
+    // The client-decided tiers. All three grant IDENTICAL Premium; a higher tier buys only weight.
+    uint8 internal constant ANALYST = 1;
+    uint8 internal constant ASSOCIATE = 2;
+    uint8 internal constant PARTNER = 3;
+    uint256 internal constant PRICE_ANALYST = 250_000 ether;
+    uint256 internal constant PRICE_ASSOCIATE = 500_000 ether;
+    uint256 internal constant PRICE_PARTNER = 1_000_000 ether;
+    uint32 internal constant W_ANALYST = 10_000; // 1.0x
+    uint32 internal constant W_ASSOCIATE = 20_000; // 2.0x
+    uint32 internal constant W_PARTNER = 33_000; // 3.3x
+
+    /// The tier most tests activate at, so a single constant moves them all.
+    uint256 internal constant PRICE = PRICE_ANALYST;
+
+    event Activated(
+        address indexed holder,
+        uint256 indexed tokenId,
+        uint8 tier,
+        uint256 srkRetired,
+        uint32 weightBps
+    );
+    event TierSet(uint8 indexed tier, uint256 price, uint32 weightBps);
 
     function setUp() public {
         srk = new SparkPointTestToken(); // whole fixed supply mints to this test contract
         broker = new MockSparkyBroker();
-        registry =
-            new BrokerActivationRegistry(address(broker), address(srk), DEAD, MAX_PRICE, PRICE);
+        registry = new BrokerActivationRegistry(
+            address(broker),
+            address(srk),
+            DEAD,
+            MAX_PRICE,
+            [PRICE_ANALYST, PRICE_ASSOCIATE, PRICE_PARTNER],
+            [W_ANALYST, W_ASSOCIATE, W_PARTNER]
+        );
         broker.setActivator(address(registry));
         broker.setMinter(address(this)); // the mock gates mint like the real one does
 
-        srk.transfer(holder, 1_000_000 ether);
+        srk.transfer(holder, 20_000_000 ether);
         vm.prank(holder);
         srk.approve(address(registry), type(uint256).max);
+    }
+
+    function _priceOf(uint8 tier) internal view returns (uint256 price) {
+        (price,) = registry.tierConfig(tier);
+    }
+
+    function _weightOf(uint8 tier) internal view returns (uint32 w) {
+        (, w) = registry.tierConfig(tier);
+    }
+
+    /// Retune a tier's price, keeping its weight — the shape the old flat `setPrice` had.
+    function _setPrice(uint256 newPrice) internal {
+        registry.setTier(ANALYST, newPrice, W_ANALYST);
+    }
+
+    /// Deploy with one price applied to every tier — for the constructor-validation cases.
+    function _deploy(address b, address t, address dead, uint256 cap, uint256 price)
+        internal
+        returns (BrokerActivationRegistry)
+    {
+        return new BrokerActivationRegistry(
+            b, t, dead, cap, [price, price, price], [W_ANALYST, W_ASSOCIATE, W_PARTNER]
+        );
     }
 
     function _mintTo(address to) internal returns (uint256 id) {
@@ -60,9 +108,9 @@ contract BrokerActivationRegistryTest is Test {
         uint256 deadBefore = srk.balanceOf(DEAD);
 
         vm.expectEmit(true, true, false, true, address(registry));
-        emit Activated(holder, id, PRICE);
+        emit Activated(holder, id, ANALYST, PRICE_ANALYST, W_ANALYST);
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         assertEq(srk.balanceOf(holder), before - PRICE, "holder pays exactly price");
         assertEq(srk.balanceOf(DEAD), deadBefore + PRICE, "the SRK is out of circulation");
@@ -73,7 +121,7 @@ contract BrokerActivationRegistryTest is Test {
     function test_I1_RegistryHoldsNothingAfterActivation() public {
         uint256 id = _mintTo(holder);
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         assertEq(srk.balanceOf(address(registry)), 0, "registry must hold no SRK");
         assertNotEq(broker.ownerOf(id), address(registry), "registry must hold no broker");
@@ -82,14 +130,16 @@ contract BrokerActivationRegistryTest is Test {
 
     /// I10 — SRK is retired, not burned. The word matters, so the property is asserted.
     function testFuzz_I10_ActivationNeverChangesTotalSupply(uint256 newPrice) public {
-        newPrice = bound(newPrice, 0, MAX_PRICE);
-        registry.setPrice(newPrice);
+        // From 1, not 0: a zero price now DISABLES a tier rather than making it free, so 0 is not a
+        // price this function can be reached with.
+        newPrice = bound(newPrice, 1, MAX_PRICE);
+        _setPrice(newPrice);
         srk.transfer(holder, MAX_PRICE); // make sure the holder can always cover it
 
         uint256 supplyBefore = srk.totalSupply();
         uint256 id = _mintTo(holder);
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         assertEq(srk.totalSupply(), supplyBefore, "an activation must NOT change total supply");
     }
@@ -116,7 +166,7 @@ contract BrokerActivationRegistryTest is Test {
         } else if (which == 1) {
             // already activated
             vm.prank(holder);
-            registry.activate(id);
+            registry.activate(id, ANALYST);
             caller = holder;
         } else if (which == 2) {
             caller = holder;
@@ -138,7 +188,7 @@ contract BrokerActivationRegistryTest is Test {
         activatedBefore = broker.activatedAt(id);
 
         vm.prank(caller);
-        try registry.activate(id) {
+        try registry.activate(id, ANALYST) {
             // Every arm above is a failure mode. A success means the arrangement did not actually
             // arrange the failure — which is how this test lied the first time (a `vm.prank` eaten
             // by an inner `balanceOf` left the holder undrained). Fail loudly rather than pass.
@@ -163,7 +213,7 @@ contract BrokerActivationRegistryTest is Test {
                 BrokerActivationRegistry.NotBrokerOwner.selector, id, holder, stranger
             )
         );
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         assertEq(srk.balanceOf(stranger), before, "a rejected caller pays nothing");
         assertFalse(broker.isActivated(id));
@@ -173,14 +223,14 @@ contract BrokerActivationRegistryTest is Test {
     function test_I4_AlreadyActivatedRevertsAndChargesNothing() public {
         uint256 id = _mintTo(holder);
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         uint256 before = srk.balanceOf(holder);
         vm.prank(holder);
         vm.expectRevert(
             abi.encodeWithSelector(BrokerActivationRegistry.AlreadyActivated.selector, id)
         );
-        registry.activate(id);
+        registry.activate(id, ANALYST);
         assertEq(srk.balanceOf(holder), before, "a second activation charges nothing");
     }
 
@@ -189,7 +239,7 @@ contract BrokerActivationRegistryTest is Test {
     function test_TransferClearsActivationAndReactivationCostsAgain() public {
         uint256 id = _mintTo(holder);
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
         assertTrue(broker.isActivated(id));
 
         // A real sale.
@@ -202,7 +252,7 @@ contract BrokerActivationRegistryTest is Test {
         vm.startPrank(stranger);
         srk.approve(address(registry), type(uint256).max);
         uint256 before = srk.balanceOf(stranger);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
         vm.stopPrank();
 
         assertTrue(broker.isActivated(id));
@@ -215,8 +265,8 @@ contract BrokerActivationRegistryTest is Test {
         uint256 a = _mintTo(holder);
         uint256 b = _mintTo(holder);
         vm.startPrank(holder);
-        registry.activate(a);
-        registry.activate(b);
+        registry.activate(a, ANALYST);
+        registry.activate(b, ANALYST);
         vm.stopPrank();
 
         uint256[] memory listed = registry.activationsBy(holder);
@@ -244,7 +294,7 @@ contract BrokerActivationRegistryTest is Test {
         srk.transfer(stranger, PRICE * 4);
 
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
         assertEq(registry.activationsBy(holder).length, 1);
 
         // sold away (clears activation), then reacquired
@@ -255,7 +305,7 @@ contract BrokerActivationRegistryTest is Test {
         assertFalse(broker.isActivated(id), "coming back does not restore the activation");
 
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
 
         uint256[] memory listed = registry.activationsBy(holder);
         assertEq(listed.length, 1, "the same token must appear ONCE however often it is activated");
@@ -268,8 +318,8 @@ contract BrokerActivationRegistryTest is Test {
         uint256 a = _mintTo(holder);
         uint256 b = _mintTo(holder);
         vm.startPrank(holder);
-        registry.activate(a);
-        registry.activate(b);
+        registry.activate(a, ANALYST);
+        registry.activate(b, ANALYST);
         vm.stopPrank();
         assertEq(registry.activationsBy(holder).length, 2, "distinct tokens are still both listed");
     }
@@ -287,39 +337,49 @@ contract BrokerActivationRegistryTest is Test {
                 BrokerActivationRegistry.PriceAboveCap.selector, MAX_PRICE + 1, MAX_PRICE
             )
         );
-        registry.setPrice(MAX_PRICE + 1);
-        assertEq(registry.price(), PRICE, "a rejected setPrice changes nothing");
+        _setPrice(MAX_PRICE + 1);
+        assertEq(_priceOf(ANALYST), PRICE, "a rejected setPrice changes nothing");
     }
 
     function testFuzz_I5_AnyPriceAtOrBelowTheCapIsAccepted(uint256 newPrice) public {
         newPrice = bound(newPrice, 0, MAX_PRICE);
-        vm.expectEmit(false, false, false, true, address(registry));
-        emit PriceSet(PRICE, newPrice);
-        registry.setPrice(newPrice);
-        assertEq(registry.price(), newPrice);
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit TierSet(ANALYST, newPrice, W_ANALYST);
+        _setPrice(newPrice);
+        assertEq(_priceOf(ANALYST), newPrice);
     }
 
     /// I6 — one call charges exactly the price that was live when it started.
     function test_I6_AHolderIsChargedExactlyThePriceTheyRead() public {
         uint256 id = _mintTo(holder);
-        uint256 quoted = registry.price();
+        uint256 quoted = _priceOf(ANALYST);
         uint256 before = srk.balanceOf(holder);
 
         vm.prank(holder);
-        registry.activate(id);
+        registry.activate(id, ANALYST);
         assertEq(before - srk.balanceOf(holder), quoted, "charged exactly the quoted price");
     }
 
-    function test_AZeroPriceActivatesWithoutMovingAnySrk() public {
-        registry.setPrice(0);
+    /// A zero price RETIRES a tier. It must never quietly become a free activation carrying that
+    /// tier's weight — which, once a payout exists, would be free money.
+    function test_AZeroPriceDisablesTheTierRatherThanMakingItFree() public {
+        registry.setTier(ANALYST, 0, W_ANALYST);
         uint256 id = _mintTo(holder);
         uint256 before = srk.balanceOf(holder);
 
         vm.prank(holder);
-        registry.activate(id);
+        vm.expectRevert(
+            abi.encodeWithSelector(BrokerActivationRegistry.TierDisabled.selector, ANALYST)
+        );
+        registry.activate(id, ANALYST);
 
+        assertEq(srk.balanceOf(holder), before, "nothing charged");
+        assertFalse(broker.isActivated(id), "and nothing activated");
+
+        // Retiring ONE tier is not retiring the sale — the others still work.
+        vm.prank(holder);
+        registry.activate(id, PARTNER);
         assertTrue(broker.isActivated(id));
-        assertEq(srk.balanceOf(holder), before, "a zero price moves nothing at all");
     }
 
     function test_OnlyTheOwnerCanSetThePrice() public {
@@ -327,7 +387,7 @@ contract BrokerActivationRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger)
         );
-        registry.setPrice(1 ether);
+        _setPrice(1 ether);
     }
 
     // ── I9 / non-custody surface ────────────────────────────────────────────────────────────
@@ -371,15 +431,15 @@ contract BrokerActivationRegistryTest is Test {
 
     function test_ConstructorRejectsZeroAddresses() public {
         vm.expectRevert(BrokerActivationRegistry.ZeroAddress.selector);
-        new BrokerActivationRegistry(address(0), address(srk), DEAD, MAX_PRICE, PRICE);
+        _deploy(address(0), address(srk), DEAD, MAX_PRICE, PRICE_ANALYST);
 
         vm.expectRevert(BrokerActivationRegistry.ZeroAddress.selector);
-        new BrokerActivationRegistry(address(broker), address(0), DEAD, MAX_PRICE, PRICE);
+        _deploy(address(broker), address(0), DEAD, MAX_PRICE, PRICE_ANALYST);
 
         // The dead address must not be address(0): a standard ERC-20 transfer there reverts, so an
         // activation would be impossible rather than free.
         vm.expectRevert(BrokerActivationRegistry.ZeroAddress.selector);
-        new BrokerActivationRegistry(address(broker), address(srk), address(0), MAX_PRICE, PRICE);
+        _deploy(address(broker), address(srk), address(0), MAX_PRICE, PRICE_ANALYST);
     }
 
     function test_ConstructorRejectsAnInitialPriceAboveTheCap() public {
@@ -388,12 +448,12 @@ contract BrokerActivationRegistryTest is Test {
                 BrokerActivationRegistry.PriceAboveCap.selector, MAX_PRICE + 1, MAX_PRICE
             )
         );
-        new BrokerActivationRegistry(address(broker), address(srk), DEAD, MAX_PRICE, MAX_PRICE + 1);
+        _deploy(address(broker), address(srk), DEAD, MAX_PRICE, MAX_PRICE + 1);
     }
 
     function test_ConstructorRejectsAZeroCap() public {
         vm.expectRevert(BrokerActivationRegistry.ZeroMaxPrice.selector);
-        new BrokerActivationRegistry(address(broker), address(srk), DEAD, 0, 0);
+        _deploy(address(broker), address(srk), DEAD, 0, 0);
     }
 
     function test_ImmutablesAreWhatWasDeployed() public view {
@@ -412,5 +472,166 @@ contract BrokerActivationRegistryTest is Test {
         vm.prank(stranger);
         registry.acceptOwnership();
         assertEq(registry.owner(), stranger);
+    }
+}
+
+// ── tiers (043c) ────────────────────────────────────────────────────────────────────────────
+
+/// @dev Standalone, NOT inheriting the suite above: extending a test contract re-runs every one of
+///      its tests under the new name, which doubles the suite and makes a single failure look like
+///      two. Shares the fixture by re-declaring it, which is cheap and explicit.
+contract BrokerActivationRegistryTierTest is Test {
+    SparkPointTestToken internal srk;
+    MockSparkyBroker internal broker;
+    BrokerActivationRegistry internal registry;
+
+    address internal holder = address(0xC1A1);
+    address internal stranger = address(0xBEEF);
+
+    address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
+    uint256 internal constant MAX_PRICE = 5_000_000 ether;
+    uint8 internal constant ANALYST = 1;
+    uint8 internal constant ASSOCIATE = 2;
+    uint8 internal constant PARTNER = 3;
+    uint256 internal constant PRICE_ANALYST = 250_000 ether;
+    uint256 internal constant PRICE_ASSOCIATE = 500_000 ether;
+    uint256 internal constant PRICE_PARTNER = 1_000_000 ether;
+    uint32 internal constant W_ANALYST = 10_000;
+    uint32 internal constant W_ASSOCIATE = 20_000;
+    uint32 internal constant W_PARTNER = 33_000;
+
+    function setUp() public {
+        srk = new SparkPointTestToken();
+        broker = new MockSparkyBroker();
+        registry = new BrokerActivationRegistry(
+            address(broker),
+            address(srk),
+            DEAD,
+            MAX_PRICE,
+            [PRICE_ANALYST, PRICE_ASSOCIATE, PRICE_PARTNER],
+            [W_ANALYST, W_ASSOCIATE, W_PARTNER]
+        );
+        broker.setActivator(address(registry));
+        broker.setMinter(address(this));
+        srk.transfer(holder, 20_000_000 ether);
+        vm.prank(holder);
+        srk.approve(address(registry), type(uint256).max);
+    }
+
+    function _mintTo(address to) internal returns (uint256 id) {
+        id = broker.mint(to);
+    }
+
+    function _priceOf(uint8 tier) internal view returns (uint256 price) {
+        (price,) = registry.tierConfig(tier);
+    }
+
+    function _weightOf(uint8 tier) internal view returns (uint32 w) {
+        (, w) = registry.tierConfig(tier);
+    }
+
+    /// Each tier charges ITS OWN price and records ITS OWN weight.
+    function test_EachTierChargesItsOwnPriceAndRecordsItsOwnWeight() public {
+        uint8[3] memory tierIds = [ANALYST, ASSOCIATE, PARTNER];
+        uint256[3] memory expectPrice = [PRICE_ANALYST, PRICE_ASSOCIATE, PRICE_PARTNER];
+        uint32[3] memory expectWeight = [W_ANALYST, W_ASSOCIATE, W_PARTNER];
+
+        for (uint256 i = 0; i < 3; i++) {
+            uint256 id = _mintTo(holder);
+            uint256 before = srk.balanceOf(holder);
+            vm.prank(holder);
+            registry.activate(id, tierIds[i]);
+
+            assertEq(before - srk.balanceOf(holder), expectPrice[i], "charged this tier's price");
+            assertEq(registry.activeTierOf(id), tierIds[i]);
+            assertEq(registry.weightOf(id), expectWeight[i], "recorded this tier's weight");
+        }
+    }
+
+    /// 3.3x is why weights are basis points. A plain integer multiplier would have become 3.
+    function test_ThePartnerWeightIsThreePointThreeNotThree() public view {
+        assertEq(_weightOf(PARTNER), 33_000);
+        assertEq(uint256(_weightOf(PARTNER)) * 10 / registry.WEIGHT_ONE(), 33, "3.3x, not 3x");
+    }
+
+    /// EVERY tier grants the same thing: an activation. Premium is not tiered.
+    function test_EveryTierGrantsAnIdenticalActivation() public {
+        for (uint8 t = 1; t <= 3; t++) {
+            uint256 id = _mintTo(holder);
+            vm.prank(holder);
+            registry.activate(id, t);
+            assertTrue(broker.isActivated(id), "every tier activates identically");
+        }
+    }
+
+    /// ⚠️ Safe by construction, not by documentation: a transfer clears the activation on the NFT,
+    /// which this contract cannot observe. Both reads check the chain, so a sold broker carries no
+    /// weight even though `_tierOf` still remembers one.
+    function test_SellingABrokerZeroesItsTierAndWeightImmediately() public {
+        uint256 id = _mintTo(holder);
+        vm.prank(holder);
+        registry.activate(id, PARTNER);
+        assertEq(registry.weightOf(id), W_PARTNER);
+
+        vm.prank(holder);
+        broker.transferFrom(holder, stranger, id);
+
+        assertEq(registry.activeTierOf(id), 0, "a sold broker is at no tier");
+        assertEq(registry.weightOf(id), 0, "and carries NO weight");
+    }
+
+    function test_ReactivatingAtADifferentTierOverwritesTheWeight() public {
+        uint256 id = _mintTo(holder);
+        vm.prank(holder);
+        registry.activate(id, ANALYST);
+        assertEq(registry.weightOf(id), W_ANALYST);
+
+        vm.prank(holder);
+        broker.transferFrom(holder, stranger, id);
+        vm.prank(stranger);
+        broker.transferFrom(stranger, holder, id);
+
+        vm.prank(holder);
+        registry.activate(id, PARTNER);
+        assertEq(registry.weightOf(id), W_PARTNER, "the new tier replaces the old one");
+        assertEq(registry.activationsBy(holder).length, 1, "still one entry, not two");
+    }
+
+    function test_AnUnknownTierReverts() public {
+        uint256 id = _mintTo(holder);
+        for (uint8 bad = 4; bad < 6; bad++) {
+            vm.prank(holder);
+            vm.expectRevert(
+                abi.encodeWithSelector(BrokerActivationRegistry.UnknownTier.selector, bad)
+            );
+            registry.activate(id, bad);
+        }
+        vm.prank(holder);
+        vm.expectRevert(
+            abi.encodeWithSelector(BrokerActivationRegistry.UnknownTier.selector, uint8(0))
+        );
+        registry.activate(id, 0);
+    }
+
+    function test_ATierPriceAboveTheCapIsRejected() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BrokerActivationRegistry.PriceAboveCap.selector, MAX_PRICE + 1, MAX_PRICE
+            )
+        );
+        registry.setTier(PARTNER, MAX_PRICE + 1, W_PARTNER);
+        assertEq(_priceOf(PARTNER), PRICE_PARTNER, "a rejected setter changes nothing");
+    }
+
+    function test_AZeroWeightIsRejected() public {
+        // A tier with no weight is a tier that charges for nothing.
+        vm.expectRevert(BrokerActivationRegistry.ZeroWeight.selector);
+        registry.setTier(ANALYST, PRICE_ANALYST, 0);
+    }
+
+    function test_AnUnactivatedBrokerCarriesNoWeight() public {
+        uint256 id = _mintTo(holder);
+        assertEq(registry.activeTierOf(id), 0);
+        assertEq(registry.weightOf(id), 0);
     }
 }
