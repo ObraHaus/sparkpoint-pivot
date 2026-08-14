@@ -23,6 +23,7 @@ on-chain recovery, and a holder who paid would silently stop counting.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -44,28 +45,39 @@ SEL_WEIGHT_OF = "0x0767d178"
 #: written by hand, so they are asserted rather than trusted.
 
 ENV_FROM_BLOCK = "BROKER_INDEX_FROM_BLOCK"
+ENV_LOG_CHUNK = "BROKER_LOG_CHUNK"
 
-#: Starting `eth_getLogs` span. Deliberately large: the Robinhood public node accepts a
-#: 1,000,000-block range in one call, and a conservative fixed chunk turned a single request into
-#: ~100 sequential ones on a user-facing endpoint.
+#: Starting `eth_getLogs` span, overridable with ``BROKER_LOG_CHUNK``.
 #:
-#: ⚠️ Providers' caps differ wildly — Alchemy's free tier allows 10 blocks — so this is a STARTING
-#: point that narrows on rejection (see `_logs`), not a value that must be right everywhere.
-#: Guessing high and adapting down beats guessing low and being slow for everyone.
-LOG_CHUNK = 500_000
+#: ⚠️ Measured, not guessed. The three numbers that matter here are all different:
+#:
+#:   * Robinhood's public node   accepts 1,000,000 blocks in one call
+#:   * **our own eRPC proxy**    rejects above **~30,000** ("getLogs request exceeded max allowed
+#:                               range") — and eRPC is what production actually talks to
+#:   * Alchemy's free tier       allows 10
+#:
+#: So the default is set below the proxy the agent really uses, rather than to what the underlying
+#: node could do. A value tuned to the node made every production scan fail while passing locally.
+LOG_CHUNK = 25_000
 
 #: Floor for the adaptive narrowing. Below this a provider is not merely strict, something else is
 #: wrong, and halving forever would just be a slow failure.
 MIN_LOG_CHUNK = 500
 
-#: Request budget for ONE scan. This is a user-facing endpoint, so the bound is "what a page load
-#: can afford", not "what will eventually finish".
+#: How many chunk requests run at once. The range is known up front, so the chunks are independent
+#: and there is no reason to serialise them — 18 sequential round trips is ~9s on a page load, the
+#: same work concurrently is ~1s. Bounded because this is a shared upstream, not ours alone.
+LOG_CONCURRENCY = 6
+
+#: Request budget for ONE scan. The bound is "what a page load can afford", not "what will
+#: eventually finish".
 #:
-#: At the default span that is 30M blocks of headroom — the collection was deployed ~500k blocks
-#: ago — while still refusing a `from_block` of 0 on a 100M-block chain, which would need 200
-#: sequential requests. ⚠️ Raising `LOG_CHUNK` without lowering this is how that misconfiguration
-#: stops being caught and becomes a very slow page instead of a clear failure.
-MAX_CHUNKS = 60
+#: At the default span that is 6.25M blocks of headroom — the collection was deployed ~530k blocks
+#: ago — while still refusing a `from_block` of 0 on a 100M-block chain, which would need 4,000
+#: requests. ⚠️ This and `LOG_CHUNK` have to be changed together: a budget tuned to a large span
+#: silently starves a provider that forces a small one, which is exactly how the first production
+#: run of this scanner returned "chain-unreadable" while every test passed.
+MAX_CHUNKS = 250
 
 
 class EthCallRpc(Protocol):
@@ -166,41 +178,84 @@ class BrokerLedger:
         Returns ``None`` on any failure — a PARTIAL log scan is worse than none, because it looks
         like a complete answer with people missing from it.
         """
-        out: list[dict[str, Any]] = []
+        span = await self._working_span(address, topics, head)
+        if span is None:
+            return None
+
+        # The whole range is known, so the chunks are independent — there is no reason to serialise
+        # them. Sequentially this is ~18 round trips (~9s) on a page load; concurrently it is ~1s.
+        ranges = []
         start = self.from_block
-        span = self.log_chunk
-        chunks = 0
         while start <= head:
-            if chunks >= MAX_CHUNKS:
-                return None
             end = min(start + span - 1, head)
+            ranges.append((start, end))
+            start = end + 1
+        if len(ranges) > MAX_CHUNKS:
+            # The budget is about what a page load can afford. See MAX_CHUNKS.
+            return None
+
+        sem = asyncio.Semaphore(LOG_CONCURRENCY)
+
+        async def fetch(lo: int, hi: int) -> list[dict[str, Any]] | None:
+            async with sem:
+                try:
+                    got = await self.rpc.call(
+                        "eth_getLogs",
+                        [
+                            {
+                                "address": address.lower(),
+                                "topics": topics,
+                                "fromBlock": hex(lo),
+                                "toBlock": hex(hi),
+                            }
+                        ],
+                    )
+                except Exception:  # noqa: BLE001 - one bad chunk fails the whole scan, by design
+                    return None
+            return [g for g in got if isinstance(g, dict)] if isinstance(got, list) else None
+
+        results = await asyncio.gather(*(fetch(lo, hi) for lo, hi in ranges))
+        if any(r is None for r in results):
+            # A partial scan is worse than none: it looks like a complete answer with people
+            # missing from it. One failed chunk therefore fails the whole read.
+            return None
+
+        out: list[dict[str, Any]] = []
+        for r in results:
+            out.extend(r or [])
+        return out
+
+    async def _working_span(self, address: str, topics: list[Any], head: int) -> int | None:
+        """Find a range width this provider will actually accept.
+
+        ⚠️ Caps are not knowable in advance and differ by an order of magnitude between the node and
+        the proxy in front of it — Robinhood's node accepts 1,000,000 while our own eRPC rejects
+        above ~30,000. So the width is DISCOVERED with one cheap probe against the newest blocks,
+        then reused for every chunk. Halving (not quartering) so it lands near the real cap rather
+        than far below it: overshooting downward is what turned an 18-request scan into 68 and blew
+        the budget in production.
+        """
+        span = max(MIN_LOG_CHUNK, self.log_chunk)
+        probe_from = max(self.from_block, head - span + 1)
+        while True:
             try:
-                got = await self.rpc.call(
+                await self.rpc.call(
                     "eth_getLogs",
                     [
                         {
                             "address": address.lower(),
                             "topics": topics,
-                            "fromBlock": hex(start),
-                            "toBlock": hex(end),
+                            "fromBlock": hex(probe_from),
+                            "toBlock": hex(head),
                         }
                     ],
                 )
-            except Exception:  # noqa: BLE001 - a rejected range is usually "too wide", not fatal
-                # Narrow and retry the SAME start. A provider that caps ranges says so by failing,
-                # and the cap is not knowable in advance — so it is discovered rather than
-                # configured. Below the floor, treat it as a real failure.
-                if span > MIN_LOG_CHUNK:
-                    span = max(MIN_LOG_CHUNK, span // 4)
-                    chunks += 1
-                    continue
-                return None
-            if not isinstance(got, list):
-                return None
-            out.extend(g for g in got if isinstance(g, dict))
-            start = end + 1
-            chunks += 1
-        return out
+                return span
+            except Exception:  # noqa: BLE001 - "too wide" is the common case, not a fatal error
+                if span <= MIN_LOG_CHUNK:
+                    return None
+                span = max(MIN_LOG_CHUNK, span // 2)
+                probe_from = max(self.from_block, head - span + 1)
 
     # ── live reads: the authority ───────────────────────────────────────────────────────────
 
@@ -250,13 +305,18 @@ class BrokerLedger:
             if token_id is not None and token_id not in seen:
                 seen.append(token_id)
 
-        owned: list[int] = []
+        # Concurrent for the same reason the chunks are: these reads are independent of each other,
+        # and a wallet holding a dozen brokers should not pay a dozen round trips in series.
         wanted = wallet.lower()
-        for token_id in seen:
-            owner = await self._owner_of(token_id)
-            if owner is not None and owner.lower() == wanted:
-                owned.append(token_id)
-        return sorted(owned)
+        sem = asyncio.Semaphore(LOG_CONCURRENCY)
+
+        async def owns(token_id: int) -> int | None:
+            async with sem:
+                owner = await self._owner_of(token_id)
+            return token_id if owner is not None and owner.lower() == wanted else None
+
+        results = await asyncio.gather(*(owns(t) for t in seen))
+        return sorted(t for t in results if t is not None)
 
     # ── question 2: every activated broker, for the allocation ──────────────────────────────
 
@@ -320,24 +380,34 @@ class BrokerLedger:
             if token_id is not None:
                 candidates.add(token_id)
 
-        out: list[ActivatedBroker] = []
-        weightless: list[int] = []
-        for token_id in sorted(candidates):
-            # The chain decides, not the log: a broker activated last month may have been sold
-            # since, which cleared its activation and its weight.
-            activated_at = await self._read_uint(self.broker, SEL_ACTIVATED_AT, token_id)
-            if not activated_at:
-                continue
-            holder = await self._owner_of(token_id)
-            if holder is None:
-                continue
-            weight = await self._active_weight(token_id)
+        sem = asyncio.Semaphore(LOG_CONCURRENCY)
+
+        async def classify(token_id: int) -> tuple[int, ActivatedBroker | None, bool]:
+            """Returns `(token_id, priced_or_None, is_weightless)`."""
+            async with sem:
+                # The chain decides, not the log: a broker activated last month may have been sold
+                # since, which cleared its activation and its weight.
+                activated_at = await self._read_uint(self.broker, SEL_ACTIVATED_AT, token_id)
+                if not activated_at:
+                    return token_id, None, False
+                holder = await self._owner_of(token_id)
+                if holder is None:
+                    return token_id, None, False
+                weight = await self._active_weight(token_id)
             if not weight:
                 # Activated, held, and unpriceable. Reported, never quietly dropped.
-                weightless.append(token_id)
-                continue
-            out.append(ActivatedBroker(token_id=token_id, holder=holder, weight_bps=weight))
-        return ActivationScan(activated=tuple(out), weightless=tuple(weightless))
+                return token_id, None, True
+            return token_id, ActivatedBroker(token_id, holder, weight), False
+
+        # Sorted afterwards rather than iterated in order, so the reads overlap. The output order
+        # is still deterministic, which matters: the allocation hashes leaves in a fixed order.
+        rows = await asyncio.gather(*(classify(t) for t in sorted(candidates)))
+        out = [b for _, b, _ in rows if b is not None]
+        weightless = [t for t, _, w in rows if w]
+        return ActivationScan(
+            activated=tuple(sorted(out, key=lambda b: b.token_id)),
+            weightless=tuple(sorted(weightless)),
+        )
 
     async def _active_weight(self, token_id: int) -> int | None:
         """`weightOf` from whichever registry currently knows this token. 0 when none does."""
@@ -387,5 +457,24 @@ def build_broker_ledger_from_env(rpc_factory: Any = None) -> BrokerLedger | None
     else:
         rpc = rpc_factory(rpc_url)
     return BrokerLedger(
-        rpc=rpc, broker=broker, registries=valid, from_block=from_block_from_env()
+        rpc=rpc,
+        broker=broker,
+        registries=valid,
+        from_block=from_block_from_env(),
+        log_chunk=log_chunk_from_env(),
     )
+
+
+def log_chunk_from_env(default: int = LOG_CHUNK) -> int:
+    """`BROKER_LOG_CHUNK`, for a deployment whose provider caps ranges differently.
+
+    The scan narrows on rejection anyway, so this is a starting point rather than a requirement —
+    but starting near the real cap saves probe round trips on every request.
+    """
+    raw = os.getenv(ENV_LOG_CHUNK)
+    if not raw or not raw.strip():
+        return default
+    try:
+        return max(MIN_LOG_CHUNK, int(raw.strip()))
+    except ValueError:
+        return default
