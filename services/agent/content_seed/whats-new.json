@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "signin-stall-fix",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Signing in no longer hangs on “Waiting for signature…”",
+      "body": "Some sign-ins were taking around twenty seconds, and the button kept saying “Waiting for signature…” the whole time — long after you had already signed. If you were being sent to the access form, that wait happened before the form appeared. Two separate problems, and both are fixed.\n\nThe wait: before showing the form we check whether your wallet holds enough SRK to be let straight in. That check is allowed to fail — if we cannot reach the blockchain, you simply see the form, exactly as you would otherwise. But it had no time limit, so when our blockchain connection was struggling it would sit there for twenty seconds before giving up. It now gives up after three, and tries twice within that window, because the connection was failing roughly one time in twenty-five even when it looked healthy — enough to wrongly send a genuine SRK holder to the form.\n\nThe message: the button now says what is actually happening — “Waiting for signature…” only while your wallet has the request, then “Verifying…” once we have it. If the balance check could not complete, the form now says so and offers you a link to try again, instead of silently implying we checked and you did not qualify.\n\nBeing straight with you about the cause: the underlying problem is our own blockchain connection service, which has been dropping out for stretches of about an hour at a time. This change means signing in survives that rather than stalling on it. We are still working on the dropouts themselves.",
+      "published_at": "2026-08-17T07:20:00Z"
+    },
+    {
       "slug": "revenue-share-nav-entry",
       "type": "changelog",
       "tag": "Fixed",

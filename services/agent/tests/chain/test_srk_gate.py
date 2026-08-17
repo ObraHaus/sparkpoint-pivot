@@ -9,6 +9,7 @@ result rather than raising - because this runs inside the login path and must ne
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -206,3 +207,120 @@ def test_build_gate_from_env_wires_url_token_and_threshold(
     assert seen == ["https://eth.example/rpc"]
     assert gate.token == TOKEN
     assert gate.min_balance == 7 * 10**18
+
+
+# ── the login-path time budget (045) ─────────────────────────────────────────
+#
+# The gate sits on the interactive SIWE login. These pin the property that matters to a user:
+# when the mainnet lane misbehaves, the gate gives up FAST and fails open — it never becomes the
+# thing the login waits on. Measured in production before this change: 20.5s per stalled login.
+
+
+class _HangingRpc:
+    """Never answers. Stands in for the wedged eRPC lane (measured: 20s+ before this fix)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def call(self, method: str, params: list[Any]) -> Any:  # noqa: ARG002
+        self.calls += 1
+        await asyncio.sleep(3600)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+class _FlakyRpc:
+    """Fails the first `fail_times` calls, then returns `result` — the ~4% flaky lane."""
+
+    def __init__(self, fail_times: int, result: Any, exc: Exception | None = None) -> None:
+        self.fail_times = fail_times
+        self.result = result
+        self.exc = exc
+        self.calls = 0
+
+    async def call(self, method: str, params: list[Any]) -> Any:  # noqa: ARG002
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            if self.exc is not None:
+                raise self.exc
+            await asyncio.sleep(3600)  # a hang, not an error
+        return self.result
+
+
+@pytest.mark.asyncio
+async def test_a_hung_rpc_fails_open_inside_the_budget_not_after_20s() -> None:
+    """The whole point: a wedged lane costs the user the budget, not the transport's timeout."""
+    rpc = _HangingRpc()
+    gate = SrkMainnetGate(rpc=rpc, token=TOKEN, budget_seconds=0.3, attempt_seconds=0.1)
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    result = await gate.check(WALLET)
+    elapsed = loop.time() - started
+
+    assert result.qualified is False
+    assert result.reason == "timed_out"
+    assert elapsed < 1.0, f"gate overran its budget: {elapsed:.2f}s"
+    assert rpc.calls == 2, "both attempts should have been spent"
+
+
+@pytest.mark.asyncio
+async def test_a_transient_failure_is_retried_so_a_holder_is_not_wrongly_bounced() -> None:
+    """~4% per-call failure would wrongly bounce ~1 in 25 qualifying holders without a retry."""
+    rpc = _FlakyRpc(fail_times=1, result=_hex(ONE_MILLION), exc=RuntimeError("boom"))
+    gate = SrkMainnetGate(rpc=rpc, token=TOKEN)
+
+    result = await gate.check(WALLET)
+
+    assert result.qualified is True
+    assert result.reason == "ok"
+    assert result.attempts == 2
+    assert rpc.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_a_hang_on_the_first_try_still_leaves_room_for_the_second() -> None:
+    """attempt_seconds < budget is what makes the retry reachable rather than decorative."""
+    rpc = _FlakyRpc(fail_times=1, result=_hex(ONE_MILLION))
+    gate = SrkMainnetGate(rpc=rpc, token=TOKEN, budget_seconds=1.0, attempt_seconds=0.2)
+
+    result = await gate.check(WALLET)
+
+    assert result.qualified is True
+    assert rpc.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_a_decoded_answer_is_final_and_never_retried() -> None:
+    """`below_threshold` is the chain's verdict — re-asking would only spend the user's budget."""
+    rpc = _FakeRpc(_hex(ONE_MILLION - 1))
+    gate = SrkMainnetGate(rpc=rpc, token=TOKEN)
+
+    result = await gate.check(WALLET)
+
+    assert result.qualified is False
+    assert result.reason == "below_threshold"
+    assert result.attempts == 1
+    assert len(rpc.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_timed_out_is_distinguishable_from_rpc_error() -> None:
+    """The UI offers 'try again' only when the balance is genuinely still UNKNOWN."""
+    hung = SrkMainnetGate(rpc=_HangingRpc(), token=TOKEN, budget_seconds=0.2, attempt_seconds=0.05)
+    assert (await hung.check(WALLET)).reason == "timed_out"
+
+    broke = SrkMainnetGate(rpc=_FakeRpc(raises=RuntimeError("nope")), token=TOKEN)
+    assert (await broke.check(WALLET)).reason == "rpc_error"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_propagates_rather_than_being_swallowed() -> None:
+    """Fail-open must not mean 'keep a dead login alive' — a cancelled request must die."""
+
+    class _CancellingRpc:
+        async def call(self, method: str, params: list[Any]) -> Any:  # noqa: ARG002
+            raise asyncio.CancelledError
+
+    gate = SrkMainnetGate(rpc=_CancellingRpc(), token=TOKEN)
+    with pytest.raises(asyncio.CancelledError):
+        await gate.check(WALLET)

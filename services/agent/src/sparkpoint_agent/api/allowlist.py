@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
-from ..chain.srk_gate import build_gate_from_env
+from ..chain import srk_gate_stats
+from ..chain.srk_gate import build_gate_from_env, gate_configured
 from ..db import get_database
 from ..db.allowlist import ADMIN_ROLE, BETA_ROLE, AllowlistStore
 from .errors import ApiError, ErrorCode
@@ -108,7 +110,20 @@ async def srk_gate_check(
     if gate is None:
         return {"qualified": False, "reason": "not_configured", "granted": False}
 
+    started = time.perf_counter()
     result = await gate.check(account.owner)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    # 045 — fail-open means every failure here is invisible to the user by design, so record it or
+    # it goes unnoticed (it did, for weeks: ~20s stalls read to users as "sign-in is stuck").
+    srk_gate_stats.record(result.reason, elapsed_ms, result.attempts)
+    if result.reason in srk_gate_stats.FAILURE_REASONS:
+        logger.warning(
+            "srk-gate: could not read mainnet balance reason=%s elapsed_ms=%d attempts=%d",
+            result.reason,
+            elapsed_ms,
+            result.attempts,
+        )
+
     if not result.qualified:
         return {"qualified": False, "reason": result.reason, "granted": False}
 
@@ -119,6 +134,22 @@ async def srk_gate_check(
     except Exception:  # noqa: BLE001 - a DB hiccup must degrade to the form, never 500 a login
         logger.warning("srk-gate: qualified wallet could not be added to the beta allowlist")
     return {"qualified": True, "reason": result.reason, "granted": granted}
+
+
+@router.get("/admin/allowlist/gate-health")
+async def admin_gate_health(
+    admin: Annotated[AccountContext, Depends(require_admin)],  # noqa: ARG001 — admin gate (404 otherwise)
+) -> dict[str, object]:
+    """045 — how the SRK auto-gate has actually been behaving (admin-gated).
+
+    The gate is fail-open, so a broken mainnet lane produces no errors anywhere — just wallets
+    quietly landing on the application form and users reporting that sign-in "sometimes" hangs.
+    This turns that into a number. ``failureRatePct`` is the one to watch; a non-zero
+    ``timedOutPct`` means logins are paying the full budget rather than failing fast.
+
+    In-process and reset by a restart — a health signal, not an audit log (see ``srk_gate_stats``).
+    """
+    return {"gate": srk_gate_stats.snapshot(), "configured": gate_configured()}
 
 
 @router.get("/admin/allowlist")

@@ -36,7 +36,11 @@ export default function VerifyPage() {
   const router = useRouter();
   const { address, chainId, isConnected, status, connector } = useAccount();
   const { session, refresh } = useSession();
-  const { login, pending, error } = useSiweLogin();
+  const { login, pending, phase, error } = useSiweLogin();
+  // Set when a sign-in completed but the SRK auto-gate could not be READ (timeout / agent quiet),
+  // as opposed to reading a genuinely insufficient balance. Cleared on every fresh attempt so a
+  // successful retry never leaves a stale warning on screen.
+  const [gateUnavailable, setGateUnavailable] = useState(false);
   const { switchToChain } = useNetwork();
 
   const onSupported = chainId !== undefined && SIGNIN_CHAINS.has(chainId);
@@ -97,8 +101,12 @@ export default function VerifyPage() {
     // Capture on every explicit sign-in attempt too, so "have them log in again" is a reliable
     // incident-capture gesture even when the gate briefly showed supported.
     void captureNetworkDiagnostic("signin-attempt", diagSnap());
+    setGateUnavailable(false);
     const result = await login(address, chainId);
-    if (result) await refresh();
+    if (result) {
+      setGateUnavailable(result.gateUnavailable && !result.beta);
+      await refresh();
+    }
   }, [address, chainId, diagSnap, login, refresh]);
 
   // Nothing to verify without a wallet — return to connect. Keyed on `disconnected` (NOT `!isConnected`)
@@ -268,7 +276,16 @@ export default function VerifyPage() {
                 aria-disabled={pending}
                 style={{ marginTop: "18px", display: "inline-flex", cursor: pending ? "default" : "pointer", opacity: pending ? 0.7 : 1 }}
               >
-                {pending ? "Waiting for signature…" : "Sign in with wallet"}
+                {/* Name the leg we are ACTUALLY on. "Waiting for signature…" is only true while the
+                    wallet has the prompt; once it has been signed the wait is ours, and saying so
+                    is the difference between "be patient" and "your wallet is stuck". */}
+                {phase === "signing"
+                  ? "Waiting for signature…"
+                  : phase === "verifying"
+                    ? "Verifying…"
+                    : phase === "nonce"
+                      ? "Starting sign-in…"
+                      : "Sign in with wallet"}
               </a>
             )}
             {/* A wallet with a saved plan is NOT a new user — sending it to "Start onboarding" as
@@ -300,6 +317,28 @@ export default function VerifyPage() {
                 {/* 026 — this branch is no longer a dead end: apply for access here. The /exit
                     escape hatch below is UNCHANGED and stays outside the form (N2 — the way out is
                     never behind a form, and never a click further away than it was). */}
+                {/* 045 — a wallet that holds the SRK threshold should have walked straight in. If
+                    the balance could not be READ we must not let this form imply it was read and
+                    found wanting: say so, and offer the one action that can still fix it. Shown
+                    ABOVE the form because it changes what the form means. */}
+                {gateUnavailable && (
+                  <div
+                    role="status"
+                    className="card"
+                    style={{ marginBottom: "14px", padding: "12px 14px", textAlign: "left" }}
+                  >
+                    We couldn&apos;t check your SRK balance just now, so we couldn&apos;t confirm
+                    automatic access. If you hold at least the required SRK,{" "}
+                    <a
+                      onClick={pending ? undefined : handleSignIn}
+                      aria-disabled={pending}
+                      style={{ cursor: pending ? "default" : "pointer", textDecoration: "underline" }}
+                    >
+                      try signing in again
+                    </a>
+                    . Otherwise, apply below — your application still works either way.
+                  </div>
+                )}
                 <AccessApplicationForm />
                 <a
                   className="btn btn-ghost btn-sm"
