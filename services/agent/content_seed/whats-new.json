@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "public-application-early-submit-fix",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Applying no longer loses your answers if you are quick",
+      "body": "If you filled in the new application form and pressed Apply before the page had completely finished loading, the page reloaded itself and everything you had typed disappeared — no message, no explanation, just an empty form again. Most people would have assumed the form was broken, and some would not have tried a second time.\n\nThis was most likely to happen on the front page, which loads an animation and therefore takes the longest to become ready.\n\nThe Apply button now stays switched off for the moment before the page is ready, and switches on by itself. Being unable to press it for an instant is a great deal better than losing four fields of typing. Once the page is ready, both clicking and pressing Enter work exactly as you would expect.\n\nWe found this by using the form ourselves on the live site rather than only testing the pieces underneath it.",
+      "published_at": "2026-08-17T08:30:00Z"
+    },
+    {
       "slug": "public-application-antispam-hardening",
       "type": "changelog",
       "tag": "Fixed",

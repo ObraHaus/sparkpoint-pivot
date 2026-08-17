@@ -249,6 +249,29 @@ add. The table stays a record, never an authority. Nothing here is on the custod
   untouched `HEAD`** by swapping the pristine landing files back in and rebuilding — it is the
   pre-existing theme `useState` initializer reading `localStorage`, not this feature.
 
+### FR-045-009 — The form must not be submittable before it works
+
+`PublicAccessApplicationForm` is a real `<form>`, and until React hydrates the browser's own default
+submit applies. Observed on the live site: clicking Apply early performed a plain
+`GET /apply?website=`, **navigated away, and discarded all four fields** with no error — the
+applicant sees the page blank itself. (Only the honeypot appeared in the query string, since it is
+the one input carrying a `name`; that is how a native submit serialises a form, and it is what
+confirmed the diagnosis.)
+
+The landing page is the worse surface — it boots a Three.js scene, so its hydration window is much
+longer — and that is the form this feature was asked for.
+
+The submit button therefore ships **`disabled` in the server-rendered markup**, released by a
+`useSyncExternalStore` hydration guard (server snapshot `false`, client `true` — the SSR-safe way to
+express a server/client difference without a hydration mismatch). A disabled default button also
+suppresses implicit submission, so an early Enter is inert as well; both work normally once
+hydration lands.
+
+⚠️ **This class of defect is invisible to every test that is not a browser on the deployed page.**
+The unit tests, the typechecks, the build and the API-level end-to-end checks all passed with the
+bug present, because none of them render the form and click it. Any future change to this form's
+markup should be re-verified the same way.
+
 ## Deployment
 
 1. Apply `0036_access_application_source.sql` with `PGCLIENTENCODING=UTF8` (order-insensitive, but
