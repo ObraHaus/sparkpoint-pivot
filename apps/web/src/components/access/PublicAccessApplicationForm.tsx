@@ -18,7 +18,7 @@
  * client that distinguished those cases would rebuild the oracle it is protected from.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import {
   EMPTY_PUBLIC_DRAFT,
   MAX_CONTACT,
@@ -45,11 +45,37 @@ export interface PublicAccessApplicationFormProps {
   readonly lede?: string;
 }
 
+/**
+ * Whether React has taken over this markup yet.
+ *
+ * ⚠️ THIS GUARD IS LOAD-BEARING, and it is here because the bug it prevents was observed on the
+ * live site. This is a real `<form>`, so before hydration the browser's own default submit applies:
+ * clicking the button performed a plain GET to `/apply?website=` — it NAVIGATED, wiping all four
+ * fields the applicant had just filled in, with no error and no explanation. (Only the honeypot
+ * appeared in the query string, because it is the one input with a `name` — which is precisely how
+ * a native submit serialises a form, and how the diagnosis was confirmed.)
+ *
+ * The landing page is the worse case, not `/apply`: it boots a Three.js scene, so its hydration
+ * window is far longer and a quick applicant is far more likely to land inside it.
+ *
+ * `useSyncExternalStore` rather than `useState` + `useEffect`: the server snapshot is `false` and
+ * the client snapshot is `true`, which is exactly the SSR-safe way to express "this differs between
+ * server and client" without tripping a hydration mismatch.
+ */
+const subscribeToNothing = () => () => {};
+const useHydrated = () =>
+  useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
+
 export function PublicAccessApplicationForm({
   surface = "theme",
   submitClassName = "btn btn-primary btn-md",
   lede,
 }: PublicAccessApplicationFormProps) {
+  const hydrated = useHydrated();
   const [draft, setDraft] = useState<PublicApplicationDraft>(EMPTY_PUBLIC_DRAFT);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -196,7 +222,11 @@ export function PublicAccessApplicationForm({
         </p>
       )}
 
-      <button className={`${submitClassName} ap-submit`} type="submit" disabled={busy}>
+      {/* `disabled` until hydrated: an enabled submit button in un-hydrated markup is a NATIVE
+          submit that navigates away and discards everything typed. Inert-for-a-moment beats
+          destructive. The label does not change, so there is no layout shift and nothing flickers
+          — the button simply cannot throw the applicant's answers away. */}
+      <button className={`${submitClassName} ap-submit`} type="submit" disabled={busy || !hydrated}>
         {busy ? "Submitting…" : "Apply for access"}
       </button>
 
