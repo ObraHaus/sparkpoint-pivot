@@ -134,18 +134,38 @@ Develop/alpha is a **single** `sparkpoint-web` instance (COOLIFY.md — no secon
 in-process counter sees every request. If alpha is ever moved to the prod primary+secondary+`ip_hash`
 topology, each replica counts independently and the effective ceiling doubles.
 
-### Post-deploy measurement (required, ~1 minute)
+### Post-deploy measurement — ✅ RUN 2026-08-17 against live alpha
 
 Rate limiting runs **before** body parsing, so an invalid body consumes a token and stores nothing —
 these probes create no applications.
 
-1. From one network, `POST https://alpha.sparkpoint.io/api/access/apply` with `{}` four times. The
-   fourth should be `429` with *"Too many applications from this connection."* — that proves the
-   per-visitor limiter is live and keyed on something.
-2. From a **different** network (mobile data, not the same Wi-Fi), send the same request once.
-   - `400` ⇒ buckets are independent. **The IP signal works**; keep `3/hour`.
-   - `429` ⇒ every visitor shares one bucket. **Set `ACCESS_APPLY_PER_IP_LIMIT=0` and redeploy**,
-     leaving the global ceiling as the only limit, and record it here.
+| probe | result | what it establishes |
+|---|---|---|
+| `POST {}` ×5, no proxy headers | `400, 400, 429, 429, 429` | The per-visitor limiter is **live** and keyed on something stable for this caller. |
+| `POST {}` with `x-forwarded-for: 203.0.113.31` | `400` | A caller-supplied `X-Forwarded-For` **reaches the app at position 0** — the chain APPENDS rather than overwriting. |
+| same, `...32` | `400` | A second supplied value gets a second bucket, confirming the key is that header. |
+| same, `cf-connecting-ip: 203.0.113.41` | `400` | ⚠️ The Cloudflare header also arrived intact — see below. |
+
+**Verdict: the per-visitor limit works for ordinary visitors.** Because the chain appends, the first
+hop inserts the true peer address at position 0 for any client that sends no header of its own — so
+an ordinary browser is keyed on its real address and two visitors get two buckets. The catastrophic
+shared-bucket case (which would have refused the fourth applicant on the internet) **does not apply
+here**. `3/hour` stands and `ACCESS_APPLY_PER_IP_LIMIT` stays at its default.
+
+**⚠️ And the probe found a real weakness, now fixed.** `cf-connecting-ip` was preferred *first* and
+arrived intact — but alpha is not behind Cloudflare, so nothing overwrites it, meaning the
+highest-priority rate-limit key was entirely attacker-chosen and a fresh value per request walked
+straight past the per-visitor limit. It is now gated behind **`ACCESS_APPLY_TRUST_CF_HEADER=true`**,
+default off. Turn it on **only** on a domain that genuinely terminates at Cloudflare (the prod client
+domain), where the overwrite is what makes the header evidence.
+
+`X-Forwarded-For` remains spoofable in the same way, and that is accepted rather than fixed: unlike
+the Cloudflare header it has no better alternative and is correct for honest traffic, and the
+**120/hour global ceiling** is what bounds a determined caller. The per-visitor limit bounds the
+casual one — which was always its stated job.
+
+**Re-run this probe if the proxy chain changes** (a new front door, Cloudflare added or removed, or
+alpha moved to the prod primary+secondary+`ip_hash` topology).
 
 ### FR-045-006 — Public under BOTH middleware gates
 

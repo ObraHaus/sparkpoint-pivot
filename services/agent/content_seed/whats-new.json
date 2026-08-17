@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "public-application-antispam-hardening",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Tightened the anti-spam safeguard on the new application form",
+      "body": "The application form we shipped today limits how many requests can come from one connection in an hour, so nobody can flood the review queue and bury real applications.\n\nAfter it went live we tested that limit against the real site rather than trusting it, and found the check could be sidestepped: it was reading a piece of information the visitor's own browser could set freely, so anyone could simply present a different value each time and skip the limit entirely. It now only trusts that information where it comes from a source that cannot be faked.\n\nThe same test confirmed the good news, which is why it was worth running: the limit correctly tells different visitors apart. A rush of genuine applicants will not be mistaken for one person, and nobody will be turned away because somebody else applied first.\n\nNothing about applying changed, and no application was affected.",
+      "published_at": "2026-08-17T08:00:00Z"
+    },
+    {
       "slug": "public-alpha-application-form",
       "type": "changelog",
       "tag": "New",
