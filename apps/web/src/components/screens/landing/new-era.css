@@ -854,6 +854,24 @@ body:has(.new-era-root) {
   opacity: 0.6;
   cursor: progress;
 }
+/* 045 — the public alpha application, sitting between the newsletter capture and the wallet CTA.
+   Deliberately in that order: subscribing is the lowest-commitment ask, applying is the next, and
+   "Connect wallet" is the one that only works for someone who already has access. The form itself
+   is styled by `components/access/apply-form.css` under `.ap-form.ap-light`, which pins this
+   panel's permanently-white palette rather than following the theme. */
+.new-era-root footer.close .fapply {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 580px;
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+/* The shared `.fbtn` sizing wants a flex row; the form's submit is a block-level child. */
+.new-era-root footer.close .fapply .ap-submit {
+  justify-content: center;
+}
 .new-era-root footer.close .fbtns {
   display: flex;
   gap: 12px;

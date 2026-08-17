@@ -36,6 +36,13 @@ interface ApplicationRow {
   reason: string;
   status: string;
   submittedAt: string;
+  /**
+   * 045 — how the address got here. `"wallet"`: filed from a signed-in session, so the applicant
+   * PROVED they control it. `"public"`: typed into the landing-page form by someone who proved
+   * nothing. Optional because an agent predating migration 0036 omits the field; absent is read as
+   * `"wallet"`, which is what every pre-045 row genuinely was.
+   */
+  source?: string;
 }
 
 const CHAIN_HEADERS = { "x-chain-id": "84532" };
@@ -64,6 +71,38 @@ async function listAudit(): Promise<AuditEntry[]> {
  * `beta` add above (the agent does it server-side and audit-logs it identically), so this panel
  * adds a review queue, not a second access mechanism. Denying grants nothing and revokes nothing.
  */
+/**
+ * 045 — whether anyone proved this address, shown next to it rather than buried in the detail rows.
+ *
+ * This is the single most important fact on the row and the one the reviewer cannot recover any
+ * other way. Approving adds the address to `beta`; if it arrived through the public form, the
+ * person who typed it may not control it, and the person who does may not have asked for anything.
+ * A queue that renders both kinds identically is asking for a decision without the facts.
+ */
+function SourceTag({ source }: { source?: string }) {
+  const isPublic = source === "public";
+  return (
+    <span
+      className="prov"
+      title={
+        isPublic
+          ? "Submitted from the public form on the landing page — the address was typed in, not signed for. Verify it out-of-band before approving."
+          : "Filed from a signed-in session — the applicant proved they control this address."
+      }
+      style={{
+        fontSize: 11,
+        whiteSpace: "nowrap",
+        color: isPublic ? "var(--warn, #d08700)" : "var(--muted-foreground)",
+        border: `1px solid ${isPublic ? "var(--warn, #d08700)" : "var(--border-soft)"}`,
+        borderRadius: 999,
+        padding: "1px 8px",
+      }}
+    >
+      {isPublic ? "unverified · public form" : "wallet-signed"}
+    </span>
+  );
+}
+
 function PendingApplications({ onDecided }: { onDecided: () => Promise<void> }) {
   const [apps, setApps] = useState<ApplicationRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -140,6 +179,7 @@ function PendingApplications({ onDecided }: { onDecided: () => Promise<void> }) 
                 <span className="mono" style={{ fontSize: 12.5, flex: "1 1 320px", wordBreak: "break-all" }}>
                   {a.address}
                 </span>
+                <SourceTag source={a.source} />
                 <span className="muted" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
                   {a.submittedAt ? new Date(a.submittedAt).toLocaleString() : ""}
                 </span>

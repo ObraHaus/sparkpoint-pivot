@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SparkLogo } from "@/components/ui/SparkLogo";
+import { PublicAccessApplicationForm } from "@/components/access/PublicAccessApplicationForm";
 
 /**
  * New Era Landing — Sparky's landing rebuilt on a single Three.js particle
@@ -928,6 +929,12 @@ export default function NewEraLanding() {
               <button className="btn ghost" onClick={() => scrollToFraction(0.22)}>
                 See how it works
               </button>
+              {/* 045 — the alpha is gated, so "Connect wallet" is a wall for most visitors. This
+                  is the door beside it: it jumps to the application form in the closing section
+                  rather than routing away, so nobody loses the page they were reading. */}
+              <button className="btn ghost" onClick={() => scrollToFraction(1)}>
+                Apply for alpha access
+              </button>
             </div>
           </div>
         </section>
@@ -1230,6 +1237,19 @@ export default function NewEraLanding() {
               </>
             )}
           </form>
+          {/* 045 — apply for the alpha without connecting anything.
+              Until now the only application form was on /verify, which you reach by connecting a
+              wallet and being told no. That is the wrong way round: someone who has heard about
+              Sparky and wants in has no reason to connect a wallet to a product they cannot use.
+              This asks for the address instead of proving it — see PublicAccessApplicationForm. */}
+          <div className="fapply">
+            <span className="fsub-label">Apply for alpha access</span>
+            <PublicAccessApplicationForm
+              surface="light"
+              submitClassName="fbtn primary"
+              lede="Sparky is in a gated alpha. Tell us the wallet address you'd like whitelisted — no wallet connection needed to apply."
+            />
+          </div>
           <div className="fbtns">
             <button className="fbtn primary" onClick={goConnect}>
               Connect wallet

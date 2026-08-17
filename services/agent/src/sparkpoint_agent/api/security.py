@@ -40,6 +40,25 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
     }
 )
 
+# Paths that still require the s2s bearer but carry NO user identity (045).
+#
+# The §1.2 scoping headers assert *who the web tier verified*. The public alpha-application form has
+# no such person: the visitor never connected a wallet and never signed anything, so the web tier
+# has nobody to assert. Demanding the headers anyway would force it to invent an identity — most
+# obviously by echoing the address typed into the form — and an invented `X-Owner` is far worse than
+# an absent one, because every route downstream treats that header as verified.
+#
+# So: authentication is UNCHANGED (a caller without the bearer is still rejected — this is not a
+# public internet surface), and only the identity parse is skipped. `request.state.account` is then
+# absent, so `get_account` raises for anything that needs a user, and a route can only end up here
+# deliberately.
+NO_ACCOUNT_PATHS: frozenset[str] = frozenset({"/access/public-application"})
+
+
+def requires_account_context(path: str) -> bool:
+    """False for s2s-authenticated routes that legitimately have no user to scope to."""
+    return path not in NO_ACCOUNT_PATHS
+
 
 @dataclass(frozen=True)
 class AccountContext:
