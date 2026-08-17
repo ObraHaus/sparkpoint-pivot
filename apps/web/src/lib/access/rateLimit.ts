@@ -107,14 +107,21 @@ export class SlidingWindowLimiter {
  *
  * Order of preference, and why each:
  *
- *   1. `cf-connecting-ip` — Cloudflare OVERWRITES this, so a client cannot forge it. Absent on
- *      alpha today (its response carries no `cf-ray`), but the prod client domain terminates TLS at
- *      Cloudflare, so this is the header that will be right there.
+ *   1. `cf-connecting-ip` — **only when `trustCloudflare` is set**. Cloudflare overwrites this
+ *      header, so where Cloudflare really is in front a client cannot forge it, and it is then the
+ *      best signal available. ⚠️ Where Cloudflare is NOT in front it is the worst: nothing
+ *      overwrites it, so an attacker sets a fresh value per request and walks straight past the
+ *      per-visitor limit using the highest-priority key. **Measured against the live alpha
+ *      deployment: a `cf-connecting-ip` this process never should have trusted arrived intact and
+ *      got its own bucket.** alpha answers from openresty with no `cf-ray`, so the flag is off
+ *      there; the prod client domain terminates TLS at Cloudflare, so it belongs on there.
  *   2. `x-forwarded-for`, leftmost entry — the conventional "closest to the client" choice, and the
- *      correct one for an honest visitor in an appending chain. It is also, in that same chain,
- *      client-SPOOFABLE: a caller who sends their own `X-Forwarded-For` occupies position 0 and
- *      every proxy appends after them. That is a known and accepted limit — the global ceiling is
- *      what actually bounds a determined caller; this bounds the casual one.
+ *      correct one for an honest visitor in an appending chain. Measured on alpha: the chain DOES
+ *      append (a supplied header arrives at position 0 and gets its own bucket, and a header-less
+ *      request gets a different one), which confirms an ordinary browser is keyed on its real
+ *      address. It is spoofable in exactly the same breath — but unlike the header above, there is
+ *      no better alternative, and the global ceiling is what bounds a determined caller. This
+ *      bounds the casual one.
  *   3. `x-real-ip` — usually the PREVIOUS hop rather than the client, so it is a poor signal. Used
  *      only when there is no `x-forwarded-for` at all, where the alternative is no signal.
  *
@@ -144,9 +151,20 @@ export interface ClientIp {
   readonly source: IpSource;
 }
 
-export function clientIp(headers: Headers): ClientIp {
-  const cf = headers.get("cf-connecting-ip")?.trim();
-  if (cf) return { key: cf, source: "cf" };
+export interface ClientIpOptions {
+  /**
+   * Whether Cloudflare genuinely fronts this deployment. Default **false** — a header is only
+   * evidence if something upstream is known to overwrite it, and trusting one that nothing
+   * overwrites is worse than ignoring it.
+   */
+  readonly trustCloudflare?: boolean;
+}
+
+export function clientIp(headers: Headers, options: ClientIpOptions = {}): ClientIp {
+  if (options.trustCloudflare) {
+    const cf = headers.get("cf-connecting-ip")?.trim();
+    if (cf) return { key: cf, source: "cf" };
+  }
 
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {

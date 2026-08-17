@@ -71,15 +71,31 @@ test("the client IP is the FIRST x-forwarded-for entry, not the nearest proxy", 
   assert.deepEqual(clientIp(h), { key: "203.0.113.7", source: "forwarded" });
 });
 
-test("cf-connecting-ip WINS over x-forwarded-for — Cloudflare overwrites it, a client cannot", () => {
-  // In an appending chain the leftmost x-forwarded-for entry is whatever the CALLER sent. Where
-  // Cloudflare is in front, its own header is the one that cannot be forged, so it must be
-  // preferred even when a forwarded chain is also present.
+test("cf-connecting-ip is IGNORED by default — nothing overwrites it unless Cloudflare is real", () => {
+  // ⚠️ This assertion is the fix for a weakness found by probing the live deployment. alpha answers
+  // from openresty with no Cloudflare in front, and a caller-supplied `cf-connecting-ip` arrived
+  // intact and was given its own bucket — i.e. the highest-priority key was fully attacker-chosen,
+  // so a fresh value per request walked straight past the per-visitor limit. A header is only
+  // evidence when something upstream is known to overwrite it.
+  const h = new Headers({
+    "cf-connecting-ip": "198.51.100.9",
+    "x-forwarded-for": "203.0.113.7, 10.0.0.1",
+  });
+  assert.deepEqual(clientIp(h), { key: "203.0.113.7", source: "forwarded" });
+  assert.deepEqual(clientIp(new Headers({ "cf-connecting-ip": "198.51.100.9" })), {
+    key: "unknown",
+    source: "none",
+  });
+});
+
+test("cf-connecting-ip WINS once Cloudflare is declared to be in front", () => {
+  // Where Cloudflare really does terminate TLS it overwrites the header, so it becomes the one
+  // signal a client cannot forge — better than the leftmost forwarded entry, which they can.
   const h = new Headers({
     "cf-connecting-ip": "203.0.113.7",
     "x-forwarded-for": "1.2.3.4, 203.0.113.7, 10.0.0.1",
   });
-  assert.deepEqual(clientIp(h), { key: "203.0.113.7", source: "cf" });
+  assert.deepEqual(clientIp(h, { trustCloudflare: true }), { key: "203.0.113.7", source: "cf" });
 });
 
 test("x-real-ip is used only as a last resort, and is labelled as the weak signal it is", () => {
@@ -111,5 +127,8 @@ test("an empty forwarded header falls through instead of producing an empty key"
 
 test("a whitespace-only cf header does not shadow a usable forwarded chain", () => {
   const h = new Headers({ "cf-connecting-ip": "   ", "x-forwarded-for": "203.0.113.7" });
-  assert.deepEqual(clientIp(h), { key: "203.0.113.7", source: "forwarded" });
+  assert.deepEqual(clientIp(h, { trustCloudflare: true }), {
+    key: "203.0.113.7",
+    source: "forwarded",
+  });
 });

@@ -45,6 +45,16 @@ function limitFrom(name: string, fallback: number): number {
   return Number.isInteger(raw) && raw >= 0 ? raw : fallback;
 }
 
+/**
+ * Whether to believe `cf-connecting-ip`. Default OFF, and it must stay that way anywhere Cloudflare
+ * is not genuinely in front — see `clientIp`. Measured against live alpha: that deployment answers
+ * from openresty with no `cf-ray`, and a `cf-connecting-ip` supplied by the caller reached the app
+ * intact and was given its own rate-limit bucket. Trusting it there would have handed an attacker
+ * the top-priority key. Set `ACCESS_APPLY_TRUST_CF_HEADER=true` only on a domain that terminates at
+ * Cloudflare, which overwrites the header and thereby makes it evidence.
+ */
+const TRUST_CF = process.env.ACCESS_APPLY_TRUST_CF_HEADER === "true";
+
 /** Applying is a once-in-a-lifetime act for a real person; 3/hour is generous for a typo-fixer. */
 const PER_IP_LIMIT = limitFrom("ACCESS_APPLY_PER_IP_LIMIT", 3);
 const PER_IP = new SlidingWindowLimiter({ limit: PER_IP_LIMIT, windowMs: 60 * 60 * 1000 });
@@ -95,7 +105,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // that loses the visitor's address hands us a constant value that looks perfectly healthy from
   // here. Whether this limit is meaningful on alpha is a MEASURED fact (045 spec), and
   // `ACCESS_APPLY_PER_IP_LIMIT=0` turns it off without a code change if the measurement says so.
-  const ip = clientIp(req.headers);
+  const ip = clientIp(req.headers, { trustCloudflare: TRUST_CF });
   if (ip.source !== "none" && PER_IP_LIMIT > 0) {
     const perIp = PER_IP.check(ip.key, now);
     if (!perIp.allowed) {
