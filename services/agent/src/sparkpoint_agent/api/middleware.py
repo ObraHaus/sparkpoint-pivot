@@ -22,7 +22,7 @@ from starlette.responses import Response
 
 from .errors import ApiError, ErrorCode, new_request_id, render_api_error
 from .idempotency import IdempotencyScope, ScopedStore, StoredResponse, is_valid_key
-from .security import authenticate, is_exempt, parse_account_headers
+from .security import authenticate, is_exempt, parse_account_headers, requires_account_context
 
 _CallNext = Callable[[Request], Awaitable[Response]]
 
@@ -62,11 +62,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         try:
             authenticate(request.headers.get("Authorization"))
-            request.state.account = parse_account_headers(
-                request.headers.get("X-Account"),
-                request.headers.get("X-Owner"),
-                request.headers.get("X-Chain-Id"),
-            )
+            # 045: a handful of s2s routes have no user to scope to (the public alpha-application
+            # form — nobody signed in). Auth above is unconditional; only the identity parse is
+            # skipped, leaving `request.state.account` unset so `get_account` raises rather than
+            # handing any route a fabricated owner.
+            if requires_account_context(request.url.path):
+                request.state.account = parse_account_headers(
+                    request.headers.get("X-Account"),
+                    request.headers.get("X-Owner"),
+                    request.headers.get("X-Chain-Id"),
+                )
             key = self._validate_idempotency_key(request)
         except ApiError as exc:
             return render_api_error(exc, request_id)

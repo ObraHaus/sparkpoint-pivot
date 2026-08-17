@@ -103,6 +103,28 @@ class _FakeApplications:
         self.audit.append(("submit", addr, addr))
         return row
 
+    async def submit_public(
+        self, *, address: str, contact: str, display_name: str, reason: str
+    ) -> bool:
+        """Mirrors the real ON CONFLICT DO NOTHING: the first application for an address wins."""
+        addr = address.lower()
+        self.audit.append(("submit", addr, None))
+        if addr in self.rows:
+            return False
+        self.rows[addr] = Application(
+            address=addr,
+            contact=contact,
+            display_name=display_name,
+            reason=reason,
+            status="pending",
+            submitted_at="2026-08-17T00:00:00+00:00",
+            updated_at="2026-08-17T00:00:00+00:00",
+            decided_by=None,
+            decided_at=None,
+            source="public",
+        )
+        return True
+
     async def get(self, address: str) -> Application | None:
         return self.rows.get(address.lower())
 
@@ -262,6 +284,232 @@ def test_reading_your_own_status(ctx: tuple[TestClient, _FakeApplications, _Fake
     assert client.get("/access/application", headers=_headers(OTHER)).json() == {
         "application": None
     }
+
+
+# ── the PUBLIC form (045): no session, no signature, address typed by hand ────
+
+
+def _public_headers() -> dict[str, str]:
+    """045: the s2s bearer ONLY. No X-Account/X-Owner/X-Chain-Id — there is no signed-in user, and
+    the web tier must not invent one."""
+    return {"Authorization": f"Bearer {TOKEN}"}
+
+
+PUBLIC_GOOD = {**GOOD, "address": APPLICANT}
+
+
+def test_public_submit_needs_no_account_headers_at_all(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """The whole point: an applicant with no wallet connected. The §1.2 scoping headers assert a
+    verified identity, and there is none — demanding them would force the web tier to fabricate an
+    owner, which every route downstream would then treat as proven."""
+    client, apps, _ = ctx
+    resp = client.post("/access/public-application", json=PUBLIC_GOOD, headers=_public_headers())
+    assert resp.status_code == 200
+    assert apps.rows[APPLICANT.lower()].contact == "me@example.com"
+
+
+def test_public_submit_still_requires_the_s2s_bearer(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """Skipping the identity parse must not have skipped AUTH. This is not an internet surface."""
+    client, apps, _ = ctx
+    assert client.post("/access/public-application", json=PUBLIC_GOOD).status_code == 401
+    resp = client.post(
+        "/access/public-application",
+        json=PUBLIC_GOOD,
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert resp.status_code == 401
+    assert apps.rows == {}
+
+
+def test_a_public_application_is_recorded_as_unverified(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """Nobody signed for this address, and the admin panel needs to be able to say so."""
+    client, apps, allow = ctx
+    allow.admin.add(ADMIN_WALLET.lower())
+    client.post("/access/public-application", json=PUBLIC_GOOD, headers=_public_headers())
+
+    assert apps.rows[APPLICANT.lower()].source == "public"
+    rows = client.get("/admin/access/applications", headers=_headers(ADMIN_WALLET)).json()[
+        "applications"
+    ]
+    assert rows[0]["source"] == "public"
+
+
+def test_the_signed_in_form_is_still_recorded_as_wallet_signed(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    client, apps, _ = ctx
+    client.post("/access/application", json=GOOD, headers=_headers(APPLICANT))
+    assert apps.rows[APPLICANT.lower()].source == "wallet"
+
+
+def test_a_public_submit_never_touches_an_existing_application(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """Anyone can type anyone's address here. If this could modify an existing row, a stranger
+    could overwrite a real applicant's contact details — so the first application wins."""
+    client, apps, _ = ctx
+    client.post("/access/application", json=GOOD, headers=_headers(APPLICANT))
+
+    resp = client.post(
+        "/access/public-application",
+        json={
+            "address": APPLICANT,
+            "contact": "attacker@example.com",
+            "name": "Not Ada",
+            "reason": "Trying to hijack an application in flight.",
+        },
+        headers=_public_headers(),
+    )
+    assert resp.status_code == 200  # …and yet
+    row = apps.rows[APPLICANT.lower()]
+    assert row.contact == "me@example.com"
+    assert row.display_name == "Ada"
+    assert row.source == "wallet"
+
+
+def test_the_response_is_identical_whether_or_not_anything_was_stored(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """No enumeration oracle. An anonymous caller must not be able to learn from the response
+    whether an address has already applied, been approved, or is unknown."""
+    client, _, allow = ctx
+    allow.admin.add(ADMIN_WALLET.lower())
+
+    first = client.post("/access/public-application", json=PUBLIC_GOOD, headers=_public_headers())
+    duplicate = client.post(
+        "/access/public-application", json=PUBLIC_GOOD, headers=_public_headers()
+    )
+    client.post(
+        "/admin/access/applications/approve",
+        json={"address": APPLICANT},
+        headers=_headers(ADMIN_WALLET),
+    )
+    after_approval = client.post(
+        "/access/public-application", json=PUBLIC_GOOD, headers=_public_headers()
+    )
+
+    bodies = [first.json(), duplicate.json(), after_approval.json()]
+    assert bodies[0] == bodies[1] == bodies[2]
+    assert {first.status_code, duplicate.status_code, after_approval.status_code} == {200}
+    # And nothing about the stored application leaks back.
+    for body in bodies:
+        assert "application" not in body
+        assert "status" not in body
+
+
+def test_a_public_submit_grants_nothing(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    client, apps, allow = ctx
+    client.post("/access/public-application", json=PUBLIC_GOOD, headers=_public_headers())
+    assert allow.beta == set()
+    assert apps.rows[APPLICANT.lower()].status == "pending"
+
+
+def test_a_malformed_address_is_refused_before_anything_is_stored(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    client, apps, _ = ctx
+    for bad in ("", "nope", "0x123", "sparky.eth", "0x" + "a" * 64, " 0x" + "z" * 40):
+        resp = client.post(
+            "/access/public-application",
+            json={**PUBLIC_GOOD, "address": bad},
+            headers=_public_headers(),
+        )
+        assert resp.status_code == 400, bad
+    assert apps.rows == {}
+
+
+def test_a_missing_address_is_refused(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    client, apps, _ = ctx
+    assert (
+        client.post("/access/public-application", json=GOOD, headers=_public_headers()).status_code
+        == 400
+    )
+    assert apps.rows == {}
+
+
+def test_public_fields_are_cleaned_and_capped_exactly_like_the_signed_in_form(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """The public form is the one an attacker can reach without a wallet, so the edge cleaning that
+    protects the admin panel's rendering matters MORE here, not less."""
+    client, apps, _ = ctx
+    client.post(
+        "/access/public-application",
+        json={
+            "address": APPLICANT,
+            "contact": "<script>me@example.com</script>",
+            "name": "Ada\x00\x07",
+            "reason": "Testing the <b>vault</b> deposit flow end to end.",
+        },
+        headers=_public_headers(),
+    )
+    row = apps.rows[APPLICANT.lower()]
+    for field in (row.contact, row.display_name, row.reason):
+        assert "<" not in field
+        assert ">" not in field
+        assert "\x00" not in field
+
+    over = client.post(
+        "/access/public-application",
+        json={**PUBLIC_GOOD, "address": OTHER, "reason": "x" * 5000},
+        headers=_public_headers(),
+    )
+    assert over.status_code == 400
+    assert OTHER.lower() not in apps.rows
+
+
+def test_a_checksummed_address_is_accepted_and_stored_lowercase(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """Pasting from a block explorer must not be a validation error."""
+    client, apps, _ = ctx
+    client.post(
+        "/access/public-application",
+        json={**PUBLIC_GOOD, "address": ADMIN_WALLET},
+        headers=_public_headers(),
+    )
+    assert ADMIN_WALLET.lower() in apps.rows
+
+
+def test_an_approved_public_application_grants_beta_the_same_single_way(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """045 adds a door, not a second lock: approval is still exactly the allowlist add."""
+    client, apps, allow = ctx
+    allow.admin.add(ADMIN_WALLET.lower())
+    client.post("/access/public-application", json=PUBLIC_GOOD, headers=_public_headers())
+
+    client.post(
+        "/admin/access/applications/approve",
+        json={"address": APPLICANT},
+        headers=_headers(ADMIN_WALLET),
+    )
+    assert APPLICANT.lower() in allow.beta
+    assert ("add", APPLICANT.lower(), "beta", ADMIN_WALLET.lower()) in allow.audit
+    assert apps.rows[APPLICANT.lower()].status == "approved"
+
+
+def test_the_scoped_routes_are_unaffected_by_the_header_exemption(
+    ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
+) -> None:
+    """The exemption is one path. Everything else still demands the §1.2 scoping headers, so it
+    cannot become a way to reach a user-scoped route without an identity."""
+    client, _, _ = ctx
+    for path in ("/access/application", "/allowlist/status"):
+        assert client.get(path, headers=_public_headers()).status_code == 400, path
+    assert (
+        client.post("/access/application", json=GOOD, headers=_public_headers()).status_code == 400
+    )
 
 
 # ── admin review ──────────────────────────────────────────────────────────────
