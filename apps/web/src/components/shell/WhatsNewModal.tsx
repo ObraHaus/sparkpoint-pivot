@@ -30,6 +30,11 @@ const BLOCKED = [
   "/",
   "/connect",
   "/verify",
+  // 045 — the public application page. Same category as /connect and /verify: a pre-auth funnel
+  // page whose visitor has no account, no session and, by definition, no "since you were last
+  // here". Greeting them with a product changelog over the form they came to fill in interrupts
+  // the one thing the page is for.
+  "/apply",
   "/coming-soon",
   "/geo-blocked",
   "/onboarding",
