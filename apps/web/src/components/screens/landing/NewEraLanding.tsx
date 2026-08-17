@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SparkLogo } from "@/components/ui/SparkLogo";
-import { PublicAccessApplicationForm } from "@/components/access/PublicAccessApplicationForm";
 
 /**
  * New Era Landing — Sparky's landing rebuilt on a single Three.js particle
@@ -199,6 +198,17 @@ export default function NewEraLanding() {
       setSubError("Something went wrong — please try again.");
       setSubStatus("error");
     }
+  }
+
+  /**
+   * 045 — the public application page.
+   *
+   * Unlike `goConnect`, this deliberately does NOT mirror the construction gate: `/apply` is in the
+   * middleware's locked-deploy allowlist precisely so a visitor can still ask for access while the
+   * rest of the site is sealed, which is exactly when they would most want to.
+   */
+  function goApply() {
+    router.push("/apply");
   }
 
   function goConnect() {
@@ -930,9 +940,11 @@ export default function NewEraLanding() {
                 See how it works
               </button>
               {/* 045 — the alpha is gated, so "Connect wallet" is a wall for most visitors. This
-                  is the door beside it: it jumps to the application form in the closing section
-                  rather than routing away, so nobody loses the page they were reading. */}
-              <button className="btn ghost" onClick={() => scrollToFraction(1)}>
+                  is the door beside it. It NAVIGATES to /apply rather than scrolling: this page is
+                  a scroll-driven WebGL sequence, so a programmatic jump to the end whips the whole
+                  animation past at a speed nobody can read, and dumps the visitor somewhere they
+                  did not ask to be. A page transition is the honest way to change context. */}
+              <button className="btn ghost" onClick={goApply}>
                 Apply for alpha access
               </button>
             </div>
@@ -1237,25 +1249,21 @@ export default function NewEraLanding() {
               </>
             )}
           </form>
-          {/* 045 — apply for the alpha without connecting anything.
-              Until now the only application form was on /verify, which you reach by connecting a
-              wallet and being told no. That is the wrong way round: someone who has heard about
-              Sparky and wants in has no reason to connect a wallet to a product they cannot use.
-              This asks for the address instead of proving it — see PublicAccessApplicationForm. */}
-          <div className="fapply">
-            <span className="fsub-label">Apply for alpha access</span>
-            <PublicAccessApplicationForm
-              surface="light"
-              submitClassName="fbtn primary"
-              lede="Sparky is in a gated alpha. Tell us the wallet address you'd like whitelisted — no wallet connection needed to apply."
-            />
-          </div>
+          {/* 045 — the two ways in, side by side. The application FORM used to be inlined here;
+              it now lives on /apply and this is a link to it. Four text fields at the end of a
+              scroll-driven WebGL sequence made the closing statement into a data-entry screen, and
+              the form is easier to find, share and return to at its own address. */}
           <div className="fbtns">
             <button className="fbtn primary" onClick={goConnect}>
               Connect wallet
               <span className="arrow">
                 <ArrowOut />
               </span>
+            </button>
+            {/* No arrow: the circled arrow is styled only for `.fbtn.primary` (a light border for a
+                dark fill) and the hero's ghost buttons carry none either. */}
+            <button className="fbtn ghost" onClick={goApply}>
+              Apply for alpha access
             </button>
           </div>
         </div>

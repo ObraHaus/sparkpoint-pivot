@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "apply-page-polish",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Applying for access is a calmer journey now",
+      "body": "Three things about the new application form were more awkward than they needed to be.\n\nPressing “Apply for alpha access” on the front page used to fling the page down to the very bottom at high speed, racing the whole animation past on the way. It now simply opens the application page, the way a link should.\n\nThe form itself has moved off the bottom of the front page and onto that page. Ending “We can't touch your money — here's the proof” with four boxes to fill in made the closing point feel like paperwork. The front page now offers the two doors side by side — connect your wallet if you already have access, or apply if you do not — and the form has its own address you can bookmark or share.\n\nOn shorter screens the top of the form was tucked underneath the menu bar and could not be scrolled back into view, so the heading was simply unreachable. It now always sits clear of it.\n\nAnd the “What's new” pop-up no longer appears over the application page. If you are there, you are trying to ask for access, not read our release notes.",
+      "published_at": "2026-08-17T09:45:00Z"
+    },
+    {
       "slug": "public-application-early-submit-fix",
       "type": "changelog",
       "tag": "Fixed",

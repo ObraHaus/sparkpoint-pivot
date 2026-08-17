@@ -32,7 +32,20 @@
 .beat-t{font-size:16px;font-weight:600;margin-bottom:7px;}
 .beat-d{font-size:13.5px;line-height:1.55;color:var(--muted-foreground);}
 .fineprint{font-size:12px;color:var(--muted-foreground);text-align:center;max-width:560px;margin:28px auto 0;line-height:1.5;}
+/* ⚠️ `safe center` is load-bearing, not decoration — see the measurement below.
+   This is a SCROLL container (overflow-y:auto) that centres its child. When the child is taller
+   than the container, plain `center` pushes the overflow out of BOTH ends, and the top end of a
+   scroll container is unreachable: you cannot scroll above scrollTop 0. So the top of a tall card
+   slides under the fixed 64px top bar and simply cannot be brought back.
+   Measured on the live /apply card (663px tall) before this fix:
+     1440x800 -> card top at 82px, only 18px of clearance
+     1280x700 -> card top at 32px, i.e. 32px hidden behind the nav, unscrollable
+   `safe center` centres exactly as before whenever the child fits, and falls back to flex-start
+   the moment it would overflow — so nothing is ever clipped out of reach. The duplicated
+   declaration is the fallback: a browser that does not understand `safe` ignores the second line
+   and keeps the original centring. */
 .center-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow-y:auto;}
+.center-stage{justify-content:safe center;}
 .connect-card{width:420px;max-width:92vw;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:30px;box-shadow:var(--shadow-md);}
 .walletlist{display:flex;flex-direction:column;gap:9px;}
 .walletrow{display:flex;align-items:center;gap:13px;padding:14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);cursor:pointer;transition:.15s;color:var(--foreground);}
