@@ -35,6 +35,7 @@ momentarily incomplete — it can never block, delay or revert a redemption.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -54,6 +55,8 @@ from .fee_indexer import (
     decode_performance_fee_accrued,
 )
 from .log_source import LogsRpc
+
+logger = logging.getLogger(__name__)
 
 
 def _topic0(signature: str) -> str:
@@ -278,6 +281,17 @@ class VaultFeeLogSource:
 
         if covered <= raw_cursor:
             # Nothing was successfully read — do NOT advance the cursor past unread blocks.
+            #
+            # ⚠️ And SAY SO. The first version returned here silently, which produced exactly the
+            # failure this module was written to prevent: a frozen cursor, no error anywhere, and a
+            # revenue surface reading zero indistinguishably from an idle vault. A tick that reads
+            # nothing is the single most important thing this loop can report, because it is the
+            # only state that looks identical to success from the outside.
+            logger.warning(
+                "vault_fee_read_nothing network=%s cursor=%d attempts=%d window=%d "
+                "— every getLogs window was refused; the cursor is holding",
+                self.network_id, raw_cursor, attempts, window,
+            )
             return VaultFeeIndexResult(0, 0, 0, logs_seen, raw_cursor, more_to_do=True)
 
         rate, hwm = await self._seed_state()
