@@ -38,12 +38,24 @@ from .security import AccountContext
 
 router = APIRouter(prefix="/admin/bots", tags=["admin-bots"])
 
-#: Streams the panel expects to exist. Listing them explicitly is what lets the view say
-#: "never-run" for a bot that has never reported — an absent row is otherwise indistinguishable
-#: from a stream nobody configured, and "absence is not failure" cuts both ways.
+#: Streams the panel expects to exist, i.e. **what the scheduled cycle actually runs**. Listing
+#: them is what lets the view say "never-run" for a job that should be running and is not — an
+#: absent row is otherwise indistinguishable from a stream nobody configured.
+#:
+#: ⚠️ It must match `ops/testnet-bots/run-cycle.sh`, and `tests/api/test_expected_streams.py`
+#: asserts that it does. This list carried `("base", "vault")` for a day while the cycle ran only
+#: swap and accrue, so the panel showed a permanent **"never run"** for a job nothing schedules —
+#: and the bots were at their per-wallet deposit cap anyway, so it could not have done anything if
+#: it had run. A warning that can never clear is one people learn to scroll past, which is worse
+#: than no warning at all.
+#:
+#: Same drift class as the Dockerfile's hand-written dependency list: a second copy of a fact,
+#: maintained by memory. Assert it instead.
+#:
+#: `vault` is deliberately absent — it is an on-demand setup command (fill TVL once), not a
+#: recurring job. If it is ever run it still appears, because any stream that reports is appended.
 EXPECTED_STREAMS: tuple[tuple[str, str], ...] = (
     ("base", "accrue"),
-    ("base", "vault"),
     ("robinhood", "swap"),
 )
 
