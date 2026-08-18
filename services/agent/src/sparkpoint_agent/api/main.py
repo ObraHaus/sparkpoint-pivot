@@ -458,6 +458,20 @@ _ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
 # One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
 # `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
 # when none is set (never genesis for 46630).
+def _log_task_death(task: asyncio.Task[None]) -> None:
+    """Surface an exception that killed a background task.
+
+    ⚠️ ``asyncio.create_task`` swallows exceptions unless somebody retrieves them, so a loop that
+    dies on its first await is indistinguishable from one that simply had nothing to do. That is
+    how the vault-fee indexer stayed invisible: no cursor movement, no error, no clue.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("background_task_died name=%s exc=%r", task.get_name(), exc)
+
+
 async def _index_vault_fees_loop() -> None:
     """046: the vault performance-fee indexer — the half of T110 that was never wired.
 
@@ -476,15 +490,29 @@ async def _index_vault_fees_loop() -> None:
     from ..data.vault_fee_source import WINDOW as VAULT_FEE_WINDOW
     from ..data.vault_fee_source import VaultFeeLogSource
 
+    # ⚠️ Announce that the task started, BEFORE any guard can return.
+    #
+    # This loop went silent in production for hours and the silence was unreadable: a guard
+    # returning, an exception dying inside `create_task`, and a healthy loop with nothing to say
+    # all produce exactly zero log lines. Three very different causes, one indistinguishable
+    # symptom — and every one of them leaves the revenue surface reading zero.
+    #
+    # A background task that can exit quietly must say that it started and say why it stopped.
+    logger.info("vault_fee_loop_starting")
     try:
         config = AgentConfig.from_env()
     except Exception:
+        logger.warning("vault_fee_loop_exit: AgentConfig.from_env() raised")
         return
     # Shares VAULT_INDEX_RPC_URL with the flows indexer: both walk logs for the SAME address, so a
     # getLogs-friendly endpoint (sepolia.base.org caps at 10,000 blocks vs Alchemy Free's 10)
     # helps them identically. Falls back to the eth_call RPC; the adaptive window still copes.
     log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
     if not (config.vault_address and log_rpc):
+        logger.warning(
+            "vault_fee_loop_exit: nothing to index (vault_address=%s log_rpc=%s)",
+            bool(config.vault_address), bool(log_rpc),
+        )
         return
     start_block = _resolve_start_block(
         ("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0
@@ -676,6 +704,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # T110 that was built but never wired; without it that stream reads zero forever.
         # Best-effort, off the request path; never withdraw (N2).
         vault_fee_task = asyncio.create_task(_index_vault_fees_loop())
+        # ⚠️ `create_task` swallows an exception unless someone retrieves it. Without this callback
+        # a loop that dies on its first await is indistinguishable from one that never had work —
+        # which is precisely how this one hid.
+        vault_fee_task.add_done_callback(_log_task_death)
         # Feature 013/014: one background swap-fee indexer per network (router fee Transfers →
         # swap_fee_events → the real per-network /admin/revenue swap stream). Best-effort, off the
         # request path; never withdraw (N2).

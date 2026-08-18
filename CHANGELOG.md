@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (047 — a background task that can exit quietly must say so)
+- **⚠️ The vault-fee loop went silent in production and the silence was unreadable.** A guard clause returning, an exception dying inside `asyncio.create_task`, and a healthy loop with nothing to report all produce **exactly zero log lines** — three very different causes, one indistinguishable symptom, and every one of them leaves `/admin/revenue` reading zero. Confirmed decisively once the unconditional per-tick log shipped and *still* produced nothing: the loop is not executing, which no amount of staring at cursors could have established.
+- The loop now announces `vault_fee_loop_starting` **before any guard can return**, and each guard says why it exited (`AgentConfig` raised / nothing to index, naming which input was missing).
+- **`create_task` swallows exceptions unless someone retrieves them**, so a loop that dies on its first await looks identical to one that had no work. `_log_task_death` is attached as a done-callback and reports the exception. This is a general trap, not a vault-fee one — every other `create_task` in the lifespan has the same exposure.
+
 ### Fixed (047 — ⚠️ the monitor could not receive a single report)
 - **`POST /admin/bots/runs` rejected every report with `query.authorization: Field required`.** The route depended on `security.authenticate`, which is a **plain helper** taking a bare `authorization: str | None`. With no `Header(...)` annotation, FastAPI resolved it as a **query parameter** — so the runner, which sends the bearer as a header like everything else, could never satisfy it. The 400 read like a malformed body and sent the diagnosis to the wrong place twice.
 - **⚠️ The unit tests could not have caught it, and that is the actual lesson.** They covered the store and `derive_state`, and both were correct. Nothing exercised the wiring between the router and the app — which is exactly where the defect was. A route's dependency graph does not exist until a request goes through it. `tests/api/test_admin_bots.py` now drives both routes through a real `TestClient`, and the regression test is **mutation-checked** against the original bug.
