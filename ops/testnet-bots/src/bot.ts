@@ -47,23 +47,12 @@ import {
 import { keccak256, toHex } from "viem";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
-import {
-  brokerNftAbi,
-  brokerRegistryAbi,
-  brokerSaleAbi,
-  erc20Abi,
-  faucetAbi,
-  quoterV2Abi,
-  swapRouter02Abi,
-  vaultAbi,
-} from "./abis.ts";
+import { erc20Abi, faucetAbi, quoterV2Abi, swapRouter02Abi, vaultAbi } from "./abis.ts";
 import {
   ADDRESS_THIS,
   assertTestnet,
   chainConfig,
   ROUTING_FEE_BIPS,
-  TIER_MIX,
-  TIERS,
   type ChainConfig,
 } from "./config.ts";
 
@@ -110,7 +99,6 @@ Commands
   fund                     seed bot wallets with gas + faucet USDC
   vault                    deposit / redeem cycles through the vault
   swap                     fee-bearing swaps (writes swap_fee_events rows)
-  brokers                  mint + activate across all three tiers (46630). IRREVERSIBLE.
 
 Flags
   --chain <id>             84532 (Base Sepolia, default) | 46630 (Robinhood testnet)
@@ -159,9 +147,6 @@ class NonceTracker {
     return this.next++;
   }
 }
-
-/** The Sparky Broker collection on 46630 — the mint receipt names it in the Transfer log. */
-const BROKER_NFT: Address = "0x15D269B1D4fb3581E5a47482A70215e63Ed547f2";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -212,7 +197,18 @@ async function report(command: string, networkId: string, startedAt: Date): Prom
   try {
     const res = await fetch(`${base}/admin/bots/runs`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        // ⚠️ The agent's RequestContextMiddleware parses X-Account / X-Owner / X-Chain-Id on every
+        // request and rejects the call with ACCOUNT_HEADERS_INVALID when they are missing — a 400,
+        // not a 404, which is what made the first attempt look like a routing problem. The runner
+        // is a machine with no wallet, so it asserts the OPERATOR address it already funds from;
+        // these headers scope reads and grant no authority (§1.2).
+        "x-owner": process.env.BOT_REPORT_OWNER || "",
+        "x-account": process.env.BOT_REPORT_OWNER || "",
+        "x-chain-id": networkId === "robinhood" ? "46630" : "84532",
+      },
       body: JSON.stringify(body),
     });
     console.log(res.ok ? `reported run to the panel (${tally.succeeded}/${tally.attempted})`
@@ -508,45 +504,6 @@ async function cmdFund(args: Args): Promise<void> {
     await pub.waitForTransactionReceipt({ hash });
     console.log(`  ${bot.address}  funded  ${hash}`);
     await sleep(1500); // let the provider's in-flight counter settle before the next one
-  }
-
-  // ── SRK for broker activation (Robinhood only) ────────────────────────────
-  // ⚠️ The SRK faucet is NOT usable here: it pays 5,000 SRK per address per 24h against an
-  // Analyst tier of 250,000 — fifty days of claims for a single activation, two hundred for a
-  // Partner. The deployer holds 987M of a 1B fixed supply, so the bots are funded from it
-  // directly and the faucet is left for actual humans trying the product.
-  if (cfg.srk) {
-    console.log(`\nSRK for activation (tier mix: ${TIER_MIX.map((t) => TIERS[t - 1]!.name).join(", ")})`);
-    const funderSrk = (await pub.readContract({
-      address: cfg.srk, abi: erc20Abi, functionName: "balanceOf", args: [account.address],
-    })) as bigint;
-    let required = 0n;
-    for (const [i] of accounts.entries()) {
-      required += (TIERS.find((t) => t.id === (TIER_MIX[i % TIER_MIX.length] ?? 1))?.priceSrk ?? 0n) * 10n ** 18n;
-    }
-    console.log(`  funder holds ${formatUnits(funderSrk, 18)} SRK; this needs ${formatUnits(required, 18)}`);
-    if (required > funderSrk) throw new Error("funder cannot cover the SRK for this tier mix");
-
-    for (const [i, bot] of accounts.entries()) {
-      const tier = TIERS.find((t) => t.id === (TIER_MIX[i % TIER_MIX.length] ?? 1))!;
-      const need = tier.priceSrk * 10n ** 18n;
-      const held = (await pub.readContract({
-        address: cfg.srk, abi: erc20Abi, functionName: "balanceOf", args: [bot.address],
-      })) as bigint;
-      if (held >= need) {
-        console.log(`  ${bot.address}  already holds ${formatUnits(held, 18)} SRK (${tier.name})`);
-        continue;
-      }
-      const result = await run(
-        pub, wallet,
-        { address: cfg.srk, abi: erc20Abi, functionName: "transfer", account, args: [bot.address, need - held] },
-        `send ${formatUnits(need - held, 18)} SRK → ${bot.address} (${tier.name})`,
-        args.broadcast,
-      );
-      console.log(`  ${result.note}`);
-      // The funder is a delegated EOA: strictly sequential, with room for the in-flight cap.
-      if (args.broadcast) await sleep(1500);
-    }
   }
 
   if (!cfg.usdcFaucet) {
@@ -893,125 +850,6 @@ async function cmdSwap(args: Args): Promise<void> {
   );
 }
 
-// ─────────────────────────────────────────────────────────────── brokers
-
-const SRK = 10n ** 18n;
-
-/**
- * Mint Sparky Brokers and activate them across all three tiers.
- *
- * ⚠️⚠️ **Activation is IRREVERSIBLE.** The SRK is retired to a dead address in the same
- * transaction and there is no undo — no `withdraw`, no `rescue`, by design. A later transfer
- * clears the activation and the record cannot be rebuilt, so an activated broker must STAY with
- * the wallet that activated it. These bots therefore mint, activate, and then leave the tokens
- * alone forever.
- *
- * Why it matters: on chain today exactly ONE broker of twelve carries a tiered weight, so 044's
- * 1.0 : 2.0 : 3.3 split has never been demonstrable. A spread across tiers is the thing that makes
- * a weighted revenue share provable at all.
- *
- * ⚠️ The SRK faucet cannot fund this. It pays 5,000 SRK per address per 24h against an Analyst
- * tier of 250,000 — fifty days of claims for one activation. Bots are funded from the deployer's
- * balance instead (987M of a 1B fixed supply), which `fund --chain 46630 --srk` does.
- */
-async function cmdBrokers(args: Args): Promise<void> {
-  const { cfg, pub } = await connect(args.chainId);
-  if (!cfg.brokerSale || !cfg.brokerRegistry || !cfg.srk) {
-    throw new Error(`${cfg.label} carries no Sparky Broker stack — use --chain 46630`);
-  }
-  const sale = cfg.brokerSale;
-  const registry = cfg.brokerRegistry;
-  const srk = cfg.srk;
-  const accounts = botAccounts(args.wallets);
-
-  console.log(`\n${cfg.label}: mint + activate across tiers`);
-  console.log("⚠️ activation is irreversible and retires SRK to a dead address\n");
-
-  for (const [i, bot] of accounts.entries()) {
-    const wallet = walletFor(cfg, bot as never);
-    const nonces = new NonceTracker(pub, bot.address);
-    const tier = TIERS.find((t) => t.id === (TIER_MIX[i % TIER_MIX.length] ?? 1))!;
-    const price = tier.priceSrk * SRK;
-
-    const [remaining, held] = await Promise.all([
-      pub.readContract({ address: sale, abi: brokerSaleAbi, functionName: "remainingFor", args: [bot.address] }),
-      pub.readContract({ address: srk, abi: erc20Abi, functionName: "balanceOf", args: [bot.address] }),
-    ]);
-    if ((remaining as bigint) === 0n) {
-      console.log(`${bot.address}  at the per-wallet mint cap — skipping`);
-      continue;
-    }
-    if ((held as bigint) < price) {
-      console.log(
-        `${bot.address}  needs ${tier.priceSrk} SRK for ${tier.name}, holds ` +
-          `${formatUnits(held as bigint, 18)} — run 'fund --chain 46630 --srk' first`,
-      );
-      continue;
-    }
-
-    const minted = await run(
-      pub, wallet,
-      { address: sale, abi: brokerSaleAbi, functionName: "mint", account: bot, args: [] },
-      "mint a broker",
-      args.broadcast,
-      nonces,
-    );
-    console.log(`${bot.address}  ${minted.note}`);
-    note(minted.ok);
-    if (!minted.ok || !args.broadcast) continue;
-
-    // The id comes from the mint receipt's Transfer log — asking the chain "what did I just mint?"
-    // afterwards is the read-after-write race that has already bitten this tool twice.
-    const transfer = minted.receipt?.logs.find(
-      (log) => log.topics.length === 4 && log.address.toLowerCase() === BROKER_NFT.toLowerCase(),
-    );
-    const tokenId = transfer ? BigInt(transfer.topics[3]!) : null;
-    if (tokenId === null) {
-      console.log(`${bot.address}  minted, but the token id was not in the receipt — not activating`);
-      continue;
-    }
-
-    const approved = await run(
-      pub, wallet,
-      { address: srk, abi: erc20Abi, functionName: "approve", account: bot, args: [registry, price] },
-      `approve ${tier.priceSrk} SRK`,
-      args.broadcast,
-      nonces,
-    );
-    console.log(`${bot.address}  ${approved.note}`);
-    if (!approved.ok) continue;
-    if (!(await waitForAllowance(pub, srk, bot.address, registry, price))) {
-      console.log(`${bot.address}  allowance never became readable — broker #${tokenId} left unactivated`);
-      continue;
-    }
-
-    const activated = await run(
-      pub, wallet,
-      { address: registry, abi: brokerRegistryAbi, functionName: "activate", account: bot, args: [tokenId, tier.id] },
-      `activate #${tokenId} as ${tier.name} (${tier.weightBps} bps)`,
-      args.broadcast,
-      nonces,
-    );
-    console.log(`${bot.address}  ${activated.note}`);
-    note(activated.ok);
-  }
-
-  // The point of the whole exercise, read back from the registry rather than assumed.
-  const nft = BROKER_NFT;
-  const total = (await pub.readContract({ address: nft, abi: brokerNftAbi, functionName: "totalMinted" })) as bigint;
-  const spread: Record<number, number> = {};
-  for (let id = 1n; id <= total; id++) {
-    const w = (await pub.readContract({
-      address: registry, abi: brokerRegistryAbi, functionName: "weightOf", args: [id],
-    }).catch(() => 0)) as number;
-    if (Number(w) > 0) spread[Number(w)] = (spread[Number(w)] ?? 0) + 1;
-  }
-  console.log(`\n${total} brokers minted; weighted on this registry:`);
-  for (const t of TIERS) {
-    console.log(`  ${t.name.padEnd(10)} ${t.weightBps} bps  ->  ${spread[t.weightBps] ?? 0}`);
-  }
-}
-
 // ─────────────────────────────────────────────────────────────── entry
 
 async function main(): Promise<void> {
@@ -1031,7 +869,6 @@ async function main(): Promise<void> {
     case "fund":   await cmdFund(args); break;
     case "vault":  await cmdVault(args); break;
     case "swap":   await cmdSwap(args); break;
-    case "brokers": await cmdBrokers(args); break;
     default:
       console.log(HELP);
       throw new Error(`unknown command '${args.command}'`);
