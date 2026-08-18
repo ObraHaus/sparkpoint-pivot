@@ -33,7 +33,8 @@ from ..db import get_database
 from ..db.bot_runs import BotRun, PgBotRunStore, derive_state
 from .allowlist import require_admin
 from .errors import ApiError, ErrorCode
-from .security import AccountContext, authenticate
+from .mandate import get_account
+from .security import AccountContext
 
 router = APIRouter(prefix="/admin/bots", tags=["admin-bots"])
 
@@ -67,7 +68,7 @@ class BotRunReport(BaseModel):
 @router.post("/runs")
 async def report_run(
     body: BotRunReport,
-    _: Annotated[AccountContext, Depends(authenticate)],
+    _: Annotated[AccountContext, Depends(get_account)],
 ) -> dict[str, Any]:
     """Record one bot run. Idempotent on ``runKey``.
 
@@ -75,6 +76,18 @@ async def report_run(
     report is an *observation*, not an administrative act. It grants nothing — the worst a forged
     report can do is make an operator view wrong, which is why it is worth authenticating at all
     but not worth a signature.
+
+    ⚠️ The dependency is ``get_account``, NOT ``security.authenticate``. The latter is a plain
+    helper taking a bare ``authorization: str | None`` — used as a FastAPI dependency it has no
+    ``Header(...)`` annotation, so FastAPI resolves it as a **query parameter** and every call
+    fails ``query.authorization: Field required`` with a 400 that reads like a bad body. The S2S
+    bearer is already verified by the middleware before any route runs; ``get_account`` reads the
+    identity the middleware attached, which is what every other authenticated route does.
+
+    ⚠️ And it is ``mandate.get_account``, not ``vault.get_account`` — there are TWO, they behave
+    identically, and `require_admin` (which gates the sibling route) uses mandate's. Importing the
+    other one means the two routes on this router have DIFFERENT dependency objects, so overriding
+    one in a test silently leaves the other unpatched.
     """
     if body.succeeded > body.attempted:
         # Nonsense in, nonsense out otherwise — and this particular nonsense would paint a failing
