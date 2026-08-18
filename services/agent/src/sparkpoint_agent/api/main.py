@@ -507,11 +507,13 @@ async def _index_vault_fees_loop() -> None:
     while True:
         try:
             result = await source.index_once()
-            if result.inserted or result.dropped:
-                logger.info(
-                    "vault_fees_indexed added=%d dropped=%d block=%d",
-                    result.inserted, result.dropped, result.last_processed_block,
-                )
+            # ⚠️ Log EVERY tick's outcome, not just the ones that wrote a row. A backfill that is
+            # working correctly inserts nothing for hours while the cursor climbs, and a loop that
+            # is dead does the same thing — silently. The block number is what tells them apart.
+            logger.info(
+                "vault_fees_tick added=%d dropped=%d block=%d more=%s",
+                result.inserted, result.dropped, result.last_processed_block, result.more_to_do,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
