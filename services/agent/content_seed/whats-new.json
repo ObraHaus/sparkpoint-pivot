@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "bot-monitor-reporting-fixed",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The bot monitor could not receive the reports it was built to show",
+      "body": "The panel that shows whether the testnet bots are running went live yesterday and immediately could not be told anything: every report the runner sent came back rejected.\n\nThe cause was one wrong line. The endpoint asked to be authenticated using a helper that was never meant to be wired up that way, and the web framework quietly reinterpreted it as asking for a value in the web address rather than in the request's credentials. Every report failed with a complaint about a missing field that the runner had no way to supply.\n\nNothing was lost — a report that cannot be filed is only telemetry, and the bots themselves kept working throughout. But the panel showed \"never run\" for a fleet that was running, which is exactly the wrong answer for a screen whose whole job is telling those two apart.\n\nThe route is now tested through a real request rather than only in pieces, because that is the only kind of test that would have caught it.",
+      "published_at": "2026-08-18T13:00:00Z"
+    },
+    {
       "slug": "operator-can-see-the-activity-bots",
       "type": "changelog",
       "tag": "New",
