@@ -10,6 +10,14 @@
       "published_at": "2026-08-18T15:00:00Z"
     },
     {
+      "slug": "vault-fee-revenue-actually-recording-now",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The vault fee reader was crashing on startup, invisibly",
+      "body": "Yesterday's note said the piece that records the vault's performance fee had been switched on. It had — and then it crashed the instant it started, every single time, without leaving a trace.\n\nOne small library was missing from the server image: the component that computes the cryptographic fingerprints used to recognise events on the blockchain. The reader needs it the moment it loads, so it failed immediately. Because of how background jobs report problems, that failure was thrown away silently — no error, no warning, nothing in the logs.\n\nFrom the outside it looked exactly like a vault that had earned nothing, which is the most misleading way a system can fail.\n\nThe missing library is now installed, a check refuses any future build that drops it, and background jobs now report their own death instead of disappearing quietly. That last part is what found this one.",
+      "published_at": "2026-08-18T14:00:00Z"
+    },
+    {
       "slug": "bot-monitor-reporting-fixed",
       "type": "changelog",
       "tag": "Fixed",
@@ -82,14 +90,6 @@
       "published_at": "2026-08-14T11:06:31Z"
     },
     {
-      "slug": "brokers-gallery-live-fix",
-      "type": "changelog",
-      "tag": "Fixed",
-      "title": "The brokers list works — and loads about twice as fast",
-      "body": "The new way of loading your brokers did not work the first time it ran on the live site, even though every test passed. Our blockchain connection limits how much history it will return in one request, and the limit is much lower than the one the blockchain itself allows — so the page kept asking for more than it was allowed and gave up.\n\nIt now works out the allowed size for itself and remembers it, and fetches the pieces at the same time rather than one after another. Loading a wallet’s brokers went from about eight seconds to about three.\n\nWorth noting: while it was failing, the page did not tell you that you owned nothing. It said it could not read the chain and fell back to the older method. That was deliberate, and it is why nobody saw an empty collection.",
-      "published_at": "2026-08-14T09:26:43Z"
-    },
-    {
       "slug": "broker-orphaned-activations",
       "type": "changelog",
       "tag": "Fixed",
@@ -120,6 +120,14 @@
       "title": "There is now a page for revenue share",
       "body": "You can find it at Brokers → Revenue share. Right now it will tell you that nothing has been distributed, because nothing has.\n\nWe built the page in that state on purpose. It reads the contract directly and reports what is actually there, so when a period is eventually funded and published you will see the real amount rather than a promise. It shows no estimates, no monthly figures and no projected returns — the only number it will ever display is what the contract says you can claim at that moment.\n\nIf nothing is claimable it also tells you which reason applies: no period has been opened, a period exists but has not been published yet, this wallet was allocated nothing, or you have already claimed. Those are different situations and we would rather be specific than leave you guessing.",
       "published_at": "2026-08-14T09:30:00Z"
+    },
+    {
+      "slug": "brokers-gallery-live-fix",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The brokers list works — and loads about twice as fast",
+      "body": "The new way of loading your brokers did not work the first time it ran on the live site, even though every test passed. Our blockchain connection limits how much history it will return in one request, and the limit is much lower than the one the blockchain itself allows — so the page kept asking for more than it was allowed and gave up.\n\nIt now works out the allowed size for itself and remembers it, and fetches the pieces at the same time rather than one after another. Loading a wallet’s brokers went from about eight seconds to about three.\n\nWorth noting: while it was failing, the page did not tell you that you owned nothing. It said it could not read the chain and fell back to the older method. That was deliberate, and it is why nobody saw an empty collection.",
+      "published_at": "2026-08-14T09:26:43Z"
     },
     {
       "slug": "broker-revenue-share-plumbing",
@@ -350,6 +358,17 @@
       "active": true
     },
     {
+      "slug": "sparky-notices-what-you-do-not-just-what-you-say",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now notices what you do on the platform — not just what you say in chat",
+      "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
+      "cta_label": "See what Sparky remembers",
+      "cta_href": "/settings",
+      "published_at": "2026-08-03T04:30:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-answers-straight",
       "type": "changelog",
       "tag": "Improved",
@@ -405,17 +424,6 @@
       "active": true
     },
     {
-      "slug": "sparky-notices-what-you-do-not-just-what-you-say",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Sparky now notices what you do on the platform — not just what you say in chat",
-      "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
-      "cta_label": "See what Sparky remembers",
-      "cta_href": "/settings",
-      "published_at": "2026-08-03T04:30:00Z",
-      "active": true
-    },
-    {
       "slug": "sparky-remembers-what-youve-done-together",
       "type": "changelog",
       "tag": "New",
@@ -427,25 +435,14 @@
       "active": true
     },
     {
-      "slug": "get-srk-from-the-faucet-on-premium",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Get test SRK in one click — the faucet now lives on Premium",
-      "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
-      "cta_label": "Open Premium",
-      "cta_href": "/premium",
-      "published_at": "2026-08-02T09:00:00Z",
-      "active": true
-    },
-    {
-      "slug": "premium-is-now-10000-srk-per-month",
+      "slug": "side-menu-regrouped-nothing-hidden",
       "type": "changelog",
       "tag": "Improved",
-      "title": "Premium is now 10,000 SRK per month",
-      "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
-      "cta_label": "See Premium",
-      "cta_href": "/premium",
-      "published_at": "2026-08-02T09:05:00Z",
+      "title": "The side menu is tidier — and nothing was hidden",
+      "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
+      "cta_label": "Open the app",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T09:15:00Z",
       "active": true
     },
     {
@@ -460,14 +457,25 @@
       "active": true
     },
     {
-      "slug": "side-menu-regrouped-nothing-hidden",
+      "slug": "premium-is-now-10000-srk-per-month",
       "type": "changelog",
       "tag": "Improved",
-      "title": "The side menu is tidier — and nothing was hidden",
-      "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
-      "cta_label": "Open the app",
-      "cta_href": "/chat",
-      "published_at": "2026-08-02T09:15:00Z",
+      "title": "Premium is now 10,000 SRK per month",
+      "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:05:00Z",
+      "active": true
+    },
+    {
+      "slug": "get-srk-from-the-faucet-on-premium",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Get test SRK in one click — the faucet now lives on Premium",
+      "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
+      "cta_label": "Open Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:00:00Z",
       "active": true
     },
     {
@@ -636,17 +644,6 @@
       "active": true
     },
     {
-      "slug": "hands-off-automation-proven-on-testnet",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Hands-off automation just went from planned to proven",
-      "body": "One of our biggest planned features — letting Sparky make approved rebalancing moves for you WITHOUT asking you to sign each one — was blocked on a hard technical problem for weeks. It's now solved and proven on our test network: we built a scoped, capped, time-limited 'session key' you can grant, and demonstrated a real automated move (a vault deposit) that went through end-to-end with no per-move signature — while staying fully bounded by the on-chain rules. Crucially, YOU keep the leash: the key can only ever do the specific things you allow, up to the caps you set, until it expires, and you can revoke it instantly and directly on-chain without us. The opt-in screen to turn this on for yourself is coming next — for now the Automation page still shows a preview.",
-      "cta_label": "See how it will work",
-      "cta_href": "/automation",
-      "published_at": "2026-07-24T18:45:00Z",
-      "active": true
-    },
-    {
       "slug": "trust-center-more-contracts",
       "type": "changelog",
       "tag": "Improved",
@@ -688,6 +685,17 @@
       "cta_label": "Our safety model",
       "cta_href": "/trust",
       "published_at": "2026-07-24T19:00:00Z",
+      "active": true
+    },
+    {
+      "slug": "hands-off-automation-proven-on-testnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Hands-off automation just went from planned to proven",
+      "body": "One of our biggest planned features — letting Sparky make approved rebalancing moves for you WITHOUT asking you to sign each one — was blocked on a hard technical problem for weeks. It's now solved and proven on our test network: we built a scoped, capped, time-limited 'session key' you can grant, and demonstrated a real automated move (a vault deposit) that went through end-to-end with no per-move signature — while staying fully bounded by the on-chain rules. Crucially, YOU keep the leash: the key can only ever do the specific things you allow, up to the caps you set, until it expires, and you can revoke it instantly and directly on-chain without us. The opt-in screen to turn this on for yourself is coming next — for now the Automation page still shows a preview.",
+      "cta_label": "See how it will work",
+      "cta_href": "/automation",
+      "published_at": "2026-07-24T18:45:00Z",
       "active": true
     },
     {
