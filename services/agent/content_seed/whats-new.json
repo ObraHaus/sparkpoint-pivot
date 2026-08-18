@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "vault-fee-revenue-now-recorded",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The vault's performance fee was earning but never being recorded",
+      "body": "SparkPoint's vault charges 10% of the yield it makes above its previous high-water mark. That part has always worked on chain.\n\nWhat did not work was the recording. The piece that reads those fee events off the blockchain and files them was built, tested and then never switched on — so the revenue page had no way to show a performance fee even after one had been charged. Its position marker had sat at block zero since the day it was created, which is the giveaway: it had never read anything at all.\n\nIt now runs alongside the other two readers, checking every few minutes. Nothing about the fee itself changed — not the rate, not who receives it, not when it applies. Only whether anyone was writing it down.\n\nWorth being plain about the size of it: the vault holds test funds and the amounts involved are fractions of a test dollar. This is about the plumbing being honest, not about the number.",
+      "published_at": "2026-08-18T09:00:00Z"
+    },
+    {
       "slug": "apply-page-polish",
       "type": "changelog",
       "tag": "Improved",
