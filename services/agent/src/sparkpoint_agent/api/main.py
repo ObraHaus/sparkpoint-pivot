@@ -457,6 +457,70 @@ _ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
 # One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
 # `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
 # when none is set (never genesis for 46630).
+async def _index_vault_fees_loop() -> None:
+    """046: the vault performance-fee indexer — the half of T110 that was never wired.
+
+    ``FeeIndexer`` could always replay decoded fee logs into ``fee_events``, but nothing produced
+    the logs: its ``index()`` had no runtime caller and the ``(base, vault_fee)`` cursor sat at
+    block 0 from the day the table was created. So ``/admin/revenue``'s performance-fee stream
+    could only ever read zero — a wiring gap that is indistinguishable, on the surface, from a
+    vault that has earned nothing.
+
+    Same posture as its siblings: off the request path, fail-open, no key, never on the
+    withdraw/exit path (N2). No-op when the vault or the RPC is unset.
+    """
+    from ..config import AgentConfig
+    from ..data.fee_indexer import PgFeeEventStore
+    from ..data.log_source import HttpxLogsRpc
+    from ..data.vault_fee_source import WINDOW as VAULT_FEE_WINDOW
+    from ..data.vault_fee_source import VaultFeeLogSource
+
+    try:
+        config = AgentConfig.from_env()
+    except Exception:
+        return
+    # Shares VAULT_INDEX_RPC_URL with the flows indexer: both walk logs for the SAME address, so a
+    # getLogs-friendly endpoint (sepolia.base.org caps at 10,000 blocks vs Alchemy Free's 10)
+    # helps them identically. Falls back to the eth_call RPC; the adaptive window still copes.
+    log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
+    if not (config.vault_address and log_rpc):
+        return
+    start_block = _resolve_start_block(
+        ("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0
+    )
+    window = VAULT_FEE_WINDOW
+    try:
+        raw_window = os.getenv("VAULT_INDEX_WINDOW")
+        if raw_window:
+            window = int(raw_window)
+    except ValueError:
+        window = VAULT_FEE_WINDOW
+    source = VaultFeeLogSource(
+        transport=HttpxLogsRpc(log_rpc),
+        store=PgFeeEventStore(get_database()),
+        vault_address=config.vault_address,
+        network_id="base",  # both Base chains map to the 'base' networks mirror id
+        start_block=start_block,
+        window=window,
+    )
+    while True:
+        try:
+            result = await source.index_once()
+            if result.inserted or result.dropped:
+                logger.info(
+                    "vault_fees_indexed added=%d dropped=%d block=%d",
+                    result.inserted, result.dropped, result.last_processed_block,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("vault_fee_index_error (degrading; perf-fee revenue stays stale)")
+        try:
+            await asyncio.sleep(_INDEX_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
 _SWAP_FEE_NETWORKS: tuple[dict[str, Any], ...] = (
     {
         "network_id": "base",
@@ -570,6 +634,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     db = None
     index_task: asyncio.Task[None] | None = None
+    vault_fee_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     apy_task: asyncio.Task[None] | None = None
     changelog_task: asyncio.Task[None] | None = None
@@ -603,6 +668,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # §B2: background vault-flows indexer (Deposit/Withdraw → onchain_events → PnL).
         # Best-effort, off the request path; never on the withdraw/exit path (N2). No-op if unset.
         index_task = asyncio.create_task(_index_vault_flows_loop())
+        # 046: background vault performance-fee indexer (PerformanceFeeAccrued/HighWaterMarkUpdated/
+        # FeeRateUpdated → fee_events → the perf-fee stream of /admin/revenue). This is the half of
+        # T110 that was built but never wired; without it that stream reads zero forever.
+        # Best-effort, off the request path; never withdraw (N2).
+        vault_fee_task = asyncio.create_task(_index_vault_fees_loop())
         # Feature 013/014: one background swap-fee indexer per network (router fee Transfers →
         # swap_fee_events → the real per-network /admin/revenue swap stream). Best-effort, off the
         # request path; never withdraw (N2).
@@ -624,6 +694,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if index_task is not None:
             index_task.cancel()
+        if vault_fee_task is not None:
+            vault_fee_task.cancel()
         if notif_task is not None:
             notif_task.cancel()
         if apy_task is not None:
