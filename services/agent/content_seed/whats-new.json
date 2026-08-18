@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "vault-fee-revenue-actually-recording-now",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The vault fee reader was crashing on startup, invisibly",
+      "body": "Yesterday's note said the piece that records the vault's performance fee had been switched on. It had — and then it crashed the instant it started, every single time, without leaving a trace.\n\nOne small library was missing from the server image: the component that computes the cryptographic fingerprints used to recognise events on the blockchain. The reader needs it the moment it loads, so it failed immediately. Because of how background jobs report problems, that failure was thrown away silently — no error, no warning, nothing in the logs.\n\nFrom the outside it looked exactly like a vault that had earned nothing, which is the most misleading way a system can fail.\n\nThe missing library is now installed, a check refuses any future build that drops it, and background jobs now report their own death instead of disappearing quietly. That last part is what found this one.",
+      "published_at": "2026-08-18T14:00:00Z"
+    },
+    {
       "slug": "bot-monitor-reporting-fixed",
       "type": "changelog",
       "tag": "Fixed",
