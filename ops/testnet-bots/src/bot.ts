@@ -41,8 +41,10 @@ import {
   type Address,
   type Hex,
   type PublicClient,
+  type TransactionReceipt,
   type WalletClient,
 } from "viem";
+import { keccak256, toHex } from "viem";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { erc20Abi, faucetAbi, quoterV2Abi, swapRouter02Abi, vaultAbi } from "./abis.ts";
@@ -112,6 +114,97 @@ Environment
   BOT_MNEMONIC             derives the bot wallets. 'fund' prints a fresh one if unset.
 `;
 
+/** Derived, not transcribed — the same rule the agent-side indexer follows. */
+const PERFORMANCE_FEE_ACCRUED_TOPIC = keccak256(
+  toHex("PerformanceFeeAccrued(address,uint256,uint256,uint256)"),
+).toLowerCase();
+
+/**
+ * Hands out nonces locally after ONE read.
+ *
+ * ⚠️ Do not ask the node for a nonce between sends. Alchemy load-balances, so a
+ * `getTransactionCount` issued right after a confirmed transaction can land on a replica that has
+ * not seen it yet and return the nonce just used — the next send is then a replacement at the same
+ * gas price and is rejected `replacement transaction underpriced`. Hit for real while funding the
+ * fleet: wallet 1 funded, wallet 2 failed. Reading once and counting locally removes the node's
+ * view from the loop entirely.
+ */
+class NonceTracker {
+  // ⚠️ Plain fields, not constructor parameter properties: Node's --experimental-strip-types is
+  // strip-only and rejects `constructor(private readonly x: T)` outright.
+  next: number | null;
+  pub: PublicClient;
+  address: Address;
+  constructor(pub: PublicClient, address: Address) {
+    this.next = null;
+    this.pub = pub;
+    this.address = address;
+  }
+  async take(): Promise<number> {
+    if (this.next === null) {
+      this.next = await this.pub.getTransactionCount({ address: this.address, blockTag: "pending" });
+    }
+    return this.next++;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Wait until an approval is actually VISIBLE before acting on it.
+ *
+ * ⚠️ A confirmed approve is not the same as a readable one. Alchemy load-balances, so the
+ * `simulateContract` for the deposit that follows can land on a replica that has not seen the
+ * approve yet and fail `ERC20: transfer amount exceeds allowance` — on chain the allowance is
+ * fine. Ten wallets failed this way in a row, which is what makes it a race rather than a bug in
+ * the approval. Polling the value we are about to depend on removes the guesswork.
+ */
+async function waitForAllowance(
+  pub: PublicClient, token: Address, owner: Address, spender: Address, need: bigint,
+): Promise<boolean> {
+  for (let i = 0; i < 12; i++) {
+    const have = (await pub.readContract({
+      address: token, abi: erc20Abi, functionName: "allowance", args: [owner, spender],
+    })) as bigint;
+    if (have >= need) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
+/**
+ * Retry a send that failed for a reason that is a THROTTLE rather than a rejection.
+ *
+ * ⚠️ The funder is an **EIP-7702 delegated EOA** (24 bytes of delegation code), and providers cap
+ * how many transactions such an account may have in flight — Alchemy answers
+ * `in-flight transaction limit reached for delegated accounts` and refuses, even with a correct
+ * nonce and a confirmed predecessor. It is transient, so the fix is patience, not a different
+ * nonce. This is the same account and the same lesson as "the delegated-EOA deployer needs
+ * --slow" when broadcasting a Foundry script.
+ *
+ * Only these two messages are retried. Anything else is a real failure and is raised at once —
+ * retrying a revert would just burn time and hide the reason.
+ */
+async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 6): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const throttled =
+        message.includes("in-flight transaction limit") ||
+        message.includes("replacement transaction underpriced");
+      if (!throttled) throw error;
+      lastError = error;
+      const wait = 2000 * (i + 1);
+      console.log(`    throttled on ${label}, waiting ${wait / 1000}s (attempt ${i + 1}/${attempts})`);
+      await sleep(wait);
+    }
+  }
+  throw lastError;
+}
+
 function rpcUrl(cfg: ChainConfig): string {
   return process.env[cfg.rpcEnv] || cfg.rpcFallback;
 }
@@ -169,15 +262,20 @@ async function run(
   request: Record<string, unknown>,
   label: string,
   broadcast: boolean,
-): Promise<{ ok: boolean; hash?: Hex; note: string }> {
+  nonces?: NonceTracker,
+): Promise<{ ok: boolean; hash?: Hex; note: string; receipt?: TransactionReceipt }> {
   try {
     const { request: sim } = await pub.simulateContract(request as never);
     if (!broadcast) return { ok: true, note: `would ${label}` };
-    const hash = await wallet.writeContract(sim as never);
+    const send = nonces
+      ? { ...(sim as Record<string, unknown>), nonce: await nonces.take() }
+      : sim;
+    const hash = await wallet.writeContract(send as never);
     const receipt = await pub.waitForTransactionReceipt({ hash });
     return {
       ok: receipt.status === "success",
       hash,
+      receipt,
       note: `${label} — ${receipt.status}, gas ${receipt.gasUsed}`,
     };
   } catch (error) {
@@ -257,10 +355,6 @@ async function cmdAccrue(args: Args): Promise<void> {
   const account = funderAccount();
   const wallet = walletFor(cfg, account);
 
-  const before = (await pub.readContract({
-    address: cfg.vault, abi: vaultAbi, functionName: "totalSupply",
-  })) as bigint;
-
   const result = await run(
     pub,
     wallet,
@@ -269,18 +363,28 @@ async function cmdAccrue(args: Args): Promise<void> {
     args.broadcast,
   );
   console.log(result.note + (result.hash ? `  ${result.hash}` : ""));
+  if (!result.receipt) return;
 
-  if (result.ok && args.broadcast) {
-    const after = (await pub.readContract({
-      address: cfg.vault, abi: vaultAbi, functionName: "totalSupply",
-    })) as bigint;
-    const minted = after - before;
-    console.log(
-      minted > 0n
-        ? `fee shares minted: ${formatUnits(minted, cfg.usdcDecimals)} — a PerformanceFeeAccrued event now exists`
-        : `no shares minted: the vault was at or below its high-water mark`,
-    );
+  // ⚠️ Read the outcome from the RECEIPT'S OWN LOGS, never by re-reading state afterwards.
+  // An earlier version diffed totalSupply before/after and reported "no shares minted" for a
+  // transaction that had in fact minted 56,378 — the post-write read landed on a replica that had
+  // not yet seen the block. A load-balanced RPC makes read-after-write a race; the receipt is
+  // in-block and cannot lie.
+  const accrued = result.receipt.logs.find(
+    (log) => log.topics[0]?.toLowerCase() === PERFORMANCE_FEE_ACCRUED_TOPIC,
+  );
+  if (!accrued) {
+    console.log("no fee was accrued: the vault was at or below its high-water mark");
+    return;
   }
+  const data = accrued.data.slice(2);
+  const feeShares = BigInt(`0x${data.slice(0, 64)}`);
+  const yieldAssets = BigInt(`0x${data.slice(64, 128)}`);
+  console.log(
+    `accrued: ${formatUnits(yieldAssets, cfg.usdcDecimals)} USDC of yield realised, ` +
+      `${formatUnits(feeShares, cfg.usdcDecimals)} fee shares minted to the fee recipient`,
+  );
+  console.log("A PerformanceFeeAccrued event now exists; the indexer picks it up within ~5 minutes.");
 }
 
 // ─────────────────────────────────────────────────────────────── fund
@@ -318,11 +422,17 @@ async function cmdFund(args: Args): Promise<void> {
       console.log(`  ${bot.address}  would send ${formatEther(perWallet - have)} ETH`);
       continue;
     }
-    const hash = await wallet.sendTransaction({
-      account, chain: cfg.chain, to: bot.address, value: perWallet - have,
-    });
+    // No explicit nonce here: a delegated funder is limited to ~1 in-flight transaction, so these
+    // are strictly sequential and viem's own nonce read is never racing anything.
+    const hash = await withRetry(
+      () => wallet.sendTransaction({
+        account, chain: cfg.chain, to: bot.address, value: perWallet - have,
+      }),
+      `fund ${bot.address}`,
+    );
     await pub.waitForTransactionReceipt({ hash });
     console.log(`  ${bot.address}  funded  ${hash}`);
+    await sleep(1500); // let the provider's in-flight counter settle before the next one
   }
 
   if (!cfg.usdcFaucet) {
@@ -365,6 +475,7 @@ async function cmdVault(args: Args): Promise<void> {
 
   for (const bot of accounts) {
     const wallet = walletFor(cfg, bot as never);
+    const nonces = new NonceTracker(pub, bot.address);
     const [held, capRemaining] = await Promise.all([
       pub.readContract({ address: cfg.usdc, abi: erc20Abi, functionName: "balanceOf", args: [bot.address] }),
       pub.readContract({ address: vault, abi: vaultAbi, functionName: "maxDeposit", args: [bot.address] }),
@@ -391,9 +502,14 @@ async function cmdVault(args: Args): Promise<void> {
         { address: cfg.usdc, abi: erc20Abi, functionName: "approve", account: bot, args: [vault, amount] },
         `approve ${fmt(amount, cfg.usdcDecimals)} USDC`,
         args.broadcast,
+        nonces,
       );
       console.log(`${bot.address}  ${approved.note}`);
       if (!approved.ok) continue;
+      if (args.broadcast && !(await waitForAllowance(pub, cfg.usdc, bot.address, vault, amount))) {
+        console.log(`${bot.address}  allowance never became readable — skipping this wallet`);
+        continue;
+      }
       if (!args.broadcast) {
         // The deposit CANNOT simulate before the approve lands — transferFrom would revert on
         // allowance. Saying so beats printing a revert that looks like a real problem.
@@ -407,6 +523,7 @@ async function cmdVault(args: Args): Promise<void> {
       { address: vault, abi: vaultAbi, functionName: "deposit", account: bot, args: [amount, bot.address] },
       `deposit ${fmt(amount, cfg.usdcDecimals)} USDC`,
       args.broadcast,
+      nonces,
     );
     console.log(`${bot.address}  ${deposited.note}`);
   }
@@ -518,10 +635,17 @@ async function cmdSwap(args: Args): Promise<void> {
   for (let i = 0; i < args.count; i++) {
     const bot = accounts[i % accounts.length]!;
     const wallet = walletFor(cfg, bot as never);
-    // ⚠️ Alternate direction. A buy-only fleet converts all its ETH into USDC and then cannot pay
-    // for gas OR for the next swap — the same reason the simulation stack's trader is two-sided.
-    // Selling accrues the fee just as buying does, so this is throughput, not decoration.
-    const selling = i % 2 === 1;
+    const nonces = new NonceTracker(pub, bot.address);
+    // ⚠️ Direction follows the WALLET'S OWN INVENTORY, not the loop index. A buy-only fleet
+    // converts all its ETH into USDC and can then pay for neither gas nor the next swap — the same
+    // reason the simulation stack's trader is two-sided, and selling accrues the fee exactly as
+    // buying does. But alternating on `i % 2` made every wallet in the first pass try to sell USDC
+    // it had not bought yet: three of ten swaps were wasted on "holds no USDC". Holding stock is
+    // the real signal, and it makes each wallet cycle buy → sell → buy on its own.
+    const inventory = (await pub.readContract({
+      address: cfg.usdc, abi: erc20Abi, functionName: "balanceOf", args: [bot.address],
+    })) as bigint;
+    const selling = inventory > 0n;
 
     const gas = await pub.getBalance({ address: bot.address });
     if (gas <= amountIn / 4n) {
@@ -576,13 +700,7 @@ async function cmdSwap(args: Args): Promise<void> {
       );
     } else {
       // Sell whatever USDC the bot picked up on its buy leg.
-      const held = (await pub.readContract({
-        address: cfg.usdc, abi: erc20Abi, functionName: "balanceOf", args: [bot.address],
-      })) as bigint;
-      if (held === 0n) {
-        console.log(`${bot.address}  skipped sell — holds no USDC yet (buy first)`);
-        continue;
-      }
+      const held = inventory;
       const depth = await poolDepthOk(pub, cfg, cfg.usdc, held);
       if (!depth.ok) {
         console.log(`${bot.address}  REFUSED sell — ${depth.note}`);
@@ -607,9 +725,14 @@ async function cmdSwap(args: Args): Promise<void> {
           },
           `approve ${fmt(held, cfg.usdcDecimals)} USDC to the router`,
           args.broadcast,
+          nonces,
         );
         console.log(`${bot.address}  ${approved.note}`);
         if (!approved.ok || !args.broadcast) continue;
+        if (!(await waitForAllowance(pub, cfg.usdc, bot.address, cfg.swapRouter02, held))) {
+          console.log(`${bot.address}  allowance never became readable — skipping`);
+          continue;
+        }
       }
       const minOut = (quote.amountOut * 9900n) / 10_000n;
       const calls = [
