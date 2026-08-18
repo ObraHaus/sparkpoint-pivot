@@ -56,7 +56,38 @@ export interface ChainConfig {
   /** Reserves of the pinned pool are read live; a trade above this share of them is refused. */
   readonly maxPoolShareBps?: number;
   readonly uniswapV3Factory?: Address;
+
+  /** The Sparky Broker stack. Robinhood only — the NFT and the SRK it retires share a chain so
+   *  activation can be one atomic transaction. */
+  readonly brokerSale?: Address;
+  readonly brokerRegistry?: Address;
+  readonly srk?: Address;
 }
+
+/**
+ * The activation tiers, read from the deployed registry on 2026-08-18.
+ *
+ * ⚠️ Every tier grants the SAME Premium. A higher tier buys only a bigger `weightBps` in the
+ * revenue share — which is the entire reason these bots exist: on chain today exactly ONE broker
+ * of twelve carries a tiered weight, so the 1.0 : 2.0 : 3.3 split has never been demonstrable.
+ *
+ * ⚠️⚠️ Activation is IRREVERSIBLE and the SRK is retired to a dead address. There is no undo, and
+ * a transfer clears the activation — so a bot must keep the broker it activated.
+ */
+export const TIERS = [
+  { id: 1, name: "Analyst", priceSrk: 250_000n, weightBps: 10_000 },
+  { id: 2, name: "Associate", priceSrk: 500_000n, weightBps: 20_000 },
+  { id: 3, name: "Partner", priceSrk: 1_000_000n, weightBps: 33_000 },
+] as const;
+
+/**
+ * How the fleet spreads across tiers.
+ *
+ * Weighted toward Analyst on purpose: a uniform split would make the revenue-share screen look
+ * like a product where everyone buys the top tier, which is not a realistic holder set and would
+ * flatter the numbers. This is the shape a real collection plausibly takes.
+ */
+export const TIER_MIX: readonly number[] = [1, 1, 1, 2, 1, 3, 1, 2, 1, 3];
 
 export const CHAINS: Record<AllowedChainId, ChainConfig> = {
   84532: {
@@ -102,6 +133,9 @@ export const CHAINS: Record<AllowedChainId, ChainConfig> = {
     swapPoolFee: 3000,
     maxPoolShareBps: 50, // 0.50% of reserves — well below anything that would move the quote
     uniswapV3Factory: "0x911b4000D3422F482F4062a913885f7b035382Df",
+    brokerSale: "0x488268134af3d01E0672A9Ea17d529D4C5E275Dd",
+    brokerRegistry: "0xf081167b1DF61BAe096338b5716369894447a88E",
+    srk: "0x4538B536b1da5940deC8e15048Ce07a053699B04",
   },
 };
 

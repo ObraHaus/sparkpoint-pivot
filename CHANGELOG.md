@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (047 — brokers across all three tiers, so 044 has something to split)
+- **`bot.ts brokers`** — mints from the free `BrokerSale` and activates across Analyst / Associate / Partner. Live on 46630: brokers **#13–#18**, taking the weighted set from **1 to 7** and the tier spread from *one Partner* to **4 Analyst + 1 Associate + 2 Partner**. Feature 044 was built around a 1.0 : 2.0 : 3.3 split that, until now, had exactly one weight on chain to split between — the ratio has never been demonstrable on a real allocation.
+- **⚠️ The SRK faucet cannot fund this, and it is not close.** 5,000 SRK per address per 24h against an Analyst tier of **250,000** is fifty days of claims for one activation and two hundred for a Partner. Bots are funded from the deployer's balance instead (987M of a 1B fixed supply), sized per wallet to its assigned tier; the faucet stays for actual humans.
+- **⚠️ Activation is IRREVERSIBLE and the tool says so before it acts.** The SRK is retired to a dead address in the same transaction, there is no `withdraw`/`rescue` by design, and a later transfer clears the activation with no way to rebuild the record. The bots mint, activate, and then leave those tokens where they are.
+- **The token id comes from the mint receipt's `Transfer` log, never from a follow-up read.** Asking the chain "what did I just mint?" afterwards is the read-after-write race that had already produced two wrong answers in this tool; the receipt is in-block and cannot race.
+- **The tier mix is weighted toward Analyst on purpose.** A uniform split would render as a product where everyone buys the top tier — not a realistic holder set, and it would flatter every number derived from it.
+
 ### Added (047 — the operator can finally see whether the bots are running)
 - **`Admin → System → Activity bots`** — a read-only view of the 046 fleet, plus `GET /admin/bots/status` and `POST /admin/bots/runs` (migration **0037** `bot_runs`).
 - **⚠️⚠️ It is NOT a control plane, and the code says so in three places.** There is no start, no stop and no cadence setter, because the agent is **provably keyless** and that property is load-bearing for the non-custody story (N2) — running the bots from the deployed stack would end it. The runner holds its own keys, owns its own schedule (`run-cycle.sh` + a systemd timer), and reports afterwards. "Run now" is exactly the refactor that would pass every test in `admin_bots.py` while destroying what that file exists to protect; if a UI ever has to trigger a run, it belongs on the runner's own control endpoint, server-side, with its own token.

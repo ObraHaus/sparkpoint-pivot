@@ -53,6 +53,9 @@ node --experimental-strip-types src/bot.ts vault --chain 84532 --wallets 20 --br
 
 # fee-bearing swaps — ROBINHOOD ONLY (84532 is refused: its pool is too shallow)
 node --experimental-strip-types src/bot.ts swap --chain 46630 --count 40 --wallets 20 --broadcast
+
+# mint + activate brokers across all three tiers. ⚠️ IRREVERSIBLE — retires SRK permanently.
+node --experimental-strip-types src/bot.ts brokers --chain 46630 --wallets 6 --broadcast
 ```
 
 ### Environment
@@ -142,6 +145,15 @@ is best-effort — a failed POST is logged but never turns a good run into a bad
 - **Yield needs time, not deposits.** The performance fee is 10% of yield above the high-water
   mark, and Aave pays ~1.68% APR on USDC here. Deposit first, `accrue` later — `status` tells you
   whether there is anything to realise.
+- **⚠️ The SRK faucet cannot fund activations, and this is not close.** It pays 5,000 SRK per
+  address per 24h against an Analyst tier of **250,000** — fifty days of claims for one activation,
+  two hundred for a Partner. Bots are funded from the deployer's balance instead (987M of a 1B
+  fixed supply); `fund --chain 46630` does it, sized to each wallet's assigned tier. The faucet is
+  left for actual humans trying the product.
+- **⚠️ Activation is IRREVERSIBLE.** The SRK is retired to a dead address in the same transaction,
+  there is no `withdraw`/`rescue` by design, and a later transfer clears the activation with no way
+  to rebuild the record. An activated broker must stay with the wallet that activated it — the
+  bots mint, activate, and then leave those tokens alone.
 - **⚠️ Sell-leg fees are invisible to the indexer.** A sell pays its 0.20% in **native ETH** via
   `unwrapWETH9WithFee`, which emits no ERC-20 `Transfer`; `swap_fee_indexer` matches only ERC-20
   `Transfer` logs. The fee is really received and never counted. That is a gap in revenue

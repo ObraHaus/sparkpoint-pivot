@@ -8,6 +8,7 @@ export const erc20Abi = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ] as const;
@@ -137,4 +138,28 @@ export const faucetAbi = [
     ],
     outputs: [{ type: "uint256" }],
   },
+] as const;
+
+/** `BrokerSale` — free and open, capped per wallet. */
+export const brokerSaleAbi = [
+  { type: "function", name: "mint", stateMutability: "nonpayable", inputs: [], outputs: [{ name: "id", type: "uint256" }] },
+  { type: "function", name: "remainingFor", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "perWalletCap", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "saleOpen", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+] as const;
+
+/** `BrokerActivationRegistry` — retires SRK and flips activation in ONE transaction. */
+export const brokerRegistryAbi = [
+  // ⚠️ IRREVERSIBLE. The SRK leaves for a dead address and the activation cannot be undone;
+  // a later transfer clears it, and the record cannot be rebuilt.
+  { type: "function", name: "activate", stateMutability: "nonpayable", inputs: [{ name: "tokenId", type: "uint256" }, { name: "tier", type: "uint8" }], outputs: [] },
+  { type: "function", name: "weightOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint32" }] },
+  { type: "function", name: "tiers", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ name: "price", type: "uint256" }, { name: "weightBps", type: "uint32" }] },
+] as const;
+
+/** The NFT itself — only what the bots read. */
+export const brokerNftAbi = [
+  { type: "function", name: "ownerOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] },
+  { type: "function", name: "activatedAt", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "totalMinted", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
 ] as const;
