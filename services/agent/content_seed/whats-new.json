@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "activity-bots-phantom-never-run",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The bot panel showed a permanent warning for a job that was never scheduled",
+      "body": "Admin → System → Activity bots listed three jobs and showed one of them — the vault deposit job on Base Sepolia — as \"never run\", permanently.\n\nNothing was broken. That job simply is not part of the hourly schedule: it is a one-off setup step used to put funds into the vault, and the bot wallets are already at their per-wallet deposit limit, so it could not have done anything even if it had run.\n\nThe panel was listing it as though it were expected to run, which made a completed setup step look like a stalled job. A warning that can never clear is one people learn to scroll past, and then they scroll past a real one — so this was worse than showing nothing.\n\nThe list now reflects what is actually scheduled, and a check keeps the two from drifting apart again. If the vault job is ever run, it still appears.",
+      "published_at": "2026-08-18T15:00:00Z"
+    },
+    {
       "slug": "bot-monitor-reporting-fixed",
       "type": "changelog",
       "tag": "Fixed",

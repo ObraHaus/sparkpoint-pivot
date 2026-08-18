@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (049 — ⚠️ a "never run" the panel could never clear)
+- **`EXPECTED_STREAMS` listed `("base", "vault")` while `run-cycle.sh` runs only `swap` and `accrue`.** So Admin → System → Activity bots showed a permanent **"never run"** for a job nothing schedules — and the bot wallets are at their **5,000 USDC per-wallet cap** (measured: 0 headroom across all ten), so it could not have done anything even if it had been scheduled. `vault` is an on-demand setup command, not a recurring job.
+- **⚠️ This is worse than showing nothing.** A warning that can never clear is one people learn to scroll past, and then they scroll past a real one. The panel exists to separate *stopped* from *idle*; a permanent false stop defeats it.
+- **⚠️ Same failure shape as the Dockerfile dependency drift fixed hours earlier** — a second copy of a fact, kept in sync by memory. `tests/api/test_expected_streams.py` now parses `run-cycle.sh` and asserts the two agree **in both directions**: a scheduled job missing from the list would never be reported overdue, and a listed job nothing runs is the phantom this fixes. Both directions are mutation-checked, and the parse itself is asserted non-empty so the guard cannot pass vacuously.
+- The sibling test no longer keeps its own hardcoded copy of the stream list either — it derives from `EXPECTED_STREAMS`, because that duplication is the same defect one level down.
+
 ### Added (047 — a background task that can exit quietly must say so)
 - **⚠️ The vault-fee loop went silent in production and the silence was unreadable.** A guard clause returning, an exception dying inside `asyncio.create_task`, and a healthy loop with nothing to report all produce **exactly zero log lines** — three very different causes, one indistinguishable symptom, and every one of them leaves `/admin/revenue` reading zero. Confirmed decisively once the unconditional per-tick log shipped and *still* produced nothing: the loop is not executing, which no amount of staring at cursors could have established.
 - The loop now announces `vault_fee_loop_starting` **before any guard can return**, and each guard says why it exited (`AgentConfig` raised / nothing to index, naming which input was missing).

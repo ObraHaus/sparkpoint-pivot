@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 
-from sparkpoint_agent.api.admin_bots import router
+from sparkpoint_agent.api.admin_bots import EXPECTED_STREAMS, router
 from sparkpoint_agent.api.allowlist import get_allowlist_store
 from sparkpoint_agent.api.errors import (
     ApiError,
@@ -140,11 +140,9 @@ def test_status_lists_expected_streams_as_never_run_before_anything_reports(
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["configured"] is False
-    assert {(s["networkId"], s["command"]) for s in data["streams"]} >= {
-        ("base", "accrue"),
-        ("base", "vault"),
-        ("robinhood", "swap"),
-    }
+    # Derived, not a second hardcoded copy — a duplicated list is the drift that put a
+    # permanent "never run" on the panel in the first place.
+    assert {(s["networkId"], s["command"]) for s in data["streams"]} >= set(EXPECTED_STREAMS)
     assert all(s["state"] == "never-run" for s in data["streams"])
 
 
