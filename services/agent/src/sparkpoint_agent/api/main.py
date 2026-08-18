@@ -36,6 +36,7 @@ from ..persona import warm_persona
 from ..policy import POLICY_VERSION
 from .access import router as access_router
 from .admin_analytics import router as admin_analytics_router
+from .admin_bots import router as admin_bots_router
 from .admin_knowledge import router as admin_knowledge_router
 from .admin_limits import router as admin_limits_router
 from .admin_llm import router as admin_llm_router
@@ -832,6 +833,7 @@ app.include_router(conversations_router)
 app.include_router(memory_router)
 # §B4 admin uptime view (/admin/uptime) — admin-gated Kuma status-page telemetry (LAN-only source).
 app.include_router(admin_uptime_router)
+app.include_router(admin_bots_router)
 # Feature 008 admin tier-limits config (/admin/limits/*) — admin-gated, audited, POST-only writes.
 # Advisory-compute config only; never a signable artifact, never the withdraw path (N2).
 app.include_router(admin_limits_router)

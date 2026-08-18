@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "operator-can-see-the-activity-bots",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The operator panel can now see whether the testnet bots are running",
+      "body": "SparkPoint runs a small fleet of bots on the test networks so the revenue and portfolio screens have real activity to show before the first testers arrive.\n\nThose bots deliberately run outside the app. SparkPoint's backend holds no keys and signs nothing — that is a promise the whole non-custody design rests on — so anything that signs transactions has to live somewhere else. The side effect was that nobody could tell, from inside the app, whether the fleet was working.\n\nThere is now a read-only view under System that answers it. It separates three things that otherwise look identical from the outside: never started, stopped, and running-but-achieving-nothing. The last one is the dangerous one — a fleet can report in perfectly on time while every action it attempts is being refused.\n\nIt is a mirror, not a remote control. There is no start or stop button, because adding one would mean the app could make something sign a transaction. The schedule stays where the keys are.",
+      "published_at": "2026-08-18T11:00:00Z"
+    },
+    {
       "slug": "vault-fee-revenue-now-recorded",
       "type": "changelog",
       "tag": "Fixed",

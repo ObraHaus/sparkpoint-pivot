@@ -151,6 +151,65 @@ class NonceTracker {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * What this run attempted and what it landed.
+ *
+ * ⚠️ These are counted SEPARATELY on purpose. A swap run where all ten attempts were refused still
+ * finished cleanly — no exception, fresh heartbeat — and reporting that as success is exactly how
+ * a fleet that has stopped working goes unnoticed for a week. The admin view derives "failing"
+ * from the gap between the two, so the gap has to be real.
+ */
+const tally = { attempted: 0, succeeded: 0 };
+function note(succeeded: boolean): void {
+  tally.attempted += 1;
+  if (succeeded) tally.succeeded += 1;
+}
+
+/**
+ * Tell the agent what just happened. Best-effort and non-fatal by design.
+ *
+ * The bots' job is to produce activity; reporting is telemetry about that job. A failed POST must
+ * never turn a successful run into a failed one — but it must also not be silent, or the panel
+ * would show a stale "last run" with nothing explaining why.
+ */
+async function report(command: string, networkId: string, startedAt: Date): Promise<void> {
+  const base = (process.env.AGENT_BASE_URL || "").replace(/\/+$/, "");
+  const token = process.env.AGENT_S2S_TOKEN;
+  if (!base || !token) return; // reporting is opt-in; unset means "not wired up yet"
+
+  const intervalSec = Number(process.env.BOT_INTERVAL_SEC || 0);
+  const body = {
+    runKey: `${networkId}-${command}-${startedAt.toISOString()}`,
+    networkId,
+    command,
+    startedAt: startedAt.toISOString(),
+    finishedAt: new Date().toISOString(),
+    ok: true,
+    attempted: tally.attempted,
+    succeeded: tally.succeeded,
+    schedule: process.env.BOT_SCHEDULE || null,
+    // ⚠️ The runner declares its own next run because the runner OWNS the schedule. The panel
+    // never parses a cron expression, and a value that falls into the past is precisely the
+    // signal the panel needs: the runner said it would be back and was not.
+    nextRunAt: intervalSec > 0 ? new Date(Date.now() + intervalSec * 1000).toISOString() : null,
+    runnerCommit: process.env.BOT_COMMIT || null,
+    detail: {},
+  };
+  try {
+    const res = await fetch(`${base}/admin/bots/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    console.log(res.ok ? `reported run to the panel (${tally.succeeded}/${tally.attempted})`
+                       : `⚠️ run report refused: HTTP ${res.status}`);
+  } catch (error) {
+    console.log(`⚠️ run report failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function rpcUrlUnused(): void {}
+
+/**
  * Wait until an approval is actually VISIBLE before acting on it.
  *
  * ⚠️ A confirmed approve is not the same as a readable one. Alchemy load-balances, so the
@@ -363,6 +422,7 @@ async function cmdAccrue(args: Args): Promise<void> {
     args.broadcast,
   );
   console.log(result.note + (result.hash ? `  ${result.hash}` : ""));
+  note(result.ok);
   if (!result.receipt) return;
 
   // ⚠️ Read the outcome from the RECEIPT'S OWN LOGS, never by re-reading state afterwards.
@@ -526,6 +586,7 @@ async function cmdVault(args: Args): Promise<void> {
       nonces,
     );
     console.log(`${bot.address}  ${deposited.note}`);
+    note(deposited.ok);
   }
 
   const tvl = (await pub.readContract({ address: vault, abi: vaultAbi, functionName: "totalAssets" })) as bigint;
@@ -759,6 +820,7 @@ async function cmdSwap(args: Args): Promise<void> {
       );
     }
     console.log(`${bot.address}  ${result.note}${result.hash ? `  ${result.hash}` : ""}`);
+    note(result.ok);
   }
 
   if (args.broadcast) {
@@ -788,16 +850,21 @@ async function main(): Promise<void> {
   if (!args.broadcast && args.command !== "status") {
     console.log("\n── DRY RUN ── nothing will be sent. Add --broadcast to act.");
   }
+  const startedAt = new Date();
+  const networkId = args.chainId === 46630 ? "robinhood" : "base";
   switch (args.command) {
     case "status": return cmdStatus(args);
-    case "accrue": return cmdAccrue(args);
-    case "fund":   return cmdFund(args);
-    case "vault":  return cmdVault(args);
-    case "swap":   return cmdSwap(args);
+    case "accrue": await cmdAccrue(args); break;
+    case "fund":   await cmdFund(args); break;
+    case "vault":  await cmdVault(args); break;
+    case "swap":   await cmdSwap(args); break;
     default:
       console.log(HELP);
       throw new Error(`unknown command '${args.command}'`);
   }
+  // Only a real run is worth reporting: a dry run did nothing, and filing it would reset the
+  // panel's "last run" clock without any work having happened.
+  if (args.broadcast) await report(args.command, networkId, startedAt);
 }
 
 main().catch((error: unknown) => {

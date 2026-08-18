@@ -12,6 +12,7 @@
 
 import { AdminSections } from "@/components/admin/SectionTabs";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
+import { BotsPanel } from "@/components/admin/BotsPanel";
 import { DiagnosticsPanel } from "@/components/admin/DiagnosticsPanel";
 import { KillSwitchPanel } from "@/components/admin/KillSwitchPanel";
 import { RpcProxyPanel } from "@/components/admin/RpcProxyPanel";
@@ -51,6 +52,14 @@ export default function Page() {
           label: "Audit log",
           hint: "What admins did, and when.",
           render: () => <AuditLogPanel />,
+        },
+        {
+          // 047 — the activity bots run off the deployed stack (the agent is keyless by design),
+          // so "are they running?" is unanswerable from anywhere else in the app.
+          id: "bots",
+          label: "Activity bots",
+          hint: "Is the testnet fleet running? Read-only — the runner owns its schedule.",
+          render: () => <BotsPanel />,
         },
         {
           id: "rpc",

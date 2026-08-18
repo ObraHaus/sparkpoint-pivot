@@ -66,6 +66,34 @@ node --experimental-strip-types src/bot.ts swap --chain 46630 --count 40 --walle
 Keys live in the workspace keystore (`.claude/.env`), never in the repo. The bot mnemonic is the
 bots' **own** — do not reuse the project's testnet wallets, and never the Robin Brokers ones.
 
+## Running it on a schedule
+
+The runner owns its cadence. Nothing in the deployed app can start, stop or re-time it — the agent
+is provably keyless and putting these keys behind it would end that.
+
+```sh
+./run-cycle.sh                 # dry run: swaps on Robinhood + accrue on Base Sepolia
+./run-cycle.sh --broadcast     # one real cycle
+
+# hourly, unattended:
+cp sparkpoint-bots.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now sparkpoint-bots.timer
+```
+
+⚠️ **Keep the timer and `BOT_INTERVAL_SEC` in step.** The runner tells the panel its cadence and the
+panel judges lateness against it, so a mismatch shows as a fleet that is permanently overdue while
+nothing is actually wrong.
+
+### Reporting to the admin panel
+
+With `AGENT_BASE_URL` and `AGENT_S2S_TOKEN` set, each `--broadcast` run posts what it did to
+`POST /admin/bots/runs`, and **Admin → System → Activity bots** renders it. Unset, the bots work
+exactly the same and the panel honestly says no runner has ever reported.
+
+The report separates **attempted** from **succeeded** on purpose: a run where every action was
+refused still finishes cleanly, and the panel's `failing` state is derived from that gap. Reporting
+is best-effort — a failed POST is logged but never turns a good run into a bad one.
+
 ## What keeps this safe
 
 1. **A positive chain allowlist.** Only `84532` and `46630`. The id is read from the **live
