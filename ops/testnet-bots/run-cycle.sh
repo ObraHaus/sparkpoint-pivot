@@ -27,6 +27,15 @@ export BOT_SCHEDULE="${BOT_SCHEDULE:-hourly}"
 export BOT_INTERVAL_SEC="${BOT_INTERVAL_SEC:-3600}"
 export BOT_COMMIT="${BOT_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 
+# ⚠️⚠️ Preflight, BEFORE anything claims to have run. `run … || echo "degraded"` below swallows
+# ANY failure — including "the interpreter does not exist" — so a cycle with no node logged two
+# tidy "degraded" lines and exited 0. Ten hours of scheduled runs reported themselves fine while
+# doing nothing. A filter must never decide an outcome.
+if ! command -v node >/dev/null 2>&1; then
+  echo "FATAL: node is not on PATH — the cycle cannot run. PATH=$PATH" >&2
+  exit 127
+fi
+
 run() { node --experimental-strip-types src/bot.ts "$@" ${BROADCAST:+--broadcast}; }
 
 echo "── cycle $(date -u +%Y-%m-%dT%H:%M:%SZ)  schedule=${BOT_SCHEDULE}  broadcast=${BROADCAST:-no}"

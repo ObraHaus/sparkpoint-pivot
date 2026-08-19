@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (050 — ⚠️⚠️ the bots fired on time for ten hours and did nothing)
+- **`node: command not found`.** cron runs with a minimal `PATH` (`/bin:/usr/bin:/sbin:…`) that excludes an **nvm-managed** node. Every scheduled cycle from 14:17 on 18 Aug to 01:17 on 19 Aug — **fourteen fires** — died on its first command, logged two tidy `degraded` lines, and **exited 0**. The schedule looked perfect; the fleet was inert.
+- **⚠️⚠️ `run … || echo "degraded"` swallowed it.** That idiom cannot distinguish "this trade reverted" from "the interpreter does not exist", and it turned a broken runner into a successful-looking cycle. Same lesson the simulation stack recorded as *a filter must never decide an outcome*. There is now a **preflight**: no node ⇒ `exit 127` before anything claims to have run.
+- **⚠️ The monitor is what caught it, and it worked exactly as designed.** No cycle completed ⇒ no run was ever reported ⇒ both streams went **`overdue` by 9h46m** against the `next_run_at` the runner had itself promised. That is precisely the state 047 exists to make visible, and it is the reason this was found in a day rather than a week. The runner should not have needed rescuing by it, but it did, and the rescue worked.
+- **⚠️ `cron-wrapper.sh` was never in the repo.** The actual production entry point spent a day as an **untracked file on one machine** — reviewed by nobody, backed up nowhere, invisible to anyone reading `ops/testnet-bots/`. It is now committed, sources `nvm.sh`, records the node version in the log, and reports the cycle's exit code.
+- Verified by running the wrapper under `env -i` with a cron-like `PATH`: it found node, executed swaps and `accrue`, realised **1.061755 USDC** of accumulated yield, and reported both runs — panel back to `healthy` on both streams.
+
 ### Fixed (049 — ⚠️ a "never run" the panel could never clear)
 - **`EXPECTED_STREAMS` listed `("base", "vault")` while `run-cycle.sh` runs only `swap` and `accrue`.** So Admin → System → Activity bots showed a permanent **"never run"** for a job nothing schedules — and the bot wallets are at their **5,000 USDC per-wallet cap** (measured: 0 headroom across all ten), so it could not have done anything even if it had been scheduled. `vault` is an on-demand setup command, not a recurring job.
 - **⚠️ This is worse than showing nothing.** A warning that can never clear is one people learn to scroll past, and then they scroll past a real one. The panel exists to separate *stopped* from *idle*; a permanent false stop defeats it.
