@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "activity-bots-were-firing-but-idle",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The testnet bots ran on time for ten hours and did nothing",
+      "body": "The scheduled job that drives testnet activity fired punctually every hour overnight and accomplished nothing at all.\n\nScheduled jobs run with a much smaller set of system paths than a normal login session, and the program that runs the bots was not on it. Each cycle failed on its first step, wrote two tidy lines saying it had degraded, and exited reporting success. From the outside it looked like a healthy schedule.\n\nWhat caught it was the operator panel added the day before. Because no cycle ever completed, no run was ever filed, and the panel showed both jobs as overdue by nearly ten hours — which is exactly the state it was built to make visible. Nothing was lost; the bots simply had not run.\n\nThe runner now locates the program properly, and refuses to start at all if it cannot — loudly, rather than pretending a cycle happened.",
+      "published_at": "2026-08-19T01:00:00Z"
+    },
+    {
       "slug": "activity-bots-phantom-never-run",
       "type": "changelog",
       "tag": "Fixed",
