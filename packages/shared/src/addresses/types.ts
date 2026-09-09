@@ -28,8 +28,8 @@ import type { TargetRef } from "../policy/index";
 /** A 20-byte EVM address. No `any` on chain-facing types (repo rule). */
 export type Address = `0x${string}`;
 
-/** The networks this registry is parameterized for (R14 · §B3 adds Robinhood testnet). */
-export type Network = "base" | "baseSepolia" | "localFork" | "robinhoodTestnet";
+/** The networks this registry is parameterized for (R14 · §B3 adds Robinhood testnet; §B adds mainnet). */
+export type Network = "base" | "baseSepolia" | "localFork" | "robinhoodTestnet" | "robinhoodMainnet";
 
 /**
  * The concrete addresses for one chain. Protocol infra + tokens are always

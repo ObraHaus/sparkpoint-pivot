@@ -1,10 +1,10 @@
 name: web
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths: ["apps/web/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/web.yml"]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     paths: ["apps/web/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/web.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
