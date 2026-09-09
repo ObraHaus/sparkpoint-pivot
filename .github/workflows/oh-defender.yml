@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tools:
-        description: 'Scanners to run: "all" or a comma list of trivy,semgrep,gitleaks.'
+        description: 'Scanners to run: "all" or a comma list of trivy,semgrep,gitleaks,slither,aderyn,solhint.'
         required: false
         default: 'all'
       trigger:
@@ -19,10 +19,20 @@ jobs:
     runs-on: [self-hosted, oh-defender]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: ObraHaus/obrahaus-defender/ci/scan-action@b60a55c914d9f1646f503d034d27c71289d8e6d9 # develop
+        with:
+          # Foundry vendors its dependencies as git submodules, so without this the
+          # tree that reaches the worker has empty lib/ directories and cannot
+          # compile — the smart-contract lane's AST analyzers would fail on every
+          # Solidity repo (spec 007 FR-011). Checking out the pinned submodule
+          # commits keeps the analyzed tree the tree under review, which running
+          # `forge install` at scan time would not: that re-resolves from the
+          # network and can pick up something the PR never pinned.
+          submodules: recursive
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@1a320b603ee5306e103d0392d2f4411a54fbc8d3 # develop
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}
           defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
           tools: ${{ github.event.inputs.tools || 'all' }}
           trigger: ${{ github.event_name == 'pull_request' && 'pull_request' || (github.event.inputs.trigger || 'manual') }}
           default-branch: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+
