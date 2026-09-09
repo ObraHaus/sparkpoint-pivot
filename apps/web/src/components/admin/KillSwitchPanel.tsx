@@ -31,9 +31,10 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import type { WagmiChainId } from "@/lib/wagmi";
 
 /** The chain the vault lives on (Base Sepolia today); read there regardless of the connected chain. */
-const VAULT_CHAIN = VAULT_CHAIN_ID;
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 
 export function KillSwitchPanel() {
   const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;

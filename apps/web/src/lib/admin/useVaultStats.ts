@@ -12,10 +12,11 @@ import type { Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import type { WagmiChainId } from "@/lib/wagmi";
 import { capUtilizationPct } from "./vaultStats";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
-export const VAULT_CHAIN = VAULT_CHAIN_ID;
+export const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 
 export interface VaultStats {
   /** The deployed vault address, or undefined if this build has no vault configured. */

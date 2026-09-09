@@ -25,6 +25,7 @@ import { type Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -39,7 +40,7 @@ import "@/components/screens/fees.css";
  */
 const LAUNCH_FEE_BASIS = vaultFeeBasis("first_party");
 
-const VAULT_CHAIN = VAULT_CHAIN_ID;
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 export default function Page() {

@@ -18,6 +18,7 @@ import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon, type IconName } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
@@ -26,7 +27,7 @@ import { whitelistedProtocols, actionLabel } from "@/lib/policy/whitelistedProto
 import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
-const VAULT_CHAIN = VAULT_CHAIN_ID;
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 
 /**
  * The closed set of EXTERNAL on-chain venues the agent may route funds into (G5), derived from the
