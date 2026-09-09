@@ -100,6 +100,15 @@ The web app can auto-reload stale tabs onto a new deploy and greet users with wh
 feature/* ──PR──▶ develop ──(batched, non-Friday)──▶ main (prod)
 ```
 
+> ⚠️⚠️ **Per-environment hardcodes — double-check on EVERY `develop → main` promotion and mainnet deploy.**
+> `develop` = **testnet / alpha**, `main` = **mainnet / prod / beta**, and they share ONE codebase. So a value
+> hardcoded for testnet (a chain id like `84532`/`46630`, an RPC URL, a contract/token address, a default-chain
+> fallback, the SIWE chain set, a demo/test wallet) is **WRONG on mainnet** — and a future mainnet-only hardcode
+> is wrong on testnet. Before promoting to or deploying `main`, AUDIT that every env-specific value comes from an
+> **env var** or the **per-chain address book** (`packages/shared/src/addresses/`), never a literal in app/agent
+> logic. Prefer `isTestnetChain()` / config over `if (chainId === 84532)`. Env-specific config also lives in the
+> Coolify app env (per environment), so a develop→main promotion changes the CODE, not those — re-verify both.
+
 Every PR must pass the **OH Defender** security scan before merge (SCA / secrets / SAST; replaces CodeRabbit + Snyk). Check its Check Run gate:
 ```bash
 gh pr checks <PR> -R ObraHaus/sparkpoint-pivot --json name,bucket \
