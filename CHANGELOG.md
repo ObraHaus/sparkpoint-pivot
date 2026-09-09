@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security (dependency CVE bumps — folded in to clear the OH Defender gate)
+- **`next` 16.2.11 → 16.3.3** — two CRITICAL unauthenticated RCEs (GHSA-2xp9-vwfh-vxw4, image-optimization AVIF; CVE-2026-75604, windows-hosted servers). **alpha AND beta both ran `next@16.2.11`** — schedule a prod redeploy after this merges.
+- **`sharp` → 0.35.4** (libheif highs), **`browserslist` → 4.28.9** + **`baseline-browser-mapping` → 2.11.21** (DoS / prototype-pollution) via root `pnpm.overrides`. Verified: `tsc --noEmit` + `typecheck:test` + 650 web tests + eslint + `next build` all green.
+
 ### Changed (mainnet-beta readiness — the web app resolves its chain from config, not a hardcoded `84532`)
 - **~50 hardcoded Base Sepolia (`84532`) display/scoping fallbacks + `https://sepolia.basescan.org` links across `apps/web` now resolve through config.** New `apps/web/src/lib/chain/appChain.ts` exports `APP_DEFAULT_CHAIN_ID` (env `NEXT_PUBLIC_APP_CHAIN_ID` → else the lone vault-bearing switchable chain → else `PREFERRED_CHAIN_ID`) driving display + `x-chain-id` request scoping, and `VAULT_CHAIN_ID` (registry-derived from `offersVault`, = Base Sepolia today) driving vault-contract reads/writes; explorer links go through `explorerTxUrl`/`explorerAddressUrl(chainId, …)`. **Behaviour-preserving on develop/testnet** (resolves to `84532`); the mainnet-beta sets `NEXT_PUBLIC_APP_CHAIN_ID=4663` (+ `SIWE_CHAIN_ID=4663`, `SIWE_DOMAIN=beta.sparkpoint.io`) so the SAME codebase targets Robinhood Chain 4663 instead of silently leaking testnet.
 - **No fabricated on-chain references.** Removed the hardcoded guardian address (`0x0A21…d720`) from `KillSwitchPanel` (now renders "Reading chain…" until the live `guardian()` read resolves, mirroring the `paused` pill) and from `SystemPanel` (now defers to the live Kill-switch read). `VaultConfigPanel`'s vault-factory chain is now `String(VAULT_CHAIN_ID)`, not a `"84532"` literal.
