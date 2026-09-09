@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 type Role = "beta" | "admin";
 interface AuditEntry {
@@ -45,7 +46,7 @@ interface ApplicationRow {
   source?: string;
 }
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
 
 async function listRole(role: Role): Promise<string[]> {

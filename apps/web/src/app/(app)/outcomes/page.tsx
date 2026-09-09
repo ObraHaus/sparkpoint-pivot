@@ -16,6 +16,7 @@
  */
 
 import { useState } from "react";
+import type { Hex } from "viem";
 import {
   useOutcomes,
   useOutcomeDetail,
@@ -26,10 +27,9 @@ import {
 } from "@/lib/agent/useAgent";
 import { Icon } from "@/lib/icons";
 import { StatusTag } from "@/components/ui/status-tag";
+import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import "@/components/screens/support.css";
-
-// The Aave Yield Vault — and therefore every realized outcome — lives on Base Sepolia (84532).
-const EXPLORER = "https://sepolia.basescan.org";
 
 type OutcomesState = ReturnType<typeof useOutcomes>;
 
@@ -170,7 +170,7 @@ function RecRow({
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, fontSize: 12 }}>
         <span className="muted">Entry {rec.entryText}</span>
         {rec.actedTxHash ? (
-          <a className="cite" href={`${EXPLORER}/tx/${rec.actedTxHash}`} target="_blank" rel="noreferrer">
+          <a className="cite" href={explorerTxUrl(APP_DEFAULT_CHAIN_ID, rec.actedTxHash as Hex)} target="_blank" rel="noreferrer">
             acted tx <Icon name="ext" size={10} />
           </a>
         ) : null}
@@ -367,7 +367,7 @@ function PositionLedger({ view }: { view: OutcomesView }) {
                 {o.txHash ? (
                   <a
                     className="cite"
-                    href={`${EXPLORER}/tx/${o.txHash}`}
+                    href={explorerTxUrl(APP_DEFAULT_CHAIN_ID, o.txHash as Hex)}
                     target="_blank"
                     rel="noreferrer"
                   >

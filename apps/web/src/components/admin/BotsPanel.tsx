@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface Stream {
   networkId: string;
@@ -100,7 +101,7 @@ export function BotsPanel() {
   useEffect(() => {
     let live = true;
     const load = () =>
-      fetch("/api/agent/admin/bots/status", { headers: { "x-chain-id": "84532" }, cache: "no-store" })
+      fetch("/api/agent/admin/bots/status", { headers: { "x-chain-id": APP_CHAIN_ID_HEADER }, cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
         .then((d: BotsStatus) => live && (setData(d), setNow(Date.now()), setState("ok")))
         .catch(() => live && setState("error"));

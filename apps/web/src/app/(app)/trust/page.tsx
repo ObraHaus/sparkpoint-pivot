@@ -17,6 +17,8 @@ import { formatUnits, type Address } from "viem";
 import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon, type IconName } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { stageCopy } from "@/lib/stage";
@@ -24,8 +26,7 @@ import { whitelistedProtocols, actionLabel } from "@/lib/policy/whitelistedProto
 import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 
 /**
  * The closed set of EXTERNAL on-chain venues the agent may route funds into (G5), derived from the
@@ -54,7 +55,7 @@ function AddrRow({ label, addr }: { label: string; addr?: Address }) {
     <div className="statusrow">
       <span className="muted">{label}</span>
       {addr ? (
-        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={`${EXPLORER}/address/${addr}`} target="_blank" rel="noreferrer">
+        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={explorerAddressUrl(VAULT_CHAIN, addr)} target="_blank" rel="noreferrer">
           {short(addr)} <Icon name="ext" size={11} />
         </a>
       ) : (
@@ -222,7 +223,7 @@ export default function Page() {
                   <a
                     className="mono"
                     style={{ fontSize: 12, color: "var(--primary)" }}
-                    href={`${EXPLORER}/address/${p.address}`}
+                    href={explorerAddressUrl(VAULT_CHAIN, p.address)}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -254,7 +255,7 @@ export default function Page() {
                       <a
                         className="mono"
                         style={{ fontSize: 12, color: "var(--primary)" }}
-                        href={`${EXPLORER}/address/${w.address}`}
+                        href={explorerAddressUrl(VAULT_CHAIN, w.address)}
                         target="_blank"
                         rel="noreferrer"
                       >

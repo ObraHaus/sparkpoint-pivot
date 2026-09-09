@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 
 import { premiumStatusView, type PremiumStatus } from "@/lib/premium/tierStatus";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 export function useSelfPremiumStatus(): PremiumStatus {
   const [status, setStatus] = useState<PremiumStatus>({ active: false, untilLabel: null });
@@ -20,7 +21,7 @@ export function useSelfPremiumStatus(): PremiumStatus {
     void (async () => {
       try {
         const r = await fetch("/api/agent/usage/self", {
-          headers: { "x-chain-id": "84532" },
+          headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
           cache: "no-store",
         });
         if (!r.ok || !alive) return;

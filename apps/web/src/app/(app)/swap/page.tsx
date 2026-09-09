@@ -24,6 +24,7 @@ import { toHref } from "@/lib/nav";
 import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
@@ -34,7 +35,7 @@ import { TokenPicker } from "@/components/screens/swap/TokenPicker";
 import { TokenLogo } from "@/components/ui/TokenLogo";
 import { formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 const DASH = "—";
 /** Keep a little native ETH for gas when the user taps "Max" on an ETH-in swap. */
 const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH

@@ -17,9 +17,10 @@ import { useAccount } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { getPublicClient } from "@/lib/chain/clients";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { Icon } from "@/lib/icons";
 
-const DEFAULT_CHAIN = 84532;
+const DEFAULT_CHAIN = APP_DEFAULT_CHAIN_ID;
 
 type Tok = { symbol: string; address: Address; decimals: number };
 type Bal = { symbol: string; decimals: number; balance: bigint };

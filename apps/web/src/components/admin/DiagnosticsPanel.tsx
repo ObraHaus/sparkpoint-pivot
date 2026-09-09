@@ -21,6 +21,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+
 interface Diag {
   id: number;
   at: string;
@@ -54,7 +56,7 @@ export function DiagnosticsPanel() {
     try {
       const qs = `limit=200${mismatchOnly ? "&mismatch=true" : ""}`;
       const r = await fetch(`/api/agent/admin/diagnostics?${qs}`, {
-        headers: { "x-chain-id": "84532" },
+        headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
         cache: "no-store",
       });
       if (!r.ok) throw new Error(String(r.status));

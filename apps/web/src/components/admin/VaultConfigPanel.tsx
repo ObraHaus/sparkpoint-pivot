@@ -53,9 +53,13 @@ import type { Address, Hex } from "viem";
 import { Icon } from "@/lib/icons";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { chainName } from "@sparkpoint/shared/chains";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
 
 const API = "/api/agent/admin/vaults";
-const CHAIN_ID = "84532";
+// Vault-scoped: the vault (and its factory) live on VAULT_CHAIN_ID (Base Sepolia today). Deliberately
+// a constant, not a selector — see the header doc: the agent's factory env + API_SUPPORTED_CHAIN_IDS
+// pin this until the vault deploys to another chain, at which point the registry moves it in lockstep.
+const CHAIN_ID = String(VAULT_CHAIN_ID);
 const CHAIN = { "x-chain-id": CHAIN_ID } as const;
 
 /** The CLOSED guardian-action enum — NO fund-moving verb exists (mirrors the agent's enum). */

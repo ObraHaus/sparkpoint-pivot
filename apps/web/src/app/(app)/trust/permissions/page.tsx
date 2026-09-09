@@ -15,13 +15,14 @@ import { useReadContracts } from "wagmi";
 import { formatUnits, type Address } from "viem";
 import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
 import { useSessionKeys } from "@/lib/automation/useSessionKey";
 
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 const usd0 = (v?: bigint) => (v === undefined ? "…" : `$${Math.round(Number(formatUnits(v, 6))).toLocaleString("en-US")}`);
 
@@ -185,7 +186,7 @@ export default function Page() {
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
         {vault && (
-          <a className="btn btn-outline btn-md" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">
+          <a className="btn btn-outline btn-md" href={explorerAddressUrl(VAULT_CHAIN, vault)} target="_blank" rel="noreferrer">
             <Icon name="ext" size={16} /> Verify on Basescan
           </a>
         )}

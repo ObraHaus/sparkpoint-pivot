@@ -109,6 +109,18 @@ feature/* ──PR──▶ develop ──(batched, non-Friday)──▶ main (p
 > logic. Prefer `isTestnetChain()` / config over `if (chainId === 84532)`. Env-specific config also lives in the
 > Coolify app env (per environment), so a develop→main promotion changes the CODE, not those — re-verify both.
 
+> **How the web app resolves its chain (added 2026-09-09, `feature/mainnet-chain-hardcodes`).** The ~50 `84532`
+> display/scoping fallbacks and `https://sepolia.basescan.org` links that used to be hardcoded across `apps/web`
+> now resolve through `apps/web/src/lib/chain/appChain.ts` + the shared explorer helpers:
+> `APP_DEFAULT_CHAIN_ID` (env `NEXT_PUBLIC_APP_CHAIN_ID` → else the lone vault-bearing switchable chain → else
+> `PREFERRED_CHAIN_ID`) drives display + `x-chain-id` request scoping; `VAULT_CHAIN_ID` (registry-derived from
+> `offersVault`, = Base Sepolia today) drives vault-contract reads/writes; explorer links go through
+> `explorerTxUrl`/`explorerAddressUrl(chainId, …)`. **Per environment, set these envs** — mainnet-beta:
+> `NEXT_PUBLIC_APP_CHAIN_ID=4663`, `SIWE_CHAIN_ID=4663`, `SIWE_DOMAIN=beta.sparkpoint.io`; develop leaves
+> `NEXT_PUBLIC_APP_CHAIN_ID` unset (→ resolves to `84532`, unchanged). `NEXT_PUBLIC_*` is **build-time-inlined**,
+> so set it **then** redeploy. Never reintroduce a bare `84532` / `sepolia.basescan.org` literal — import the
+> helper or read the per-chain address book.
+
 Every PR must pass the **OH Defender** security scan before merge (SCA / secrets / SAST; replaces CodeRabbit + Snyk). Check its Check Run gate:
 ```bash
 gh pr checks <PR> -R ObraHaus/sparkpoint-pivot --json name,bucket \

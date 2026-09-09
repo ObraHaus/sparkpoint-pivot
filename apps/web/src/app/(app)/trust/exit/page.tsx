@@ -11,12 +11,13 @@
 
 import { useRouter } from "next/navigation";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
 
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 
 export default function Page() {
   const router = useRouter();
@@ -75,7 +76,7 @@ export default function Page() {
               <a
                 className="mono"
                 style={{ fontSize: 12, color: "var(--primary)", marginTop: 3, display: "inline-flex", gap: 4 }}
-                href={`${EXPLORER}/address/${vault}`}
+                href={explorerAddressUrl(VAULT_CHAIN, vault)}
                 target="_blank"
                 rel="noreferrer"
               >

@@ -22,6 +22,8 @@ import { Icon } from "@/lib/icons";
 import { Kpi } from "@/components/admin/charts";
 import { useVaultStats, VAULT_CHAIN } from "@/lib/admin/useVaultStats";
 import { formatUsdCompact, shortAddr } from "@/lib/admin/vaultStats";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
 
 export function VaultOverviewPanel() {
   const s = useVaultStats();
@@ -138,7 +140,7 @@ export function VaultOverviewPanel() {
               <a
                 className="mono"
                 style={{ fontSize: 11, color: "var(--primary)" }}
-                href={`https://sepolia.basescan.org/address/${s.guardian}`}
+                href={explorerAddressUrl(VAULT_CHAIN_ID, s.guardian)}
                 target="_blank"
                 rel="noreferrer"
               >

@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import { premiumSourceView, SUBSCRIPTIONS_RETIRED } from "@/lib/chain/brokers";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
@@ -60,7 +61,7 @@ function UsageThisPeriod() {
     void (async () => {
       try {
         const r = await fetch("/api/agent/usage/self", {
-          headers: { "x-chain-id": "84532" },
+          headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
           cache: "no-store",
         });
         if (r.ok && alive) setUsage((await r.json()) as SelfUsage);
