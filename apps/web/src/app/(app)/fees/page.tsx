@@ -24,6 +24,9 @@ import { useReadContracts } from "wagmi";
 import { type Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import type { WagmiChainId } from "@/lib/wagmi";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { StatusTag } from "@/components/ui/status-tag";
@@ -37,8 +40,7 @@ import "@/components/screens/fees.css";
  */
 const LAUNCH_FEE_BASIS = vaultFeeBasis("first_party");
 
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 export default function Page() {
@@ -146,7 +148,7 @@ export default function Page() {
             {feeRecipient ? (
               <a
                 className="btn btn-ghost btn-sm"
-                href={`${EXPLORER}/address/${feeRecipient}`}
+                href={explorerAddressUrl(VAULT_CHAIN, feeRecipient)}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -242,7 +244,7 @@ export default function Page() {
           {vault ? (
             <a
               className="mono"
-              href={`${EXPLORER}/address/${vault}#readContract`}
+              href={explorerAddressUrl(VAULT_CHAIN, vault)}
               target="_blank"
               rel="noreferrer"
               style={{ color: "var(--primary)" }}
@@ -260,7 +262,7 @@ export default function Page() {
           {feeRecipient ? (
             <a
               className="mono"
-              href={`${EXPLORER}/address/${feeRecipient}`}
+              href={explorerAddressUrl(VAULT_CHAIN, feeRecipient)}
               target="_blank"
               rel="noreferrer"
               style={{ color: "var(--primary)" }}

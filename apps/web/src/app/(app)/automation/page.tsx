@@ -12,7 +12,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Hex } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
@@ -33,11 +36,11 @@ import {
 } from "@/lib/automation/scope";
 import { hasSessionKey, wipeSessionKey } from "@/lib/automation/sessionKeyStore";
 
-const VAULT_CHAIN = 84532;
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
-function explorerTx(hash: string): string {
-  return `https://sepolia.basescan.org/tx/${hash}`;
+function explorerTx(hash: string): string | undefined {
+  return explorerTxUrl(VAULT_CHAIN, hash as Hex);
 }
 
 const SAFE: [string, string][] = [

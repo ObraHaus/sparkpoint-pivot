@@ -24,9 +24,6 @@ import { useRouter } from "next/navigation";
 import { tilesFrom, type ReadyzDetail } from "@/lib/admin/systemTiles";
 import { Icon } from "@/lib/icons";
 
-/** The live guardian of the deployed Base-Sepolia vault (OZ TimelockController). */
-const GUARDIAN_TIMELOCK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
-
 export function SystemPanel() {
   const router = useRouter();
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
@@ -116,14 +113,8 @@ export function SystemPanel() {
           </div>
           <div className="statusrow">
             <span className="muted">Guardian (on-chain)</span>
-            <a
-              className="mono"
-              style={{ fontSize: 11, color: "var(--primary)" }}
-              href={`https://sepolia.basescan.org/address/${GUARDIAN_TIMELOCK}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {GUARDIAN_TIMELOCK.slice(0, 6)}…{GUARDIAN_TIMELOCK.slice(-4)} <Icon name="ext" size={11} />
+            <a href="/admin/killswitch" style={{ color: "var(--primary)" }}>
+              Read live on the Kill-switch page →
             </a>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>

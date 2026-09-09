@@ -20,8 +20,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const API = "/api/agent/admin/content";
 
 type EntryType = "changelog" | "announcement";

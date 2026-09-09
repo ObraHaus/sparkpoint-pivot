@@ -34,9 +34,10 @@ import {
   removeDomain,
   toggleSource,
 } from "@/lib/selfauthor/settings";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 const API = "/api/agent/admin/self-authoring";
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 
 interface Settings {
   enabled: boolean;

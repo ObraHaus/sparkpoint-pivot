@@ -19,7 +19,8 @@ import { useAccount, usePublicClient, useReadContract, useWriteContract } from "
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
 import { srkFaucetAbi } from "@sparkpoint/shared/abis";
-import { explorerTxUrl } from "@/lib/chain/explorer";
+import { explorerAddressUrl, explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import {
   faucetErrorCopy,
   formatCountdown,
@@ -237,7 +238,7 @@ export default function Page() {
                 <span>Contract</span>
                 <a
                   className="mono"
-                  href={`https://sepolia.basescan.org/address/${faucet}`}
+                  href={explorerAddressUrl(APP_DEFAULT_CHAIN_ID, faucet)}
                   target="_blank"
                   rel="noreferrer"
                   style={{ color: "var(--primary)" }}

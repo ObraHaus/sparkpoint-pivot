@@ -60,6 +60,14 @@ export const wagmiConfig = createConfig({
   },
 });
 
+/**
+ * The chain-id union wagmi's hooks accept for `chainId` (the ids of `REGISTERED_CHAINS`).
+ * Exported so call sites that feed a resolved-at-runtime chain id (e.g. `VAULT_CHAIN_ID`,
+ * a `number`) into a wagmi read/write can assert it back into the config's union with one
+ * shared type instead of re-deriving `(typeof wagmiConfig)["chains"][number]["id"]` inline.
+ */
+export type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
+
 declare module "wagmi" {
   interface Register {
     config: typeof wagmiConfig;

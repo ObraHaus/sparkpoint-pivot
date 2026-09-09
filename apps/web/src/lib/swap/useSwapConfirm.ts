@@ -23,6 +23,7 @@ import { erc20Abi, parseUnits, type Address } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { wagmiConfig } from "@/lib/wagmi";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
 import { swapTokens, isConfiguredToken, type SwapToken } from "@/lib/swap/tokens";
 import { useSwapQuote, type SwapQuoteResult } from "@/lib/swap/useSwapQuote";
@@ -36,7 +37,7 @@ import {
 } from "@/lib/swap/math";
 
 type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
 /** Parse a decimal amount string to base units; empty/invalid ⇒ 0n (fail-closed, never throws). */

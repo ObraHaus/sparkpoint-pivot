@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 import {
   EMPTY_DRAFT,
   MAX_CONTACT,
@@ -59,7 +60,7 @@ export function AccessApplicationForm() {
     void (async () => {
       try {
         const r = await fetch("/api/agent/access/application", {
-          headers: { "x-chain-id": "84532" },
+          headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
           cache: "no-store",
           signal: ctrl.signal,
         });
@@ -89,7 +90,7 @@ export function AccessApplicationForm() {
     try {
       const r = await fetch("/api/agent/access/application", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-chain-id": "84532" },
+        headers: { "content-type": "application/json", "x-chain-id": APP_CHAIN_ID_HEADER },
         body: JSON.stringify(toSubmitBody(draft)),
       });
       const body = (await r.json().catch(() => null)) as unknown;

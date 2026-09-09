@@ -33,6 +33,7 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm, toNum } from "@/lib/chain/useVaultConfirm";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import "@/components/screens/vault.css";
@@ -40,7 +41,7 @@ import "@/components/screens/vault.css";
 const DECIMALS = 6;
 
 /** The chain whose address book seeds the vault options pre-connect (Base Sepolia). */
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
 function safeAddresses(chainId: number | undefined) {

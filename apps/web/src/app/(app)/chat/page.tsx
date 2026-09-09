@@ -71,11 +71,12 @@ import { AgentApiError } from "@/lib/agent/client";
 import { turnCanRetry } from "@/lib/agent/chatError";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import "@/components/screens/chat.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors portfolio/page). */
-const CHAT_DISPLAY_CHAIN_ID = 84532;
+const CHAT_DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
 

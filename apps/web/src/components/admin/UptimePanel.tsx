@@ -18,6 +18,8 @@
 
 import { useEffect, useState } from "react";
 
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+
 interface Monitor {
   name: string;
   status: string;
@@ -42,7 +44,7 @@ export function UptimePanel() {
   useEffect(() => {
     let live = true;
     const load = () =>
-      fetch("/api/agent/admin/uptime", { headers: { "x-chain-id": "84532" }, cache: "no-store" })
+      fetch("/api/agent/admin/uptime", { headers: { "x-chain-id": APP_CHAIN_ID_HEADER }, cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
         .then((d: Uptime) => live && (setData(d), setState("ok")))
         .catch(() => live && setState("error"));

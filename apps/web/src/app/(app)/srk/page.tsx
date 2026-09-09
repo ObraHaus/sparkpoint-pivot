@@ -10,13 +10,15 @@
 
 import Link from "next/link";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 
 /** SRK is Base-Sepolia-only by design (a fixed-supply TEST token, hand-distributed). */
-const SRK_CHAIN = 84532;
+const SRK_CHAIN = APP_DEFAULT_CHAIN_ID;
 
 const FACTS: [string, string][] = [
   [
@@ -102,7 +104,7 @@ export default function Page() {
           </div>
           <a
             className="mono"
-            href={`https://sepolia.basescan.org/token/${srk}`}
+            href={explorerAddressUrl(SRK_CHAIN, srk)}
             target="_blank"
             rel="noreferrer"
             style={{ color: "var(--primary)", fontSize: 12, wordBreak: "break-all" }}

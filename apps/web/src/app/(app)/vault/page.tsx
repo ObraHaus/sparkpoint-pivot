@@ -26,6 +26,7 @@ import { toHref } from "@/lib/nav";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { useVault } from "@/lib/chain/useVault";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
@@ -48,7 +49,7 @@ function safeAddresses(chainId: number | undefined) {
 }
 
 /** The chain whose live vault the dashboard reads before a wallet connects (Base Sepolia). */
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Raw base units → a JS number for the design's `fmt`/`money` display helpers. */
 function toNum(x: bigint | undefined, decimals = DECIMALS): number {

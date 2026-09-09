@@ -17,12 +17,13 @@ import { useNetwork } from "@/lib/network";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { wagmiConfig } from "@/lib/wagmi";
 import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { StatusTag } from "@/components/ui/status-tag";
 import { stageCopy } from "@/lib/stage";
 import "@/components/screens/bridge.css";
 
-const BASE_SEPOLIA = 84532;
+const BASE_SEPOLIA = APP_DEFAULT_CHAIN_ID;
 const ROBINHOOD_TESTNET = 46630;
 
 interface FaucetLink {
@@ -313,7 +314,7 @@ export default function Page() {
                 The vault accepts the Aave-market test USDC. Mint 1,000 to your wallet in one click — you sign, it lands
                 in your wallet — then deposit in the vault.
               </div>
-              <MintTestUsdcButton faucet={faucet} usdc={usdc} chainId={BASE_SEPOLIA} />
+              <MintTestUsdcButton faucet={faucet} usdc={usdc} chainId={BASE_SEPOLIA as WagmiChainId} />
               <SwapHint router={router} />
             </div>
           )}

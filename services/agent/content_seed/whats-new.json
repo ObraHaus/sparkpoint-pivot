@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "app-ready-for-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Getting the app ready to run on Robinhood mainnet",
+      "body": "Until now, parts of the app quietly assumed the test network everywhere — which network to show when your wallet wasn't connected, which explorer the \"view transaction\" links pointed at, and which network the admin tools talked to were all fixed to Base Sepolia.\n\nThat's fine while there's only a test environment, but the beta is going live on Robinhood Chain, and the same code runs in both places. So every screen now follows whichever network the build is pointed at, in one place, instead of each screen deciding on its own.\n\nNothing changes for you on the test network — it behaves exactly as before. On the mainnet beta, links and network labels will correctly point at Robinhood Chain rather than the test network. No action needed.",
+      "published_at": "2026-09-09T12:00:00Z"
+    },
+    {
       "slug": "activity-bots-were-firing-but-idle",
       "type": "changelog",
       "tag": "Fixed",

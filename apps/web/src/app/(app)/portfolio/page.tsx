@@ -20,6 +20,7 @@ import { money } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -31,7 +32,7 @@ import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors vault/page). */
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
 function safeAddresses(chainId: number | undefined) {
