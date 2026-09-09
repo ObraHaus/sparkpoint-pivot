@@ -85,8 +85,10 @@ DATABASE_URL=postgresql://sparkpoint:sparkpoint@localhost:5432/sparkpoint
 # NB: holds NO keys/secrets/signed payloads — derived index only (data-model.md §15)
 
 # ---- Service wiring ----
-AGENT_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_AGENT_BASE_URL=http://localhost:8000
+# The browser calls the web app's OWN origin at /api/agent/* (the BFF); the agent URL is SERVER-ONLY
+# (never NEXT_PUBLIC), so it stays out of the client bundle. No client-side direct-to-agent override.
+AGENT_INTERNAL_URL=http://localhost:8000
+AGENT_S2S_TOKEN=dev-s2s-token
 NEXT_PUBLIC_CHAIN_ID=84532
 
 # ---- Optional ----
@@ -94,7 +96,7 @@ BASESCAN_API_KEY=...
 SENTRY_DSN=...
 ```
 
-> The frontend's **custody-critical** reads (vault balance, caps, kill-switch, Trust Center, `/exit`) use `NEXT_PUBLIC_*` chain config and talk **directly** to Alchemy RPC. They are intentionally **independent** of `NEXT_PUBLIC_AGENT_BASE_URL`, so the app degrades safely when the agent is down (N2). Keep these two concerns separate while editing config.
+> The frontend's **custody-critical** reads (vault balance, caps, kill-switch, Trust Center, `/exit`) use `NEXT_PUBLIC_*` chain config and talk **directly** to Alchemy RPC. They are intentionally **independent** of the agent (which is reached only via the same-origin BFF, `AGENT_INTERNAL_URL`), so the app degrades safely when the agent is down (N2). Keep these two concerns separate while editing config.
 
 **TODO (infra):** author `.env.example` with every var above grouped and commented; add a `pnpm env:check` (or `scripts/check-env.sh`) that validates presence/shape and **fails closed** with a readable message before any service starts.
 

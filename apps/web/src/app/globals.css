@@ -150,6 +150,23 @@ button{font-family:inherit;}
   background-size:200% 100%;animation:sp-shimmer 1.2s linear infinite;border-radius:6px;}
 @media (prefers-reduced-motion: reduce){ .ai-dot{animation:none;} .skel{animation:none;} }
 
+/* 036 — the chat waiting state: animated mark + the step + a clock.
+   The mark BREATHES rather than spins. A spinning logo reads as a generic loader and stops being
+   the brand; a slow scale-and-glow reads as alive, which is the one thing the row has to say. */
+@keyframes sp-breathe{
+  0%,100%{transform:scale(.9);filter:drop-shadow(0 0 0 var(--spark-glow));opacity:.75;}
+  50%{transform:scale(1.06);filter:drop-shadow(0 0 6px var(--spark-glow));opacity:1;}
+}
+.thinking-row{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:13px;
+  color:var(--muted-foreground);}
+.thinking-mark{display:inline-flex;animation:sp-breathe 1.6s ease-in-out infinite;
+  transform-origin:center;line-height:0;}
+.thinking-label{color:var(--foreground);opacity:.9;}
+/* Tabular figures so the clock does not shuffle its own text sideways as the digits change. */
+.thinking-clock{font-variant-numeric:tabular-nums;font-size:12px;opacity:.7;}
+.thinking-note{font-size:12px;opacity:.7;margin:2px 0 0 27px;}
+@media (prefers-reduced-motion: reduce){ .thinking-mark{animation:none;} }
+
 /* ===========================================================================
    Authenticated shell + shared screen atoms (ported verbatim from app.css)
    =========================================================================== */
@@ -214,9 +231,35 @@ button{font-family:inherit;}
 .navlink svg{width:18px;height:18px;flex:none;}
 .navlink .badge-sm{margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;
   background:var(--muted);color:var(--muted-foreground);}
+/* Collapsible nav group (NavTree) — rail + mobile More sheet. */
+.navgroup{display:flex;flex-direction:column;gap:2px;}
+.navgroup-btn{width:100%;border:none;background:none;font-family:inherit;text-align:left;}
+.navgroup-chev{margin-left:auto;display:inline-flex;line-height:0;transition:transform .15s;}
+.navgroup-chev.open{transform:rotate(180deg);}
+.navgroup-items{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 20px;padding-left:8px;
+  border-left:1px solid var(--border-soft);}
+@media (prefers-reduced-motion: reduce){ .navgroup-chev{transition:none;} }
+
 .navlink.exit{color:var(--foreground);border:1px solid var(--border);margin-top:4px;}
 .navlink.exit svg{color:var(--gain);}
 .navlink.exit:hover{border-color:var(--gain);}
+
+/* Sidebar tip / announcement widget (TipWidget) — compact card sized for the 212px rail. */
+.tipcard{margin:6px 2px 6px;padding:11px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);display:flex;flex-direction:column;gap:6px;}
+.tipcard-ann{border-color:color-mix(in srgb,var(--info) 45%,var(--border));background:var(--info-subtle);}
+.tipcard-hd{display:flex;align-items:center;justify-content:space-between;}
+.tipcard-eyebrow{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);}
+.tipcard-ann .tipcard-eyebrow{color:var(--info);}
+.tipcard-x{border:none;background:none;color:var(--muted-foreground);cursor:pointer;padding:2px;border-radius:6px;display:inline-flex;line-height:0;}
+.tipcard-x:hover{background:var(--muted);color:var(--foreground);}
+.tipcard-title{font-size:13px;font-weight:600;color:var(--foreground);line-height:1.3;}
+.tipcard-body{font-size:12px;color:var(--muted-foreground);line-height:1.45;}
+.tipcard-cta{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--primary);text-decoration:none;margin-top:2px;}
+.tipcard-cta:hover{text-decoration:underline;}
+.tipcard-ft{display:flex;align-items:center;justify-content:space-between;margin-top:2px;padding-top:8px;border-top:1px solid var(--border-soft);}
+.tipcard-count{font-size:10.5px;color:var(--muted-foreground);font-variant-numeric:tabular-nums;}
+.tipcard-next{border:none;background:none;color:var(--foreground);font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:2px 4px;border-radius:6px;}
+.tipcard-next:hover{background:var(--muted);}
 
 .main{flex:1;min-width:0;overflow-y:auto;position:relative;}
 .page{max-width:1180px;margin:0 auto;padding:28px 28px 80px;}
@@ -394,3 +437,15 @@ button{font-family:inherit;}
   .seg{flex-wrap:wrap;}
 }
 @media (min-width:1024px){ .only-mobile{display:none!important;} }
+
+/* Reduce motion (settings → Appearance) — device-local override, stamped as data-reduced-motion on
+   <html> by PrefsEffect (feature 016). Kills CSS transitions/animations. The landing WebGL has its
+   own reduced-motion path (NewEraLanding) and is intentionally NOT governed here. */
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after{
+  animation-duration:.001ms !important;
+  animation-iteration-count:1 !important;
+  transition-duration:.001ms !important;
+  scroll-behavior:auto !important;
+}

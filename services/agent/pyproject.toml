@@ -1,0 +1,75 @@
+[project]
+name = "sparkpoint-agent"
+version = "0.0.0"
+description = "SparkPoint Hermes agent service — deterministic Coordinator DAG, fail-closed LLM-free policy engine, self-hosted Anvil-fork Simulator. Holds no user keys; emits only unsigned, simulated, policy-approved IntentBundles."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "httpx>=0.27",
+  "anthropic>=0.40",
+  "asyncpg>=0.30",
+  "eth-abi>=5.2.0",
+  # ⚠️ Deliberate divergence from this service's keccak-free convention (see the notes in
+  # chain/srk_gate.py, chain/faucet_probe.py, data/log_source.py and others: every selector and
+  # event topic is pinned as a constant precisely so no hash backend is needed).
+  #
+  # chain/broker_allocation.py cannot comply. It builds a Merkle tree over per-period allocations,
+  # and there is no constant to pin — the leaves depend on who held what when a period closed. The
+  # convention was "don't take the dependency when you don't need it", and here it is needed.
+  # Nothing else in the service may import keccak; the pinned-constant rule still stands everywhere.
+  "eth-hash[pycryptodome]>=0.7.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3", "pytest-asyncio>=0.24"]
+# Migration tooling (raw-SQL yoyo CLI, run out-of-band — not on the app hot path).
+# yoyo's default postgres backend uses psycopg2 with a plain postgresql:// DSN.
+migrations = ["yoyo-migrations>=8.2", "psycopg2-binary>=2.9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sparkpoint_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["sparkpoint_agent"]
+
+# asyncpg ships no py.typed marker; ignore its missing stubs without weakening
+# strict mode for our own code (db/ still binds asyncpg results to typed locals).
+[[tool.mypy.overrides]]
+module = ["asyncpg.*"]
+ignore_missing_imports = true
+
+# eth-abi ships py.typed but re-exports encode/decode via module-level assignment
+# (not __all__), which strict --no-implicit-reexport rejects on the documented
+# ``import eth_abi; eth_abi.encode`` API. Allow its implicit re-exports without
+# weakening strictness for our own code (the chain reader still binds eth-abi
+# results to typed ints/strs/bools).
+[[tool.mypy.overrides]]
+module = ["eth_abi", "eth_abi.*"]
+implicit_reexport = true
+
+# eth-utils re-exports `keccak` the same way, and hits the same strict-mode rule. Used only by
+# chain/broker_allocation.py, whose return values are bound to `bytes` immediately.
+[[tool.mypy.overrides]]
+module = ["eth_utils", "eth_utils.*"]
+implicit_reexport = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"

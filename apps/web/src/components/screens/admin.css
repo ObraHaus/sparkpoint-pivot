@@ -76,9 +76,13 @@
 .grid2 .span2{grid-column:1/-1;}
 @media(max-width:1080px){.grid2{grid-template-columns:1fr;}}
 .chartcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
-.chartcard .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:10px;}
-.chartcard .ct{font-size:14px;font-weight:600;}
-.chartcard .prov{font-size:10.5px;color:var(--muted-foreground);}
+/* 035 — `.ch` is a card-header ROW wherever it appears, not only inside a .chartcard. Scoping it to
+   .chartcard left every other user unstyled, so the title and its provenance label ran together:
+   "Top users by net depositedpseudonymized · 1 premium active". Several panels had already worked
+   around it with inline styles; the ones that had not were simply broken on screen. */
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:10px;}
+.ct{font-size:14px;font-weight:600;}
+.prov{font-size:10.5px;color:var(--muted-foreground);}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 4px;}
 .legend span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted-foreground);}
 .legend i{width:11px;height:11px;border-radius:3px;display:block;}

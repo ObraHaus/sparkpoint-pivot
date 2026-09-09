@@ -20,6 +20,69 @@ export const STREAM = {
   treasury: "#8A97A8",
 } as const;
 
+/** KPI tile — faithful port of the source `kpi()` builder. A chart PRIMITIVE (relocated here from
+ *  `data.tsx` in feature 013 so the real `/admin/revenue` reads no mock module). */
+export function Kpi({
+  label,
+  val,
+  spark,
+  sparkColor,
+  delta,
+  deltaCls,
+  ai = false,
+}: {
+  label: ReactNode;
+  val: ReactNode;
+  /** A sparkline is optional — a live single-value tile omits it rather than draw a fabricated trend. */
+  spark?: number[];
+  sparkColor?: string;
+  delta?: ReactNode;
+  deltaCls?: "up" | "down" | "flat";
+  ai?: boolean;
+}) {
+  return (
+    <div className="kpi">
+      <div className="k">
+        {ai ? <span className="aimark" /> : null}
+        {label}
+      </div>
+      <div className="v tnum">{val}</div>
+      <div className="foot">
+        {spark && spark.length ? <Sparkline vals={spark} color={sparkColor ?? STREAM.swap} /> : <span />}
+        {delta ? <span className={`delta ${deltaCls ?? "flat"}`}>{delta}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+/** revenue-stream legend — faithful port of `legendStreams(withProj)`. A chart PRIMITIVE. */
+export function LegendStreams({ withProj }: { withProj: boolean }) {
+  return (
+    <div className="legend">
+      <span>
+        <i style={{ background: STREAM.swap }} />
+        Swap fee
+      </span>
+      <span>
+        <i style={{ background: STREAM.premium }} />
+        Premium
+      </span>
+      {withProj ? (
+        <>
+          <span>
+            <i style={{ background: STREAM.perf }} />
+            Perf fee
+          </span>
+          <span style={{ color: STREAM.srk }}>
+            <i className="dash" style={{ color: STREAM.srk }} />
+            SRK <span className="estbadge">EST</span>
+          </span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /** $X / $X.YM / $X.YK abbreviation (abbr in the source). */
 export function abbr(n: number): string {
   return n >= 1e6

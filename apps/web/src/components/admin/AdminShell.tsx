@@ -13,10 +13,13 @@
  * in this panel can move user funds; the kill-switch is propose-and-sign only.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+
+import { activeNav } from "@/lib/admin/nav";
 import { useTheme } from "next-themes";
 import { Icon, SparkMark } from "@/lib/icons";
+import { StageBadge } from "@/components/ui/stage-badge";
 import {
   AdminRoleProvider,
   useAdminRole,
@@ -26,6 +29,13 @@ import {
   type RoleKey,
   type NavKey,
 } from "./role-context";
+
+// Stable `useSyncExternalStore` args for a hydration-safe "is mounted on the client" flag: the store
+// never changes (no-op subscribe), the client snapshot is `true`, the server/hydration snapshot is
+// `false`. Module-scoped so their identities are stable across renders.
+const _subscribeNoop = (): (() => void) => () => {};
+const _snapshotTrue = (): boolean => true;
+const _snapshotFalse = (): boolean => false;
 
 function NavItem({ nav, active, onNav }: { nav: NavKey; active: boolean; onNav: () => void }) {
   const [label, icon] = NAVMETA[nav];
@@ -129,14 +139,11 @@ function RoleSwitch() {
   );
 }
 
-/** map the current pathname to the active nav key. */
-function activeNav(pathname: string): NavKey {
-  const entry = (Object.entries(NAV_HREF) as [NavKey, string][])
-    // longest href first so /admin/users wins over /admin
-    .sort((a, b) => b[1].length - a[1].length)
-    .find(([, href]) => pathname === href || pathname.startsWith(href + "/"));
-  return entry ? entry[0] : "overview";
-}
+/** map the current location to the active nav key.
+ *
+ * 032 — three nav entries now point at ONE page with a `?section=`, so the pathname alone cannot
+ * tell them apart: without the section, clicking "Tips" would highlight "Knowledge". The section
+ * is matched first, then the pathname as before. */
 
 function Shell({ children }: { children: ReactNode }) {
   const { role } = useAdminRole();
@@ -146,13 +153,19 @@ function Shell({ children }: { children: ReactNode }) {
   // Dismissible scaffold notice — once closed, the panel matches the design 1:1.
   const [bannerOpen, setBannerOpen] = useState(true);
 
-  // next-themes leaves resolvedTheme undefined until hydration, so this defaults
-  // to the source's dark theme (moon / "Dark mode") with no flash and no mount flag.
-  const isLight = resolvedTheme === "light";
+  // Mount guard (fixes a shell-wide React #418 hydration mismatch): next-themes resolves the real
+  // theme from <html> BEFORE React hydrates, so reading `resolvedTheme` during the first client
+  // render differs from the SSR default (undefined → dark) and throws a text mismatch on the toggle
+  // label. `useSyncExternalStore` returns the server snapshot (false) through hydration, then the
+  // client snapshot (true) after — hydration-safe, and no setState-in-effect. The real theme applies
+  // post-mount (one clean re-render, no flash of wrong content).
+  const mounted = useSyncExternalStore(_subscribeNoop, _snapshotTrue, _snapshotFalse);
+  const isLight = mounted && resolvedTheme === "light";
 
   const r = ROLES[role];
-  const primary = r.nav.filter((n) => !["cfg", "audit"].includes(n));
-  const admin = r.nav.filter((n) => ["cfg", "audit"].includes(n));
+  // 035 — the "Admin" sub-group held exactly `cfg` and `audit`, and both are now sections of a
+  // console. A heading over an empty list is worse than no heading, so the split goes with them.
+  const primary = r.nav;
   const cur = activeNav(pathname);
   const closeNav = () => setNavOpen(false);
 
@@ -169,10 +182,7 @@ function Shell({ children }: { children: ReactNode }) {
           <SparkMark size={21} className="smk" />
           Sparky Ops
         </span>
-        <span className="envbadge">PROD</span>
-        <span className="fresh hide-sm">
-          <Icon name="refresh" size={13} /> data fresh 42s ago
-        </span>
+        <StageBadge className="envbadge" led={false} />
         <span className="grow" />
         <span
           className="obschip"
@@ -187,9 +197,10 @@ function Shell({ children }: { children: ReactNode }) {
         <div className="adscaffold">
           <Icon name="alert" size={14} />
           <span>
-            <b>Scaffold — no authentication or authorization yet.</b> This panel is reachable without sign-in and
-            the &ldquo;View as&rdquo; switcher is cosmetic. Nothing here can move user funds; the kill-switch is
-            propose-and-sign only.
+            <b>Admin access is enforced</b> (SIWE admin session — non-admins get a 404), but several panels
+            still show <b>illustrative sample data</b>, not live figures. Live today: LLM gateway, Allowlist,
+            Kill-switch, System. The &ldquo;View as&rdquo; switcher is cosmetic. Nothing here can move user
+            funds; the kill-switch is propose-and-sign only.
           </span>
           <button
             className="adscaffold-x"
@@ -214,10 +225,6 @@ function Shell({ children }: { children: ReactNode }) {
             </span>
           </button>
           {primary.map((n) => (
-            <NavItem key={n} nav={n} active={cur === n} onNav={closeNav} />
-          ))}
-          {admin.length ? <div className="seclbl">Admin</div> : null}
-          {admin.map((n) => (
             <NavItem key={n} nav={n} active={cur === n} onNav={closeNav} />
           ))}
           <button className="navtheme" type="button" onClick={() => setTheme(isLight ? "dark" : "light")}>

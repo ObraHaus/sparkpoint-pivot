@@ -18,9 +18,19 @@
 .ctx .ck{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-bottom:9px;}
 
 .cturn{display:flex;gap:11px;}
-.cturn.user{justify-content:flex-end;}
+/* 041 — a column so a queued/unsent note can sit UNDER its bubble; `align-items` keeps both
+   right-aligned exactly as `justify-content:flex-end` did when the bubble was the only child. */
+.cturn.user{flex-direction:column;align-items:flex-end;gap:4px;}
 .cturn .cav{width:28px;height:28px;border-radius:50%;background:var(--spark-subtle);display:grid;place-items:center;flex:none;border:1px solid color-mix(in srgb,var(--primary) 25%,transparent);}
 .cbubble-user{background:var(--card-2);border:1px solid var(--border);border-radius:14px 14px 4px 14px;padding:10px 14px;font-size:14.5px;max-width:78%;}
+/* 041 — a message that has not gone out yet must not look like one that has. */
+.cbubble-user.waiting{opacity:.62;border-style:dashed;}
+.cturn.user .qmark{font-size:11.5px;color:var(--muted-foreground);max-width:78%;text-align:right;}
+.cturn.user .qmark.unsent{color:var(--caution);}
+.cturn.user .qsend{font:inherit;color:var(--primary);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
+.cturn.user .qsend:hover{opacity:.8;}
+.qnotice{max-width:680px;margin:0 auto;padding:6px 0 2px;font-size:12px;color:var(--muted-foreground);}
+
 .cname{font-size:11.5px;font-weight:600;color:var(--primary);margin-bottom:5px;}
 .ctext{font-size:15px;line-height:1.55;}
 .ctext .soft{color:var(--muted-foreground);}
@@ -44,7 +54,7 @@
 .fbtn:hover{border-color:var(--primary);color:var(--foreground);}
 .fbtn.on{border-color:var(--primary);background:var(--spark-subtle);color:var(--primary);}
 
-.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0;max-width:680px;margin:0 auto;}
 .chips .chip{flex:none;}
 .composer-wrap{padding:8px 24px 16px;}
 .composer{max-width:680px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:10px;}

@@ -1,0 +1,126 @@
+{
+  "$comment": [
+    "FR-020 vault-eligibility candidates — feature 024 multi-protocol vaults, constitution v3.0.0.",
+    "",
+    "Every candidate a SparkPoint Fee Wrapper may bind to, with the EXPECTATIONS the CI gate asserts",
+    "against live chain state. Checked by contracts/script/vault-eligibility-check.sh, wired as the",
+    "vault-eligibility workflow. Read-only: the gate only ever runs `cast call` / `cast code`.",
+    "",
+    "WHY A COMMITTED FILE AND NOT THE DATABASE. Migration 0026 (vault_registry / vault_allowlist /",
+    "vault_apy_snapshots) is written but NOT applied, and a CI gate must not depend on a database at",
+    "all — the same reason policy-parity compares against committed TS/Python constants. When 0026 is",
+    "applied these rows are what seeds `vault_allowlist`, column-for-column: provenance_verified,",
+    "gates_abdicated, asset_matches_expected, native_performance_fee_bps, native_management_fee_bps,",
+    "curator_address, checked_at.",
+    "",
+    "PROVENANCE OF THESE VALUES. Every field was read from chain with `cast call` on 2026-07-30 (the",
+    "figures in specs/024-multi-protocol-vaults/research.md, re-verified). TVL moves — it is recorded",
+    "as evidence, never asserted. What IS asserted is the set of properties that must not change:",
+    "factory provenance, the three critical gate abdications, the asset, and a native-fee ceiling.",
+    "",
+    "ROBINHOOD TESTNET 46630 IS ABSENT ON PURPOSE. It has no Morpho deployment of any kind, so it has",
+    "no candidates and must never be given a mock substitute (v3.0.0, D3).",
+    "",
+    "BASE SEPOLIA 84532 NOW HAS ONE CANDIDATE, AND IT IS OURS. No third-party Vault V2 exists there to",
+    "wrap, so Phase 3 created our own V2 over a live Blue market (broadcast 2026-07-30). Listing it here",
+    "turns the gate from a green-by-skip into a real assertion on the only 84532 vault we will ever",
+    "deposit into — the abdications and the asset are now regression-checked on every PR, which is the",
+    "whole point of FR-020. Unlike the 8453/4663 rows this candidate is a vault we OWN, so its",
+    "maxNativeFee ceilings are a commitment about our own future behaviour, not a filter on someone",
+    "else's."
+  ],
+  "gateSelectors": {
+    "$comment": "Recomputed with `cast sig`, not copied from docs. The three CRITICAL setters are the ones abdicateNonCriticalGates:true renounces; a fourth exists (setSendAssetsGate 0x871c979c) which gates the DEPOSIT side and is deliberately NOT required, since N2 only protects the exit.",
+    "setReceiveSharesGate(address)": "0x2cb19f98",
+    "setSendSharesGate(address)": "0xc21ad028",
+    "setReceiveAssetsGate(address)": "0x04dbf0ce"
+  },
+  "chains": {
+    "84532": {
+      "label": "Base Sepolia",
+      "vaultV2Factory": "0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0",
+      "publicRpcUrl": "https://sepolia.base.org",
+      "rpcUrlEnv": "BASE_SEPOLIA_RPC_URL",
+      "candidates": [
+        {
+          "address": "0x756C41dD33481620EbCB0357F759d31c9eE72170",
+          "label": "SparkPoint USDC Yield (our own Vault V2)",
+          "expectedAsset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "expectedAssetSymbol": "USDC",
+          "expectedAssetDecimals": 6,
+          "maxNativePerformanceFeeBps": 0,
+          "maxNativeManagementFeeBps": 0,
+          "observed": {
+            "checkedAt": "2026-07-30",
+            "totalAssets": "999999",
+            "curator": "0xCB135893C84876aab9E10792b56e5bEa91dc578f",
+            "liquidityRatioNote": "Not applicable/not asserted. Morpho's API covers no testnet, so no ratio is derivable here — and per the script's liquidity note this gate never PASSES a liquidity check it did not perform. The 999999 is the dead deposit, not user liquidity."
+          },
+          "vettingNotes": "OUR OWN Vault V2, broadcast 2026-07-30 in 52 receipt-checked txs (Phase 3). Asset is CIRCLE's USDC 0x036CbD53… — deliberately NOT Aave's 0xba50Cd2A…, which is what the rest of the 84532 address book calls `usdc`; both report symbol()=='USDC' at 6 dp and are not interchangeable. Allocates into Blue market 0x01351cf8… via MorphoMarketV1AdapterV2 0x4C4dCd2e…, because the canonical MorphoVaultV1AdapterFactory fee-wrapper path does not exist on this chain. 18-dp shares over the 6-dp asset (virtualShares 1e12). Native fees are 0/0 and the ceilings above hold us to that until the 2-of-3 Safe deliberately changes it behind a 3-day timelock."
+        }
+      ]
+    },
+    "8453": {
+      "label": "Base mainnet",
+      "vaultV2Factory": "0x4501125508079A99ebBebCE205DeC9593C2b5857",
+      "publicRpcUrl": "https://mainnet.base.org",
+      "rpcUrlEnv": "BASE_MAINNET_RPC_URL",
+      "candidates": [
+        {
+          "address": "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9",
+          "label": "Steakhouse Prime USDC",
+          "expectedAsset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "expectedAssetSymbol": "USDC",
+          "expectedAssetDecimals": 6,
+          "maxNativePerformanceFeeBps": 0,
+          "maxNativeManagementFeeBps": 0,
+          "observed": {
+            "checkedAt": "2026-07-30",
+            "totalAssets": "567103202705795",
+            "curator": "0x827e86072B06674a077f592A531dcE4590aDeCdB",
+            "liquidityRatioNote": "25.9% liquid per Morpho's API on 2026-07-30 ($147.9M of $571.8M). NOT on-chain-derivable — see the script's liquidity note."
+          },
+          "vettingNotes": "D2 child. Deepest Vault V2 on Base. Zero native fees, so a SparkPoint fee would be the only fee in the chain."
+        },
+        {
+          "address": "0x050cE30b927Da55177A4914EC73480238BAD56f0",
+          "label": "Gauntlet USDC Prime",
+          "expectedAsset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "expectedAssetSymbol": "USDC",
+          "expectedAssetDecimals": 6,
+          "maxNativePerformanceFeeBps": 0,
+          "maxNativeManagementFeeBps": 0,
+          "observed": {
+            "checkedAt": "2026-07-30",
+            "totalAssets": "89263282402137",
+            "liquidityRatioNote": "86.6% liquid per Morpho's API on 2026-07-30 ($77.8M of $89.9M) — the highest withdrawability of the D2 pair."
+          },
+          "vettingNotes": "D2 child. Smaller than Steakhouse but far more liquid; listed so a user can trade scale against withdrawability (spec US2 AC4)."
+        }
+      ]
+    },
+    "4663": {
+      "label": "Robinhood Chain mainnet",
+      "vaultV2Factory": "0x0FBad98595b0186dA120E41f77C102beb49f803c",
+      "publicRpcUrl": "https://rpc.mainnet.chain.robinhood.com",
+      "rpcUrlEnv": "ROBINHOOD_MAINNET_RPC_URL",
+      "candidates": [
+        {
+          "address": "0xBeEff033F34C046626B8D0A041844C5d1A5409dd",
+          "label": "Steakhouse USDG",
+          "expectedAsset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+          "expectedAssetSymbol": "USDG",
+          "expectedAssetDecimals": 6,
+          "maxNativePerformanceFeeBps": 0,
+          "maxNativeManagementFeeBps": 0,
+          "observed": {
+            "checkedAt": "2026-07-30",
+            "totalAssets": "216467567332748",
+            "liquidityRatioNote": "13.7% liquid per Morpho's API on 2026-07-30 ($29.5M of $215.8M) — the LOWEST of the three, and the reason spec US4 AC4 requires the ratio pre-signature."
+          },
+          "vettingNotes": "D3 child. Robinhood Chain has NO Aave v3, so this vault has no Aave fallback and the UI must say so. Vault creation on 4663 is permissionless — hoodbet.fun sits alongside this one at -3.4% net APY with a 50% performance fee, which is why an allowlist is not optional."
+        }
+      ]
+    }
+  }
+}

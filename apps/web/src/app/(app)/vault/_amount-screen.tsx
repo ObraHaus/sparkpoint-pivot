@@ -2,61 +2,140 @@
 
 /**
  * Shared deposit / withdraw amount panel — the design's `amountScreen(host, mode)`
- * (docs/design-handover/showcase/screens/vault.js), with a LIVE shares preview that
- * recomputes as the amount changes (the design showed static figures; here the
- * "You'll receive ≈ / redeem ≈", beta-cap-after, and remaining-position lines update
- * with the typed amount). All copy is preserved verbatim.
+ * (docs/design-handover/showcase/screens/vault.js), now driven by the LIVE vault.
  *
- * On confirm, mounts the SHARED confirm gate <ConfirmFlow … mount="route" />.
+ * The "You'll receive ≈ / redeem ≈", the beta-cap-after line, and the remaining-position
+ * line recompute from the LIVE ERC-4626 previews (via `useVaultConfirm` → `useVault`,
+ * read direct-RPC — rounding favors the vault, agent-service-api.md §3.7) as the typed
+ * amount changes. All markup/classes/copy are preserved verbatim; only the numbers and
+ * the confirm ACTION go live.
+ *
+ * GATING (T047 per-user-cap gate) + the REAL execution config both live in the shared
+ * `useVaultConfirm` hook, so the chat's inline vault-action cards drive the identical
+ * real approve/deposit / redeem path. The beta WHITELIST gate sits ONE level up
+ * (vault/deposit/page.tsx renders <BetaGate/> when `useBeta().canTransact` is false).
+ * The WITHDRAW route is NEVER gated by client state (only a connected wallet + an actual
+ * position). Non-custody law, N2: withdraw-is-sacred.
+ *
+ * On confirm, mounts the SHARED confirm gate <ConfirmFlow … mount="route" onchain={…} />,
+ * whose live pre-sign check (agent quote + on-chain preview) gates the real Sign.
  */
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useAccount } from "wagmi";
+import { parseUnits, formatUnits } from "viem";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
 import { money, fmt } from "@/lib/utils";
+import { capNoun } from "@/lib/stage";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
+import { useVaultConfirm, toNum } from "@/lib/chain/useVaultConfirm";
+import { getAddresses } from "@sparkpoint/shared/addresses";
+import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import "@/components/screens/vault.css";
 
-const v = data.vault;
+const DECIMALS = 6;
 
-/** Parse a formatted amount string ("2,150.00") into a number. */
-function parseAmt(s: string): number {
-  const n = parseFloat(s.replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
+/** The chain whose address book seeds the vault options pre-connect (Base Sepolia). */
+const DISPLAY_CHAIN_ID = 84532;
+
+/** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
+function safeAddresses(chainId: number | undefined) {
+  if (chainId === undefined) return undefined;
+  try {
+    return getAddresses(chainId);
+  } catch {
+    return undefined;
+  }
 }
 
-/**
- * USDC-per-share rates chosen so the design's default amounts reproduce its exact
- * preview figures (2,150 → 2,118.4 spvUSDC on deposit; 5,000 → 4,902.1 on withdraw).
- */
-const DEP_RATE = 2150 / 2118.4;
-const WD_RATE = 5000 / 4902.1;
+/** Parse a typed USDC amount ("2,150.00") into 6-dp base units; never throws. */
+function parseUnitsSafe(s: string): bigint {
+  const cleaned = s.replace(/,/g, "").trim();
+  if (cleaned === "") return 0n;
+  try {
+    return parseUnits(cleaned, DECIMALS);
+  } catch {
+    return 0n;
+  }
+}
 
-export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
+export function AmountScreen({
+  mode,
+  selectedParam,
+}: {
+  mode: "deposit" | "withdraw";
+  selectedParam: string | null;
+}) {
   const isDep = mode === "deposit";
-  const [amount, setAmount] = useState(isDep ? "2,150.00" : "5,000.00");
+  const { chainId, isConnected } = useAccount();
+  const [amount, setAmount] = useState("");
   const [focused, setFocused] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  const amt = parseAmt(amount);
+  const wantUnits = parseUnitsSafe(amount);
+
+  // Multi-vault selection (011): resolve the `?vault=` address (carried here by the /vault picker) into
+  // the selected vault. Absent/unknown ⇒ the launch Aave vault, so the flow is byte-identical by default.
+  const bookChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  const book = safeAddresses(bookChainId);
+  const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
+  const sel = resolveSelectedVault(options, selectedParam);
+  const backHref = toHref("vault") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
+
+  // LIVE figures + gating + the REAL execution config (shared with the chat inline path). The selected
+  // vault is threaded in; for launch, kind/label equal the defaults so everything renders as before.
+  const {
+    v,
+    depositShares,
+    redeemShares,
+    redeemAssetsOut,
+    capRaw,
+    netApyText,
+    vaultName,
+    shareSymbol,
+    isWrapper,
+    usedAfter,
+    remaining,
+    ready,
+    label,
+    onchain,
+  } = useVaultConfirm({
+    mode,
+    assets: wantUnits,
+    vaultAddress: sel.vaultAddress,
+    kind: sel.kind,
+    label: sel.label,
+    // 024: a retired vault fail-closes DEPOSIT only. `mode: "withdraw"` never reads this (N2).
+    retired: sel.retired,
+  });
+
+  const ctaLabel = label;
+
+  const onMax = () =>
+    setAmount(formatUnits(isDep ? v.usdcBalance ?? 0n : v.underlying ?? 0n, DECIMALS));
 
   if (confirming) {
-    return <ConfirmFlow intent={mode} mount="route" />;
+    return <ConfirmFlow intent={mode} mount="route" onchain={onchain} />;
   }
 
   return (
     <div className="page page-narrow">
-      <Link className="qlink" style={{ display: "inline-flex", marginBottom: 14 }} href={toHref("vault")}>
+      <Link className="qlink" style={{ display: "inline-flex", marginBottom: 14 }} href={backHref}>
         <Icon name="chevr" size={15} /> Back to vault
       </Link>
       <div className="pagehead">
         <div>
           <h1>{isDep ? "Deposit USDC" : "Withdraw"}</h1>
           <div className="sub">
-            {isDep ? `Into the Aave Yield Vault · ${v.netApy}% net APY (estimate)` : "Withdraw anytime — even if Sparky is offline"}
+            {isDep
+              ? isWrapper
+                ? `Into ${vaultName} · yield via Morpho · net APY ${netApyText}`
+                : `Into the ${vaultName} · ${netApyText} net APY (estimate)`
+              : "Withdraw anytime — even if Sparky is offline"}
           </div>
         </div>
         <RiskChip tier={1} />
@@ -78,19 +157,15 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
                 onBlur={() => setFocused(false)}
               />
               <span style={{ fontSize: 18, fontWeight: 600, color: "var(--muted-foreground)" }}>USDC</span>
-              <button
-                className="btn btn-ghost btn-sm"
-                id="maxbtn"
-                onClick={() => setAmount(isDep ? fmt(data.idleUSDC) : fmt(v.shareValue))}
-              >
+              <button className="btn btn-ghost btn-sm" id="maxbtn" onClick={onMax}>
                 Max
               </button>
             </div>
           </div>
           <div className="hint">
             {isDep
-              ? `Max ${money(data.idleUSDC)} (idle) · ${money(v.capUser, 0)} beta cap`
-              : `You hold ${money(v.shareValue)} · withdraw any amount`}
+              ? `Max ${money(toNum(v.usdcBalance))} (idle) · ${money(toNum(capRaw), 0)} ${capNoun}`
+              : `You hold ${money(toNum(v.underlying))} · withdraw any amount`}
           </div>
         </div>
         <div
@@ -106,21 +181,26 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
             <>
               <div className="preview-row">
                 <span className="muted">You&apos;ll receive ≈</span>
-                <span className="tnum">{fmt(amt / DEP_RATE, 1)} spvUSDC</span>
+                <span className="tnum">{fmt(toNum(depositShares, DECIMALS), 1)} {shareSymbol}</span>
               </div>
               <div className="preview-row">
                 <span className="muted">Net APY</span>
                 <span className="tnum">
-                  {v.netApy}%{" "}
-                  <a className="cite" style={{ cursor: "pointer" }}>
-                    breakdown
-                  </a>
+                  {netApyText}
+                  {!isWrapper && (
+                    <>
+                      {" "}
+                      <a className="cite" style={{ cursor: "pointer" }}>
+                        breakdown
+                      </a>
+                    </>
+                  )}
                 </span>
               </div>
               <div className="preview-row">
-                <span className="muted">Beta cap after</span>
+                <span className="muted" style={{ textTransform: "capitalize" }}>{capNoun} after</span>
                 <span className="tnum">
-                  {money(v.capUsed + amt, 0)} / {money(v.capUser, 0)}
+                  {money(toNum(usedAfter), 0)} / {money(toNum(capRaw), 0)}
                 </span>
               </div>
             </>
@@ -128,15 +208,15 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
             <>
               <div className="preview-row">
                 <span className="muted">You&apos;ll redeem ≈</span>
-                <span className="tnum">{fmt(amt / WD_RATE, 1)} spvUSDC</span>
+                <span className="tnum">{fmt(toNum(redeemShares, DECIMALS), 1)} {shareSymbol}</span>
               </div>
               <div className="preview-row">
                 <span className="muted">You&apos;ll receive</span>
-                <span className="tnum">≈ {fmt(amt)} USDC</span>
+                <span className="tnum">≈ {fmt(toNum(redeemAssetsOut))} USDC</span>
               </div>
               <div className="preview-row">
                 <span className="muted">Remaining position</span>
-                <span className="tnum">{money(v.shareValue - amt)}</span>
+                <span className="tnum">{money(toNum(remaining))}</span>
               </div>
             </>
           )}
@@ -146,13 +226,37 @@ export function AmountScreen({ mode }: { mode: "deposit" | "withdraw" }) {
             ? "Estimates, not guarantees. Shares: your fixed slice of the vault; its USDC value grows as the vault earns."
             : "No fees to exit. Nothing moves until you sign."}
         </div>
-        <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={() => setConfirming(true)}>
-          {isDep ? "Review deposit" : "Review withdrawal"}
+        <button
+          className="btn btn-primary btn-lg"
+          style={{ width: "100%" }}
+          disabled={!ready}
+          onClick={() => setConfirming(true)}
+        >
+          {ctaLabel}
         </button>
         <div style={{ textAlign: "center", fontSize: 11, color: "var(--muted-foreground)", marginTop: 10 }}>
-          Next: simulation + guardrail check, then you sign.
+          Next: live quote + on-chain preview, then you sign.
         </div>
       </div>
     </div>
+  );
+}
+
+/** Reads the `?vault=` selection client-side; isolated so the Suspense fallback can SSR the shell. */
+function AmountScreenLive({ mode }: { mode: "deposit" | "withdraw" }) {
+  const selectedParam = useSearchParams().get("vault");
+  return <AmountScreen mode={mode} selectedParam={selectedParam} />;
+}
+
+/**
+ * Route wrapper: `useSearchParams` bails the reading subtree to the client, so the Suspense fallback
+ * renders the LAUNCH shell (selectedParam = null) — a cold load keeps the server-rendered first paint
+ * instead of blanking (and for the default, no `?vault`, the fallback and live render are identical).
+ */
+export function AmountScreenRoute({ mode }: { mode: "deposit" | "withdraw" }) {
+  return (
+    <Suspense fallback={<AmountScreen mode={mode} selectedParam={null} />}>
+      <AmountScreenLive mode={mode} />
+    </Suspense>
   );
 }

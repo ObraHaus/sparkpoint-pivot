@@ -2,7 +2,20 @@
 
 Platform reference for SparkPoint Pivot on self-hosted **Coolify** (`https://coolifyadmin.aldrickb.xyz`). Release process in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-> **DEPLOYED (web) — recorded 2026-07-10.** The **web app (`apps/web`) is LIVE on OH Coolify** in two environments: **develop** (`sparkpoint-web` — a *single* instance, no LB) and **prod / public landing** (`sparkpoint-web-primary` + `-secondary` behind the nginx LB `sparkpoint-web-lb`, off `main`, `SITE_LOCKED=true`). Real UUIDs + domains are recorded below (verified against the Coolify API). The **agent** and **Postgres** services are still **planned** (not created).
+> **DEPLOYED (web + agent) — recorded 2026-07-16 (P0/P1/P1.5).** Both the **web app AND the Hermes agent** are LIVE on OH Coolify `develop` (Coolify project **"SparkPoint Pivot" > develop**, environment_id 37, shared `coolify` network):
+> | App | UUID | FQDN | Notes |
+> |---|---|---|---|
+> | `sparkpoint-web` (develop) | `i4cw0ogsookkkocsw808gwc4` | `https://71zxh8ed1ejf8132l46joodp17.aldrickb.app` (+ `.obrahaus-develop.aldrickb.xyz`) | full app, `SITE_LOCKED=false`; BFF at `/api/agent/*` (server-side S2S bearer) |
+> | `sparkpoint-agent-develop` | `fw8s4ko4080wgk8okso8go48` | `8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app` (port 8000) | hardened public FQDN: docs/openapi off, anon `/readyz`=boolean, all routes behind S2S bearer; reached only by the web BFF |
+> | `spark-postgres` | (existing) | private LAN | migrations 0002/0003/0004 applied; agent connects the pool at startup, honest `/readyz` |
+>
+> Web env: `AGENT_INTERNAL_URL` (→ agent FQDN) + `AGENT_S2S_TOKEN` are **server-side only** (no `NEXT_PUBLIC_*`); `NEXT_PUBLIC_AGENT_BASE_URL` deleted (BFF-only). Agent env: `NEW_ANTHROPIC_OAUTH_TOKEN` (legacy `ANTHROPIC_OAUTH_TOKEN` removed), `AGENT_S2S_TOKEN`, `CORS_ALLOW_ORIGINS`, `DATABASE_URL`, `SIM_FORK_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `SPARKPOINT_VAULT_ADDRESS`, and (024, OPTIONAL, default off) `SPARKPOINT_VAULT_REGISTRY_ENABLED` — set it to `true` only AFTER migration `0026_vault_registry` is applied and `/admin/vault-registry` reports `available: true`; with it unset the service resolves the vault from `SPARKPOINT_VAULT_ADDRESS` exactly as before, with no DB round-trip. The prod/public-landing (`main`) inventory below is unchanged.
+>
+> **026 (Wave 3) agent env — set at the same deploy as the 026 agent image:**
+> - `PREMIUM_PRICE_SRK=10000000000000000000000` — **BASE UNITS** (10000e18), NOT `10000`. It is compared straight against the ERC-20 `Transfer` value, so `10000` would be 1e-14 SRK and would accept dust as a month of Premium. The web's `PREMIUM_PRICE_SRK_WHOLE` is `10_000n`; **web and agent must flip together** or a purchase verifies against the wrong price. (Code now defaults to 10000e18 if unset, so a forgotten env under-charges nobody — set it anyway, explicitly.)
+> - `ETH_MAINNET_RPC_URL` + `SRK_MAINNET_ADDRESS` (`0x0488401c3f535193fa8df029d9ffe615a06e74e6`) + optional `SRK_GATE_MIN_BALANCE` (base units; default `1000000000000000000000000` = 1,000,000 SRK) — the login-time auto-gate that admits a ≥1M mainnet-SRK holder. **All optional:** with either of the first two unset the gate is silently skipped and non-allowlisted wallets simply see the access-application form. It is fail-open at every step and can never block a login, so it is safe to deploy the image before setting them.
+> - Migration **`0029_access_applications`** should be applied before this redeploy (it is order-insensitive — an unapplied DB only breaks `/access/*` and the admin review list — but the form should work the moment it appears).
+ NOTE: Coolify stores each env var as a build-time + runtime pair — set values via the same key on both, or use bulk update.
 
 > **Scope note.** Coolify hosts **dev/staging only** for this client project. Production runs later on the **client's own infra/domain** (likely sparkpoint.io), TBD — see DEPLOYMENT.md. This project does **not** use obrahaus-console SSO or obrahaus-governor (sanctioned client divergences).
 
@@ -80,11 +93,23 @@ Launch = set both to `false` on the public app and redeploy (no code change). Bo
 
 > **As-deployed 2026-07-10:** prod (`sparkpoint-web-primary`/`-secondary`) has `SITE_LOCKED=true` + `NEXT_PUBLIC_SITE_LOCKED=true`. **Develop (`sparkpoint-web`) has neither set** → fail-closed = **landing-only too** — **intentional** while the project is still in development (only the landing is exposed on any environment for now). When a shared full-app preview is wanted, set both to `false` on the develop app + redeploy.
 
+### Feature 006 — force-refresh build env (LIVE on develop, dark on prod)
+
+The web app can auto-reload stale tabs onto a new deploy + greet users with what changed (feature 006). **LIVE on develop since 2026-07-20** (`NEXT_PUBLIC_FORCE_REFRESH=true`); dormant on any env where the flag is unset:
+- **`NEXT_PUBLIC_FORCE_REFRESH`** — the kill-switch. Default/unset = OFF (nothing renders). Set to `"true"` in the web app's **build** env to enable the auto-reload banner + What's-New greeting.
+- **Per-build version id** — `apps/web/next.config.ts` derives it automatically as `<SOURCE_COMMIT>-<build-frozen timestamp>`, so it changes on every deploy even with no config. **Confirmed on develop:** Coolify **does** expose `SOURCE_COMMIT` to the Nixpacks build here, so `/api/version` returns the real commit SHA + timestamp — **no extra wiring needed**. (The optional `build_command` `git rev-parse --short=8 HEAD` returns empty in the Nixpacks context, and the API rejects the *"Include Source Commit in Build"* toggle on `4.0.0-beta.434` (`422`) — but neither is needed since `SOURCE_COMMIT` already works.) `/api/version` echoes the baked id with `no-store`; no new **runtime** env required.
+- **Also:** apply migration `0014_content_slug` (yoyo, `PGCLIENTENCODING=UTF8`) **before** the agent boots, and redeploy the agent so `content_seed/whats-new.json` ingests (the Dockerfile COPYs `content_seed`). If the agent booted first, restart it to re-ingest (see [DEPLOYMENT.md](./DEPLOYMENT.md) → "Feature 006 — how to deploy").
+
+> **As-deployed 2026-07-20:** develop web app (`i4cw0ogsookkkocsw808gwc4`) has `NEXT_PUBLIC_FORCE_REFRESH=true` and `0014` applied. ⚠️ The env-create API rejects `is_build_time` on this Coolify — POST `{key,value}` only, and set the env **then** redeploy (a deploy triggered before the env builds dark). Prod (`main` replicas) is **unset** (dark) — a separate go/no-go; enable it on **both** replicas like `SITE_LOCKED`.
+
 ## Verify a deploy — use the deployment record, NOT the status badge
 
 The app `.status` badge is unreliable (apps on `coolify-build` can show `unhealthy` while serving the latest code). Use the deployment record:
 ```bash
-TOKEN=$(grep -E '^COOLIFY_API_TOKEN=' /home/hello/project/.claude/.env | cut -d= -f2-)   # standing read token
+# Token env names (verified 2026-07-30): there is NO bare `COOLIFY_API_TOKEN`.
+#   COOLIFY_API_TOKEN_READ_READSENSITIVE — reads, incl. an app's env values (used below)
+#   COOLIFY_API_TOKEN_RWD               — read/write/deploy (POST /api/v1/deploy)
+TOKEN=$(grep -E '^COOLIFY_API_TOKEN_READ_READSENSITIVE=' /home/hello/project/.claude/.env | cut -d= -f2-)
 BASE=https://coolifyadmin.aldrickb.xyz
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/deployments" \
   | jq -r '.[] | "\(.application_name) \(.status) \(.deployment_uuid)"'     # active builds → uuid
@@ -105,3 +130,20 @@ Managed in the **Coolify UI** (the scheduled-tasks API isn't exposed). Record th
 ## REST API / token
 
 Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standing token:** `/home/hello/project/.claude/.env` (`COOLIFY_API_TOKEN`) — read + read:sensitive, **read-only**. **Mutations** (creating these apps, env writes, deploys) need the RWD token (`COOLIFY_API_TOKEN_RWD`) or, for secrets/admin, a temporary `root` key. **Always ask before any Coolify-mutating call** — treat it like a `git push`.
+
+> **LLM GATEWAY (Phase A) — recorded 2026-07-16.** Hermes no longer calls Anthropic directly; it calls an **OpenAI-compatible LiteLLM gateway → OpenRouter**. New Coolify develop resources (project "SparkPoint Pivot" > develop, env `t48o0ocs80os08g4cscg0o8k`, shared `coolify` network):
+> | Resource | UUID | FQDN / host | Notes |
+> |---|---|---|---|
+> | `sparkpoint-litellm-develop` (app) | `fog4okko4csgscgos00ws48c` | `fi5zmq5osp0g3aam93gnv2j4rl.aldrickb.app` (port 4000) | LiteLLM proxy (build from `/services/litellm`); alias `sparkpoint-chat` → openrouter (primary `gemma-4-31b:free` + verified free fallback `gemma-4-26b-a4b:free`, router retries). image **pinned to a digest**; a same-container **guard proxy** (:4000 → LiteLLM :4001) 404s the anonymous surfaces (`/`, `/docs`, `/redoc`, `/openapi.json`, `/ui/*`) while `/chat/completions` requires the virtual key (401 without). |
+> | `sparkpoint-litellm-db-develop` (postgres) | `t4w8wokwgk4ooosk0cwckg8g` | internal (`postgres:16-alpine`) | DEDICATED, isolated DB for LiteLLM keys+budgets — NOT spark-postgres, NOT the agent DB. |
+>
+> **Secrets (gateway env, server-side only, never committed):** `OPENROUTER_API_KEY` (ONLY the gateway holds it), `LITELLM_MASTER_KEY`, `DATABASE_URL` (→ the dedicated postgres), `DISABLE_ADMIN_UI=True`. **Agent env:** `LITELLM_BASE_URL` (→ gateway FQDN), `LITELLM_API_KEY` (a per-service **virtual key**: rpm 20 / tpm 40k / $5-a-day budget, alias `hermes-agent`), `LITELLM_MODEL=sparkpoint-chat`; `NEW_ANTHROPIC_OAUTH_TOKEN` remains as the env-selected fallback. readyz now probes the gateway's `/health/liveliness` (cached ~60s) as the `llm` check. Anonymous surface verified blocked: `/`, `/docs`, `/redoc`, `/openapi.json`, `/ui/*` → 404; `/health/liveliness` → 200; `/chat/completions` → 401 without the key.
+
+> **AUTH / ACCESS CONTROL (Phase B) — recorded 2026-07-16.** SIWE wallet auth + a DB-backed beta/admin allowlist. New env:
+> | Var | App(s) | Notes |
+> |---|---|---|
+> | `SESSION_SECRET` | **web** | Secret — signs the httpOnly SIWE session cookie (Web-Crypto HMAC). FAIL-CLOSED: unset ⇒ no session mints/verifies ⇒ the (app) shell + `/admin` are unreachable (only landing/connect/verify/exit/trust). Build **and** runtime (the edge middleware verifies). `openssl rand -hex 32`. |
+> | `BETA_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into the (app) shell. The **agent** seeds `wallet_allowlist` from it on boot; the web copy is kept in parity. |
+> | `ADMIN_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into `/admin` + admin APIs (admin implies beta). Same seed/parity model. |
+>
+> **⚠️ Sync standard.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` MUST be identical on the agent + web apps. **Never edit them by hand on one app** — always write both in one shot with `scripts/sync-allowlist-env.sh "<beta_csv>" "<admin_csv>"` (needs `COOLIFY_API_TOKEN_RWD`), then redeploy both so the agent re-seeds. After boot, day-to-day membership is managed live in the **admin panel** (`/admin/allowlist`, audit-logged); the env is bootstrap + disaster-recovery only. ACCESS gate only — never gates `/exit`, `/trust`, or withdraw (N2). Migrations: `0005_allowlists` (see MIGRATIONS.md).

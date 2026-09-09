@@ -1,0 +1,84 @@
+# LiteLLM proxy config — SparkPoint develop gateway (Phase A).
+#
+# Maps the stable alias `sparkpoint-chat` to OpenRouter models. ONLY this gateway ever holds
+# the OpenRouter key; Hermes calls the gateway with a LiteLLM virtual key. Secrets resolve from
+# the process env via `os.environ/…` and are NEVER written into this file.
+#
+# RELIABILITY: OpenRouter's `:free` tier is aggressively rate-limited per upstream provider —
+# the operator's primary (gemma-4-31b:free, Google AI Studio) returned 429 on every probe. So
+# the alias is a GROUP: the operator's model is the primary (set via OPENROUTER_MODEL), plus a
+# verified-available same-family free fallback; the router retries the other deployment on a 429
+# and cools the throttled one down. Swap either to a paid model / BYOK key for hard reliability.
+#
+# The DATABASE_URL env (a dedicated, isolated Postgres — never the agent's DB) is auto-detected
+# by LiteLLM for virtual keys + per-user budgets.
+
+model_list:
+  - model_name: sparkpoint-chat
+    litellm_params:
+      # primary (operator-approved 2026-07-17): 120B MoE w/ ~12B active — probed live at ~2s/turn
+      # with clean JSON intent output while gemma-4-31b:free 429'd on every attempt. weight biases
+      # simple-shuffle 4:1 toward this deployment; the 26b fallback absorbs cooldowns.
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 4
+  - model_name: sparkpoint-chat
+    litellm_params:
+      # verified-available free fallback (probed live) so the alias serves when the primary 429s.
+      model: openrouter/google/gemma-4-26b-a4b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 1
+
+  # Premium alias (feature 008, US4) — cheap PAID models for premium-tier turns, a clear step up from
+  # the free open models. Mirrors the free alias's primary+fallback shape: DeepSeek V4 Flash is the
+  # primary (weight 4; ~$0.094/$0.188 per Mtok, 1M ctx — sharp reasoning + clean JSON); Qwen 3.5
+  # Flash is the same-tier fallback (weight 1; ~$0.065/$0.26, 1M ctx) that absorbs cooldowns when the
+  # primary 429s. If the WHOLE premium group fails (e.g. the OpenRouter account is out of credit) the
+  # router FALLS BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so premium
+  # degrades to free quality instead of erroring. Both paid models need OpenRouter credit to serve.
+  - model_name: sparkpoint-chat-premium
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 4
+      # ~$0.094 / $0.188 per 1M tok (in/out) — priced so LiteLLM tracks per-model spend + the admin
+      # Gateway → Config tab shows a real price (not $0). Actual billing still passes through from
+      # OpenRouter; this is LiteLLM's own cost accounting. Keep in sync if the upstream price moves.
+      input_cost_per_token: 0.000000094
+      output_cost_per_token: 0.000000188
+      # Per-deployment request/min ceiling used by the router for load-based routing (primary carries
+      # the bulk of premium traffic). The virtual key's global rpm is the real spend/abuse ceiling.
+      rpm: 60
+  - model_name: sparkpoint-chat-premium
+    litellm_params:
+      model: openrouter/qwen/qwen3.5-flash-02-23
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 1
+      # ~$0.065 / $0.26 per 1M tok (in/out) — see the note above.
+      input_cost_per_token: 0.000000065
+      output_cost_per_token: 0.000000260
+      # Fallback deployment — a smaller per-min ceiling (it only absorbs the primary's cooldowns).
+      rpm: 30
+
+litellm_settings:
+  drop_params: true          # tolerate provider-specific param differences
+  set_verbose: false         # never verbose-log request bodies (could carry prompt content)
+  request_timeout: 120
+  num_retries: 3             # retry across the group on a transient upstream failure
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+  allowed_fails: 1
+  cooldown_time: 30          # park a 429'd deployment for 30s, serve from the other
+  # Premium degrades to the free alias on ANY failure of the paid model (e.g. out of credit) — so
+  # a premium user never gets an error just because the paid model is unavailable.
+  fallbacks: [{"sparkpoint-chat-premium": ["sparkpoint-chat"]}]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # admin/root key; server-side only, never shipped to a client
+  # Per-user budgets/limits keyed by the LiteLLM `user` field (the server-verified wallet, Phase B).

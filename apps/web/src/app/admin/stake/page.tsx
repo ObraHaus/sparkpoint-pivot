@@ -7,11 +7,43 @@
  * SparkPoint Admin.html.
  */
 
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
-import { STREAM, Composed, Trajectory, DivergeBars, DualArea } from "@/components/admin/charts";
-import { data, Kpi } from "@/components/admin/data";
+import { STREAM, Composed, Trajectory, DivergeBars, DualArea, Kpi } from "@/components/admin/charts";
+import { useVaultStats } from "@/lib/admin/useVaultStats";
+import { formatUsdCompact } from "@/lib/admin/vaultStats";
+
+interface Analytics {
+  configured: boolean;
+  totalUsers: number;
+  activation: { deposited: number };
+  premiumActive: number;
+}
 
 export default function Page() {
+  const s = useVaultStats();
+  const [a, setA] = useState<Analytics | null>(null);
+  const loadA = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agent/admin/users/analytics", {
+        headers: { "x-chain-id": "84532" },
+        cache: "no-store",
+      });
+      if (r.ok) setA((await r.json()) as Analytics);
+    } catch {
+      /* honest-degrade: the KPI renders "…" rather than a fabricated number */
+    }
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadA();
+  }, [loadA]);
+
+  const live = a?.configured === true;
+  const users = live ? a!.totalUsers.toLocaleString() : "…";
+  const depositors = live ? a!.activation.deposited.toLocaleString() : "…";
+  const premium = live ? a!.premiumActive.toLocaleString() : "…";
+
   return (
     <>
       <div className="pghead">
@@ -19,21 +51,35 @@ export default function Page() {
           <h1>Sparky — stakeholder overview</h1>
           <div className="sub">Where we are. Aggregate, plain-language, presentation-grade.</div>
         </div>
+        <span className="pill info" title="A stakeholder narrative — figures other than live TVL are illustrative projections">
+          <span className="led" /> Illustrative projection
+        </span>
         <button className="btn-exp">
           <Icon name="ext" size={13} /> Export PDF (audited)
         </button>
       </div>
+      <div
+        className="infobanner"
+        style={{ background: "var(--caution-subtle)", borderColor: "color-mix(in srgb,var(--caution) 26%,transparent)" }}
+      >
+        <Icon name="info" size={16} />
+        <span>
+          <b style={{ color: "var(--foreground)" }}>Live headline numbers, illustrative projections.</b> The KPI row is real —
+          TVL is read on-chain; users, depositors and premium come live from the database. The growth &amp; revenue{" "}
+          <b style={{ color: "var(--foreground)" }}>charts</b> below remain modelled projections (labelled as such) pending mainnet.
+        </span>
+      </div>
       <div className="band">
-        <Kpi label="TVL" val="$12.0M" spark={data.tvlSpark} sparkColor={STREAM.swap} delta="▲ 18% this month" deltaCls="up" />
-        <Kpi label="Total users" val="3,240" spark={data.usersSpark} sparkColor={STREAM.premium} delta="▲ 22%" deltaCls="up" />
-        <Kpi label="Cumulative revenue" val="$13.9K" spark={data.revSpark} sparkColor={STREAM.srk} delta="▲ since launch" deltaCls="up" />
-        <Kpi label="Run-rate (ARR-eq.)" val="$82.8K" spark={data.mrrSpark} sparkColor={STREAM.premium} delta="▲ 23%" deltaCls="up" />
+        <Kpi label="Live TVL (testnet)" val={formatUsdCompact(s.tvl)} />
+        <Kpi label="Total users" val={users} />
+        <Kpi label="Depositors" val={depositors} />
+        <Kpi label="Premium active" val={premium} />
       </div>
       <div className="grid2">
         <div className="chartcard span2">
           <div className="ch">
             <span className="ct">Growth — money &amp; people</span>
-            <span className="prov">90d</span>
+            <span className="prov">illustrative · 90d</span>
           </div>
           <div className="legend">
             <span>
@@ -63,7 +109,7 @@ export default function Page() {
         <div className="chartcard">
           <div className="ch">
             <span className="ct">Net flows</span>
-            <span className="prov">real, sticky money</span>
+            <span className="prov">sample data</span>
           </div>
           <DivergeBars dep={[220, 310, 180, 420, 380, 260]} wd={[-90, -120, -60, -140, -110, -200]} opts={{ H: 210 }} />
         </div>
@@ -71,6 +117,7 @@ export default function Page() {
       <div className="weeornot" style={{ marginBottom: 16 }}>
         <div className="ch" style={{ marginBottom: 6 }}>
           <span className="ct">We only earn when you earn</span>
+          <span className="prov">illustrative</span>
         </div>
         <div className="legend">
           <span>
@@ -96,7 +143,7 @@ export default function Page() {
           <Icon name="check" size={16} />
           <div>
             <div className="tbt">Withdraw-always</div>
-            <div className="tbs">Last drill passed · 6h ago</div>
+            <div className="tbs">On-chain self-service exit — always open</div>
           </div>
         </div>
         <div className="tb">

@@ -1,0 +1,109 @@
+name: live copy audit
+
+# Renders the DEPLOYED app and asserts no retired copy is visible to a user.
+#
+# ⚠️ This is deliberately NOT a pull-request check. It tests a deployment, not a diff — running it
+# on a PR would report on whatever is currently live, which has nothing to do with the change being
+# reviewed and would go red for reasons the author cannot fix.
+#
+# The PR-time guard is `src/lib/copy/copy-audit.test.ts`, which strips markup from the audited
+# sources and matches the same phrase list. That catches copy split across elements — the cause of
+# both bugs that reached production — without a browser or a deployment.
+#
+# This workflow is the other half: it catches what a source scan structurally cannot, namely copy
+# that arrives from an API, is assembled at runtime, or comes from the agent's knowledge corpus.
+# Both are needed; neither replaces the other.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployment to audit
+        required: false
+        default: https://alpha.sparkpoint.io
+  schedule:
+    # Weekly. The corpus and admin-editable content change without a deploy, so drift here is not
+    # tied to a merge and a per-merge run would not catch it any sooner.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # A deployment can be down for reasons unrelated to copy. This must not read as a copy
+    # regression, so the job reports rather than gates -- nothing merges on its result.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: install
+        working-directory: apps/web
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+
+      - name: install browser
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: check the deployment is actually up
+        id: probe
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'https://alpha.sparkpoint.io' }}
+        run: |
+          # A spec that "passes" against a dead host proves nothing. Fail loudly and early instead.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$BASE_URL" || echo 000)
+          echo "probe: $BASE_URL -> $code"
+          if [ "$code" = "000" ]; then
+            echo "::error::$BASE_URL is unreachable — the audit cannot run (this is NOT a copy failure)"
+            exit 1
+          fi
+
+      - name: mint a session
+        id: login
+        env:
+          PW_TEST_PRIVKEY: ${{ secrets.PW_TEST_PRIVKEY }}
+          PW_BASE_URL: ${{ github.event.inputs.base_url || 'https://alpha.sparkpoint.io' }}
+        working-directory: apps/web
+        run: |
+          if [ -z "$PW_TEST_PRIVKEY" ]; then
+            echo "::warning::PW_TEST_PRIVKEY is not set — the audited surfaces need a session, so the run would only see the sign-in page. Skipping."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A real SIWE handshake driven in Node. Driving the injected wallet in-page stalls at
+          # "Waiting for signature…" against a deployed app; the handshake itself is fine, so it is
+          # done where it works and the resulting cookie is handed to the browser.
+          WEB_URL="$PW_BASE_URL" node e2e/print-session.mjs > /tmp/session.txt
+          if [ ! -s /tmp/session.txt ]; then
+            echo "::error::no session was minted — the audit would run signed-out and pass on a sign-in page"
+            exit 1
+          fi
+          echo "::add-mask::$(cat /tmp/session.txt)"
+          echo "PW_SP_SESSION=$(cat /tmp/session.txt)" >> "$GITHUB_ENV"
+
+      - name: audit the rendered pages
+        if: steps.login.outputs.skip != '1'
+        working-directory: apps/web
+        env:
+          PW_BASE_URL: ${{ github.event.inputs.base_url || 'https://alpha.sparkpoint.io' }}
+          PW_NO_SERVER: "1"
+          PW_SHOT_DIR: ${{ runner.temp }}/shots
+        run: |
+          mkdir -p "$PW_SHOT_DIR"
+          npx playwright test e2e/pw/visual-audit.spec.ts --project=chromium --reporter=list
+
+      - name: keep the screenshots
+        if: always() && steps.login.outputs.skip != '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: copy-audit-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+          retention-days: 14

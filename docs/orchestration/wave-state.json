@@ -1,0 +1,227 @@
+{
+  "plan": "SparkPoint Phase 2 — Execution Plan (rev 3.3)",
+  "artifact": "https://claude.ai/code/artifact/31e5f3f5-d23b-4fc1-a0f7-648743524eb9",
+  "spec": "specs/001-sparkpoint-pivot-mvp",
+  "milestone": "2026-07-24",
+  "updated": "2026-07-17",
+  "current_wave": "R5 Part A + B1/B4/B5 deployed+verified on develop; B2 (portfolio indexer) + B3 (multi-network, needs SIWE decision) pending; client wallet pending",
+  "gates": {
+    "A": {
+      "status": "APPROVED",
+      "at": "2026-07-13",
+      "note": "git patch approved; Obsidian into Phase 2 (T121-T126); scope = full working MVP; hosting resolved (16c/cap14)"
+    },
+    "B": {
+      "status": "PASSED",
+      "at": "2026-07-14",
+      "note": "US1 vault LIVE on Base Sepolia (vault 0x15D269B1D4fb3581E5a47482A70215e63Ed547f2, guardian=OZ TimelockController 0x0A21A9B4c2cd2d6a68EC828188826B673572d720). On-chain N1/N2/N5 asserted (AssertNonCustody all-OK). Withdraw-always drill PASSED: deposit 100 USDC->Aave, pause via timelock, redeem 100.000001 USDC (principal+yield) WHILE paused()==true (tx 0x6190b6cf675a81a3472d565bdf70e38b6358496dc0d41898fbe484ccfe1907a0). Deployer=guardian proposer/executor; production hardening (Safe M-of-N + 2d delay + renounce admin) = Gate C."
+    },
+    "C": {
+      "status": "WAITING",
+      "note": "MAINNET (Phase 3+, out of Phase 2): T103 recorded internal audit + hardening sign-off. Never autonomous."
+    }
+  },
+  "waves": [
+    {
+      "id": "W0",
+      "title": "Workspace + safety artifacts",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W1",
+      "title": "Skeletons + CI (green-by-skip)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W2",
+      "title": "Shared SoT + interfaces (chainId-keyed), FROZEN",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "frozen": true
+    },
+    {
+      "id": "W3",
+      "title": "Foundational (policy engine, agent, Simulator, T124 embedder)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13"
+    },
+    {
+      "id": "W4",
+      "title": "Seam consumers -> FOUNDATION READY",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "commit": "fcbec2f",
+      "note": "viem clients + swappable custom-AA adapter + typed agent client/cards + display-only policy mirror + env + geo-fence; apps/web green (tsc/lint/build 45 routes); web CI green"
+    },
+    {
+      "id": "W5a",
+      "title": "Tests FIRST, must FAIL (RED)",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "note": "45-test N1/N2/N5 + perf-fee + caps invariant/fuzz/fork suite authored, verified RED (23 fail vs stubs)"
+    },
+    {
+      "id": "W5b",
+      "title": "Contracts GREEN + policy/sim + refuter swarm + bundler spike",
+      "status": "completed",
+      "started": "2026-07-13",
+      "completed": "2026-07-13",
+      "commit": "e04ceb7",
+      "note": "SparkPointVault (ERC-4626 + profit-only HWM perf fee, withdraw-always, non-upgradeable) + CapRegistry + KillSwitch; 76 tests green incl. live Base-fork e2e; N1/N2/N5 refuter swarm (9/9/13 attacks) ALL NOT REFUTED; contracts CI green. Deviations recorded in commit: off-chain feeRate timelock (guardian=Timelock/multisig at deploy), totalAssets excl. idle, AaveV3Adapter stub deferred to W6"
+    },
+    {
+      "id": "W5c",
+      "title": "Endpoints + /exit + STOP-AND-VALIDATE",
+      "status": "completed",
+      "started": "2026-07-13",
+      "gate": "B",
+      "note": "DONE: T015 ABI export (bb3b19e) + PUBLIC /exit escape hatch (5df74a9) + keyless backend vault quote endpoints + fee indexer (7e4b369) + Gate-B deploy to Base Sepolia + withdraw-always drill PASSED (cc6a4f7). REMAINING (frontend tail): NonCustody badge + caps display + beta whitelist gate + vault dashboard deposit/withdraw wiring against the LIVE vault. RECONCILED 2026-07-16: all W5c items (T015 ABI, PUBLIC /exit, keyless vault-quote endpoints, fee indexer, Gate-B deploy) are live and were validated + built upon by P1.5/P2/Phase-A/B/B.1 — marking completed.",
+      "completed": "2026-07-16"
+    },
+    {
+      "id": "W5c-fe",
+      "title": "Frontend tail — live vault UI wired (T046/T047/T049)",
+      "status": "completed",
+      "completed": "2026-07-14",
+      "commit": "7e9f41e",
+      "note": "useVault live-read hook + NonCustody badge + caps meter + deposit(approve+deposit)/withdraw(redeem) via ConfirmFlow opt-in exec (parity preserved) + deposit-only beta gate (never gates /exit). US1 complete end-to-end; web CI green"
+    },
+    {
+      "id": "W6",
+      "title": "US2 + full US3-US5 + Obsidian ingestion SCAFFOLD (T122/T123/T125)",
+      "status": "completed",
+      "started": "2026-07-14",
+      "completed": "2026-07-14",
+      "note": "US2 custom ERC-4337 account (74cc403; refuter caught+fixed a validUntil==0 session-drain; 162 tests + live fork round-trip through the deployed vault). US3-US5 assistant backend (b4ff656; Coordinator DAG + chat/portfolio/recommendations/mandate/onboarding; 223 tests; advisory + policy-gated + LLM-free boundary). Frontend assistant wiring + Obsidian ingestion CODE T121-126 (ae2ac84; + migration 0004 embedding-dim fix). NOTE: Obsidian is SCAFFOLDED here (ingestion pipeline + schema), NOT wired end-to-end — real prod corpus ingestion + citations on rec cards is P2 (item 9), not 'completed' here. All CI green."
+    },
+    {
+      "id": "MILESTONE",
+      "title": "Jul 24 (Fri) testnet MVP",
+      "status": "build_complete",
+      "note": "All Phase-2 build waves (W0-W6) landed + CI-green on feature/w0-foundation, 10 days early. US1 vault LIVE on Base Sepolia + non-custody proven on-chain. REMAINING to the milestone (integration/ops, not build): (1) deploy the agent service + web to OH Coolify dev/staging (playbook §5) with NEXT_PUBLIC_AGENT_BASE_URL + apply migrations 0002/0003/0004; (2) full-stack e2e (Playwright) UI->agent->live vault; (3) PR feature/w0-foundation -> develop (human-gated per playbook). Gate C (mainnet + Safe-in-front-of-Timelock hardening) = Phase 3."
+    },
+    {
+      "id": "P0",
+      "title": "Operator work order P0 — trust surfaces + BFF + 429-resilience",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "commit": "509c278",
+      "note": "OAuth 429-resilience (jittered backoff/Retry-After, cap 3/<=60s, max_retries=0, async limiter max_inflight=2, prompt caching, fail-closed, token never logged) + same-origin BFF (bearer server-side; NEXT_PUBLIC_AGENT_* deleted; served bundle scanned 0-token-leaks) + fabricated-success purge. Deployed dev @ 71zxh8ed...aldrickb.app (web) / 8jcvimzny...aldrickb.app (agent)."
+    },
+    {
+      "id": "P1",
+      "title": "Operator work order P1 — verification shell",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "commit": "86152a4",
+      "note": "Real 3-way policy-parity gate, blocking mypy, non-broadcast deploy-testnet, custody-seam CI, contract/sim test gaps, v0.7 bundler spike. Adversarial verify: 9/10 go-live invariants high-confidence (prompt-caching integration check is a cost-only mock)."
+    },
+    {
+      "id": "P0.2",
+      "title": "Deploy + soak validation (honest)",
+      "status": "completed",
+      "completed": "2026-07-15",
+      "note": "Soak 20 chat + 5 rec + burst 5: chat 25/25 fail-closed under sustained shared-account OAuth 429 = operational constraint (org key = Phase 3), resilience behaves as designed. Soak caught+fixed 3 deploy defects: DB pool lifecycle (4240622), rec 500->503 UPSTREAM_UNAVAILABLE (da66e00), bounded startup connect (020d201). Agent+web running:healthy; agent gates green (ruff/mypy-62/pytest-287)."
+    },
+    {
+      "id": "P1.5",
+      "title": "Post-checkpoint audit fixes (operator punch list)",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "6 items: (1) agent public-hardening (docs/openapi off, anon readyz boolean) + honest topology, (2) purge remaining fabrications (connect/verify real, killswitch honest, admin tiles from readyz, portfolio Preview-data) 274d5d8, (3) PR #21 workflows->main, (4) https + .app-vs-.xyz deviation recorded + web bound on both, (5) hygiene: NEXT_PUBLIC_AGENT_BASE_URL removed, legacy token env removed, CORS gwc3 fixed, RPC Actions secret, REASON_SLIPPAGE test, verification artifact, W6/P2 Obsidian contradiction fixed, DEPLOYMENT/COOLIFY updated, (6) bundler safe-mode + mode-0x01 spike 47f6ef3 (reported honestly). Verified live on the develop URLs."
+    },
+    {
+      "id": "P2",
+      "title": "Obsidian real wiring (item 9) — prod corpus ingestion + citations",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "commit": "80b12c2",
+      "note": "OQ-5 embedding-provider Gate RESOLVED (operator's self-hosted OpenAI-compatible OpenWebUI, qwen3-embedding:8b; 4096-dim MRL-truncated to the pinned 1024 + renormalized; key server-side only, never logged). OpenAIEmbeddingBackend + openai_embedder factory; ingestion runner (python -m sparkpoint_agent.knowledge.ingest_cli) ran against the deployed spark-postgres → 6 sources / 25 chunks; default_citation_retriever wired into BOTH DAG builders (chat + recommendations), None-when-unconfigured so CI stays green; corpus +3 accurate notes (aerodrome-slipstream, erc4626-vaults, usdc-yield-strategies); knowledge_search embeds off the event loop. Verified: semantic retrieval is RELEVANT (Aave query→Aave/vault notes, concentrated-liquidity query→Aerodrome). Frontend already renders the 'N sources' chip; attaching to a LIVE rec card needs an LLM ranking turn (shared-quota 429). Agent gates green (mypy 62 / pytest 297)."
+    },
+    {
+      "id": "PHASE-A",
+      "title": "LLM pivot: OpenRouter via LiteLLM gateway + /trust live",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "/trust live reads + Spearbit/fake-addr deleted (a171824); LiteLLM gateway app + dedicated isolated Postgres + OpenRouter alias sparkpoint-chat with free fallback (e45a936/1ab4c2b); agent async LLM client pivoted to the gateway (OpenAICompatTransport, resilience kept, CC-prefix dropped, Anthropic-OAuth env fallback) + readyz real gateway liveness probe (587692d). VERIFIED LIVE: 20/20 real chat completions + recs with 6 real Obsidian citations (docs/verification/phase-a-llm-gateway.md). Checkpoint before Phase B."
+    },
+    {
+      "id": "PHASE-A1",
+      "title": "Phase A.1 hardening (pre-Phase-B punch list)",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "/trust subpages de-faked (exit + permissions now live reads + honest 'no US6 grants yet', 918a7ba); LiteLLM anonymous surface blocked via same-container guard proxy (/, /docs, /redoc, /openapi.json, /ui/* -> 404) + image digest-pinned; kept OpenRouter :free per operator ('still development phase'); soak script + per-turn results committed (20/20 real); mypy 63->62 corrected (CI count authoritative); known-limitations ops doc added. Final d9acd53 -> develop 66a399e."
+    },
+    {
+      "id": "PHASE-B",
+      "title": "SIWE auth + beta/admin gates + real shell + functional admin panel",
+      "status": "completed",
+      "completed": "2026-07-16",
+      "note": "B1 DB-backed allowlist (migration 0005 wallet_allowlist+allowlist_audit, AllowlistStore, seed-on-boot, admin-gated CRUD, non-admin=404; 5e33ae0). B2 SIWE (viem verifySiweMessage, nonce cookie, Web-Crypto HMAC session cookie -> edge+node; /verify wired; 4fb1b88). B3 BFF derives X-Owner/X-Account from the verified session (client headers dropped). B4 gates in the LIVE root middleware: (app) needs beta, /admin needs admin -> invisible 404 (rewrite /gate-404) + admin-layout notFound() defense-in-depth; NEVER gates landing/connect/verify/exit/trust. B5 user=owner threaded into planner/recommender/literacy (per-user LiteLLM budgets real; e53de66). B6 real shell: lib/network.tsx = live wagmi (real addr/disconnect/copy/Basescan/chain-switch), fake toasts + Sui live:true removed, useBeta<-session, offline chat labeled Demo (7ea6774). B7 admin panel: /admin/allowlist CRUD + /admin/gateway (LiteLLM status via virtual key) + killswitch live paused()/guardian() + LiteLLM tile (e987305, c3af865). Agent 323 green (mypy 66 files / pytest), web tsc+lint+build clean. Env: SESSION_SECRET (web), BETA/ADMIN_ALLOWLIST (both apps, sync via scripts/sync-allowlist-env.sh). DEPLOYED to develop + migration 0005 applied to spark-postgres (yoyo). VERIFIED LIVE with ephemeral signed wallets: allowlisted beta wallet -> SIWE verify {beta:true} -> /chat 200; non-listed wallet -> {beta:false} -> /chat 307 /verify (honest beta-deny); non-admin -> /admin 404 (invisible); unauth /chat -> /connect, /admin -> 404; /exit + /trust -> 200 (never gated). Also proved the allowlist is dynamic (a fresh login after removing a wallet -> beta:false immediately). EDGE-CRYPTO BUG found + fixed during deploy: the Next edge runtime threw TypeError on crypto.subtle.verify/sign with the bare 'HMAC' string algo + a plain ArrayBuffer (Node accepts both); verifySession now recomputes the HMAC via sign({name:'HMAC'}) with a Uint8Array view + constant-time compares (edge-safe). Bootstrap admin = the operator's wallet only (0xA71e...c30); the beta test wallet was removed post-walkthrough."
+    },
+    {
+      "id": "R1-R2",
+      "title": "Live portfolio (R1) + grounded Sparky & admin Obsidian console (R2)",
+      "status": "deployed+verified",
+      "note": "R1 PORTFOLIO (client wanted it same-day): (app)/portfolio wired to useVault direct-RPC + useBalance; derivePortfolio() pins decimals (vault/idle 6dp, shares/ETH 18dp; ETH excluded from USD total) w/ 3 node:test unit tests; live positions table + allocation donut + risk concentration; honest states (disconnected->Preview, wrong-network, loading skeleton, error); [positionId] live for 'vault' via previewRedeem; 'Sample data' badges dropped ONLY from now-live sections, kept on PnL/net-worth-history/drift. Committed d8147b9, DEPLOYED to develop, rendered 200 via ephemeral beta session. R2 SECOND BRAIN: (grounding, 0bbb1b3) KnowledgeRetriever.retrieve_passages + KnowledgeGrounder Protocol; DAG LEARN branch grounds literacy.tip(context_hint) + emits CitationBlock, OTHER branch grounded explainer; knowledge=default_grounder() wired (active only when EMBEDDING_OPENAI_* set); boundary test proves corpus text NEVER reaches propose/policy (T126). (admin console, d0925ca) migration 0008 knowledge_notes+knowledge_audit; KnowledgeNoteStore (audit row in same txn; admin_sources drives reingest precedence); PgChunkStore.list_sources/get_source_chunks; api/admin_knowledge.py all Depends(require_admin)->404, writes are POST (BFF proxies only GET/POST), PII-scan FIRST (422) then real-embedder-required (503, never stub); web admin/knowledge console (NavKey 'knowledge', list/edit/save/delete/reingest, honest 422/503 banners, chunk preview, audit). Agent 341 green (mypy 67 / pytest), web tsc+eslint clean. R2 #8 (recommender rank grounding) intentionally SKIPPED as optional follow-up. PENDING (needs operator go-ahead + DB creds): apply migrations 0006/0007/0008 to spark-postgres (develop still at 0005) + deploy agent+web. Until applied the grounded assistant + console degrade honestly (503/empty). NOTE/finding: the pre-existing admin/allowlist page issues a raw DELETE that the GET/POST-only BFF can't forward (405) — allowlist removal is currently a no-op via the proxy; flagged for a follow-up (out of R2 scope). [DEPLOYED+VERIFIED 2026-07-17] Migration 0008 applied to spark-postgres (192.168.31.26:5432/sparkpoint) via yoyo; 0006/0007 confirmed already applied (develop now 0008). Pushed develop f8c5b06..dfff42a; Coolify deploys of sparkpoint-agent-develop (dep iskwo40k) + sparkpoint-web (dep vkg440sw) BOTH finished. LIVE-VERIFIED against the deployed agent (S2S + admin owner): /admin/knowledge/status 200 {embedder_configured:true, model qwen3-embedding-8b-mrl1024@2026.07.0, 6 sources / 25 chunks, 0 admin notes}; stranger->404 (admin gate invisible); /sources + /audit 200. GROUNDED SPARKY PROVEN LIVE: a LEARN chat ('What is an ERC-4626 vault?') streamed tool_step*4 -> tip -> citation with 3 grounded citations on the ERC-4626 seed note. Agent /readyz {ready:true}, web landing 200. Note: EMBEDDING_OPENAI_* already SET on agent env so grounding is active + console saves won't 503. R3 recon: LITELLM_ADMIN_KEY + STORE_MODEL_IN_DB are UNSET on the agent env (the two provisions R3 #12 needs).",
+      "completed": "2026-07-17"
+    },
+    {
+      "id": "R3",
+      "title": "Configurable LLM gateway — stats/activity/config admin panel",
+      "status": "deployed+verified",
+      "note": "Extended the read-only gateway status into a configurable admin panel (api/admin_llm.py): GET stats (total + per-model spend), GET activity (recent requests, SCRUBBED — wallet masked, no prompt content), GET config (sparkpoint-chat deployments + audit), POST config/model (add), POST config/model/delete (remove, FAIL-CLOSED guardrail: proceeds only when a surviving alias backend is confirmed; unreadable /model/info refuses; POST not DELETE re BFF GET/POST-only). All Depends(require_admin)->404; uses a SCOPED LITELLM_ADMIN_KEY (never master); unset -> adminConfigured:false / 503 (never stub/virtual key). _scrub() drops api_key/master_key/token/hashed_token/api_base/url. Migration 0009 gateway_audit (append-only, no secrets) + db/gateway_audit.py. Web: Overview|Stats|Activity|Config tabs, guarded add/remove, honest 409/503/adminConfigured states. ADVERSARIAL REVIEW (4-lens workflow, 6 confirmed findings ALL FIXED): (HIGH) guardrail fail-open on unreadable/bare-list model_info -> now fail-closed + _as_rows; (LOW) raw upstream echo could leak api_base creds -> allow-listed projection; (LOW) unmatched-route 404 now shares the gated NOT_FOUND envelope (invisible admin); (LOW) enumerate-then-delete concurrency documented; (LOW) web isLast now counts distinct ids. DRIVE-BY FIX (surfaced by the review): the admin/allowlist page issued a raw DELETE the GET/POST-only BFF can't forward (dead Remove button) -> added POST /admin/allowlist/{role}/delete alias + web POSTs; last-admin guardrail preserved. Commits e0fb79e + 9abde12. Agent 358 green (mypy 68 / ruff / pytest), web tsc+eslint clean. PENDING R3 go-live (needs operator authorization — secret provisioning): (12) mint a SCOPED proxy-admin LiteLLM key from the master key + set LITELLM_ADMIN_KEY on the AGENT env; set STORE_MODEL_IN_DB=true (+ confirm DATABASE_URL) on the GATEWAY app so config writes persist; (9) apply migration 0009; then redeploy agent+web. Until then: stats/activity/config degrade to adminConfigured:false and writes 503 (honest). [DEPLOYED+VERIFIED 2026-07-17] Provisioned: scoped proxy-admin LiteLLM key minted via /user/new (verified != master, admin scope) -> LITELLM_ADMIN_KEY on agent env; STORE_MODEL_IN_DB flipped 'False'->'True' on gateway env. Migration 0009 applied. Pushed develop a848711..d76489a; deployed gateway(dep l0wosws)+agent(kcgskoc)+web(d44gow8), all finished. LIVE-VERIFIED vs deployed agent (S2S+admin owner): /admin/llm/config adminConfigured=true + 2 deployments; /stats adminConfigured=true; /activity 25 real entries; stranger->404. CONFIG-WRITE ROUND-TRIP PROVEN: add duplicate deployment -> persisted (3) -> delete it -> restored to 2 (guardrail allowed since originals remain); gateway_audit recorded model_add + model_delete by admin. Scoped key + STORE_MODEL_IN_DB persistence + guardrail + audit all work live; round-trip left gateway config unchanged. Agent /readyz ready:true, web landing 200. Web full admin-console browser render deferred to R4 #18 (Playwright).",
+      "completed": "2026-07-17"
+    },
+    {
+      "id": "R4",
+      "title": "Close the four honest flags (docker-group, speckit, Uptime Kuma, Playwright e2e)",
+      "status": "complete",
+      "completed": "2026-07-17",
+      "note": "#15 docker-group: docker group created + user added on the real dev host; preflight 26/26 GREEN (preflight.sh unchanged). #16 speckit-agent-context-update: managed CLAUDE.md block regen'd to point at specs/001 plan (ledger pointer kept as prose outside the markers). #17 Uptime Kuma: INSTALLED + LIVE on spark-mon (192.168.31.175) — native Node 20 systemd svc on :3001 within the 512 MiB unprivileged LXC (built on workspace at matching Node-20 ABI + shipped, since swap is blocked in-container; --max-old-space-size=320, ~200 MiB used). 5 monitors created via the Kuma API and ALL reporting UP (web/agent healthz[keyword]/agent readyz/gateway/spark-anvil sim-fork [JSON-RPC result]); NONE on /exit or /trust. Admin creds in .claude/.env (KUMA_ADMIN_PASSWORD). Runbook docs/ops/uptime-monitors.md updated to INSTALLED. #18 Playwright browser e2e: @playwright/test added via pnpm 9.15.9 (ws/postcss overrides preserved) + Chromium; e2e/pw/injected-wallet.ts = a fake window.ethereum backed by a viem account, personal_sign bridged to Node via page.exposeFunction (key never in-browser), EIP-6963 announce, reports Base Sepolia. Specs: public-routes (landing renders; /exit+/trust reachable+never gated; protected route bounces to /connect) + connect-siwe (auto-connect advances /connect->/verify; SIWE mints session + admits beta wallet 'You're in.'; authed wallet opens live portfolio). 7/7 PASS locally vs a gate-off prod build wired to the deployed agent (nonce->verify->session all 200, beta resolved). SIWE specs test.skip without PW_TEST_PRIVKEY. Commits: #17 doc, 71539d4 (#18). ALL FOUR HONEST FLAGS CLOSED."
+    },
+    {
+      "id": "R5-A",
+      "title": "R5 Part A — Alpha pre-review (chat wiring, examples, rebrand, faucets, portfolio honesty)",
+      "status": "deployed; live-verifying + awaiting client wallet",
+      "note": "A1 chat DAG wired to REAL providers (_VaultChatChainProvider + _VaultChatPortfolioProvider + DB mandate) — was stubbed ($0.00 + whitelist-refusal for every action). LIVE-VERIFIED: 'what's in my portfolio' -> portfolio_snapshot(vault $250)+text 'holding 1 position ~$500, $250 idle'; 'first deposit of 100 USDC' -> ACTION block (not refusal); 'swap 100 USDC to ETH' -> 'Token swaps aren't supported on Base Sepolia yet'. Refusal split by cause + idle-cash line in chat + GET /portfolio. A2 SEED (operator-authorized): approve+deposit 250 USDC (tx 0x462729f2 + 0x3e3db95c), vault totalAssets 250e6, deployer 125e6 shares (~$250); operator mandate created (POST /mandate 201 v1) -> /recommendations 200 (was 404). GET /portfolio netWorth 500 / idle 250 / 1 position. FOLLOW-UP FIX: vault shares are 6-dp not 18-dp (decimals()==6) — chat/derive/[positionId] corrected (rendered 0.00 for a real 125-share position); vault/page was already right. A3 chat sidebar = ephemeral scripted 'Examples' group (never live agent). A4 Alpha rebrand from one source (NEXT_PUBLIC_APP_STAGE + stage.ts + StageBadge; set alpha on web env) + StatusTag(live|partial|mock) + FIXED the fees Verify-panel lie (real performanceFeeBps/feeRecipient reads). A5 bridge mock -> 'Unavailable during Alpha' + chain-keyed faucets (USDC faucet 0xD914..A6Dc added to shared AddressBook). A6 removed NEXT_PUBLIC_BETA_ALLOWLIST from code (never in web env); OPERATOR DECISION: KEEP the free OpenRouter models for Alpha (test upstream-failure + latency handling) — no paid swap; client wallet still needed. A7 portfolio degraded states honest (error/wrong-net/loading -> dashes+skeletons+truthful banner, NEVER mock $12k; disconnected labels every card; useVault aggregate now covers dependent reads; [positionId] no longer says 'connect your wallet' to a connected user). A8 derive tests wired into web CI (test + typecheck:test). Agent 365 green, web tsc+lint+3 unit tests. Deployed to develop; redeploying the shares-fix. PENDING: client wallet (add beta-only), then Part B."
+    },
+    {
+      "id": "R5-B-partial",
+      "title": "R5 Part B: B1 conversation persistence, B4 Kuma admin tab, B5 audit carry-overs (B2/B3 pending)",
+      "status": "B1/B4/B5 deployed+verified; B2/B3 pending (checkpoint)",
+      "note": "B1 CONVERSATION PERSISTENCE (deployed+verified): migration 0010 conversations+turns (per user via users.eoa_address); ConversationStore + api/conversations.py (GET /conversations, GET /{id}, POST /{id}/delete; ownership enforced, no admin override, 404 for foreign). chat.py fail-open _ConversationSink persists user+assistant-summary turns + feeds bounded history into run_chat; planner.classify + run_chat take `history` for follow-up disambiguation (NL-understanding only, never policy/action - T126 holds). Web sidebar: real per-wallet history nav below the ephemeral Examples group (load/delete-with-confirm). LIVE: 2-turn convo -> 4 persisted turns, title from 1st msg, stranger->404. B4 KUMA ADMIN TAB (deployed+verified): created a 'sparkpoint' Kuma status page (5 monitors); api/admin_uptime.py reads its public JSON server-side (KUMA_URL on agent env only), admin-gated /admin/uptime (non-admin 404), web 'Uptime' NavKey+tab (status/ping/24h-uptime + LAN-only Kuma link). LIVE: 5 monitors all UP (web 99.6/agent 100/gateway 98/anvil 100), stranger->404; agent container reaches LAN Kuma. B5 AUDIT CARRY-OVERS: OTHER-branch cosine similarity threshold 0.35 (barely-related hit grounds nothing); T126 CI boundary extended (knowledge!->coordinator/agents) + boundary test to BUILD_ACTION; gateway model-delete fail-closed on 0 parseable alias deployments; housekeeping (reingest audit in 1 txn, 5 knowledge non-admin 404 tests, LAN IPs out of tracked .env.example, dead apps/web pnpm block removed). Agent 382 tests green. Commits through d48d1a7. PENDING: B2 portfolio completion (agent-side eth_getLogs indexer for Deposit/Withdraw, costBasis/PnL, pps history sampler, wallet tokens - LARGE) + B3 multi-network/Robinhood-testnet 46630 (chat+portfolio; vault stays Base-only; needs the SIWE chainId-in-set operator DECISION). Also still open from Part A: client wallet (add beta-only)."
+    },
+    {
+      "id": "P3",
+      "title": "Phase 3: US6, Trust Center, bridge, hardening",
+      "status": "pending",
+      "deferred_register": "docs/phase-3-deferred.md",
+      "deferred_items": [
+        "US6 session-key automation — BLOCKER RESOLVED + STACK LIVE (022): the ERC-7562 recordSpend-in-validation blocker is fixed (Path A: all per-session state moved into SparkPointAccount own storage); the AA stack (PolicyModule/validator/account-impl/factory) is DEPLOYED on Base Sepolia + PROVEN LIVE (a mode-0x01 session-key UserOp passed the Alchemy bundler ERC-7562 tracer + executed on-chain, tx 0x1d1fad64); N4 refuter NOT REFUTED (37 attacks). SHIPPED end-to-end on testnet: 0025 session_keys (APPLIED to develop) + SessionScope §6 validator + grant/revoke/list API + sessionKeyExpiry notification + bundler client (#105); the 019-spine session-key submission path (build_tx execMode=session_key emits the unsigned userOp -> submit_signed opType=userop byte-matches SC-005 + relays via the bundler -> status; #106); and the WEB client-side session-signer (encrypted on-device key AES-GCM/IndexedDB N3, a mode-0x01/EIP-191 signer whose userOpHash is byte-verified against the deployed EntryPoint on Base Sepolia, the 'Let Sparky do it' CTA gated on a live grant + on-device key, and fully client-buildable revoke N2; #107). StatusTag mock retired; all 5 web gates + 792 agent tests green. ONLY mainnet remains (Gate C: recorded audit; never autonomous — hands-off = no per-move signature, NOT no human)",
+        "Base<->Sui bridge + Sui network",
+        "Aerodrome swaps (Base mainnet)",
+        "Real Morpho wrapper + 010 APY feed (mainnet)",
+        "Notifications backend",
+        "Admin stake/tvl/users analytics",
+        "US5 outcome logging — SHIPPED (020): backend spine A (rec store 0022 + /build-tx writes intent_bundles.recommendation_id + FIFO per-deposit-lot replay + /outcomes recommendations[] + GET /outcomes/{recId}; intent_log link, SC-010 met) + web 'by recommendation' surface B (PR #92) + persist-at-surface T010 (PR #93: durable UUID recId on /recommendations, idempotent, fail-open; full round-trip live-validated) + drawer retry-on-409 (PR #95: relay fires after receipt confirms + retries 409 DATA_STALE with a stable idempotency key, N2-safe). WORKSTREAM COMPLETE; only a heuristic path + outcome_logs table deferred to Phase 3",
+        "US2 execution spine — SUBSTANTIALLY DONE (018: real pre-sign eth_call dry-run; 019: the /build-tx IntentBundle chokepoint + /simulate + /submit-signed-tx relay + status + 0021 persistence AND the web ExecutionDrawer single-signing UI all SHIPPED; only the Aerodrome swap sim + direct Aave + the richer Anvil-fork sim remain, SC-002 unmet for swaps)"
+      ]
+    }
+  ],
+  "gate_wait_queue": [
+    "Obsidian seed corpus (T121)",
+    "deep fuzz on spark-fuzz",
+    "refuter re-runs",
+    "docs",
+    "worktree reaping"
+  ]
+}

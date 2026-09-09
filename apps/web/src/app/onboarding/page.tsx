@@ -13,8 +13,11 @@
  * no global store — the chosen mandate is local. The final CTA → router.push.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import { useOnboarding, mandateSaveHint, type MandateSaveFailure } from "@/lib/agent/useAgent";
+import { buildMandateDraft, tierStance } from "@/lib/agent/mandateDraft";
 
 /** input steps shown in the counter (Connect=1 … Mandate=6); Welcome/Rec/Done are bookends */
 const STEP_LABELS = ["Connect", "Experience", "Goal", "Timeline", "Risk", "Your plan"] as const;
@@ -31,8 +34,14 @@ interface Answers {
   goal: string | null;
   timeline: string | null;
   riskAns: string | null;
+  exposureLimit?: string;
+  goalTargetAmount?: string;
+  goalTargetDate?: string;
   riskTier: number;
 }
+
+/** Persist lifecycle for the confirmed mandate (POST /mandate). */
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 /**
  * Opens the "What Sparky can & can't do" prove-it sheet (Trust Center).
@@ -48,18 +57,55 @@ function openProveIt() {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  // The REAL connected wallet (onboarding runs post-SIWE-connect) — never a hardcoded placeholder.
+  const { address } = useAccount();
+  const walletShort = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
   const [stepIndex, setStepIndex] = useState(0); // 0..8
   const [answers, setAnswers] = useState<Answers>({
     experience: null,
     goal: null,
     timeline: null,
     riskAns: null,
+    exposureLimit: "",
+    goalTargetAmount: "",
+    goalTargetDate: "",
     riskTier: 1,
   });
   const [whyOpen, setWhyOpen] = useState(false);
 
   const go = (n: number) => setStepIndex(n);
   const set = (patch: Partial<Answers>) => setAnswers((a) => ({ ...a, ...patch }));
+
+  // Confirm the plan → persist the LOCAL draft (the exact mandate the user just saw)
+  // via POST /mandate. Awaited, with an explicit success/error state — no fire-and-forget
+  // and no silent offline no-op. We deliberately do NOT round-trip through the server's
+  // default recompute (it drops the goal/tier/timeline the user chose — US3 AC2).
+  const onboarding = useOnboarding();
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  // WHY the failure is kept, not just the state: the dock used to say "check your connection" for
+  // every failure, including a hard server rejection that no amount of retrying could fix. We now
+  // show the server's own message/code when there is one (025).
+  const [saveFailure, setSaveFailure] = useState<MandateSaveFailure | null>(null);
+  const confirmPlan = useCallback(async (): Promise<boolean> => {
+    const mandate = buildMandateDraft(answers);
+    if (!onboarding.online) {
+      // No connected wallet ⇒ nothing to scope the mandate to. Surface it; never pretend.
+      setSaveFailure({ kind: "offline" });
+      setSaveState("error");
+      return false;
+    }
+    setSaveState("saving");
+    setSaveFailure(null);
+    const outcome = await onboarding.confirmMandate(mandate);
+    if (outcome.ok) {
+      setSaveState("saved");
+      return true;
+    }
+    setSaveFailure(outcome.failure);
+    setSaveState("error");
+    return false;
+  }, [onboarding, answers]);
+  const saveHint = mandateSaveHint(saveState === "error" ? saveFailure : null);
 
   // ---------- stepper ----------
   const inputActive = Math.min(Math.max(stepIndex, 1), 6); // 1..6
@@ -125,14 +171,14 @@ export default function OnboardingPage() {
       {/* conversation */}
       <div className="stage" id="stage">
         <div className="stream" id="stream">
-          {renderStream(stepIndex, answers, set, whyOpen, setWhyOpen)}
+          {renderStream(stepIndex, answers, set, whyOpen, setWhyOpen, walletShort)}
         </div>
       </div>
 
       {/* sticky dock */}
       <div className="dock">
         <div className="dockinner" id="dock">
-          {renderDock(stepIndex, answers, go, router.push)}
+          {renderDock(stepIndex, answers, go, router.push, confirmPlan, saveState, saveHint)}
         </div>
       </div>
     </>
@@ -292,6 +338,7 @@ function renderStream(
   set: (patch: Partial<Answers>) => void,
   whyOpen: boolean,
   setWhyOpen: (v: boolean) => void,
+  walletShort: string | null,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -340,11 +387,17 @@ function renderStream(
           <UserTurn text="Get started" />
           <AiTurn>
             <div className="ai-text">
-              You&apos;re connected —{" "}
-              <span className="mono" style={{ color: "var(--foreground)" }}>
-                0x12…ab
-              </span>{" "}
-              on Base.
+              {walletShort ? (
+                <>
+                  You&apos;re connected —{" "}
+                  <span className="mono" style={{ color: "var(--foreground)" }}>
+                    {walletShort}
+                  </span>
+                  .
+                </>
+              ) : (
+                <>You&apos;re connected — your wallet&apos;s ready.</>
+              )}
             </div>
             <div className="tip">
               <span className="tico">
@@ -519,7 +572,7 @@ function renderStream(
       return (
         <AiTurn>
           <div className="ai-text">
-            Here&apos;s your plan — capital-preservation-first. You can adjust it anytime.
+            Here&apos;s your plan — {tierStance(t)}. You can adjust it anytime.
           </div>
           <div className="mandate" id="mandate">
             <div className="mhead">
@@ -543,9 +596,61 @@ function renderStream(
               </span>
             </div>
             <div className="mpara" id="mpara">
-              Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, capital preservation first, target{" "}
+              {/* 029/FR-015 — the stance follows the tier the user picked; it used to be
+                  hardcoded, so tier 5 read "High risk (5/5), capital preservation first". */}
+              Your plan: <b>{TIER_NAMES[t]} ({t}/5)</b>, {tierStance(t)}, target{" "}
               {goal.toLowerCase().includes("yield") ? "steady USDC yield" : "goal-aligned yield"}. The AI will only
               suggest moves that fit this. <b>You approve and sign each one.</b>
+            </div>
+            {/* 030 — the two questions the mandate could never answer. Asked here, on the plan
+                step, where the user is already reviewing and adjusting: two extra chat turns
+                would have been more friction for less. Both are OPTIONAL — a blank field means
+                "not stated", which every reader treats differently from zero. */}
+            <div className="mslider" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="slabel" style={{ display: "block" }}>
+                  Most you&apos;re willing to put at risk <span className="muted">(optional)</span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="muted">$</span>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="e.g. 500"
+                    value={answers.exposureLimit ?? ""}
+                    onChange={(e) => set({ exposureLimit: e.target.value })}
+                    style={{ width: 140 }}
+                  />
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    Sparky won&apos;t suggest moves beyond this.
+                  </span>
+                </span>
+              </label>
+              {/* A goal is atomic — an amount without a date is not a goal, so neither is sent
+                  unless both are given. */}
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="slabel" style={{ display: "block" }}>
+                  Saving toward a specific amount? <span className="muted">(optional)</span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className="muted">$</span>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="e.g. 10000"
+                    value={answers.goalTargetAmount ?? ""}
+                    onChange={(e) => set({ goalTargetAmount: e.target.value })}
+                    style={{ width: 140 }}
+                  />
+                  <span className="muted" style={{ fontSize: 12 }}>by</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={answers.goalTargetDate ?? ""}
+                    onChange={(e) => set({ goalTargetDate: e.target.value })}
+                  />
+                </span>
+              </label>
             </div>
             <div className="mslider">
               <div className="slabel">
@@ -592,7 +697,7 @@ function renderStream(
               <div className={"whybody" + (whyOpen ? " open" : "")} id="whybody">
                 You chose to {answers.riskAns ? answers.riskAns.toLowerCase() : "hold through a drop"} after a 20% drop,
                 with a {answers.timeline || "medium"} horizon. That maps to a {TIER_NAMES[t].toLowerCase()} profile —
-                steady, capital-preservation-first.
+                {" "}{tierStance(t)}.
               </div>
             </div>
           </div>
@@ -610,6 +715,16 @@ function renderStream(
               <div className="rechead">
                 <span className="rankbadge">Best fit · #1 vs your goal</span>
                 <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+                <span
+                  className="badge"
+                  style={{
+                    background: "var(--caution-subtle, color-mix(in srgb,var(--caution) 12%,transparent))",
+                    color: "var(--caution)",
+                    borderColor: "color-mix(in srgb,var(--caution) 30%,transparent)",
+                  }}
+                >
+                  Example — not a live quote
+                </span>
               </div>
               <div className="recthesis">
                 Move your idle USDC into the <b>Aave Yield Vault</b>. It fits your plan — lower risk,
@@ -619,16 +734,10 @@ function renderStream(
                 <div className="recapy">
                   <span className="big tnum">
                     4.3%
-                    <span className="cite" id="apycite">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 12l2 2 4-4" />
-                        <circle cx="12" cy="12" r="9" />
-                      </svg>
-                      Based on Aave · 2m
-                    </span>
+                    <span className="cite" id="apycite">Example</span>
                   </span>
                   <span className="lbl">
-                    net APY · <span className="estnote">estimate · see breakdown</span>
+                    net APY · <span className="estnote">example figure — your live rate is read on-chain on the vault</span>
                   </span>
                 </div>
                 <div>
@@ -656,7 +765,8 @@ function renderStream(
                 </div>
               </div>
               <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "14px" }}>
-                Estimates, not guarantees. · 4.3% Aave supply rate − 0% Sparky fee
+                Example figures for this walkthrough — your real, on-chain APY (net of Sparky&apos;s 0% fee on
+                principal) is shown live on the vault.
               </div>
               <div className="recact">
                 <button className="btn btn-primary btn-md" type="button">
@@ -682,8 +792,9 @@ function renderStream(
             </div>
             <div className="t-h1">Your plan is set.</div>
             <div className="t-base" style={{ color: "var(--muted-foreground)", maxWidth: "420px" }}>
-              Lower risk (1/5), steady USDC yield. The AI will suggest; you approve and sign. Change any of this anytime
-              in Settings.
+              {TIER_NAMES[answers.riskTier || 1]} ({answers.riskTier || 1}/5),{" "}
+              {(answers.goal ?? "steady USDC yield").toLowerCase()}. The AI will suggest; you approve and sign. Change
+              any of this anytime in Settings.
             </div>
           </div>
         </div>
@@ -700,6 +811,10 @@ function renderDock(
   answers: Answers,
   go: (n: number) => void,
   push: (href: string) => void,
+  confirmPlan: () => Promise<boolean>,
+  saveState: SaveState,
+  /** Pre-resolved dock copy for the current save state (see `mandateSaveHint`). */
+  saveHint: string,
 ): React.ReactNode {
   switch (stepIndex) {
     case 0:
@@ -761,7 +876,7 @@ function renderDock(
     case 6:
       return (
         <>
-          <span className="hint">You can change this anytime in Settings.</span>
+          <span className="hint">{saveHint}</span>
           <button
             className="btn btn-outline btn-lg"
             type="button"
@@ -769,8 +884,17 @@ function renderDock(
           >
             Adjust
           </button>
-          <button className="btn btn-primary btn-lg" id="pcta" type="button" onClick={() => go(7)}>
-            Set my plan
+          <button
+            className="btn btn-primary btn-lg"
+            id="pcta"
+            type="button"
+            disabled={saveState === "saving"}
+            onClick={async () => {
+              const ok = await confirmPlan();
+              if (ok) go(7);
+            }}
+          >
+            {saveState === "saving" ? "Saving…" : saveState === "error" ? "Try again" : "Set my plan"}
           </button>
         </>
       );

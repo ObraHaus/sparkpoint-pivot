@@ -1,0 +1,10 @@
+session key: 0x90F79bf6EB2c4f870365E785982E1f101E93b906
+computed userOpHash: 0x8ee54696822f0fb3467357cd3ab4ffa08a9a25e95fb9950d2aa07bb95b6b5082
+submitting MODE-0x01 session UserOp to safe-mode bundler: http://127.0.0.1:4338
+=== RAW eth_sendUserOperation RESPONSE (verbatim) ===
+{"jsonrpc":"2.0","id":1,"error":{"message":"Encoded error signature \"0x99410554\" not found on ABI.\nMake sure you are using the correct ABI and that the error exists on it.\nYou can look up the decoded signature here: https://4byte.sourcify.dev/?q=0x99410554.\n\nDocs: https://viem.sh/docs/contract/decodeErrorResult\nVersion: viem@2.55.2"}}
+======================================================
+SESSION_OP_REJECTED
+{
+  "message": "Encoded error signature \"0x99410554\" not found on ABI.\nMake sure you are using the correct ABI and that the error exists on it.\nYou can look up the decoded signature here: https://4byte.sourcify.dev/?q=0x99410554.\n\nDocs: https://viem.sh/docs/contract/decodeErrorResult\nVersion: viem@2.55.2"
+}

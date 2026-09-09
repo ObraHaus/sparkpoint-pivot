@@ -1,0 +1,41 @@
+name: agent
+on:
+  push:
+    branches: [develop]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+  pull_request:
+    branches: [develop]
+    paths: ["services/agent/**", ".github/workflows/agent.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 30
+    defaults: { run: { working-directory: services/agent } }
+    # The vault chain-read client loads the vault ABI (+ methodIdentifiers) from the
+    # committed T015 export, so agent CI needs NO `forge build` / `contracts/out`.
+    env:
+      SPARKPOINT_VAULT_ABI_PATH: ${{ github.workspace }}/packages/shared/src/abis/SparkPointVault.abi.json
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: venv + deps (uv sync from the lockfile — runtime + dev group)
+        # `uv sync` installs EXACTLY the locked deps (incl. eth-abi + asyncpg), so a new
+        # runtime dep can never silently drift out of CI the way a hardcoded list does.
+        run: uv sync --frozen --python 3.12
+      - name: ruff
+        # 023 (FR-023-018): lint the WHOLE tree, not just src. [tool.ruff] already declares
+        # src = ["src", "tests"], so checking only src left a path the config claimed to cover
+        # outside the gate — and 52 E501s had accumulated there unnoticed.
+        run: .venv/bin/ruff check .
+      - name: mypy (BLOCKING — strict, ITEM 4)
+        # No `|| echo ...` escape: a strict-mypy failure MUST fail CI. tool.mypy stays
+        # `strict = true` (pyproject.toml); the only overrides are the documented
+        # missing-stub / implicit-reexport shims for asyncpg + eth-abi, not a strictness weaken.
+        run: .venv/bin/mypy src/sparkpoint_agent
+      - name: pytest
+        run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

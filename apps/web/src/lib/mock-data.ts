@@ -65,13 +65,6 @@ export interface Outcome {
   date: string;
 }
 
-export interface Notification {
-  t: string;
-  s: string;
-  time: string;
-  unread: boolean;
-  icon: string;
-}
 
 export interface Tx {
   type: string;
@@ -109,7 +102,6 @@ export interface MockData {
   apyHist: number[];
   recs: Recommendation[];
   outcomes: Outcome[];
-  notifications: Notification[];
   txs: Tx[];
   sessionKey: SessionKey | null;
 }
@@ -118,7 +110,9 @@ export const data: MockData = {
   wallet: "0x12A4…b9Ef",
   networks: [
     { id: "base", name: "Base", live: true, color: "#0052FF", wallet: "0x12A4…b9Ef" },
-    { id: "sui", name: "Sui", live: true, color: "#4DA8FF", wallet: "0x9c3f…7a2d" },
+    // Sui is a documented fast-follow, NOT live. (The live shell reads wagmi, not this mock;
+    // this value is kept honest for the remaining mock bridge screen.)
+    { id: "sui", name: "Sui", live: false, color: "#4DA8FF", wallet: "0x9c3f…7a2d" },
   ],
   activeNetwork: "base",
   bridgeAssets: [
@@ -176,11 +170,6 @@ export const data: MockData = {
     { id: "o1", kind: "gain", pnl: "+$48.20", pct: "+0.5%", win: "1M", from: "the May 18 deposit recommendation", cause: "The Aave rate held steady and yield accrued.", date: "May 18" },
     { id: "o2", kind: "loss", pnl: "−$88.10", pct: "−0.7%", win: "1M", from: "the Jun 2 rebalance recommendation", cause: "The rate dropped after the move.", date: "Jun 2" },
     { id: "o3", kind: "gain", pnl: "+$12.04", pct: "+0.1%", win: "1W", from: "the Jun 9 top-up recommendation", cause: "Small steady accrual since the top-up.", date: "Jun 9" },
-  ],
-  notifications: [
-    { t: "Aave USDC rate moved to 4.3%", s: "A recommendation is ready in chat.", time: "2m ago", unread: true, icon: "activity" },
-    { t: "Yield accrued: +$2.04 today", s: "Your vault position updated.", time: "1h ago", unread: true, icon: "up" },
-    { t: "Deposit confirmed", s: "You now hold 9,834.50 spvUSDC.", time: "yesterday", unread: false, icon: "check" },
   ],
   txs: [
     { type: "Deposit", amt: "+9,834.50 spvUSDC", usd: "$10,000.00", time: "Jun 1", dir: "in" },

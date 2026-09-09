@@ -48,6 +48,8 @@ Tone is the voice adjusted for context. The voice never changes; the *temperatur
 - **Sentence case** for all UI text (headings, buttons, labels, menu items). No Title Case, no ALL CAPS except the design-system's tracked eyebrow/badge labels (`04-design-system.md` §3.2). Tooltips, helper text, and microcopy: sentence case, terminal period only on full sentences (no period on labels/buttons/chips).
 - **Reading level:** target roughly 8th–9th grade for retail-facing copy; technical precision is fine for the progressively-disclosed depth layers, but the *surface* stays plain.
 
+> **Implementation note (runtime persona).** The chat assistant's runtime character — "Sparky" — is implemented as a **trusted system prompt** in `services/agent/persona_seed/*.md` (`IDENTITY` / `SOUL` / `VOICE` / `BOUNDARIES` / `EXAMPLES`), editable live via the admin console. It *encodes* these rules rather than overriding them: §1.1/§1.2 (the voice + "never hypey"), §1.4 (labeled tool, never "I" as a human), §9.3 (banned register), and it reinforces the §3 disclaimer + §7 "proven, not promised" custody framing. **This doc stays canonical** — persona edits must remain within it (a test asserts the composed persona is emoji/exclamation/PII-free). See `DEVELOPMENT.md` → "Sparky persona".
+
 ---
 
 ## 2. Microcopy patterns (reusable)

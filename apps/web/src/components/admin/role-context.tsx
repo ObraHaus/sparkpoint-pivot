@@ -10,20 +10,16 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 
+// 035 — the nav map lives in a PURE leaf module so its rule can be tested directly rather than
+// re-implemented in a test file. Re-exported here so existing importers are unaffected.
+import { NAVMETA, NAV_HREF, type NavKey } from "@/lib/admin/nav";
+
+export { NAVMETA, NAV_HREF };
+export type { NavKey };
+
 export type RoleKey = "super" | "ops" | "stake" | "client";
 
-/** nav keys, in source order. */
-export type NavKey =
-  | "overview"
-  | "users"
-  | "usage"
-  | "tvl"
-  | "revenue"
-  | "system"
-  | "killswitch"
-  | "stake"
-  | "cfg"
-  | "audit";
+
 
 export interface RoleDef {
   label: string;
@@ -35,17 +31,17 @@ export interface RoleDef {
 export const ROLES: Record<RoleKey, RoleDef> = {
   super: {
     label: "Super-Admin",
-    nav: ["overview", "users", "usage", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "gateway", "knowledge", "vault", "faucet", "revenue", "system", "stake"],
     home: "overview",
   },
   ops: {
     label: "Ops / Internal",
-    nav: ["overview", "users", "usage", "tvl", "revenue", "system", "killswitch", "stake", "cfg", "audit"],
+    nav: ["overview", "users", "gateway", "knowledge", "vault", "faucet", "revenue", "system", "stake"],
     home: "overview",
   },
   stake: {
     label: "Stakeholder",
-    nav: ["overview", "tvl", "revenue", "stake"],
+    nav: ["overview", "vault", "revenue", "stake"],
     home: "stake",
   },
   client: {
@@ -55,35 +51,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   },
 };
 
-/** NAVMETA — [label, icon name] per nav key. The source admin file shipped its
- *  own icon paths; here we map each to the closest icon in @/lib/icons (most are
- *  path-identical: overview=grid, usage=activity, system=shield, cfg=settings). */
-export const NAVMETA: Record<NavKey, [string, string]> = {
-  overview: ["Overview", "grid"],
-  users: ["Users", "user"],
-  usage: ["Usage", "activity"],
-  tvl: ["TVL / Vault", "vault"],
-  revenue: ["Revenue", "portfolio"],
-  system: ["System", "shield"],
-  killswitch: ["Kill-switch", "pause"],
-  stake: ["Stakeholder", "coins"],
-  cfg: ["Config", "settings"],
-  audit: ["Audit log", "book"],
-};
 
-/** route href per nav key (the App Router equivalent of the source's `screen`). */
-export const NAV_HREF: Record<NavKey, string> = {
-  overview: "/admin",
-  users: "/admin/users",
-  usage: "/admin/usage",
-  tvl: "/admin/tvl",
-  revenue: "/admin/revenue",
-  system: "/admin/system",
-  killswitch: "/admin/killswitch",
-  stake: "/admin/stake",
-  cfg: "/admin/config",
-  audit: "/admin/audit",
-};
+
+
 
 interface AdminRoleCtx {
   role: RoleKey;

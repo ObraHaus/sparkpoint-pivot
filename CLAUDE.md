@@ -1,10 +1,10 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan at
-`specs/005-sparky-rebrand/plan.md` (rebrands the app face SparkPoint → "Sparky"
-with a new shared logo + refreshed favicon/metadata; builds on the gated landing
-`specs/003-landing-only-gate/` and Mailjet subscribe `specs/004-mailjet-subscribe/`).
+shell commands, and other important information, read the current plan
+at specs/042-erpc-rpc-proxy/plan.md
 <!-- SPECKIT END -->
+
+> **Active feature = 001 (Phase-2 MVP)**: non-custodial Aave ERC-4626 vault + custom ERC-4337 account + fail-closed policy engine + chat assistant. Execution plan rev 3.3 (artifact 31e5f3f5). **Authoritative live state: [`docs/orchestration/wave-state.json`](docs/orchestration/wave-state.json) + [`GATES.md`](docs/orchestration/GATES.md)** (the per-task checkboxes in `tasks.md` are the original plan, not maintained). As-built topology: [`docs/architecture-as-built.md`](docs/architecture-as-built.md).
 
 ---
 
@@ -33,9 +33,10 @@ Approved by the operator (aldrickb) on **2026-06-19**. These are intentional —
 ## ObraHaus conventions this repo DOES adopt
 
 - **Branch flow (§3):** `feature/*` → **`develop`** → **`main`** (production). Batched, deliberate, **never-Friday** prod deploys (PH/Asia-Manila).
-- **Spec-driven (§9):** Spec Kit lifecycle (constitution → specify → clarify → plan → tasks → analyze → implement). Constitution at `.specify/memory/constitution.md` (currently **v1.2.0**).
+- **Spec-driven (§9):** Spec Kit lifecycle (constitution → specify → clarify → plan → tasks → analyze → implement). Constitution at `.specify/memory/constitution.md` (currently **v3.0.0**, ratified 2026-07-30 — Morpho Vault V2 Fee Wrappers + Robinhood Chain 4663; see `specs/024-multi-protocol-vaults/constitution-amendment-v3.0.0.md`).
 - **Security gate (§9):** **OH Defender** PR scan (`.github/workflows/oh-defender.yml`). ⚠️ **Onboarding required:** the repo must be onboarded in the Defender console to provision the `DEFENDER_API_URL` / `DEFENDER_API_KEY` Actions secrets (operator action). Until wired, the scan won't run.
 - **Living docs (§7):** `CHANGELOG.md`, `DEPLOYMENT.md`, `COOLIFY.md`, `DEVELOPMENT.md`, `MIGRATIONS.md` — keep updated in the same change that alters behavior.
+- **⚠️ No changelog drift — housekeeping is immediate, not deferred.** SparkPoint has **TWO** changelogs and BOTH must stay current at all times: (1) the repo **`CHANGELOG.md`** (developer record, Keep-a-Changelog), and (2) the **in-app changelog** shown to clients/testers at `/changelog` (admin-managed `content_entries` rows, edited via **Admin → Updates**; reads `GET /content/changelog`). **After every PR / merge / shipped update, update both in the same beat** — never leave them stale. A user-visible feature or fix MUST get a client-friendly in-app entry (semi-technical: understandable to a non-dev, but making clear something in the core changed even when it isn't visually obvious); behavior/schema/infra changes MUST get a `CHANGELOG.md` bullet. The in-app changelog is client-facing — an empty or thin one makes the team look idle, so treat drift as a defect. Backdate in-app entries via the `published_at` field (Admin → Updates date picker, or `POST /admin/content`) so the timeline reads honestly. Constitution + `.specify` artifacts count as living docs too.
 - **Dev/staging hosting (§5):** OH Coolify (Nixpacks, `pnpm --frozen-lockfile`, `http://` domains, deployment-record verification). See `COOLIFY.md`.
 - **Commits (§10):** Conventional Commits + the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` trailer. SemVer + `vX.Y.Z` tags on prod merges.
 - **Confirm before** any production deploy, Coolify-mutating command, or `git push` / PR / merge.

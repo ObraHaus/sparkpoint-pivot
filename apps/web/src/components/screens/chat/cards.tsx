@@ -10,14 +10,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/lib/icons";
 import { data, TIER } from "@/lib/mock-data";
+import { capNoun } from "@/lib/stage";
 import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
+import { StatusTag } from "@/components/ui/status-tag";
+import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 
 /** Card action callbacks — the chat screen wires these to its thread state. */
 export interface CardActions {
   /** open the inline confirm flow for the given intent. */
-  review: (kind: "deposit" | "swap" | "bridge") => void;
+  review: (intent: InlineIntent) => void;
   /** "Not now" / dismiss this card. */
   dismiss: () => void;
   /** send a follow-up message (chip / data-chip buttons). */
@@ -41,6 +44,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
       <div className="ch">
         <span className="rank">Best fit · #1 vs your goal</span>
         <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+        <StatusTag variant="mock" title={"Example figures — connect for live recommendations with the real Aave rate."} />
       </div>
       <div className="cthesis">
         Aave&apos;s USDC rate is <b>4.3%</b>. After our <b>10% performance fee on yield</b> that&apos;s{" "}
@@ -61,7 +65,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
       </div>
       <div className="cnote">Fits your plan: lower risk, steady yield. · Estimates, not guarantees.</div>
       <div className="cact">
-        <button className="btn btn-primary btn-md" onClick={() => actions.review("deposit")}>
+        <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "deposit" })}>
           Review this move
         </button>
         <button
@@ -80,7 +84,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
         </button>
         <div className={"whybd" + (open ? " open" : "")}>
           Your mandate is lower-risk, capital-preservation-first. This keeps 100% in the audited Aave vault (Risk 1),
-          satisfies your beta cap and slippage guardrails, and raises yield without changing your risk tier. The
+          satisfies your {capNoun} and slippage guardrails, and raises yield without changing your risk tier. The
           tradeoff: yield floats with the Aave rate.
         </div>
       </div>
@@ -287,7 +291,7 @@ export function SwapCard({ actions }: { actions: CardActions }) {
         into the vault.
       </div>
       <div className="cact">
-        <button className="btn btn-primary btn-md" onClick={() => actions.review("swap")}>
+        <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "swap", ethToUsdc: true })}>
           Review swap
         </button>
         <button className="btn btn-ghost btn-md" onClick={actions.dismiss}>
@@ -324,7 +328,7 @@ export function BridgeCard({ actions }: { actions: CardActions }) {
         Non-custodial bridge: you sign a lock on Base, receive on Sui. Sparky never holds funds in transit.
       </div>
       <div className="cact">
-        <button className="btn btn-primary btn-md" onClick={() => actions.review("bridge")}>
+        <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "bridge" })}>
           Review bridge
         </button>
         <button className="btn btn-ghost btn-md" onClick={actions.dismiss}>

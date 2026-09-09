@@ -14,10 +14,20 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
-import { data } from "@/lib/mock-data";
+import { useNotifications, useMarkNotificationsRead } from "@/lib/agent/useAgent";
+import { filterByPrefs, type NotificationView } from "@/lib/agent/notificationsView";
+import { useNotifPrefs } from "@/lib/settings/usePrefs";
+import { useSessionKeys } from "@/lib/automation/useSessionKey";
 import { useNetwork } from "@/lib/network";
-import { toHref } from "@/lib/nav";
+import { useSession } from "@/lib/auth/useSiwe";
+import { commandActions, matchesQuery, navLeaves, SECONDARY, toHref, type NavItem } from "@/lib/nav";
+import { NetworkLogo } from "@/components/ui/NetworkLogo";
+
+/** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
+const _DEPLOYED = getAddresses(84532);
+const _shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 type MenuKind = "wallet" | "network" | "avatar";
 type SheetKind = "proveit" | "notifications";
@@ -235,7 +245,9 @@ function Menu({ show, anchor, children }: { show: boolean; anchor: AnchorRect; c
 /* ------------------------------- content ------------------------------- */
 
 function ProveItBody({ go }: { go: (r: string) => void }) {
-  const sk = data.sessionKey;
+  // Reflect the REAL grant (US6) — retires the last `data.sessionKey` mock so the Trust Center never
+  // contradicts a live grant. `online:false` (no wallet) ⇒ null ⇒ the honest "No automation" copy.
+  const { active: sk } = useSessionKeys();
   const rows: [string, string, string, string, string?, string?][] = [
     ["shieldcheck", "--gain", "No admin withdrawal", "We have no code path to send your funds anywhere but back to you — not us, not anyone."],
     ["door", "--gain", "Withdraw anytime", "Exit directly on-chain, even if Sparky's app and AI are completely offline.", "Withdraw now", "trust/exit"],
@@ -298,33 +310,63 @@ function ProveItBody({ go }: { go: (r: string) => void }) {
         className="mono"
         style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-soft)" }}
       >
-        Vault 0x9f…2C1 · Policy 0x3a…77B · <Icon name="ext" size={11} /> View all permissions
+        Vault {_shortAddr(_DEPLOYED.vault)} · Caps {_shortAddr(_DEPLOYED.capRegistry)} · <Icon name="ext" size={11} /> View all permissions
       </div>
     </>
   );
 }
 
 function NotificationsBody() {
+  // The REAL feed (§3.11) — derived from on-chain activity, never a mock. Opening the drawer marks it
+  // read (advisory; clears the badge). Rows are filtered by the user's on-device category toggles.
+  const notif = useNotifications();
+  const { prefs } = useNotifPrefs();
+  const markRead = useMarkNotificationsRead();
+  useEffect(() => {
+    markRead();
+  }, [markRead]);
+
+  if (!notif) return <NotifEmpty text="Connect your wallet to see your notifications." />;
+  if (!notif.loaded && notif.isLoading) return <NotifEmpty text="Loading your notifications…" />;
+  if (notif.isError) {
+    return <NotifEmpty text="Couldn’t load notifications right now — your funds are unaffected." />;
+  }
+  const items = filterByPrefs(notif.view.items, prefs);
+  if (items.length === 0) return <NotifEmpty text="You’re all caught up — no notifications yet." />;
   return (
     <>
-      {data.notifications.map((n, i) => (
-        <div className="proveitem" key={i} style={{ opacity: n.unread ? 1 : 0.7 }}>
-          <span className="pi-ico" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
-            <Icon name={n.icon} size={16} />
-          </span>
-          <div style={{ flex: 1 }}>
-            <div className="pi-t">
-              {n.t}
-              {n.unread && (
-                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--primary)", verticalAlign: "middle", marginLeft: 4 }} />
-              )}
-            </div>
-            <div className="pi-d">{n.s}</div>
-            <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 4 }}>{n.time}</div>
-          </div>
-        </div>
+      {items.map((n) => (
+        <NotifRow key={n.id} n={n} />
       ))}
     </>
+  );
+}
+
+function NotifRow({ n }: { n: NotificationView }) {
+  return (
+    <div className="proveitem" style={{ opacity: n.unread ? 1 : 0.7 }}>
+      <span className="pi-ico" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
+        <Icon name={n.icon} size={16} />
+      </span>
+      <div style={{ flex: 1 }}>
+        <div className="pi-t">
+          {n.title}
+          {n.unread && (
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--primary)", verticalAlign: "middle", marginLeft: 4 }} />
+          )}
+        </div>
+        <div className="pi-d">{n.body}</div>
+        <div style={{ fontSize: 11, color: "var(--muted-foreground)", marginTop: 4 }}>{n.timeText}</div>
+      </div>
+    </div>
+  );
+}
+
+function NotifEmpty({ text }: { text: string }) {
+  return (
+    <div style={{ padding: "20px 6px", fontSize: 13, color: "var(--muted-foreground)", textAlign: "center" }}>
+      {text}
+    </div>
   );
 }
 
@@ -349,43 +391,71 @@ function MenuItem({ icon, label, onClick, style }: { icon: string; label: ReactN
 }
 
 function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { wallet, network } = useNetwork();
+  const { wallet, network, address, explorerBase, isConnected, disconnectWallet } = useNetwork();
+
+  const copyAddress = () => {
+    close();
+    if (!address) return toast("No wallet connected");
+    navigator.clipboard
+      ?.writeText(address)
+      .then(() => toast("Address copied"))
+      .catch(() => toast("Couldn't copy address"));
+  };
+  const viewOnExplorer = () => {
+    close();
+    if (!address) return toast("No wallet connected");
+    window.open(`${explorerBase}/address/${address}`, "_blank", "noopener,noreferrer");
+  };
+  // §B3: the explorer differs by chain (Basescan on Base; Blockscout on Robinhood testnet) — name it
+  // honestly from the active explorer host rather than hardcoding "Basescan".
+  const explorerName = /basescan\./i.test(explorerBase) ? "Basescan" : "explorer";
+  const disconnect = async () => {
+    close();
+    await disconnectWallet();
+    go("landing");
+  };
+
   return (
     <>
-      <MenuHeader title={`Connected · ${network.name}`} sub={wallet} />
-      <MenuItem icon="copy" label="Copy address" onClick={() => { close(); toast("Address copied"); }} />
-      <MenuItem icon="ext" label="View on Basescan" onClick={() => { close(); toast("Opens Basescan ↗"); }} />
+      <MenuHeader title={isConnected ? `Connected · ${network.name}` : "Not connected"} sub={wallet} />
+      <MenuItem icon="copy" label="Copy address" onClick={copyAddress} />
+      <MenuItem icon="ext" label={`View on ${explorerName}`} onClick={viewOnExplorer} />
       <MenuItem icon="shieldcheck" label="View exact permissions" onClick={() => go("trust/permissions")} />
-      <MenuItem icon="refresh" label="Switch wallet" onClick={() => { close(); toast("Wallet switcher"); }} />
-      <MenuItem icon="logout" label="Disconnect" onClick={() => { toast("Disconnected — funds untouched"); go("landing"); }} />
+      <MenuItem icon="logout" label="Disconnect" onClick={disconnect} />
     </>
   );
 }
 
-function NetworkMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { networks, activeNetwork, setActiveNetwork } = useNetwork();
+function NetworkMenu({ go, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
+  // §B3 multi-network: offer the real switchable testnet chains (Base Sepolia + Robinhood Testnet)
+  // and switch by chainId. A single switchChain() also adds the chain to the wallet when unknown,
+  // so a user can actually get ONTO Robinhood testnet from here (not just be recognized on it).
+  const { switchableNetworks, chainId, switchToChain } = useNetwork();
   return (
     <>
       <div style={{ padding: "9px 12px 7px", fontSize: 11, color: "var(--muted-foreground)", fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase" }}>
         Network
       </div>
-      {networks.map((n) => (
-        <button
-          key={n.id}
-          className="menu-item"
-          onClick={() => { close(); setActiveNetwork(n.id); toast("Switched to " + n.name); }}
-        >
-          <span style={{ width: 12, height: 12, borderRadius: "50%", background: n.color, flex: "none" }} />
-          {n.name}
-          {n.id === activeNetwork ? (
-            <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
-              <Icon name="check" size={15} />
-            </span>
-          ) : (
-            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--gain)" }}>live</span>
-          )}
-        </button>
-      ))}
+      {switchableNetworks.map((n) => {
+        const active = chainId === n.chainId;
+        const onClick = () => {
+          close();
+          if (!active) switchToChain(n.chainId);
+        };
+        return (
+          <button key={n.chainId} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
+            <NetworkLogo chainId={n.chainId} color={n.color} size={18} />
+            {n.name}
+            {active ? (
+              <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
+                <Icon name="check" size={15} />
+              </span>
+            ) : (
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--caution)" }}>switch</span>
+            )}
+          </button>
+        );
+      })}
       <div style={{ padding: "8px 12px 4px", borderTop: "1px solid var(--border-soft)", marginTop: 4 }}>
         <MenuItem icon="refresh" label="Bridge assets between networks" onClick={() => go("bridge")} style={{ color: "var(--primary)" }} />
       </div>
@@ -393,8 +463,16 @@ function NetworkMenu({ go, toast, close }: { go: (r: string) => void; toast: (m:
   );
 }
 
+/** Avatar-menu screen entries, resolved from the nav config (single source of truth). */
+const _SECONDARY_LEAVES = navLeaves(SECONDARY);
+const _leafFor = (route: string): NavItem =>
+  _SECONDARY_LEAVES.find((n) => n.route === route) ?? { route, label: route, icon: "grid" };
+const SETTINGS_ITEM = _leafFor("settings");
+const LEARN_ITEM = _leafFor("learn");
+
 function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string) => void }) {
-  const { wallet } = useNetwork();
+  const { wallet, disconnectWallet } = useNetwork();
+  const { session } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
   const isLight = resolvedTheme === "light";
   return (
@@ -406,10 +484,12 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
         </div>
       </div>
       <MenuItem icon="user" label="Account" onClick={() => go("settings/account")} />
-      <MenuItem icon="settings" label="Settings" onClick={() => go("settings")} />
-      <MenuItem icon="sliders" label="Mandate" onClick={() => go("settings")} />
-      <MenuItem icon="book" label="Learn" onClick={() => go("learn")} />
-      <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />
+      {/* Screen entries come from nav.ts so this menu can't drift away from the rail/palette. */}
+      <MenuItem icon={SETTINGS_ITEM.icon} label={SETTINGS_ITEM.label} onClick={() => go(SETTINGS_ITEM.route)} />
+      <MenuItem icon="sliders" label="Mandate" onClick={() => go(SETTINGS_ITEM.route)} />
+      <MenuItem icon={LEARN_ITEM.icon} label={LEARN_ITEM.label} onClick={() => go(LEARN_ITEM.route)} />
+      {/* Only admins see the admin entry — for everyone else the surface is a 404 (invisible). */}
+      {session?.admin && <MenuItem icon="grid" label="Admin panel" onClick={() => go("admin")} />}
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "6px 6px 4px" }} />
       <button
         className="menu-item"
@@ -426,27 +506,17 @@ function AvatarMenu({ go, toast }: { go: (r: string) => void; toast: (m: string)
         <span className={"switch" + (isLight ? " on" : "")} style={{ marginLeft: "auto" }} />
       </button>
       <div style={{ borderTop: "1px solid var(--border-soft)", margin: "4px 6px" }} />
-      <MenuItem icon="logout" label="Log out" onClick={() => { toast("Logged out — funds untouched"); go("landing"); }} />
+      <MenuItem icon="logout" label="Log out" onClick={async () => { await disconnectWallet(); go("landing"); }} />
     </>
   );
 }
 
-const CMDK_ACTIONS: [string, string, string][] = [
-  ["Withdraw now", "door", "trust/exit"],
-  ["Prove it — permissions", "shieldcheck", "trust/permissions"],
-  ["Go to Chat", "chat", "chat"],
-  ["Open Portfolio", "portfolio", "portfolio"],
-  ["Open Vault", "vault", "vault"],
-  ["Swap ETH → USDC", "activity", "confirm/swap"],
-  ["Bridge Base ↔ Sui", "refresh", "bridge"],
-  ["Fees / how we make money", "coins", "fees"],
-  ["Premium", "zap", "premium"],
-  ["Strategies", "strategies", "strategies"],
-  ["Trust Center", "shieldcheck", "trust"],
-  ["Revoke automation", "zap", "automation"],
-  ["Outcome Log", "activity", "outcomes"],
-  ["Settings", "settings", "settings"],
-];
+/**
+ * The palette is DERIVED from `nav.ts` (it used to be a hand-maintained 14-entry copy that had
+ * already lost SRK, Learn and Changelog). Group children are flattened in, so collapsing the
+ * Information group in the rail never removes anything from search.
+ */
+const CMDK_ACTIONS: NavItem[] = commandActions();
 
 function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => void; go: (r: string) => void }) {
   const [q, setQ] = useState("");
@@ -455,7 +525,7 @@ function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => v
     const t = window.setTimeout(() => inputRef.current?.focus(), 60);
     return () => window.clearTimeout(t);
   }, []);
-  const matches = CMDK_ACTIONS.filter((a) => a[0].toLowerCase().includes(q.toLowerCase()));
+  const matches = CMDK_ACTIONS.filter((a) => matchesQuery(a, q));
   return (
     <div className={"dialog" + (show ? " show" : "")} role="dialog" aria-label="Command palette">
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--border-soft)" }}>
@@ -474,9 +544,9 @@ function CommandPalette({ show, onClose, go }: { show: boolean; onClose: () => v
       <div style={{ maxHeight: 340, overflow: "auto", padding: 8 }}>
         {matches.length ? (
           matches.map((a) => (
-            <button key={a[2]} className="menu-item" style={{ width: "100%" }} onClick={() => go(a[2])}>
-              <Icon name={a[1]} size={16} />
-              {a[0]}
+            <button key={a.route} className="menu-item" style={{ width: "100%" }} onClick={() => go(a.route)}>
+              <Icon name={a.icon} size={16} />
+              {a.label}
             </button>
           ))
         ) : (

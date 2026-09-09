@@ -1,0 +1,18 @@
+# One cycle of the testnet activity bots. Started by sparkpoint-bots.timer.
+#
+# ⚠️ This unit holds the ONLY thing that can sign as a bot. It is deliberately not in the deployed
+# stack: the agent is provably keyless (N2) and putting these keys behind it would end that.
+[Unit]
+Description=SparkPoint testnet activity bots — one cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/project/sparkpoint-pivot/ops/testnet-bots
+# The keystore. Holds DEPLOYER_PRIVATE_KEY, BOT_MNEMONIC and AGENT_S2S_TOKEN.
+EnvironmentFile=%h/project/.claude/.env
+Environment=BOT_SCHEDULE=hourly
+Environment=BOT_INTERVAL_SEC=3600
+ExecStart=/usr/bin/env bash run-cycle.sh --broadcast
+# A failed cycle must not mask the next one: the timer keeps firing and the panel shows the gap.
+SuccessExitStatus=0 1
