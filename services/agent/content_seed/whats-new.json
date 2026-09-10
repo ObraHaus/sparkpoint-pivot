@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "assistant-recovers-from-database-restarts",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The assistant now recovers on its own after a database restart",
+      "body": "If the database behind the assistant was restarted — during maintenance, or after a server reboot — the assistant used to get stuck: it couldn't reconnect on its own, so chat history, tips and other saved data kept failing until someone manually restarted it.\n\nNow it heals itself. The moment the database is back, the next request quietly re-establishes the connection, and while the database is briefly unavailable the health check reports that honestly instead of pretending everything is fine.\n\nNothing changes day to day — this just removes a way the assistant could go quietly dark after routine infrastructure restarts.",
+      "published_at": "2026-09-10T00:30:00Z"
+    },
+    {
       "slug": "robinhood-mainnet-groundwork-wired",
       "type": "changelog",
       "tag": "Improved",
