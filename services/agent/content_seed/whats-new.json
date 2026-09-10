@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "Groundwork for Robinhood mainnet is now wired in",
       "body": "Following on from getting the app ready for Robinhood mainnet, we've now wired the network into the core plumbing — the address book, the safety/policy layer, and the assistant's chain settings all recognise Robinhood Chain now, entirely fail-closed.\n\nThat means nothing is switched on for it yet (no token, no vault, no trading on that network) and nothing changes for you today. It's the quiet groundwork so that when the mainnet beta's contracts go live, turning it on is a configuration change rather than new code.",
-      "published_at": "2026-09-10T12:00:00Z"
+      "published_at": "2026-09-10T00:00:00Z"
     },
     {
       "slug": "app-ready-for-robinhood-mainnet",
