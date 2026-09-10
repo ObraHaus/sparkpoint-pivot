@@ -22,6 +22,11 @@ so the `[^hex]|$` boundary fails), keeping key detection fully active everywhere
 """
 paths = [
   '''contracts/script/bundler-spike/safemode-logs/.*''',
+  # Vendored Foundry submodules (forge-std · openzeppelin-contracts · solady · account-abstraction
+  # + nested). OH Defender checks these out with `submodules: recursive` for the contract build, so
+  # gitleaks scans them; their test fixtures carry dummy keys/secrets that are third-party code, not
+  # ours to answer for (the SCA/SAST lanes exclude `lib/` for the same reason).
+  '''contracts/lib/.*''',
 ]
 regexes = [
   '''0x[a-fA-F0-9]{40}(?:[^a-fA-F0-9]|$)''',

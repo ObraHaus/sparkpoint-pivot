@@ -117,10 +117,15 @@ contract SrkFaucet {
             revert CooldownActive(availableAt, availableAt - block.timestamp);
         }
 
+        // Effect written BEFORE any token interaction — including the balance view — so the strict
+        // checks-effects-interactions order holds and static analysis (aderyn) sees no state write
+        // after an external call. Behaviour is unchanged: an insufficient-float revert below rolls
+        // this write back, exactly as when it sat after the check.
+        lastClaimAt[msg.sender] = block.timestamp;
+
         uint256 float_ = token.balanceOf(address(this));
         if (float_ < amount) revert InsufficientFloat(float_, amount);
 
-        lastClaimAt[msg.sender] = block.timestamp;
         token.safeTransfer(msg.sender, amount);
 
         emit Claimed(msg.sender, amount, block.timestamp + cooldown);
