@@ -43,6 +43,14 @@ export const CHAIN_ID = {
    * (we NEVER point the adapter at the unofficial Robinhood "stock market" pilot pool).
    */
   robinhoodTestnet: 46630,
+  /**
+   * Robinhood Chain MAINNET (4663) — §B fail-closed scaffold. Wired into the shared registry + the
+   * web read-client so `getAddresses`/`getPolicyConstants(4663)` resolve, but its allowlist is EMPTY
+   * (below), the agent's API still rejects the id, and it is neither wagmi-registered nor switchable,
+   * so no user/agent fund path can form. Capabilities (agent acceptance, the in-app switcher, swap)
+   * flip on separately (feature D), gated on the beta contracts + the external audit.
+   */
+  robinhoodMainnet: 4663,
 } as const;
 export type ChainId = (typeof CHAIN_ID)[keyof typeof CHAIN_ID];
 
@@ -368,12 +376,20 @@ const BASE_SEPOLIA_ALLOWLIST: readonly AllowlistEntry[] = [
  */
 const ROBINHOOD_TESTNET_ALLOWLIST: readonly AllowlistEntry[] = [];
 
+/**
+ * §B — Robinhood MAINNET (4663): EMPTY allowlist, same rationale as testnet. The SparkPoint vault is
+ * not offered on 4663 in the beta (chains/index.ts `offersVault=false`), so every agent-mediated
+ * vault/swap action fails allowlisting (fail-closed). The user-signed swap page is not a policy target.
+ */
+const ROBINHOOD_MAINNET_ALLOWLIST: readonly AllowlistEntry[] = [];
+
 /** Raw (unfiltered) allowlist table per chain — includes `undeployed` placeholders. */
 const ALLOWLIST_BY_CHAIN: Readonly<Record<number, readonly AllowlistEntry[]>> = {
   [CHAIN_ID.base]: BASE_MAINNET_ALLOWLIST,
   [CHAIN_ID.baseSepolia]: BASE_SEPOLIA_ALLOWLIST,
   [CHAIN_ID.localFork]: BASE_MAINNET_ALLOWLIST, // Anvil fork of Base mainnet (R14)
   [CHAIN_ID.robinhoodTestnet]: ROBINHOOD_TESTNET_ALLOWLIST, // §B3 vault Base-only ⇒ empty (fail-closed)
+  [CHAIN_ID.robinhoodMainnet]: ROBINHOOD_MAINNET_ALLOWLIST, // §B vault not in beta ⇒ empty (fail-closed)
 };
 
 /* ────────────────────────────────────────────────────────────────────────────

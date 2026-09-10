@@ -11,6 +11,7 @@ import { CHAIN_ID, type TargetRef } from "../policy/index";
 import { base } from "./base";
 import { baseSepolia } from "./baseSepolia";
 import { localFork } from "./localFork";
+import { robinhoodMainnet } from "./robinhoodMainnet";
 import { robinhoodTestnet } from "./robinhoodTestnet";
 import { type Address, type AddressBook, TARGET_REF_FIELD } from "./types";
 
@@ -20,6 +21,7 @@ export { base } from "./base";
 export { baseSepolia } from "./baseSepolia";
 export { localFork } from "./localFork";
 export { robinhoodTestnet } from "./robinhoodTestnet";
+export { robinhoodMainnet } from "./robinhoodMainnet";
 
 /**
  * Per-chain address books (R14). `31337` (localFork) mirrors `8453` (Base
@@ -30,6 +32,7 @@ export const addresses: Record<number, AddressBook> = {
   [CHAIN_ID.baseSepolia]: baseSepolia,
   [CHAIN_ID.localFork]: localFork,
   [CHAIN_ID.robinhoodTestnet]: robinhoodTestnet, // §B3 — no real targets (vault Base-only)
+  [CHAIN_ID.robinhoodMainnet]: robinhoodMainnet, // §B — fail-closed scaffold (placeholders until C/D)
 };
 
 /** The chain ids this registry knows (parity with policy/constants SUPPORTED_CHAIN_IDS). */

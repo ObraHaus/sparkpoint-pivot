@@ -1,10 +1,10 @@
 name: agent
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths: ["services/agent/**", ".github/workflows/agent.yml"]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     paths: ["services/agent/**", ".github/workflows/agent.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

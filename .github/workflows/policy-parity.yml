@@ -14,9 +14,9 @@ name: policy-parity
 # gate is testable outside CI: `bash contracts/script/policy-parity-check.sh 84532`.
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
 concurrency:
   group: policy-parity-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
