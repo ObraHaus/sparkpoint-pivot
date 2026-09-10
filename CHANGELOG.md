@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (D5 — the agent now survives a Postgres restart instead of wedging until a hand-restart)
+- **`db/pool.py` had no re-establish path.** The asyncpg pool was built once at boot (fail-open); a Postgres restart *after* boot left every pooled connection dead and `_require_pool()` never rebuilt, so `/readyz` reported `postgres:false` **indefinitely** and every DB-backed route 500ed until the container was restarted by hand (found 2026-08-14 recovering alpha after all four LXCs rebooted). Every query now runs through `_run`: on a connection-level error (`PostgresConnectionError`/`InterfaceError`/`ConnectionError`/`OSError`) it **terminates the broken pool, rebuilds it, and retries once**, so the first query after Postgres returns reconnects for everyone. A real query error (bad SQL/constraint) is NOT retried; `terminate()` (not a graceful `close()`) is used because a graceful close can hang on connections whose server has gone away.
+- **`healthcheck()` degrades to `False` instead of raising**, so `/readyz` reports `postgres:false` honestly while the DB is down and flips true once the retry reconnects. `acquire()` (transactions) reconnects a reset pool but deliberately does NOT auto-retry a partially-applied transaction. Pinned by `tests/db/test_pool_reconnect.py` (reconnect-retry · healthcheck recovery · no-retry-on-query-error) — mocked, no real Postgres needed.
+
 ### Security (dependency CVE bumps — folded in to clear the OH Defender gate)
 - **`next` 16.2.11 → 16.3.3** — two CRITICAL unauthenticated RCEs (GHSA-2xp9-vwfh-vxw4, image-optimization AVIF; CVE-2026-75604, windows-hosted servers). **alpha AND beta both ran `next@16.2.11`** — schedule a prod redeploy after this merges.
 - **`sharp` → 0.35.4** (libheif highs), **`browserslist` → 4.28.9** + **`baseline-browser-mapping` → 2.11.21** (DoS / prototype-pollution) via root `pnpm.overrides`. Verified: `tsc --noEmit` + `typecheck:test` + 650 web tests + eslint + `next build` all green.
