@@ -26,8 +26,9 @@ export const DEXES: readonly DexInfo[] = [
     id: "uniswap_v3",
     label: "Uniswap V3",
     // Base Sepolia (alpha) + Base mainnet (real Uniswap V3) + Robinhood testnet 46630 (Synthra V3,
-    // a Uniswap-V3 fork with the same router/quoter ABI) — all verified on-chain.
-    liveChains: [84532, 8453, 46630],
+    // a Uniswap-V3 fork with the same router/quoter ABI) + Robinhood MAINNET 4663 (genuine Uniswap V3
+    // — canonical v3 factory + SwapRouter02 + QuoterV2, live WETH/USDG pool) — all verified on-chain.
+    liveChains: [84532, 8453, 46630, 4663],
   },
   {
     id: "aerodrome",

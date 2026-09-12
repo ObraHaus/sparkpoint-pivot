@@ -34,6 +34,12 @@ test("planCandidates: arbitrary pair → 3 direct + 4 via-WETH + 4 via-USDC", ()
   assert.equal(c.filter((x) => x.kind === "multi" && x.via === "USDC").length, 4);
 });
 
+test("planCandidates: a caller can widen the direct fee tiers (Robinhood mainnet's 1bp pool)", () => {
+  const c = planCandidates({ tokenIn: A, tokenOut: B, weth: WETH, usdc: USDC, usdcIsRoutingAsset: true, feeTiers: [100, 500, 3000, 10000] });
+  assert.equal(c.filter((x) => x.kind === "single").length, 4);
+  assert.ok(c.some((x) => x.kind === "single" && x.fee === 100));
+});
+
 test("planCandidates: prunes the via-WETH hop when a side already IS WETH", () => {
   const c = planCandidates({ tokenIn: WETH, tokenOut: B, weth: WETH, usdc: USDC, usdcIsRoutingAsset: true });
   assert.equal(c.filter((x) => x.kind === "multi" && x.via === "WETH").length, 0);

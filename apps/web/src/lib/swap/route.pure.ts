@@ -10,8 +10,13 @@
 
 import type { Address, Hex } from "viem";
 
-/** V3 fee tiers probed for a direct pool: 0.05% · 0.3% · 1%. */
+/** V3 fee tiers probed for a direct pool by DEFAULT: 0.05% · 0.3% · 1%. Kept EXACTLY as the
+ * testnet/alpha builds have always used, so their quotes are byte-for-byte unchanged. */
 export const FEE_TIERS = [500, 3000, 10000] as const;
+/** The 0.01% (1bp) tier. Deliberately NOT in the default set — adding it globally would probe an
+ * extra tier on every chain. A caller opts in per-chain via `planCandidates({ feeTiers })`; Robinhood
+ * mainnet's WETH/USDG pool uses this tier, so only that chain's plan includes it. */
+export const FEE_TIER_1BP = 100;
 /** Hop-leg tiers for a 2-hop route — restricted to the deep tiers to bound RPC fan-out. */
 export const HOP_TIERS = [500, 3000] as const;
 
@@ -40,6 +45,9 @@ export interface PlanInput {
   readonly usdc?: Address;
   /** false on chains where "USDC" isn't a real routing asset (e.g. Base Sepolia's Aave test token). */
   readonly usdcIsRoutingAsset: boolean;
+  /** Direct-pool fee tiers to probe. Defaults to {@link FEE_TIERS}; a caller passes a chain-specific
+   * set (e.g. FEE_TIERS + the 1bp tier for Robinhood mainnet) so OTHER chains stay unchanged. */
+  readonly feeTiers?: readonly number[];
 }
 
 const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -50,9 +58,10 @@ const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLow
  */
 export function planCandidates(input: PlanInput): Candidate[] {
   const { tokenIn, tokenOut, weth, usdc, usdcIsRoutingAsset } = input;
+  const tiers = input.feeTiers ?? FEE_TIERS;
   const out: Candidate[] = [];
 
-  for (const fee of FEE_TIERS) out.push({ kind: "single", fee, via: null });
+  for (const fee of tiers) out.push({ kind: "single", fee, via: null });
 
   const twoHop = (hop: Address, via: "WETH" | "USDC") => {
     if (eq(hop, tokenIn) || eq(hop, tokenOut)) return; // hop must be a genuine intermediary

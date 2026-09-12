@@ -31,6 +31,7 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 
 /** The chain the vault lives on (Base Sepolia today); read there regardless of the connected chain. */
@@ -40,8 +41,12 @@ export function KillSwitchPanel() {
   const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;
   const govSafe = getAddresses(VAULT_CHAIN).governanceSafe as Address | undefined;
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
+  // Gate on the vault CHAIN being registered in this build: on the mainnet-beta (only 4663 registered)
+  // the vault is Base-only and absent, so a read scoped to Base Sepolia (84532) would error. Disabled
+  // ⇒ the pill/guardian show an honest "no vault on this network" state instead of a stuck "Reading…".
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "paused" }, // 0
       { ...vaultC, functionName: "guardian" }, // 1
@@ -59,9 +64,15 @@ export function KillSwitchPanel() {
           <h1>Emergency kill-switch</h1>
           <div className="sub">Multisig-governed, pause-only. It can halt new execution — it can never touch user funds or block withdrawals.</div>
         </div>
-        <span className={`pill ${paused ? "amber" : "info"}`}>
+        <span className={`pill ${vaultUnavailable ? "info" : paused ? "amber" : "info"}`}>
           <span className="led" />
-          {paused === undefined ? "Reading chain…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+          {vaultUnavailable
+            ? "No vault on this network"
+            : paused === undefined
+              ? "Reading chain…"
+              : paused
+                ? "Paused · new deposits halted"
+                : "Pause-only · inactive"}
         </span>
       </div>
       <div
@@ -131,7 +142,9 @@ export function KillSwitchPanel() {
                 {guardian.slice(0, 6)}…{guardian.slice(-4)} <Icon name="ext" size={11} />
               </a>
             ) : (
-              <span className="muted" style={{ fontSize: 11 }}>Reading chain…</span>
+              <span className="muted" style={{ fontSize: 11 }}>
+                {vaultUnavailable ? "Base-only · not on this network" : "Reading chain…"}
+              </span>
             )}
           </div>
           <div className="statusrow">
@@ -156,8 +169,8 @@ export function KillSwitchPanel() {
           </div>
           <div className="statusrow">
             <span className="muted">2-of-3 Safe + delay</span>
-            <span className="pill ok" style={{ fontSize: 10 }}>
-              <span className="led" /> Live
+            <span className={`pill ${vaultUnavailable ? "info" : "ok"}`} style={{ fontSize: 10 }}>
+              <span className="led" /> {vaultUnavailable ? "Base-only" : "Live"}
             </span>
           </div>
           <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>

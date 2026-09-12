@@ -10,6 +10,8 @@ import {
   explorerRoot,
   isSupportedChain,
 } from "@sparkpoint/shared/chains";
+import { wagmiConfig } from "@/lib/wagmi";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import type { Network, NetworkId } from "@/lib/mock-data";
 
 /**
@@ -46,13 +48,19 @@ export interface SwitchableNetwork {
 }
 
 /**
- * Chains offered in the in-app network switcher. Alpha is testnet-only, so only the testnet chains
- * are switchable here (Base mainnet is configured in wagmi for RECOGNITION but is intentionally not
- * offered on the testnet alpha). Because both chains are registered in {@link wagmiConfig}, a single
- * `switchChain({ chainId })` also triggers the wallet's `wallet_addEthereumChain` when the chain is
- * unknown — so no manual add-chain call is needed to get a user onto Robinhood testnet.
+ * Chains offered in the in-app network switcher: those that are BOTH `switchable` in the shared
+ * registry AND registered in THIS build's {@link wagmiConfig}. `switchChain` can only target a
+ * REGISTERED chain, so offering one this build didn't register would be a dead menu entry. The
+ * mainnet-beta build registers only Robinhood Chain 4663 → it offers only Robinhood Chain; the
+ * alpha/testnet build registers Base + Base Sepolia + Robinhood testnet → it offers exactly its
+ * testnet chains (Robinhood mainnet is `switchable` in the registry but NOT registered on alpha, so
+ * it is correctly withheld there). Registered chains also trigger `wallet_addEthereumChain` on switch
+ * when unknown, so no manual add-chain call is needed.
  */
-const SWITCHABLE: SwitchableNetwork[] = SWITCHABLE_CHAINS.map((c) => ({
+const REGISTERED_CHAIN_IDS = new Set<number>(wagmiConfig.chains.map((c) => c.id));
+const SWITCHABLE: SwitchableNetwork[] = SWITCHABLE_CHAINS.filter((c) =>
+  REGISTERED_CHAIN_IDS.has(c.chainId),
+).map((c) => ({
   chainId: c.chainId as SupportedChainId,
   name: c.name,
   color: c.color,
@@ -115,8 +123,11 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     [switchChain],
   );
 
+  // Switch to the chain THIS build targets (Base Sepolia on alpha, Robinhood Chain 4663 on the
+  // mainnet-beta) — both registered. Using the static PREFERRED_CHAIN_ID (84532) would target an
+  // unregistered chain on beta and silently no-op.
   const switchToBase = useCallback(() => {
-    switchChain({ chainId: PREFERRED_CHAIN_ID as SupportedChainId });
+    switchChain({ chainId: APP_DEFAULT_CHAIN_ID as SupportedChainId });
   }, [switchChain]);
 
   // Disconnect watcher — end the server session when the wallet disconnects in the EXTENSION (not

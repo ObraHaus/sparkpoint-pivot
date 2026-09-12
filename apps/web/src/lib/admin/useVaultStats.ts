@@ -12,6 +12,7 @@ import type { Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { capUtilizationPct } from "./vaultStats";
 
@@ -21,8 +22,11 @@ export const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 export interface VaultStats {
   /** The deployed vault address, or undefined if this build has no vault configured. */
   vault?: Address;
-  /** Whether a vault address is configured for this deploy (drives the honest "not configured" state). */
+  /** Whether a vault address is configured AND its chain is registered in this build (drives the
+   * honest "not configured / not on this network" state). False on the mainnet-beta (vault is Base-only). */
   configured: boolean;
+  /** Whether the vault's chain is registered in THIS build's wagmi config (false on the mainnet-beta). */
+  available: boolean;
   /** Reads still in flight. */
   loading: boolean;
   /** `totalAssets()` — assets under management, in USDC base units. */
@@ -44,7 +48,10 @@ export function useVaultStats(): VaultStats {
   const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Gate on the vault CHAIN being registered in this build, not just the address existing: on the
+    // mainnet-beta (only 4663 registered) a read scoped to Base Sepolia (84532) would throw
+    // ChainNotConfiguredError. Disabled ⇒ the panel shows a clean "not configured" state, no error.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "totalAssets" }, // 0
       { ...vaultC, functionName: "depositCap" }, // 1
@@ -59,7 +66,8 @@ export function useVaultStats(): VaultStats {
   const headroom = tvl !== undefined && cap !== undefined ? (cap > tvl ? cap - tvl : 0n) : undefined;
   return {
     vault,
-    configured: !!vault,
+    configured: !!vault && VAULT_CHAIN_AVAILABLE,
+    available: VAULT_CHAIN_AVAILABLE,
     loading: reads.isLoading,
     tvl,
     cap,

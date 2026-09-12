@@ -27,6 +27,7 @@ import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
@@ -210,8 +211,12 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
             </span>
           ) : (
             <span>
-              The SparkPoint vault isn&apos;t deployed on your connected network. Switch to <b>Base Sepolia</b> to
-              deposit or manage your vault. Your funds are safe and withdrawable via{" "}
+              {VAULT_CHAIN_AVAILABLE ? (
+                <>The SparkPoint vault isn&apos;t deployed on your connected network. Switch to <b>Base Sepolia</b> to deposit or manage your vault.</>
+              ) : (
+                <>The SparkPoint vault is <b>Base-only</b> and isn&apos;t part of the Robinhood mainnet beta yet.</>
+              )}{" "}
+              Your funds are safe and withdrawable via{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>
                 /exit
               </a>

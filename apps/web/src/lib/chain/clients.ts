@@ -25,7 +25,7 @@ import { CHAIN_ID, SUPPORTED_CHAIN_IDS, type ChainId } from "@sparkpoint/shared/
 // not depend on the resolved viem version shipping a `robinhood` export. Fail-closed: the app does
 // not register 4663 in wagmi and it is not switchable, so this read-client is only ever exercised
 // once 4663 becomes an accepted chain (feature D).
-const robinhoodMainnet = defineChain({
+export const robinhoodMainnet = defineChain({
   id: CHAIN_ID.robinhoodMainnet,
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
