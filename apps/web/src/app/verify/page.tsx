@@ -92,6 +92,14 @@ export default function VerifyPage() {
     };
   }, [betaOk, agentClient, probeKey]);
 
+  // Anti-flicker: render ONE stable loading state until every deciding input has settled, instead of
+  // flipping the title/CTA as the wallet reconnects, the SIWE session resolves, and the onboarding
+  // probe returns. connSettled: wallet done (re)connecting; session!==undefined: session resolved;
+  // (done && onboarded===null): the returning-vs-new probe still running.
+  const connSettled = status === "connected" || status === "disconnected";
+  const resolving =
+    !connSettled || (isConnected && session === undefined) || (done && onboarded === null);
+
   // Snapshot the real wallet/network state for the developer capture (see networkBeacon).
   const diagSnap = useCallback(
     () => ({ chainId, status, isConnected, connectorId: connector?.id, connectorName: connector?.name, address }),
@@ -174,6 +182,25 @@ export default function VerifyPage() {
           : needsSignIn
             ? "Sign a message to prove you control this wallet. It authorizes nothing on-chain and moves no funds."
             : "Confirming your session…";
+
+  if (resolving) {
+    return (
+      <div className="pubwrap">
+        <PubTop />
+        <div className="center-stage">
+          <div className="connect-card" style={{ textAlign: "center" }}>
+            <div className="verify-anim" id="vanim">
+              <span className="ai-dot"></span>
+            </div>
+            <h2 style={{ fontSize: "20px", fontWeight: 600, margin: "18px 0 6px" }}>Checking your access…</h2>
+            <p style={{ fontSize: "13.5px", color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
+              One moment while we confirm your wallet and session.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pubwrap">

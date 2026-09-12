@@ -21,6 +21,7 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -229,7 +230,7 @@ export default function Page() {
           {robinhood ? (
             <span>You’re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to <b>Base Sepolia</b> for your vault position.{eth.data?.value !== undefined && ` Your Robinhood ETH balance: ${d.ethBalance.toFixed(4)} ETH.`} Your vault funds on Base are always withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
           ) : (
-            <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
+            <span>The SparkPoint vault isn’t deployed on your connected network. {VAULT_CHAIN_AVAILABLE ? <>Switch to <b>Base Sepolia</b> to see your live position.</> : <>It arrives in the Robinhood Chain beta in a later step.</>} Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
           )}
         </div>
       )}
@@ -300,7 +301,7 @@ export default function Page() {
             </div>
           ) : (
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-              {loading ? "Reading your balances…" : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
+              {loading ? "Reading your balances…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the Robinhood Chain beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
             </div>
           )}
           <div className="pf-spark-area" style={{ position: "relative", minHeight: 150 }}>
@@ -321,7 +322,7 @@ export default function Page() {
               <div className="muted" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 150, fontSize: 12.5 }}>
                 {live ? "No history yet — it appears after your first deposit."
                   : loading ? "Reading your history…"
-                  : wrongNetwork ? "Switch to Base Sepolia to see your history."
+                  : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your history."
                   : "History hidden."}
               </div>
             )}
@@ -470,7 +471,7 @@ export default function Page() {
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>No open positions.</div>
           ) : degraded ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your positions…" : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
+              {loading ? "Reading your positions…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
             </div>
           ) : (
             <table className="tbl">

@@ -1102,7 +1102,7 @@ export default function NewEraLanding() {
               <h1 className="head">
                 Conservative yield, <span className="tail">capital-preservation-first.</span>
               </h1>
-              <p className="sub">One audited vault on Base. Honest, net-of-fees numbers — never a projection.</p>
+              <p className="sub">Honest, net-of-fees numbers — never a projection.</p>
               <ul className="stats">
                 <li>
                   <span className="sn" style={{ color: "var(--brand-cyan)" }}>

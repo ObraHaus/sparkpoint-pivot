@@ -360,7 +360,7 @@ export function InlineSwapConfirm({
             </div>
 
             {/* Honest states */}
-            {!s.dexLive && <Notice>Swaps aren&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>}
+            {!s.dexLive && <Notice>Swaps aren&apos;t available on this network — switch to a supported network.</Notice>}
             {s.canQuote && quote.noRoute && <Notice>No {s.uniswapVenue} route for this pair on {s.netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>}
             {s.canQuote && quote.isError && (
               <Notice>

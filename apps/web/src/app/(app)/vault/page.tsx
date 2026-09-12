@@ -147,6 +147,33 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const usedRaw = v.underlying ?? 0n;
   const capPct = capRaw > 0n ? Math.min((toNum(usedRaw) / toNum(capRaw)) * 100, 100) : 0;
 
+  // On a build whose app chain has no vault (the Robinhood Chain beta — VAULT_CHAIN_AVAILABLE=false),
+  // render a single clean "not available yet" state instead of the whole deposit dashboard (which
+  // would otherwise show Base-only figures + a "switch to Base Sepolia" banner).
+  if (!VAULT_CHAIN_AVAILABLE) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>Vault</h1>
+            <div className="sub">AI-managed yield vault</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 8 }}>
+          <div className="card-hd">
+            <span className="t">Not available yet</span>
+            <span className="lbl">coming soon</span>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+            The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — it arrives in a later step.
+            When it does, you&rsquo;ll deposit, earn and withdraw here, and you&rsquo;ll always be the only one who can
+            move your funds. There&rsquo;s nothing to deposit on this network right now.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page page-wide">
       <div className="pagehead">

@@ -144,7 +144,7 @@ export default function Page() {
             </li>
             <li>
               <Icon name="check" size={14} />
-              Applies on <b>every supported network</b> — Base, Base Sepolia, and Robinhood testnet.
+              Applies on <b>Robinhood Chain</b>.
             </li>
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -218,7 +218,7 @@ export default function Page() {
       <div className="card honesty">
         <div className="card-hd">
           <span className="t">We only earn when you earn</span>
-          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault on Base — not on this network" : readsLive ? "Live fee read" : "Reading…"} />
+          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live fee read" : "Reading…"} />
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
           On the Aave Yield Vault, SparkPoint charges{" "}
@@ -237,7 +237,7 @@ export default function Page() {
       <div className="card verify">
         <div className="card-hd" style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="t">Verify — don&apos;t take our word for it</span>
-          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault on Base — not on this network" : readsLive ? "Live reads" : "Reading…"} />
+          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live reads" : "Reading…"} />
         </div>
         <div className="vrow">
           <span>Vault deposit/withdraw fee</span>
@@ -280,7 +280,7 @@ export default function Page() {
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-          These fees live in the contracts, not this app{vaultUnavailable ? " — on Base (the mainnet beta has no vault yet)" : " — read live from Base Sepolia RPC"}.{" "}
+          These fees live in the contracts, not this app{vaultUnavailable ? " — the vault isn’t in the Robinhood Chain beta yet" : " — read live from the vault chain"}.{" "}
           <a
             style={{ color: "var(--primary)", cursor: "pointer" }}
             onClick={() => router.push(toHref("trust/permissions"))}

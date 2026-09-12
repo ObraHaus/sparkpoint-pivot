@@ -187,7 +187,7 @@ export function NonCustodyBadge({ chainId }: NonCustodyBadgeProps) {
         />
       ) : (
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-          Live on-chain verification isn&rsquo;t available on this network yet — the vault is deployed on Base Sepolia.
+          Live on-chain verification of the vault isn&rsquo;t available on this network yet.
           Your funds and the caps are always provable on-chain.
         </div>
       )}

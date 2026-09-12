@@ -27,6 +27,15 @@ const STABLE_SYMBOL: Record<number, string> = {
 };
 const DEFAULT_STABLE_SYMBOL = "USDC";
 
+// Curated one-tap tokens beyond ETH + the stable, per chain — ONLY addresses verified on-chain with a
+// live Uniswap V3 pool (never fabricated; a wrong "verified" address is a safety bug). Robinhood Chain
+// 4663: SPCX (18dp) — Blockscout-verified, live USDG/SPCX pool. Any other ERC-20 is still paste-importable.
+const CURATED_ONETAP: Record<number, readonly SwapToken[]> = {
+  4663: [
+    { symbol: "SPCX", decimals: 18, address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", isNative: false, source: "recommended", verified: true },
+  ],
+};
+
 /** Where a {@link SwapToken} came from — drives the picker section + the verified/unverified badge. */
 export type TokenSource = "recommended" | "imported" | "native";
 
@@ -71,6 +80,7 @@ export function swapTokens(chainId: number | undefined): SwapToken[] {
       source: "recommended",
       verified: true,
     },
+    ...(CURATED_ONETAP[chainId] ?? []),
   ];
 }
 

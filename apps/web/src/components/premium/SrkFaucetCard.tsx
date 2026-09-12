@@ -191,8 +191,8 @@ export function SrkFaucetCard() {
           <span className="lbl">not on this network</span>
         </div>
         <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-          SRK is a testnet-only test token. The Robinhood mainnet beta&rsquo;s utility token arrives with the token
-          launch — there is no SRK faucet on this network.
+          SRK isn&rsquo;t part of the Robinhood Chain beta — the beta&rsquo;s utility token arrives with the token
+          launch. There is no SRK faucet on this network.
         </div>
       </div>
     );

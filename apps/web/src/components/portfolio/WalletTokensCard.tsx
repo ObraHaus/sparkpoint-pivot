@@ -152,8 +152,8 @@ export function WalletTokensCard({
       </div>
 
       <div className="muted" style={{ marginTop: 12, fontSize: 11, lineHeight: 1.5 }}>
-        Balances read live from the {networkName} explorer — non-custodial, read-only. Testnet tokens have no market
-        price, so amounts are shown without a USD value.
+        Balances read live from the {networkName} explorer — non-custodial, read-only. Tokens without a price feed are
+        shown without a USD value.
       </div>
     </div>
   );
