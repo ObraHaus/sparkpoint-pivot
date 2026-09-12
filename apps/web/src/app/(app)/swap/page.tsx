@@ -85,7 +85,7 @@ export default function Page() {
   const dex = dexById(dexId);
   const dexLive = dexLiveOn(dex, activeChain);
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
+  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });

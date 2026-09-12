@@ -16,8 +16,16 @@ import { getAddresses } from "@sparkpoint/shared/addresses";
  */
 const USDC_DECIMALS: Record<number, number> = {
   46630: 18, // Robinhood Chain Testnet — this token reports decimals() == 18
+  4663: 6, // Robinhood Chain mainnet — the stable is USDG, 6dp (verified on-chain 2026-09-10)
 };
 const DEFAULT_USDC_DECIMALS = 6;
+
+// The stablecoin's SYMBOL per chain. On Robinhood mainnet (4663) the stable is USDG, not USDC —
+// naming it honestly (never claiming "USDC" for a different token) is Principle III.
+const STABLE_SYMBOL: Record<number, string> = {
+  4663: "USDG", // Robinhood Chain mainnet
+};
+const DEFAULT_STABLE_SYMBOL = "USDC";
 
 /** Where a {@link SwapToken} came from — drives the picker section + the verified/unverified badge. */
 export type TokenSource = "recommended" | "imported" | "native";
@@ -56,7 +64,7 @@ export function swapTokens(chainId: number | undefined): SwapToken[] {
   return [
     { symbol: "ETH", decimals: 18, address: book.weth, isNative: true, source: "native", verified: true },
     {
-      symbol: "USDC",
+      symbol: STABLE_SYMBOL[chainId] ?? DEFAULT_STABLE_SYMBOL,
       decimals: USDC_DECIMALS[chainId] ?? DEFAULT_USDC_DECIMALS,
       address: book.usdc,
       isNative: false,

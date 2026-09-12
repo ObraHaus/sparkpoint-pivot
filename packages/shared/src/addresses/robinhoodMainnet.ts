@@ -42,19 +42,24 @@ export const robinhoodMainnet: AddressBook = {
   aerodromeRouter: undefined,
   aerodromeFactory: undefined,
 
-  // ── Uniswap V3 (user-signed swap) — verify on-chain + wire in D3. Undefined ⇒ DEX shows unavailable. ──
-  uniswapV3SwapRouter02: undefined,
-  uniswapV3QuoterV2: undefined,
-  uniswapV3Factory: undefined,
+  // ── Uniswap V3 (user-signed swap) — VERIFIED on-chain on 4663 (eth_getCode non-empty, 2026-09-10)
+  // and cross-checked against robin-brokers/docs/ADDRESSES.md (all verified on Blockscout). Canonical
+  // v3 factory; SwapRouter02 + QuoterV2 present with a live WETH/USDG pool (fee tier 100). Powers the
+  // manual, user-signed swap page ONLY — non-custodial, NOT a policy target — so wiring these does
+  // NOT touch the fail-closed agent path (the 4663 policy allowlist stays empty). ──
+  uniswapV3SwapRouter02: "0xCaf681a66D020601342297493863E78C959E5cb2",
+  uniswapV3QuoterV2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+  uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
 
-  // Our own fee-router + its recipient are deployed in C6/D3; unset ⇒ no vault-independent fee yet.
+  // Phase-1 beta swap is FEE-FREE: no own fee-router, and no sweepWithFee recipient set yet. Setting
+  // this to a revenue EOA turns on the 0.20% fee (via the router's sweep) — a one-line Phase-2 change.
   swapFeeRecipient: undefined,
 
-  // ── ERC-20 tokens — filled in D3 after on-chain verification (USDG, 6dp, is the 4663 stable; WETH
-  // predeploy). ZERO placeholders keep the required fields typed while the swap stays fail-closed
-  // (undefined DEX above), so nothing reads these until real addresses land. ──
-  usdc: ZERO,
-  weth: ZERO,
+  // ── ERC-20 tokens — VERIFIED on 4663 (2026-09-10). USDG is the 4663 stable and is 6 DECIMALS (NOT
+  // 18) — tokens.ts pins USDG decimals per-chain. WETH is the 4663 predeploy. The `usdc` field is the
+  // generic stablecoin slot (named for Base); on 4663 it holds USDG. ──
+  usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", // USDG, 6 dp
+  weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
   usdcFaucet: undefined,
 
   // Pons-launched utility token — address known only after the launch (feature C3). Undefined ⇒ the

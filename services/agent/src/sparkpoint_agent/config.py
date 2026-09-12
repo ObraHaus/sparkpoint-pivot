@@ -17,7 +17,7 @@ surface needs and exposes fail-closed getters:
                                   NEVER a fabricated quote (mirrors packages/shared/src/
                                   addresses/*.ts, where ``vault`` is ``undefined`` pre-deploy).
   - ``CHAIN_ID``                — one of policy.SUPPORTED_CHAIN_IDS
-                                  (8453 · 84532 · 31337 · 46630).
+                                  (8453 · 84532 · 31337 · 46630 · 4663).
 
 NON-CUSTODY (N1/N3): this loader is PROVABLY keyless. It reads only the fixed
 ``ALLOWED_ENV_KEYS`` allowlist; the module-load guard ``_assert_no_key_material``
@@ -153,11 +153,11 @@ def _normalize_address(value: str, field: str) -> str:
 # against one chain's state and signed on another. The 84532 order had the mirror-image bug (a
 # Base-mainnet fork could be served as Sepolia). A missing value now fails CLOSED instead.
 # ⚠️ ADDING A CHAIN: give it an entry here. Constitution v3.0.0 (2026-07-30) ratified **Robinhood
-# Chain mainnet 4663** as in-scope. It is still absent from ``policy.SUPPORTED_CHAIN_IDS`` and the
-# api ``API_SUPPORTED_CHAIN_IDS`` (the agent still rejects X-Chain-Id 4663 — feature D flips that),
-# but §B gives it its RPC row below: data plane before capability plane, so when 4663 is later
-# accepted the 023 chain-identity probe binds to the RIGHT archive endpoint instead of latching a
-# MISMATCH on the global fallback.
+# Chain mainnet 4663** as in-scope, and the beta now ACCEPTS it: 4663 is in
+# ``policy.SUPPORTED_CHAIN_IDS`` and the api ``API_SUPPORTED_CHAIN_IDS`` (Phase 1 — chat + read-only
+# portfolio + the user-signed swap; its policy allowlist stays EMPTY, so every agent-mediated action
+# fails closed). §B gives it its RPC row below (ARCHIVE only), so the 023 chain-identity probe binds
+# to the RIGHT archive endpoint instead of latching a MISMATCH on the global fallback.
 _CHAIN_RPC_ENVS: dict[int, tuple[str, ...]] = {
     8453: (RPC_URL_ENV, BASE_MAINNET_RPC_URL_ENV),  # Base mainnet — explicit only
     84532: (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV),  # Base Sepolia

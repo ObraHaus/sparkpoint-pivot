@@ -16,6 +16,7 @@ import { formatUnits, type Address } from "viem";
 import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
@@ -38,7 +39,9 @@ export default function Page() {
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
 
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; gate on the vault chain being registered so the mainnet-beta (only 4663)
+    // shows an honest "not on this network" state instead of erroring on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "guardian" }, // 0
       { ...vaultC, functionName: "pauser" }, // 1
@@ -59,6 +62,7 @@ export default function Page() {
     feeRecipient !== undefined && guardian !== undefined && feeRecipient.toLowerCase() !== guardian.toLowerCase();
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
 
   return (
     <div className="page page-narrow">
@@ -128,8 +132,14 @@ export default function Page() {
       <div className="card card-pad">
         <div className="card-hd">
           <span className="t">On-chain facts</span>
-          <span className="lbl">{live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+          <span className="lbl">{vaultUnavailable ? "vault on Base — not on this network" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
         </div>
+        {vaultUnavailable ? (
+          <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
+            <Icon name="info" size={13} /> These vault-level facts are read from the <b>Base-only</b> AI vault, which
+            isn&rsquo;t part of the Robinhood mainnet beta yet. Your can/can&rsquo;t guarantees above still hold.
+          </div>
+        ) : null}
         <table className="tbl permtable">
           <thead>
             <tr>

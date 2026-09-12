@@ -41,7 +41,7 @@ interface Diag {
   buildId: string | null;
 }
 
-const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood" };
+const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood Testnet", 4663: "Robinhood Chain" };
 const chainName = (id: number | null): string =>
   id == null ? "—" : `${CHAIN_LABEL[id] ?? "unsupported"} · ${id}`;
 const short = (a: string | null): string => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");

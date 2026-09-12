@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "beta-live-on-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The beta now runs on Robinhood Chain — sign in, chat, portfolio and swaps are live",
+      "body": "beta.sparkpoint.io now runs on Robinhood Chain mainnet — and only Robinhood Chain. Connect a wallet on Robinhood Chain, sign in, chat with Sparky, see your live portfolio, and swap between ETH and USDG through the network's own on-chain Uniswap V3. During the beta the swap takes no fee.\n\nA few things are intentionally switched off for now and shown as \"coming soon\": the utility token, the Sparky Broker, and the yield vault. They arrive in a later step, once their contracts are deployed. Everything you can use today runs against the real network with your own wallet — you are always the only one who can move your funds.",
+      "published_at": "2026-09-10T11:00:00Z"
+    },
+    {
       "slug": "assistant-recovers-from-database-restarts",
       "type": "changelog",
       "tag": "Fixed",

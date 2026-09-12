@@ -18,6 +18,7 @@ import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon, type IconName } from "@/lib/icons";
@@ -80,7 +81,9 @@ export default function Page() {
   const capC = { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN } as const;
 
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; on the mainnet-beta build (only 4663 registered) it is absent, so gate the
+    // read on the vault chain being registered — otherwise it errors on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "paused" }, // 0
       { ...vaultC, functionName: "performanceFeeBps" }, // 1
@@ -104,6 +107,9 @@ export default function Page() {
   const feeRecipient = d?.[7]?.result as Address | undefined;
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
+  // On the mainnet-beta build the vault chain isn't registered, so show an honest "not on this
+  // network" state (the vault is Base-only) instead of a stuck "reading…" / "read error".
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
 
   return (
     <div className="page page-wide">
@@ -137,8 +143,14 @@ export default function Page() {
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Status</span>
-              <span className="lbl">{live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+              <span className="lbl">{vaultUnavailable ? "vault on Base — not on this network" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
             </div>
+            {vaultUnavailable ? (
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
+                <Icon name="info" size={13} /> The AI vault is <b>Base-only</b> and isn&rsquo;t part of the Robinhood
+                mainnet beta yet — the figures below describe the testnet vault. Your custody guarantees still hold.
+              </div>
+            ) : null}
             <div className="statusrow">
               <span className="muted">Custody invariants</span>
               <span style={{ color: "var(--gain)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -149,12 +161,12 @@ export default function Page() {
               <span className="muted">Kill-switch</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
                 <Icon name="pause" size={14} />
-                {paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+                {vaultUnavailable ? "—" : paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
               </span>
             </div>
             <div className="statusrow">
               <span className="muted">Performance fee</span>
-              <span style={{ fontWeight: 600 }}>{feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
             </div>
             <div className="statusrow">
               <span className="muted">Network</span>

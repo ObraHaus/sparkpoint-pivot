@@ -2,6 +2,8 @@ import { http, createConfig, cookieStorage, createStorage } from "wagmi";
 import { base, baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { CHAIN_IDS, isSupportedChain } from "@sparkpoint/shared/chains";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { robinhoodMainnet } from "@/lib/chain/clients";
 
 /**
  * Wagmi config — Base (launch) + Base Sepolia (testnet) + Robinhood testnet (§B3, chat + read-only
@@ -20,12 +22,19 @@ import { CHAIN_IDS, isSupportedChain } from "@sparkpoint/shared/chains";
  * id → `Chain` mapping stays here, and correctness is enforced by checking it against the registry
  * rather than by hoping the two lists match.
  *
- * NOT REGISTERED, deliberately: 31337 (local Anvil fork) has no wallet transport and no public
- * explorer, and 4663 (Robinhood mainnet) is ratified by constitution v3.0.0 but not yet built — no
- * address book, absent from the policy chain map, and rejected by the agent's supported-chain list.
- * Registering 4663 here would let a wallet switch to a chain on which every request 400s.
+ * BUILD-CONDITIONAL (§B beta). The mainnet-beta build (NEXT_PUBLIC_APP_CHAIN_ID=4663) registers
+ * Robinhood mainnet (4663) as the SOLE chain — no Base, no testnets ("no base network for now").
+ * Every other build (alpha/testnet, env unset) registers Base + Base Sepolia + Robinhood testnet,
+ * unchanged. 4663 is now safe to register: its address book is wired + verified on-chain, and the
+ * agent accepts it with an EMPTY policy allowlist (agent-mediated actions still fail closed; the swap
+ * is user-signed + non-custodial). Still NOT registered anywhere: 31337 (local Anvil fork) — no
+ * wallet transport, no public explorer.
  */
-const REGISTERED_CHAINS = [base, baseSepolia, robinhoodTestnet] as const;
+const MAINNET_ONLY = APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet;
+
+const REGISTERED_CHAINS = MAINNET_ONLY
+  ? ([robinhoodMainnet] as const)
+  : ([base, baseSepolia, robinhoodTestnet] as const);
 
 // Every chain wagmi can talk to MUST have metadata, or the app would render it as "Unsupported
 // network" with no explorer link while still transacting on it. Checked at module load: this file is
@@ -44,8 +53,11 @@ for (const chain of REGISTERED_CHAINS) {
 // registry marks `switchable` must be registered here, because `switchChain` can only target a
 // registered chain. Without this, marking a chain switchable would produce a menu entry whose click
 // silently does nothing.
-if (!REGISTERED_CHAINS.some((c) => c.id === CHAIN_IDS.baseSepolia)) {
-  throw new Error("wagmi must register Base Sepolia — it is the preferred/vault chain.");
+const REQUIRED_CHAIN_ID = MAINNET_ONLY ? CHAIN_IDS.robinhoodMainnet : CHAIN_IDS.baseSepolia;
+if (!REGISTERED_CHAINS.some((c) => c.id === REQUIRED_CHAIN_ID)) {
+  throw new Error(
+    `wagmi must register chain ${REQUIRED_CHAIN_ID} for this build (mainnet-only=${MAINNET_ONLY}).`,
+  );
 }
 
 export const wagmiConfig = createConfig({
@@ -53,10 +65,14 @@ export const wagmiConfig = createConfig({
   connectors: [injected()],
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
+  // Transports for every chain any build MAY register (the chain list above is build-conditional).
+  // wagmi only uses the transport whose chain is actually registered; the rest are inert. Providing
+  // the full set keeps the union-typed chain list satisfied without a per-build transports branch.
   transports: {
     [base.id]: http(process.env.NEXT_PUBLIC_BASE_RPC_URL),
     [baseSepolia.id]: http(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL),
     [robinhoodTestnet.id]: http(), // viem default RPC (rpc.testnet.chain.robinhood.com)
+    [robinhoodMainnet.id]: http(process.env.NEXT_PUBLIC_ROBINHOOD_MAINNET_RPC_URL),
   },
 });
 
