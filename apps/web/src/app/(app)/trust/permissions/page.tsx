@@ -132,7 +132,7 @@ export default function Page() {
       <div className="card card-pad">
         <div className="card-hd">
           <span className="t">On-chain facts</span>
-          <span className="lbl">{vaultUnavailable ? "vault on Base — not on this network" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+          <span className="lbl">{vaultUnavailable ? "vault not available yet" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
         </div>
         {vaultUnavailable ? (
           <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>

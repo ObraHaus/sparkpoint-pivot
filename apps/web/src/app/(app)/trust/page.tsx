@@ -143,12 +143,12 @@ export default function Page() {
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Status</span>
-              <span className="lbl">{vaultUnavailable ? "vault on Base — not on this network" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+              <span className="lbl">{vaultUnavailable ? "vault not available yet" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
             </div>
             {vaultUnavailable ? (
               <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
-                <Icon name="info" size={13} /> The AI vault is <b>Base-only</b> and isn&rsquo;t part of the Robinhood
-                mainnet beta yet — the figures below describe the testnet vault. Your custody guarantees still hold.
+                <Icon name="info" size={13} /> The AI vault isn&rsquo;t part of the Robinhood Chain beta yet — it
+                arrives in a later step. Your custody guarantees still hold.
               </div>
             ) : null}
             <div className="statusrow">
@@ -170,7 +170,7 @@ export default function Page() {
             </div>
             <div className="statusrow">
               <span className="muted">Network</span>
-              <span style={{ fontWeight: 600 }}>Base Sepolia</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : "Base Sepolia"}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 12, lineHeight: 1.5 }}>
               <Icon name="info" size={13} /> The kill-switch can pause <b>new</b> deposits in an emergency. It can never

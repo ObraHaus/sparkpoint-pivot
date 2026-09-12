@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (beta polish — mainnet-correct wording, honest empty states, live embeddings)
+- **No more testnet/Base wording on the mainnet beta.** Swept `apps/web` of user-facing "testnet" / "Base network" / "Base Sepolia" / Aerodrome copy (connect pill, settings, `/fees`, `/trust`, `/trust/permissions`, `/portfolio`, `/vault`, the stage badge, taglines/manifest/OG, swap + inline-swap notices, NonCustodyBadge, SrkFaucet, NewEra landing) → **Robinhood Chain** / neutral phrasing, mostly **derived from the app chain** so alpha stays correct. Aerodrome is filtered out of the swap DEX selector (Uniswap V3 only on 4663).
+- **Robinhood Chain (4663) shows the Robinhood logo** (same brand asset as 46630) in the shell/switcher; the stage badge no longer reads "Beta — testnet".
+- **`/vault` (+ deposit/withdraw) shows a clean "not available yet" state** on a build whose app chain has no vault (the beta) instead of the Base vault dashboard; `/portfolio` vault sections, `/trust`, `/fees` and `/exit` show honest "vault isn't in the beta yet" states with no "switch to Base Sepolia".
+- **`/verify` no longer flickers** — one stable loading state until wallet-reconnect + SIWE session + the onboarding probe all settle, then the resolved screen (no onboarding↔sign-in flip).
+- **Swap offers more tokens** — SPCX added to the curated 4663 set (verified USDG/SPCX Uniswap V3 pool), and the "Import any token" paste path is surfaced in the picker.
+- **Sparky (AI) persona is chain-accurate** — describes swap + portfolio and states the yield vault / utility token / Sparky Broker aren't on every network yet, instead of presenting the Base/Aave vault as live everywhere.
+
+### Fixed (embeddings — the RAG backend was down)
+- **The embedding endpoint returned "model not found"** (`ai.aldrickb.app` dropped `qwen3-embedding:8b`), breaking knowledge/memory search. Repointed to **OpenRouter's `qwen/qwen3-embedding-8b`** (verified) via `EMBEDDING_EXPECTED_MODEL`; it is the SAME model + 1024-dim MRL space (client-truncated), so `EMBEDDING_MODEL_VERSION` is unchanged — **no re-embed**, existing vectors stay valid. Deploy sets `EMBEDDING_OPENAI_API_URL`/`_API_KEY`/`_MODEL` to OpenRouter on the agent apps. Composed in a fail-open background task, so a lagging env only degrades RAG (never crashes boot).
+
 ### Added (Phase-1 mainnet beta — beta.sparkpoint.io goes live on Robinhood Chain 4663, NO contract deploys)
 - **The agent now ACCEPTS chain 4663** — added to `policy.SUPPORTED_CHAIN_IDS` + `api.API_SUPPORTED_CHAIN_IDS`, with an **EMPTY 4663 policy allowlist** so every agent-mediated `(target, selector)` action still fails closed (chat + read-only portfolio only; there is no agent-mediated vault/swap on 4663). `_ALLOWLIST_BY_CHAIN[4663]` and `_ADDRESSES_BY_CHAIN[4663]` mirror the 46630 fail-closed pattern. Pinned by `tests/policy/test_multinetwork.py` (accepted · empty allowlist · addresses resolve).
 - **The mainnet-beta web build serves Robinhood Chain 4663 as its SOLE network.** wagmi registers only `robinhoodMainnet` when `NEXT_PUBLIC_APP_CHAIN_ID=4663` (no Base, no testnets — "no base network for now"); every other build (alpha/testnet, env unset) is byte-for-byte unchanged. 4663 is now `switchable` in the shared registry, added to SIWE sign-in (`SIWE_CHAIN_ID=4663`) and the verify route's chain + RPC maps (so smart-wallet SIWE verifies on the right network).

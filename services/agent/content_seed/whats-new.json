@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "beta-polish-mainnet-wording-and-fixes",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Beta polish — Robinhood Chain throughout, clearer states, smoother loading",
+      "body": "A round of production polish for the Robinhood Chain beta.\n\nThe app now consistently says \"Robinhood Chain\" (with its logo) rather than any leftover test-network wording, and swaps route through Uniswap. Features that aren't live yet — the yield vault, the utility token, the Sparky Broker — now show a clean \"not available yet\" note instead of test data. The sign-in screen no longer flickers while it checks your access, the swap lets you add any token by pasting its address, and Sparky now describes exactly what's available on this network.\n\nWe also restored the assistant's knowledge search, which had quietly gone offline.",
+      "published_at": "2026-09-12T16:00:00Z"
+    },
+    {
       "slug": "beta-live-on-robinhood-mainnet",
       "type": "changelog",
       "tag": "New",

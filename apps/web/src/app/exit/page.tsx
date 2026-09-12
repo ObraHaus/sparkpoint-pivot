@@ -31,6 +31,7 @@ import type { Address } from "viem";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { buildRedeemCall, vaultAddressFor } from "@/lib/chain/exit";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { exitPublicConfig, exitReadChainId } from "@/lib/chain/exitPublicConfig";
 import { explorerRoot } from "@/lib/chain/explorer";
 
@@ -163,7 +164,7 @@ export default function ExitPage() {
             {chainId !== undefined && vault === undefined && (
               <div>
                 <p style={S.muted}>The vault isn&rsquo;t deployed on this network (chain {chainId}) yet.</p>
-                {vaultAddressFor(84532) !== undefined && (
+                {VAULT_CHAIN_AVAILABLE && vaultAddressFor(84532) !== undefined && (
                   <button style={S.secondary} onClick={() => switchChain({ chainId: 84532 })}>
                     Switch to Base Sepolia
                   </button>
