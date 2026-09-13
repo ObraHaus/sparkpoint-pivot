@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "chat-demo-and-sparky-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The chat preview and Sparky now speak Robinhood Chain",
+      "body": "Before you connect a wallet, the chat shows a scripted preview of what Sparky can do. On Robinhood Chain that preview was still demoing things from another network — an Aave vault, USDC, a Base-to-Sui bridge — none of which exist here. It now previews only what's actually live on Robinhood Chain: swapping ETH for USDG (which you sign yourself) and reading your wallet. The starter suggestions match, too.\n\nAnd when you ask Sparky what it is or what a vault is, it no longer describes a specific vault as if it were already running on your network — it explains things in a way that's accurate whether or not that feature has arrived on the network you're on. Sparky still never moves your funds.",
+      "published_at": "2026-09-13T04:00:00Z"
+    },
+    {
       "slug": "portfolio-strategies-accurate-on-robinhood-chain",
       "type": "changelog",
       "tag": "Fixed",
