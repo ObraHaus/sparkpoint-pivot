@@ -15,7 +15,17 @@ import { money } from "@/lib/utils";
 import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { StatusTag } from "@/components/ui/status-tag";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
+
+/**
+ * The Robinhood Chain (4663) mainnet-beta build. On this build the only live capabilities are chat,
+ * a user-signed ETH/WETH <-> USDG swap via the on-chain Uniswap V3, and read-only portfolio — no
+ * Aave vault, no Aerodrome, no Sui bridge. Each card below branches on this so the beta renders only
+ * those real capabilities (never Aave/Base/Sui/USDC); every other build keeps its existing content
+ * byte-for-byte in the else path.
+ */
+const IS_ROBINHOOD_MAINNET_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
 
 /** Card action callbacks — the chat screen wires these to its thread state. */
 export interface CardActions {
@@ -39,6 +49,38 @@ export function RecCard({ actions }: { actions: CardActions }) {
   const [open, setOpen] = useState(false);
   const [fb, setFb] = useState<"up" | "down" | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    // Robinhood Chain has no AI yield vault yet — the beta demo routes yield/lend/recommend questions
+    // to an honest text reply rather than this card, so it is normally unused here. Kept SAFE (no
+    // Aave/Base/USDC) in case it is ever rendered: the honest "best move I have today" is a swap.
+    return (
+      <div className="ccard" data-card="rec" style={dismissed ? { opacity: 0.5 } : undefined}>
+        <div className="ch">
+          <span className="rank">Best fit · what&apos;s live today</span>
+          <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+        </div>
+        <div className="cthesis">
+          The AI yield vault isn&apos;t on Robinhood Chain yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
+          <b>USDG</b> — you review the quote and sign from your own wallet.
+        </div>
+        <div className="cnote">Estimates, not guarantees. · You approve and sign every move.</div>
+        <div className="cact">
+          <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "swap", ethToUsdc: true })}>
+            Review a swap
+          </button>
+          <button
+            className="btn btn-ghost btn-md"
+            onClick={() => {
+              setDismissed(true);
+              actions.dismiss();
+            }}
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ccard" data-card="rec" style={dismissed ? { opacity: 0.5 } : undefined}>
       <div className="ch">
@@ -103,6 +145,65 @@ export function RecCard({ actions }: { actions: CardActions }) {
 /** Portfolio snapshot card (snapshotCard). */
 export function SnapshotCard({ actions }: { actions: CardActions }) {
   const go = useGo();
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    // Robinhood Chain: the read-only portfolio is real ETH + USDG only — no AI vault position.
+    const eth = 2100;
+    const usdg = 2150;
+    const net = eth + usdg;
+    const bars: { k: string; v: number; risk: number }[] = [
+      { k: "ETH", v: eth, risk: 2 },
+      { k: "USDG", v: usdg, risk: 0 },
+    ];
+    return (
+      <div className="ccard" data-card="snap">
+        <div className="ch">
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Your portfolio</span>
+          <span style={{ fontSize: 11, color: "var(--muted-foreground)" }} className="grow">
+            as of 2m ago
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 600 }} className="tnum">
+              {money(net)}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>net worth · ETH + USDG</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+          {bars.map((x) => (
+            <div
+              key={x.k}
+              style={{
+                height: 8,
+                borderRadius: 4,
+                background: `var(${x.risk === 0 ? "--muted-foreground" : TIER[x.risk].v})`,
+                flex: x.v,
+              }}
+              title={x.k}
+            />
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--muted-foreground)", marginBottom: 13 }}>
+          <span>ETH {money(eth)}</span>
+          <span>USDG {money(usdg)}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 13 }}>
+          <span style={{ fontSize: 12.5, color: "var(--muted-foreground)" }}>
+            Read-only — I can help you swap ETH/WETH ↔ USDG. You approve and sign.
+          </span>
+        </div>
+        <div className="cact">
+          <button className="btn btn-outline btn-md" onClick={() => go("portfolio")}>
+            Open portfolio
+          </button>
+          <button className="btn btn-ghost btn-md" onClick={() => actions.send("Swap ETH to USDG")}>
+            Swap ETH → USDG
+          </button>
+        </div>
+      </div>
+    );
+  }
   const a = data.allocation;
   return (
     <div className="ccard" data-card="snap">
@@ -188,6 +289,33 @@ export function TipCard() {
 /** Outcome card (outcomeCard) — shows a loss as plainly as a win. */
 export function OutcomeCard({ actions }: { actions: CardActions }) {
   const go = useGo();
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    // Robinhood Chain's only executable move is a swap, so a beta "outcome" is a past swap fill —
+    // no rebalance/vault recommendation history (which doesn't exist here).
+    return (
+      <div className="ccard" data-card="out">
+        <div className="ch">
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Outcome</span>
+          <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>from your ETH → USDG swap</span>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 4, marginBottom: 12, lineHeight: 1.5 }}>
+          The swap filled inside your slippage limit and the USDG landed straight in your wallet — you signed it
+          yourself.{" "}
+          <a className="cite" style={{ cursor: "pointer" }}>
+            View tx <Icon name="ext" size={10} />
+          </a>
+        </div>
+        <div className="cact">
+          <button className="btn btn-outline btn-md" onClick={() => go("portfolio")}>
+            Open portfolio
+          </button>
+          <button className="btn btn-ghost btn-md" onClick={() => actions.send("Swap ETH to USDG")}>
+            Swap again
+          </button>
+        </div>
+      </div>
+    );
+  }
   const o = data.outcomes[1];
   return (
     <div className="ccard" data-card="out">
@@ -222,6 +350,48 @@ export function OutcomeCard({ actions }: { actions: CardActions }) {
 /** Wallet card (walletCard). */
 export function WalletCard({ actions }: { actions: CardActions }) {
   const go = useGo();
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    // Robinhood Chain wallet: real ETH + USDG only — no USDC/cbBTC/Aave-vault positions, and the
+    // primary action is a swap, not a vault deposit.
+    const rows: [string, string, string, string, string][] = [
+      ["ETH", "0.42", "$2,100", "+1.8% (24h)", "--gain"],
+      ["USDG", "2,150.00", "$2,150", "stablecoin", "--muted-foreground"],
+    ];
+    return (
+      <div className="ccard" data-card="wallet">
+        <div className="ch">
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Your wallet · Robinhood Chain</span>
+          <span style={{ fontSize: 11, color: "var(--muted-foreground)" }} className="grow">
+            total ≈ $4,250
+          </span>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r[0]}>
+                <td style={{ padding: "7px 0", fontSize: 13, fontWeight: 600 }}>{r[0]}</td>
+                <td style={{ padding: "7px 0", fontSize: 12.5, color: "var(--muted-foreground)", textAlign: "right" }} className="tnum">
+                  {r[1]}
+                </td>
+                <td style={{ padding: "7px 8px", fontSize: 13, textAlign: "right" }} className="tnum">
+                  {r[2]}
+                </td>
+                <td style={{ padding: "7px 0", fontSize: 11.5, textAlign: "right", color: `var(${r[4]})` }}>{r[3]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="cact">
+          <button className="btn btn-primary btn-md" onClick={() => actions.send("Swap ETH to USDG")}>
+            Swap ETH → USDG
+          </button>
+          <button className="btn btn-ghost btn-md" onClick={() => go("portfolio")}>
+            Open portfolio
+          </button>
+        </div>
+      </div>
+    );
+  }
   const rows: [string, string, string, string, string][] = [
     ["USDC", "2,150.00", "$2,150", "idle · earning nothing", "--caution"],
     ["ETH", "0.42", "$2,100", "+1.8% (24h)", "--gain"],
@@ -266,6 +436,41 @@ export function WalletCard({ actions }: { actions: CardActions }) {
 
 /** Swap card (swapCard). */
 export function SwapCard({ actions }: { actions: CardActions }) {
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    return (
+      <div className="ccard" data-card="swap">
+        <div className="ch">
+          <span className="rank">Swap · ETH → USDG</span>
+          <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
+        </div>
+        <div className="cthesis">
+          Best route on Robinhood Chain: <b>ETH → USDG via Uniswap V3</b>. Slippage protection is built into the route.
+        </div>
+        <div className="crow">
+          <div className="capy">
+            <div className="big tnum">0.1 ETH</div>
+            <div className="lbl">you swap · you hold 0.42 ETH</div>
+          </div>
+          <div className="capy">
+            <div className="big tnum">≈ 312.40</div>
+            <div className="lbl">USDG out · max slippage 0.5%</div>
+          </div>
+        </div>
+        <div className="cnote">
+          Includes a Sparky routing fee of 0.20% (≈ $0.62), shown in full before you sign. You sign it from your own
+          wallet.
+        </div>
+        <div className="cact">
+          <button className="btn btn-primary btn-md" onClick={() => actions.review({ kind: "swap", ethToUsdc: true })}>
+            Review swap
+          </button>
+          <button className="btn btn-ghost btn-md" onClick={actions.dismiss}>
+            Not now
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ccard" data-card="swap">
       <div className="ch">
@@ -304,6 +509,27 @@ export function SwapCard({ actions }: { actions: CardActions }) {
 
 /** Bridge card (bridgeCard). */
 export function BridgeCard({ actions }: { actions: CardActions }) {
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    // No bridge on Robinhood Chain yet — the beta demo routes bridge questions to an honest text
+    // reply rather than this card, so it is normally unused here. Kept SAFE (no Base/Sui/USDC) if
+    // ever rendered: point at what is live today, a swap.
+    return (
+      <div className="ccard" data-card="bridge">
+        <div className="ch">
+          <span className="rank">Bridge</span>
+        </div>
+        <div className="cthesis">
+          Bridging isn&apos;t available on Robinhood Chain yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
+          <b>USDG</b> — you approve and sign from your own wallet.
+        </div>
+        <div className="cact">
+          <button className="btn btn-primary btn-md" onClick={() => actions.send("Swap ETH to USDG")}>
+            Swap ETH → USDG
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ccard" data-card="bridge">
       <div className="ch">
@@ -341,6 +567,19 @@ export function BridgeCard({ actions }: { actions: CardActions }) {
 
 /** Citation source body — opened in a sheet by data-cite (kept here for reuse). */
 export function CiteBody() {
+  if (IS_ROBINHOOD_MAINNET_BUILD) {
+    return (
+      <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+        <b>Based on the on-chain Uniswap V3 pool (Robinhood Chain)</b>
+        <div className="muted" style={{ marginTop: 6 }}>
+          ETH/USDG quote · live from the pool · as of 2 min ago
+        </div>
+        <a className="cite" style={{ marginTop: 10, display: "inline-flex" }}>
+          View on the Robinhood Chain explorer <Icon name="ext" size={10} />
+        </a>
+      </div>
+    );
+  }
   return (
     <div style={{ fontSize: 13, lineHeight: 1.6 }}>
       <b>Based on Aave v3 (Base)</b>
