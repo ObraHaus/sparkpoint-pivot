@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "portfolio-strategies-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio and Strategies now show what's real on Robinhood Chain",
+      "body": "On Robinhood Chain, Portfolio used to show placeholder \"Aave vault\" figures and a risk score for a vault that isn't live here yet, and it hid your actual balances. Now it shows your real ETH and USDG in your wallet, and clearly says the AI vault isn't part of the beta yet — no made-up numbers.\n\nStrategies used to show example Aave strategies (or a confusingly \"Live\"-labelled empty page) on a network where those strategies don't exist. It now says plainly that ranked strategies arrive with the AI vault, and points you to what you can do today: swap, and review your position. When the vault goes live here, the recommendations come back automatically.\n\nAs always, nothing here moves your funds — you're the only one who can.",
+      "published_at": "2026-09-13T03:00:00Z"
+    },
+    {
       "slug": "sparky-chat-accurate-on-robinhood-chain",
       "type": "changelog",
       "tag": "Fixed",
