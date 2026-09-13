@@ -69,7 +69,7 @@ from ..db.executions import ExecutionStore
 from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
-from ..knowledge import default_citation_retriever, default_grounder
+from ..knowledge import KnowledgeRetriever, default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
 from ..persona import get_persona
@@ -321,6 +321,27 @@ async def _recent_changelog() -> list[dict[str, Any]]:
         return []
 
 
+def _safe_citation_retriever() -> KnowledgeRetriever | None:
+    """The corpus retriever, or ``None`` — degrading to no-RAG on a misconfigured embedder.
+
+    ``openai_embedder`` fails OPEN when ``EMBEDDING_OPENAI_*`` is unset (returns ``None``) but fails
+    CLOSED (raises ``ValueError``) when ``EMBEDDING_OPENAI_MODEL`` doesn't match the pinned model —
+    a deliberate guard on the INGEST path so nothing writes into a mismatched vector space. On the
+    chat READ path, though, a misconfigured/typo'd model env must NOT take chat down: reads can't
+    corrupt the space, and 500-ing every turn over a citation feed is the worse failure. So here we
+    degrade to ungrounded prose (no citations) and log the misconfig loudly instead of raising.
+    """
+    try:
+        return default_citation_retriever()
+    except ValueError:
+        _logger.warning(
+            "embedding backend misconfigured (EMBEDDING_OPENAI_MODEL != pinned); "
+            "chat degrades to no-RAG (ungrounded, no citations) instead of failing",
+            exc_info=True,
+        )
+        return None
+
+
 def get_coordinator_dag(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
@@ -341,11 +362,15 @@ def get_coordinator_dag(
             ErrorCode.UPSTREAM_UNAVAILABLE,
             "The assistant model is not configured; chat is temporarily unavailable.",
         ) from exc
+    # The Obsidian retriever is wired when a real embedding backend is configured
+    # (EMBEDDING_OPENAI_*); otherwise None → no corpus citations/grounding (fail-open, never
+    # fabricated). A MISCONFIGURED embedding model degrades to None here too (see
+    # _safe_citation_retriever) rather than 500-ing chat. The retriever satisfies both the citation
+    # and grounder interfaces, so one instance serves the recommender's citations AND the grounder.
+    retriever = _safe_citation_retriever()
     return CoordinatorDag(
         planner=Planner(llm=client),
-        # The Obsidian citation retriever is wired when a real embedding backend is configured
-        # (EMBEDDING_OPENAI_*); otherwise None → no corpus citations (fail-open, never fabricated).
-        recommender=Recommender(llm=client, knowledge=default_citation_retriever()),
+        recommender=Recommender(llm=client, knowledge=retriever),
         # Sparky's persona (get_persona) shapes the literacy prose voice — trusted SYSTEM content,
         # process-stable + memoised, never on the policy/action path.
         literacy=Literacy(llm=client, persona_provider=get_persona),
@@ -362,9 +387,9 @@ def get_coordinator_dag(
         portfolio_provider=_VaultChatPortfolioProvider(reader, config),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
-        # answers FROM the second brain (with citations). Active only when EMBEDDING_OPENAI_* is
-        # set; None ⇒ ungrounded prose. Passage text never reaches the policy/action path.
-        knowledge=default_grounder(),
+        # answers FROM the second brain (with citations). Same instance as the citation retriever;
+        # None ⇒ ungrounded prose. Passage text never reaches the policy/action path.
+        knowledge=retriever,
     )
 
 
@@ -508,7 +533,7 @@ def _warn_once(key: str) -> None:
 
 #: Native coin symbol per chain — Base + Base Sepolia are ETH; Robinhood testnet 46630 is ETH too.
 #: A chain not listed falls back to "ETH" rather than inventing a ticker.
-_NATIVE_SYMBOLS: dict[int, str] = {8453: "ETH", 84532: "ETH", 46630: "ETH"}
+_NATIVE_SYMBOLS: dict[int, str] = {8453: "ETH", 84532: "ETH", 46630: "ETH", 4663: "ETH"}
 
 
 def _native_symbol(chain_id: int) -> str:
@@ -619,9 +644,7 @@ def _activity_folder(chain_id: int) -> ActivityFolder | None:
     targets: tuple[tuple[str, str], ...] = ()
     if config.vault_address:
         targets = ((net, config.vault_address),)
-    usdc = (
-        {net: config.aave_reserve_usdc_address} if config.aave_reserve_usdc_address else None
-    )
+    usdc = {net: config.aave_reserve_usdc_address} if config.aave_reserve_usdc_address else None
     # The faucet is a Base Sepolia (84532) testnet convenience; both env vars optional —
     # unset simply disables the source (read like PREMIUM_*, outside the keyless AgentConfig).
     probe: FaucetProbe | None = None
@@ -732,9 +755,7 @@ async def _event_stream(
         fallback: ChatBlock = ErrorBlock("UPSTREAM_UNAVAILABLE", _STREAM_FAILURE_MESSAGE)
         count += 1
         yield _sse(_EVENT_BLOCK, fallback.to_wire())
-    await sink.record(
-        conversation_id, "assistant", " ".join(summary_parts).strip(), block_wires
-    )
+    await sink.record(conversation_id, "assistant", " ".join(summary_parts).strip(), block_wires)
     # 027: the same terminal persist also feeds the CROSS-conversation digest. Derivation is
     # deterministic (``derive_memory_lines`` reads the block wires this turn already produced), so
     # memory costs no extra model call and no extra latency. Fail-open like the sink above — a

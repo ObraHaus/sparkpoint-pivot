@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-chat-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now answers correctly about what's live on Robinhood Chain",
+      "body": "If you asked Sparky to swap on Robinhood Chain, it used to say swaps weren't supported yet — even though swapping is the main thing that IS live on this network. That's fixed: ask to swap and Sparky brings up the swap card you sign yourself, and it now talks about the right token (USDG) on this network.\n\nA handful of common questions — how to withdraw, the current vault APY, fees you've paid, whether it can trade for you automatically — used to answer as if the yield vault were already here. On Robinhood Chain, where the vault, token and Broker aren't live yet, Sparky now answers about what you can actually do today (swap, and read your wallet) instead of pointing you at pages that aren't there. It still never moves your funds — you sign everything.\n\nWe also made Sparky's knowledge search more resilient, so a configuration hiccup degrades gracefully instead of interrupting the chat.",
+      "published_at": "2026-09-13T00:30:00Z"
+    },
+    {
       "slug": "trust-center-honest-empty-on-robinhood-chain",
       "type": "changelog",
       "tag": "Improved",
