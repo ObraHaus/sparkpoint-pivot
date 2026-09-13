@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "Trust Center no longer lists contracts that aren't deployed yet",
       "body": "The Trust Center used to show a list of smart-contract addresses — the vault, its guardians, the fee recipient and so on — even on the Robinhood Chain beta, where none of those contracts are deployed yet. Those were addresses from our test network, so seeing them here was misleading.\n\nNow, until SparkPoint's own contracts are live on Robinhood Chain, the Trust Center says so plainly: no contracts are deployed yet, and swaps use the network's existing Uniswap V3, which you sign yourself. Your custody guarantees haven't changed — SparkPoint still never holds your funds. The full, verifiable address list returns automatically once the contracts are deployed.",
-      "published_at": "2026-09-13T09:00:00Z"
+      "published_at": "2026-09-13T00:00:00Z"
     },
     {
       "slug": "beta-polish-mainnet-wording-and-fixes",
