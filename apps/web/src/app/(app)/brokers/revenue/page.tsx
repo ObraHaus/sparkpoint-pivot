@@ -33,6 +33,7 @@ import type { Address } from "viem";
 import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
+import { wagmiConfig } from "@/lib/wagmi";
 import { brokerRevenueDistributorAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import {
@@ -47,6 +48,10 @@ import {
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
+// On the mainnet-beta build (only 4663 registered) the collection's chain isn't registered, so show a
+// plain "not on this network" state (NEVER "coming soon" — rule 3 above) instead of a dead
+// "switch to Robinhood Testnet" prompt against an unregistered chain.
+const BROKER_ON_THIS_BUILD = wagmiConfig.chains.some((c) => c.id === BROKER_CHAIN);
 
 /** Minimal ERC-20 metadata reads — the period names its own units. */
 const erc20MetaAbi = [
@@ -154,6 +159,20 @@ export default function Page() {
     alreadyClaimed: claimedAlready.data as boolean | undefined,
     walletReady: onChain,
   });
+
+  if (!BROKER_ON_THIS_BUILD) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 py-8">
+        <header className="mb-6">
+          <h1 className="text-xl font-semibold">Broker revenue share</h1>
+        </header>
+        <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The Sparky Broker collection isn&rsquo;t part of this network — its revenue distributor lives on Robinhood
+          testnet. There is nothing to claim here.
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">

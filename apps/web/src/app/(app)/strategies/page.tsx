@@ -18,6 +18,7 @@ import { data } from "@/lib/mock-data";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { capNoun } from "@/lib/stage";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useRecommendationsView, usePortfolioView, type RecView } from "@/lib/agent/useAgent";
 import { isTestnetRate, projectAnnual, projectionSummary, TESTNET_RATE_NOTE } from "@/lib/strategy/projection";
@@ -58,6 +59,50 @@ export default function Page() {
     typeof portfolio?.netWorth === "number" ? Math.round(portfolio.netWorth * 1_000_000) : null;
   // useRecommendationsView returns null offline (→ MOCK_RECS) and [] when live-but-nothing-clears.
   const usingMock = liveRecs === null;
+
+  // On a build whose app chain has no vault (the Robinhood Chain beta — VAULT_CHAIN_AVAILABLE=false),
+  // strategy recommendations don't apply: they rank vault/lending strategies (Aave-based) that aren't
+  // deployed on this network, so both reachable states here were wrong — the offline path showed Aave
+  // 4.3% mock cards, and a signed-in [] showed a "Live"-tagged empty page asserting "the Aave vault is
+  // live on this network". Show one honest "not available yet" state (mirrors /vault) instead. Alpha
+  // (Base Sepolia registered ⇒ VAULT_CHAIN_AVAILABLE) is unchanged — the ranked cards still render.
+  if (!VAULT_CHAIN_AVAILABLE) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>Strategies</h1>
+            <div className="sub">Ranked against your plan</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 8 }}>
+          <div className="card-hd">
+            <span className="t">No strategies yet</span>
+            <span className="lbl">coming soon</span>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+            Strategy recommendations arrive with the AI vault, which isn&rsquo;t part of the Robinhood
+            Chain beta yet. When it opens here, Sparky will rank moves against your mandate and show
+            what each would earn on your own balance. Today you can swap on the{" "}
+            <a
+              style={{ color: "var(--primary)", cursor: "pointer" }}
+              onClick={() => router.push(toHref("swap"))}
+            >
+              Swap page
+            </a>{" "}
+            — you sign every swap yourself — and see your position in{" "}
+            <a
+              style={{ color: "var(--primary)", cursor: "pointer" }}
+              onClick={() => router.push(toHref("portfolio"))}
+            >
+              Portfolio
+            </a>
+            .
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page page-narrow">

@@ -1,0 +1,17 @@
+{
+  "$comment": [
+    "Robinhood Chain MAINNET (4663) deployment record — §B beta SCAFFOLD.",
+    "",
+    "Empty on purpose: no SparkPoint contract is deployed on 4663 yet. This file exists so the deploy",
+    "scripts (keyed `vm.writeJson`, which UPDATE one key of an EXISTING file and cannot create it) have",
+    "a file to write into, and so contracts/deployments/4663/ is present for the address-book mirror",
+    "(packages/shared/src/addresses/robinhoodMainnet.ts).",
+    "",
+    "Filled in as the beta contracts are broadcast (feature C, human / Gate-B): the Pons-launched token,",
+    "the OpenSea broker NFT, the RevenueSplitter, the NFT-external engine, the BrokerVault, the",
+    "RoyaltySink, and our swap router. The SparkPoint vault is Base-only and never appears here.",
+    "",
+    "policy-parity CI is pinned to chainId 84532, so this file is inert for that gate until a 4663 job",
+    "is added (which happens once real targets exist here)."
+  ]
+}

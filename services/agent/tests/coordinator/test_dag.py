@@ -157,9 +157,11 @@ def _assert_labels_are_code_authored(wires: list[dict[str, Any]]) -> None:
 async def test_chat_learn_emits_tip_and_never_reads_portfolio() -> None:
     portfolio = _Portfolio(PortfolioView())
     dag = CoordinatorDag(
-        planner=Planner(llm=_StructuredLlm(
-            StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="what_is_apy"))
-        )),
+        planner=Planner(
+            llm=_StructuredLlm(
+                StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="what_is_apy"))
+            )
+        ),
         recommender=Recommender(llm=_StructuredLlm(StructuredResult(ok=False))),
         literacy=Literacy(llm=_CompleteLlm("APY is your yearly yield.")),
         portfolio_provider=portfolio,
@@ -276,8 +278,10 @@ async def test_chat_recommend_all_rejected_yields_safe_text() -> None:
 async def test_chat_build_action_over_cap_is_rejected_and_non_signable() -> None:
     # The "model" extracted an over-cap deposit (10,000 USDC vs a 5,000 USDC headroom).
     rogue = Intent(
-        kind=IntentKind.BUILD_ACTION, action_type=ActionType.VAULT_DEPOSIT,
-        asset=Asset.USDC, amount=10_000_000_000,
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.VAULT_DEPOSIT,
+        asset=Asset.USDC,
+        amount=10_000_000_000,
     )
     dag = _dag(intent=rogue, mandate=MandateView(version=1))
     wires = await _collect(dag, "deposit 10000 USDC", _chain(per_user=5_000_000_000))
@@ -293,8 +297,12 @@ async def test_chat_build_action_over_cap_is_rejected_and_non_signable() -> None
 
 
 async def test_chat_build_action_underspecified_asks_for_amount() -> None:
-    intent = Intent(kind=IntentKind.BUILD_ACTION, action_type=ActionType.VAULT_DEPOSIT,
-                    asset=Asset.USDC, amount=None)
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.VAULT_DEPOSIT,
+        asset=Asset.USDC,
+        amount=None,
+    )
     dag = _dag(intent=intent, mandate=MandateView(version=1))
     wires = await _collect(dag, "deposit some USDC", _chain())
     assert _types(wires)[-1] == "text"
@@ -316,6 +324,27 @@ async def test_chat_swap_emits_functional_inline_swap_action_block() -> None:
     # Honest stamp — the agent never policy-approves swaps; the web renders "Review swap" anyway.
     assert actions[0]["policy"]["status"] == "rejected"
     assert all("how much" not in w.get("markdown", "").lower() for w in wires)
+
+
+async def test_chat_swap_surfaces_the_inline_card_on_robinhood_chain_4663() -> None:
+    # Regression: 4663 (Robinhood Chain mainnet beta) was NOT in the swap-page chains, so a swap ask
+    # fell through to a refusal telling the user "swaps aren't supported on chain 4663 yet" — while
+    # the USDG↔WETH Uniswap V3 swap is the beta's ONE live feature. It must surface the inline card.
+    intent = Intent(kind=IntentKind.BUILD_ACTION, action_type=ActionType.AERODROME_SWAP)
+    dag = _dag(intent=intent)
+    chain = ChainContext(
+        chain_id=4663,
+        user_account=USER,
+        resolved_targets={},  # no vault on 4663
+        caps=CapHeadroom(per_user=BIG, total=BIG, vault=BIG),
+    )
+    wires = await _collect(dag, "swap ETH to USDG", chain)
+    actions = [w for w in wires if w["type"] == "action"]
+    assert len(actions) == 1, "a 4663 swap must surface the inline swap card, not a refusal"
+    assert actions[0]["proposedAction"]["type"] == "aerodrome_swap"
+    assert actions[0]["proposedAction"]["chainId"] == 4663
+    text = " ".join(w.get("markdown", "") for w in wires).lower()
+    assert "aren't supported on" not in text, "must not deny the beta's live swap feature"
 
 
 async def test_chat_bridge_request_is_honest_no_amount_prompt() -> None:

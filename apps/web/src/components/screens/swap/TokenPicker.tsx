@@ -182,7 +182,11 @@ export function TokenPicker({
           <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        {/* Paste address */}
+        {/* Import any token */}
+        <div style={{ fontSize: 12.5, fontWeight: 600, margin: "2px 0 6px" }}>Import any token</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginBottom: 8, lineHeight: 1.5 }}>
+          Paste any ERC-20 address to swap it via Uniswap V3 — anything with a pool on this network is tradable.
+        </div>
         <input
           autoFocus
           type="text"

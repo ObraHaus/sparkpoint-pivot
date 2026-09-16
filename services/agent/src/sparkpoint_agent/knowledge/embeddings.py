@@ -52,9 +52,11 @@ import httpx
 
 # The version-pinned embedding model id stamped onto every row of BOTH tiers.
 # The provider Gate decision (research.md §7) is RESOLVED: the operator's self-hosted,
-# OpenAI-compatible OpenWebUI endpoint serving `qwen3-embedding:8b`, truncated (MRL) to the
-# pinned 1024-dim. The id encodes model + effective dim so a distance query refuses to cross
-# a version boundary; bumping it remains a re-embed event (see module docstring).
+# Qwen3-Embedding-8B (MRL) over an OpenAI-compatible endpoint, truncated (MRL) to the pinned
+# 1024-dim. Provider is now OpenRouter (the prior self-hosted OpenWebUI dropped the model). It is
+# the SAME model + 1024-MRL space, so this version id is UNCHANGED (existing vectors stay
+# compatible — NO re-embed). The id encodes model + effective dim so a distance query won't cross a
+# boundary; bumping it remains a re-embed event (see module docstring).
 EMBEDDING_MODEL_VERSION = "qwen3-embedding-8b-mrl1024@2026.07.0"
 
 # The vector dimension of the pinned space. MUST equal the pgvector
@@ -65,9 +67,10 @@ EMBEDDING_DIM = 1024
 # The EXACT provider model the pin above represents. The env's EMBEDDING_OPENAI_MODEL must equal
 # this, else composition is REJECTED — otherwise any OpenAI-compatible endpoint (a foreign model
 # that merely returns ≥1024 dims) would be silently stamped with the qwen3 pin and write vectors
-# into an incompatible space. Switching models = change BOTH this and EMBEDDING_MODEL_VERSION and
-# re-embed the corpus (a version boundary, by design).
-EMBEDDING_EXPECTED_MODEL = "qwen3-embedding:8b"
+# into an incompatible space. This is OpenRouter's id for Qwen3-Embedding-8B (same model +
+# 1024-MRL space as before). Switching to a DIFFERENT model = change BOTH this and
+# EMBEDDING_MODEL_VERSION and re-embed the corpus (a version boundary, by design).
+EMBEDDING_EXPECTED_MODEL = "qwen/qwen3-embedding-8b"
 
 
 class EmbeddingDimensionError(ValueError):
@@ -279,11 +282,11 @@ def _l2_normalize(vec: list[float]) -> list[float]:
 
 
 class OpenAIEmbeddingBackend:
-    """An OpenAI-compatible :class:`EmbeddingBackend` (the operator's self-hosted OpenWebUI).
+    """An OpenAI-compatible :class:`EmbeddingBackend` (OpenRouter's embeddings API).
 
     POSTs ``{model, input}`` to ``<api_url>/embeddings`` with a Bearer key and reads the OpenAI
-    ``data[].embedding`` shape (ordered by ``index``). The chosen model (``qwen3-embedding:8b``)
-    is MRL-trained and returns 4096-dim vectors even when a ``dimensions`` hint is sent, so each
+    ``data[].embedding`` shape (ordered by ``index``). The model (``qwen/qwen3-embedding-8b``) is
+    MRL-trained and returns 4096-dim vectors even when a ``dimensions`` hint is sent, so each
     vector is TRUNCATED to the pinned :data:`EMBEDDING_DIM` (a valid Matryoshka sub-embedding)
     and L2-renormalized — matching the pgvector column width with no re-migration.
 

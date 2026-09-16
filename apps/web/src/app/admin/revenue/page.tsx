@@ -15,6 +15,7 @@ import { formatUnits } from "viem";
 import { STREAM, StackedBars } from "@/components/admin/charts";
 import { RevenueMultisig } from "@/components/admin/revenue-multisig";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface StreamSeries {
   configured: boolean;
@@ -162,7 +163,7 @@ export default function Page() {
     void (async () => {
       try {
         const r = await fetch("/api/agent/admin/revenue/summary", {
-          headers: { "x-chain-id": "84532" },
+          headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
           cache: "no-store",
         });
         if (!r.ok) throw new Error(String(r.status));

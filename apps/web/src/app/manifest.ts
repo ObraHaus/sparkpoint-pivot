@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Sparky — AI-Native Onchain Hedge Fund",
     short_name: "Sparky",
     description:
-      "A fully self-custodial, chat-based AI DeFi assistant + AI-managed Aave Yield Vault on Base.",
+      "A fully self-custodial, chat-based AI DeFi assistant.",
     start_url: "/",
     display: "standalone",
     background_color: "#080C17",

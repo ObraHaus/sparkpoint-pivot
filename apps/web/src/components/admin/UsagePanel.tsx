@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface TierUsage {
   tier: string;
@@ -46,7 +47,7 @@ interface UsageEvent {
   at: string;
 }
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 
 async function getJSON<T>(path: string, fallback: T): Promise<T> {
   const r = await fetch(`/api/agent/admin/usage/${path}`, { headers: CHAIN_HEADERS, cache: "no-store" });

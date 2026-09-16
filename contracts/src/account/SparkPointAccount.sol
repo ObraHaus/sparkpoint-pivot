@@ -82,6 +82,9 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
     /// @dev A `(target,selector)` in the requested session scope is not in the global arming allowlist
     ///      (or is a forbidden selector) — the §6 "allowlist ⊆ global" narrowing rule.
     error TargetNotArmed();
+    /// @dev The monotonic session `spent` ledger would overflow its packed uint128 — refuse rather
+    ///      than truncate (replaces the unchecked uint128 downcast).
+    error SpentOverflow();
 
     modifier onlyOwner() {
         if (msg.sender != _owner) revert NotOwner();
@@ -178,23 +181,29 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
             revert SessionTooLong();
         }
 
-        // Snapshot the session's (target,selector) allowlist. Each pair MUST be armed in the global
-        // PolicyModule allowlist (which also rejects forbidden selectors BY CONSTRUCTION), enforcing the
-        // §6 "allowlist ⊆ global" narrowing rule. This is a normal owner tx (not bundler-validated), so
-        // the external `isAllowedTarget` read here is unrestricted.
+        // Compute the session's (target,selector) snapshot keys — memory only, no external calls.
         bytes32[] memory keys = new bytes32[](targets.length);
         for (uint256 i = 0; i < targets.length; i++) {
-            if (!policyModule.isAllowedTarget(targets[i], selectors[i])) revert TargetNotArmed();
             keys[i] = keccak256(abi.encodePacked(targets[i], selectors[i]));
         }
-        _sessionAllowlist[policy.sessionKey] = keys;
 
+        // EFFECTS before INTERACTIONS. A later revert rolls every write back atomically, so the §6
+        // "allowlist ⊆ global" validation (an external read) can safely run after them — and no state
+        // change follows an external call in this function.
+        _sessionAllowlist[policy.sessionKey] = keys;
         // Store the scope, PRESERVING the existing monotonic spend ledger — a re-authorization of the
         // same key can NEVER reset `spent` (the on-input `policy.spent` is ignored).
         IPolicyModule.Policy memory p = policy;
         p.spent = _sessionPolicies[policy.sessionKey].spent;
         _sessionPolicies[policy.sessionKey] = p;
         _activeSessionKey = policy.sessionKey;
+
+        // INTERACTIONS last: each pair MUST be armed in the global PolicyModule allowlist (which also
+        // rejects forbidden selectors BY CONSTRUCTION). This is a normal owner tx (not bundler-
+        // validated), so the external `isAllowedTarget` read here is unrestricted.
+        for (uint256 i = 0; i < targets.length; i++) {
+            if (!policyModule.isAllowedTarget(targets[i], selectors[i])) revert TargetNotArmed();
+        }
 
         emit SessionKeyAuthorized(policy.sessionKey, policy.validUntil);
     }
@@ -245,7 +254,11 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
         bytes32[] storage keys = _sessionAllowlist[sessionKey];
         uint256 len = keys.length;
         for (uint256 i = 0; i < len; i++) {
-            if (keys[i] == k) return true;
+            // Non-strict loop shape: slither's field-insensitive taint marks `keys[i] == k` as a
+            // dangerous strict equality (FP — both sides are keccak256 hashes). A `!=`/continue loop
+            // is the identical predicate with no strict equality.
+            if (keys[i] != k) continue;
+            return true;
         }
         return false;
     }
@@ -315,6 +328,8 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
 
         if (isSessionAllowed(signer, scope.target, scope.innerSelector)) {
             uint256 newSpent = uint256(p.spent) + scope.notional;
+            // Bounded downcast (aderyn unsafe-casting): the ledger is uint128; refuse to truncate.
+            if (newSpent > type(uint128).max) revert SpentOverflow();
             _sessionPolicies[signer].spent = uint128(newSpent);
             emit SessionKeySpent(signer, scope.notional, newSpent);
             return scope.validationData;
@@ -344,6 +359,12 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
     }
 
     function _call(address target, uint256 value, bytes calldata data) internal {
+        // Defense in depth at the value-bearing call site: re-assert N1. Callers (execute /
+        // executeBatch) already gate on `_requireFromEntryPointOrOwner`; this direct msg.sender
+        // check keeps the low-level call inside a guarded frame even if a future caller forgets.
+        if (msg.sender != address(_ENTRY_POINT) && msg.sender != _owner) {
+            revert NotFromEntryPointOrOwner();
+        }
         (bool success, bytes memory ret) = target.call{ value: value }(data);
         if (!success) {
             assembly {
@@ -352,10 +373,16 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
         }
     }
 
-    /// @dev Standard ERC-4337 prefund payment to the EntryPoint during validation.
+    /// @dev Standard ERC-4337 prefund payment to the EntryPoint during validation. Sends to the
+    ///      IMMUTABLE `_ENTRY_POINT` (never to an arbitrary `msg.sender`); `validateUserOp` already
+    ///      requires the caller to be that EntryPoint.
     function _payPrefund(uint256 missingAccountFunds) internal {
+        // Defense in depth at the value-bearing call site: only the EntryPoint may ever receive the
+        // prefund. `validateUserOp` already gates the caller; re-asserting it here keeps the transfer
+        // inside a caller-checked frame even if a future caller forgets.
+        if (msg.sender != address(_ENTRY_POINT)) revert NotFromEntryPoint();
         if (missingAccountFunds != 0) {
-            (bool success,) = msg.sender.call{ value: missingAccountFunds }("");
+            (bool success,) = address(_ENTRY_POINT).call{ value: missingAccountFunds }("");
             (success);
         }
     }

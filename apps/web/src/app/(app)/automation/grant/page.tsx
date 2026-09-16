@@ -18,6 +18,8 @@ import { useSignMessage } from "wagmi";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
@@ -45,7 +47,7 @@ import {
   vaultAllowlist,
 } from "@/lib/automation/scope";
 
-const VAULT_CHAIN = 84532;
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 const EXPIRES: { label: string; days: number }[] = [
   { label: "7 days", days: 7 },
   { label: "30 days", days: 30 },
@@ -159,7 +161,7 @@ export default function Page() {
           </div>
           {tx.txHash && (
             <div style={{ fontSize: 12.5, marginTop: 10 }}>
-              <a href={`https://sepolia.basescan.org/tx/${tx.txHash}`} target="_blank" rel="noreferrer" style={{ color: "var(--info)" }}>
+              <a href={explorerTxUrl(VAULT_CHAIN, tx.txHash)} target="_blank" rel="noreferrer" style={{ color: "var(--info)" }}>
                 View grant transaction ↗
               </a>
             </div>

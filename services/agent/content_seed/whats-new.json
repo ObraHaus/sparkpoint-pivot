@@ -2,6 +2,78 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "chat-demo-and-sparky-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The chat preview and Sparky now speak Robinhood Chain",
+      "body": "Before you connect a wallet, the chat shows a scripted preview of what Sparky can do. On Robinhood Chain that preview was still demoing things from another network — an Aave vault, USDC, a Base-to-Sui bridge — none of which exist here. It now previews only what's actually live on Robinhood Chain: swapping ETH for USDG (which you sign yourself) and reading your wallet. The starter suggestions match, too.\n\nAnd when you ask Sparky what it is or what a vault is, it no longer describes a specific vault as if it were already running on your network — it explains things in a way that's accurate whether or not that feature has arrived on the network you're on. Sparky still never moves your funds.",
+      "published_at": "2026-09-13T04:00:00Z"
+    },
+    {
+      "slug": "portfolio-strategies-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio and Strategies now show what's real on Robinhood Chain",
+      "body": "On Robinhood Chain, Portfolio used to show placeholder \"Aave vault\" figures and a risk score for a vault that isn't live here yet, and it hid your actual balances. Now it shows your real ETH and USDG in your wallet, and clearly says the AI vault isn't part of the beta yet — no made-up numbers.\n\nStrategies used to show example Aave strategies (or a confusingly \"Live\"-labelled empty page) on a network where those strategies don't exist. It now says plainly that ranked strategies arrive with the AI vault, and points you to what you can do today: swap, and review your position. When the vault goes live here, the recommendations come back automatically.\n\nAs always, nothing here moves your funds — you're the only one who can.",
+      "published_at": "2026-09-13T03:00:00Z"
+    },
+    {
+      "slug": "sparky-chat-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now answers correctly about what's live on Robinhood Chain",
+      "body": "If you asked Sparky to swap on Robinhood Chain, it used to say swaps weren't supported yet — even though swapping is the main thing that IS live on this network. That's fixed: ask to swap and Sparky brings up the swap card you sign yourself, and it now talks about the right token (USDG) on this network.\n\nA handful of common questions — how to withdraw, the current vault APY, fees you've paid, whether it can trade for you automatically — used to answer as if the yield vault were already here. On Robinhood Chain, where the vault, token and Broker aren't live yet, Sparky now answers about what you can actually do today (swap, and read your wallet) instead of pointing you at pages that aren't there. It still never moves your funds — you sign everything.\n\nWe also made Sparky's knowledge search more resilient, so a configuration hiccup degrades gracefully instead of interrupting the chat.",
+      "published_at": "2026-09-13T00:30:00Z"
+    },
+    {
+      "slug": "trust-center-honest-empty-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Trust Center no longer lists contracts that aren't deployed yet",
+      "body": "The Trust Center used to show a list of smart-contract addresses — the vault, its guardians, the fee recipient and so on — even on the Robinhood Chain beta, where none of those contracts are deployed yet. Those were addresses from our test network, so seeing them here was misleading.\n\nNow, until SparkPoint's own contracts are live on Robinhood Chain, the Trust Center says so plainly: no contracts are deployed yet, and swaps use the network's existing Uniswap V3, which you sign yourself. Your custody guarantees haven't changed — SparkPoint still never holds your funds. The full, verifiable address list returns automatically once the contracts are deployed.",
+      "published_at": "2026-09-13T00:00:00Z"
+    },
+    {
+      "slug": "beta-polish-mainnet-wording-and-fixes",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Beta polish — Robinhood Chain throughout, clearer states, smoother loading",
+      "body": "A round of production polish for the Robinhood Chain beta.\n\nThe app now consistently says \"Robinhood Chain\" (with its logo) rather than any leftover test-network wording, and swaps route through Uniswap. Features that aren't live yet — the yield vault, the utility token, the Sparky Broker — now show a clean \"not available yet\" note instead of test data. The sign-in screen no longer flickers while it checks your access, the swap lets you add any token by pasting its address, and Sparky now describes exactly what's available on this network.\n\nWe also restored the assistant's knowledge search, which had quietly gone offline.",
+      "published_at": "2026-09-12T16:00:00Z"
+    },
+    {
+      "slug": "beta-live-on-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The beta now runs on Robinhood Chain — sign in, chat, portfolio and swaps are live",
+      "body": "beta.sparkpoint.io now runs on Robinhood Chain mainnet — and only Robinhood Chain. Connect a wallet on Robinhood Chain, sign in, chat with Sparky, see your live portfolio, and swap between ETH and USDG through the network's own on-chain Uniswap V3. During the beta the swap takes no fee.\n\nA few things are intentionally switched off for now and shown as \"coming soon\": the utility token, the Sparky Broker, and the yield vault. They arrive in a later step, once their contracts are deployed. Everything you can use today runs against the real network with your own wallet — you are always the only one who can move your funds.",
+      "published_at": "2026-09-10T11:00:00Z"
+    },
+    {
+      "slug": "assistant-recovers-from-database-restarts",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The assistant now recovers on its own after a database restart",
+      "body": "If the database behind the assistant was restarted — during maintenance, or after a server reboot — the assistant used to get stuck: it couldn't reconnect on its own, so chat history, tips and other saved data kept failing until someone manually restarted it.\n\nNow it heals itself. The moment the database is back, the next request quietly re-establishes the connection, and while the database is briefly unavailable the health check reports that honestly instead of pretending everything is fine.\n\nNothing changes day to day — this just removes a way the assistant could go quietly dark after routine infrastructure restarts.",
+      "published_at": "2026-09-10T00:30:00Z"
+    },
+    {
+      "slug": "robinhood-mainnet-groundwork-wired",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Groundwork for Robinhood mainnet is now wired in",
+      "body": "Following on from getting the app ready for Robinhood mainnet, we've now wired the network into the core plumbing — the address book, the safety/policy layer, and the assistant's chain settings all recognise Robinhood Chain now, entirely fail-closed.\n\nThat means nothing is switched on for it yet (no token, no vault, no trading on that network) and nothing changes for you today. It's the quiet groundwork so that when the mainnet beta's contracts go live, turning it on is a configuration change rather than new code.",
+      "published_at": "2026-09-10T00:00:00Z"
+    },
+    {
+      "slug": "app-ready-for-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Getting the app ready to run on Robinhood mainnet",
+      "body": "Until now, parts of the app quietly assumed the test network everywhere — which network to show when your wallet wasn't connected, which explorer the \"view transaction\" links pointed at, and which network the admin tools talked to were all fixed to Base Sepolia.\n\nThat's fine while there's only a test environment, but the beta is going live on Robinhood Chain, and the same code runs in both places. So every screen now follows whichever network the build is pointed at, in one place, instead of each screen deciding on its own.\n\nNothing changes for you on the test network — it behaves exactly as before. On the mainnet beta, links and network labels will correctly point at Robinhood Chain rather than the test network. No action needed.",
+      "published_at": "2026-09-09T12:00:00Z"
+    },
+    {
       "slug": "activity-bots-were-firing-but-idle",
       "type": "changelog",
       "tag": "Fixed",

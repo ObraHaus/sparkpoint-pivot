@@ -8,7 +8,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://sparkpoint.io";
 const TAGLINE =
-  "A fully self-custodial, chat-based AI DeFi assistant + AI-managed Aave Yield Vault on Base. The protocol can never hold, move, or lose your money.";
+  "A fully self-custodial, chat-based AI DeFi assistant. The protocol can never hold, move, or lose your money.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

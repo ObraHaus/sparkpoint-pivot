@@ -13,13 +13,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useBalance } from "wagmi";
+import { useAccount, useBalance, useReadContracts } from "wagmi";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { money } from "@/lib/utils";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
@@ -30,8 +33,10 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
 import "@/components/screens/portfolio.css";
 
-/** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors vault/page). */
-const DISPLAY_CHAIN_ID = 84532;
+/** The chain to read before a wallet connects (env-resolved via APP_DEFAULT_CHAIN_ID; mirrors
+ *  vault/page). On alpha this is the Base-Sepolia vault chain; on the beta it is 4663, which has no
+ *  vault deployed — so the pre-connect preview is illustrative, not a live read, there. */
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
 function safeAddresses(chainId: number | undefined) {
@@ -88,6 +93,25 @@ export default function Page() {
   });
   // Native ETH on the connected chain (useBalance defaults to the wallet's chain; disabled off-wallet).
   const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
+  // The connected chain's stablecoin (USDG on Robinhood Chain 4663, USDC on Base) — read directly via
+  // balanceOf/decimals/symbol so a wallet's real idle stable shows even when there's no vault to route
+  // it into (the 4663 beta). wagmi v3's useBalance no longer reads ERC-20s, so this is a batched read.
+  const stableAddr = safeAddresses(isConnected ? chainId : undefined)?.usdc as Address | undefined;
+  const stableEnabled = isConnected && !!v.account && !!stableAddr;
+  const stableReads = useReadContracts({
+    query: { enabled: stableEnabled },
+    contracts:
+      stableAddr && v.account
+        ? [
+            { address: stableAddr, abi: erc20Abi, functionName: "balanceOf", args: [v.account as Address] },
+            { address: stableAddr, abi: erc20Abi, functionName: "decimals" },
+            { address: stableAddr, abi: erc20Abi, functionName: "symbol" },
+          ]
+        : [],
+  });
+  const stableRaw = stableReads.data?.[0]?.result as bigint | undefined;
+  const stableDecimals = stableReads.data?.[1]?.result as number | undefined;
+  const stableSymbol = stableReads.data?.[2]?.result as string | undefined;
   const wrapperRow = wrapper0
     ? toWrapperPositionInput(wrapper0, {
         underlying: w0.underlying,
@@ -111,6 +135,11 @@ export default function Page() {
   // §B3: Robinhood testnet (46630) is a SUPPORTED chain with no vault (vault is Base-only). It's a
   // "wrong network" for the VAULT, but we acknowledge it honestly and still show the wallet's ETH.
   const robinhood = wrongNetwork && chainId === 46630;
+  // Neither Robinhood chain has a USD price oracle wired, so on a connected-but-no-vault Robinhood
+  // chain (testnet 46630 AND mainnet beta 4663) we keep USD net worth honestly dashed but surface the
+  // wallet's REAL native ETH + stablecoin balances — real value on 4663 was being hidden behind a bare
+  // dash (handled worse than 46630). Base chains keep USD pricing; this only widens the ETH branch.
+  const noUsdOracle = wrongNetwork && (chainId === 46630 || chainId === 4663);
   const loading = isConnected && !wrongNetwork && (v.isLoading || (eth.isLoading && !!v.account));
   const error = isConnected && !wrongNetwork && !loading && v.isError;
   const live = isConnected && v.isDeployed && !loading && !error && !wrongNetwork;
@@ -227,8 +256,13 @@ export default function Page() {
           </span>
           {robinhood ? (
             <span>You’re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to <b>Base Sepolia</b> for your vault position.{eth.data?.value !== undefined && ` Your Robinhood ETH balance: ${d.ethBalance.toFixed(4)} ETH.`} Your vault funds on Base are always withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
-          ) : (
+          ) : VAULT_CHAIN_AVAILABLE ? (
             <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
+          ) : (
+            // Beta build: no vault chain is registered and the user never had a position here, so
+            // there is nothing to "exit" — drop the /exit reassurance (it would point off-build) and
+            // say plainly it's a later step. Your funds are always in your own wallet.
+            <span>The AI vault isn’t part of the Robinhood Chain beta yet — it arrives in a later step. Nothing is deposited here; your funds stay in your own wallet, and you can swap on the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("swap"))}>Swap page</a>.</span>
           )}
         </div>
       )}
@@ -288,18 +322,27 @@ export default function Page() {
             <div className="delta up" style={{ marginTop: 8 }}>
               <Icon name="up" size={15} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
             </div>
-          ) : robinhood ? (
-            // §B3: no USD oracle on Robinhood testnet, so keep USD net worth honest (dashed) but
-            // surface the wallet's native ETH as a REAL figure rather than only a banner sentence.
+          ) : noUsdOracle ? (
+            // §B3: no USD price oracle on either Robinhood chain, so keep USD net worth honestly
+            // dashed but surface the wallet's REAL native ETH + stablecoin as read-only figures
+            // rather than only a banner sentence (4663 was hiding real value behind a bare dash).
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span className="pill ghosty" style={{ fontSize: 11 }}>
                 {eth.data?.value !== undefined ? `${d.ethBalance.toFixed(4)} ETH` : "… ETH"} in your wallet
               </span>
-              <span>No USD price on Robinhood testnet — read-only here.</span>
+              {stableRaw !== undefined && stableDecimals !== undefined && stableRaw > 0n && (
+                <span className="pill ghosty" style={{ fontSize: 11 }}>
+                  {Number(formatUnits(stableRaw, stableDecimals)).toLocaleString("en-US", {
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  {stableSymbol ?? "USDG"}
+                </span>
+              )}
+              <span>No USD price on this network — read-only here.</span>
             </div>
           ) : (
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-              {loading ? "Reading your balances…" : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
+              {loading ? "Reading your balances…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the Robinhood Chain beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
             </div>
           )}
           <div className="pf-spark-area" style={{ position: "relative", minHeight: 150 }}>
@@ -320,7 +363,7 @@ export default function Page() {
               <div className="muted" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 150, fontSize: 12.5 }}>
                 {live ? "No history yet — it appears after your first deposit."
                   : loading ? "Reading your history…"
-                  : wrongNetwork ? "Switch to Base Sepolia to see your history."
+                  : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your history."
                   : "History hidden."}
               </div>
             )}
@@ -342,11 +385,18 @@ export default function Page() {
               Risk panel
               {preview && previewTag}
             </span>
-            <RiskChip tier={1} />
+            {/* The tier chip + portfolio-risk score describe the vault position (tier 1). When
+                degraded (e.g. connected on the beta with no vault) there IS no position, so show
+                nothing rather than a fabricated "1/5", matching the DASH'd rows below. */}
+            {(live || preview) && <RiskChip tier={1} />}
           </div>
           <div className="rp-row">
             <span className="muted">Portfolio risk</span>
-            <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The Aave vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
+            {live || preview ? (
+              <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The Aave vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
+            ) : (
+              <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
+            )}
           </div>
           <div className="rp-row">
             <span className="muted">Drift vs your plan</span>
@@ -411,10 +461,12 @@ export default function Page() {
               <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
             )}
           </div>
-          <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-            Capital-preservation-first. The audited Aave vault is the lowest tier on our scale.{" "}
-            <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("strategies"))}>Improve this</a>
-          </div>
+          {(live || preview) && (
+            <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+              Capital-preservation-first. The audited Aave vault is the lowest tier on our scale.{" "}
+              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("strategies"))}>Improve this</a>
+            </div>
+          )}
         </div>
       </div>
 
@@ -428,6 +480,13 @@ export default function Page() {
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
               No positions yet.{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault/deposit"))}>Deposit USDC</a> to get started.
+            </div>
+          ) : degraded ? (
+            // Mirror the Positions card: when there's no live vault position (e.g. connected on the
+            // beta, no vault), don't render the static "Aave Yield Vault / Idle USDC" donut legend —
+            // it reads as a real allocation for a vault/token that isn't on this network.
+            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
+              {loading ? "Reading your allocation…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your allocation." : "Couldn’t read your allocation — tap Retry above."}
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
@@ -469,7 +528,7 @@ export default function Page() {
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>No open positions.</div>
           ) : degraded ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your positions…" : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
+              {loading ? "Reading your positions…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
             </div>
           ) : (
             <table className="tbl">
@@ -522,13 +581,15 @@ export default function Page() {
           chainId={chainId}
           address={v.account}
           networkName={
-            chainId === 46630
-              ? "Robinhood Testnet"
-              : chainId === 8453
-                ? "Base"
-                : chainId === 84532
-                  ? "Base Sepolia"
-                  : "this network"
+            chainId === 4663
+              ? "Robinhood Chain"
+              : chainId === 46630
+                ? "Robinhood Testnet"
+                : chainId === 8453
+                  ? "Base"
+                  : chainId === 84532
+                    ? "Base Sepolia"
+                    : "this network"
           }
         />
       )}

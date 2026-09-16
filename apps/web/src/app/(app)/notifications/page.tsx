@@ -8,14 +8,15 @@
  */
 
 import { useEffect } from "react";
+import type { Hex } from "viem";
 import { Icon } from "@/lib/icons";
+import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { useNotifications, useMarkNotificationsRead } from "@/lib/agent/useAgent";
 import { filterByPrefs, type NotificationView } from "@/lib/agent/notificationsView";
 import { useNotifPrefs } from "@/lib/settings/usePrefs";
 import { StatusTag } from "@/components/ui/status-tag";
 import "@/components/screens/support.css";
-
-const EXPLORER = "https://sepolia.basescan.org";
 
 export default function Page() {
   const notif = useNotifications();
@@ -114,7 +115,7 @@ function Row({ n }: { n: NotificationView }) {
               </a>
             ) : null}
             {n.txHash ? (
-              <a className="cite" href={`${EXPLORER}/tx/${n.txHash}`} target="_blank" rel="noreferrer">
+              <a className="cite" href={explorerTxUrl(APP_DEFAULT_CHAIN_ID, n.txHash as Hex)} target="_blank" rel="noreferrer">
                 tx <Icon name="ext" size={10} />
               </a>
             ) : null}
