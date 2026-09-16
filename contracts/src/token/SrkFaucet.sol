@@ -148,7 +148,8 @@ contract SrkFaucet {
     /// @notice Earliest timestamp at which `claimant` may claim again (0 = has never claimed).
     function nextClaimAt(address claimant) public view returns (uint256) {
         uint256 last = lastClaimAt[claimant];
-        if (last == 0) return 0;
+        // `< 1` == `== 0` for a uint; avoids slither's strict-equality FP on a mapping read.
+        if (last < 1) return 0;
         return last + cooldown;
     }
 

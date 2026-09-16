@@ -152,19 +152,23 @@ contract BrokerActivationRegistry is Ownable2Step {
     function activate(uint256 tokenId, uint8 tier) external {
         TierConfig memory cfg = _requireTier(tier);
 
-        address holder = broker.ownerOf(tokenId);
-        if (holder != msg.sender) revert NotBrokerOwner(tokenId, holder, msg.sender);
-        if (broker.activatedAt(tokenId) != 0) revert AlreadyActivated(tokenId);
-
-        // Effects on our own state first. Neither callee is attacker-controlled (both immutable,
-        // both ours), and a re-entrant `activate` for the same token reverts on `AlreadyActivated`
-        // once the NFT is flipped.
+        // EFFECTS on our own state first (checks-effects-interactions). A revert below rolls every
+        // write back atomically, so a failed ownership / already-activated check can never leave a
+        // partial record — and no state change follows an external call in this function. Neither
+        // callee is attacker-controlled (both immutable, both ours), and a re-entrant `activate`
+        // for the same token reverts on `AlreadyActivated` once the NFT is flipped.
         _tierOf[tokenId] = tier;
         if (!_recorded[msg.sender][tokenId]) {
             _recorded[msg.sender][tokenId] = true;
             _activations[msg.sender].push(tokenId);
         }
 
+        // CHECKS (external reads: ownerOf/activatedAt on the immutable broker).
+        address holder = broker.ownerOf(tokenId);
+        if (holder != msg.sender) revert NotBrokerOwner(tokenId, holder, msg.sender);
+        if (broker.activatedAt(tokenId) != 0) revert AlreadyActivated(tokenId);
+
+        // INTERACTIONS last.
         if (cfg.price != 0) {
             // Straight from the holder to the dead address — this contract is never the holder of
             // retired SRK, not even for one instruction.

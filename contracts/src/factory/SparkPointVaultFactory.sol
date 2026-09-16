@@ -201,7 +201,10 @@ contract SparkPointVaultFactory is ISparkPointVaultFactory, Ownable {
     ///      CREATE2 deploy and the address prediction, so they are provably identical.
     function _capInitCode(Caps calldata caps) internal view returns (bytes memory) {
         (uint256 perUser, uint256 total, uint256 vaultCap) = _capParams(caps);
-        return abi.encodePacked(
+        // bytes.concat, not abi.encodePacked: identical bytes (creation code is fixed-length, the
+        // abi.encode tail is self-delimiting) so every predicted CREATE2 address is unchanged, and
+        // aderyn's `abi.encodePacked() Hash Collision` heuristic is resolved.
+        return bytes.concat(
             type(CapRegistry).creationCode, abi.encode(owner(), perUser, total, vaultCap)
         );
     }
@@ -216,7 +219,10 @@ contract SparkPointVaultFactory is ISparkPointVaultFactory, Ownable {
         string memory label
     ) internal view returns (bytes memory) {
         (string memory name, string memory symbol) = _branding(label);
-        return abi.encodePacked(
+        // bytes.concat, not abi.encodePacked — identical bytes (fixed-length creation code +
+        // self-delimiting abi.encode tail) so predicted CREATE2 addresses stay stable; resolves
+        // aderyn's `abi.encodePacked() Hash Collision` heuristic.
+        return bytes.concat(
             type(SparkPointMorphoVault).creationCode,
             abi.encode(
                 usdc,
