@@ -154,6 +154,7 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
 
     event Settled(uint256 indexed round, address indexed asset, uint256 spend, uint256 acc);
     event RoundSkipped(uint256 indexed round, string reason);
+    event RoundSecondsSet(uint256 roundSeconds);
     event Delivered(uint256 indexed tokenId, address indexed asset, uint256 amount);
 
     event ClockedIn(uint256 indexed tokenId, address indexed owner, uint256 burned);
@@ -228,6 +229,17 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     // solhint-disable-next-line func-name-mixedcase
     function START() external view returns (uint256) {
         return _startedAt;
+    }
+
+    /// @notice Change the round length (owner-only, UUPS-upgradeable engine — the port had no setter,
+    /// matching the reference, so the beta would otherwise be stuck at its deploy-time 3600s grid).
+    /// Narrow on purpose: the round grid is what `settle()` closes against, so raising the length can
+    /// leave `currentRound()` below `settledRound` until the grid catches up — `settle()` no-ops in
+    /// that window (no revert, no double-settle, no rewind of `settledRound`).
+    function setRoundSeconds(uint256 roundSeconds_) external onlyOwner {
+        if (roundSeconds_ == 0 || roundSeconds_ > type(uint32).max) revert BadRoundLength();
+        _roundSeconds = roundSeconds_;
+        emit RoundSecondsSet(roundSeconds_);
     }
 
     /// @notice How many rounds have fully elapsed. The highest round `settle()` can close.

@@ -46,6 +46,8 @@ contract MockToken is ERC20 {
 contract BrokerEngineTest is Test {
     uint256 constant ROUND = 3600;
 
+    event RoundSecondsSet(uint256 roundSeconds);
+
     MockNFT nft;
     MockToken token;
     BrokerEngine engine;
@@ -353,5 +355,35 @@ contract BrokerEngineTest is Test {
                 )
             )
         );
+    }
+
+    function test_setRoundSeconds_onlyOwnerAndBounded() public {
+        vm.prank(alice);
+        vm.expectRevert(BrokerEngine.NotOwner.selector);
+        engine.setRoundSeconds(1 days);
+
+        vm.expectRevert(BrokerEngine.BadRoundLength.selector);
+        engine.setRoundSeconds(0);
+        vm.expectRevert(BrokerEngine.BadRoundLength.selector);
+        engine.setRoundSeconds(uint256(type(uint32).max) + 1);
+    }
+
+    function test_setRoundSeconds_dailyGridStaysSettleSafe() public {
+        uint256 before = engine.currentRound();
+        vm.expectEmit(false, false, false, true, address(engine));
+        emit RoundSecondsSet(1 days);
+        engine.setRoundSeconds(1 days);
+
+        assertEq(engine.ROUND(), 1 days);
+        // The larger divisor can rewind the view — settle() must neither revert nor re-settle.
+        assertLe(engine.currentRound(), before);
+        engine.settle();
+        assertEq(engine.settledRound(), engine.currentRound());
+
+        // The next boundary is a day off START, on the new grid.
+        vm.warp(engine.START() + 1 days + 1);
+        assertEq(engine.currentRound(), 1);
+        engine.settle();
+        assertEq(engine.settledRound(), 1);
     }
 }
