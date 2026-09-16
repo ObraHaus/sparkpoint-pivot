@@ -1,0 +1,9 @@
+# The image installs dependencies fresh from the lockfile and never wants a local tree copied in.
+node_modules
+# Secrets and local books never belong in a build context.
+.env
+.env.*
+!.env.example
+# Nothing below is needed at run time.
+README.md
+tsconfig.json
