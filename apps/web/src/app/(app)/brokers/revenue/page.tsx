@@ -45,6 +45,17 @@ import {
   REVENUE_SHARE_DISCLOSURE,
   type PublishedPeriod,
 } from "@/lib/chain/brokers";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { RevenueBeta } from "./RevenueBeta";
+
+/**
+ * TWO SURFACES, ONE ROUTE (W.4). The mainnet-beta build (4663) renders `RevenueBeta`, which shows
+ * the real fee route against the deployed engine/vault/splitter. Alpha (Base Sepolia) keeps the
+ * 044 distributor page below, unchanged.
+ */
+export default function Page() {
+  return APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet ? <RevenueBeta /> : <TestnetRevenue />;
+}
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
@@ -59,7 +70,8 @@ const erc20MetaAbi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ] as const;
 
-export default function Page() {
+/** The 46630 page (044): the Merkle distributor's claim flow. */
+function TestnetRevenue() {
   const { address, isConnected, chainId: walletChain } = useAccount();
   const owner = address as Address | undefined;
 

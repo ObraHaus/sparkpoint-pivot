@@ -19,7 +19,7 @@
  * broker was sold with" is the one bug this system exists to prevent.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatEther, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { chainName } from "@sparkpoint/shared/chains";
@@ -41,7 +41,8 @@ import {
   useBrokerBurnPrices,
   useBrokerCollection,
   useBrokerDeployment,
-  useBrokerEngineStates,
+  useOwnedBrokers,
+  OWNERSHIP_SCAN_LIMIT,
   useBrokerPot,
   useBurnPosition,
   useClockIn,
@@ -51,11 +52,8 @@ import {
   type BrokerBurnPrices,
 } from "@/lib/chain/useBrokerEngine";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
-import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
-
-/** The same bound the legacy page uses: a browser scan of `1..totalSupply`, never unbounded. */
-const SCAN_LIMIT = 500;
+import { useOnTxSuccess } from "@/lib/ui/useOnTxSuccess";
 
 /**
  * A burn, quoted EXACTLY as the engine will charge it.
@@ -73,19 +71,9 @@ function shortId(id: number): string {
   return `#${String(id).padStart(4, "0")}`;
 }
 
-/** Fire `onDone` once per confirmed transaction, then clear the write state so it cannot refire. */
-function useOnSuccess(tx: { isSuccess: boolean; reset: () => void }, onDone: () => void) {
-  const { isSuccess, reset } = tx;
-  useEffect(() => {
-    if (!isSuccess) return;
-    onDone();
-    reset();
-  }, [isSuccess, reset, onDone]);
-}
-
 export function BetaBrokers() {
   const deployment = useBrokerDeployment();
-  const { address, isConnected, chainId: walletChain } = useAccount();
+  const { isConnected, chainId: walletChain } = useAccount();
   const walletReady = isConnected && walletChain === deployment.chainId;
   const { nft, engine, token } = deployment;
 
@@ -95,33 +83,13 @@ export function BetaBrokers() {
   const pot = useBrokerPot(engine);
 
   // Ownership: the indexer when it can answer (scales to 5,555), the bounded `1..totalSupply` scan
-  // otherwise (survives an agent outage). Same two-path discipline as the legacy gallery.
-  const indexed = useIndexedBrokers(walletReady);
-  const scanIds = useMemo(() => {
-    if (collection.totalSupply === undefined) return [];
-    const count = Number(
-      collection.totalSupply > BigInt(SCAN_LIMIT) ? BigInt(SCAN_LIMIT) : collection.totalSupply,
-    );
-    return Array.from({ length: count }, (_, i) => BigInt(i + 1));
-  }, [collection.totalSupply]);
-  const ids = useMemo(() => {
-    if (indexed.ids !== undefined) return indexed.ids.map((n) => BigInt(n));
-    return indexed.source === "scan" ? scanIds : [];
-  }, [indexed.ids, indexed.source, scanIds]);
-
-  const states = useBrokerEngineStates(ids, deployment);
-  const { refetch: refetchStates } = states;
+  // otherwise (survives an agent outage). Shared with the revenue surface.
+  const owned = useOwnedBrokers(deployment);
+  const { mine, truncated } = owned;
+  const { refetch: refetchOwned } = owned;
   const { refetch: refetchPosition } = position;
   const { refetch: refetchPot } = pot;
   const { refetch: refetchCollection } = collection;
-
-  const mine = useMemo(() => {
-    if (!address) return [];
-    const want = address.toLowerCase();
-    return states.brokers.filter(
-      (b) => b.owner !== undefined && b.owner.toLowerCase() === want && !b.absorbed,
-    );
-  }, [states.brokers, address]);
 
   const clockInTx = useClockIn(deployment);
   const promoteTx = usePromote(deployment);
@@ -146,11 +114,11 @@ export function BetaBrokers() {
   const [selected, setSelected] = useState<number[]>([]);
 
   const refresh = useCallback(() => {
-    void refetchStates();
+    void refetchOwned();
     void refetchPosition();
     void refetchPot();
     void refetchCollection();
-  }, [refetchStates, refetchPosition, refetchPot, refetchCollection]);
+  }, [refetchOwned, refetchPosition, refetchPot, refetchCollection]);
 
   const note = useCallback((msg: string) => {
     setNotice(msg);
@@ -178,11 +146,11 @@ export function BetaBrokers() {
     refresh();
   }, [note, refresh]);
 
-  useOnSuccess(clockInTx, onClockInDone);
-  useOnSuccess(promoteTx, onPromoteDone);
-  useOnSuccess(fuseTx, onFuseDone);
-  useOnSuccess(approveTx, onApproveDone);
-  useOnSuccess(approveNftTx, onApproveNftDone);
+  useOnTxSuccess(clockInTx, onClockInDone);
+  useOnTxSuccess(promoteTx, onPromoteDone);
+  useOnTxSuccess(fuseTx, onFuseDone);
+  useOnTxSuccess(approveTx, onApproveDone);
+  useOnTxSuccess(approveNftTx, onApproveNftDone);
 
   const error =
     clockInTx.error ??
@@ -226,10 +194,6 @@ export function BetaBrokers() {
     collection.totalSupply === undefined || collection.maxSupply === undefined
       ? "…"
       : `${collection.totalSupply.toLocaleString()} of ${collection.maxSupply.toLocaleString()} exist`;
-  const truncated =
-    indexed.source === "scan" &&
-    collection.totalSupply !== undefined &&
-    collection.totalSupply > BigInt(SCAN_LIMIT);
 
   return (
     <div className="page">
@@ -312,7 +276,7 @@ export function BetaBrokers() {
               <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>
                 Connect a wallet to see the brokers you hold.
               </div>
-            ) : indexed.source === "loading" || collection.totalSupply === undefined ? (
+            ) : owned.isLoading || collection.totalSupply === undefined ? (
               <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>
                 Reading the chain…
               </div>
@@ -321,7 +285,7 @@ export function BetaBrokers() {
                 No broker exists yet — the drop hasn’t minted. Once you hold one, it shows up here
                 to clock in.
               </div>
-            ) : states.isLoading ? (
+            ) : owned.isLoading ? (
               <div style={{ fontSize: 13, color: "var(--muted-foreground)" }}>
                 Reading the chain…
               </div>
@@ -356,7 +320,7 @@ export function BetaBrokers() {
 
             {truncated && (
               <div style={{ marginTop: 10, fontSize: 12, color: "var(--loss)" }}>
-                Showing brokers among the first {SCAN_LIMIT.toLocaleString()} minted only — this
+                Showing brokers among the first {OWNERSHIP_SCAN_LIMIT.toLocaleString()} minted only — this
                 list is incomplete.
               </div>
             )}

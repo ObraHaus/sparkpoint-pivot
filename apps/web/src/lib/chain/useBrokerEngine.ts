@@ -39,6 +39,7 @@ import {
 import { brokerEngineAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS } from "@sparkpoint/shared/chains";
+import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import type { WagmiChainId } from "@/lib/wagmi";
 
 /** The chain the beta revenue subsystem lives on. Pinned: no read or write follows the wallet. */
@@ -114,6 +115,11 @@ export interface BrokerDeployment {
   readonly engine?: Address;
   readonly vault?: Address;
   readonly token?: Address;
+  readonly splitter?: Address;
+  readonly sink?: Address;
+  readonly treasury?: Address;
+  readonly curve?: Address;
+  readonly feeEscrow?: Address;
 }
 
 /**
@@ -131,6 +137,11 @@ export function useBrokerDeployment(): BrokerDeployment {
         engine: book.brokerEngine,
         vault: book.brokerVault,
         token: book.utilityToken,
+        splitter: book.revenueSplitter,
+        sink: book.royaltySink,
+        treasury: book.revenueTreasury,
+        curve: book.ponsCurve,
+        feeEscrow: book.ponsFeeEscrow,
       };
     } catch {
       return { chainId: CHAIN_IDS.robinhoodMainnet };
@@ -356,6 +367,75 @@ export function useBrokerEngineStates(
   return { brokers, isLoading, refetch };
 }
 
+/** The scan bound: a browser walk of `1..totalSupply`, never unbounded. */
+export const OWNERSHIP_SCAN_LIMIT = 500;
+
+export interface OwnedBrokers {
+  /** Every id the surface queried (its gallery candidates). */
+  readonly ids: readonly bigint[];
+  /** The subset this wallet holds, absent ids (burned by fusion) excluded. */
+  readonly mine: readonly BetaBroker[];
+  /** The scan hit its cap: the list is incomplete and the screen must say so. */
+  readonly truncated: boolean;
+  readonly isLoading: boolean;
+  readonly refetch: () => void;
+}
+
+/**
+ * Which brokers the connected wallet holds — the ONE implementation both broker surfaces use.
+ *
+ * Two ownership paths, deliberately: `GET /brokers/owned` walks `Transfer` logs and scales to the
+ * full 5,555, while a bounded `1..totalSupply` browser scan survives an agent outage. The indexer
+ * is preferred; it reports `available: false` (never an empty list) when it cannot read, which is
+ * what makes the fallback honest rather than a silent "you own nothing".
+ *
+ * ⚠️ Walks `1..totalSupply` (the clone's live count), not `maxSupply`: ids above the minted range
+ * do not exist, and asking for them would report every one as absorbed.
+ */
+export function useOwnedBrokers(deployment: BrokerDeployment): OwnedBrokers {
+  const { address, isConnected, chainId: walletChain } = useAccount();
+  const walletReady = isConnected && walletChain === deployment.chainId;
+  const collection = useBrokerCollection(deployment.nft);
+
+  const indexed = useIndexedBrokers(walletReady);
+  const scanIds = useMemo(() => {
+    if (collection.totalSupply === undefined) return [];
+    const count = Number(
+      collection.totalSupply > BigInt(OWNERSHIP_SCAN_LIMIT)
+        ? BigInt(OWNERSHIP_SCAN_LIMIT)
+        : collection.totalSupply,
+    );
+    return Array.from({ length: count }, (_, i) => BigInt(i + 1));
+  }, [collection.totalSupply]);
+
+  const ids = useMemo(() => {
+    if (indexed.ids !== undefined) return indexed.ids.map((n) => BigInt(n));
+    return indexed.source === "scan" ? scanIds : [];
+  }, [indexed.ids, indexed.source, scanIds]);
+
+  const states = useBrokerEngineStates(ids, deployment);
+  const mine = useMemo(() => {
+    if (!address) return [];
+    const want = address.toLowerCase();
+    return states.brokers.filter(
+      (b) => b.owner !== undefined && b.owner.toLowerCase() === want && !b.absorbed,
+    );
+  }, [states.brokers, address]);
+
+  const truncated =
+    indexed.source === "scan" &&
+    collection.totalSupply !== undefined &&
+    collection.totalSupply > BigInt(OWNERSHIP_SCAN_LIMIT);
+
+  return {
+    ids,
+    mine,
+    truncated,
+    isLoading: indexed.source === "loading" || collection.isLoading || states.isLoading,
+    refetch: states.refetch,
+  };
+}
+
 /** What the wallet holds of the tokens the engine burns, and what it has approved. */
 export interface BurnPosition {
   /** The wallet's utility-token balance. */
@@ -443,8 +523,11 @@ function walletError(error: { shortMessage?: string; message?: string }): string
  * One feed for every verb — a holder does not care which contract a call lands on, only whether it
  * is waiting on their wallet, waiting on the chain, or finished. `useWriteContract` +
  * `useWaitForTransactionReceipt`, collapsed.
+ *
+ * Exported because the revenue surface's `withdraw` is the same shape on a different contract; a
+ * second copy of the reverted-receipt rule is a second chance to get it wrong.
  */
-function useBrokerTx() {
+export function useBrokerTx() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isMining, data: receipt } = useWaitForTransactionReceipt({ hash });
 

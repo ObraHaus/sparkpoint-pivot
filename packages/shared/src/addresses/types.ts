@@ -163,6 +163,9 @@ export interface AddressBook {
   readonly revenueSplitter?: Address;
   /** The immutable `RoyaltySink` — the OpenSea royalty recipient; flushes to the splitter. */
   readonly royaltySink?: Address;
+  /** The address the `RevenueSplitter`'s immutable `treasury` points at — its 10% share (mirrors
+   * `beta.treasury` in `contracts/deployments/4663/addresses.json`). */
+  readonly revenueTreasury?: Address;
   /** The Pons bonding curve for the utility token — the sweeper's `sweepFees` target pre-graduation. */
   readonly ponsCurve?: Address;
   /** Pons' `V2FeeEscrow` — where curve/hook fees are credited and `claim()`ed by the splitter. */

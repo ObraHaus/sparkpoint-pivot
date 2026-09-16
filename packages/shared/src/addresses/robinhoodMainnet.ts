@@ -79,6 +79,7 @@ export const robinhoodMainnet: AddressBook = {
   brokerVault: "0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455",
   revenueSplitter: "0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1", // immutable; the Pons creatorFeeRecipient
   royaltySink: "0x0009a0fEf5a5371B05727e257FF9500EeF0a7d66",
+  revenueTreasury: "0x376293DDb027555aB7F483c00e1D61b2a7757dE8", // the splitter's immutable 10% destination
   ponsCurve: "0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53",
   ponsFeeEscrow: "0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e",
 
