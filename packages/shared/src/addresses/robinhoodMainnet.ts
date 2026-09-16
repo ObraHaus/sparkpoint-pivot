@@ -82,10 +82,10 @@ export const robinhoodMainnet: AddressBook = {
   ponsCurve: "0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53",
   ponsFeeEscrow: "0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e",
 
-  // Sparky Broker (OpenSea) + the legacy revenue set — the pre-pivot contracts are NOT deployed on
-  // 4663. `brokerNft` is deliberately left undefined until the new broker surfaces are wired (W.3)
-  // so no current page changes behavior; the beta collection address lives in the deploy book.
-  brokerNft: undefined,
+  // Sparky Broker - Test (SPKBTest, supply 5,555) — deployed on 4663 2026-09-16 and wired here for
+  // the beta broker surfaces (W.3). The legacy pre-pivot fields below stay undefined: the
+  // registry/sale/distributor are NOT deployed on 4663 and the app must not treat them as live.
+  brokerNft: "0x706b4b449d9b007b7fbd29866122e758d9903d3f",
   brokerRegistry: undefined,
   brokerSale: undefined,
   brokerRevenueDistributor: undefined,
