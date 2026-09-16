@@ -3,7 +3,13 @@
 /**
  * /brokers — mint a Sparky Broker, and see the ones you hold (feature 043, US3 + US4).
  *
- * Everything on this page is an on-chain read. Activation state is read on every load and never
+ * ⚠️ TWO SURFACES, ONE ROUTE (W.3.4). The mainnet-beta build (4663) no longer shows the "coming
+ * soon" gate: it renders `BetaBrokers`, which binds the deployed `BrokerEngine` (clock in /
+ * promote / fuse against the OpenSea drop clone). The alpha/testnet build keeps THIS page — the
+ * 043 sale + activation-registry flow on 46630 — unchanged, and the branch below is the only thing
+ * that decides which one runs.
+ *
+ * Everything on the 043 page is an on-chain read. Activation state is read on every load and never
  * cached into component state as a flag: a flag can outlive the transfer that cleared it, and "a
  * stranger keeps the access their broker was sold with" is the one bug this whole collection exists
  * to prevent.
@@ -27,6 +33,16 @@ import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { brokerViews, deriveMintState, type BrokerToken } from "@/lib/chain/brokers";
 import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { BetaBrokers } from "./BetaBrokers";
+
+/**
+ * The mainnet-beta build serves the engine-backed broker surface; every other build (alpha/testnet)
+ * keeps the 043 page below, byte-for-byte unchanged.
+ */
+export default function Page() {
+  return APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet ? <BetaBrokers /> : <TestnetBrokers />;
+}
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
@@ -53,7 +69,8 @@ const METADATA_ORIGIN =
  */
 const OWNERSHIP_SCAN_LIMIT = 500;
 
-export default function Page() {
+/** The 46630 page (043): mint via the sale, read activation from the registry. */
+function TestnetBrokers() {
   const router = useRouter();
   const { address, isConnected, chainId: walletChain } = useAccount();
   const owner = address as Address | undefined;
