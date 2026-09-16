@@ -44,7 +44,7 @@ export default function OpengraphImage() {
           The First AI-Native Onchain Hedge Fund
         </div>
         <div style={{ display: "flex", fontSize: 23, color: "#8C98AE", marginTop: 44 }}>
-          Fully self-custodial · AI DeFi assistant + Aave Yield Vault on Base
+          Fully self-custodial · AI DeFi assistant
         </div>
       </div>
     ),

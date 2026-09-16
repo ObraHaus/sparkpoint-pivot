@@ -19,6 +19,7 @@ import type { TokenRef } from "@sparkpoint/shared/schemas";
 import { Icon } from "@/lib/icons";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
@@ -30,7 +31,7 @@ import { TokenLogo } from "@/components/ui/TokenLogo";
 import { formatBpsPercent, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DASH = "—";
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 /** Keep a little native ETH for gas when the user taps "Max" on an ETH-in swap. */
 const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH
 const MUTED = "var(--muted-foreground)";
@@ -359,7 +360,7 @@ export function InlineSwapConfirm({
             </div>
 
             {/* Honest states */}
-            {!s.dexLive && <Notice>Swaps aren&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>}
+            {!s.dexLive && <Notice>Swaps aren&apos;t available on this network — switch to a supported network.</Notice>}
             {s.canQuote && quote.noRoute && <Notice>No {s.uniswapVenue} route for this pair on {s.netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>}
             {s.canQuote && quote.isError && (
               <Notice>

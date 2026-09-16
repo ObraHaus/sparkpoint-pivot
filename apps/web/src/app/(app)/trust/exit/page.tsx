@@ -11,16 +11,21 @@
 
 import { useRouter } from "next/navigation";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
 
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 
 export default function Page() {
   const router = useRouter();
-  const vault = getAddresses(VAULT_CHAIN).vault;
+  // The vault is Base-only; on the mainnet-beta build (only 4663 registered) it isn't reachable, so
+  // don't surface the Base-Sepolia vault address + explorer link as the exit target — fall through to
+  // the "vault not deployed on this network" state. Withdraw-always (N2) still holds via the app path.
+  const vault = VAULT_CHAIN_AVAILABLE ? getAddresses(VAULT_CHAIN).vault : undefined;
 
   return (
     <div className="page page-narrow">
@@ -75,7 +80,7 @@ export default function Page() {
               <a
                 className="mono"
                 style={{ fontSize: 12, color: "var(--primary)", marginTop: 3, display: "inline-flex", gap: 4 }}
-                href={`${EXPLORER}/address/${vault}`}
+                href={explorerAddressUrl(VAULT_CHAIN, vault)}
                 target="_blank"
                 rel="noreferrer"
               >

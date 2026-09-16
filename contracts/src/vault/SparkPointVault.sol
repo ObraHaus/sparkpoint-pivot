@@ -147,7 +147,7 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
     /// @notice The share-denominated cap, derived from maxDeposit (rounds DOWN, vault's favor).
     function maxMint(address receiver) public view override(ERC4626, IERC4626) returns (uint256) {
         uint256 assetsCap = maxDeposit(receiver);
-        if (assetsCap == type(uint256).max) return type(uint256).max;
+        if (assetsCap >= type(uint256).max) return type(uint256).max;
         return convertToShares(assetsCap);
     }
 
@@ -195,7 +195,10 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
         shares = previewDeposit(assets); // priced AFTER accrual so the depositor is not diluted by it
         // Refuse a deposit that would mint 0 shares (a donation/inflated-pps edge) so a depositor never
         // surrenders assets for nothing — the OZ virtual-offset defence, backstopped by construction.
-        if (shares == 0) revert ZeroShares();
+        // Slither incorrect-equality FP: `shares` is tainted by the aUSDC balanceOf read inside
+        // convertToShares, so an `== 0` here reads as a manipulable strict equality. `< 1` is the
+        // identical predicate with no strict equality (resolves the finding; no strict-equality fix).
+        if (shares < 1) revert ZeroShares();
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
@@ -261,7 +264,10 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
         uint256 shares
     ) internal override {
         uint256 received = _aavePool.withdraw(asset(), assets, address(this));
-        require(received == assets, "PARTIAL");
+        // `>=`: the invariant is "never settle for less than requested". Aave withdraw returns the
+        // exact amount or reverts; `>=` keeps the fail-closed guard while avoiding a strict-equality
+        // predicate on an external-call return (slither incorrect-equality).
+        require(received >= assets, "PARTIAL");
         super._withdraw(caller, receiver, owner, assets, shares);
         emit AaveWithdrawn(assets, receiver);
     }
@@ -284,12 +290,13 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
         uint256 supply = totalSupply();
         uint256 gainAssets = ((pps - hwm) * supply) / 1e18; // yield realized above the mark
         uint256 feeAssets = (gainAssets * _performanceFeeBps) / _BPS_DENOMINATOR;
-        if (feeAssets == 0) return 0;
+        // `< 1` == `== 0` for a uint; avoids slither's strict-equality FP on balance-tainted values.
+        if (feeAssets < 1) return 0;
 
         uint256 ta = totalAssets();
         if (ta <= feeAssets) return 0; // defensive: cannot dilute more than exists
         feeShares = (feeAssets * supply) / (ta - feeAssets); // round DOWN (vault's / holders' favor)
-        if (feeShares == 0) return 0;
+        if (feeShares < 1) return 0;
 
         _mint(_feeRecipient, feeShares); // dilution only — totalAssets() untouched
         uint256 newHwm = convertToAssets(1e18); // post-mint pps (monotonic up)

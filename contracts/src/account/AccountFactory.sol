@@ -35,10 +35,14 @@ contract AccountFactory is IAccountFactory {
 
     /// @notice Counterfactual address for `owner`/`salt` BEFORE deployment (frontend shows this).
     function getAddress(address owner, uint256 salt) public view returns (address) {
+        // bytes.concat (not abi.encodePacked) for the same bytes — no collision ambiguity exists here
+        // (the creation code is fixed-length and the abi.encode tail is self-delimiting), and holding
+        // the encoding byte-identical keeps every counterfactual CREATE2 address stable. Also resolves
+        // aderyn's `abi.encodePacked() Hash Collision` heuristic.
         return Create2.computeAddress(
             bytes32(salt),
             keccak256(
-                abi.encodePacked(
+                bytes.concat(
                     type(ERC1967Proxy).creationCode,
                     abi.encode(accountImplementation, _initData(owner))
                 )

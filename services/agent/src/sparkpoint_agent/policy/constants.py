@@ -42,8 +42,12 @@ CHAIN_ID: dict[str, int] = {
     # supported for chat + read-only portfolio, but its allowlist is EMPTY so every vault/
     # swap action fails closed (we NEVER point the adapter at the unofficial Robinhood pilot).
     "robinhood_testnet": 46630,
+    # Robinhood Chain MAINNET (§B). The beta serves 4663 for chat + read-only portfolio + the
+    # user-signed manual swap (web-side, via the live on-chain Uniswap V3). Its policy allowlist is
+    # EMPTY — every agent-mediated vault/swap action fails closed (no vault on 4663; no agent swap).
+    "robinhood_mainnet": 4663,
 }
-SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 31337, 46630)
+SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 31337, 46630, 4663)
 
 # A symbolic reference to an on-chain target, resolved via the address book.
 TargetRef = Literal[
@@ -334,12 +338,18 @@ _BASE_SEPOLIA_ALLOWLIST: tuple[AllowlistEntry, ...] = (
 # so BUILD_ACTION on 46630 correctly refuses with "not supported on this network".
 _ROBINHOOD_TESTNET_ALLOWLIST: tuple[AllowlistEntry, ...] = ()
 
+# §B — Robinhood MAINNET (4663): EMPTY allowlist by design, same as testnet. The vault is Base-only
+# and there is no agent-mediated swap on 4663 (the beta's swap is user-signed, web-side). An empty
+# allowlist makes every (target, selector) action fail allowlisting (fail-closed).
+_ROBINHOOD_MAINNET_ALLOWLIST: tuple[AllowlistEntry, ...] = ()
+
 # Raw (unfiltered) allowlist per chain — includes ``undeployed`` placeholders.
 _ALLOWLIST_BY_CHAIN: dict[int, tuple[AllowlistEntry, ...]] = {
     8453: _BASE_MAINNET_ALLOWLIST,
     84532: _BASE_SEPOLIA_ALLOWLIST,
     31337: _BASE_MAINNET_ALLOWLIST,  # Anvil fork of Base mainnet (R14)
     46630: _ROBINHOOD_TESTNET_ALLOWLIST,  # §B3 vault Base-only ⇒ empty (fail-closed)
+    4663: _ROBINHOOD_MAINNET_ALLOWLIST,  # §B beta: empty ⇒ fail-closed (no vault, no agent swap)
 }
 
 
@@ -409,11 +419,24 @@ _ROBINHOOD_TESTNET_ADDRESSES = AddressBook(
     vault=None,  # vault is Base-only (fail-closed everywhere off Base)
 )
 
+# §B — Robinhood MAINNET (4663): like testnet, this agent-side book exists ONLY for policy TargetRef
+# resolution, and the 4663 allowlist is empty ⇒ nothing resolves through it. The real Uniswap V3 /
+# WETH / USDG the user-signed swap uses live in the WEB address book (packages/shared/addresses/
+# robinhoodMainnet.ts), not here. Zero addresses keep get_addresses(4663) honoring the contract.
+_ROBINHOOD_MAINNET_ADDRESSES = AddressBook(
+    chain_id=4663,
+    aave_pool=_ZERO_ADDRESS,
+    usdc=_ZERO_ADDRESS,
+    weth=_ZERO_ADDRESS,
+    vault=None,  # vault is Base-only (fail-closed everywhere off Base)
+)
+
 _ADDRESSES_BY_CHAIN: dict[int, AddressBook] = {
     8453: _BASE_ADDRESSES,
     84532: _BASE_SEPOLIA_ADDRESSES,
     31337: _LOCAL_FORK_ADDRESSES,
     46630: _ROBINHOOD_TESTNET_ADDRESSES,  # §B3 — no real targets (empty allowlist)
+    4663: _ROBINHOOD_MAINNET_ADDRESSES,  # §B — no real targets (empty allowlist)
 }
 
 # TargetRef → AddressBook field. A new TargetRef without a mapping here raises at

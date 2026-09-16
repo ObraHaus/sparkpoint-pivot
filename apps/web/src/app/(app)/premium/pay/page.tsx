@@ -16,6 +16,8 @@ import { useRouter } from "next/navigation";
 import { type Address, erc20Abi, formatUnits, type Hex } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { shortfallPurpose } from "@/lib/premium/tierStatus";
 import { useSelfPremiumStatus } from "@/lib/premium/useSelfPremiumStatus";
 import {
@@ -30,7 +32,7 @@ import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/premium.css";
 
-const VAULT_CHAIN = 84532;
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 
 
 /** getAddresses throws on an unsupported chain (fail-closed) — swallow to an "unavailable" state. */
@@ -242,7 +244,7 @@ export default function Page() {
               <span className="muted">Pays to</span>
               <a
                 className="mono"
-                href={`https://sepolia.basescan.org/address/${treasury}`}
+                href={explorerAddressUrl(VAULT_CHAIN, treasury)}
                 target="_blank"
                 rel="noreferrer"
                 style={{ color: "var(--primary)", fontSize: 11 }}

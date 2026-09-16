@@ -1,0 +1,12 @@
+{
+  "name": "@sparkpoint/testnet-bots",
+  "private": true,
+  "type": "module",
+  "description": "Operator tool: drives real product activity on the testnets so the revenue surfaces have something honest to show. Never shipped, never mainnet.",
+  "scripts": {
+    "bot": "node --experimental-strip-types src/bot.ts"
+  },
+  "dependencies": {
+    "viem": "2.55.1"
+  }
+}

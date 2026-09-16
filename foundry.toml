@@ -1,0 +1,44 @@
+# Repo-root Foundry shim.
+#
+# The real project is `contracts/`; `contracts/foundry.toml` is what you use day to day
+# (`cd contracts && forge test`). This file exists because tools that scan the repository run
+# `forge build` from the ROOT, where there is no project: Foundry then globs every `.sol` it can
+# find — including vendored library test suites that import through their own remappings — and
+# the build fails.
+#
+# A failed build is not cosmetic for a security scan: the AST analyzers (slither, aderyn) need
+# artifacts, so they report as failed and the whole OH Defender scan is marked DEGRADED — "cannot
+# be certified clean" — no matter how few findings the other tools return. That is what was
+# failing the OH Defender check on this repo (PR #176).
+#
+# Keep these settings identical to contracts/foundry.toml. If they drift, a scanner analyses
+# bytecode that is not what gets deployed.
+[profile.default]
+src = "contracts/src"
+out = "contracts/out"
+libs = ["contracts/lib"]
+test = "contracts/test"
+script = "contracts/script"
+solc = "0.8.24"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+ffi = false
+# Vendored library tests are not ours to compile: they import through their own remappings, which
+# only exist inside those submodules.
+skip = ["contracts/lib/**"]
+# Matches contracts/foundry.toml, path rewritten because the project root differs here:
+# `./deployments` from `contracts/` is `contracts/deployments` from the repository root.
+fs_permissions = [{ access = "read-write", path = "contracts/deployments" }, { access = "read", path = "contracts" }]
+remappings = [
+  "@openzeppelin/contracts/=contracts/lib/openzeppelin-contracts/contracts/",
+  "@account-abstraction/=contracts/lib/account-abstraction/contracts/",
+  "solady/=contracts/lib/solady/src/",
+  "forge-std/=contracts/lib/forge-std/src/",
+]
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = true

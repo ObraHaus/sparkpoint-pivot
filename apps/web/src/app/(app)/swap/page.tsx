@@ -24,6 +24,7 @@ import { toHref } from "@/lib/nav";
 import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
@@ -34,7 +35,7 @@ import { TokenPicker } from "@/components/screens/swap/TokenPicker";
 import { TokenLogo } from "@/components/ui/TokenLogo";
 import { formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 const DASH = "—";
 /** Keep a little native ETH for gas when the user taps "Max" on an ETH-in swap. */
 const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH
@@ -84,7 +85,7 @@ export default function Page() {
   const dex = dexById(dexId);
   const dexLive = dexLiveOn(dex, activeChain);
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
+  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
@@ -165,7 +166,7 @@ export default function Page() {
           <span className="lbl">Route via</span>
         </div>
         <Seg
-          options={DEXES.map((d) => ({ value: d.id, label: dexDisplayLabel(d, activeChain) }))}
+          options={DEXES.filter((d) => dexLiveOn(d, activeChain)).map((d) => ({ value: d.id, label: dexDisplayLabel(d, activeChain) }))}
           value={dexId}
           onChange={(v) => {
             setDexId(v as DexId);
@@ -291,7 +292,7 @@ export default function Page() {
           <Notice>Only {uniswapVenue} is wired for execution right now. Pick {uniswapVenue} to swap.</Notice>
         )}
         {dexId === "uniswap_v3" && !dexLive && (
-          <Notice>{uniswapVenue} isn&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>
+          <Notice>{uniswapVenue} isn&apos;t available on this network — switch to a supported network.</Notice>
         )}
         {canQuote && quote.noRoute && (
           <Notice>No {uniswapVenue} route for this pair on {netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>

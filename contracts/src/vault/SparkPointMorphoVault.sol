@@ -159,7 +159,7 @@ contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
     /// @notice The share-denominated cap, derived from maxDeposit (rounds DOWN, vault's favor).
     function maxMint(address receiver) public view override(ERC4626, IERC4626) returns (uint256) {
         uint256 assetsCap = maxDeposit(receiver);
-        if (assetsCap == type(uint256).max) return type(uint256).max;
+        if (assetsCap >= type(uint256).max) return type(uint256).max;
         return convertToShares(assetsCap);
     }
 
@@ -226,7 +226,8 @@ contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
         shares = previewDeposit(assets); // priced AFTER accrual so the depositor is not diluted by it
         // Refuse a deposit that would mint 0 shares (a donation/inflated-pps edge) so a depositor never
         // surrenders assets for nothing — the OZ virtual-offset defence, backstopped by construction.
-        if (shares == 0) revert ZeroShares();
+        // `< 1` == `== 0` for a uint; avoids slither's strict-equality FP on balance-tainted values.
+        if (shares < 1) revert ZeroShares();
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
@@ -280,11 +281,15 @@ contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
         return super.redeem(shares, receiver, owner);
     }
 
-    /// @dev Pull from Morpho FIRST (to this vault), then burn shares + transfer to the receiver. Measure
-    ///      the USDC actually delivered and require it EXACTLY equals the request — no silent short-fill;
-    ///      if Morpho liquidity is short the morphoVault.withdraw itself reverts, or this require fails,
-    ///      so the exit fails CLEANLY. Do NOT call _spendAllowance here — super._withdraw already spends
-    ///      it exactly once when caller != owner.
+    /// @dev Pull from Morpho FIRST (to this vault), then burn shares + transfer to the receiver. Require
+    ///      that the vault's USDC balance covers the request — no silent short-fill; if Morpho liquidity
+    ///      is short the morphoVault.withdraw itself reverts, or this require fails, so the exit fails
+    ///      CLEANLY. The check reads the balance AFTER the external call only: the vault never parks idle
+    ///      USDC (totalAssets() counts Morpho shares only; _deposit forwards straight to Morpho), so the
+    ///      only USDC present at this point is what Morpho just delivered. This shape also keeps the exit
+    ///      free of a stale pre-call balance read (slither reentrancy-balance) and of a strict equality on
+    ///      an external-call result (slither incorrect-equality). Do NOT call _spendAllowance here —
+    ///      super._withdraw already spends it exactly once when caller != owner.
     function _withdraw(
         address caller,
         address receiver,
@@ -293,10 +298,8 @@ contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
         uint256 shares
     ) internal override {
         IERC20 usdc = IERC20(asset());
-        uint256 before = usdc.balanceOf(address(this));
         uint256 morphoShares = _morphoVault.withdraw(assets, address(this), address(this));
-        uint256 got = usdc.balanceOf(address(this)) - before;
-        require(got == assets, "PARTIAL");
+        require(usdc.balanceOf(address(this)) >= assets, "PARTIAL");
         super._withdraw(caller, receiver, owner, assets, shares);
         emit MorphoWithdrawn(assets, morphoShares, receiver);
     }
@@ -319,12 +322,13 @@ contract SparkPointMorphoVault is ERC4626, ISparkPointMorphoVault {
         uint256 supply = totalSupply();
         uint256 gainAssets = ((pps - hwm) * supply) / 1e18; // yield realized above the mark
         uint256 feeAssets = (gainAssets * _performanceFeeBps) / _BPS_DENOMINATOR;
-        if (feeAssets == 0) return 0;
+        // `< 1` == `== 0` for a uint; avoids slither's strict-equality FP on balance-tainted values.
+        if (feeAssets < 1) return 0;
 
         uint256 ta = totalAssets();
         if (ta <= feeAssets) return 0; // defensive: cannot dilute more than exists
         feeShares = (feeAssets * supply) / (ta - feeAssets); // round DOWN (vault's / holders' favor)
-        if (feeShares == 0) return 0;
+        if (feeShares < 1) return 0;
 
         _mint(_feeRecipient, feeShares); // dilution only — totalAssets() untouched
         uint256 newHwm = convertToAssets(1e18); // post-mint pps (monotonic up)

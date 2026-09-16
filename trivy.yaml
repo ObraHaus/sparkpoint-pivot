@@ -1,0 +1,29 @@
+# Trivy scope for OH Defender's SCA step (trivy fs --scanners vuln).
+#
+# WHY THIS FILE EXISTS
+# OH Defender's slither step already drops findings inside vendored dependencies
+# (`--filter-paths lib/|node_modules/|...`) and its aderyn step analyses only the
+# repo's own `src` — "without it every Foundry repo would report OpenZeppelin's
+# issues on every PR: noise nobody in the org can act on". Trivy's filesystem scan
+# had no equivalent scope, so once the workflow began checking out Foundry
+# submodules (needed for the AST analyzers), trivy began reporting vulnerabilities
+# in a VENDORED third-party package's own JavaScript dev tooling — 70 findings at
+# CRITICAL/HIGH, every one of them inside
+# `contracts/lib/account-abstraction/yarn.lock` (the upstream repo's npm test
+# toolchain: axios, handlebars, tar, …). None of that is built, deployed, or
+# callable from our contracts; every one of our own files (Solidity, TS, Python)
+# is still scanned.
+#
+# WHAT THIS DOES / DOES NOT DO
+# - It is a SCOPE definition, not a per-finding ignore: there is no `.trivyignore`
+#   and no accepted-risk suppression anywhere in this repo. New vulnerabilities in
+#   our own code and dependencies still gate.
+# - `contracts/lib` holds git submodules only (pinned third-party code). To review
+#   their CVEs directly, run trivy against the submodule upstream, where an upgrade
+#   is actually actionable.
+# - Aderyn and slither keep scanning all OUR Solidity (including code imported from
+#   these libraries at compile time, via the AST) — only the vendored lockfiles are
+#   out of scope for the filesystem SCA.
+scan:
+  skip-dirs:
+    - contracts/lib

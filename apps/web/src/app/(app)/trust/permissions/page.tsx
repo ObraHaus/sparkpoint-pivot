@@ -15,13 +15,16 @@ import { useReadContracts } from "wagmi";
 import { formatUnits, type Address } from "viem";
 import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
+import type { WagmiChainId } from "@/lib/wagmi";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/trust.css";
 import { useSessionKeys } from "@/lib/automation/useSessionKey";
 
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 const usd0 = (v?: bigint) => (v === undefined ? "…" : `$${Math.round(Number(formatUnits(v, 6))).toLocaleString("en-US")}`);
 
@@ -36,7 +39,9 @@ export default function Page() {
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
 
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; gate on the vault chain being registered so the mainnet-beta (only 4663)
+    // shows an honest "not on this network" state instead of erroring on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "guardian" }, // 0
       { ...vaultC, functionName: "pauser" }, // 1
@@ -57,6 +62,7 @@ export default function Page() {
     feeRecipient !== undefined && guardian !== undefined && feeRecipient.toLowerCase() !== guardian.toLowerCase();
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
 
   return (
     <div className="page page-narrow">
@@ -126,8 +132,14 @@ export default function Page() {
       <div className="card card-pad">
         <div className="card-hd">
           <span className="t">On-chain facts</span>
-          <span className="lbl">{live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+          <span className="lbl">{vaultUnavailable ? "vault not available yet" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
         </div>
+        {vaultUnavailable ? (
+          <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
+            <Icon name="info" size={13} /> These vault-level facts are read from the <b>Base-only</b> AI vault, which
+            isn&rsquo;t part of the Robinhood mainnet beta yet. Your can/can&rsquo;t guarantees above still hold.
+          </div>
+        ) : null}
         <table className="tbl permtable">
           <thead>
             <tr>
@@ -185,7 +197,7 @@ export default function Page() {
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
         {vault && (
-          <a className="btn btn-outline btn-md" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">
+          <a className="btn btn-outline btn-md" href={explorerAddressUrl(VAULT_CHAIN, vault)} target="_blank" rel="noreferrer">
             <Icon name="ext" size={16} /> Verify on Basescan
           </a>
         )}

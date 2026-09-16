@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Kpi } from "@/components/admin/charts";
 import { Funnel, RiskDist, type FunnelStep, type RiskTier } from "@/components/admin/funnels";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface TopUser {
   ref: string;
@@ -37,7 +38,7 @@ interface Analytics {
   topUsers: TopUser[];
 }
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 export function UserAnalyticsPanel() {

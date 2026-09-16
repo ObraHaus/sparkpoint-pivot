@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface Tier {
   tier: string;
@@ -41,7 +42,7 @@ interface AuditEntry {
   at: string;
 }
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
 
 const NUM_FIELDS: { key: keyof Tier; label: string }[] = [

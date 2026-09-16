@@ -25,7 +25,7 @@ from sparkpoint_agent.knowledge import (
     openai_embedder,
 )
 
-_NATIVE_DIM = 4096  # qwen3-embedding:8b native width (the provider ignores `dimensions`)
+_NATIVE_DIM = 4096  # qwen/qwen3-embedding-8b native width (the provider ignores `dimensions`)
 _SECRET = "sk-test-DO-NOT-LEAK-123"
 
 
@@ -37,7 +37,7 @@ def _backend(handler: object) -> OpenAIEmbeddingBackend:
     return OpenAIEmbeddingBackend(
         api_url="http://embed.example/api/v1",
         api_key=_SECRET,
-        model="qwen3-embedding:8b",
+        model="qwen/qwen3-embedding-8b",
         client=_client(handler),
     )
 
@@ -124,7 +124,7 @@ def test_openai_embedder_builds_when_configured() -> None:
         env={
             "EMBEDDING_OPENAI_API_URL": "http://embed.example/api/v1",
             "EMBEDDING_OPENAI_API_KEY": _SECRET,
-            "EMBEDDING_OPENAI_MODEL": "qwen3-embedding:8b",
+            "EMBEDDING_OPENAI_MODEL": "qwen/qwen3-embedding-8b",
         }
     )
     assert emb is not None

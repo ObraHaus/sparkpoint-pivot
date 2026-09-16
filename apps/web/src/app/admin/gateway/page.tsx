@@ -18,9 +18,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 const API = "/api/agent/admin/llm";
-const CHAIN = { "x-chain-id": "84532" };
+const CHAIN = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const fmt = (v: unknown) => (v === null || v === undefined ? "—" : String(v));
 const money = (v: unknown) =>
   v === undefined || v === null || v === "" ? "—" : `$${Number(v).toFixed(4)}`;

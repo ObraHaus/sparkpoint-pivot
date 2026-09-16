@@ -2,6 +2,158 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "chat-demo-and-sparky-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The chat preview and Sparky now speak Robinhood Chain",
+      "body": "Before you connect a wallet, the chat shows a scripted preview of what Sparky can do. On Robinhood Chain that preview was still demoing things from another network — an Aave vault, USDC, a Base-to-Sui bridge — none of which exist here. It now previews only what's actually live on Robinhood Chain: swapping ETH for USDG (which you sign yourself) and reading your wallet. The starter suggestions match, too.\n\nAnd when you ask Sparky what it is or what a vault is, it no longer describes a specific vault as if it were already running on your network — it explains things in a way that's accurate whether or not that feature has arrived on the network you're on. Sparky still never moves your funds.",
+      "published_at": "2026-09-13T04:00:00Z"
+    },
+    {
+      "slug": "portfolio-strategies-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio and Strategies now show what's real on Robinhood Chain",
+      "body": "On Robinhood Chain, Portfolio used to show placeholder \"Aave vault\" figures and a risk score for a vault that isn't live here yet, and it hid your actual balances. Now it shows your real ETH and USDG in your wallet, and clearly says the AI vault isn't part of the beta yet — no made-up numbers.\n\nStrategies used to show example Aave strategies (or a confusingly \"Live\"-labelled empty page) on a network where those strategies don't exist. It now says plainly that ranked strategies arrive with the AI vault, and points you to what you can do today: swap, and review your position. When the vault goes live here, the recommendations come back automatically.\n\nAs always, nothing here moves your funds — you're the only one who can.",
+      "published_at": "2026-09-13T03:00:00Z"
+    },
+    {
+      "slug": "sparky-chat-accurate-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now answers correctly about what's live on Robinhood Chain",
+      "body": "If you asked Sparky to swap on Robinhood Chain, it used to say swaps weren't supported yet — even though swapping is the main thing that IS live on this network. That's fixed: ask to swap and Sparky brings up the swap card you sign yourself, and it now talks about the right token (USDG) on this network.\n\nA handful of common questions — how to withdraw, the current vault APY, fees you've paid, whether it can trade for you automatically — used to answer as if the yield vault were already here. On Robinhood Chain, where the vault, token and Broker aren't live yet, Sparky now answers about what you can actually do today (swap, and read your wallet) instead of pointing you at pages that aren't there. It still never moves your funds — you sign everything.\n\nWe also made Sparky's knowledge search more resilient, so a configuration hiccup degrades gracefully instead of interrupting the chat.",
+      "published_at": "2026-09-13T00:30:00Z"
+    },
+    {
+      "slug": "trust-center-honest-empty-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Trust Center no longer lists contracts that aren't deployed yet",
+      "body": "The Trust Center used to show a list of smart-contract addresses — the vault, its guardians, the fee recipient and so on — even on the Robinhood Chain beta, where none of those contracts are deployed yet. Those were addresses from our test network, so seeing them here was misleading.\n\nNow, until SparkPoint's own contracts are live on Robinhood Chain, the Trust Center says so plainly: no contracts are deployed yet, and swaps use the network's existing Uniswap V3, which you sign yourself. Your custody guarantees haven't changed — SparkPoint still never holds your funds. The full, verifiable address list returns automatically once the contracts are deployed.",
+      "published_at": "2026-09-13T00:00:00Z"
+    },
+    {
+      "slug": "beta-polish-mainnet-wording-and-fixes",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Beta polish — Robinhood Chain throughout, clearer states, smoother loading",
+      "body": "A round of production polish for the Robinhood Chain beta.\n\nThe app now consistently says \"Robinhood Chain\" (with its logo) rather than any leftover test-network wording, and swaps route through Uniswap. Features that aren't live yet — the yield vault, the utility token, the Sparky Broker — now show a clean \"not available yet\" note instead of test data. The sign-in screen no longer flickers while it checks your access, the swap lets you add any token by pasting its address, and Sparky now describes exactly what's available on this network.\n\nWe also restored the assistant's knowledge search, which had quietly gone offline.",
+      "published_at": "2026-09-12T16:00:00Z"
+    },
+    {
+      "slug": "beta-live-on-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The beta now runs on Robinhood Chain — sign in, chat, portfolio and swaps are live",
+      "body": "beta.sparkpoint.io now runs on Robinhood Chain mainnet — and only Robinhood Chain. Connect a wallet on Robinhood Chain, sign in, chat with Sparky, see your live portfolio, and swap between ETH and USDG through the network's own on-chain Uniswap V3. During the beta the swap takes no fee.\n\nA few things are intentionally switched off for now and shown as \"coming soon\": the utility token, the Sparky Broker, and the yield vault. They arrive in a later step, once their contracts are deployed. Everything you can use today runs against the real network with your own wallet — you are always the only one who can move your funds.",
+      "published_at": "2026-09-10T11:00:00Z"
+    },
+    {
+      "slug": "assistant-recovers-from-database-restarts",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The assistant now recovers on its own after a database restart",
+      "body": "If the database behind the assistant was restarted — during maintenance, or after a server reboot — the assistant used to get stuck: it couldn't reconnect on its own, so chat history, tips and other saved data kept failing until someone manually restarted it.\n\nNow it heals itself. The moment the database is back, the next request quietly re-establishes the connection, and while the database is briefly unavailable the health check reports that honestly instead of pretending everything is fine.\n\nNothing changes day to day — this just removes a way the assistant could go quietly dark after routine infrastructure restarts.",
+      "published_at": "2026-09-10T00:30:00Z"
+    },
+    {
+      "slug": "robinhood-mainnet-groundwork-wired",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Groundwork for Robinhood mainnet is now wired in",
+      "body": "Following on from getting the app ready for Robinhood mainnet, we've now wired the network into the core plumbing — the address book, the safety/policy layer, and the assistant's chain settings all recognise Robinhood Chain now, entirely fail-closed.\n\nThat means nothing is switched on for it yet (no token, no vault, no trading on that network) and nothing changes for you today. It's the quiet groundwork so that when the mainnet beta's contracts go live, turning it on is a configuration change rather than new code.",
+      "published_at": "2026-09-10T00:00:00Z"
+    },
+    {
+      "slug": "app-ready-for-robinhood-mainnet",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Getting the app ready to run on Robinhood mainnet",
+      "body": "Until now, parts of the app quietly assumed the test network everywhere — which network to show when your wallet wasn't connected, which explorer the \"view transaction\" links pointed at, and which network the admin tools talked to were all fixed to Base Sepolia.\n\nThat's fine while there's only a test environment, but the beta is going live on Robinhood Chain, and the same code runs in both places. So every screen now follows whichever network the build is pointed at, in one place, instead of each screen deciding on its own.\n\nNothing changes for you on the test network — it behaves exactly as before. On the mainnet beta, links and network labels will correctly point at Robinhood Chain rather than the test network. No action needed.",
+      "published_at": "2026-09-09T12:00:00Z"
+    },
+    {
+      "slug": "activity-bots-were-firing-but-idle",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The testnet bots ran on time for ten hours and did nothing",
+      "body": "The scheduled job that drives testnet activity fired punctually every hour overnight and accomplished nothing at all.\n\nScheduled jobs run with a much smaller set of system paths than a normal login session, and the program that runs the bots was not on it. Each cycle failed on its first step, wrote two tidy lines saying it had degraded, and exited reporting success. From the outside it looked like a healthy schedule.\n\nWhat caught it was the operator panel added the day before. Because no cycle ever completed, no run was ever filed, and the panel showed both jobs as overdue by nearly ten hours — which is exactly the state it was built to make visible. Nothing was lost; the bots simply had not run.\n\nThe runner now locates the program properly, and refuses to start at all if it cannot — loudly, rather than pretending a cycle happened.",
+      "published_at": "2026-08-19T01:00:00Z"
+    },
+    {
+      "slug": "activity-bots-phantom-never-run",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The bot panel showed a permanent warning for a job that was never scheduled",
+      "body": "Admin → System → Activity bots listed three jobs and showed one of them — the vault deposit job on Base Sepolia — as \"never run\", permanently.\n\nNothing was broken. That job simply is not part of the hourly schedule: it is a one-off setup step used to put funds into the vault, and the bot wallets are already at their per-wallet deposit limit, so it could not have done anything even if it had run.\n\nThe panel was listing it as though it were expected to run, which made a completed setup step look like a stalled job. A warning that can never clear is one people learn to scroll past, and then they scroll past a real one — so this was worse than showing nothing.\n\nThe list now reflects what is actually scheduled, and a check keeps the two from drifting apart again. If the vault job is ever run, it still appears.",
+      "published_at": "2026-08-18T15:00:00Z"
+    },
+    {
+      "slug": "vault-fee-revenue-actually-recording-now",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The vault fee reader was crashing on startup, invisibly",
+      "body": "Yesterday's note said the piece that records the vault's performance fee had been switched on. It had — and then it crashed the instant it started, every single time, without leaving a trace.\n\nOne small library was missing from the server image: the component that computes the cryptographic fingerprints used to recognise events on the blockchain. The reader needs it the moment it loads, so it failed immediately. Because of how background jobs report problems, that failure was thrown away silently — no error, no warning, nothing in the logs.\n\nFrom the outside it looked exactly like a vault that had earned nothing, which is the most misleading way a system can fail.\n\nThe missing library is now installed, a check refuses any future build that drops it, and background jobs now report their own death instead of disappearing quietly. That last part is what found this one.",
+      "published_at": "2026-08-18T14:00:00Z"
+    },
+    {
+      "slug": "bot-monitor-reporting-fixed",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The bot monitor could not receive the reports it was built to show",
+      "body": "The panel that shows whether the testnet bots are running went live yesterday and immediately could not be told anything: every report the runner sent came back rejected.\n\nThe cause was one wrong line. The endpoint asked to be authenticated using a helper that was never meant to be wired up that way, and the web framework quietly reinterpreted it as asking for a value in the web address rather than in the request's credentials. Every report failed with a complaint about a missing field that the runner had no way to supply.\n\nNothing was lost — a report that cannot be filed is only telemetry, and the bots themselves kept working throughout. But the panel showed \"never run\" for a fleet that was running, which is exactly the wrong answer for a screen whose whole job is telling those two apart.\n\nThe route is now tested through a real request rather than only in pieces, because that is the only kind of test that would have caught it.",
+      "published_at": "2026-08-18T13:00:00Z"
+    },
+    {
+      "slug": "operator-can-see-the-activity-bots",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The operator panel can now see whether the testnet bots are running",
+      "body": "SparkPoint runs a small fleet of bots on the test networks so the revenue and portfolio screens have real activity to show before the first testers arrive.\n\nThose bots deliberately run outside the app. SparkPoint's backend holds no keys and signs nothing — that is a promise the whole non-custody design rests on — so anything that signs transactions has to live somewhere else. The side effect was that nobody could tell, from inside the app, whether the fleet was working.\n\nThere is now a read-only view under System that answers it. It separates three things that otherwise look identical from the outside: never started, stopped, and running-but-achieving-nothing. The last one is the dangerous one — a fleet can report in perfectly on time while every action it attempts is being refused.\n\nIt is a mirror, not a remote control. There is no start or stop button, because adding one would mean the app could make something sign a transaction. The schedule stays where the keys are.",
+      "published_at": "2026-08-18T11:00:00Z"
+    },
+    {
+      "slug": "vault-fee-revenue-now-recorded",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The vault's performance fee was earning but never being recorded",
+      "body": "SparkPoint's vault charges 10% of the yield it makes above its previous high-water mark. That part has always worked on chain.\n\nWhat did not work was the recording. The piece that reads those fee events off the blockchain and files them was built, tested and then never switched on — so the revenue page had no way to show a performance fee even after one had been charged. Its position marker had sat at block zero since the day it was created, which is the giveaway: it had never read anything at all.\n\nIt now runs alongside the other two readers, checking every few minutes. Nothing about the fee itself changed — not the rate, not who receives it, not when it applies. Only whether anyone was writing it down.\n\nWorth being plain about the size of it: the vault holds test funds and the amounts involved are fractions of a test dollar. This is about the plumbing being honest, not about the number.",
+      "published_at": "2026-08-18T09:00:00Z"
+    },
+    {
+      "slug": "apply-page-polish",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Applying for access is a calmer journey now",
+      "body": "Three things about the new application form were more awkward than they needed to be.\n\nPressing “Apply for alpha access” on the front page used to fling the page down to the very bottom at high speed, racing the whole animation past on the way. It now simply opens the application page, the way a link should.\n\nThe form itself has moved off the bottom of the front page and onto that page. Ending “We can't touch your money — here's the proof” with four boxes to fill in made the closing point feel like paperwork. The front page now offers the two doors side by side — connect your wallet if you already have access, or apply if you do not — and the form has its own address you can bookmark or share.\n\nOn shorter screens the top of the form was tucked underneath the menu bar and could not be scrolled back into view, so the heading was simply unreachable. It now always sits clear of it.\n\nAnd the “What's new” pop-up no longer appears over the application page. If you are there, you are trying to ask for access, not read our release notes.",
+      "published_at": "2026-08-17T09:45:00Z"
+    },
+    {
+      "slug": "public-application-early-submit-fix",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Applying no longer loses your answers if you are quick",
+      "body": "If you filled in the new application form and pressed Apply before the page had completely finished loading, the page reloaded itself and everything you had typed disappeared — no message, no explanation, just an empty form again. Most people would have assumed the form was broken, and some would not have tried a second time.\n\nThis was most likely to happen on the front page, which loads an animation and therefore takes the longest to become ready.\n\nThe Apply button now stays switched off for the moment before the page is ready, and switches on by itself. Being unable to press it for an instant is a great deal better than losing four fields of typing. Once the page is ready, both clicking and pressing Enter work exactly as you would expect.\n\nWe found this by using the form ourselves on the live site rather than only testing the pieces underneath it.",
+      "published_at": "2026-08-17T08:30:00Z"
+    },
+    {
+      "slug": "public-application-antispam-hardening",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Tightened the anti-spam safeguard on the new application form",
+      "body": "The application form we shipped today limits how many requests can come from one connection in an hour, so nobody can flood the review queue and bury real applications.\n\nAfter it went live we tested that limit against the real site rather than trusting it, and found the check could be sidestepped: it was reading a piece of information the visitor's own browser could set freely, so anyone could simply present a different value each time and skip the limit entirely. It now only trusts that information where it comes from a source that cannot be faked.\n\nThe same test confirmed the good news, which is why it was worth running: the limit correctly tells different visitors apart. A rush of genuine applicants will not be mistaken for one person, and nobody will be turned away because somebody else applied first.\n\nNothing about applying changed, and no application was affected.",
+      "published_at": "2026-08-17T08:00:00Z"
+    },
+    {
+      "slug": "public-alpha-application-form",
+      "type": "changelog",
+      "tag": "New",
+      "title": "You can now ask for alpha access without connecting a wallet",
+      "body": "Until today, the only way to request access was to connect a wallet, sign a message, and be told your wallet is not in the alpha yet — and only then were you offered a form. That is backwards. Somebody who has just heard about Sparky has no reason to connect a wallet to a product they cannot use, so the form existed for people who could not reach it.\n\nThere is now an application form on the front page itself, and on its own address at /apply so it can be shared directly. You type the wallet address you would like whitelisted, tell us how to reach you and why, and that is it. Nothing to install, nothing to sign, no wallet involved.\n\nOne thing we want to be plain about, because it is the honest limitation of asking rather than proving: since nobody signs anything, an address typed into this form is a claim. So each application tells the reviewer which kind it is — signed-in, or typed in — and an approval is still a person reading it and deciding. Submitting grants nothing on its own, moves no funds, and cannot change or overwrite an application somebody else already sent for the same address.\n\nWe will reply on whichever contact you give us.",
+      "published_at": "2026-08-17T07:30:00Z"
+    },
+    {
       "slug": "revenue-share-nav-entry",
       "type": "changelog",
       "tag": "Fixed",
@@ -16,14 +168,6 @@
       "title": "Revenue share ran end to end on the testnet",
       "body": "We funded a real pot on the test network and ran the whole thing: the money went in, the split was calculated from who actually holds an activated broker, and holders claimed their shares on-chain.\n\nTwo things we specifically wanted to prove, and did. A second attempt to claim the same period fails — nobody can take their share twice. And a holder who did not claim straight away could still claim in full after the next period had already opened: your share is set aside for you and does not expire.\n\nA note on older brokers: a couple were activated before the tier system existed, so they have no tier recorded. Rather than charge those holders again or leave them out, they count at 1.0×. Where that applies, the claim page says so on screen, and the published breakdown marks exactly which brokers it applied to.\n\nEvery period’s full breakdown is published so anyone can check the maths themselves against the blockchain — no login needed to read it. Claiming remains switched off for live revenue; there is still nothing real to distribute.",
       "published_at": "2026-08-14T11:06:31Z"
-    },
-    {
-      "slug": "brokers-gallery-live-fix",
-      "type": "changelog",
-      "tag": "Fixed",
-      "title": "The brokers list works — and loads about twice as fast",
-      "body": "The new way of loading your brokers did not work the first time it ran on the live site, even though every test passed. Our blockchain connection limits how much history it will return in one request, and the limit is much lower than the one the blockchain itself allows — so the page kept asking for more than it was allowed and gave up.\n\nIt now works out the allowed size for itself and remembers it, and fetches the pieces at the same time rather than one after another. Loading a wallet’s brokers went from about eight seconds to about three.\n\nWorth noting: while it was failing, the page did not tell you that you owned nothing. It said it could not read the chain and fell back to the older method. That was deliberate, and it is why nobody saw an empty collection.",
-      "published_at": "2026-08-14T09:26:43Z"
     },
     {
       "slug": "broker-orphaned-activations",
@@ -56,6 +200,14 @@
       "title": "There is now a page for revenue share",
       "body": "You can find it at Brokers → Revenue share. Right now it will tell you that nothing has been distributed, because nothing has.\n\nWe built the page in that state on purpose. It reads the contract directly and reports what is actually there, so when a period is eventually funded and published you will see the real amount rather than a promise. It shows no estimates, no monthly figures and no projected returns — the only number it will ever display is what the contract says you can claim at that moment.\n\nIf nothing is claimable it also tells you which reason applies: no period has been opened, a period exists but has not been published yet, this wallet was allocated nothing, or you have already claimed. Those are different situations and we would rather be specific than leave you guessing.",
       "published_at": "2026-08-14T09:30:00Z"
+    },
+    {
+      "slug": "brokers-gallery-live-fix",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The brokers list works — and loads about twice as fast",
+      "body": "The new way of loading your brokers did not work the first time it ran on the live site, even though every test passed. Our blockchain connection limits how much history it will return in one request, and the limit is much lower than the one the blockchain itself allows — so the page kept asking for more than it was allowed and gave up.\n\nIt now works out the allowed size for itself and remembers it, and fetches the pieces at the same time rather than one after another. Loading a wallet’s brokers went from about eight seconds to about three.\n\nWorth noting: while it was failing, the page did not tell you that you owned nothing. It said it could not read the chain and fell back to the older method. That was deliberate, and it is why nobody saw an empty collection.",
+      "published_at": "2026-08-14T09:26:43Z"
     },
     {
       "slug": "broker-revenue-share-plumbing",
@@ -286,6 +438,17 @@
       "active": true
     },
     {
+      "slug": "sparky-notices-what-you-do-not-just-what-you-say",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now notices what you do on the platform — not just what you say in chat",
+      "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
+      "cta_label": "See what Sparky remembers",
+      "cta_href": "/settings",
+      "published_at": "2026-08-03T04:30:00Z",
+      "active": true
+    },
+    {
       "slug": "sparky-answers-straight",
       "type": "changelog",
       "tag": "Improved",
@@ -341,17 +504,6 @@
       "active": true
     },
     {
-      "slug": "sparky-notices-what-you-do-not-just-what-you-say",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Sparky now notices what you do on the platform — not just what you say in chat",
-      "body": "Until now, Sparky's memory only covered your conversations. Deposit into the vault from the vault page, make a swap, claim from the faucet — and as far as Sparky knew, none of it ever happened.\n\nNow it notices. When you start a chat, Sparky quietly catches up on what you've done since you last spoke: vault deposits and withdrawals (including ones you made entirely on your own), moves you executed from its suggestions (it knows the difference — ask \"did I ever act on your advice?\"), swaps (sized approximately, and honestly marked as such), and faucet claims. A transaction you signed that didn't go through is remembered gently, as exactly that.\n\nEverything it notices shows up word-for-word in Settings → Memory, right alongside the conversation notes — and Clear still means clear: erased activity stays erased, it doesn't creep back the next time you chat.\n\nThe boundary hasn't moved an inch: this is context for conversation and suggestions only. It can't approve anything, it can't make a move eligible that wasn't, and it's never involved in moving your funds — every transaction still passes the same checks and still needs your signature.",
-      "cta_label": "See what Sparky remembers",
-      "cta_href": "/settings",
-      "published_at": "2026-08-03T04:30:00Z",
-      "active": true
-    },
-    {
       "slug": "sparky-remembers-what-youve-done-together",
       "type": "changelog",
       "tag": "New",
@@ -363,25 +515,14 @@
       "active": true
     },
     {
-      "slug": "get-srk-from-the-faucet-on-premium",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Get test SRK in one click — the faucet now lives on Premium",
-      "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
-      "cta_label": "Open Premium",
-      "cta_href": "/premium",
-      "published_at": "2026-08-02T09:00:00Z",
-      "active": true
-    },
-    {
-      "slug": "premium-is-now-10000-srk-per-month",
+      "slug": "side-menu-regrouped-nothing-hidden",
       "type": "changelog",
       "tag": "Improved",
-      "title": "Premium is now 10,000 SRK per month",
-      "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
-      "cta_label": "See Premium",
-      "cta_href": "/premium",
-      "published_at": "2026-08-02T09:05:00Z",
+      "title": "The side menu is tidier — and nothing was hidden",
+      "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
+      "cta_label": "Open the app",
+      "cta_href": "/chat",
+      "published_at": "2026-08-02T09:15:00Z",
       "active": true
     },
     {
@@ -396,14 +537,25 @@
       "active": true
     },
     {
-      "slug": "side-menu-regrouped-nothing-hidden",
+      "slug": "premium-is-now-10000-srk-per-month",
       "type": "changelog",
       "tag": "Improved",
-      "title": "The side menu is tidier — and nothing was hidden",
-      "body": "The left-hand menu had grown to ten flat entries, which made the things you actually *do* hard to pick out from the things you *read*.\n\nSwap, Bridge, Automation and Changelog now sit at the top level, and the reference pages — Trust Center, Outcome Log, Fees, Learn and SRK — live together under a collapsible **Information** group. It starts collapsed, remembers whether you opened it, and opens itself if you land directly on a page inside it. Nothing was removed and no page moved to a new address.\n\nThe command palette (⌘K / Ctrl-K) now draws from the same list, which quietly fixed a real gap: SRK, Learn and Changelog were missing from it entirely. Searching still works with the old wording too — type \"withdraw\", \"revoke\" or \"how we make money\" and you'll get where you expect.\n\n**Withdraw / Exit** stays pinned at the bottom of the menu, outside every group, exactly as before.",
-      "cta_label": "Open the app",
-      "cta_href": "/chat",
-      "published_at": "2026-08-02T09:15:00Z",
+      "title": "Premium is now 10,000 SRK per month",
+      "body": "The monthly Premium price has moved from 500 SRK to **10,000 SRK**. With the new faucet that is two claims away, so it stays easy to test.\n\nWe also removed the \"≈ $12.00\" figure that used to sit next to the price. It was only ever illustrative — there is no exchange rate we can honestly quote for the test SRK token — and it was pinned to the old price, so it had become doubly misleading. Premium is priced in SRK, and only in SRK.\n\nNothing about this changes the free tier. The chat assistant, the vault, deposits, yield, swaps and withdraw-anytime are free and never require SRK.",
+      "cta_label": "See Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:05:00Z",
+      "active": true
+    },
+    {
+      "slug": "get-srk-from-the-faucet-on-premium",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Get test SRK in one click — the faucet now lives on Premium",
+      "body": "Trying the Premium purchase used to require SRK you had no way to get. There is now a faucet: open **Premium**, click claim, sign, and the SRK lands in your own wallet. You can claim **5,000 SRK once every 24 hours** per wallet.\n\nA few things we were deliberate about. The amount, the cooldown and how much the faucet has left are all read live from the contract, so what you see is what the contract will actually do — not a number we typed into the page. If you have claimed recently the button tells you exactly how long is left rather than failing at signing time. And the faucet can only ever hand out SRK that was put into it up front: the SRK token has a fixed supply and no way to create more, which is why the faucet is a separate contract rather than a change to the token.\n\nAs always, you sign; SparkPoint holds nothing and cannot claim on your behalf.",
+      "cta_label": "Open Premium",
+      "cta_href": "/premium",
+      "published_at": "2026-08-02T09:00:00Z",
       "active": true
     },
     {
@@ -572,17 +724,6 @@
       "active": true
     },
     {
-      "slug": "hands-off-automation-proven-on-testnet",
-      "type": "changelog",
-      "tag": "New",
-      "title": "Hands-off automation just went from planned to proven",
-      "body": "One of our biggest planned features — letting Sparky make approved rebalancing moves for you WITHOUT asking you to sign each one — was blocked on a hard technical problem for weeks. It's now solved and proven on our test network: we built a scoped, capped, time-limited 'session key' you can grant, and demonstrated a real automated move (a vault deposit) that went through end-to-end with no per-move signature — while staying fully bounded by the on-chain rules. Crucially, YOU keep the leash: the key can only ever do the specific things you allow, up to the caps you set, until it expires, and you can revoke it instantly and directly on-chain without us. The opt-in screen to turn this on for yourself is coming next — for now the Automation page still shows a preview.",
-      "cta_label": "See how it will work",
-      "cta_href": "/automation",
-      "published_at": "2026-07-24T18:45:00Z",
-      "active": true
-    },
-    {
       "slug": "trust-center-more-contracts",
       "type": "changelog",
       "tag": "Improved",
@@ -624,6 +765,17 @@
       "cta_label": "Our safety model",
       "cta_href": "/trust",
       "published_at": "2026-07-24T19:00:00Z",
+      "active": true
+    },
+    {
+      "slug": "hands-off-automation-proven-on-testnet",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Hands-off automation just went from planned to proven",
+      "body": "One of our biggest planned features — letting Sparky make approved rebalancing moves for you WITHOUT asking you to sign each one — was blocked on a hard technical problem for weeks. It's now solved and proven on our test network: we built a scoped, capped, time-limited 'session key' you can grant, and demonstrated a real automated move (a vault deposit) that went through end-to-end with no per-move signature — while staying fully bounded by the on-chain rules. Crucially, YOU keep the leash: the key can only ever do the specific things you allow, up to the caps you set, until it expires, and you can revoke it instantly and directly on-chain without us. The opt-in screen to turn this on for yourself is coming next — for now the Automation page still shows a preview.",
+      "cta_label": "See how it will work",
+      "cta_href": "/automation",
+      "published_at": "2026-07-24T18:45:00Z",
       "active": true
     },
     {

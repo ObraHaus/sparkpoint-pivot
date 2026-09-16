@@ -71,11 +71,21 @@ import { AgentApiError } from "@/lib/agent/client";
 import { turnCanRetry } from "@/lib/agent/chatError";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import "@/components/screens/chat.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors portfolio/page). */
-const CHAT_DISPLAY_CHAIN_ID = 84532;
+const CHAT_DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
+
+/**
+ * The Robinhood Chain (4663) mainnet-beta build. On this build the ONLY live features are chat, a
+ * user-signed ETH/WETH <-> USDG swap via the on-chain Uniswap V3, and read-only portfolio — there
+ * is NO Aave vault, NO Aerodrome, NO Sui bridge. The scripted "Demo mode" replies below showcase
+ * only those real capabilities; every other build (alpha/testnet, where this const is false) keeps
+ * its existing Aave/Base/Sui demo byte-for-byte in the else paths.
+ */
+const IS_ROBINHOOD_MAINNET_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
 
@@ -118,8 +128,14 @@ interface QueuedMessage {
 }
 
 // 037 — the empty-thread chips live with the follow-up logic now, so the two sets are chosen
-// together rather than drifting apart in separate files.
-const EMPTY_CHIPS: string[] = [...STARTER_CHIPS];
+// together rather than drifting apart in separate files. On the Robinhood Chain beta build the
+// shared STARTER_CHIPS (Aave/USDC/Sui/vault) are wrong-network, so the initial / new-chat / resume
+// suggestions use 4663-appropriate starters (swap + wallet + safety + capabilities) here at the
+// consumer — leaving `followups.ts` a pure leaf module (no build-const import → no test-alias break).
+// Alpha/testnet (const=false) keeps `[...STARTER_CHIPS]` byte-identical.
+const EMPTY_CHIPS: string[] = IS_ROBINHOOD_MAINNET_BUILD
+  ? ["Swap ETH → USDG", "What’s in my wallet?", "How do you keep my funds safe?", "What can you do?"]
+  : [...STARTER_CHIPS];
 
 /**
  * 037 — the signals a finished turn offers, read off its own blocks.
@@ -339,34 +355,75 @@ export default function ChatPage() {
         q.includes("other network") ||
         q.includes("move to")
       ) {
-        think(
-          [
-            { a: "Reading balances on Base & Sui", b: "Read balances on Base & Sui" },
-            { a: "Finding the canonical route", b: "Found the canonical route" },
-          ],
-          () => {
-            pushAi(
-              <>
-                You can move assets between <b>Base</b> and <b>Sui</b> without giving up custody. Here&apos;s a bridge
-                I&apos;d set up — you sign, funds land in your own wallet on the other side.
-              </>,
-              "bridge",
-            );
-            setChips(["Why bridge to Sui?", "Is bridging safe?", "Show my portfolio"]);
-          },
-        );
-      } else if (q.includes("swap") || q.includes("convert") || (q.includes("eth") && q.includes("usdc"))) {
-        think(
-          [
-            { a: "Reading your wallet", b: "Read your wallet" },
-            { a: "Finding the best route on Base", b: "Found the best route on Base" },
-            { a: "Checking slippage", b: "Checked slippage" },
-          ],
-          () => {
-            pushAi(<>Here&apos;s the best route I found — slippage-protected, with the fee shown up front.</>, "swap");
-            setChips(["Explain the routing fee", "What's slippage?", "Deposit to vault after"]);
-          },
-        );
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [{ a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" }],
+            () => {
+              pushAi(
+                <>
+                  Bridging isn&apos;t available on Robinhood Chain yet — there&apos;s no other network to move funds to
+                  from here. What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page,
+                  and I can read your wallet. You approve and sign every move.
+                </>,
+              );
+              setChips(["Swap ETH → USDG", "Show my wallet", "What's slippage?"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading balances on Base & Sui", b: "Read balances on Base & Sui" },
+              { a: "Finding the canonical route", b: "Found the canonical route" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  You can move assets between <b>Base</b> and <b>Sui</b> without giving up custody. Here&apos;s a bridge
+                  I&apos;d set up — you sign, funds land in your own wallet on the other side.
+                </>,
+                "bridge",
+              );
+              setChips(["Why bridge to Sui?", "Is bridging safe?", "Show my portfolio"]);
+            },
+          );
+        }
+      } else if (
+        q.includes("swap") ||
+        q.includes("convert") ||
+        (q.includes("eth") && q.includes("usdc")) ||
+        (IS_ROBINHOOD_MAINNET_BUILD && q.includes("eth") && q.includes("usdg"))
+      ) {
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Finding the best route on Robinhood Chain", b: "Found the best route on Robinhood Chain" },
+              { a: "Checking slippage", b: "Checked slippage" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  Here&apos;s a swap between <b>ETH/WETH</b> and <b>USDG</b> — slippage-protected, with the fee shown up
+                  front. You sign it from your own wallet.
+                </>,
+                "swap",
+              );
+              setChips(["Explain the routing fee", "What's slippage?", "Show my wallet"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Finding the best route on Base", b: "Found the best route on Base" },
+              { a: "Checking slippage", b: "Checked slippage" },
+            ],
+            () => {
+              pushAi(<>Here&apos;s the best route I found — slippage-protected, with the fee shown up front.</>, "swap");
+              setChips(["Explain the routing fee", "What's slippage?", "Deposit to vault after"]);
+            },
+          );
+        }
       } else if (
         q.includes("deposit") ||
         q.includes("confirm") ||
@@ -375,23 +432,42 @@ export default function ChatPage() {
         q.includes("put usdc") ||
         q.includes("put my usdc")
       ) {
-        think(
-          [
-            { a: "Reading your idle USDC", b: "Read your idle USDC" },
-            { a: "Building the vault deposit", b: "Built the vault deposit" },
-            { a: "Checking your guardrails", b: "Checked your guardrails" },
-          ],
-          () => {
-            pushAi(
-              <>
-                Let&apos;s put your idle <b>2,150 USDC</b> into the Aave Yield Vault. Review every change and sign right
-                here — you never leave the chat.
-              </>,
-            );
-            pushInline({ kind: "deposit" });
-            setChips(["What's the risk?", "Explain net APY", "Show my portfolio"]);
-          },
-        );
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  There&apos;s no AI yield vault on Robinhood Chain yet, so there&apos;s nothing to deposit into here.
+                  What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I can
+                  read your wallet. You approve and sign every move.
+                </>,
+              );
+              setChips(["Swap ETH → USDG", "Show my wallet", "What's slippage?"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading your idle USDC", b: "Read your idle USDC" },
+              { a: "Building the vault deposit", b: "Built the vault deposit" },
+              { a: "Checking your guardrails", b: "Checked your guardrails" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  Let&apos;s put your idle <b>2,150 USDC</b> into the Aave Yield Vault. Review every change and sign right
+                  here — you never leave the chat.
+                </>,
+              );
+              pushInline({ kind: "deposit" });
+              setChips(["What's the risk?", "Explain net APY", "Show my portfolio"]);
+            },
+          );
+        }
       } else if (
         q.includes("wallet") ||
         q.includes("balance") ||
@@ -399,40 +475,78 @@ export default function ChatPage() {
         q.includes("what's in") ||
         q.includes("what do i")
       ) {
-        think(
-          [
-            { a: "Reading your wallet on Base", b: "Read your wallet on Base" },
-            { a: "Pricing your assets", b: "Priced your assets" },
-          ],
-          () => {
-            pushAi(
-              <>
-                Here&apos;s everything in your wallet right now. Your{" "}
-                <span className="soft">idle USDC is the obvious lever</span> — it&apos;s earning nothing.
-              </>,
-              "wallet",
-            );
-            setChips(["Put my USDC to work", "Swap ETH → USDC", "Bridge to Sui"]);
-          },
-        );
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [
+              { a: "Reading your wallet on Robinhood Chain", b: "Read your wallet on Robinhood Chain" },
+              { a: "Pricing your assets", b: "Priced your assets" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  Here&apos;s everything in your wallet right now. If you&apos;d like, I can help you swap between{" "}
+                  <span className="soft">ETH/WETH and USDG</span> — you approve and sign.
+                </>,
+                "wallet",
+              );
+              setChips(["Swap ETH → USDG", "What's slippage?", "Show my portfolio"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading your wallet on Base", b: "Read your wallet on Base" },
+              { a: "Pricing your assets", b: "Priced your assets" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  Here&apos;s everything in your wallet right now. Your{" "}
+                  <span className="soft">idle USDC is the obvious lever</span> — it&apos;s earning nothing.
+                </>,
+                "wallet",
+              );
+              setChips(["Put my USDC to work", "Swap ETH → USDC", "Bridge to Sui"]);
+            },
+          );
+        }
       } else if (q.includes("aave") || q.includes("supply") || q.includes("lend")) {
-        think(
-          [
-            { a: "Reading your wallet", b: "Read your wallet" },
-            { a: "Checking the Aave v3 rate on Base", b: "Checked the Aave v3 rate on Base" },
-            { a: "Simulating against current state", b: "Simulated against current state" },
-          ],
-          () => {
-            pushAi(
-              <>
-                You can supply USDC straight to Aave v3 on Base — the same engine behind the vault, here as a direct
-                position.
-              </>,
-              "rec",
-            );
-            setChips(["Vault vs direct supply?", "What's the risk?", "Review this move"]);
-          },
-        );
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  The AI yield vault isn&apos;t on Robinhood Chain yet, so there&apos;s no lending position I can set up
+                  here. Today you can swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I can read
+                  your wallet. I&apos;ll surface earning options here the moment they go live.
+                </>,
+              );
+              setChips(["Swap ETH → USDG", "Show my wallet", "What's slippage?"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Checking the Aave v3 rate on Base", b: "Checked the Aave v3 rate on Base" },
+              { a: "Simulating against current state", b: "Simulated against current state" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  You can supply USDC straight to Aave v3 on Base — the same engine behind the vault, here as a direct
+                  position.
+                </>,
+                "rec",
+              );
+              setChips(["Vault vs direct supply?", "What's the risk?", "Review this move"]);
+            },
+          );
+        }
       } else if (q.includes("portfolio") || q.includes("how am i") || q.includes("doing")) {
         think(
           [
@@ -456,27 +570,53 @@ export default function ChatPage() {
         q.includes("recommend") ||
         q.includes("move")
       ) {
-        think(
-          [
-            { a: "Reading your wallet", b: "Read your wallet" },
-            { a: "Checking current Aave rates", b: "Checked current Aave rates" },
-            { a: "Scanning the Base vault", b: "Scanned the Base vault" },
-          ],
-          () => {
-            pushAi(<>Your idle USDC could be earning. Here&apos;s the move I&apos;d suggest — tied to your goal.</>, "rec");
-            setChips(["Compare options", "What's the risk?", "Explain net APY"]);
-          },
-        );
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+            ],
+            () => {
+              pushAi(
+                <>
+                  The AI yield vault isn&apos;t on Robinhood Chain yet, so I don&apos;t have an earning move to suggest
+                  here. What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I
+                  can read your wallet. You approve and sign every move.
+                </>,
+              );
+              setChips(["Swap ETH → USDG", "Show my wallet", "What's slippage?"]);
+            },
+          );
+        } else {
+          think(
+            [
+              { a: "Reading your wallet", b: "Read your wallet" },
+              { a: "Checking current Aave rates", b: "Checked current Aave rates" },
+              { a: "Scanning the Base vault", b: "Scanned the Base vault" },
+            ],
+            () => {
+              pushAi(<>Your idle USDC could be earning. Here&apos;s the move I&apos;d suggest — tied to your goal.</>, "rec");
+              setChips(["Compare options", "What's the risk?", "Explain net APY"]);
+            },
+          );
+        }
       } else if (q.includes("net apy") || q.includes("explain") || q.includes("what")) {
         think([{ a: "Pulling a plain explanation", b: "Ready" }], () => {
           pushAi(<>Quick version — and you can always go deeper.</>, "tip");
           setChips(["How does this affect me?", "Show my portfolio"]);
         });
       } else if (q.includes("past") || q.includes("outcome") || q.includes("changed") || q.includes("advice")) {
-        think([{ a: "Loading your outcome log", b: "Loaded your outcome log" }], () => {
-          pushAi(<>Here&apos;s a recent one — I show losses as plainly as wins.</>, "outcome");
-          setChips(["See all outcomes", "Show my portfolio"]);
-        });
+        if (IS_ROBINHOOD_MAINNET_BUILD) {
+          think([{ a: "Loading your recent swaps", b: "Loaded your recent swaps" }], () => {
+            pushAi(<>Here&apos;s a recent swap — I show every fill plainly, wins and losses alike.</>, "outcome");
+            setChips(["Swap ETH → USDG", "Show my wallet"]);
+          });
+        } else {
+          think([{ a: "Loading your outcome log", b: "Loaded your outcome log" }], () => {
+            pushAi(<>Here&apos;s a recent one — I show losses as plainly as wins.</>, "outcome");
+            setChips(["See all outcomes", "Show my portfolio"]);
+          });
+        }
       } else if (q.includes("safe") || q.includes("custod") || q.includes("keep my funds")) {
         pushAi(
           <>
@@ -486,6 +626,16 @@ export default function ChatPage() {
           </>,
         );
         setChips(["Show me the proof", "Withdraw anytime"]);
+      } else if (IS_ROBINHOOD_MAINNET_BUILD) {
+        think([{ a: "Thinking", b: "Ready" }], () => {
+          pushAi(
+            <>
+              I can help you understand your wallet, swap <b>ETH/WETH</b> and <b>USDG</b>, or explain a concept — you
+              approve and sign anything that moves funds. Try one of the suggestions below.
+            </>,
+          );
+          setChips(["Swap ETH → USDG", "Show my wallet", "What's slippage?"]);
+        });
       } else {
         think([{ a: "Thinking", b: "Ready" }], () => {
           pushAi(

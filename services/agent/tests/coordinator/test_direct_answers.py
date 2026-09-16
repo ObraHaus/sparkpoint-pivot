@@ -85,8 +85,9 @@ def _chain(*, market: MarketData | None = None) -> ChainContext:
     )
 
 
-def _dag(intent: Intent, *, portfolio: _Portfolio | None = None,
-         prose: _CompleteLlm | None = None) -> CoordinatorDag:
+def _dag(
+    intent: Intent, *, portfolio: _Portfolio | None = None, prose: _CompleteLlm | None = None
+) -> CoordinatorDag:
     """A DAG whose classifier would return ``intent`` — so a passing test proves the
     deterministic route fired BEFORE the classifier ever got its way."""
     return CoordinatorDag(
@@ -386,7 +387,7 @@ async def test_every_way_of_asking_takes_the_route() -> None:
 
 
 async def test_a_withdrawal_COMMAND_still_builds_rather_than_explaining() -> None:
-    """"withdraw 100 USDC" is an instruction, not a question — it must reach the build path."""
+    """ "withdraw 100 USDC" is an instruction, not a question — it must reach the build path."""
     dag = _dag(
         Intent(
             kind=IntentKind.BUILD_ACTION,
@@ -405,3 +406,75 @@ async def test_a_deposit_question_is_not_captured_by_the_exit_route() -> None:
     text = _text(await _run(dag, "how do I deposit?"))
     assert "withdraw at any time" not in text.lower()
     assert "Depositing works like this." in text
+
+
+# ── no-vault chains (Robinhood Chain 4663 beta / 46630 testnet) ───────────────
+# The deterministic answers above are vault-centric ("open the Vault page", "the vault's APY",
+# "Settings → Security session key"). On a chain where the SparkPoint vault ISN'T deployed
+# (resolved_targets carries no `sparkpoint_vault`) the same questions must NOT point at a vault
+# that doesn't exist — they answer swap/portfolio-first instead. The predicate is presence of the
+# resolved vault target, so it tracks config, not a hardcoded chain list.
+
+
+def _chain_no_vault(*, market: MarketData | None = None) -> ChainContext:
+    """A 4663-beta-shaped chain: supported + scoped, but NO vault (empty resolved_targets)."""
+    return ChainContext(
+        chain_id=4663,
+        user_account=USER,
+        owner=USER,
+        resolved_targets={},
+        caps=CapHeadroom(per_user=BIG, total=BIG, vault=BIG),
+        market=_MARKET if market is None else market,
+    )
+
+
+async def test_no_vault_fees_answer_is_swap_first_not_a_vault_fee_schedule() -> None:
+    dag = _dag(Intent(kind=IntentKind.PORTFOLIO))
+    text = _text(await _run(dag, "How much have I paid in fees?", _chain_no_vault())).lower()
+    assert "no performance fee" in text
+    assert "fee-free" in text
+    assert "10% performance fee" not in text, "no vault here → no vault fee schedule"
+
+
+async def test_no_vault_automation_answer_omits_the_session_key_surface() -> None:
+    text = _text(
+        await _run(
+            _dag(Intent(kind=IntentKind.OTHER)),
+            "can you trade for me automatically?",
+            _chain_no_vault(),
+        )
+    ).lower()
+    assert "never move your funds" in text, "the hard non-custody guarantee still holds"
+    assert "settings" not in text, "no vault ⇒ no session-key surface to point at yet"
+    assert "swap" in text
+
+
+async def test_no_vault_live_apy_answer_says_there_is_no_vault_here() -> None:
+    dag = _dag(Intent(kind=IntentKind.PORTFOLIO))
+    text = _text(await _run(dag, "what's the current APY?", _chain_no_vault())).lower()
+    assert "no sparkpoint vault on this network yet" in text
+    assert "%" not in text, "there is no rate to quote on a chain with no vault"
+
+
+async def test_no_vault_exit_answer_points_at_the_wallet_not_a_vault_page() -> None:
+    dag = _dag(Intent(kind=IntentKind.PORTFOLIO))
+    text = _text(await _run(dag, "How do I withdraw everything?", _chain_no_vault())).lower()
+    assert "stay in your own wallet" in text
+    assert "withdraw at any time" not in text, "that's the vault-chain answer"
+    assert "swap" in text
+
+
+async def test_no_vault_bridge_answer_does_not_offer_a_vault_deposit() -> None:
+    dag = _dag(Intent(kind=IntentKind.OTHER))
+    text = _text(await _run(dag, "can I bridge to Sui?", _chain_no_vault())).lower()
+    assert "deposit into the vault" not in text
+    assert "swap on the swap page" in text
+
+
+async def test_vault_chain_answers_are_unchanged_by_the_no_vault_branch() -> None:
+    """Regression guard: the vault-chain (resolved vault present) answers still fire verbatim."""
+    dag = _dag(Intent(kind=IntentKind.PORTFOLIO))
+    fees = _text(await _run(dag, "How much have I paid in fees?")).lower()
+    assert "10% performance fee" in fees
+    exit_text = _text(await _run(_dag(Intent(kind=IntentKind.PORTFOLIO)), "How do I withdraw?"))
+    assert "withdraw at any time" in exit_text.lower()

@@ -8,6 +8,8 @@ apply. Two surfaces:
     server-side (never a body field), there is exactly one application per wallet (upsert), fields
     are length-capped, and nothing here grants any access. The BFF's beta gate carries a narrow
     exemption for this prefix.
+  * ``/access/public-application`` - feature 045, the LANDING-PAGE form. No session, no signature:
+    the applicant types their own address. See the route for why it is shaped so differently.
   * ``/admin/access/applications*`` - list / approve / deny, behind the existing ``require_admin``
     (a non-admin gets **404, not 403** - the surface must not be discoverable).
 
@@ -100,6 +102,59 @@ async def submit_application(
         address=account.owner, contact=contact, display_name=name, reason=reason
     )
     return {"ok": True, "application": stored.to_wire()}
+
+
+class PublicApplicationSubmit(ApplicationSubmit):
+    """The landing-page form's body. Here the wallet IS a body field — there is nothing else."""
+
+    address: str
+
+    @field_validator("address")
+    @classmethod
+    def _validate_address(cls, value: str) -> str:
+        candidate = value.strip()
+        if not _ADDRESS_RE.match(candidate):
+            raise ValueError("address must be a 20-byte 0x address")
+        return candidate
+
+
+@router.post("/access/public-application")
+async def submit_public_application(
+    body: PublicApplicationSubmit,
+    store: Annotated[AccessApplicationStore, Depends(get_application_store)],
+) -> dict[str, object]:
+    """Apply for alpha access WITHOUT connecting a wallet (045).
+
+    ``/access/application`` above only exists for someone who has already signed in — which is
+    nobody who needs it. A visitor with no access has no reason to connect a wallet to a product
+    they cannot use, and connecting only to be told "no" is a dead end with extra steps. This is the
+    form on the landing page: type your address, tell us how to reach you.
+
+    Three things follow from being unauthenticated, and each is a deliberate constraint:
+
+    * **The address is SELF-DECLARED.** Nobody signed anything, so this is a claim, not a proof. It
+      is stored with ``source='public'`` and the admin panel labels it, because approving one grants
+      beta to an address whose owner never demonstrated control.
+    * **The response is IDENTICAL in every case.** A new application, a duplicate, an address that
+      is already approved, an address on the allowlist already — all return the same ``{"ok": true,
+      "received": true}``. Any difference would let an anonymous caller probe who has applied or who
+      has access, and this endpoint is not entitled to answer that.
+    * **An existing application is never touched** (see ``submit_public``). Anyone can type anyone's
+      address here, so a write that could modify an existing row would let a stranger overwrite a
+      real applicant's contact details. First application wins.
+
+    Nothing here grants anything: an application is a request for a human to look at, and the only
+    thing that opens access is still an admin pressing approve. Never on the custody path (N2).
+    """
+    contact = _clean(body.contact, cap=MAX_CONTACT, label="A contact handle")
+    name = _clean(body.name, cap=MAX_NAME, label="A name or alias")
+    reason = _clean(body.reason, cap=MAX_REASON, label="A reason for access")
+    await store.submit_public(
+        address=body.address, contact=contact, display_name=name, reason=reason
+    )
+    # `submit_public`'s return value is deliberately dropped: the caller learns only that we took
+    # the form, never whether it changed anything.
+    return {"ok": True, "received": True}
 
 
 @router.get("/access/application")

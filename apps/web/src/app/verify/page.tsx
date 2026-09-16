@@ -13,7 +13,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
-import { baseSepolia, robinhoodTestnet } from "wagmi/chains";
 import { Icon } from "@/lib/icons";
 import { useSession, useSiweLogin } from "@/lib/auth/useSiwe";
 import { useAgentClient } from "@/lib/agent/useAgent";
@@ -23,13 +22,20 @@ import { captureNetworkDiagnostic } from "@/lib/debug/networkBeacon";
 import { AccessApplicationForm } from "@/components/access/AccessApplicationForm";
 import { PubTop } from "@/components/screens/PubTop";
 import { stageCopy } from "@/lib/stage";
+import { wagmiConfig } from "@/lib/wagmi";
 import "@/components/screens/public.css";
 
-// SIWE sign-in is offered on every chain the /verify route accepts (Base · Base Sepolia · Robinhood
-// Chain Testnet) — mirrors allowedChainIds() in app/api/auth/verify/route.ts. Without 46630 here, a
-// wallet on Robinhood testnet was never shown the "Sign in" CTA and was told to switch to Base.
-const SIGNIN_CHAINS = new Set<number>([8453, 84532, 46630]);
-const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood Testnet" };
+// SIWE sign-in is offered on exactly the chains THIS build registers in wagmi — mirrors the server's
+// allowedChainIds() (SIWE_CHAIN_ID) in app/api/auth/verify/route.ts. Alpha/testnet registers Base ·
+// Base Sepolia · Robinhood testnet; the mainnet-beta registers Robinhood Chain 4663 only. Deriving
+// from the config keeps each build correct without a hardcoded per-build list, and never shows a
+// sign-in CTA on a chain this build's server would reject.
+const SIGNIN_CHAINS = new Set<number>(wagmiConfig.chains.map((c) => c.id));
+const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood Testnet", 4663: "Robinhood Chain" };
+// The chains THIS build registers (derived above), as an ordered list + a human phrase — drives the
+// wrong-network recovery CTAs + copy so they always point at a chain the wallet can actually switch to.
+const SIGNIN_CHAIN_LIST: number[] = [...SIGNIN_CHAINS];
+const signinChainNames = SIGNIN_CHAIN_LIST.map((id) => CHAIN_LABEL[id] ?? `chain ${id}`).join(" or ");
 const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 export default function VerifyPage() {
@@ -85,6 +91,14 @@ export default function VerifyPage() {
       ctrl.abort();
     };
   }, [betaOk, agentClient, probeKey]);
+
+  // Anti-flicker: render ONE stable loading state until every deciding input has settled, instead of
+  // flipping the title/CTA as the wallet reconnects, the SIWE session resolves, and the onboarding
+  // probe returns. connSettled: wallet done (re)connecting; session!==undefined: session resolved;
+  // (done && onboarded===null): the returning-vs-new probe still running.
+  const connSettled = status === "connected" || status === "disconnected";
+  const resolving =
+    !connSettled || (isConnected && session === undefined) || (done && onboarded === null);
 
   // Snapshot the real wallet/network state for the developer capture (see networkBeacon).
   const diagSnap = useCallback(
@@ -158,7 +172,7 @@ export default function VerifyPage() {
   const subtitle = !isConnected
     ? "Taking you back to connect your wallet…"
     : wrongNetwork
-      ? "Switch your wallet to Base Sepolia or Robinhood Testnet to continue."
+      ? `Switch your wallet to ${signinChainNames} to continue.`
       : done
         ? onboarded
           ? "Your plan is saved — pick up where you left off."
@@ -168,6 +182,25 @@ export default function VerifyPage() {
           : needsSignIn
             ? "Sign a message to prove you control this wallet. It authorizes nothing on-chain and moves no funds."
             : "Confirming your session…";
+
+  if (resolving) {
+    return (
+      <div className="pubwrap">
+        <PubTop />
+        <div className="center-stage">
+          <div className="connect-card" style={{ textAlign: "center" }}>
+            <div className="verify-anim" id="vanim">
+              <span className="ai-dot"></span>
+            </div>
+            <h2 style={{ fontSize: "20px", fontWeight: 600, margin: "18px 0 6px" }}>Checking your access…</h2>
+            <p style={{ fontSize: "13.5px", color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
+              One moment while we confirm your wallet and session.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pubwrap">
@@ -239,26 +272,22 @@ export default function VerifyPage() {
           <div id="vcta">
             {wrongNetwork && (
               <>
-                {/* The escape hatch the gate previously lacked entirely. Both chains are registered in
-                    wagmiConfig, so switchChain also adds an unknown chain AND forces wagmi to re-read the
-                    live chainId — self-healing a stale/mis-bound read as well as switching a genuinely
-                    off-network wallet. Either lands in SIGNIN_CHAINS → straight into the sign-in step. */}
-                <a
-                  className="btn btn-primary btn-lg"
-                  onClick={() => switchToChain(baseSepolia.id)}
-                  style={{ marginTop: "18px", display: "inline-flex", cursor: "pointer" }}
-                >
-                  Switch to Base Sepolia
-                </a>
-                <div style={{ marginTop: "10px" }}>
-                  <a
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => switchToChain(robinhoodTestnet.id)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    Use Robinhood Testnet
-                  </a>
-                </div>
+                {/* Escape hatch: one switch CTA per chain THIS build registers (SIGNIN_CHAIN_LIST =
+                    wagmiConfig.chains). switchChain also adds an unknown chain AND forces wagmi to
+                    re-read the live chainId — self-healing a stale/mis-bound read as well as switching a
+                    genuinely off-network wallet. Alpha lists its testnets; the mainnet-beta lists only
+                    Robinhood Chain — never a dead button pointing at an unregistered chain. */}
+                {SIGNIN_CHAIN_LIST.map((id, i) => (
+                  <div key={id} style={{ marginTop: i === 0 ? "18px" : "10px" }}>
+                    <a
+                      className={i === 0 ? "btn btn-primary btn-lg" : "btn btn-ghost btn-sm"}
+                      onClick={() => switchToChain(id as Parameters<typeof switchToChain>[0])}
+                      style={{ display: "inline-flex", cursor: "pointer" }}
+                    >
+                      Switch to {CHAIN_LABEL[id] ?? `chain ${id}`}
+                    </a>
+                  </div>
+                ))}
               </>
             )}
             {needsSignIn && (

@@ -25,7 +25,7 @@ _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 # agent-service-api.md §1.2 — Base mainnet | Base Sepolia | Robinhood testnet (§B3). The policy
 # layer also knows 31337 for the local Anvil fork; the wire header contract lists the reachable
 # chains. 46630 is chat + read-only portfolio ONLY — the vault is Base-only (fail-closed off Base).
-API_SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 46630)
+API_SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 46630, 4663)
 
 # Paths served WITHOUT auth/header scoping: liveness/readiness probes + the API docs.
 EXEMPT_PATHS: frozenset[str] = frozenset(
@@ -39,6 +39,25 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         "/docs/oauth2-redirect",
     }
 )
+
+# Paths that still require the s2s bearer but carry NO user identity (045).
+#
+# The §1.2 scoping headers assert *who the web tier verified*. The public alpha-application form has
+# no such person: the visitor never connected a wallet and never signed anything, so the web tier
+# has nobody to assert. Demanding the headers anyway would force it to invent an identity — most
+# obviously by echoing the address typed into the form — and an invented `X-Owner` is far worse than
+# an absent one, because every route downstream treats that header as verified.
+#
+# So: authentication is UNCHANGED (a caller without the bearer is still rejected — this is not a
+# public internet surface), and only the identity parse is skipped. `request.state.account` is then
+# absent, so `get_account` raises for anything that needs a user, and a route can only end up here
+# deliberately.
+NO_ACCOUNT_PATHS: frozenset[str] = frozenset({"/access/public-application"})
+
+
+def requires_account_context(path: str) -> bool:
+    """False for s2s-authenticated routes that legitimately have no user to scope to."""
+    return path not in NO_ACCOUNT_PATHS
 
 
 @dataclass(frozen=True)

@@ -17,10 +17,11 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { useVault } from "@/lib/chain/useVault";
 import { usePortfolioView, usePositionTransactions, type PositionTx } from "@/lib/agent/useAgent";
-import { explorerTxUrl } from "@/lib/chain/explorer";
+import { explorerRoot, explorerTxUrl } from "@/lib/chain/explorer";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import "@/components/screens/portfolio.css";
 
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 const num = (x: bigint | undefined, d: number) => (x === undefined ? undefined : Number(formatUnits(x, d)));
 
 /** A short "~2d ago" style relative age from an ISO string (the tx timestamp is APPROXIMATE). */
@@ -212,7 +213,7 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
           <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
             Couldn&apos;t load your transactions just now.{" "}
             <a className="cite" style={{ cursor: "pointer" }} onClick={() => txView?.refetch()}>Retry</a>, or verify on{" "}
-            <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
+            <a className="cite" style={{ cursor: "pointer" }} href={explorerRoot(DISPLAY_CHAIN_ID)} target="_blank" rel="noreferrer">
               BaseScan <Icon name="ext" size={10} />
             </a>.
           </div>
@@ -223,7 +224,7 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
         ) : !isConnected ? (
           <div className="muted" style={{ padding: "16px 4px", fontSize: 13 }}>
             Connect on Base Sepolia to see your indexed transaction history. It&apos;s also verifiable on{" "}
-            <a className="cite" style={{ cursor: "pointer" }} href="https://sepolia.basescan.org" target="_blank" rel="noreferrer">
+            <a className="cite" style={{ cursor: "pointer" }} href={explorerRoot(DISPLAY_CHAIN_ID)} target="_blank" rel="noreferrer">
               BaseScan <Icon name="ext" size={10} />
             </a>.
           </div>
