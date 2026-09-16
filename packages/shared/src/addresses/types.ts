@@ -146,6 +146,28 @@ export interface AddressBook {
    * value leaves is a holder claiming their own published allocation.
    */
   readonly brokerRevenueDistributor?: Address;
+  /* ── §beta-revenue (Phase 2 · Robinhood 4663 ONLY) — the SparkPoint-authored revenue subsystem. ──
+   * Deployed 2026-09-16 as the BETA set (verified on-chain). Alpha (Base Sepolia) keeps its
+   * existing Broker/SRK surfaces and never reads these. PLAIN optional fields — NO policy
+   * `TargetRef`, so no agent-mediated path can form: every interaction is either user-signed
+   * (activate/promote/fuse/withdraw) or a permissionless keeper call (settle/deliver/sweeps).
+   * Undefined ⇒ the beta surfaces must say "not on this network yet" (fail-closed). Every address
+   * mirrors `contracts/deployments/4663/addresses.json`. */
+  /** The Pons-launched utility token (OZ `ERC20Burnable`; the engine burns it via `burnFrom`). */
+  readonly utilityToken?: Address;
+  /** The `BrokerEngine` PROXY — activate/promote/fuse + the AS-IS per-asset revenue accumulator. */
+  readonly brokerEngine?: Address;
+  /** The immutable `BrokerVault` — per-token-id, multi-asset (ETH = `address(0)`) + EIP-712 withdraw. */
+  readonly brokerVault?: Address;
+  /** The immutable `RevenueSplitter` — the Pons `creatorFeeRecipient` (90% engine / 10% treasury). */
+  readonly revenueSplitter?: Address;
+  /** The immutable `RoyaltySink` — the OpenSea royalty recipient; flushes to the splitter. */
+  readonly royaltySink?: Address;
+  /** The Pons bonding curve for the utility token — the sweeper's `sweepFees` target pre-graduation. */
+  readonly ponsCurve?: Address;
+  /** Pons' `V2FeeEscrow` — where curve/hook fees are credited and `claim()`ed by the splitter. */
+  readonly ponsFeeEscrow?: Address;
+
   /**
    * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
    * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).
