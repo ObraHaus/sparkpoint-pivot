@@ -749,6 +749,11 @@ export const sparkPointAccountAbi = [
   },
   {
     "inputs": [],
+    "name": "SpentOverflow",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TargetNotArmed",
     "type": "error"
   },

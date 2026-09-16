@@ -105,6 +105,8 @@ The web app can auto-reload stale tabs onto a new deploy + greet users with what
 ## Verify a deploy — use the deployment record, NOT the status badge
 
 The app `.status` badge is unreliable (apps on `coolify-build` can show `unhealthy` while serving the latest code). Use the deployment record:
+
+> **⚠️ KNOWN BUG — ignore the badge on the prod landing replicas (recorded 2026-09-16).** `sparkpoint-web-primary` can show **`exited:unhealthy`** and `sparkpoint-web-secondary` **`running:unhealthy`** while `https://sparkpoint.io` serves correctly through the LB. This is a **Coolify system bug, operator-confirmed** — do NOT chase it, restart, or redeploy because of it. Verify with the deployment record (`status: finished`) + the served page instead.
 ```bash
 # Token env names (verified 2026-07-30): there is NO bare `COOLIFY_API_TOKEN`.
 #   COOLIFY_API_TOKEN_READ_READSENSITIVE — reads, incl. an app's env values (used below)
