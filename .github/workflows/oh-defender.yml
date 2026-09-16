@@ -28,11 +28,10 @@ jobs:
           # `forge install` at scan time would not: that re-resolves from the
           # network and can pick up something the PR never pinned.
           submodules: recursive
-      - uses: ObraHaus/obrahaus-defender/ci/scan-action@1a320b603ee5306e103d0392d2f4411a54fbc8d3 # develop
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@de1ac9c5c15b934316bb5abb5b8cfead4521d9b3 # v1.7.0
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}
           defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
           tools: ${{ github.event.inputs.tools || 'all' }}
           trigger: ${{ github.event_name == 'pull_request' && 'pull_request' || (github.event.inputs.trigger || 'manual') }}
           default-branch: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
-
