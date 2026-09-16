@@ -14,7 +14,7 @@
  * fact rather than as an error or a teaser. The interactive prototype that started this feature
  * showed "**+$14.00/month**" per holder, derived from an assumed $12,300 of monthly revenue across
  * 1,000 brokers. The real numbers: **2.18 test-USDC** of protocol fees ever recorded, across eight
- * events, in tokens with no market value — and the collection is 10,000, not 1,000. Every figure in
+ * events, in tokens with no market value — and the collection is 5,555, not 1,000. Every figure in
  * that prototype was fiction.
  *
  * Hence the rules, enforced by tests in `lib/chain/brokers.test.ts`, not by care:

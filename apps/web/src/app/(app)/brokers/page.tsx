@@ -45,7 +45,7 @@ const METADATA_ORIGIN =
  * wallet holds. This page therefore checks ownership of ids `1..totalMinted`, batched.
  *
  * That is now the FALLBACK path only: `GET /brokers/owned` (feature 044) walks `Transfer` logs in
- * the agent and scales to the full 10,000. The scan runs when the indexer cannot answer, because
+ * the agent and scales to the full 5,555. The scan runs when the indexer cannot answer, because
  * the browser can still read the chain directly when the agent is down.
  * The cap below stops the page melting in the meantime; when it bites, the page says so instead of
  * silently showing a partial gallery, because a holder seeing 40 of their 60 brokers and being told
@@ -92,7 +92,7 @@ export default function Page() {
 
   const minted = totalMinted.data as bigint | undefined;
 
-  // The indexer walks Transfer logs and scales to the full 10,000. The scan below is the fallback
+  // The indexer walks Transfer logs and scales to the full 5,555. The scan below is the fallback
   // for when it cannot answer -- the browser can still read the chain directly even if the agent
   // is down, and a bounded scan is correct while the collection is small.
   const indexed = useIndexedBrokers(onChain);
@@ -201,7 +201,7 @@ export default function Page() {
         <div>
           <h1>Sparky Broker</h1>
           <div className="sub">
-            10,000 brokers. Retiring SRK activates one, permanently: Premium for as long as you hold
+            5,555 brokers. Retiring SRK activates one, permanently: Premium for as long as you hold
             it, with nothing to renew. Sell it and the activation clears — the next owner retires
             their own.
           </div>

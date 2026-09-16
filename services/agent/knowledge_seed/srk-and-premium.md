@@ -19,7 +19,7 @@ never require SRK, and never require a broker.
 
 ## What a Sparky Broker is
 
-A Sparky Broker is a collectible ERC-721 on **Robinhood Chain** — 10,000 of them, ids from 1. It is a
+A Sparky Broker is a collectible ERC-721 on **Robinhood Chain** — 5,555 of them, ids from 1 to 5,555. It is a
 membership you own, and on its own it does nothing.
 
 **You activate it by retiring SRK, once.** That activation is permanent: nothing renews, nothing

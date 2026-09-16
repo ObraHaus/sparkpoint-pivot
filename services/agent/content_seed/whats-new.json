@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "sparky-broker-collection-is-5555",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Sparky Broker collection is 5,555",
+      "body": "The Sparky Broker collection is sized at 5,555 — one desk for every broker on the SparkPoint floor, and the same 5,555 the production collection will mint on OpenSea.\n\nThe Broker isn't live on Robinhood Chain yet, so nothing you can do changes today: this is the collection that arrives with it. Sparky now answers with the right number, and the Broker pages in the app say 5,555 too.",
+      "published_at": "2026-09-16T14:45:00Z"
+    },
+    {
       "slug": "chat-demo-and-sparky-accurate-on-robinhood-chain",
       "type": "changelog",
       "tag": "Fixed",

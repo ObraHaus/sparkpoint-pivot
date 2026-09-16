@@ -6,7 +6,7 @@
  * `SparkyBroker` is solady ERC-721 and **not enumerable**, so this cannot be asked of the contract.
  * Two independent paths answer it, and having both is the point:
  *
- *   1. `GET /brokers/owned` — the agent walks `Transfer` logs. Scales to the full 10,000.
+ *   1. `GET /brokers/owned` — the agent walks `Transfer` logs. Scales to the full 5,555.
  *   2. The page's own `1..totalMinted` scan — bounded, browser-side, needs no backend.
  *
  * The indexer is preferred because it scales; the scan survives an agent outage, since the browser
