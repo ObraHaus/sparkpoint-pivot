@@ -25,6 +25,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { useNetwork } from "@/lib/network";
 import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
@@ -56,7 +57,13 @@ function fmt(v: bigint | undefined, decimals: number, max = 6): string {
 export default function Page() {
   const router = useRouter();
   const { isConnected, chainId } = useAccount();
-  const activeChain = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  const { switchToChain } = useNetwork();
+  // Beta build = 4663 only (see useSwapConfirm): clamp an unsupported wallet chain to the build
+  // chain and prompt a switch via `s.wrongChain` — never quote a fallback network.
+  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+  const activeChain = IS_BETA_BUILD
+    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
+    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
 
   const [dexId, setDexId] = useState<DexId>("uniswap_v3");
   const initial = defaultTokens(DISPLAY_CHAIN_ID);
@@ -293,6 +300,18 @@ export default function Page() {
         )}
         {dexId === "uniswap_v3" && !dexLive && (
           <Notice>{uniswapVenue} isn&apos;t available on this network — switch to a supported network.</Notice>
+        )}
+        {s.wrongChain && (
+          <Notice>
+            Your wallet is on a different network.{" "}
+            <a
+              style={{ color: "var(--primary)", cursor: "pointer" }}
+              onClick={() => switchToChain(APP_DEFAULT_CHAIN_ID as Parameters<typeof switchToChain>[0])}
+            >
+              Switch to Robinhood Chain
+            </a>{" "}
+            to swap.
+          </Notice>
         )}
         {canQuote && quote.noRoute && (
           <Notice>No {uniswapVenue} route for this pair on {netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>

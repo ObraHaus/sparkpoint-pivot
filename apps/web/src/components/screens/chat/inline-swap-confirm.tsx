@@ -20,6 +20,7 @@ import { Icon } from "@/lib/icons";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { useNetwork } from "@/lib/network";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
@@ -109,7 +110,13 @@ export function InlineSwapConfirm({
   chainId?: number;
 }) {
   const { isConnected, chainId } = useAccount();
-  const activeChain = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  const { switchToChain } = useNetwork();
+  // Beta build = 4663 only: clamp an unsupported wallet chain to the build chain (never silently
+  // fall back to Base Sepolia) — `s.wrongChain` below asks for a switch instead.
+  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+  const activeChain = IS_BETA_BUILD
+    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
+    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
   const chainMismatch = propChainId !== undefined && activeChain !== undefined && propChainId !== activeChain;
 
   const init = defaultTokens(DISPLAY_CHAIN_ID);
@@ -361,6 +368,18 @@ export function InlineSwapConfirm({
 
             {/* Honest states */}
             {!s.dexLive && <Notice>Swaps aren&apos;t available on this network — switch to a supported network.</Notice>}
+            {s.wrongChain && (
+              <Notice>
+                Your wallet is on a different network.{" "}
+                <a
+                  style={{ color: "var(--primary)", cursor: "pointer" }}
+                  onClick={() => switchToChain(APP_DEFAULT_CHAIN_ID as Parameters<typeof switchToChain>[0])}
+                >
+                  Switch to Robinhood Chain
+                </a>{" "}
+                to swap.
+              </Notice>
+            )}
             {s.canQuote && quote.noRoute && <Notice>No {s.uniswapVenue} route for this pair on {s.netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>}
             {s.canQuote && quote.isError && (
               <Notice>
