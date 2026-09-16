@@ -1,0 +1,21 @@
+{
+  "name": "sparky-beta-runners",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "keeper": "node --experimental-strip-types src/keeper.ts",
+    "sweeper": "node --experimental-strip-types src/sweeper.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "viem": "2.55.16"
+  }
+}
