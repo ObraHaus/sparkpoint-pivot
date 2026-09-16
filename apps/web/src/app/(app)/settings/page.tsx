@@ -17,6 +17,8 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Icon } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName } from "@sparkpoint/shared/chains";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
@@ -539,7 +541,7 @@ export default function Page() {
               <div>
                 <div style={{ fontWeight: 600 }}>Connected wallet</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
-                  Smart account on Base
+                  Connected via your wallet
                 </div>
               </div>
               <span className="mono">{wallet}</span>
@@ -549,7 +551,7 @@ export default function Page() {
                 <div style={{ fontWeight: 600 }}>Network</div>
               </div>
               <span className="pill ghosty" style={{ cursor: "default" }}>
-                Base
+                {chainName(APP_DEFAULT_CHAIN_ID)}
               </span>
             </div>
             <div className="setrow">

@@ -17,9 +17,23 @@
  * 31337, R14).
  */
 
-import { createPublicClient, http, type Chain, type PublicClient } from "viem";
+import { createPublicClient, defineChain, http, type Chain, type PublicClient } from "viem";
 import { base, baseSepolia, foundry, robinhoodTestnet } from "viem/chains";
 import { CHAIN_ID, SUPPORTED_CHAIN_IDS, type ChainId } from "@sparkpoint/shared/policy";
+
+// §B Robinhood Chain MAINNET (4663) — defined LOCALLY (not imported from viem/chains) so this does
+// not depend on the resolved viem version shipping a `robinhood` export. Fail-closed: the app does
+// not register 4663 in wagmi and it is not switchable, so this read-client is only ever exercised
+// once 4663 becomes an accepted chain (feature D).
+export const robinhoodMainnet = defineChain({
+  id: CHAIN_ID.robinhoodMainnet,
+  name: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } },
+  blockExplorers: {
+    default: { name: "Robinhood Explorer", url: "https://explorer.mainnet.chain.robinhood.com" },
+  },
+});
 
 /** Per-chain viem chain definition + the env var supplying its RPC url (public fallback). */
 const CHAIN_CONFIG: Record<ChainId, { readonly chain: Chain; readonly rpcUrl: string | undefined }> = {
@@ -32,6 +46,13 @@ const CHAIN_CONFIG: Record<ChainId, { readonly chain: Chain; readonly rpcUrl: st
   [CHAIN_ID.robinhoodTestnet]: {
     chain: robinhoodTestnet,
     rpcUrl: process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL,
+  },
+  // §B Robinhood mainnet (4663) — read-only display client. Set an ARCHIVE endpoint via
+  // NEXT_PUBLIC_ROBINHOOD_MAINNET_RPC_URL: the public node prunes state after ~3h and breaks history
+  // reads. Fail-closed — nothing invokes this until 4663 is an accepted chain (feature D).
+  [CHAIN_ID.robinhoodMainnet]: {
+    chain: robinhoodMainnet,
+    rpcUrl: process.env.NEXT_PUBLIC_ROBINHOOD_MAINNET_RPC_URL,
   },
 };
 

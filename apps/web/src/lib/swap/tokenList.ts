@@ -22,6 +22,8 @@ export interface VerifiedToken {
  */
 const CURATED_EXTRA: Record<number, readonly VerifiedToken[]> = {
   // 8453 (Base mainnet): add well-known majors (DAI, WBTC, cbETH) here once each address is confirmed.
+  // Robinhood Chain 4663: SPCX — verified on Blockscout, live USDG/SPCX Uniswap V3 pool (fee 3000).
+  4663: [{ symbol: "SPCX", address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa" }],
 };
 
 const eqAddr = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

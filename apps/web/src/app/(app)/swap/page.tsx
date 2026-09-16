@@ -85,7 +85,7 @@ export default function Page() {
   const dex = dexById(dexId);
   const dexLive = dexLiveOn(dex, activeChain);
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
+  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
@@ -166,7 +166,7 @@ export default function Page() {
           <span className="lbl">Route via</span>
         </div>
         <Seg
-          options={DEXES.map((d) => ({ value: d.id, label: dexDisplayLabel(d, activeChain) }))}
+          options={DEXES.filter((d) => dexLiveOn(d, activeChain)).map((d) => ({ value: d.id, label: dexDisplayLabel(d, activeChain) }))}
           value={dexId}
           onChange={(v) => {
             setDexId(v as DexId);
@@ -292,7 +292,7 @@ export default function Page() {
           <Notice>Only {uniswapVenue} is wired for execution right now. Pick {uniswapVenue} to swap.</Notice>
         )}
         {dexId === "uniswap_v3" && !dexLive && (
-          <Notice>{uniswapVenue} isn&apos;t available on this network — switch to Base Sepolia or Robinhood Testnet.</Notice>
+          <Notice>{uniswapVenue} isn&apos;t available on this network — switch to a supported network.</Notice>
         )}
         {canQuote && quote.noRoute && (
           <Notice>No {uniswapVenue} route for this pair on {netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>

@@ -21,6 +21,7 @@ import type { Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
+import { wagmiConfig } from "@/lib/wagmi";
 import { brokerSaleAbi, sparkyBrokerAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { brokerViews, deriveMintState, type BrokerToken } from "@/lib/chain/brokers";
@@ -29,6 +30,10 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
+// The Sparky Broker collection lives on Robinhood testnet (46630); on the mainnet-beta build (only
+// 4663 registered) it isn't part of the beta — show "coming soon" instead of a mint UI that targets
+// an unregistered chain.
+const BROKER_ON_THIS_BUILD = wagmiConfig.chains.some((c) => c.id === BROKER_CHAIN);
 
 /** Where the collection's metadata and images are served from — its OWN deploy, never this app. */
 const METADATA_ORIGIN =
@@ -172,6 +177,23 @@ export default function Page() {
     mintState.mintedSoFar === undefined || mintState.supply === undefined
       ? "…"
       : `${mintState.mintedSoFar.toLocaleString()} / ${mintState.supply.toLocaleString()}`;
+
+  if (!BROKER_ON_THIS_BUILD) {
+    return (
+      <div className="page">
+        <div className="pagehead">
+          <div>
+            <h1>Sparky Broker</h1>
+            <div className="sub">Coming soon to Robinhood mainnet</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 12, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The Sparky Broker NFT isn&rsquo;t part of the Robinhood mainnet beta yet — it launches on OpenSea in a later
+          step. There&rsquo;s nothing to mint or activate on this network right now.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

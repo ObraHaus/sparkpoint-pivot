@@ -18,12 +18,12 @@
  * `tsc` still checks it because it sits under `src`.
  *
  * Direction of the assertion: `CHAIN_ID` (policy) ⊆ `CHAIN_IDS` (chains), key-for-key and
- * value-for-value. The chains registry is deliberately the WIDER of the two — it also declares
- * Robinhood mainnet 4663, which constitution v3.0.0 ratified but which is not yet wired into the
- * policy chain map, has no address book, and is rejected by the agent's supported-chain list. So a
- * new id may be declared in `chains` before `policy` learns about it, but never the reverse: an id
- * the policy engine acts on that has no metadata would render as "Unsupported network" with no
- * explorer link.
+ * value-for-value. The chains registry is the WIDER-or-equal of the two: a new id may be declared in
+ * `chains` before `policy` learns about it, but never the reverse — an id the policy engine acts on
+ * that has no chain metadata would render as "Unsupported network" with no explorer link. (Both now
+ * declare Robinhood mainnet 4663: the §B beta serves it with an EMPTY policy allowlist, so
+ * agent-mediated actions still fail closed while chat + read-only portfolio + the user-signed swap
+ * work.)
  */
 
 import { CHAIN_ID } from "../policy/index";

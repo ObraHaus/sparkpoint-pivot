@@ -152,8 +152,17 @@ export function WalletTokensCard({
       </div>
 
       <div className="muted" style={{ marginTop: 12, fontSize: 11, lineHeight: 1.5 }}>
-        Balances read live from the {networkName} explorer — non-custodial, read-only. Testnet tokens have no market
-        price, so amounts are shown without a USD value.
+        {isSupported ? (
+          <>
+            Balances read live from the {networkName} explorer — non-custodial, read-only. Tokens without a price feed
+            are shown without a USD value.
+          </>
+        ) : (
+          <>
+            Your native ETH is read live from {networkName} — non-custodial, read-only. Full ERC-20 discovery isn&apos;t
+            wired for this network yet, so other tokens may not be listed here.
+          </>
+        )}
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon, type IconName } from "@/lib/icons";
@@ -80,7 +81,9 @@ export default function Page() {
   const capC = { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN } as const;
 
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; on the mainnet-beta build (only 4663 registered) it is absent, so gate the
+    // read on the vault chain being registered — otherwise it errors on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "paused" }, // 0
       { ...vaultC, functionName: "performanceFeeBps" }, // 1
@@ -104,6 +107,9 @@ export default function Page() {
   const feeRecipient = d?.[7]?.result as Address | undefined;
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
+  // On the mainnet-beta build the vault chain isn't registered, so show an honest "not on this
+  // network" state (the vault is Base-only) instead of a stuck "reading…" / "read error".
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
 
   return (
     <div className="page page-wide">
@@ -137,8 +143,14 @@ export default function Page() {
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Status</span>
-              <span className="lbl">{live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+              <span className="lbl">{vaultUnavailable ? "vault not available yet" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
             </div>
+            {vaultUnavailable ? (
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
+                <Icon name="info" size={13} /> The AI vault isn&rsquo;t part of the Robinhood Chain beta yet — it
+                arrives in a later step. Your custody guarantees still hold.
+              </div>
+            ) : null}
             <div className="statusrow">
               <span className="muted">Custody invariants</span>
               <span style={{ color: "var(--gain)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -149,65 +161,77 @@ export default function Page() {
               <span className="muted">Kill-switch</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
                 <Icon name="pause" size={14} />
-                {paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+                {vaultUnavailable ? "—" : paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
               </span>
             </div>
             <div className="statusrow">
               <span className="muted">Performance fee</span>
-              <span style={{ fontWeight: 600 }}>{feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
             </div>
             <div className="statusrow">
               <span className="muted">Network</span>
-              <span style={{ fontWeight: 600 }}>Base Sepolia</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : "Base Sepolia"}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 12, lineHeight: 1.5 }}>
               <Icon name="info" size={13} /> The kill-switch can pause <b>new</b> deposits in an emergency. It can never
               block your withdrawals (N2).
             </div>
           </div>
-          <div className="card card-pad">
-            <div className="card-hd">
-              <span className="t">{stageCopy.label} caps</span>
-              <span className="lbl">CapRegistry · live</span>
+          {!vaultUnavailable && (
+            <div className="card card-pad">
+              <div className="card-hd">
+                <span className="t">{stageCopy.label} caps</span>
+                <span className="lbl">CapRegistry · live</span>
+              </div>
+              <div className="statusrow">
+                <span className="muted">Per-user cap</span>
+                <span className="tnum">{usdc0(perUserCap)}</span>
+              </div>
+              <div className="statusrow">
+                <span className="muted">Vault TVL / cap</span>
+                <span className="tnum">
+                  {usdc0(tvl)} / {usdc0(vaultCap)}
+                </span>
+              </div>
             </div>
-            <div className="statusrow">
-              <span className="muted">Per-user cap</span>
-              <span className="tnum">{usdc0(perUserCap)}</span>
-            </div>
-            <div className="statusrow">
-              <span className="muted">Vault TVL / cap</span>
-              <span className="tnum">
-                {usdc0(tvl)} / {usdc0(vaultCap)}
-              </span>
-            </div>
-          </div>
+          )}
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Contracts &amp; roles</span>
-              <span className="lbl">on-chain · verifiable</span>
+              <span className="lbl">{vaultUnavailable ? "none deployed yet" : "on-chain · verifiable"}</span>
             </div>
-            <AddrRow label="Vault (ERC-4626)" addr={vault} />
-            <AddrRow label="Cap registry" addr={capReg} />
-            <AddrRow label="Guardian (timelock)" addr={guardian} />
-            <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
-            <AddrRow label="Pauser" addr={pauser} />
-            <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
-            <AddrRow label="Vault factory (branded wrappers)" addr={factory} />
-            <AddrRow label="Swap router (Uniswap V3 · user-signed)" addr={swapRouter} />
-            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> The <b>vault factory</b> only deploys branded wrapper vaults (deploy-time
-              only — never a fund path). The <b>swap router</b> powers the separate <b>user-signed</b> swap page: you
-              sign every swap yourself, and it is <b>not</b> a vault or agent path.
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
-              key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
-              timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
-              2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
-              over the vault.
-            </div>
+            {vaultUnavailable ? (
+              <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+                <Icon name="info" size={13} /> No SparkPoint contracts are deployed on Robinhood Chain yet — the
+                utility token, the AI vault, the Sparky Broker and the reward engine all arrive in a later step.
+                Swaps use the network&rsquo;s existing Uniswap V3 (user-signed; SparkPoint never holds your funds).
+              </div>
+            ) : (
+              <>
+                <AddrRow label="Vault (ERC-4626)" addr={vault} />
+                <AddrRow label="Cap registry" addr={capReg} />
+                <AddrRow label="Guardian (timelock)" addr={guardian} />
+                <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
+                <AddrRow label="Pauser" addr={pauser} />
+                <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
+                <AddrRow label="Vault factory (branded wrappers)" addr={factory} />
+                <AddrRow label="Swap router (Uniswap V3 · user-signed)" addr={swapRouter} />
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The <b>vault factory</b> only deploys branded wrapper vaults (deploy-time
+                  only — never a fund path). The <b>swap router</b> powers the separate <b>user-signed</b> swap page: you
+                  sign every swap yourself, and it is <b>not</b> a vault or agent path.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
+                  key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
+                  timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
+                  2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
+                  over the vault.
+                </div>
+              </>
+            )}
           </div>
-          {WHITELISTED.length > 0 && (
+          {!vaultUnavailable && WHITELISTED.length > 0 && (
             <div className="card card-pad">
               <div className="card-hd">
                 <span className="t">Whitelisted protocols</span>

@@ -27,6 +27,7 @@ import { getPolicyConstants } from "@sparkpoint/shared/policy";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
@@ -146,6 +147,33 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const usedRaw = v.underlying ?? 0n;
   const capPct = capRaw > 0n ? Math.min((toNum(usedRaw) / toNum(capRaw)) * 100, 100) : 0;
 
+  // On a build whose app chain has no vault (the Robinhood Chain beta — VAULT_CHAIN_AVAILABLE=false),
+  // render a single clean "not available yet" state instead of the whole deposit dashboard (which
+  // would otherwise show Base-only figures + a "switch to Base Sepolia" banner).
+  if (!VAULT_CHAIN_AVAILABLE) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>Vault</h1>
+            <div className="sub">AI-managed yield vault</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 8 }}>
+          <div className="card-hd">
+            <span className="t">Not available yet</span>
+            <span className="lbl">coming soon</span>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+            The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — it arrives in a later step.
+            When it does, you&rsquo;ll deposit, earn and withdraw here, and you&rsquo;ll always be the only one who can
+            move your funds. There&rsquo;s nothing to deposit on this network right now.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page page-wide">
       <div className="pagehead">
@@ -210,8 +238,12 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
             </span>
           ) : (
             <span>
-              The SparkPoint vault isn&apos;t deployed on your connected network. Switch to <b>Base Sepolia</b> to
-              deposit or manage your vault. Your funds are safe and withdrawable via{" "}
+              {VAULT_CHAIN_AVAILABLE ? (
+                <>The SparkPoint vault isn&apos;t deployed on your connected network. Switch to <b>Base Sepolia</b> to deposit or manage your vault.</>
+              ) : (
+                <>The SparkPoint vault is <b>Base-only</b> and isn&apos;t part of the Robinhood mainnet beta yet.</>
+              )}{" "}
+              Your funds are safe and withdrawable via{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>
                 /exit
               </a>

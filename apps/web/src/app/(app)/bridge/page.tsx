@@ -25,6 +25,9 @@ import "@/components/screens/bridge.css";
 
 const BASE_SEPOLIA = APP_DEFAULT_CHAIN_ID;
 const ROBINHOOD_TESTNET = 46630;
+// The bridge helpers here are TESTNET-only (Base Sepolia / Robinhood testnet). On the mainnet-beta
+// build (only 4663 registered, no testnet chain) bridging isn't part of the beta — show "coming soon".
+const BRIDGE_ON_THIS_BUILD = wagmiConfig.chains.some((c) => c.id === 84532 || c.id === ROBINHOOD_TESTNET);
 
 interface FaucetLink {
   label: string;
@@ -235,6 +238,23 @@ export default function Page() {
     { label: "Robinhood Chain testnet faucet (official)", href: "https://faucet.testnet.chain.robinhood.com/", note: "browser-only, bot-challenged — amounts are per the faucet site" },
     { label: "Chainlink faucets", href: "https://faucets.chain.link/", note: "select the Robinhood testnet if listed" },
   ];
+
+  if (!BRIDGE_ON_THIS_BUILD) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>Bridge</h1>
+            <div className="sub">Coming soon to Robinhood mainnet</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 12, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          Bridging isn&rsquo;t part of the Robinhood mainnet beta yet. The testnet bridge helpers apply to the test
+          networks only.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page page-narrow">

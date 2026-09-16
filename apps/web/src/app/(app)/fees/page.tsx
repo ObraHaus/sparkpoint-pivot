@@ -25,6 +25,7 @@ import { type Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
@@ -50,7 +51,9 @@ export default function Page() {
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
   // REAL fee params, read live from the vault (the honesty panel must not lie).
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; on the mainnet-beta build (only 4663 registered) it is absent, so gate the
+    // read on the vault chain being registered — otherwise it errors on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "performanceFeeBps" }, // 0
       { ...vaultC, functionName: "feeRecipient" }, // 1
@@ -60,6 +63,9 @@ export default function Page() {
   const feeRecipient = reads.data?.[1]?.result as Address | undefined;
   const perfFeePct = perfFeeBps === undefined ? undefined : Number(perfFeeBps) / 100;
   const readsLive = !reads.isLoading && !reads.isError && reads.data !== undefined;
+  // On the mainnet-beta the vault chain isn't registered — show an honest "not on this network"
+  // state instead of a perpetual "Reading…" (the vault, and this performance fee, are Base-only).
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
   return (
     <div className="page page-wide">
       <div className="pagehead">
@@ -138,7 +144,7 @@ export default function Page() {
             </li>
             <li>
               <Icon name="check" size={14} />
-              Applies on <b>every supported network</b> — Base, Base Sepolia, and Robinhood testnet.
+              Applies on <b>Robinhood Chain</b>.
             </li>
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -212,7 +218,7 @@ export default function Page() {
       <div className="card honesty">
         <div className="card-hd">
           <span className="t">We only earn when you earn</span>
-          <StatusTag variant={readsLive ? "live" : "partial"} label={readsLive ? "Live fee read" : "Reading…"} />
+          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live fee read" : "Reading…"} />
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
           On the Aave Yield Vault, SparkPoint charges{" "}
@@ -231,7 +237,7 @@ export default function Page() {
       <div className="card verify">
         <div className="card-hd" style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="t">Verify — don&apos;t take our word for it</span>
-          <StatusTag variant={readsLive ? "live" : "partial"} label={readsLive ? "Live reads" : "Reading…"} />
+          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live reads" : "Reading…"} />
         </div>
         <div className="vrow">
           <span>Vault deposit/withdraw fee</span>
@@ -241,7 +247,7 @@ export default function Page() {
         </div>
         <div className="vrow">
           <span>Vault performance fee</span>
-          {vault ? (
+          {vault && !vaultUnavailable ? (
             <a
               className="mono"
               href={explorerAddressUrl(VAULT_CHAIN, vault)}
@@ -274,7 +280,7 @@ export default function Page() {
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-          These fees live in the contracts, not this app — read live from Base Sepolia RPC.{" "}
+          These fees live in the contracts, not this app{vaultUnavailable ? " — the vault isn’t in the Robinhood Chain beta yet" : " — read live from the vault chain"}.{" "}
           <a
             style={{ color: "var(--primary)", cursor: "pointer" }}
             onClick={() => router.push(toHref("trust/permissions"))}

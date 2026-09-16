@@ -5,6 +5,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
 import { Icon, SparkMark } from "@/lib/icons";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName, chainMeta } from "@sparkpoint/shared/chains";
 import { PubTop } from "@/components/screens/PubTop";
 import "@/components/screens/public.css";
 
@@ -122,9 +124,9 @@ export default function ConnectPage() {
           <div style={{ textAlign: "center", marginTop: "14px" }}>
             <span className="pill ghosty" style={{ cursor: "default" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" fill="#0052FF" />
+                <circle cx="12" cy="12" r="10" fill={chainMeta(APP_DEFAULT_CHAIN_ID)?.color ?? "#0052FF"} />
               </svg>
-              Base network
+              {chainName(APP_DEFAULT_CHAIN_ID)}
             </span>
           </div>
         </div>

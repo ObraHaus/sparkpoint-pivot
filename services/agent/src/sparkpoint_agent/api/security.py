@@ -25,7 +25,7 @@ _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 # agent-service-api.md §1.2 — Base mainnet | Base Sepolia | Robinhood testnet (§B3). The policy
 # layer also knows 31337 for the local Anvil fork; the wire header contract lists the reachable
 # chains. 46630 is chat + read-only portfolio ONLY — the vault is Base-only (fail-closed off Base).
-API_SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 46630)
+API_SUPPORTED_CHAIN_IDS: tuple[int, ...] = (8453, 84532, 46630, 4663)
 
 # Paths served WITHOUT auth/header scoping: liveness/readiness probes + the API docs.
 EXEMPT_PATHS: frozenset[str] = frozenset(
