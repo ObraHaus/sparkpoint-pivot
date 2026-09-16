@@ -11,9 +11,12 @@
   "chainId": 4663,
   "beta": {
     "deployedAt": "2026-09-16",
+    "brokerEngineUpgradedAt": "2026-09-16",
+    "brokerEngineUpgradeTx": "0xeff2ce0645e2182ddd0e67353201c771c5a40ecc38c4bded847e1cf6ef0ee4ef",
+    "roundSeconds": 86400,
     "brokerNFT": "0x706b4b449d9b007b7fbd29866122e758d9903d3f",
     "brokerEngine": "0x08a578D2Fa194E24786f5644AFabC578f2daDB43",
-    "brokerEngineImpl": "0xDd6563E6b400381c56206233Ea8bF9c0638864D8",
+    "brokerEngineImpl": "0x6338c81aDC7969258840A7409B26A8e229250C2a",
     "brokerVault": "0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455",
     "revenueSplitter": "0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1",
     "royaltySink": "0x0009a0fEf5a5371B05727e257FF9500EeF0a7d66",
