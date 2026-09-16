@@ -1,6 +1,8 @@
 # Constitution Amendment v3.1.0 → v3.2.0 (MINOR)
 
-**Date:** 2026-09-08 · **Operator:** aldrickb · **Status:** proposed (ratification-by-merge on `docs/mainnet-beta-eoa-upgradeability`) · **Classification:** MINOR — additive; no non-custody invariant weakened.
+**Date:** 2026-09-08 · **Reconciled:** 2026-09-16 · **Operator:** aldrickb · **Status:** proposed (ratification-by-merge on `docs/mainnet-beta-eoa-upgradeability`) · **Classification:** MINOR — additive; no non-custody invariant weakened.
+
+> **Reconciliation (2026-09-16, pre-ratification).** Operator-confirmed: the fee sink stays **ON-CHAIN** — the immutable `RevenueSplitter` is the Pons `creatorFeeRecipient` (**no** "revenue EOA + off-chain fee-bot"). The companion `constitution.md` "Chain & scope" text is aligned to the shipped Phase-1 beta (user-signed Uniswap V3 swap + chat + portfolio; no SparkPoint contracts on 4663 yet; Morpho/wrapper vault surfaces remain a later, fail-closed integration).
 
 Adopts the **Robin Brokers unified revenue model** for the SparkPoint Pivot beta on Robinhood mainnet (4663): the token is launched on the **Pons launchpad**, the broker NFT on **OpenSea**, and a **companion revenue engine + bots** aggregate every fee source to the reward pot for **activated / fused** brokers. Recorded in the "Beta revenue model" constraint in `constitution.md`.
 
