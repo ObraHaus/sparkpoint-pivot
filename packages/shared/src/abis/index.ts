@@ -16,3 +16,7 @@ export { brokerActivationRegistryAbi } from "./brokerActivationRegistry";
 export { brokerSaleAbi } from "./brokerSale";
 export { sparkyBrokerAbi } from "./sparkyBroker";
 export { brokerRevenueDistributorAbi } from "./brokerRevenueDistributor";
+export { brokerEngineAbi } from "./brokerEngine";
+export { brokerVaultAbi } from "./brokerVault";
+export { revenueSplitterAbi } from "./revenueSplitter";
+export { royaltySinkAbi } from "./royaltySink";
