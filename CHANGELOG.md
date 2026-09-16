@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (swap — correct network label + an explicit switch prompt on the beta)
+- **The chat inline swap and the swap page no longer mislabel Robinhood Chain as “Base Sepolia”, and no longer silently quote the wrong network.** `useSwapConfirm` was missing the 4663 case in its network-name mapping, and when the connected wallet was on a network the beta build does not register it fell back to a default chain (Base Sepolia) and quoted against it — producing a “no route on Base Sepolia” error while the app displayed Robinhood Chain. Both surfaces now: clamp the display/quote chain to the build's chain; expose `wrongChain` and **refuse to quote** while the wallet is elsewhere; render a one-click **Switch to Robinhood Chain** prompt (swap page + chat card). Alpha behaviour is byte-identical — every new branch is behind `APP_DEFAULT_CHAIN_ID === 4663`. Address book: the deployed beta revenue set (engine/vault/splitter/sink/token/curve/escrow) added to `packages/shared` `robinhoodMainnet` as new optional fields; the legacy broker fields stay undefined so no current surface changes behavior.
+
 ### Changed (Sparky Broker — collection size set to 5,555)
 - **The Sparky Broker collection is now 5,555** (was 10,000) — the size the production OpenSea drop will mint. Updated in the app copy (`/brokers`, the revenue page), the display fallback `COLLECTION_SIZE` (`lib/chain/brokers.ts`), the indexer scan comments, and Sparky's knowledge (`knowledge_seed/srk-and-premium.md`, so a chat answer quotes the right number). The activation **price** (10,000 SRK) is unchanged — this is the collection cap only. No contract or chain behavior changed; on the beta the Broker still isn't deployed.
 

@@ -70,7 +70,21 @@ export const robinhoodMainnet: AddressBook = {
   premiumTreasury: undefined,
   srkFaucet: undefined,
 
-  // Sparky Broker (OpenSea) + the revenue-engine set — deployed in feature C, recorded here then.
+  // ── §beta-revenue (Phase 2) — DEPLOYED and verified on 4663, 2026-09-16. These are the beta
+  // set; alpha (Base Sepolia) never reads them. Mirrors contracts/deployments/4663/addresses.json.
+  // The legacy broker fields above stay undefined on purpose: the pre-pivot registry/sale/
+  // distributor are NOT deployed here, and the app must not treat them as live. ──
+  utilityToken: "0x790316a2a1B403b55c6E8a6857Dd768078503553", // Sparky - Test (SPARKYTEST), OZ ERC20Burnable
+  brokerEngine: "0x08a578D2Fa194E24786f5644AFabC578f2daDB43", // PROXY — wire THIS
+  brokerVault: "0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455",
+  revenueSplitter: "0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1", // immutable; the Pons creatorFeeRecipient
+  royaltySink: "0x0009a0fEf5a5371B05727e257FF9500EeF0a7d66",
+  ponsCurve: "0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53",
+  ponsFeeEscrow: "0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e",
+
+  // Sparky Broker (OpenSea) + the legacy revenue set — the pre-pivot contracts are NOT deployed on
+  // 4663. `brokerNft` is deliberately left undefined until the new broker surfaces are wired (W.3)
+  // so no current page changes behavior; the beta collection address lives in the deploy book.
   brokerNft: undefined,
   brokerRegistry: undefined,
   brokerSale: undefined,
