@@ -13,7 +13,7 @@
  */
 
 /** The collection's immutable supply cap. Read from the contract; this is the display fallback. */
-export const COLLECTION_SIZE = 10_000;
+export const COLLECTION_SIZE = 5_555;
 
 /** `activatedAt` is a uint64 BLOCK NUMBER; 0 means never activated, or cleared by a transfer. */
 export type ActivatedAtBlock = bigint;
