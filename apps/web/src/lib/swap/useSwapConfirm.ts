@@ -89,6 +89,12 @@ export interface SwapConfirmResult {
   /** a fee chain whose recipient hasn't resolved yet — must not execute until it does. */
   feeRecipientPending: boolean;
   canQuote: boolean;
+  /**
+   * Connected on a chain this build does NOT serve (beta build = Robinhood Chain 4663 only).
+   * When true the surfaces must NOT quote — they must ask the wallet to switch, because the
+   * alternative (silently resolving to a fallback chain) quoted the wrong network and mislabelled it.
+   */
+  wrongChain: boolean;
   /** fully-resolved intent (undefined until quote + recipient + amount all ready). */
   exec?: SwapExec;
 }
@@ -96,11 +102,19 @@ export interface SwapConfirmResult {
 export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const { tokenIn: explicitIn, tokenOut: explicitOut, ethToUsdc = true, amount, slippageBps } = params;
   const { address, isConnected, chainId } = useAccount();
-  const activeChain = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  // The mainnet-beta build registers ONLY Robinhood Chain 4663: a wallet on any other chain resolves
+  // to an unsupported state here. Never let that silently fall back to Base Sepolia (it quoted the
+  // wrong network and printed the wrong label) — clamp the display/quote chain to the build chain
+  // and surface `wrongChain` so the caller asks for a switch instead.
+  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+  const wrongChain = IS_BETA_BUILD && isConnected && chainId !== undefined && chainId !== APP_DEFAULT_CHAIN_ID;
+  const activeChain = IS_BETA_BUILD
+    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
+    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
 
   const dex = dexById("uniswap_v3");
   const dexLive = dexLiveOn(dex, activeChain);
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 8453 ? "Base" : "Base Sepolia";
+  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
   const uniswapVenue = dexDisplayLabel(dex, activeChain);
 
   const { router: routerAddr, quoter, vault, weth, usdc, swapFeeRecipient } = useMemo(() => {
@@ -188,7 +202,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   // USDC is a real routing (hop) asset on Base mainnet + Robinhood, but NOT on Base Sepolia / local fork
   // where "USDC" is the Aave test token with no pools beyond WETH — skip the USDC hop there.
   const usdcIsRoutingAsset = activeChain !== 84532 && activeChain !== 31337;
-  const canQuote = dexLive && pairReady && amountIn > 0n && !!quoter && !!weth && isConnected;
+  const canQuote = dexLive && pairReady && amountIn > 0n && !!quoter && !!weth && isConnected && !wrongChain;
   const quote = useSwapQuote({
     chainId: activeChain,
     quoter,
@@ -216,6 +230,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
 
   const exec: SwapExec | undefined = useMemo(() => {
     if (!routerAddr || !tokenIn || !tokenOut || !address || activeChain === undefined) return undefined;
+    if (wrongChain) return undefined; // never build a swap the wallet's chain can't execute
     if (feeExpected && !feeReady) return undefined; // fee chains need the recipient before executing (never fee-free)
     const route = quote.route;
     if (route === undefined || minOut === undefined || amountIn <= 0n) return undefined;
@@ -268,6 +283,7 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
     feeRecipient,
     feeRecipientPending: feeExpected && !feeReady,
     canQuote,
+    wrongChain,
     exec,
   };
 }
