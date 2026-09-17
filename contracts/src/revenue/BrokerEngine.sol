@@ -142,6 +142,7 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     error BadFuse();
     error AlreadyFused();
     error NothingToDeposit();
+    error TokenIdTooLarge();
 
     // ---------------------------------------------------------------- events
 
@@ -268,7 +269,7 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
             if (totalWeight == 0) {
                 emit RoundSkipped(round, "no active weight");
             } else {
-                bool any;
+                bool any = false;
                 // ETH first, then the registry.
                 uint256 potEth = pendingPot[address(0)];
                 if (potEth != 0) {
@@ -309,42 +310,66 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     /// @notice Move earned credit into the vault, in batches. Callable by anyone.
     /// @dev A burned, absorbed or already-current id is skipped, never a revert. Straight transfers:
     /// each asset is delivered in the asset it was earned in.
+    ///
+    /// ⚠️ **All effects, then all interactions.** Every `owedOf` write happens in the first pass,
+    /// with the shares staged in memory; the loops below it only emit and call the vault. The vault
+    /// is immutable and engine-only, and `nonReentrant` guards the callers, but the ordering is
+    /// what makes that a belt *and* braces — and a state write after an external call is the shape
+    /// the static analysers (correctly) refuse to let through.
     function deliver(uint256[] calldata ids) external nonReentrant {
         uint256 idCount = ids.length;
         if (idCount > MAX_DELIVER_BATCH) revert BatchTooLarge();
         IBrokerVault vault_ = vault;
         if (address(vault_) == address(0)) revert VaultNotSet();
 
-        // State pass: reconcile + crystallise every id once.
+        uint256 assetCount = _assetList.length;
+
+        // ---- EFFECTS: reconcile, crystallise, zero every share, stage it in memory. ----
+        uint256[] memory ethShares = new uint256[](idCount);
+        uint256[][] memory tokenShares = new uint256[][](assetCount);
+        for (uint256 a = 0; a < assetCount; ++a) {
+            tokenShares[a] = new uint256[](idCount);
+        }
+
         for (uint256 i = 0; i < idCount; ++i) {
             uint256 id = ids[i];
             _reconcileOwner(id);
             _crystallise(id);
-        }
 
-        // ETH pass: one value-bearing credit per id.
-        for (uint256 i = 0; i < idCount; ++i) {
-            uint256 id = ids[i];
-            uint256 share = owedOf[id][address(0)];
-            if (share == 0) continue;
-            owedOf[id][address(0)] = 0;
-            emit Delivered(id, address(0), share);
-            vault_.creditEth{ value: share }(id);
-        }
-
-        // ERC-20 pass: credit each id, then one transfer per asset into the vault.
-        uint256 count = _assetList.length;
-        for (uint256 a = 0; a < count; ++a) {
-            address asset = _assetList[a];
-            uint256 moved = 0;
-            for (uint256 i = 0; i < idCount; ++i) {
-                uint256 id = ids[i];
+            uint256 ethShare = owedOf[id][address(0)];
+            if (ethShare != 0) {
+                owedOf[id][address(0)] = 0;
+                ethShares[i] = ethShare;
+            }
+            for (uint256 a = 0; a < assetCount; ++a) {
+                address asset = _assetList[a];
                 uint256 share = owedOf[id][asset];
                 if (share == 0) continue;
                 owedOf[id][asset] = 0;
+                tokenShares[a][i] = share;
+            }
+        }
+
+        // ---- INTERACTIONS: no storage writes below this line. ----
+
+        // ETH: one value-bearing credit per id.
+        for (uint256 i = 0; i < idCount; ++i) {
+            uint256 share = ethShares[i];
+            if (share == 0) continue;
+            emit Delivered(ids[i], address(0), share);
+            vault_.creditEth{ value: share }(ids[i]);
+        }
+
+        // ERC-20: credit each id, then one transfer per asset into the vault.
+        for (uint256 a = 0; a < assetCount; ++a) {
+            address asset = _assetList[a];
+            uint256 moved = 0;
+            for (uint256 i = 0; i < idCount; ++i) {
+                uint256 share = tokenShares[a][i];
+                if (share == 0) continue;
                 moved += share;
-                emit Delivered(id, asset, share);
-                vault_.credit(id, asset, share);
+                emit Delivered(ids[i], asset, share);
+                vault_.credit(ids[i], asset, share);
             }
             if (moved != 0) IERC20(asset).safeTransfer(address(vault_), moved);
         }
@@ -454,9 +479,10 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
             // to the survivor. State only — the vault move and the clone burn come later.
             _dropForFuse(dead, survivor);
 
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint32 mark = uint32(dead);
-            // forge-lint: disable-next-line(unsafe-typecast)
+            // `fusedArt` packs up to two absorbed ids into 16-bit halves, so the mark is bounded
+            // before the narrowing conversion — a cast without a bound is how a high id silently
+            // truncates into another broker's art (and is what the analysers flag).
+            uint32 mark = _artMark(dead);
             if (uint16(marks) == 0) marks |= mark;
             else marks |= mark << 16;
         }
@@ -543,6 +569,14 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
         isActive[tokenId] = false;
         activator[tokenId] = address(0);
         emit ClockedOut(tokenId, who, salvageToPot);
+    }
+
+    /// @dev The `fusedArt` mark for an absorbed id. The mapping packs two ids into 16-bit halves,
+    /// so an id above `type(uint16).max` cannot be represented; reverting is the honest answer (no
+    /// fusion of such a broker) and it keeps the narrowing conversion bounded.
+    function _artMark(uint256 tokenId) private pure returns (uint32) {
+        if (tokenId > type(uint16).max) revert TokenIdTooLarge();
+        return uint32(tokenId);
     }
 
     /// @dev Fusion's absorbed-token drop: same weight removal as `_deactivate`, but the banked
