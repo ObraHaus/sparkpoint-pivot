@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (Trust Center — the swap contracts are disclosed too)
+- **The beta Trust Center now lists the `FeeRouter` (the 0.20% swap fee → splitter) and `BetaQuoterV2` (the read-only quote source) alongside the revenue set.** Both were shipped earlier today; the "Contracts & roles" list now names every contract the swap touches, with the same chain-verifiable address rows as the rest of the beta set.
+
 ### Fixed (beta swap — a working quoter on 4663)
 - **The 4663 swap page could not quote.** The address book's `uniswapV3QuoterV2` (`0x61fF…B21e`) is a **dead 2 KB stub on Robinhood Chain** — it answers nothing for `quoteExactInputSingle` — and the recorded factory was the canonical mainnet stub too, so the manual swap page had no route to show and could not build an execution. The router and pools are fine; only the quote source was not. **`BetaQuoterV2` is now deployed as a UUPS proxy** — `0x41cCbE41E9e480a42a1846695bbaf4577280f448` over impl `0xDE0ce90d79E9C2049538071cC00735D40ece53B6`, owner = the beta deployer; fundless read-only infra, so in-place quote upgrades are permitted — a minimal contract with the **same QuoterV2 interface** that calls the real pool's `swap` and captures the result through the callback's revert (the pool does the exact math, no approximation). Fork-proven: its quotes **equal the FeeRouter's real executions** in both directions. Address book + the 4663 deployment record corrected (real factory `0x1f7d…2EfA`; quoter wired as `uniswapV3QuoterV2`). Found and proven while running the operator smoke.
 

@@ -62,6 +62,26 @@ export const engineAbi = [
     outputs: [{ type: "uint256" }],
   },
   {
+    /** The registered ERC-20 revenue assets (native ETH is implicit at `address(0)`). */
+    type: "function",
+    name: "assets",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address[]" }],
+  },
+  {
+    /**
+     * Book an ERC-20 that was PUSHED to the engine (the splitter's 90% leg arrives as a bare
+     * transfer) above the `accountedAsset` watermark. **Permissionless** — credits holders, not
+     * the caller; reverts `NothingToDeposit` when there is nothing new.
+     */
+    type: "function",
+    name: "sweepAsset",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [],
+  },
+  {
     type: "function",
     name: "isActive",
     stateMutability: "view",

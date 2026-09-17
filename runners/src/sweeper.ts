@@ -1,4 +1,4 @@
-import { curveAbi, royaltySinkAbi, splitterAbi } from "./shared/abis.ts";
+import { curveAbi, engineAbi, royaltySinkAbi, splitterAbi } from "./shared/abis.ts";
 import {
   accountOf,
   assertChain,
@@ -26,6 +26,10 @@ import { forever, logger } from "./shared/log.ts";
  *      escrow and splits in ONE call. `minBuybackTokensOut = 0` because the launch has
  *      `buybackEnabled: false`. The curve comes from the book (`beta.ponsCurve`) or `CURVE_ADDRESS`.
  *   3. **The escrow** — `splitter.pull()` claims whatever the escrow has credited, then splits.
+ *   4. **The engine's ERC-20 intake** — `engine.sweepAsset(asset)` for every registered asset, so
+ *      the splitter's PUSHED 90% leg (a bare transfer) is booked into `pendingPot` automatically
+ *      instead of waiting for a manual call. Permissionless and idempotent (the watermark makes a
+ *      repeat a no-op that simulates to `NothingToDeposit`).
  *
  * ⚠️ **Post-graduation is deferred.** After the curve graduates the fee is charged by Pons' v4 hook
  * in whichever currency each swap paid out, and `sweepPoolFees` is gated so that in steady trading
@@ -78,7 +82,51 @@ async function main(): Promise<void> {
     // 3 · The escrow: claim + split. A no-op `pull` reverts `NothingToDistribute`, which `send`
     // treats as an expected answer.
     await send(wallet, { address: book.contracts.splitter, abi: splitterAbi, functionName: "pull", args: [] });
+
+    // 4 · The engine's ERC-20 intake. The splitter's 90% leg is PUSHED to the engine as a bare
+    // transfer, and the engine only books it into `pendingPot` when anyone calls
+    // `sweepAsset(asset)` — permissionless, no trust in the caller, and it raises the watermark so
+    // nothing books twice. Without this step a token-denominated fee (e.g. the 0.20% fee from a
+    // USDG-in swap) would sit in the engine uncredited until someone called it by hand.
+    await bookPushedAssets(wallet, client, book.contracts.engine);
   }, "sweeper");
+}
+
+/**
+ * Book every registered ERC-20 the engine holds but has not credited (`sweepAsset`). Each call is
+ * simulated first, so an asset with nothing new logs as expected and costs no gas — the loop is
+ * cheap even with a full registry. The pot is read per asset so the log says what actually moved.
+ */
+async function bookPushedAssets(
+  wallet: ReturnType<typeof walletFor>,
+  client: ReturnType<typeof publicClient>,
+  engine: `0x${string}`,
+): Promise<void> {
+  let assets: readonly `0x${string}`[] = [];
+  try {
+    assets = (await client.readContract({
+      address: engine,
+      abi: engineAbi,
+      functionName: "assets",
+    })) as readonly `0x${string}`[];
+  } catch (error) {
+    // An engine without `assets()` (pre-upgrade implementation) is not a fault — nothing to book.
+    log.expected("engine.assets", error);
+    return;
+  }
+
+  for (const asset of assets) {
+    const potBefore = await client
+      .readContract({ address: engine, abi: engineAbi, functionName: "pendingPot", args: [asset] })
+      .catch(() => undefined);
+    await send(wallet, { address: engine, abi: engineAbi, functionName: "sweepAsset", args: [asset] });
+    const potAfter = await client
+      .readContract({ address: engine, abi: engineAbi, functionName: "pendingPot", args: [asset] })
+      .catch(() => undefined);
+    if (potBefore !== undefined && potAfter !== undefined && potAfter > potBefore) {
+      log.info(`booked pushed ${asset}: pot ${potBefore} -> ${potAfter}`);
+    }
+  }
 }
 
 async function readGraduated(client: ReturnType<typeof publicClient>, curve: `0x${string}`) {
