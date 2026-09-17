@@ -55,22 +55,35 @@ router implementable.
   the same register as the vault's fee rows (a real number, from the router's constants — never a
   hardcoded "0.20%" string in the app).
 
-## ⚠️ Open design decision — where the fee is denominated
+## ✅ DECIDED — the fee is denominated in the input token
 
-Both options are implementable; this is the one thing to settle before writing code:
+**Decision (2026-09-17): option 1 — the fee is taken from the input side, in the asset the user
+already pays with.** ETH-in swaps pay the fee in ETH (straight to the splitter's `receive()`, the
+path W.8 proved). USDG-in swaps pay the fee in USDG, which the splitter collects like any ERC-20
+leg via `sweepToken`.
 
-1. **Fee in the input token** (e.g. USDG on a USDG→WETH swap) — simplest, no conversion, AS-IS
-   consistent. It needs the **post-graduation token-leg intake fixed in the engine**: today
-   `RevenueSplitter.sweepToken` PUSHES tokens to the engine, which only books revenue via
-   `receive()` (ETH) or a pull-based `depositAsset` (W.8 pinned this as an open finding). Shipping
-   option 1 therefore includes either an engine intake fix or a splitter leg that pulls.
-2. **Fee converted to ETH inside the router** (second hop on the same pool) — keeps the engine's ETH
-   path, at the cost of extra gas, extra slippage surface on the fee leg, and a second swap that can
-   fail independently.
+Why not option 2 (convert the fee to ETH inside the router): it adds a second swap per trade whose
+gas and slippage are paid by the swapper, and it puts a second independently-failing leg inside the
+one transaction that must settle the user's own swap. The revenue subsystem was built AS-IS — a
+USDG fee is the model working, not a problem to engineer around.
 
-**Recommendation: option 1 + fix the engine intake in the same change.** It is the AS-IS model the
-revenue subsystem was built for, it keeps the fee leg free of slippage, and it closes the open W.8
-finding rather than routing around it.
+**Consequence, and the reason this decision closes the W.8 finding:** a USDG fee reaches the engine
+as a PUSH (the splitter's immutable `sweepToken` transfers it), and the engine currently books only
+pull-deposits. The splitter cannot be changed (immutable, and it is the token's fixed
+`creatorFeeRecipient`), so the fix is engine-side and ships in the same upgrade as the W.8 rewind
+fix:
+
+- `BrokerEngine` gains a permissionless `sweepAsset(address asset)`: it books
+  `IERC20(asset).balanceOf(address(this)) - accountedAsset[asset]` into `pendingPot[asset]` and
+  raises the watermark. `depositAsset` raises the same watermark, and `deliver` lowers it as it
+  sends tokens out — so the engine can never double-book its own balance, and a pushed token is
+  credited without trusting the pusher.
+- The owner must `addAsset(token)` for each fee token (append-only registry, already in place).
+- The W.8 fork pin (`test_fork_postGradTokenLeg_pushIsNotBooked_butPullIs`) flips to assert the
+  booked path in the same change that lands `sweepAsset`.
+
+Implementation order: engine `sweepAsset` + unit tests → the router contract + tests → the 4663
+fork test (real pool: ETH→USDG fee = 0.20% to the splitter, then the W.8 loop) → the app swap route.
 
 ## Test plan
 
