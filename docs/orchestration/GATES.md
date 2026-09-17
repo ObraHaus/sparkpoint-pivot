@@ -3,9 +3,17 @@
 Driver-loop state for the ultracode build (plan **rev 3.3**, artifact `31e5f3f5`).
 Per-wave headless sessions + the watchdog read `wave-state.json`; this file is the human-readable log.
 
+> **Preparing for mainnet? Start at [`mainnet-readiness.md`](./mainnet-readiness.md)** — the single
+> register of everything blocking Gate C, with status and pointers. Nothing blocking is recorded only
+> elsewhere.
+>
+> **Precedence:** when this human-readable log and [`wave-state.json`](./wave-state.json) disagree,
+> **`wave-state.json` wins** — it is the machine state the driver loop writes; this file can drift.
+> (It did: Gate B read WAITING here for ~17 days after wave-state recorded PASSED.)
+
 ## Gates
 - **Gate A — APPROVED (2026-07-13):** git patch approved · Obsidian into Phase 2 (T121–T126) · full working MVP scope · hosting resolved (16c/cap 14).
-- **Gate B — WAITING:** MVP STOP-AND-VALIDATE. Clears when the §09 GO checklist is green **and** the withdraw-always drill (redeem offline + `paused()==true`, funded with Aave-reserve USDC) is physically performed on Base Sepolia.
+- **Gate B — PASSED (2026-07-14):** MVP stop-and-validate. The vault is LIVE on Base Sepolia (`0x15D269…47f2`, guardian = OZ TimelockController `0x0A21A9…d720`), on-chain N1/N2/N5 asserted (`AssertNonCustody` all-OK), and the **withdraw-always drill was physically performed**: deposit 100 USDC → Aave, pause via the timelock, then redeem **100.000001 USDC** (principal + yield) **while `paused() == true`** — tx `0x6190b6cf…07a0`. Production hardening of the guardian (Safe M-of-N + 2-day delay + renounce admin) is deliberately **Gate C**, not B. *(Corrected 2026-07-31: this line read "WAITING" and referenced a "§09 GO checklist" that exists nowhere in the repo, while `wave-state.json` — the authoritative state — has recorded PASSED since 2026-07-14. The stale line caused a real misread; see [`mainnet-readiness.md`](./mainnet-readiness.md) §0.)*
 - **Gate C — WAITING (Phase 3+):** mainnet. Requires the recorded internal security audit + hardening sign-off (T103). **Never autonomous.** Operator decisions this gate depends on are recorded in [`gate-c-decisions.md`](./gate-c-decisions.md) — as of 2026-07-30: **D-GC-01** launch caps ratified as-is, **D-GC-02** the web swap path is explicitly out-of-policy (closing the second R1 medium as *accepted*, not fixed). The **agent-side** hardening prerequisite shipped as feature **023** (PR #114, merged `cdd22a7`): chain-identity assertion, per-chain RPC with no cross-chain fallback, estimator-driven session-key gas, submit-path expiry + exec-mode agreement, and a caller-and-chain-scoped durable idempotency cache. T103 must run against that tree — 019/022/023 all landed AFTER audit R1.
 
 ## Phase-3 deferrals

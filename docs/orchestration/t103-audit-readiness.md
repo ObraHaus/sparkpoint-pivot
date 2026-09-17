@@ -1,5 +1,8 @@
 # T103 — mainnet audit readiness
 
+> Part of the mainnet-readiness set. **Start at [`mainnet-readiness.md`](./mainnet-readiness.md)** for the
+> full picture; this file is the detail behind one part of it.
+
 **Prepared 2026-07-30**, against `develop@cdd22a7` (feature 023 merged, agent redeployed and
 smoke-tested live).
 
