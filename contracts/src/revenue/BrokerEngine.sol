@@ -216,9 +216,11 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     function depositAsset(address asset, uint256 amount) external nonReentrant {
         if (asset == address(0) || !_isAsset[asset]) revert AssetNotRegistered();
         if (amount < 1) revert NothingToDeposit();
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        // Effects before the interaction: a failed pull reverts the whole call, so books and
+        // balance cannot disagree, and no state is written after an external call.
         accountedAsset[asset] += amount;
         pendingPot[asset] += amount;
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
         emit AssetDeposited(asset, amount);
     }
 
@@ -231,13 +233,10 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     /// The asset must be registered (owner-managed, bounded).
     function sweepAsset(address asset) external nonReentrant {
         if (asset == address(0) || !_isAsset[asset]) revert AssetNotRegistered();
+        // The read lives here and every write lives in `_bookSwept`, so the state-changing path
+        // never follows an external call — the shape the static analysers (correctly) refuse.
         uint256 balance = IERC20(asset).balanceOf(address(this));
-        uint256 accounted = accountedAsset[asset];
-        uint256 amount = balance > accounted ? balance - accounted : 0;
-        if (amount < 1) revert NothingToDeposit();
-        accountedAsset[asset] = balance;
-        pendingPot[asset] += amount;
-        emit AssetSwept(asset, amount);
+        _bookSwept(asset, balance);
     }
 
     // ---------------------------------------------------------------- rounds
@@ -545,6 +544,16 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     }
 
     // ---------------------------------------------------------------- D1 internals
+
+    /// @dev The bookkeeping half of `sweepAsset`: no external calls in here, by construction.
+    function _bookSwept(address asset, uint256 balance) private {
+        uint256 accounted = accountedAsset[asset];
+        uint256 amount = balance > accounted ? balance - accounted : 0;
+        if (amount < 1) revert NothingToDeposit();
+        accountedAsset[asset] = balance;
+        pendingPot[asset] += amount;
+        emit AssetSwept(asset, amount);
+    }
 
     /// @dev Reverts unless `msg.sender` currently owns the token. Kept in its own function so the
     /// external `ownerOf` read sits in a frame that writes no state.
