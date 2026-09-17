@@ -12,12 +12,13 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useReadContracts } from "wagmi";
+import { useReadContract, useReadContracts } from "wagmi";
 import { formatUnits, type Address } from "viem";
-import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
+import { brokerEngineAbi, sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
+import { CHAIN_IDS } from "@sparkpoint/shared/chains";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
-import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { APP_DEFAULT_CHAIN_ID, VAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import type { WagmiChainId } from "@/lib/wagmi";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
@@ -29,6 +30,14 @@ import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
 const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
+
+/**
+ * The mainnet-beta build (4663) has no Aave vault, but it DOES have the deployed revenue set
+ * (engine / vault / splitter / sink / token / NFT). Its Trust Center must show those real addresses
+ * rather than the older "nothing is deployed yet" line.
+ */
+const BETA_REVENUE = APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet;
+const BETA_CHAIN = CHAIN_IDS.robinhoodMainnet as WagmiChainId;
 
 /**
  * The closed set of EXTERNAL on-chain venues the agent may route funds into (G5), derived from the
@@ -52,12 +61,12 @@ const GUARANTEES: [IconName, string, string][] = [
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 const usdc0 = (v?: bigint) => (v === undefined ? "…" : `$${Math.round(Number(formatUnits(v, 6))).toLocaleString("en-US")}`);
 
-function AddrRow({ label, addr }: { label: string; addr?: Address }) {
+function AddrRow({ label, addr, chainId = VAULT_CHAIN }: { label: string; addr?: Address; chainId?: WagmiChainId }) {
   return (
     <div className="statusrow">
       <span className="muted">{label}</span>
       {addr ? (
-        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={explorerAddressUrl(VAULT_CHAIN, addr)} target="_blank" rel="noreferrer">
+        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={explorerAddressUrl(chainId, addr)} target="_blank" rel="noreferrer">
           {short(addr)} <Icon name="ext" size={11} />
         </a>
       ) : (
@@ -70,6 +79,18 @@ function AddrRow({ label, addr }: { label: string; addr?: Address }) {
 export default function Page() {
   const router = useRouter();
   const addrs = getAddresses(VAULT_CHAIN);
+  const beta = BETA_REVENUE ? getAddresses(CHAIN_IDS.robinhoodMainnet) : undefined;
+
+  // The engine is a UUPS proxy; its owner is the address that can upgrade it, so the Trust Center
+  // reads it live rather than naming the deployer from memory.
+  const engineOwnerRead = useReadContract({
+    address: beta?.brokerEngine as Address | undefined,
+    abi: brokerEngineAbi,
+    functionName: "owner",
+    chainId: BETA_CHAIN,
+    query: { enabled: BETA_REVENUE && Boolean(beta?.brokerEngine) },
+  });
+  const engineOwner = engineOwnerRead.data as Address | undefined;
   const vault = addrs.vault as Address | undefined;
   const capReg = addrs.capRegistry as Address | undefined;
   const govSafe = addrs.governanceSafe as Address | undefined;
@@ -198,9 +219,44 @@ export default function Page() {
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Contracts &amp; roles</span>
-              <span className="lbl">{vaultUnavailable ? "none deployed yet" : "on-chain · verifiable"}</span>
+              <span className="lbl">
+                {BETA_REVENUE
+                  ? "beta revenue set · verifiable"
+                  : vaultUnavailable
+                    ? "none deployed yet"
+                    : "on-chain · verifiable"}
+              </span>
             </div>
-            {vaultUnavailable ? (
+            {BETA_REVENUE && beta ? (
+              <>
+                <AddrRow chainId={BETA_CHAIN} label="Utility token (SPARKYTEST)" addr={beta.utilityToken as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Sparky Broker - Test (NFT)" addr={beta.brokerNft as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="BrokerEngine (UUPS proxy · clock in / promote / fuse)" addr={beta.brokerEngine as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="BrokerVault (immutable · holds what brokers earn)" addr={beta.brokerVault as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="RevenueSplitter (immutable · 90% holders / 10% treasury)" addr={beta.revenueSplitter as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="RoyaltySink (immutable · marketplace royalties)" addr={beta.royaltySink as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Revenue treasury (the 10% share)" addr={beta.revenueTreasury as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Engine owner (can upgrade the engine)" addr={engineOwner} />
+                <AddrRow chainId={BETA_CHAIN} label="Pons curve (trading fees accrue here)" addr={beta.ponsCurve as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Pons fee escrow" addr={beta.ponsFeeEscrow as Address | undefined} />
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The <b>BrokerEngine</b> is a UUPS proxy: the owner above can
+                  upgrade its implementation. The <b>BrokerVault</b> that holds the earnings has <b>no owner, no
+                  upgrade path, no fee and no rescue function</b> — the only way value leaves it is a broker’s owner
+                  withdrawing that broker’s balance.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> Every action on the set is <b>user-signed or permissionless</b>{" "}
+                  (clock in / promote / fuse / withdraw are yours; settle / deliver / sweeps may be called by anyone).
+                  No agent path can reach any of these contracts — the Robinhood Chain policy allowlist is empty.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> Revenue arrives as ETH and is delivered as ETH — the splitter and
+                  engine hold no swap route and no payout asset. The AI vault, the utility token’s Premium surface
+                  and the production broker collection are later steps.
+                </div>
+              </>
+            ) : vaultUnavailable ? (
               <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
                 <Icon name="info" size={13} /> No SparkPoint contracts are deployed on Robinhood Chain yet — the
                 utility token, the AI vault, the Sparky Broker and the reward engine all arrive in a later step.

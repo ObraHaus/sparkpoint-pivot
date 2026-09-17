@@ -56,12 +56,15 @@ degraded), not "is the PID alive".
 | `DEPLOYMENT_PATH` | `/app/deployments/addresses.json` (where the entrypoint writes the book) |
 | `DEPLOYMENT_JSON_B64` | base64 of `contracts/deployments/4663/addresses.json` |
 | `KEEPER_PRIVATE_KEY` / `SWEEPER_PRIVATE_KEY` | the role's key (secret) |
-| gas floors | keeper/sweeper `5000000000000000` wei (warn only) |
+| gas floors | keeper/sweeper `1000000000000000` wei = 0.001 ETH (warn only) |
 | `SCAN_MAX_ID` | `5555` |
 | `HEARTBEAT_DIR` | `/tmp/sparky-beta-runners` |
 
 ## Caveats worth knowing
 
+- **The round is 86,400 s (daily).** `setRoundSeconds(86400)` landed with the engine upgrade on
+  2026-09-16; the keeper's 60 s tick only checks the boundary, so it settles within a minute of the
+  daily close. Nothing in this directory assumes a round length — the engine is asked.
 - **Never read `block.number`.** On this chain the height a contract sees and the height the RPC
   serves are ~89M apart and a lookup silently returns an unrelated block. Every boundary keys on
   `block.timestamp`.

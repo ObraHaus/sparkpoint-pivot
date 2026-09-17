@@ -177,6 +177,68 @@ contract BrokerEngineTest is Test {
         engine.fuse(_ids2(1, 2));
     }
 
+    // ---------------------------------------------------------------- pushed ERC-20 intake (W.7a)
+
+    /// @notice The splitter's `sweepToken` PUSHES the holder leg; `sweepAsset` books exactly the
+    /// balance above the accounted watermark, exactly once, and the tokens reach the broker.
+    function test_sweepAsset_booksPushedTokensExactlyOnce() public {
+        _clockIn(alice, 1);
+        engine.addAsset(address(token));
+
+        token.mint(address(engine), 900);
+        assertEq(engine.pendingPot(address(token)), 0, "a push alone must not be booked");
+
+        engine.sweepAsset(address(token));
+        assertEq(engine.pendingPot(address(token)), 900);
+        assertEq(engine.accountedAsset(address(token)), 900);
+
+        // A second sweep has nothing above the watermark — never a double-book.
+        vm.expectRevert(BrokerEngine.NothingToDeposit.selector);
+        engine.sweepAsset(address(token));
+
+        vm.warp(block.timestamp + ROUND);
+        engine.settle();
+        engine.deliver(_ids1(1));
+
+        assertEq(vault.balanceOf(1, address(token)), 900);
+        assertEq(engine.accountedAsset(address(token)), 0, "the watermark follows the tokens out");
+        assertEq(token.balanceOf(address(vault)), 900);
+    }
+
+    function test_sweepAsset_afterADelivery_onlyTheNewPushIsBooked() public {
+        _clockIn(alice, 1);
+        engine.addAsset(address(token));
+        token.mint(address(engine), 1_000);
+        engine.sweepAsset(address(token));
+
+        vm.warp(block.timestamp + ROUND);
+        engine.settle();
+        engine.deliver(_ids1(1));
+        assertEq(engine.accountedAsset(address(token)), 0);
+
+        // The next push books only itself — the delivered tokens are not re-counted.
+        token.mint(address(engine), 400);
+        engine.sweepAsset(address(token));
+        assertEq(engine.pendingPot(address(token)), 400);
+    }
+
+    function test_sweepAsset_rejectsZeroAndUnregistered() public {
+        vm.expectRevert(BrokerEngine.AssetNotRegistered.selector);
+        engine.sweepAsset(address(token)); // not registered yet
+        vm.expectRevert(BrokerEngine.AssetNotRegistered.selector);
+        engine.sweepAsset(address(0));
+    }
+
+    function test_rescueToken_lowersTheWatermark() public {
+        engine.addAsset(address(token));
+        token.mint(address(engine), 100);
+        engine.sweepAsset(address(token));
+        assertEq(engine.accountedAsset(address(token)), 100);
+
+        engine.rescueToken(address(token), address(0xBEEF), 100);
+        assertEq(engine.accountedAsset(address(token)), 0, "a rescue must not strand the watermark");
+    }
+
     // ---------------------------------------------------------------- revenue, AS-IS
 
     function test_ethRevenue_deliveredAsEth() public {
@@ -385,5 +447,43 @@ contract BrokerEngineTest is Test {
         assertEq(engine.currentRound(), 1);
         engine.settle();
         assertEq(engine.settledRound(), 1);
+    }
+
+    /// @notice ⚠️ Regression: a promotion queued INSIDE the rewind window must not be retroactive.
+    ///
+    /// After a round-length increase `currentRound() < settledRound`, so `roundInProgress()` names
+    /// a round that is ALREADY CLOSED. Using it as the promotion boundary made `_crystallise` treat
+    /// the increase as effective from that past round and pay the entire accumulator at the queued
+    /// weight — while `settle()` had divided the pot by the old `totalWeight`. 1 ether of revenue
+    /// became 2.5 ether owed, and `deliver` reverted `OutOfFunds` (found by the 4663 fork proof).
+    function test_setRoundSeconds_promotionInTheRewindWindowIsNotRetroactive() public {
+        _clockIn(alice, 1);
+        vm.warp(block.timestamp + ROUND * 2);
+        engine.settle();
+        assertEq(engine.settledRound(), 2);
+
+        engine.setRoundSeconds(1 days); // the grid rewinds below settledRound
+        assertLt(engine.currentRound(), engine.settledRound(), "not in the rewind window");
+
+        _clockIn(alice, 2);
+        vm.prank(alice);
+        engine.fuse(_ids2(1, 2)); // survivor 1: weight 100, queued 250
+        assertEq(engine.deriveWeight(1), 250);
+
+        // Revenue arrives and the next settle spends it at the OLD weight (100).
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(engine).call{ value: 1 ether }("");
+        assertTrue(ok);
+
+        uint256 boundary = engine.settledRound() + 1;
+        vm.warp(engine.START() + boundary * engine.ROUND() + 1);
+        engine.settle();
+        assertEq(engine.settledRound(), boundary);
+
+        // The pot is paid at the weight that earned it — solvent, and the increase stands for later.
+        engine.deliver(_ids1(1));
+        assertEq(vault.balanceOf(1, address(0)), 1 ether, "the increase was paid retroactively");
+        assertEq(engine.weightOf(1), 250, "the queued weight resolves once its boundary closes");
+        assertEq(address(engine).balance, 0, "the engine must not owe more than it holds");
     }
 }

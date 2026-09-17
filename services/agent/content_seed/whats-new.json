@@ -2,6 +2,22 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "broker-page-live-on-robinhood-chain",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Your Sparky Brokers are now in the app \u2014 clock one in to put it to work",
+      "body": "On Robinhood Chain, the Sparky Broker page is no longer a placeholder. It shows the brokers your wallet holds and what each one is doing \u2014 and it lets you put one to work.\n\nClocking a broker in burns a small amount of SPARKYTEST and starts its share of trading revenue. You can also promote a broker to a higher rank, or fuse two or three into one: the first survives, the others are burned for good, and what they earned moves to the survivor.\n\nThis is the rehearsal set \u2014 the collection you see here is a test drop and the token has no value. The production collection arrives later.",
+      "published_at": "2026-09-16T23:08:00Z"
+    },
+    {
+      "slug": "revenue-page-shows-the-real-route",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Revenue: see exactly where broker income comes from \u2014 and withdraw yours",
+      "body": "The revenue page now shows the real path money takes on Robinhood Chain: trading fees are collected by a splitter contract (90% to the brokers' engine, 10% to the treasury), booked to clocked-in brokers each day, and moved into an on-chain vault under each broker.\n\nIf your brokers have earned anything, you can withdraw it right there \u2014 the vault pays the broker's owner and nobody else. It's ETH in, ETH out: no swaps, no conversion, and no projected or annualised figures anywhere.",
+      "published_at": "2026-09-16T23:04:00Z"
+    },
+    {
       "slug": "swap-correct-network-label-and-switch-prompt",
       "type": "changelog",
       "tag": "Fixed",
