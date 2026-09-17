@@ -225,6 +225,11 @@ contract FeeRouter is ReentrancyGuard, Initializable, UUPSUpgradeable {
         // ---- swap leg. No storage is written after this point. ----
         if (fromNative) {
             // ETH-in wraps `netIn` to WETH here, so the swap is a plain WETH→token trade.
+            // The destination is the immutable, constructor-pinned WETH9 — never caller-controlled —
+            // and the value is the caller's own `netIn` from `msg.value`; the swap is `nonReentrant`
+            // and writes no storage at all. Slither's taint analysis cannot see through the
+            // immutable, so it reads this as an arbitrary send: a documented false positive.
+            // slither-disable-next-line arbitrary-send-eth
             IWETH9(address(weth)).deposit{ value: netIn }();
             IERC20(address(weth)).forceApprove(address(swapRouter), netIn);
             amountOut = swapRouter.exactInputSingle(
