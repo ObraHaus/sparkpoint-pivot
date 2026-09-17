@@ -375,6 +375,25 @@ export const brokerEngineAbi = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "accountedAsset",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "tokenId",
         "type": "uint256"
@@ -1079,6 +1098,19 @@ export const brokerEngineAbi = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      }
+    ],
+    "name": "sweepAsset",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256[]",
         "name": "ids",
         "type": "uint256[]"
@@ -1240,6 +1272,25 @@ export const brokerEngineAbi = [
       }
     ],
     "name": "AssetDeposited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "asset",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "AssetSwept",
     "type": "event"
   },
   {
@@ -1783,6 +1834,11 @@ export const brokerEngineAbi = [
   {
     "inputs": [],
     "name": "TokenAlreadySet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenIdTooLarge",
     "type": "error"
   },
   {
