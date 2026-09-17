@@ -234,6 +234,8 @@ export default function Page() {
                 <AddrRow chainId={BETA_CHAIN} label="BrokerEngine (UUPS proxy · clock in / promote / fuse)" addr={beta.brokerEngine as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="BrokerVault (immutable · holds what brokers earn)" addr={beta.brokerVault as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="RevenueSplitter (immutable · 90% holders / 10% treasury)" addr={beta.revenueSplitter as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="FeeRouter (UUPS · 0.20% swap fee → splitter)" addr={beta.feeRouter as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Swap quoter BetaQuoterV2 (read-only swap quotes)" addr={beta.uniswapV3QuoterV2 as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="RoyaltySink (immutable · marketplace royalties)" addr={beta.royaltySink as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="Revenue treasury (the 10% share)" addr={beta.revenueTreasury as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="Engine owner (can upgrade the engine)" addr={engineOwner} />
