@@ -6,7 +6,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Swaps on Robinhood Chain can quote again \u2014 the preview was reading a dead address",
-      "body": "The swap page's price preview on Robinhood Chain was asking a contract that has no answers \u2014 a leftover placeholder from the network's setup. Swaps themselves were fine; the app simply couldn't show you a quote, so the button had nothing to build.\n\nThe preview now asks the router that actually performs the swap, by simulating the exact trade you are about to make. That means the number you see already accounts for the 0.20% fee, the wrapping and unwrapping, and the real pool \u2014 because it is the same call.\n\nVerified end to end with a real wallet: ETH to USDG and USDG back to ETH, with the fee landing in the revenue splitter down to the last wei.",
+      "body": "The swap page's price preview on Robinhood Chain was asking a contract that has no answers \u2014 a leftover placeholder from the network's setup. Swaps themselves were fine; the app simply couldn't show you a quote, so the button had nothing to build.\n\nThere is now a small, read-only quote contract for this network: it asks the real pool to work out the exact trade and immediately undoes it, so the number you see is the pool's own math \u2014 including the 0.20% fee. It holds no funds and cannot move anything.\n\nVerified end to end with a real wallet: ETH to USDG and USDG back to ETH, with the fee landing in the revenue splitter down to the last wei.",
       "published_at": "2026-09-17T07:09:00Z"
     },
     {
