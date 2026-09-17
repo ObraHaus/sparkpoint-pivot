@@ -149,6 +149,7 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     event RevenueReceived(address indexed from, address indexed asset, uint256 amount);
     event AssetAdded(address indexed asset);
     event AssetDeposited(address indexed asset, uint256 amount);
+    event AssetSwept(address indexed asset, uint256 amount);
     event VaultSet(address indexed vault);
     event OwnershipRenounced();
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -216,8 +217,27 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
         if (asset == address(0) || !_isAsset[asset]) revert AssetNotRegistered();
         if (amount < 1) revert NothingToDeposit();
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        accountedAsset[asset] += amount;
         pendingPot[asset] += amount;
         emit AssetDeposited(asset, amount);
+    }
+
+    /// @notice Book ERC-20 revenue that was PUSHED to this contract. **Anyone may call.**
+    /// @dev The push path exists because the immutable `RevenueSplitter.sweepToken` transfers the
+    /// holder leg straight to the engine; the engine's `receive()` only covers ETH, and
+    /// `depositAsset` pulls from `msg.sender`, so without this a pushed token would sit here
+    /// uncredited (found by the 4663 fork proof). Credits the balance above the accounted
+    /// watermark, so it can never book the same tokens twice and needs no trust in the caller.
+    /// The asset must be registered (owner-managed, bounded).
+    function sweepAsset(address asset) external nonReentrant {
+        if (asset == address(0) || !_isAsset[asset]) revert AssetNotRegistered();
+        uint256 balance = IERC20(asset).balanceOf(address(this));
+        uint256 accounted = accountedAsset[asset];
+        uint256 amount = balance > accounted ? balance - accounted : 0;
+        if (amount < 1) revert NothingToDeposit();
+        accountedAsset[asset] = balance;
+        pendingPot[asset] += amount;
+        emit AssetSwept(asset, amount);
     }
 
     // ---------------------------------------------------------------- rounds
@@ -327,6 +347,7 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
         // ---- EFFECTS: reconcile, crystallise, zero every share, stage it in memory. ----
         uint256[] memory ethShares = new uint256[](idCount);
         uint256[][] memory tokenShares = new uint256[][](assetCount);
+        uint256[] memory movedByAsset = new uint256[](assetCount);
         for (uint256 a = 0; a < assetCount; ++a) {
             tokenShares[a] = new uint256[](idCount);
         }
@@ -347,7 +368,17 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
                 if (share == 0) continue;
                 owedOf[id][asset] = 0;
                 tokenShares[a][i] = share;
+                movedByAsset[a] += share;
             }
+        }
+
+        // The tokens being delivered leave the engine's books with them; lowered HERE, before any
+        // external call, so the watermark stays exact without a post-call write.
+        for (uint256 a = 0; a < assetCount; ++a) {
+            uint256 moved = movedByAsset[a];
+            if (moved == 0) continue;
+            address asset = _assetList[a];
+            accountedAsset[asset] -= Math.min(accountedAsset[asset], moved);
         }
 
         // ---- INTERACTIONS: no storage writes below this line. ----
@@ -362,16 +393,16 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
 
         // ERC-20: credit each id, then one transfer per asset into the vault.
         for (uint256 a = 0; a < assetCount; ++a) {
+            uint256 moved = movedByAsset[a];
+            if (moved == 0) continue;
             address asset = _assetList[a];
-            uint256 moved = 0;
             for (uint256 i = 0; i < idCount; ++i) {
                 uint256 share = tokenShares[a][i];
                 if (share == 0) continue;
-                moved += share;
                 emit Delivered(ids[i], asset, share);
                 vault_.credit(ids[i], asset, share);
             }
-            if (moved != 0) IERC20(asset).safeTransfer(address(vault_), moved);
+            IERC20(asset).safeTransfer(address(vault_), moved);
         }
     }
 
@@ -850,11 +881,22 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
 
     function rescueToken(address token_, address to, uint256 amount) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
+        // Rescuing tokens lowers the watermark with them, or the engine would sit at
+        // `accounted > balance` and silently stop booking future pushes.
+        accountedAsset[token_] -= Math.min(accountedAsset[token_], amount);
         IERC20(token_).safeTransfer(to, amount);
     }
 
     // ---------------------------------------------------------------- storage gap
 
+    /// @dev ERC-20 that has ENTERED the engine's books — `depositAsset` (pull) and `sweepAsset`
+    /// (push) raise it, `deliver` and `rescueToken` lower it. `sweepAsset` books
+    /// `balanceOf(this) - accountedAsset[asset]`, so a pushed token is credited exactly once and
+    /// the engine can never book its own balance twice. Appended AFTER every pre-existing variable
+    /// (the proxy's layout is preserved by taking the slot from `__gap`).
+    mapping(address asset => uint256 amount) public accountedAsset;
+
     /// @dev Reserved so new variables are appended, never inserted.
-    uint256[50] private __gap;
+    ///      `accountedAsset` occupies one slot of the original gap.
+    uint256[49] private __gap;
 }

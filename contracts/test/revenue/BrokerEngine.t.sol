@@ -177,6 +177,68 @@ contract BrokerEngineTest is Test {
         engine.fuse(_ids2(1, 2));
     }
 
+    // ---------------------------------------------------------------- pushed ERC-20 intake (W.7a)
+
+    /// @notice The splitter's `sweepToken` PUSHES the holder leg; `sweepAsset` books exactly the
+    /// balance above the accounted watermark, exactly once, and the tokens reach the broker.
+    function test_sweepAsset_booksPushedTokensExactlyOnce() public {
+        _clockIn(alice, 1);
+        engine.addAsset(address(token));
+
+        token.mint(address(engine), 900);
+        assertEq(engine.pendingPot(address(token)), 0, "a push alone must not be booked");
+
+        engine.sweepAsset(address(token));
+        assertEq(engine.pendingPot(address(token)), 900);
+        assertEq(engine.accountedAsset(address(token)), 900);
+
+        // A second sweep has nothing above the watermark — never a double-book.
+        vm.expectRevert(BrokerEngine.NothingToDeposit.selector);
+        engine.sweepAsset(address(token));
+
+        vm.warp(block.timestamp + ROUND);
+        engine.settle();
+        engine.deliver(_ids1(1));
+
+        assertEq(vault.balanceOf(1, address(token)), 900);
+        assertEq(engine.accountedAsset(address(token)), 0, "the watermark follows the tokens out");
+        assertEq(token.balanceOf(address(vault)), 900);
+    }
+
+    function test_sweepAsset_afterADelivery_onlyTheNewPushIsBooked() public {
+        _clockIn(alice, 1);
+        engine.addAsset(address(token));
+        token.mint(address(engine), 1_000);
+        engine.sweepAsset(address(token));
+
+        vm.warp(block.timestamp + ROUND);
+        engine.settle();
+        engine.deliver(_ids1(1));
+        assertEq(engine.accountedAsset(address(token)), 0);
+
+        // The next push books only itself — the delivered tokens are not re-counted.
+        token.mint(address(engine), 400);
+        engine.sweepAsset(address(token));
+        assertEq(engine.pendingPot(address(token)), 400);
+    }
+
+    function test_sweepAsset_rejectsZeroAndUnregistered() public {
+        vm.expectRevert(BrokerEngine.AssetNotRegistered.selector);
+        engine.sweepAsset(address(token)); // not registered yet
+        vm.expectRevert(BrokerEngine.AssetNotRegistered.selector);
+        engine.sweepAsset(address(0));
+    }
+
+    function test_rescueToken_lowersTheWatermark() public {
+        engine.addAsset(address(token));
+        token.mint(address(engine), 100);
+        engine.sweepAsset(address(token));
+        assertEq(engine.accountedAsset(address(token)), 100);
+
+        engine.rescueToken(address(token), address(0xBEEF), 100);
+        assertEq(engine.accountedAsset(address(token)), 0, "a rescue must not strand the watermark");
+    }
+
     // ---------------------------------------------------------------- revenue, AS-IS
 
     function test_ethRevenue_deliveredAsEth() public {

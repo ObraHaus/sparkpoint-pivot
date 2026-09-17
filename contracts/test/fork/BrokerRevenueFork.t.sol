@@ -257,8 +257,11 @@ contract BrokerRevenueForkTest is Test {
     /// `receive()` (ETH) or a pull-based `depositAsset` (ERC-20). A pushed ERC-20 is NOT booked into
     /// `pendingPot`, so it would sit in the engine and never reach holders.
     ///
-    /// This test exists so the gap is a fact with a failing-if-fixed pin, not an argument. Fixing it
-    /// (engine intake or a splitter that pulls) means updating this test in the same change.
+    /// This test exists so the gap is a fact with a failing-if-fixed pin, not an argument.
+    /// ✅ The fixed SOURCE closes it: `BrokerEngine.sweepAsset(asset)` books the balance above the
+    /// `accountedAsset` watermark (raised by `depositAsset`/`sweepAsset`, lowered by
+    /// `deliver`/`rescueToken`). This pin keeps asserting the DEPLOYED engine's behaviour until the
+    /// owner upgrades the proxy to the fixed implementation.
     function test_fork_postGradTokenLeg_pushIsNotBooked_butPullIs() public {
         if (!forkReady) {
             vm.skip(true);
