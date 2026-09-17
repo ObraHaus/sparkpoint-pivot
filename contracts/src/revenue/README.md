@@ -33,8 +33,11 @@ immutable splitter destination, and owner-gated upgrade/rescue. Full contracts s
 
 `test/fork/BrokerRevenueFork.t.sol` runs the full loop on a **pinned 4663 fork** against the deployed
 set — real Pons curve, real token, real splitter, real engine and vault: buy → clock in → fuse →
-sweep → settle → deliver → withdraw. Only the collection's ownership oracle is stubbed (the OpenSea
-drop has minted nothing at the pinned block; the test asserts that premise before etching).
+sweep → settle → deliver → withdraw. The W.7 fee-router proof (4th test) adds a user-signed ETH→USDG
+swap through `FeeRouter` on the **real WETH/USDG pool**: the splitter's ETH grows by exactly 0.20%,
+`distribute()` pushes the 90% holder leg into `pendingPot`, and the same settle/deliver/withdraw loop
+pays it out. Only the collection's ownership oracle is stubbed (the OpenSea drop has minted nothing
+at the pinned block; the test asserts that premise before etching).
 
 ```bash
 export ROBINHOOD_MAINNET_RPC=<archive endpoint for 4663>

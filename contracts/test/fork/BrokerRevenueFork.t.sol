@@ -3,9 +3,11 @@ pragma solidity 0.8.24;
 
 import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import { BrokerEngine } from "../../src/revenue/BrokerEngine.sol";
 import { BrokerVault } from "../../src/revenue/BrokerVault.sol";
+import { FeeRouter } from "../../src/revenue/FeeRouter.sol";
 import { RevenueSplitter } from "../../src/revenue/RevenueSplitter.sol";
 import { IPonsCurve } from "../../src/revenue/interfaces/IPons.sol";
 
@@ -14,10 +16,13 @@ import { IPonsCurve } from "../../src/revenue/interfaces/IPons.sol";
 ///
 /// buy SPARKYTEST on the real Pons curve → clock in / fuse real brokers → sweep the real curve fees
 /// through the real splitter → settle a real (daily) round → deliver into the real BrokerVault →
-/// withdraw real ETH. The only stubbed thing is the **collection's ownership oracle**: the OpenSea
-/// drop has minted nothing at the pinned block, so a minimal ERC-721 is etched at the real NFT
-/// address (see `BrokerNftStub`), and the test asserts that premise first — the moment the real drop
-/// mints, the assertion fails and this stub must be re-evaluated.
+/// withdraw real ETH. The W.7 fee-router proof extends the same run: a user-signed ETH→USDG swap
+/// through `FeeRouter` on the REAL WETH/USDG pool leaves exactly 0.20% in the splitter, and
+/// `distribute()` carries that fee into `pendingPot` and through the loop. The only stubbed thing is
+/// the **collection's ownership oracle**: the OpenSea drop has minted nothing at the pinned block,
+/// so a minimal ERC-721 is etched at the real NFT address (see `BrokerNftStub`), and the test asserts
+/// that premise first — the moment the real drop mints, the assertion fails and this stub must be
+/// re-evaluated.
 ///
 /// ⚠️ **The fork must use an ARCHIVE endpoint.** The public RPC prunes state after ~3h and anvil
 /// fetches state lazily, so a stale pin fails as an unrelated revert instead of an expired pin.
@@ -40,10 +45,17 @@ contract BrokerRevenueForkTest is Test {
     address internal constant NFT = 0x706b4b449d9b007B7fbD29866122e758d9903D3F; // Sparky Broker - Test
     address payable internal constant ENGINE = payable(0x08a578D2Fa194E24786f5644AFabC578f2daDB43); // proxy
     address internal constant VAULT = 0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455;
-    address payable internal constant SPLITTER = payable(0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1);
+    address payable internal constant SPLITTER =
+        payable(0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1);
     address internal constant CURVE = 0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53;
     address internal constant TREASURY = 0x376293DDb027555aB7F483c00e1D61b2a7757dE8;
     address internal constant ENGINE_OWNER = 0x376293DDb027555aB7F483c00e1D61b2a7757dE8;
+
+    // The real 4663 swap venue the fee-router sits in front of (W.7c).
+    address internal constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+    address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168; // 6 dp
+    address internal constant SWAP_ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
+    uint24 internal constant POOL_FEE = 100; // the live WETH/USDG tier
 
     address internal constant ZERO = address(0);
 
@@ -55,13 +67,20 @@ contract BrokerRevenueForkTest is Test {
         vm.createSelectFork(rpc, FORK_BLOCK);
 
         assertEq(block.chainid, ROBINHOOD_MAINNET, "not forked onto Robinhood Chain 4663");
-        assertGt(ENGINE.code.length, 0, "no engine code at the pinned block - wrong chain or non-archive RPC");
+        assertGt(
+            ENGINE.code.length,
+            0,
+            "no engine code at the pinned block - wrong chain or non-archive RPC"
+        );
 
         // The premise that makes the stub legitimate: the real drop has minted nothing.
-        (bool ok, bytes memory ret) =
-            NFT.staticcall(abi.encodeWithSignature("totalSupply()"));
-        assertTrue(ok, "the collection has no totalSupply() - re-check the stub against the real drop");
-        assertEq(abi.decode(ret, (uint256)), 0, "the drop has MINTED - stop stubbing, use real tokens");
+        (bool ok, bytes memory ret) = NFT.staticcall(abi.encodeWithSignature("totalSupply()"));
+        assertTrue(
+            ok, "the collection has no totalSupply() - re-check the stub against the real drop"
+        );
+        assertEq(
+            abi.decode(ret, (uint256)), 0, "the drop has MINTED - stop stubbing, use real tokens"
+        );
 
         // Etch the ownership oracle at the real address, with ERC721A-like revert-on-missing
         // semantics (the engine's `_reconcileOwner` try/catch depends on that distinction).
@@ -85,7 +104,11 @@ contract BrokerRevenueForkTest is Test {
         (uint256 toHolders, uint256 toTreasury) = _sweepCurveFees();
         assertGt(toHolders, 0, "the buy accrued no sweeping fee - check the curve's fee path");
         // The splitter keeps nothing: 90% to the engine, 10% to the treasury, truncated to the wei.
-        assertEq(toHolders, (toHolders + toTreasury) - ((toHolders + toTreasury) * 1000) / 10_000, "not 90/10");
+        assertEq(
+            toHolders,
+            (toHolders + toTreasury) - ((toHolders + toTreasury) * 1000) / 10_000,
+            "not 90/10"
+        );
         uint256 banked = _settleRoundAndDeliver();
         assertGt(banked, 0, "nothing reached the vault");
 
@@ -102,6 +125,106 @@ contract BrokerRevenueForkTest is Test {
         BrokerVault(VAULT).withdraw(2, eth);
         assertEq(holder.balance, holderBefore + banked, "the holder did not receive the balance");
         assertEq(BrokerVault(VAULT).balanceOf(2, ZERO), 0, "the vault still owes this broker");
+    }
+
+    // ---------------------------------------------------------------- the fee-router (W.7)
+
+    /// @notice The 0.20% swap fee on the REAL WETH/USDG pool: a user-signed ETH→USDG swap through
+    /// `FeeRouter` leaves exactly 0.20% of the input in the splitter as ETH (at `receive()`), then
+    /// `distribute()` pushes the 90% holder leg into the engine's `pendingPot` — and the W.8 loop
+    /// (settle → deliver → withdraw) pays it through to the broker holder.
+    function test_fork_feeRouter_ethInFeeReachesTheSplitterAndTheLoop() public {
+        if (!forkReady) {
+            vm.skip(true);
+            return;
+        }
+
+        address holder = _buyClockInAndFuseAfterTheRewind();
+        FeeRouter router = _deployFeeRouter();
+        assertEq(router.splitter(), SPLITTER, "the fee destination must be the real splitter");
+        assertEq(router.feeBps(), 20, "the fee must be 0.20%");
+
+        _swapEthToUsdgOnTheRealPool(router, holder);
+        _distributeTheFee();
+
+        // The existing W.8 loop pays it through: settle → deliver → withdraw.
+        uint256 banked = _settleRoundAndDeliver();
+        assertGt(banked, 0, "nothing reached the vault");
+
+        address[] memory eth = new address[](1);
+        eth[0] = ZERO;
+        uint256 holderBefore = holder.balance;
+        vm.prank(holder);
+        BrokerVault(VAULT).withdraw(2, eth);
+        assertEq(holder.balance, holderBefore + banked, "the holder did not receive the fee");
+        assertEq(BrokerVault(VAULT).balanceOf(2, ZERO), 0, "the vault still owes this broker");
+    }
+
+    /// @dev A user-signed ETH→USDG swap through the fee-router against the REAL pool: output to the
+    /// holder, exactly 0.20% of the input left in the splitter as ETH, nothing retained by the router.
+    function _swapEthToUsdgOnTheRealPool(FeeRouter router, address holder) internal {
+        uint256 amountIn = 0.01 ether;
+        uint256 fee = (amountIn * router.feeBps()) / 10_000;
+        uint256 splitterBefore = SPLITTER.balance;
+        uint256 usdgBefore = IERC20(USDG).balanceOf(holder);
+
+        vm.prank(holder);
+        uint256 usdgOut = router.swapExactInputSingle{ value: amountIn }(
+            FeeRouter.ExactInputSingleParams({
+                tokenIn: WETH,
+                tokenOut: USDG,
+                fee: POOL_FEE,
+                recipient: holder,
+                amountIn: amountIn,
+                amountOutMinimum: 0,
+                deadline: block.timestamp
+            })
+        );
+
+        assertGt(usdgOut, 0, "the real WETH/USDG pool returned nothing - re-pin the fork");
+        assertEq(
+            IERC20(USDG).balanceOf(holder),
+            usdgBefore + usdgOut,
+            "the recipient received the output"
+        );
+        assertEq(
+            SPLITTER.balance, splitterBefore + fee, "the splitter's ETH must grow by exactly 0.20%"
+        );
+        assertEq(address(router).balance, 0, "the router must keep no native value");
+        assertEq(IERC20(WETH).balanceOf(address(router)), 0, "the router must keep no WETH");
+    }
+
+    /// @dev The fee waits in the splitter until anyone distributes it: 90% to the engine (whose
+    /// receive() books pendingPot), 10% to the treasury. Deltas, never absolutes — the pinned block
+    /// may already carry revenue.
+    function _distributeTheFee() internal {
+        uint256 engineBefore = ENGINE.balance;
+        uint256 treasuryBefore = TREASURY.balance;
+        uint256 potBefore = BrokerEngine(ENGINE).pendingPot(ZERO);
+        uint256 toSplit = SPLITTER.balance;
+
+        RevenueSplitter(SPLITTER).distribute(); // permissionless
+
+        uint256 toHolders = ENGINE.balance - engineBefore;
+        uint256 toTreasury = TREASURY.balance - treasuryBefore;
+        assertEq(toHolders + toTreasury, toSplit, "the splitter must keep nothing");
+        assertEq(toHolders, toSplit - (toSplit * 1000) / 10_000, "not 90/10");
+        assertEq(
+            BrokerEngine(ENGINE).pendingPot(ZERO),
+            potBefore + toHolders,
+            "the fee leg did not reach pendingPot"
+        );
+    }
+
+    /// @dev Deploy the fee-router against the real 4663 venue: the real WETH, the real SwapRouter02,
+    /// and the real splitter as the immutable fee destination.
+    function _deployFeeRouter() internal returns (FeeRouter) {
+        FeeRouter impl = new FeeRouter(WETH, SWAP_ROUTER, SPLITTER, 100);
+        return FeeRouter(
+            payable(address(
+                    new ERC1967Proxy(address(impl), abi.encodeCall(FeeRouter.initialize, ()))
+                ))
+        );
     }
 
     /// @dev Steps 1-3, in the corrected order: buy real tokens, own two stub brokers, clock both
@@ -168,14 +291,19 @@ contract BrokerRevenueForkTest is Test {
         RevenueSplitter(SPLITTER).sweepCurve(CURVE, 0); // permissionless
         toHolders = ENGINE.balance - engineBefore;
         toTreasury = TREASURY.balance - treasuryBefore;
-        assertEq(BrokerEngine(ENGINE).pendingPot(ZERO), potBefore + toHolders, "the pot does not hold the holder leg");
+        assertEq(
+            BrokerEngine(ENGINE).pendingPot(ZERO),
+            potBefore + toHolders,
+            "the pot does not hold the holder leg"
+        );
     }
 
     /// @dev Warp to the first timestamp at which the next unsettled round can close. The engine's
     /// grid keys on `START` and the current `ROUND`, so the warp is computed, never guessed.
     function _warpToNextRound() internal returns (uint256 target) {
         target = BrokerEngine(ENGINE).settledRound() + 1;
-        uint256 targetTime = BrokerEngine(ENGINE).START() + target * BrokerEngine(ENGINE).ROUND() + 1;
+        uint256 targetTime =
+            BrokerEngine(ENGINE).START() + target * BrokerEngine(ENGINE).ROUND() + 1;
         if (block.timestamp < targetTime) vm.warp(targetTime);
     }
 
