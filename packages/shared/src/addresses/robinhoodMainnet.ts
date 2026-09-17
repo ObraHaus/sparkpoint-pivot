@@ -55,11 +55,11 @@ export const robinhoodMainnet: AddressBook = {
   // SwapRouter02, so the Phase-2 fee path is the custom `feeRouter` below (W.7) — NOT this field.
   swapFeeRecipient: undefined,
 
-  // W.7 fee-router (specs/047-beta-fee-router): undefined until the beta deploy lands
-  // (`DeployFeeRouter.s.sol` — the proxy address gets recorded in contracts/deployments/4663 and
-  // mirrored here). While undefined the swap page keeps the fee-free direct-SwapRouter02 path; once
-  // wired, the page routes through the router and discloses the fee + its splitter destination.
-  feeRouter: undefined,
+  // W.7 fee-router — DEPLOYED + wired 2026-09-17: proxy 0x0f5c…7F3, impl 0xA91a…F372
+  // (impl tx 0x5d78…5a6f · proxy tx 0x15d9…a6a). 4663 swaps now route through it: the 0.20% is
+  // charged on the input side, sent to the splitter, and the swap page quotes the net input and
+  // discloses the fee + destination from the router's LIVE `feeBps()`/`splitter()`.
+  feeRouter: "0x0f5c10d550387b2dE4E14F4855E67Ee3321ae7F3",
 
   // ── ERC-20 tokens — VERIFIED on 4663 (2026-09-10). USDG is the 4663 stable and is 6 DECIMALS (NOT
   // 18) — tokens.ts pins USDG decimals per-chain. WETH is the 4663 predeploy. The `usdc` field is the
