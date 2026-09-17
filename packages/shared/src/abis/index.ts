@@ -21,3 +21,4 @@ export { brokerVaultAbi } from "./brokerVault";
 export { revenueSplitterAbi } from "./revenueSplitter";
 export { royaltySinkAbi } from "./royaltySink";
 export { feeRouterAbi } from "./feeRouter";
+export { betaQuoterV2Abi } from "./betaQuoterV2";

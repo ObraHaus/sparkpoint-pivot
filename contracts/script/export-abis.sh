@@ -52,6 +52,9 @@ CONTRACTS=(
   # when the 4663 book carries a `feeRouter` address; the constants it reads (`feeBps`, `splitter`)
   # drive the pre-sign fee disclosure.
   "FeeRouter:FeeRouter:feeRouter"
+  # W.7 follow-up — the minimal single-hop quoter. 4663 has no working QuoterV2, so the swap page's
+  # quote path binds this ABI-compatible contract (same `quoteExactInputSingle` shape).
+  "BetaQuoterV2:BetaQuoterV2:betaQuoterV2"
 )
 
 if [ ! -d "$OUT" ]; then
