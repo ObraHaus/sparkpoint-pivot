@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "The swap fee-router is built and rehearsed on the real network \u2014 it switches on with the next contract deploy",
       "body": "Behind the scenes: the 0.20% swap fee now has its own non-custodial router contract, and it has been rehearsed end-to-end against the real Robinhood Chain ETH/USDG market \u2014 the fee lands in the revenue splitter that pays broker holders, never in a wallet we control.\n\nNothing changes for you yet: the router isn't deployed, so swaps stay fee-free for now. Once we publish its address and switch it on, the swap confirm screen will show the exact fee and where it goes before you sign anything.",
-      "published_at": "2026-09-17T03:50:00Z"
+      "published_at": "2026-09-17T03:30:00Z"
     },
     {
       "slug": "broker-page-live-on-robinhood-chain",
