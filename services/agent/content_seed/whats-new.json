@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent). Client-facing register: keep it tester-friendly, no dev detail. A live Admin -> Updates edit of the same slug wins over this file.",
   "entries": [
     {
+      "slug": "trust-center-swap-contracts",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Trust Center now shows the swap contracts too",
+      "body": "The Trust Center's contract list on Robinhood Chain gained the two contracts behind the swap: the router that charges the 0.20% fee (and sends it to the revenue splitter), and the quoter that works out your price preview.\n\nBoth are verifiable at their addresses, right alongside the token, broker, engine and vault rows. Nothing about how swaps work changed \u2014 this is disclosure catching up with today's deploy.",
+      "published_at": "2026-09-17T08:40:00Z"
+    },
+    {
       "slug": "swap-quotes-fixed-on-robinhood-chain",
       "type": "changelog",
       "tag": "Fixed",
