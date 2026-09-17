@@ -48,13 +48,13 @@ export const robinhoodMainnet: AddressBook = {
   // manual, user-signed swap page ONLY — non-custodial, NOT a policy target — so wiring these does
   // NOT touch the fail-closed agent path (the 4663 policy allowlist stays empty). ──
   uniswapV3SwapRouter02: "0xCaf681a66D020601342297493863E78C959E5cb2",
-  uniswapV3QuoterV2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
   // ⚠️ CORRECTED 2026-09-17: the canonical `0x61fF…B21e` quoter is a DEAD stub on 4663 (it answers
-  // nothing for `quoteExactInputSingle`), and the old factory value was the canonical mainnet stub.
-  // The REAL factory (the pool's own `factory()`) is the one below. The working quote source is OUR
-  // deployed `BetaQuoterV2` — a read-only, UUPS-upgradeable contract with the same QuoterV2
-  // interface, whose quotes are fork-proven equal to the FeeRouter's own executions — wired as
-  // `uniswapV3QuoterV2` below.
+  // nothing for `quoteExactInputSingle`), so the working quote source is OUR `BetaQuoterV2` — a
+  // minimal, read-only, UUPS-upgradeable contract with the same QuoterV2 interface, whose quotes
+  // are fork-proven equal to the FeeRouter's own executions. Proxy 0x41cC…f448 over impl
+  // 0xDE0c…53B6 (owner = the beta deployer). The factory below is the REAL one (the pool's own
+  // `factory()`); the old value was the canonical mainnet stub.
+  uniswapV3QuoterV2: "0x41cCbE41E9e480a42a1846695bbaf4577280f448",
   uniswapV3Factory: "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA",
 
   // Phase-1 beta swap is FEE-FREE. The interim `sweepWithFee` hook is verified ABSENT on the deployed
