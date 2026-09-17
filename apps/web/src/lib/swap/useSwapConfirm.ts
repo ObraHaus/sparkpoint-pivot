@@ -20,8 +20,9 @@
  *   • INPUT-side (W.7 fee-router, 4663 once wired): the swap goes through the custom `FeeRouter`,
  *     which charges `floor(amountIn × feeBps / 10000)` in `tokenIn`, pauses that at the splitter, and
  *     swaps only the net input. The bps and the destination are read LIVE from the router
- *     (`feeBps()`/`splitter()`) so the disclosed numbers are the charged ones — never a hardcoded
- *     "0.20%" string.
+ *     (`feeBps()`/`splitter()`), and the quote SIMULATES the router's own call — the only working
+ *     quote source on 4663 (its address-book QuoterV2 is a dead stub). The disclosed numbers are the
+ *     charged ones — never a hardcoded "0.20%" string.
  * A chain with neither (alpha, and beta until the router deploys) has NO fee: `feeActive` is false and
  * the direct SwapRouter02 path is byte-identical to before.
  */
@@ -43,7 +44,6 @@ import {
   DEFAULT_DEADLINE_SECONDS,
   HIGH_IMPACT_BPS,
   inputFee,
-  netInput,
   ROUTING_FEE_BIPS,
 } from "@/lib/swap/math";
 
@@ -203,12 +203,10 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const feeRouterPending = feeRouterActive && (feeBpsLive === undefined || feeDestination === undefined);
   const feeAmountIn =
     feeRouterActive && feeBpsLive !== undefined ? inputFee(amountIn, feeBpsLive) : undefined;
-  // The router pulls the gross input but swaps only the net; QuoterV2 must see the same net amount.
-  const amountInForQuote = !feeRouterActive
-    ? amountIn
-    : feeBpsLive !== undefined
-      ? netInput(amountIn, feeBpsLive)
-      : 0n;
+  // Fee-router mode quotes by SIMULATING the router call, which takes the GROSS input and charges
+  // the fee itself — so the quote input stays the gross amount (the router-derived fee is applied
+  // inside the simulation, and the displayed `feeAmountIn` mirrors it).
+  const amountInForQuote = feeRouterActive && feeBpsLive === undefined ? 0n : amountIn;
 
   // §fee (007) — the OUTPUT-side routing fee (vault chains): a configured per-chain treasury wins
   // SYNCHRONOUSLY, so a chain with NO vault (e.g. Robinhood 46630) still charges the fee. Where unset,
@@ -281,6 +279,9 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
     usdc,
     usdcIsRoutingAsset,
     singleHopOnly: feeRouterActive,
+    feeRouter: feeRouterActive ? feeRouter : undefined,
+    recipient: address,
+    fromNative: tokenIn?.isNative ?? false,
     enabled: canQuote,
   });
 

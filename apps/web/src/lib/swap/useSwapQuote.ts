@@ -42,11 +42,20 @@ interface QuoteParams {
   readonly usdcIsRoutingAsset: boolean;
   /** true ⇒ direct pools only (the W.7 fee-router executes a single hop). */
   readonly singleHopOnly?: boolean;
+  /**
+   * W.7 fix — when set, quote by SIMULATING this router's swap call instead of QuoterV2 (there is
+   * no working QuoterV2 on 4663, and the router's own call is the exact thing that will execute).
+   */
+  readonly feeRouter?: Address;
+  /** Simulation `from`/recipient for the fee-router quote (the connected account). */
+  readonly recipient?: Address;
+  /** Native-in swaps simulate with `msg.value = amountIn` (the router wraps it). */
+  readonly fromNative?: boolean;
   readonly enabled: boolean;
 }
 
 export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
-  const { chainId, quoter, tokenIn, tokenOut, amountIn, weth, usdc, usdcIsRoutingAsset, singleHopOnly = false, enabled } = params;
+  const { chainId, quoter, tokenIn, tokenOut, amountIn, weth, usdc, usdcIsRoutingAsset, singleHopOnly = false, feeRouter, recipient, fromNative = false, enabled } = params;
   const ready =
     enabled &&
     chainId !== undefined &&
@@ -59,7 +68,7 @@ export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
     tokenIn.toLowerCase() !== tokenOut.toLowerCase();
 
   const query = useQuery({
-    queryKey: ["swap-route", chainId, quoter, tokenIn, tokenOut, amountIn?.toString(), weth, usdc, usdcIsRoutingAsset, singleHopOnly],
+    queryKey: ["swap-route", chainId, quoter, tokenIn, tokenOut, amountIn?.toString(), weth, usdc, usdcIsRoutingAsset, singleHopOnly, feeRouter, recipient, fromNative],
     enabled: ready,
     staleTime: 10_000,
     retry: false,
@@ -74,6 +83,9 @@ export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
         usdc,
         usdcIsRoutingAsset,
         singleHopOnly,
+        feeRouter,
+        recipient,
+        fromNative,
       });
       if (r.status === "error") throw new Error("quote_unavailable"); // → isError (retryable), not noRoute
       return r; // "ok" | "noRoute"
