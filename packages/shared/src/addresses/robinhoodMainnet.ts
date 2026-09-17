@@ -51,9 +51,15 @@ export const robinhoodMainnet: AddressBook = {
   uniswapV3QuoterV2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
   uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
 
-  // Phase-1 beta swap is FEE-FREE: no own fee-router, and no sweepWithFee recipient set yet. Setting
-  // this to a revenue EOA turns on the 0.20% fee (via the router's sweep) — a one-line Phase-2 change.
+  // Phase-1 beta swap is FEE-FREE. The interim `sweepWithFee` hook is verified ABSENT on the deployed
+  // SwapRouter02, so the Phase-2 fee path is the custom `feeRouter` below (W.7) — NOT this field.
   swapFeeRecipient: undefined,
+
+  // W.7 fee-router (specs/047-beta-fee-router): undefined until the beta deploy lands
+  // (`DeployFeeRouter.s.sol` — the proxy address gets recorded in contracts/deployments/4663 and
+  // mirrored here). While undefined the swap page keeps the fee-free direct-SwapRouter02 path; once
+  // wired, the page routes through the router and discloses the fee + its splitter destination.
+  feeRouter: undefined,
 
   // ── ERC-20 tokens — VERIFIED on 4663 (2026-09-10). USDG is the 4663 stable and is 6 DECIMALS (NOT
   // 18) — tokens.ts pins USDG decimals per-chain. WETH is the 4663 predeploy. The `usdc` field is the

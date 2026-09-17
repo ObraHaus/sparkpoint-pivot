@@ -29,6 +29,8 @@ export interface RouteInput {
   readonly weth: Address;
   readonly usdc?: Address;
   readonly usdcIsRoutingAsset: boolean;
+  /** true ⇒ quote direct pools only (the W.7 fee-router is single-hop by design). */
+  readonly singleHopOnly?: boolean;
 }
 
 export type RouteQuote =
@@ -111,6 +113,7 @@ export async function bestRoute(input: RouteInput): Promise<RouteQuote> {
     usdc: input.usdc,
     usdcIsRoutingAsset: input.usdcIsRoutingAsset,
     feeTiers,
+    singleHopOnly: input.singleHopOnly,
   });
 
   const settled = await Promise.allSettled(

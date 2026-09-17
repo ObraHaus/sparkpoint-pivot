@@ -40,11 +40,13 @@ interface QuoteParams {
   /** USDC for this chain (a secondary hop asset) — omitted where it isn't a real routing asset. */
   readonly usdc?: Address;
   readonly usdcIsRoutingAsset: boolean;
+  /** true ⇒ direct pools only (the W.7 fee-router executes a single hop). */
+  readonly singleHopOnly?: boolean;
   readonly enabled: boolean;
 }
 
 export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
-  const { chainId, quoter, tokenIn, tokenOut, amountIn, weth, usdc, usdcIsRoutingAsset, enabled } = params;
+  const { chainId, quoter, tokenIn, tokenOut, amountIn, weth, usdc, usdcIsRoutingAsset, singleHopOnly = false, enabled } = params;
   const ready =
     enabled &&
     chainId !== undefined &&
@@ -57,7 +59,7 @@ export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
     tokenIn.toLowerCase() !== tokenOut.toLowerCase();
 
   const query = useQuery({
-    queryKey: ["swap-route", chainId, quoter, tokenIn, tokenOut, amountIn?.toString(), weth, usdc, usdcIsRoutingAsset],
+    queryKey: ["swap-route", chainId, quoter, tokenIn, tokenOut, amountIn?.toString(), weth, usdc, usdcIsRoutingAsset, singleHopOnly],
     enabled: ready,
     staleTime: 10_000,
     retry: false,
@@ -71,6 +73,7 @@ export function useSwapQuote(params: QuoteParams): SwapQuoteResult {
         weth: weth!,
         usdc,
         usdcIsRoutingAsset,
+        singleHopOnly,
       });
       if (r.status === "error") throw new Error("quote_unavailable"); // → isError (retryable), not noRoute
       return r; // "ok" | "noRoute"
