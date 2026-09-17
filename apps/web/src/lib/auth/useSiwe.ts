@@ -24,22 +24,41 @@ export interface Session {
   readonly admin: boolean;
 }
 
+/** What one sign-in attempt resolved to. Carries the session claims plus a transient, advisory
+ *  note about the attempt itself, which is why it is NOT part of `Session` — nothing here is
+ *  persisted in the cookie or re-read by `useSession()`. */
+export interface LoginResult extends Session {
+  /** The SRK auto-gate could not be READ this attempt (as opposed to read and found short of the
+   *  threshold). Only ever true alongside `beta: false`; the form turns it into a retry hint. */
+  readonly gateUnavailable: boolean;
+}
+
 const SIWE_STATEMENT =
   "Sign in to SparkPoint. This proves you control this wallet. " +
   "It does not authorize any transaction or move any funds.";
 
+/** Which leg of the handshake is in flight — the CTA's label tracks this.
+ *
+ * Splitting this out of a single `pending` flag is not cosmetic. The button used to read
+ * "Waiting for signature…" for the whole of `login()`, so after a user had already signed it kept
+ * insisting it was waiting on them — during a stall that made a slow server look like a wedged
+ * wallet, and the honest advice ("just wait") looked like the wrong advice ("sign again"). */
+export type SiwePhase = "idle" | "nonce" | "signing" | "verifying";
+
 export function useSiweLogin(): {
-  login: (address: `0x${string}`, chainId: number) => Promise<Session | null>;
+  login: (address: `0x${string}`, chainId: number) => Promise<LoginResult | null>;
   pending: boolean;
+  phase: SiwePhase;
   error: string | null;
 } {
   const { signMessageAsync } = useSignMessage();
-  const [pending, setPending] = useState(false);
+  const [phase, setPhase] = useState<SiwePhase>("idle");
+  const pending = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
 
   const login = useCallback(
-    async (address: `0x${string}`, chainId: number): Promise<Session | null> => {
-      setPending(true);
+    async (address: `0x${string}`, chainId: number): Promise<LoginResult | null> => {
+      setPhase("nonce");
       setError(null);
       try {
         const nonceRes = await fetch("/api/auth/nonce", { cache: "no-store" });
@@ -60,8 +79,11 @@ export function useSiweLogin(): {
           expirationTime: new Date(now.getTime() + 10 * 60 * 1000),
         });
 
+        setPhase("signing");
         const signature = await signMessageAsync({ message });
 
+        // The wallet has answered; from here the user is waiting on US, not the other way round.
+        setPhase("verifying");
         const verifyRes = await fetch("/api/auth/verify", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -72,14 +94,22 @@ export function useSiweLogin(): {
           setError(detail.error ?? "verification failed");
           return null;
         }
-        const data = (await verifyRes.json()) as Session & { ok: boolean };
-        return { address: data.address, beta: data.beta, admin: data.admin };
+        const data = (await verifyRes.json()) as Session & {
+          ok: boolean;
+          gateUnavailable?: boolean;
+        };
+        return {
+          address: data.address,
+          beta: data.beta,
+          admin: data.admin,
+          gateUnavailable: Boolean(data.gateUnavailable),
+        };
       } catch (e) {
         // A user rejecting the signature lands here — surface a friendly reason, no throw.
         setError(e instanceof Error ? e.message : "sign-in failed");
         return null;
       } finally {
-        setPending(false);
+        setPhase("idle");
       }
     },
     [signMessageAsync],
@@ -89,7 +119,7 @@ export function useSiweLogin(): {
   // but don't interrupt the wallet signature). Held in the hook so every caller inherits it.
   useHoldCriticalOp(pending, "busy");
 
-  return { login, pending, error };
+  return { login, pending, phase, error };
 }
 
 // A single wallet switch is observed by every mounted `useSession()` instance at once (the global
