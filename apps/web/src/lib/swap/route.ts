@@ -12,6 +12,7 @@
 
 import { BaseError, type Address, type Hex } from "viem";
 import { getPublicClient } from "@/lib/chain/clients";
+import { feeRouterAbi } from "@sparkpoint/shared/abis";
 import { quoterV2Abi } from "./abis";
 import { CHAIN_IDS } from "@sparkpoint/shared/chains";
 import { planCandidates, pickBest, FEE_TIERS, FEE_TIER_1BP, type Candidate } from "./route.pure";
@@ -31,6 +32,18 @@ export interface RouteInput {
   readonly usdcIsRoutingAsset: boolean;
   /** true ⇒ quote direct pools only (the W.7 fee-router is single-hop by design). */
   readonly singleHopOnly?: boolean;
+  /**
+   * W.7 fix — when the chain routes through the FeeRouter, quote by SIMULATING that exact call
+   * instead of QuoterV2. Robinhood Chain 4663 has NO working QuoterV2 (the address-book entry is a
+   * dead stub), and the FeeRouter simulation is strictly better anyway: it is the very call that
+   * will execute, so fee, wrapping/unwrapping and the pool all participate. `amountIn` is the GROSS
+   * input (the router takes the fee itself).
+   */
+  readonly feeRouter?: Address;
+  /** Simulation `from`/output recipient (the connected account). Required with `feeRouter`. */
+  readonly recipient?: Address;
+  /** Native-in swaps simulate with `msg.value = amountIn` (the router wraps it). */
+  readonly fromNative?: boolean;
 }
 
 export type RouteQuote =
@@ -53,18 +66,48 @@ function isPoolRevert(err: unknown): boolean {
 
 type Client = ReturnType<typeof getPublicClient>;
 
-/** Quote one direct pool (QuoterV2.quoteExactInputSingle, nonpayable ⇒ simulateContract). */
+/**
+ * Quote one direct pool.
+ *
+ * Default: `QuoterV2.quoteExactInputSingle` (nonpayable ⇒ simulateContract).
+ * Fee-router chains (see {@link RouteInput.feeRouter}): simulate the router's own
+ * `swapExactInputSingle`, which is the exact call that will execute — the only working quote
+ * source on 4663.
+ */
 async function quoteSingle(
   client: Client,
-  quoter: Address,
+  i: RouteInput,
   tokenIn: Address,
   tokenOut: Address,
   amountIn: bigint,
   fee: number,
 ): Promise<bigint | undefined> {
   try {
+    if (i.feeRouter && i.recipient) {
+      const { result } = await client.simulateContract({
+        address: i.feeRouter,
+        abi: feeRouterAbi,
+        functionName: "swapExactInputSingle",
+        args: [
+          {
+            tokenIn,
+            tokenOut,
+            fee,
+            recipient: i.recipient,
+            // `amountIn` is the GROSS input: the router charges the 0.20% itself and swaps the net.
+            amountIn,
+            amountOutMinimum: 0n,
+            deadline: BigInt(Math.floor(Date.now() / 1000) + 300),
+          },
+        ],
+        value: i.fromNative ? amountIn : 0n,
+        account: i.recipient,
+      });
+      const out = result as bigint;
+      return out > 0n ? out : undefined;
+    }
     const { result } = await client.simulateContract({
-      address: quoter,
+      address: i.quoter,
       abi: quoterV2Abi,
       functionName: "quoteExactInputSingle",
       args: [{ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0n }],
@@ -96,7 +139,7 @@ async function quotePath(client: Client, quoter: Address, path: Hex, amountIn: b
 
 const quoteCandidate = (client: Client, i: RouteInput, c: Candidate, amountIn: bigint): Promise<bigint | undefined> =>
   c.kind === "single"
-    ? quoteSingle(client, i.quoter, i.tokenIn, i.tokenOut, amountIn, c.fee)
+    ? quoteSingle(client, i, i.tokenIn, i.tokenOut, amountIn, c.fee)
     : quotePath(client, i.quoter, c.path, amountIn);
 
 /** Best route for the pair + amount, or an honest `noRoute` / `error`. */
@@ -142,7 +185,7 @@ export async function bestRoute(input: RouteInput): Promise<RouteQuote> {
   if (refIn < input.amountIn) {
     const refOut =
       route.kind === "single"
-        ? await quoteSingle(client, input.quoter, input.tokenIn, input.tokenOut, refIn, route.fee).catch(() => undefined)
+        ? await quoteSingle(client, input, input.tokenIn, input.tokenOut, refIn, route.fee).catch(() => undefined)
         : await quotePath(client, input.quoter, route.path, refIn).catch(() => undefined);
     if (refOut !== undefined && refOut > 0n) {
       const num = route.amountOut * refIn;

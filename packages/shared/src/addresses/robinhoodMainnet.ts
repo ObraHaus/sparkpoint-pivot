@@ -49,7 +49,12 @@ export const robinhoodMainnet: AddressBook = {
   // NOT touch the fail-closed agent path (the 4663 policy allowlist stays empty). ──
   uniswapV3SwapRouter02: "0xCaf681a66D020601342297493863E78C959E5cb2",
   uniswapV3QuoterV2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
-  uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+  // ⚠️ CORRECTED 2026-09-17: the QuoterV2 entry above is a DEAD 2KB stub on 4663 (it answers
+  // nothing for `quoteExactInputSingle` — verified on-chain), and the previous factory value was
+  // the canonical mainnet address, also a stub. The REAL factory (the pool's `factory()`) is the
+  // one below. The fee-router mode therefore quotes by SIMULATING `FeeRouter.swapExactInputSingle`
+  // (see `lib/swap/route.ts`), which is the only working quote source on this chain.
+  uniswapV3Factory: "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA",
 
   // Phase-1 beta swap is FEE-FREE. The interim `sweepWithFee` hook is verified ABSENT on the deployed
   // SwapRouter02, so the Phase-2 fee path is the custom `feeRouter` below (W.7) — NOT this field.

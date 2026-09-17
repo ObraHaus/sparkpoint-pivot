@@ -5,6 +5,10 @@
     "Phase 1 (no SparkPoint contracts) shipped 2026-09-12 (PRs #178-#185).",
     "Phase 2 revenue subsystem deployed 2026-09-16 (see the beta tracker).",
     "W.7 fee-router (0.20% input-side) deployed + wired 2026-09-17 — see beta.feeRouter.",
+    "⚠️ thirdParty correction 2026-09-17: uniswapV3Factory is the REAL factory (the pool's own",
+    "   factory() = 0x1f7d…2EfA). The canonical 0x1F98… is a stub on 4663, and the recorded",
+    "   uniswapV3QuoterV2 0x61fF…B21e is a dead stub too — the app quotes by simulating the",
+    "   FeeRouter call instead.",
     "",
     "The SparkPoint vault is Base-only and never appears here. Alpha (Base Sepolia 84532)",
     "keeps its own book — these addresses must never be used there."
@@ -34,7 +38,7 @@
   "thirdParty": {
     "uniswapV3SwapRouter02": "0xCaf681a66D020601342297493863E78C959E5cb2",
     "uniswapV3QuoterV2": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
-    "uniswapV3Factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+    "uniswapV3Factory": "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA",
     "weth": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
     "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
     "wethUsdgPoolFee100": "0x52e65B17fB6E5BA00Ed806f37Afcd2DaA50271Ca",
