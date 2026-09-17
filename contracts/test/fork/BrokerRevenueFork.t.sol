@@ -36,9 +36,11 @@ import { IPonsCurve } from "../../src/revenue/interfaces/IPons.sol";
 contract BrokerRevenueForkTest is Test {
     uint256 internal constant ROBINHOOD_MAINNET = 4663;
 
-    /// @dev Pinned 2026-09-17 (the deployed set is from 2026-09-16; the drop is still unminted).
-    /// Re-pin deliberately, never silently — a pinned block makes a failure reproducible.
-    uint256 internal constant FORK_BLOCK = 64_972_000;
+    /// @dev Pinned 2026-09-17, AFTER the engine upgrade (the fixed impl `0x6c36…5736` landed at
+    /// block 65,126,350; USDG was registered at 65,126,399). The deployed revenue set is from
+    /// 2026-09-16 and the drop is still unminted at this block — the test asserts that premise
+    /// first. Re-pin deliberately, never silently — a pinned block makes a failure reproducible.
+    uint256 internal constant FORK_BLOCK = 65_126_400;
 
     // The beta revenue set, from contracts/deployments/4663/addresses.json (verified on-chain).
     address internal constant TOKEN = 0x790316a2a1B403b55c6E8a6857Dd768078503553; // SPARKYTEST
@@ -334,18 +336,17 @@ contract BrokerRevenueForkTest is Test {
         assertEq(BrokerVault(VAULT).assetsOf(2)[0], ZERO, "ETH is not a recorded asset");
     }
 
-    // ---------------------------------------------------------------- the deployed defect
+    // ---------------------------------------------------------------- the rewind fix (post-upgrade)
 
-    /// @notice ⚠️ **Pinned against the DEPLOYED engine (impl 0x6338…0C2a): a fuse inside the
-    /// post-upgrade rewind window is retroactive and can make the engine owe more than it holds.**
+    /// @notice ✅ **The rewind-window fix, proven against the UPGRADED engine (impl `0x6c36…5736`).**
     ///
-    /// `setRoundSeconds(86400)` put `currentRound()` behind `settledRound()`; a fuse there records
-    /// `promoteAfterRoundOf = roundInProgress()`, a round that is already closed, so `_crystallise`
-    /// pays the ENTIRE accumulator at the queued weight while `settle()` divided the pot by the old
-    /// `totalWeight`. The source is fixed (`_changeWeight` keys on `settledRound + 1`); until the
-    /// owner upgrades the proxy, this is what the live chain does. **Update this pin when the fixed
-    /// implementation is upgraded in** — the loop test above already proves the corrected order.
-    function test_fork_rewindWindow_fuseIsRetroactiveAndInsolvent() public {
+    /// `setRoundSeconds(86400)` put `currentRound()` behind `settledRound()`; a fuse inside that
+    /// window used to record an already-closed promotion boundary, so `_crystallise` paid the ENTIRE
+    /// accumulator at the queued weight while `settle()` divided the pot by the old `totalWeight` —
+    /// the engine owed more than it held and `deliver` reverted `OutOfFunds`. `_changeWeight` now
+    /// keys the boundary on `settledRound + 1`, so the queued weight earns only from the next closed
+    /// round: `owed ≤ held`, and the delivery lands.
+    function test_fork_rewindWindow_fuseIsNotRetroactive() public {
         if (!forkReady) {
             vm.skip(true);
             return;
@@ -367,30 +368,24 @@ contract BrokerRevenueForkTest is Test {
 
         uint256 owed = BrokerEngine(ENGINE).earnedOf(2, ZERO);
         uint256 held = ENGINE.balance;
-        assertGt(owed, held, "the defect no longer overpays - re-check this pin");
+        assertLe(owed, held, "the engine owes more than it holds - the rewind fix is not live");
 
         uint256[] memory one = new uint256[](1);
         one[0] = 2;
-        vm.expectRevert(); // OutOfFunds: the engine cannot pay the retroactive weight
-        BrokerEngine(ENGINE).deliver(one);
+        BrokerEngine(ENGINE).deliver(one); // used to revert OutOfFunds
+        assertGt(BrokerVault(VAULT).balanceOf(2, ZERO), 0, "the delivery did not bank the revenue");
     }
 
-    // ---------------------------------------------------------------- the trap
+    // ---------------------------------------------------------------- the push intake (post-upgrade)
 
-    /// @notice ⚠️ **The post-graduation denomination trap, pinned as it is TODAY.**
+    /// @notice ✅ **The post-graduation ERC-20 leg, proven against the UPGRADED engine.**
     ///
-    /// After graduation the Pons v4 hook charges the creator fee in each swap's OUTPUT currency, so
-    /// the creator leg can arrive as an ERC-20. `RevenueSplitter.sweepToken` then pushes the holder
-    /// leg to the engine as a bare `transfer` — and the engine only accrues revenue through
-    /// `receive()` (ETH) or a pull-based `depositAsset` (ERC-20). A pushed ERC-20 is NOT booked into
-    /// `pendingPot`, so it would sit in the engine and never reach holders.
-    ///
-    /// This test exists so the gap is a fact with a failing-if-fixed pin, not an argument.
-    /// ✅ The fixed SOURCE closes it: `BrokerEngine.sweepAsset(asset)` books the balance above the
-    /// `accountedAsset` watermark (raised by `depositAsset`/`sweepAsset`, lowered by
-    /// `deliver`/`rescueToken`). This pin keeps asserting the DEPLOYED engine's behaviour until the
-    /// owner upgrades the proxy to the fixed implementation.
-    function test_fork_postGradTokenLeg_pushIsNotBooked_butPullIs() public {
+    /// After graduation the Pons v4 hook can charge the creator fee in the swap's OUTPUT token, so
+    /// `RevenueSplitter.sweepToken` pushes the holder leg to the engine as a bare transfer. The
+    /// upgraded engine books it: `sweepAsset(asset)` credits `balanceOf(this) − accountedAsset[asset]`
+    /// into `pendingPot` and raises the watermark, so the pushed tokens are counted exactly once and
+    /// a later pull-deposit books only its own delta.
+    function test_fork_postGradTokenLeg_pushIsBooked() public {
         if (!forkReady) {
             vm.skip(true);
             return;
@@ -403,16 +398,23 @@ contract BrokerRevenueForkTest is Test {
         uint256 pushed = IERC20(TOKEN).balanceOf(ENGINE) - engineTokensBefore;
         assertEq(pushed, 9_000e18, "the splitter moved the 90% holder leg to the engine");
 
-        assertEq(
-            BrokerEngine(ENGINE).pendingPot(TOKEN),
-            0,
-            "INVARIANT CHANGED: the engine now books a PUSHED ERC-20. If the trap was fixed, replace this pin."
-        );
-
-        // And the supported intake: owner registers the asset, then a pull-deposit books it.
+        // Nothing is booked by the transfer itself; the intake books the balance above the
+        // watermark, and the asset must be registered (owner-managed registry).
+        assertEq(BrokerEngine(ENGINE).pendingPot(TOKEN), 0, "nothing is booked before sweepAsset");
         vm.prank(ENGINE_OWNER);
         BrokerEngine(ENGINE).addAsset(TOKEN);
 
+        BrokerEngine(ENGINE).sweepAsset(TOKEN); // permissionless
+        assertEq(BrokerEngine(ENGINE).pendingPot(TOKEN), 9_000e18, "the pushed leg must be booked");
+        assertEq(
+            BrokerEngine(ENGINE).accountedAsset(TOKEN), 9_000e18, "the watermark must be raised"
+        );
+
+        // Nothing books twice: the same balance cannot be credited again…
+        vm.expectRevert(BrokerEngine.NothingToDeposit.selector);
+        BrokerEngine(ENGINE).sweepAsset(TOKEN);
+
+        // …and a pull-deposit books exactly the new delta.
         address depositor = makeAddr("depositor");
         deal(TOKEN, depositor, 1_000e18);
         vm.startPrank(depositor);
@@ -420,7 +422,14 @@ contract BrokerRevenueForkTest is Test {
         BrokerEngine(ENGINE).depositAsset(TOKEN, 1_000e18);
         vm.stopPrank();
 
-        assertEq(BrokerEngine(ENGINE).pendingPot(TOKEN), 1_000e18, "a pull-deposit is booked");
+        assertEq(
+            BrokerEngine(ENGINE).pendingPot(TOKEN), 10_000e18, "a pull-deposit books its own delta"
+        );
+        assertEq(
+            BrokerEngine(ENGINE).accountedAsset(TOKEN),
+            10_000e18,
+            "the watermark tracks the balance"
+        );
     }
 }
 

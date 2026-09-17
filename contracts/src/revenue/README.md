@@ -37,31 +37,34 @@ sweep → settle → deliver → withdraw. The W.7 fee-router proof (4th test) a
 swap through `FeeRouter` on the **real WETH/USDG pool**: the splitter's ETH grows by exactly 0.20%,
 `distribute()` pushes the 90% holder leg into `pendingPot`, and the same settle/deliver/withdraw loop
 pays it out. Only the collection's ownership oracle is stubbed (the OpenSea drop has minted nothing
-at the pinned block; the test asserts that premise before etching).
+at the pinned block; the test asserts that premise before etching). The pin is **block 65,126,400 —
+after the 2026-09-17 engine upgrade**, so the tests prove the fixed implementation.
 
 ```bash
 export ROBINHOOD_MAINNET_RPC=<archive endpoint for 4663>
 forge test --match-contract BrokerRevenueFork -vv
 ```
 
-Two findings, both pinned as tests:
+Two findings, both shipped and now pinned on the fixed behaviour:
 
-- ✅ **A promotion queued inside the round-length rewind window was retroactive — FIXED in source.**
+- ✅ **A promotion queued inside the round-length rewind window was retroactive — FIXED + DEPLOYED.**
   After `setRoundSeconds(86400)` the grid can rewind (`currentRound() < settledRound`), and
   `_changeWeight` keyed the promotion boundary on `roundInProgress()` — a round that was already
   closed. `_crystallise` then paid the whole accumulator at the queued weight while `settle()` had
   divided the pot by the old `totalWeight`: 1 ETH of revenue became 2.5 ETH owed and `deliver`
   reverted `OutOfFunds`. The boundary is now `settledRound + 1` (the next round to be closed).
-  Pinned by `test_setRoundSeconds_promotionInTheRewindWindowIsNotRetroactive`.
-  ⚠️ **The deployed proxy (impl `0x6338…0C2a`) still runs the old implementation — the owner must
-  upgrade the engine before any production broadcast.**
-- ✅ **The post-graduation ERC-20 leg — FIXED in source (W.7a).** `RevenueSplitter.sweepToken` PUSHES
-  the holder leg to the engine as a bare `transfer`, and the engine accrues ETH through `receive()`
-  and ERC-20s through the pull-based `depositAsset`. The `sweepAsset(asset)` intake now books
+  Unit-pinned by `test_setRoundSeconds_promotionInTheRewindWindowIsNotRetroactive` and fork-pinned
+  by `test_fork_rewindWindow_fuseIsNotRetroactive` (`owed ≤ held`, delivery lands).
+- ✅ **The post-graduation ERC-20 leg — FIXED + DEPLOYED.** `RevenueSplitter.sweepToken` PUSHES the
+  holder leg to the engine as a bare `transfer`; the `sweepAsset(asset)` intake books
   `balanceOf(this) − accountedAsset[asset]` into `pendingPot[asset]` (permissionless, no trust in the
-  caller), the owner must `addAsset` each fee token, and the W.8 pin keeps asserting the DEPLOYED
-  engine until the owner upgrades the proxy — at which point that pin flips to the booked path.
-  ⚠️ **The deployed proxy still runs the pre-`sweepAsset` implementation (see the upgrade runbook).**
+  caller), the owner `addAsset`s each fee token, and the W.8 pin flipped with the upgrade to
+  `test_fork_postGradTokenLeg_pushIsBooked` (booked exactly once; a pull-deposit books only its own
+  delta). USDG is registered on the live engine.
+
+⚠️ **Deploy history (4663 engine proxy `0x08a5…DB43`):** impl `0x6338…0C2a` (W.9, daily rounds) →
+**impl `0x6c36…5736` on 2026-09-17** (rewind fix + effects-first `deliver` + `sweepAsset`; tx
+`0xc1cd…aa54`, block 65,126,350), USDG `addAsset` at block 65,126,399 (tx `0x7b7f…2491`).
 
 ## Deliberate divergences from the reference
 
@@ -162,5 +165,7 @@ router of its own to charge the advertised **0.20%**. `FeeRouter` is that router
   swap.
 
 The app binds it only when the 4663 book carries a `feeRouter` address; undefined ⇒ the direct
-`SwapRouter02` path is byte-identical (alpha untouched). The on-chain 4663 fork proof of the fee in
-the real WETH/USDG pool lives in `test/fork/BrokerRevenueFork.t.sol`.
+`SwapRouter02` path is byte-identical (alpha untouched). **Deployed + wired 2026-09-17:** proxy
+`0x0f5c10d5…ae7F3` (impl `0xA91a7B1d…4F372`; txs `0x15d9…a6a` / `0x5d78…5a6f`), so the 0.20% is
+live on the beta. The on-chain 4663 fork proof of the fee in the real WETH/USDG pool lives in
+`test/fork/BrokerRevenueFork.t.sol`.
