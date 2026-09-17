@@ -48,6 +48,10 @@ CONTRACTS=(
   "BrokerVault:BrokerVault:brokerVault"
   "RevenueSplitter:RevenueSplitter:revenueSplitter"
   "RoyaltySink:RoyaltySink:royaltySink"
+  # W.7 — the beta fee-router (UUPS proxy over the external SwapRouter02). The swap page binds this
+  # when the 4663 book carries a `feeRouter` address; the constants it reads (`feeBps`, `splitter`)
+  # drive the pre-sign fee disclosure.
+  "FeeRouter:FeeRouter:feeRouter"
 )
 
 if [ ! -d "$OUT" ]; then

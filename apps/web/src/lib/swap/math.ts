@@ -24,6 +24,22 @@ export function afterFee(amount: bigint, feeBips: number): bigint {
 }
 
 /**
+ * §fee-router (W.7) — the fee the custom router takes on the **input side**: `floor(amount ×
+ * feeBips / 10000)`, the EXACT expression `FeeRouter.swapExactInputSingle` computes on-chain. The
+ * bps are read live from the router (`feeBps()`), never hardcoded, so the disclosed number is the
+ * charged number.
+ */
+export function inputFee(amount: bigint, feeBps: number): bigint {
+  const bps = BigInt(Math.max(0, Math.min(100, Math.round(feeBps))));
+  return (amount * bps) / 10_000n;
+}
+
+/** The input amount the fee-router actually swaps: `amount − inputFee(amount, feeBps)`. */
+export function netInput(amount: bigint, feeBps: number): bigint {
+  return amount - inputFee(amount, feeBps);
+}
+
+/**
  * The policy layer's ABSOLUTE slippage ceiling in bps (policy-schema.md §5 — `absoluteCeilingBps`).
  *
  * Defined locally rather than imported so this module stays a leaf (node:test loads it directly —

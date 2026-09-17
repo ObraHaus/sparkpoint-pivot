@@ -91,6 +91,17 @@ export interface AddressBook {
   readonly swapFeeRecipient?: Address;
 
   /**
+   * §fee-router (047 · W.7) — the beta **swap fee-router**: a user-signed UUPS contract in front of
+   * the external Uniswap V3 `SwapRouter02` that charges the protocol's 0.20% on the **input side**
+   * and sends it to the `RevenueSplitter` (ETH via `receive()`, ERC-20 via `sweepToken`). A PLAIN
+   * optional field (NOT a policy `TargetRef`): the swap is user-signed / non-custodial, and the app
+   * binds it only to build the swap call and to disclose the fee + its destination before signing.
+   * Undefined ⇒ no fee-router on this chain: the swap keeps routing straight to
+   * `uniswapV3SwapRouter02` and nothing changes (alpha byte-identical).
+   */
+  readonly feeRouter?: Address;
+
+  /**
    * §premium (012) — the SRK utility-token venue on this chain (Premium is paid in SRK). A PLAIN optional
    * field (NOT a policy `TargetRef`): where unset, the pay surface shows an honest "unavailable" state
    * rather than a fabricated value. Base-Sepolia-only for now (the vault + Premium live on 84532).

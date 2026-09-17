@@ -48,6 +48,10 @@ export interface PlanInput {
   /** Direct-pool fee tiers to probe. Defaults to {@link FEE_TIERS}; a caller passes a chain-specific
    * set (e.g. FEE_TIERS + the 1bp tier for Robinhood mainnet) so OTHER chains stay unchanged. */
   readonly feeTiers?: readonly number[];
+  /** true ⇒ plan DIRECT-pool candidates only. The W.7 fee-router executes a single `exactInputSingle`
+   * hop by design, so when the app routes through it the multi-hop candidates must not be quoted —
+   * their path shape cannot be executed. Default false keeps every other caller unchanged. */
+  readonly singleHopOnly?: boolean;
 }
 
 const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -62,6 +66,10 @@ export function planCandidates(input: PlanInput): Candidate[] {
   const out: Candidate[] = [];
 
   for (const fee of tiers) out.push({ kind: "single", fee, via: null });
+
+  // Single-hop-only callers (the W.7 fee-router) must not see — and so never quote — a path they
+  // cannot execute.
+  if (input.singleHopOnly) return out;
 
   const twoHop = (hop: Address, via: "WETH" | "USDC") => {
     if (eq(hop, tokenIn) || eq(hop, tokenOut)) return; // hop must be a genuine intermediary

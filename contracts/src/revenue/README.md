@@ -16,20 +16,28 @@ AS-IS** change: fees arrive as ETH and any ERC-20 and are distributed **without 
 | `RevenueSplitter.sol` | ✅ ported, **non-upgradeable** (immutable wiring, no owner) |
 | `BrokerVault.sol` | ✅ ported **+ native ETH** (`asset == address(0)`) |
 | `BrokerEngine.sol` | ✅ ported — AS-IS multi-asset settlement (design below) |
+| `FeeRouter.sol` | ✅ new (W.7) — UUPS 0.20% input-side swap router → splitter (design below) |
 | `script/DeployBetaRevenue.s.sol` | ✅ ported — dry-run first, `$BCAST` to deploy |
+| `script/DeployFeeRouter.s.sol` | ✅ new (W.7) — 4663-only, `FEE_RECIPIENT` must be the splitter |
 
 Tests: `contracts/test/revenue/RevenueSuite.t.sol` (22) + `contracts/test/revenue/BrokerEngine.t.sol` (21)
-— splitter 90/10 + curve/token sweeps, sink, vault credit/merge/withdraw + EIP-712, and the engine:
++ `contracts/test/revenue/FeeRouter.t.sol` (27)
+— splitter 90/10 + curve/token sweeps, sink, vault credit/merge/withdraw + EIP-712, the engine:
 verbs, weights/round boundaries, AS-IS ETH + ERC-20 delivery, pro-rata splits, sold/burned drops and
-salvage, admin one-shots, and the rewind-window promotion regression. Full contracts suite: **400
-passing / 0 failing**, plus the 4663 fork proof below.
+salvage, admin one-shots, and the rewind-window promotion regression, and the fee-router: fee math +
+truncation, ETH-in/ETH-out/token↔token shapes, refunds, deadline/slippage/reentrancy reverts, the
+immutable splitter destination, and owner-gated upgrade/rescue. Full contracts suite: **431 passing /
+0 failing**, plus the 4663 fork proof below.
 
 ## Fork proof (W.8, 2026-09-17)
 
 `test/fork/BrokerRevenueFork.t.sol` runs the full loop on a **pinned 4663 fork** against the deployed
 set — real Pons curve, real token, real splitter, real engine and vault: buy → clock in → fuse →
-sweep → settle → deliver → withdraw. Only the collection's ownership oracle is stubbed (the OpenSea
-drop has minted nothing at the pinned block; the test asserts that premise before etching).
+sweep → settle → deliver → withdraw. The W.7 fee-router proof (4th test) adds a user-signed ETH→USDG
+swap through `FeeRouter` on the **real WETH/USDG pool**: the splitter's ETH grows by exactly 0.20%,
+`distribute()` pushes the 90% holder leg into `pendingPot`, and the same settle/deliver/withdraw loop
+pays it out. Only the collection's ownership oracle is stubbed (the OpenSea drop has minted nothing
+at the pinned block; the test asserts that premise before etching).
 
 ```bash
 export ROBINHOOD_MAINNET_RPC=<archive endpoint for 4663>
@@ -47,13 +55,13 @@ Two findings, both pinned as tests:
   Pinned by `test_setRoundSeconds_promotionInTheRewindWindowIsNotRetroactive`.
   ⚠️ **The deployed proxy (impl `0x6338…0C2a`) still runs the old implementation — the owner must
   upgrade the engine before any production broadcast.**
-- ⚠️ **The post-graduation ERC-20 leg is an OPEN finding.**
-  `RevenueSplitter.sweepToken` PUSHES the holder leg to the engine as a bare `transfer`, and the
-  engine only books revenue through `receive()` (ETH) or a pull-based `depositAsset` (ERC-20). A
-  pushed ERC-20 is therefore never credited to `pendingPot`. Pre-graduation (ETH fees) is unaffected;
-  after graduation the hook can charge the fee in a token leg. Pinned by
-  `test_fork_postGradTokenLeg_pushIsNotBooked_butPullIs` — the fix (an engine intake or a pull-based
-  splitter leg) changes this test in the same commit.
+- ✅ **The post-graduation ERC-20 leg — FIXED in source (W.7a).** `RevenueSplitter.sweepToken` PUSHES
+  the holder leg to the engine as a bare `transfer`, and the engine accrues ETH through `receive()`
+  and ERC-20s through the pull-based `depositAsset`. The `sweepAsset(asset)` intake now books
+  `balanceOf(this) − accountedAsset[asset]` into `pendingPot[asset]` (permissionless, no trust in the
+  caller), the owner must `addAsset` each fee token, and the W.8 pin keeps asserting the DEPLOYED
+  engine until the owner upgrades the proxy — at which point that pin flips to the booked path.
+  ⚠️ **The deployed proxy still runs the pre-`sweepAsset` implementation (see the upgrade runbook).**
 
 ## Deliberate divergences from the reference
 
@@ -126,3 +134,33 @@ Two findings, both pinned as tests:
 treasury)` → `RoyaltySink(splitter)`; then OpenSea royalties → sink; token launch with
 `creatorFeeRecipient = splitter`; one-shot `setToken`; prices set to single digits (1 · 1/2/3 ·
 2/3).
+
+## FeeRouter — design (W.7, spec `specs/047-beta-fee-router/`)
+
+The deployed `SwapRouter02` has no fee hook the splitter could receive through (`sweepWithFee` is
+absent; `sweepToken` is the platform's own), so the beta swap — user-signed, fee-free — needed a
+router of its own to charge the advertised **0.20%**. `FeeRouter` is that router and nothing more:
+
+- **UUPS** (owner = the beta deployer EOA, `initialize`-bound; implementation has initializers
+  disabled), but the fee surface is not upgradeable config: `FEE_BPS = 20` is a constant and the
+  ceiling is immutable, so changing the rate or the splitter takes a new implementation — an
+  owner-visible upgrade.
+- **Fee input-side, in the input asset.** ETH-in pays in ETH straight to the splitter's `receive()`
+  (where `distribute()` splits it 90/10); ERC-20-in pays in that token, which the router hands to the
+  splitter and settles in the same transaction through the splitter's own immutable `sweepToken`
+  (90% pushed to the engine — booked via `sweepAsset` — 10% to the treasury). The destination is the
+  splitter immutable; never an EOA.
+- **Exact-input, single-hop only** (multi-hop and exact-output are beta non-goals). WETH is the
+  native sentinel: `tokenIn == weth` wraps `netIn` to WETH, `tokenOut == weth` unwraps the output and
+  forwards native ETH to the recipient.
+- **Deadline is enforced here** (`block.timestamp <= params.deadline`) because the `02` router takes
+  no deadline; slippage (`amountOutMinimum`) is the caller's number, passed through unchanged, with a
+  belt-and-braces floor check on the returned amount.
+- **Non-custodial and stateless.** Funds move only inside the signed call; the contract writes no
+  storage in the swap path (no state write after an external call), and `nonReentrant` guards the one
+  entry point. `rescueEth`/`rescueToken` (owner-only) exist solely for value force-sent outside a
+  swap.
+
+The app binds it only when the 4663 book carries a `feeRouter` address; undefined ⇒ the direct
+`SwapRouter02` path is byte-identical (alpha untouched). The on-chain 4663 fork proof of the fee in
+the real WETH/USDG pool lives in `test/fork/BrokerRevenueFork.t.sol`.

@@ -38,6 +38,7 @@ const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH
 const MUTED = "var(--muted-foreground)";
 
 const eqAddr = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const netName = (id?: number) => (id === 46630 ? "Robinhood Testnet" : id === 8453 ? "Base" : id === 84532 ? "Base Sepolia" : `chain ${id ?? "?"}`);
 
 function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: SwapToken } {
@@ -179,6 +180,20 @@ export function InlineSwapConfirm({
   useHoldCriticalOp(swapCtrl.isBusy, "locked");
   const { quote, netOut, netMinOut, feeAmount } = s;
 
+  // §fee-router (W.7): input-side fee mode — disclose the bps + destination read LIVE from the router.
+  const feeOnInput = s.feeRouterActive;
+  const feePct =
+    feeOnInput && s.feeBpsLive !== undefined
+      ? formatBpsPercent(s.feeBpsLive)
+      : formatBpsPercent(ROUTING_FEE_BIPS);
+  const feeDisplay = feeOnInput
+    ? s.feeAmountIn !== undefined && tokenIn
+      ? `${fmt(s.feeAmountIn, tokenIn.decimals)} ${tokenIn.symbol}`
+      : DASH
+    : feeAmount !== undefined && tokenOut
+      ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}`
+      : DASH;
+
   // Safety gate — a non-recommended (unverified) receive-token must be acknowledged before confirming.
   const outUnverified = !!tokenOut && !tokenOut.isNative && !tokenOut.verified;
   const outCollision = outUnverified ? findVerifiedBySymbol(activeChain ?? 0, tokenOut!.symbol) : undefined;
@@ -318,7 +333,7 @@ export function InlineSwapConfirm({
             {/* Receive token */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span style={{ fontSize: 13 }}>
-                You receive {s.feeActive ? "(est., after fee)" : "(est.)"}:{" "}
+                You receive {s.feeActive && !feeOnInput ? "(est., after fee)" : "(est.)"}:{" "}
                 <b>
                   {s.canQuote && netOut !== undefined && tokenOut ? fmt(netOut, tokenOut.decimals) : (quote.isLoading ? "…" : DASH)}
                 </b>
@@ -350,7 +365,10 @@ export function InlineSwapConfirm({
                   v={quote.route === undefined ? DASH : quote.route.kind === "single" ? `${formatBpsPercent(quote.route.fee / 100)} pool` : `via ${quote.route.via} · 2 hops`}
                 />
                 {s.feeActive && (
-                  <Row k={`Routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`} v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
+                  <Row k={`Routing fee (${feePct})`} v={feeDisplay} />
+                )}
+                {feeOnInput && s.feeDestination && (
+                  <Row k="Fee destination" v={`RevenueSplitter ${shortAddr(s.feeDestination)}`} />
                 )}
                 <Row k={`Min received (slippage ${formatBpsPercent(slippageBps)})`} v={netMinOut !== undefined && tokenOut ? `${fmt(netMinOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
               </div>
@@ -391,6 +409,9 @@ export function InlineSwapConfirm({
               <Notice>High price impact ({formatBpsPercent(quote.priceImpactBps ?? 0)}) — this pool is thin. Try a smaller amount or raise slippage.</Notice>
             )}
             {s.insufficient && <Notice>Amount exceeds your {tokenIn?.symbol} balance.</Notice>}
+            {s.feeRouterPending && s.amountIn > 0n && (
+              <Notice>Reading the swap fee from the router… needed before you can confirm.</Notice>
+            )}
             {s.canQuote && !s.insufficient && s.feeRecipientPending && (
               <Notice>Reading the routing-fee recipient… needed before you can confirm.</Notice>
             )}
@@ -408,10 +429,11 @@ export function InlineSwapConfirm({
           <>
             <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
               <Row k="You pay" v={`${amount} ${tokenIn?.symbol}`} />
-              {s.feeActive && (
-                <Row k={`Routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`} v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
+              {s.feeActive && <Row k={`Routing fee (${feePct})`} v={feeDisplay} />}
+              {feeOnInput && s.feeDestination && (
+                <Row k="Fee destination" v={`RevenueSplitter ${shortAddr(s.feeDestination)}`} />
               )}
-              <Row k={s.feeActive ? "You receive (est., after fee)" : "You receive (est.)"} v={netOut !== undefined && tokenOut ? `${fmt(netOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
+              <Row k={s.feeActive && !feeOnInput ? "You receive (est., after fee)" : "You receive (est.)"} v={netOut !== undefined && tokenOut ? `${fmt(netOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
               <Row k="Minimum received" v={netMinOut !== undefined && tokenOut ? `${fmt(netMinOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH} />
               <Row
                 k="Route"
@@ -424,7 +446,15 @@ export function InlineSwapConfirm({
               </div>
             )}
             <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-              You sign this from your own wallet. The swap output{s.feeActive ? ` (net of the ${formatBpsPercent(ROUTING_FEE_BIPS)} routing fee)` : ""} goes straight to your address{s.feeActive ? ", and the fee goes on-chain to the routing-fee recipient" : ""}.
+              You sign this from your own wallet. The swap output
+              {s.feeActive && !feeOnInput ? ` (net of the ${feePct} routing fee)` : ""} goes straight to
+              your address
+              {feeOnInput
+                ? `, and the ${feePct} fee is charged on the amount you pay and sent on-chain to the RevenueSplitter`
+                : s.feeActive
+                  ? ", and the fee goes on-chain to the routing-fee recipient"
+                  : ""}
+              .
             </div>
             {swapCtrl.error && <div style={{ fontSize: 12.5, color: "var(--loss)" }}>{swapCtrl.error}</div>}
             <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
