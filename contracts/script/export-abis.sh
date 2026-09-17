@@ -42,6 +42,16 @@ CONTRACTS=(
   # 044 — the revenue pot. Deployed and deliberately OFF: `claim` reverts until an allocation is
   # published, so no flag holds it there. Exported so the claim screen binds the deployed ABI.
   "BrokerRevenueDistributor:BrokerRevenueDistributor:brokerRevenueDistributor"
+  # Beta revenue subsystem (Phase 2, 4663 only) — the ported engine/vault/splitter/sink. The web
+  # binds these on the beta build; alpha never reads them (env-gated by the address book).
+  "BrokerEngine:BrokerEngine:brokerEngine"
+  "BrokerVault:BrokerVault:brokerVault"
+  "RevenueSplitter:RevenueSplitter:revenueSplitter"
+  "RoyaltySink:RoyaltySink:royaltySink"
+  # W.7 — the beta fee-router (UUPS proxy over the external SwapRouter02). The swap page binds this
+  # when the 4663 book carries a `feeRouter` address; the constants it reads (`feeBps`, `splitter`)
+  # drive the pre-sign fee disclosure.
+  "FeeRouter:FeeRouter:feeRouter"
 )
 
 if [ ! -d "$OUT" ]; then

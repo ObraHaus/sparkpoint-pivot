@@ -28,8 +28,8 @@ import type { TargetRef } from "../policy/index";
 /** A 20-byte EVM address. No `any` on chain-facing types (repo rule). */
 export type Address = `0x${string}`;
 
-/** The networks this registry is parameterized for (R14 · §B3 adds Robinhood testnet). */
-export type Network = "base" | "baseSepolia" | "localFork" | "robinhoodTestnet";
+/** The networks this registry is parameterized for (R14 · §B3 adds Robinhood testnet; §B adds mainnet). */
+export type Network = "base" | "baseSepolia" | "localFork" | "robinhoodTestnet" | "robinhoodMainnet";
 
 /**
  * The concrete addresses for one chain. Protocol infra + tokens are always
@@ -91,6 +91,17 @@ export interface AddressBook {
   readonly swapFeeRecipient?: Address;
 
   /**
+   * §fee-router (047 · W.7) — the beta **swap fee-router**: a user-signed UUPS contract in front of
+   * the external Uniswap V3 `SwapRouter02` that charges the protocol's 0.20% on the **input side**
+   * and sends it to the `RevenueSplitter` (ETH via `receive()`, ERC-20 via `sweepToken`). A PLAIN
+   * optional field (NOT a policy `TargetRef`): the swap is user-signed / non-custodial, and the app
+   * binds it only to build the swap call and to disclose the fee + its destination before signing.
+   * Undefined ⇒ no fee-router on this chain: the swap keeps routing straight to
+   * `uniswapV3SwapRouter02` and nothing changes (alpha byte-identical).
+   */
+  readonly feeRouter?: Address;
+
+  /**
    * §premium (012) — the SRK utility-token venue on this chain (Premium is paid in SRK). A PLAIN optional
    * field (NOT a policy `TargetRef`): where unset, the pay surface shows an honest "unavailable" state
    * rather than a fabricated value. Base-Sepolia-only for now (the vault + Premium live on 84532).
@@ -146,6 +157,31 @@ export interface AddressBook {
    * value leaves is a holder claiming their own published allocation.
    */
   readonly brokerRevenueDistributor?: Address;
+  /* ── §beta-revenue (Phase 2 · Robinhood 4663 ONLY) — the SparkPoint-authored revenue subsystem. ──
+   * Deployed 2026-09-16 as the BETA set (verified on-chain). Alpha (Base Sepolia) keeps its
+   * existing Broker/SRK surfaces and never reads these. PLAIN optional fields — NO policy
+   * `TargetRef`, so no agent-mediated path can form: every interaction is either user-signed
+   * (activate/promote/fuse/withdraw) or a permissionless keeper call (settle/deliver/sweeps).
+   * Undefined ⇒ the beta surfaces must say "not on this network yet" (fail-closed). Every address
+   * mirrors `contracts/deployments/4663/addresses.json`. */
+  /** The Pons-launched utility token (OZ `ERC20Burnable`; the engine burns it via `burnFrom`). */
+  readonly utilityToken?: Address;
+  /** The `BrokerEngine` PROXY — activate/promote/fuse + the AS-IS per-asset revenue accumulator. */
+  readonly brokerEngine?: Address;
+  /** The immutable `BrokerVault` — per-token-id, multi-asset (ETH = `address(0)`) + EIP-712 withdraw. */
+  readonly brokerVault?: Address;
+  /** The immutable `RevenueSplitter` — the Pons `creatorFeeRecipient` (90% engine / 10% treasury). */
+  readonly revenueSplitter?: Address;
+  /** The immutable `RoyaltySink` — the OpenSea royalty recipient; flushes to the splitter. */
+  readonly royaltySink?: Address;
+  /** The address the `RevenueSplitter`'s immutable `treasury` points at — its 10% share (mirrors
+   * `beta.treasury` in `contracts/deployments/4663/addresses.json`). */
+  readonly revenueTreasury?: Address;
+  /** The Pons bonding curve for the utility token — the sweeper's `sweepFees` target pre-graduation. */
+  readonly ponsCurve?: Address;
+  /** Pons' `V2FeeEscrow` — where curve/hook fees are credited and `claim()`ed by the splitter. */
+  readonly ponsFeeEscrow?: Address;
+
   /**
    * §fee-treasury (014) — the dedicated multisig Safe that receives ALL protocol fees on this chain
    * (perf fee + the Base swap fee follow the vault's on-chain feeRecipient(); premium pays here too).

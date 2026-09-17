@@ -1,0 +1,23 @@
+# systemd timer — the runner's schedule lives HERE, not in the app.
+#
+# Install (as the user that holds .claude/.env):
+#   mkdir -p ~/.config/systemd/user
+#   cp sparkpoint-bots.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now sparkpoint-bots.timer
+#   systemctl --user list-timers sparkpoint-bots
+#
+# ⚠️ Keep OnUnitActiveSec and BOT_INTERVAL_SEC in the .service in step. The panel is told the
+# cadence by the runner and judges lateness against it, so a mismatch shows as a fleet that is
+# permanently early or permanently overdue while nothing is actually wrong.
+[Unit]
+Description=SparkPoint testnet activity bots — one cycle
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

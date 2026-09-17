@@ -23,8 +23,9 @@ import { AdminSections } from "@/components/admin/SectionTabs";
 import { SelfAuthoredPanel } from "@/components/admin/SelfAuthoredPanel";
 import { Icon } from "@/lib/icons";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
-const CHAIN_HEADERS = { "x-chain-id": "84532" };
+const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 const API = "/api/agent/admin/knowledge";
 
 interface SourceRow {

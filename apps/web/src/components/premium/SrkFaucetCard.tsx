@@ -18,6 +18,7 @@ import { erc20Abi, formatUnits, type Address, type Hex } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
+import { wagmiConfig } from "@/lib/wagmi";
 import { srkFaucetAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl, explorerTxUrl } from "@/lib/chain/explorer";
 import {
@@ -45,6 +46,9 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
  */
 type SrkChainId = typeof CHAIN_IDS.baseSepolia | typeof CHAIN_IDS.robinhoodTestnet;
 const SRK_CHAIN_IDS: readonly SrkChainId[] = [CHAIN_IDS.baseSepolia, CHAIN_IDS.robinhoodTestnet];
+// SRK is a testnet-only test token; on the mainnet-beta build (only 4663 registered) NONE of its
+// faucet chains are registered, so the faucet is genuinely unavailable there (shown as a disabled note).
+const SRK_ON_THIS_BUILD = SRK_CHAIN_IDS.some((id) => wagmiConfig.chains.some((c) => c.id === id));
 
 function shortErr(e: unknown): string {
   const a = e as { shortMessage?: string; message?: string } | null;
@@ -178,6 +182,21 @@ export function SrkFaucetCard() {
   const receiptUrl = txHash ? explorerTxUrl(chainId, txHash) : undefined;
   const faucetUrl = explorerAddressUrl(chainId, faucet);
   const offered = chains.filter((c) => Boolean(c.faucet));
+
+  if (!SRK_ON_THIS_BUILD) {
+    return (
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div className="card-hd">
+          <span className="t">SRK faucet</span>
+          <span className="lbl">not on this network</span>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+          SRK isn&rsquo;t part of the Robinhood Chain beta — the beta&rsquo;s utility token arrives with the token
+          launch. There is no SRK faucet on this network.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id={SRK_FAUCET_ANCHOR} className="card card-pad" style={{ marginBottom: 16, scrollMarginTop: 80 }}>

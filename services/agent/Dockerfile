@@ -6,11 +6,21 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONPATH=/app/src
 
-# Runtime deps (mirror pyproject [project.dependencies]; asyncpg = DB, eth-abi =
-# the keyless vault chain-reader). Kept explicit so the image stays slim.
+# Runtime deps. ⚠️ This list MUST match `[project.dependencies]` in pyproject.toml, and a guard
+# test (`tests/test_dockerfile_deps.py`) fails the build if it drifts.
+#
+# It drifted once, and the failure was invisible: `eth-hash[pycryptodome]` was declared in
+# pyproject but missing here, so `eth_utils.keccak` had no hashing backend in the image. The vault
+# fee indexer computes its event topics with keccak AT IMPORT TIME, so its background task raised
+# ImportError on creation — and `asyncio.create_task` swallows that. No error, no cursor movement,
+# and `/admin/revenue` read zero for a day while looking perfectly healthy.
+#
+# The lesson is not "remember to update two files". It is that a hand-maintained mirror of a
+# dependency list is a mirror that will eventually lie, so it is now asserted.
 COPY pyproject.toml ./
 RUN uv pip install --system \
-      fastapi "uvicorn[standard]" pydantic httpx anthropic asyncpg eth-abi
+      fastapi "uvicorn[standard]" pydantic httpx anthropic asyncpg eth-abi \
+      "eth-hash[pycryptodome]"
 
 COPY src ./src
 

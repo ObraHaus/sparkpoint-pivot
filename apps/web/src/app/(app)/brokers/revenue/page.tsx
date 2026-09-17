@@ -14,7 +14,7 @@
  * fact rather than as an error or a teaser. The interactive prototype that started this feature
  * showed "**+$14.00/month**" per holder, derived from an assumed $12,300 of monthly revenue across
  * 1,000 brokers. The real numbers: **2.18 test-USDC** of protocol fees ever recorded, across eight
- * events, in tokens with no market value — and the collection is 10,000, not 1,000. Every figure in
+ * events, in tokens with no market value — and the collection is 5,555, not 1,000. Every figure in
  * that prototype was fiction.
  *
  * Hence the rules, enforced by tests in `lib/chain/brokers.test.ts`, not by care:
@@ -33,6 +33,7 @@ import type { Address } from "viem";
 import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS, chainName } from "@sparkpoint/shared/chains";
+import { wagmiConfig } from "@/lib/wagmi";
 import { brokerRevenueDistributorAbi } from "@sparkpoint/shared/abis";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import {
@@ -44,9 +45,24 @@ import {
   REVENUE_SHARE_DISCLOSURE,
   type PublishedPeriod,
 } from "@/lib/chain/brokers";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { RevenueBeta } from "./RevenueBeta";
+
+/**
+ * TWO SURFACES, ONE ROUTE (W.4). The mainnet-beta build (4663) renders `RevenueBeta`, which shows
+ * the real fee route against the deployed engine/vault/splitter. Alpha (Base Sepolia) keeps the
+ * 044 distributor page below, unchanged.
+ */
+export default function Page() {
+  return APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet ? <RevenueBeta /> : <TestnetRevenue />;
+}
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
+// On the mainnet-beta build (only 4663 registered) the collection's chain isn't registered, so show a
+// plain "not on this network" state (NEVER "coming soon" — rule 3 above) instead of a dead
+// "switch to Robinhood Testnet" prompt against an unregistered chain.
+const BROKER_ON_THIS_BUILD = wagmiConfig.chains.some((c) => c.id === BROKER_CHAIN);
 
 /** Minimal ERC-20 metadata reads — the period names its own units. */
 const erc20MetaAbi = [
@@ -54,7 +70,8 @@ const erc20MetaAbi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ] as const;
 
-export default function Page() {
+/** The 46630 page (044): the Merkle distributor's claim flow. */
+function TestnetRevenue() {
   const { address, isConnected, chainId: walletChain } = useAccount();
   const owner = address as Address | undefined;
 
@@ -154,6 +171,20 @@ export default function Page() {
     alreadyClaimed: claimedAlready.data as boolean | undefined,
     walletReady: onChain,
   });
+
+  if (!BROKER_ON_THIS_BUILD) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 py-8">
+        <header className="mb-6">
+          <h1 className="text-xl font-semibold">Broker revenue share</h1>
+        </header>
+        <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The Sparky Broker collection isn&rsquo;t part of this network — its revenue distributor lives on Robinhood
+          testnet. There is nothing to claim here.
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">

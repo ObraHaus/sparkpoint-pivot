@@ -21,6 +21,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createPublicClient, http, isAddress, type Hex } from "viem";
 import { base, baseSepolia, robinhoodTestnet } from "viem/chains";
+import { robinhoodMainnet } from "@/lib/chain/clients";
 import { parseSiweMessage, verifySiweMessage } from "viem/siwe";
 import { fetchAllowlistStatus, runSrkMainnetGate } from "@/lib/auth/agent-status";
 import {
@@ -38,6 +39,9 @@ const RPC_URL: Record<number, string | undefined> = {
   [base.id]: process.env.BASE_RPC_URL ?? process.env.NEXT_PUBLIC_BASE_RPC_URL,
   [baseSepolia.id]: process.env.BASE_SEPOLIA_RPC_URL ?? process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
   [robinhoodTestnet.id]: undefined, // §B3 — viem default RPC (rpc.testnet.chain.robinhood.com)
+  // §B — Robinhood mainnet 4663: archive endpoint (the public node prunes ~3h); server env preferred.
+  [robinhoodMainnet.id]:
+    process.env.ROBINHOOD_MAINNET_RPC_URL ?? process.env.NEXT_PUBLIC_ROBINHOOD_MAINNET_RPC_URL,
 };
 
 /** §B3 — the viem chain object per accepted chainId (used to build the verify client). */
@@ -45,6 +49,7 @@ const CHAIN_BY_ID = {
   [base.id]: base,
   [baseSepolia.id]: baseSepolia,
   [robinhoodTestnet.id]: robinhoodTestnet,
+  [robinhoodMainnet.id]: robinhoodMainnet,
 } as const;
 
 /** The app's OWN canonical hosts — always accepted for SIWE alongside any `SIWE_DOMAIN` env, so the

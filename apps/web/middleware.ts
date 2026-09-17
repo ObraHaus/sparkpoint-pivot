@@ -35,6 +35,12 @@ const ALLOW_EXACT = new Set([
   // Network-gate incident capture — must accept the beacon even on a LOCKED deploy (log-only,
   // no auth/DB). On UNLOCKED/develop it's already reachable via INFRA_PREFIX; this is parity.
   "/api/debug/network",
+  // 045: the public alpha application. Both halves are listed on purpose. The landing page is
+  // served on a LOCKED deploy and now carries the form, so the endpoint it posts to must be
+  // served there too — otherwise the form renders, submits, and gets a 307 to /coming-soon that
+  // the client reads as a failure. `/apply` is the same form on its own linkable address.
+  "/apply",
+  "/api/access/apply",
 ]);
 const ALLOW_PREFIX = [
   "/_next/static",
@@ -62,6 +68,11 @@ const PUBLIC_EXACT = new Set([
   "/",
   "/connect",
   "/verify",
+  // 045 — applying for access must never require access. The whole point is that the applicant has
+  // no session; gating this would redirect them to /connect, which is the wall they are writing to
+  // ask about. (`/api/access/apply` needs no entry here: Gate 2 passes every `/api` path via
+  // INFRA_PREFIX. It IS listed in ALLOW_EXACT above, which Gate 1 needs.)
+  "/apply",
   "/coming-soon",
   "/geo-blocked",
   "/favicon.ico",

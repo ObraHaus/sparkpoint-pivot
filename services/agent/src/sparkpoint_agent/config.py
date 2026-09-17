@@ -17,7 +17,7 @@ surface needs and exposes fail-closed getters:
                                   NEVER a fabricated quote (mirrors packages/shared/src/
                                   addresses/*.ts, where ``vault`` is ``undefined`` pre-deploy).
   - ``CHAIN_ID``                — one of policy.SUPPORTED_CHAIN_IDS
-                                  (8453 · 84532 · 31337 · 46630).
+                                  (8453 · 84532 · 31337 · 46630 · 4663).
 
 NON-CUSTODY (N1/N3): this loader is PROVABLY keyless. It reads only the fixed
 ``ALLOWED_ENV_KEYS`` allowlist; the module-load guard ``_assert_no_key_material``
@@ -49,6 +49,8 @@ BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
 # than silently serving another chain's state as mainnet.
 BASE_MAINNET_RPC_URL_ENV = "BASE_MAINNET_RPC_URL"
 ROBINHOOD_RPC_URL_ENV = "ROBINHOOD_RPC_URL"  # §B3 Robinhood testnet (46630); keyless public default
+# §B Robinhood MAINNET (4663); ARCHIVE only, NO public default.
+ROBINHOOD_MAINNET_RPC_URL_ENV = "ROBINHOOD_MAINNET_RPC_URL"
 AAVE_POOL_ADDRESS_ENV = (
     "AAVE_POOL_ADDRESS"  # 017 — Aave v3 Pool for the live USDC supply-APY read (PUBLIC)
 )
@@ -60,6 +62,11 @@ AAVE_RESERVE_USDC_ADDRESS_ENV = (
 # has no official Aave/USDC (vault stays Base-only); powers read-only chat + wallet balance only.
 ROBINHOOD_TESTNET_CHAIN_ID = 46630
 _ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
+
+# §B — Robinhood MAINNET (4663). Unlike the testnet there is NO keyless public default: the public
+# mainnet RPC prunes state after ~3h and breaks history/fork reads, so 4663 MUST be given an
+# explicit ARCHIVE endpoint (ROBINHOOD_MAINNET_RPC_URL) — it fails closed if unset.
+ROBINHOOD_MAINNET_CHAIN_ID = 4663
 
 # Default to Base mainnet (8453) — the chainId the live SIM_FORK_RPC_URL reports.
 DEFAULT_CHAIN_ID = 8453
@@ -76,6 +83,7 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         BASE_SEPOLIA_RPC_URL_ENV,
         BASE_MAINNET_RPC_URL_ENV,
         ROBINHOOD_RPC_URL_ENV,
+        ROBINHOOD_MAINNET_RPC_URL_ENV,
         AAVE_POOL_ADDRESS_ENV,
         AAVE_RESERVE_USDC_ADDRESS_ENV,
     }
@@ -145,13 +153,18 @@ def _normalize_address(value: str, field: str) -> str:
 # against one chain's state and signed on another. The 84532 order had the mirror-image bug (a
 # Base-mainnet fork could be served as Sepolia). A missing value now fails CLOSED instead.
 # ⚠️ ADDING A CHAIN: give it an entry here. Constitution v3.0.0 (2026-07-30) ratified **Robinhood
-# Chain mainnet 4663** as in-scope, but it is NOT in ``policy.SUPPORTED_CHAIN_IDS`` yet, so it is
-# deliberately absent below. Whoever implements 4663 must add its row — an unlisted chain falls back
-# to ``(RPC_URL_ENV,)`` only — fail-closed and safe, but its chain-specific var is then ignored.
+# Chain mainnet 4663** as in-scope, and the beta now ACCEPTS it: 4663 is in
+# ``policy.SUPPORTED_CHAIN_IDS`` and the api ``API_SUPPORTED_CHAIN_IDS`` (Phase 1 — chat + read-only
+# portfolio + the user-signed swap; its policy allowlist stays EMPTY, so every agent-mediated action
+# fails closed). §B gives it its RPC row below (ARCHIVE only), so the 023 chain-identity probe binds
+# to the RIGHT archive endpoint instead of latching a MISMATCH on the global fallback.
 _CHAIN_RPC_ENVS: dict[int, tuple[str, ...]] = {
     8453: (RPC_URL_ENV, BASE_MAINNET_RPC_URL_ENV),  # Base mainnet — explicit only
     84532: (RPC_URL_ENV, BASE_SEPOLIA_RPC_URL_ENV),  # Base Sepolia
     31337: (RPC_URL_ENV, SIM_FORK_RPC_URL_ENV),  # local Anvil fork of Base mainnet
+    # §B Robinhood MAINNET — ARCHIVE only, NO public fallback (the public node prunes state); a
+    # missing value fails closed rather than serving pruned / other-chain state as mainnet.
+    ROBINHOOD_MAINNET_CHAIN_ID: (RPC_URL_ENV, ROBINHOOD_MAINNET_RPC_URL_ENV),
 }
 
 

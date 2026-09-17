@@ -1,0 +1,141 @@
+/*
+ * The public alpha-application form (045). One component, two surfaces.
+ *
+ * `/apply` is a normal themed page, so the defaults read from the app's design tokens and follow
+ * light/dark like everything else. The landing page's closing section is a permanent WHITE panel —
+ * its colours are hard-coded (`new-era.css` `footer.close`) and do not follow the theme — so a
+ * token-driven form dropped into it would render dark-on-white the moment a visitor picked dark
+ * mode. `.ap-form.ap-light` pins the same palette that section already uses, rather than leaving
+ * legibility to whichever theme happens to be active.
+ */
+
+.ap-form {
+  --ap-fg: var(--foreground);
+  --ap-muted: var(--muted-foreground);
+  --ap-border: var(--border);
+  --ap-border-strong: var(--primary);
+  --ap-field-bg: transparent;
+  --ap-error: var(--loss, #c0392b);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  color: var(--ap-fg);
+}
+
+/* The landing footer: always a white panel, whatever the theme is set to. */
+.ap-form.ap-light {
+  --ap-fg: #15151a;
+  --ap-muted: #6a6a72;
+  --ap-border: rgba(0, 0, 0, 0.18);
+  --ap-border-strong: rgba(0, 0, 0, 0.45);
+  --ap-field-bg: rgba(0, 0, 0, 0.015);
+  --ap-error: #c0392b;
+  max-width: 580px;
+}
+
+.ap-lede {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ap-muted);
+  margin: 0 0 10px;
+}
+
+.ap-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ap-muted);
+  margin: 12px 0 5px;
+}
+
+.ap-field {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ap-border);
+  background: var(--ap-field-bg);
+  color: var(--ap-fg);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  transition: border-color 0.2s ease;
+}
+
+/* The address is the one field where a wrong character matters and a wrapped line hides it. */
+.ap-field.ap-address {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.ap-field::placeholder {
+  color: var(--ap-muted);
+  opacity: 0.75;
+}
+.ap-field:focus {
+  outline: none;
+  border-color: var(--ap-border-strong);
+}
+.ap-field:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+textarea.ap-field {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* Off-screen rather than `display:none`: a bot that skips hidden inputs is exactly the bot this
+   catches, and a form control removed from the layout is still submitted. Kept out of the tab
+   order and out of the accessibility tree so no real person can reach it by accident. */
+.ap-hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.ap-error {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ap-error);
+  margin: 5px 0 0;
+  line-height: 1.45;
+}
+
+.ap-submit {
+  margin-top: 16px;
+  align-self: flex-start;
+}
+
+.ap-fine {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ap-muted);
+  margin: 10px 0 0;
+}
+
+.ap-done {
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 500;
+  color: var(--ap-fg);
+  margin: 0;
+}
+
+/* The landing footer has its own button language (`.fbtn`); on /apply the app's `.btn` applies.
+   This only fixes the width behaviour the two share. */
+.ap-form .ap-submit {
+  min-width: 200px;
+}
+
+@media (max-width: 560px) {
+  .ap-form .ap-submit {
+    width: 100%;
+    min-width: 0;
+  }
+}

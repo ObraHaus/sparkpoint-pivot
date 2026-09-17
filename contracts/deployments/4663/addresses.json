@@ -1,0 +1,48 @@
+{
+  "$comment": [
+    "Robinhood Chain MAINNET (4663) deployment record — beta channel ONLY.",
+    "",
+    "Phase 1 (no SparkPoint contracts) shipped 2026-09-12 (PRs #178-#185).",
+    "Phase 2 revenue subsystem deployed 2026-09-16 (see the beta tracker).",
+    "W.7 fee-router (0.20% input-side) deployed + wired 2026-09-17 — see beta.feeRouter.",
+    "",
+    "The SparkPoint vault is Base-only and never appears here. Alpha (Base Sepolia 84532)",
+    "keeps its own book — these addresses must never be used there."
+  ],
+  "chainId": 4663,
+  "beta": {
+    "deployedAt": "2026-09-16",
+    "brokerEngineUpgradedAt": "2026-09-17",
+    "brokerEngineUpgradeTx": "0xc1cdf90c8154747eefd76c04b9fe02f658c0c8bc70a71d51ff5e90f934dbaa54",
+    "roundSeconds": 86400,
+    "brokerNFT": "0x706b4b449d9b007b7fbd29866122e758d9903d3f",
+    "brokerEngine": "0x08a578D2Fa194E24786f5644AFabC578f2daDB43",
+    "brokerEngineImpl": "0x6c36B64259409477919B03B8bb772e3218Ef5736",
+    "feeRouter": "0x0f5c10d550387b2dE4E14F4855E67Ee3321ae7F3",
+    "feeRouterImpl": "0xA91a7B1dDC77a990c89DA8d4a0FD2425b504F372",
+    "feeRouterDeployedAt": "2026-09-17",
+    "feeRouterImplDeployTx": "0x5d782b75c69cc0eb10b58c76121f1150821084f9233efdd1eb92c1b9fa185a6f",
+    "feeRouterDeployTx": "0x15d98a9eb671877095bb7b843f6293e149da147fa65bf8eecedd7e5f16a79a6a",
+    "brokerVault": "0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455",
+    "revenueSplitter": "0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1",
+    "royaltySink": "0x0009a0fEf5a5371B05727e257FF9500EeF0a7d66",
+    "utilityToken": "0x790316a2a1B403b55c6E8a6857Dd768078503553",
+    "ponsCurve": "0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53",
+    "ponsFeeEscrow": "0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e",
+    "treasury": "0x376293DDb027555aB7F483c00e1D61b2a7757dE8"
+  },
+  "thirdParty": {
+    "uniswapV3SwapRouter02": "0xCaf681a66D020601342297493863E78C959E5cb2",
+    "uniswapV3QuoterV2": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+    "uniswapV3Factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+    "weth": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "wethUsdgPoolFee100": "0x52e65B17fB6E5BA00Ed806f37Afcd2DaA50271Ca",
+    "ponsV2LaunchFactory": "0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e"
+  },
+  "bots": {
+    "keeper": "0x896D644E740154FBBB6687a4582033d04696ae0F",
+    "sweeper": "0xEeEDB0df8Cc3D460dEccE5F02eC04b9F29fF5648",
+    "note": "Keys in the workspace keystore (.claude/sparky-beta-bots.txt). Fund with gas; neither holds privilege."
+  }
+}

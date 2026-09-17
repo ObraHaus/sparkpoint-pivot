@@ -32,6 +32,7 @@ import { useAccount } from "wagmi";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { ConfirmFlow, type ConfirmIntent } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm } from "@/lib/chain/useVaultConfirm";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import { parseConfirmParams } from "@/lib/chain/confirmParams";
 import { useBeta } from "@/lib/auth/whitelist";
@@ -39,7 +40,7 @@ import { BetaGate } from "@/components/BetaGate";
 import { AmountScreenRoute } from "../../vault/_amount-screen";
 
 /** The chain whose address book seeds the vault options pre-connect (Base Sepolia). Mirrors _amount-screen. */
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
 function safeAddresses(chainId: number | undefined) {

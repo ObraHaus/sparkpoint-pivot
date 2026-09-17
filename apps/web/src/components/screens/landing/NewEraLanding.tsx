@@ -200,6 +200,17 @@ export default function NewEraLanding() {
     }
   }
 
+  /**
+   * 045 — the public application page.
+   *
+   * Unlike `goConnect`, this deliberately does NOT mirror the construction gate: `/apply` is in the
+   * middleware's locked-deploy allowlist precisely so a visitor can still ask for access while the
+   * rest of the site is sealed, which is exactly when they would most want to.
+   */
+  function goApply() {
+    router.push("/apply");
+  }
+
   function goConnect() {
     // While the construction gate is on, /connect is gated — send the CTA to
     // the public Coming soon page instead of dead-ending. Cosmetic mirror of
@@ -928,6 +939,14 @@ export default function NewEraLanding() {
               <button className="btn ghost" onClick={() => scrollToFraction(0.22)}>
                 See how it works
               </button>
+              {/* 045 — the alpha is gated, so "Connect wallet" is a wall for most visitors. This
+                  is the door beside it. It NAVIGATES to /apply rather than scrolling: this page is
+                  a scroll-driven WebGL sequence, so a programmatic jump to the end whips the whole
+                  animation past at a speed nobody can read, and dumps the visitor somewhere they
+                  did not ask to be. A page transition is the honest way to change context. */}
+              <button className="btn ghost" onClick={goApply}>
+                Apply for alpha access
+              </button>
             </div>
           </div>
         </section>
@@ -1083,7 +1102,7 @@ export default function NewEraLanding() {
               <h1 className="head">
                 Conservative yield, <span className="tail">capital-preservation-first.</span>
               </h1>
-              <p className="sub">One audited vault on Base. Honest, net-of-fees numbers — never a projection.</p>
+              <p className="sub">Honest, net-of-fees numbers — never a projection.</p>
               <ul className="stats">
                 <li>
                   <span className="sn" style={{ color: "var(--brand-cyan)" }}>
@@ -1230,12 +1249,21 @@ export default function NewEraLanding() {
               </>
             )}
           </form>
+          {/* 045 — the two ways in, side by side. The application FORM used to be inlined here;
+              it now lives on /apply and this is a link to it. Four text fields at the end of a
+              scroll-driven WebGL sequence made the closing statement into a data-entry screen, and
+              the form is easier to find, share and return to at its own address. */}
           <div className="fbtns">
             <button className="fbtn primary" onClick={goConnect}>
               Connect wallet
               <span className="arrow">
                 <ArrowOut />
               </span>
+            </button>
+            {/* No arrow: the circled arrow is styled only for `.fbtn.primary` (a light border for a
+                dark fill) and the hero's ghost buttons carry none either. */}
+            <button className="fbtn ghost" onClick={goApply}>
+              Apply for alpha access
             </button>
           </div>
         </div>

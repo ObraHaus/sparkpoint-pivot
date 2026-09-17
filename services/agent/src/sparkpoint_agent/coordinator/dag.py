@@ -432,9 +432,7 @@ class CoordinatorDag:
         """Stage 3 — propose whitelist-only candidates (may be empty; raises ``_Refused``
         on a model refusal so the caller emits a REFUSAL block). ``user`` is the verified
         wallet (per-user gateway budget key) — identity only, never authority."""
-        result = await self.recommender.propose(
-            intent, self._proposal_context(gathered), user=user
-        )
+        result = await self.recommender.propose(intent, self._proposal_context(gathered), user=user)
         if result.refused:
             raise _Refused
         return result.candidates
@@ -508,7 +506,11 @@ class CoordinatorDag:
         if _BRIDGE_RE.search(message):
             yield ToolStepBlock("Understanding your request", "running")
             yield ToolStepBlock("Understanding your request", "done")
-            yield TextBlock(_BRIDGE_UNAVAILABLE_MESSAGE)
+            yield TextBlock(
+                _BRIDGE_UNAVAILABLE_MESSAGE
+                if _offers_vault(chain)
+                else _BRIDGE_UNAVAILABLE_NO_VAULT
+            )
             return
 
         # 029/FR-005..007 — three question shapes whose correct answer is known and whose
@@ -533,7 +535,7 @@ class CoordinatorDag:
         if _HOW_TO_EXIT_RE.search(message):
             yield ToolStepBlock("Understanding your request", "running")
             yield ToolStepBlock("Understanding your request", "done")
-            yield TextBlock(_HOW_TO_EXIT_ANSWER)
+            yield TextBlock(_HOW_TO_EXIT_ANSWER if _offers_vault(chain) else _HOW_TO_EXIT_NO_VAULT)
             return
 
         direct = _direct_answer(message, chain)
@@ -617,9 +619,7 @@ class CoordinatorDag:
         yield ToolStepBlock("Reading your portfolio", "done")
 
         if intent.kind is IntentKind.PORTFOLIO:
-            yield PortfolioSnapshotBlock(
-                tuple(p.to_wire() for p in gathered.portfolio.positions)
-            )
+            yield PortfolioSnapshotBlock(tuple(p.to_wire() for p in gathered.portfolio.positions))
             yield TextBlock(self._portfolio_summary(gathered))
             return
 
@@ -681,8 +681,7 @@ class CoordinatorDag:
         stamped = [self.policy_gate(c, gathered) for c in candidates]
         approved = [s for s in stamped if s.signable][:limit]
         blocks = tuple(
-            self._recommendation_block(s, chain, rank=index + 1)
-            for index, s in enumerate(approved)
+            self._recommendation_block(s, chain, rank=index + 1) for index, s in enumerate(approved)
         )
         return RecommendationsResult(
             policy_version=POLICY_VERSION,
@@ -714,8 +713,7 @@ class CoordinatorDag:
                 )
             ]
         blocks: list[ChatBlock] = [
-            self._recommendation_block(s, chain, rank=index + 1)
-            for index, s in enumerate(approved)
+            self._recommendation_block(s, chain, rank=index + 1) for index, s in enumerate(approved)
         ]
         if chain.market.citations:
             blocks.append(CitationBlock(sources=chain.market.citations))
@@ -813,8 +811,26 @@ _NETWORK_NAMES: dict[int, str] = {
     8453: "Base",
     84532: "Base Sepolia",
     46630: "Robinhood Testnet",
+    4663: "Robinhood Chain",
     31337: "the local fork",
 }
+
+#: The deploy-time vault target ref (mirrors ``api.recommendations._VAULT_TARGET_REF``). It is
+#: present in ``ChainContext.resolved_targets`` ONLY when the request chain has a deployed vault
+#: (``config.for_chain(id).vault_address`` set) — so it doubles as the "this chain offers the
+#: SparkPoint vault" predicate. On the Robinhood Chain beta (4663) the vault isn't deployed, so this
+#: is absent and the deterministic vault-centric answers below switch to swap/portfolio-first copy.
+_VAULT_TARGET_REF = "sparkpoint_vault"
+
+
+def _offers_vault(chain: ChainContext) -> bool:
+    """True iff the SparkPoint vault is deployed on the request's chain (resolved-target present).
+
+    Fail-closed: a chain with no configured vault address (4663 beta, 46630 testnet) is ``False``,
+    so canned "open the Vault page" copy is never shown where there is no vault.
+    """
+    return _VAULT_TARGET_REF in chain.resolved_targets
+
 
 # Human nouns for the "not supported on this network" message (kept out of the byte-identical
 # generic refusal so the user learns WHY nothing surfaced).
@@ -828,15 +844,27 @@ _ACTION_NOUNS: dict[ActionType, str] = {
 
 # Chains where the manual, non-custodial Uniswap V3 Swap page (/swap) is live (mirrors the web's
 # swap dex config `apps/web/src/lib/swap/dex.ts` — Base Sepolia + Base + Robinhood testnet 46630 via
-# the Synthra V3 fork). The assistant can't build an Aerodrome swap (fork-only on testnet), but on
-# these chains it surfaces the web's functional inline swap card instead of a flat "not supported".
-_SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453, 46630})
+# the Synthra V3 fork + Robinhood Chain mainnet 4663 via its LIVE on-chain Uniswap V3). The
+# assistant can't build the swap itself (user-signed on the web's own Uniswap path), but on these
+# chains it surfaces the web's functional inline swap card instead of a flat "not supported".
+_SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453, 46630, 4663})
 
-# One copy for "swaps live on the /swap page" wherever a swap surfaces (chat routing + refusal).
-_SWAP_PAGE_MESSAGE = (
-    "Token swaps run on the Swap page — open Swap in the sidebar to swap ETH ↔ USDC on "
-    "Uniswap V3. You review the quote and sign from your own wallet; I can't move your funds."
-)
+
+def _swap_stable_symbol(chain_id: int) -> str:
+    """The stablecoin the Swap page pairs against on this chain. Robinhood Chain (4663) uses USDG;
+    every other swap-page chain uses USDC. Keeps the assistant's swap copy chain-accurate."""
+    return "USDG" if chain_id == 4663 else "USDC"
+
+
+def _swap_page_message(chain_id: int) -> str:
+    """One copy for "swaps live on the /swap page" wherever a swap surfaces (chat routing +
+    refusal), with the pair's stablecoin resolved per chain (USDG on 4663, USDC elsewhere)."""
+    return (
+        f"Token swaps run on the Swap page — open Swap in the sidebar to swap "
+        f"ETH ↔ {_swap_stable_symbol(chain_id)} on Uniswap V3. You review the quote and sign from "
+        "your own wallet; I can't move your funds."
+    )
+
 
 # A swap ask on a Swap-page chain surfaces the web's FUNCTIONAL inline swap card via an `action`
 # block. The swap executes on the web's own Uniswap path (user-signed) — NOT this fork-only agent
@@ -895,6 +923,13 @@ _BRIDGE_UNAVAILABLE_MESSAGE = (
     "Bridging to another chain (like Sui) isn't available in the assistant yet — the SparkPoint "
     "vault and swaps are on Base. I can still help you deposit into the vault, swap on the Swap "
     "page, or read your wallet on this network."
+)
+#: No-vault chains (Robinhood Chain 4663 beta, Robinhood testnet 46630): there's no vault to
+#: deposit into and swaps ARE live here, so the copy points at the Swap page + wallet reads.
+_BRIDGE_UNAVAILABLE_NO_VAULT = (
+    "Bridging to another chain isn't available in the assistant yet. On this network you can swap "
+    "on the Swap page — you review the quote and sign each swap yourself — or ask me to read your "
+    "wallet."
 )
 _BRIDGE_RE = re.compile(r"\bbridg(?:e|es|ed|ing)\b|\bcross[- ]?chain\b", re.IGNORECASE)
 
@@ -993,6 +1028,17 @@ _FEES_PAID_ANSWER = (
     "Fees page breaks all of this down and reads the live fee parameters straight from the vault."
 )
 
+#: No-vault chains (4663 beta, 46630 testnet): there's no vault performance fee here, and the beta's
+#: swaps are currently fee-free. Answer with what's true on THIS network rather than the vault
+#: schedule that doesn't apply yet.
+_FEES_PAID_NO_VAULT = (
+    "There's no SparkPoint vault on this network yet, so there's no performance fee to have paid. "
+    "Swaps on the Swap page are routed through the network's own Uniswap V3 and are currently "
+    "**fee-free** during the beta — you only ever pay the network's gas and the pool's own swap "
+    "fee, both of which you see in the quote before you sign. When the vault and SparkPoint's own "
+    "swap fee go live on this network, you'll see them here."
+)
+
 #: Automation: the honest non-custody answer (N1/N2). Session keys are real and shipped, so this
 #: neither over-promises an autonomous trader nor denies the capability the product has.
 _AUTOMATION_ANSWER = (
@@ -1006,6 +1052,17 @@ _AUTOMATION_ANSWER = (
     "For a one-off buy, tell me the amount and I'll set up the swap for you to sign."
 )
 
+#: No-vault chains (4663 beta, 46630 testnet): session-key automation ships alongside the vault,
+#: which isn't on this network yet — so don't imply a Settings → Security session-key surface that
+#: isn't here. Keep the hard non-custody guarantee and point at the live, user-signed swap.
+_AUTOMATION_NO_VAULT = (
+    "Not on my own — I can never move your funds. Every transaction is signed by your wallet, and "
+    "I only ever prepare one for you to review and approve.\n\n"
+    "Scoped, revocable automation (session keys) arrives alongside the AI vault, which isn't on "
+    "this network yet. Today the live action here is swapping: tell me an amount and I'll set up a "
+    "swap on the Swap page for you to sign."
+)
+
 
 def _apy_answer(chain: ChainContext) -> str:
     """The live vault APY sentence — or an honest "I can't read it right now".
@@ -1013,6 +1070,14 @@ def _apy_answer(chain: ChainContext) -> str:
     Never explains what an APY is: a user asking for the CURRENT figure already knows. The
     projected (net) figure is what they earn, so it leads; gross and the fee follow when known.
     """
+    if not _offers_vault(chain):
+        # No SparkPoint vault on this chain (4663 beta / 46630 testnet) → there is no vault APY to
+        # quote. Say so plainly and point at the live feature rather than an absent rate.
+        return (
+            "There's no SparkPoint vault on this network yet, so there's no vault APY to show. "
+            "When the AI vault opens here you'll see its live rate; today the live feature is "
+            "swapping on the Swap page, which you sign yourself."
+        )
     market = chain.market
     gross = getattr(market, "gross_apy_bps", None) if market else None
     net = getattr(market, "projected_apy_bps", None) if market else None
@@ -1088,6 +1153,19 @@ _HOW_TO_EXIT_ANSWER = (
     "Tell me an amount and I'll set it up for you to sign."
 )
 
+#: No-vault chains (4663 beta, 46630 testnet): there's no SparkPoint vault deposited here to
+#: withdraw FROM, so "how do I withdraw?" is answered honestly — your funds never left your wallet,
+#: and the live feature here is the user-signed Swap page — instead of pointing at a Vault page that
+#: doesn't exist on this network.
+_HOW_TO_EXIT_NO_VAULT = (
+    "There's no SparkPoint vault on this network yet, so there's nothing deposited here to "
+    "withdraw — your funds stay in your own wallet the whole time, and only you can move them.\n\n"
+    "What's live on this network today is swapping: open the **Swap** page, review the quote, and "
+    "sign each swap from your own wallet. When the AI vault arrives on this network, you'll be "
+    "able to withdraw from it at any time, straight to your own address, with no lock-up — and "
+    "because it's a standard ERC-4626 contract, that exit will work even if the app is offline."
+)
+
 #: 031 — "what shipped / what's new / what changed recently". Deliberately narrow: a question
 #: about a SPECIFIC feature still goes to retrieval, where the indexed entries now live.
 _WHATS_NEW_RE = re.compile(
@@ -1134,10 +1212,12 @@ def _direct_answer(message: str, chain: ChainContext) -> str | None:
     if _ALL_IN_RE.search(message) and not _EXIT_RE.search(message):
         return _ALL_IN_ANSWER
     if _FEES_PAID_RE.search(message):
+        if not _offers_vault(chain):
+            return _FEES_PAID_NO_VAULT
         fee_bps = getattr(chain.market, "performance_fee_bps", None) if chain.market else None
         return _FEES_PAID_ANSWER.format(fee=_fmt_bps(fee_bps) if fee_bps else "10")
     if _AUTOMATION_RE.search(message):
-        return _AUTOMATION_ANSWER
+        return _AUTOMATION_ANSWER if _offers_vault(chain) else _AUTOMATION_NO_VAULT
     if _APY_LIVE_RE.search(message) and not _APY_DEFINITION_RE.search(message):
         return _apy_answer(chain)
     return None
@@ -1163,7 +1243,7 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
         # non-custodial Uniswap V3 Swap page IS live on Base — send the user there, not a flat
         # "not supported". (Chains without a Swap page, e.g. 46630, get the generic message.)
         if action_type is ActionType.AERODROME_SWAP and chain_id in _SWAP_PAGE_CHAINS:
-            return _SWAP_PAGE_MESSAGE
+            return _swap_page_message(chain_id)
         network = _NETWORK_NAMES.get(chain_id, f"chain {chain_id}")
         noun = _ACTION_NOUNS.get(action_type, "that action") if action_type else "that action"
         # Only claim the vault is "live here" on a chain that actually offers vault deposits: the

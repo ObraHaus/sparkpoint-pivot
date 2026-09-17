@@ -105,7 +105,7 @@ test("Base Sepolia is the vault chain and the preferred switch target", () => {
 test("the switcher offers exactly the chains marked switchable", () => {
   assert.deepEqual(
     SWITCHABLE_CHAINS.map((c) => c.chainId).sort((a, b) => a - b),
-    [46630, 84532],
+    [4663, 46630, 84532],
   );
   // A chain the switcher offers must be one we support at all.
   for (const c of SWITCHABLE_CHAINS) assert.ok(isSupportedChain(c.chainId));

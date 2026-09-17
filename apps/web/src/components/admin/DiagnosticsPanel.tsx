@@ -21,6 +21,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+
 interface Diag {
   id: number;
   at: string;
@@ -39,7 +41,7 @@ interface Diag {
   buildId: string | null;
 }
 
-const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood" };
+const CHAIN_LABEL: Record<number, string> = { 8453: "Base", 84532: "Base Sepolia", 46630: "Robinhood Testnet", 4663: "Robinhood Chain" };
 const chainName = (id: number | null): string =>
   id == null ? "—" : `${CHAIN_LABEL[id] ?? "unsupported"} · ${id}`;
 const short = (a: string | null): string => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
@@ -54,7 +56,7 @@ export function DiagnosticsPanel() {
     try {
       const qs = `limit=200${mismatchOnly ? "&mismatch=true" : ""}`;
       const r = await fetch(`/api/agent/admin/diagnostics?${qs}`, {
-        headers: { "x-chain-id": "84532" },
+        headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
         cache: "no-store",
       });
       if (!r.ok) throw new Error(String(r.status));

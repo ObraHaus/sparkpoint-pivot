@@ -21,6 +21,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,7 +60,7 @@ async function forwardToAgent(raw: string): Promise<void> {
         authorization: `Bearer ${AGENT_S2S_TOKEN}`,
         "x-owner": owner,
         "x-account": owner,
-        "x-chain-id": "84532", // transport scoping ONLY — the real chain is in the body
+        "x-chain-id": APP_CHAIN_ID_HEADER, // transport scoping ONLY — the real chain is in the body
       },
       body: raw,
       cache: "no-store",

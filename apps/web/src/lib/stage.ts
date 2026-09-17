@@ -41,7 +41,7 @@ const COPY: Record<Stage, StageCopy> = {
   },
   beta: {
     label: "Beta",
-    long: "Beta — testnet",
+    long: "Beta — Robinhood Chain",
     capNoun: "beta cap",
     gateNoun: "private beta",
     adjective: "beta",

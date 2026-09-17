@@ -12,6 +12,7 @@ import { Icon } from "@/lib/icons";
 import { STREAM, Composed, Trajectory, DivergeBars, DualArea, Kpi } from "@/components/admin/charts";
 import { useVaultStats } from "@/lib/admin/useVaultStats";
 import { formatUsdCompact } from "@/lib/admin/vaultStats";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 
 interface Analytics {
   configured: boolean;
@@ -26,7 +27,7 @@ export default function Page() {
   const loadA = useCallback(async () => {
     try {
       const r = await fetch("/api/agent/admin/users/analytics", {
-        headers: { "x-chain-id": "84532" },
+        headers: { "x-chain-id": APP_CHAIN_ID_HEADER },
         cache: "no-store",
       });
       if (r.ok) setA((await r.json()) as Analytics);

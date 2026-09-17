@@ -33,6 +33,8 @@ import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm, toNum } from "@/lib/chain/useVaultConfirm";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import "@/components/screens/vault.css";
@@ -40,7 +42,7 @@ import "@/components/screens/vault.css";
 const DECIMALS = 6;
 
 /** The chain whose address book seeds the vault options pre-connect (Base Sepolia). */
-const DISPLAY_CHAIN_ID = 84532;
+const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 
 /** Address book for a chain, or `undefined` on an unsupported chain (getAddresses throws) — fail-closed. */
 function safeAddresses(chainId: number | undefined) {
@@ -254,6 +256,23 @@ function AmountScreenLive({ mode }: { mode: "deposit" | "withdraw" }) {
  * instead of blanking (and for the default, no `?vault`, the fallback and live render are identical).
  */
 export function AmountScreenRoute({ mode }: { mode: "deposit" | "withdraw" }) {
+  // No vault on this build's app chain (Robinhood Chain beta) ⇒ no deposit/withdraw UI.
+  if (!VAULT_CHAIN_AVAILABLE) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>{mode === "deposit" ? "Deposit" : "Withdraw"}</h1>
+            <div className="sub">AI-managed yield vault</div>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ marginTop: 8, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — there&rsquo;s nothing to{" "}
+          {mode} on this network right now. It arrives in a later step.
+        </div>
+      </div>
+    );
+  }
   return (
     <Suspense fallback={<AmountScreen mode={mode} selectedParam={null} />}>
       <AmountScreenLive mode={mode} />

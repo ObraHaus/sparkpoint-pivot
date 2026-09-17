@@ -12,11 +12,16 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useReadContracts } from "wagmi";
+import { useReadContract, useReadContracts } from "wagmi";
 import { formatUnits, type Address } from "viem";
-import { sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
+import { brokerEngineAbi, sparkPointVaultAbi, capRegistryAbi } from "@sparkpoint/shared/abis";
 import { getAddresses, resolveTargetRef } from "@sparkpoint/shared/addresses";
+import { CHAIN_IDS } from "@sparkpoint/shared/chains";
 import { getPolicyConstants } from "@sparkpoint/shared/policy";
+import { APP_DEFAULT_CHAIN_ID, VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
+import type { WagmiChainId } from "@/lib/wagmi";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { Icon, type IconName } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { stageCopy } from "@/lib/stage";
@@ -24,8 +29,15 @@ import { whitelistedProtocols, actionLabel } from "@/lib/policy/whitelistedProto
 import "@/components/screens/trust.css";
 
 /** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
-const VAULT_CHAIN = 84532;
-const EXPLORER = "https://sepolia.basescan.org";
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
+
+/**
+ * The mainnet-beta build (4663) has no Aave vault, but it DOES have the deployed revenue set
+ * (engine / vault / splitter / sink / token / NFT). Its Trust Center must show those real addresses
+ * rather than the older "nothing is deployed yet" line.
+ */
+const BETA_REVENUE = APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet;
+const BETA_CHAIN = CHAIN_IDS.robinhoodMainnet as WagmiChainId;
 
 /**
  * The closed set of EXTERNAL on-chain venues the agent may route funds into (G5), derived from the
@@ -49,12 +61,12 @@ const GUARANTEES: [IconName, string, string][] = [
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 const usdc0 = (v?: bigint) => (v === undefined ? "…" : `$${Math.round(Number(formatUnits(v, 6))).toLocaleString("en-US")}`);
 
-function AddrRow({ label, addr }: { label: string; addr?: Address }) {
+function AddrRow({ label, addr, chainId = VAULT_CHAIN }: { label: string; addr?: Address; chainId?: WagmiChainId }) {
   return (
     <div className="statusrow">
       <span className="muted">{label}</span>
       {addr ? (
-        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={`${EXPLORER}/address/${addr}`} target="_blank" rel="noreferrer">
+        <a className="mono" style={{ fontSize: 12, color: "var(--primary)" }} href={explorerAddressUrl(chainId, addr)} target="_blank" rel="noreferrer">
           {short(addr)} <Icon name="ext" size={11} />
         </a>
       ) : (
@@ -67,6 +79,18 @@ function AddrRow({ label, addr }: { label: string; addr?: Address }) {
 export default function Page() {
   const router = useRouter();
   const addrs = getAddresses(VAULT_CHAIN);
+  const beta = BETA_REVENUE ? getAddresses(CHAIN_IDS.robinhoodMainnet) : undefined;
+
+  // The engine is a UUPS proxy; its owner is the address that can upgrade it, so the Trust Center
+  // reads it live rather than naming the deployer from memory.
+  const engineOwnerRead = useReadContract({
+    address: beta?.brokerEngine as Address | undefined,
+    abi: brokerEngineAbi,
+    functionName: "owner",
+    chainId: BETA_CHAIN,
+    query: { enabled: BETA_REVENUE && Boolean(beta?.brokerEngine) },
+  });
+  const engineOwner = engineOwnerRead.data as Address | undefined;
   const vault = addrs.vault as Address | undefined;
   const capReg = addrs.capRegistry as Address | undefined;
   const govSafe = addrs.governanceSafe as Address | undefined;
@@ -78,7 +102,9 @@ export default function Page() {
   const capC = { address: capReg as Address, abi: capRegistryAbi, chainId: VAULT_CHAIN } as const;
 
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    // Vault is Base-only; on the mainnet-beta build (only 4663 registered) it is absent, so gate the
+    // read on the vault chain being registered — otherwise it errors on the unregistered 84532.
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "paused" }, // 0
       { ...vaultC, functionName: "performanceFeeBps" }, // 1
@@ -102,6 +128,9 @@ export default function Page() {
   const feeRecipient = d?.[7]?.result as Address | undefined;
   const feePct = feeBps === undefined ? undefined : Number(feeBps) / 100;
   const live = !reads.isLoading && !reads.isError && d !== undefined;
+  // On the mainnet-beta build the vault chain isn't registered, so show an honest "not on this
+  // network" state (the vault is Base-only) instead of a stuck "reading…" / "read error".
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
 
   return (
     <div className="page page-wide">
@@ -135,8 +164,14 @@ export default function Page() {
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Status</span>
-              <span className="lbl">{live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
+              <span className="lbl">{vaultUnavailable ? "vault not available yet" : live ? "live · on-chain" : reads.isError ? "read error" : "reading…"}</span>
             </div>
+            {vaultUnavailable ? (
+              <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
+                <Icon name="info" size={13} /> The AI vault isn&rsquo;t part of the Robinhood Chain beta yet — it
+                arrives in a later step. Your custody guarantees still hold.
+              </div>
+            ) : null}
             <div className="statusrow">
               <span className="muted">Custody invariants</span>
               <span style={{ color: "var(--gain)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -147,65 +182,112 @@ export default function Page() {
               <span className="muted">Kill-switch</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
                 <Icon name="pause" size={14} />
-                {paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+                {vaultUnavailable ? "—" : paused === undefined ? "…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
               </span>
             </div>
             <div className="statusrow">
               <span className="muted">Performance fee</span>
-              <span style={{ fontWeight: 600 }}>{feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : feePct === undefined ? "…" : `${feePct}% (profit-only)`}</span>
             </div>
             <div className="statusrow">
               <span className="muted">Network</span>
-              <span style={{ fontWeight: 600 }}>Base Sepolia</span>
+              <span style={{ fontWeight: 600 }}>{vaultUnavailable ? "—" : "Base Sepolia"}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 12, lineHeight: 1.5 }}>
               <Icon name="info" size={13} /> The kill-switch can pause <b>new</b> deposits in an emergency. It can never
               block your withdrawals (N2).
             </div>
           </div>
-          <div className="card card-pad">
-            <div className="card-hd">
-              <span className="t">{stageCopy.label} caps</span>
-              <span className="lbl">CapRegistry · live</span>
+          {!vaultUnavailable && (
+            <div className="card card-pad">
+              <div className="card-hd">
+                <span className="t">{stageCopy.label} caps</span>
+                <span className="lbl">CapRegistry · live</span>
+              </div>
+              <div className="statusrow">
+                <span className="muted">Per-user cap</span>
+                <span className="tnum">{usdc0(perUserCap)}</span>
+              </div>
+              <div className="statusrow">
+                <span className="muted">Vault TVL / cap</span>
+                <span className="tnum">
+                  {usdc0(tvl)} / {usdc0(vaultCap)}
+                </span>
+              </div>
             </div>
-            <div className="statusrow">
-              <span className="muted">Per-user cap</span>
-              <span className="tnum">{usdc0(perUserCap)}</span>
-            </div>
-            <div className="statusrow">
-              <span className="muted">Vault TVL / cap</span>
-              <span className="tnum">
-                {usdc0(tvl)} / {usdc0(vaultCap)}
-              </span>
-            </div>
-          </div>
+          )}
           <div className="card card-pad">
             <div className="card-hd">
               <span className="t">Contracts &amp; roles</span>
-              <span className="lbl">on-chain · verifiable</span>
+              <span className="lbl">
+                {BETA_REVENUE
+                  ? "beta revenue set · verifiable"
+                  : vaultUnavailable
+                    ? "none deployed yet"
+                    : "on-chain · verifiable"}
+              </span>
             </div>
-            <AddrRow label="Vault (ERC-4626)" addr={vault} />
-            <AddrRow label="Cap registry" addr={capReg} />
-            <AddrRow label="Guardian (timelock)" addr={guardian} />
-            <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
-            <AddrRow label="Pauser" addr={pauser} />
-            <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
-            <AddrRow label="Vault factory (branded wrappers)" addr={factory} />
-            <AddrRow label="Swap router (Uniswap V3 · user-signed)" addr={swapRouter} />
-            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> The <b>vault factory</b> only deploys branded wrapper vaults (deploy-time
-              only — never a fund path). The <b>swap router</b> powers the separate <b>user-signed</b> swap page: you
-              sign every swap yourself, and it is <b>not</b> a vault or agent path.
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
-              <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
-              key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
-              timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
-              2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
-              over the vault.
-            </div>
+            {BETA_REVENUE && beta ? (
+              <>
+                <AddrRow chainId={BETA_CHAIN} label="Utility token (SPARKYTEST)" addr={beta.utilityToken as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Sparky Broker - Test (NFT)" addr={beta.brokerNft as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="BrokerEngine (UUPS proxy · clock in / promote / fuse)" addr={beta.brokerEngine as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="BrokerVault (immutable · holds what brokers earn)" addr={beta.brokerVault as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="RevenueSplitter (immutable · 90% holders / 10% treasury)" addr={beta.revenueSplitter as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="RoyaltySink (immutable · marketplace royalties)" addr={beta.royaltySink as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Revenue treasury (the 10% share)" addr={beta.revenueTreasury as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Engine owner (can upgrade the engine)" addr={engineOwner} />
+                <AddrRow chainId={BETA_CHAIN} label="Pons curve (trading fees accrue here)" addr={beta.ponsCurve as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Pons fee escrow" addr={beta.ponsFeeEscrow as Address | undefined} />
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The <b>BrokerEngine</b> is a UUPS proxy: the owner above can
+                  upgrade its implementation. The <b>BrokerVault</b> that holds the earnings has <b>no owner, no
+                  upgrade path, no fee and no rescue function</b> — the only way value leaves it is a broker’s owner
+                  withdrawing that broker’s balance.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> Every action on the set is <b>user-signed or permissionless</b>{" "}
+                  (clock in / promote / fuse / withdraw are yours; settle / deliver / sweeps may be called by anyone).
+                  No agent path can reach any of these contracts — the Robinhood Chain policy allowlist is empty.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> Revenue arrives as ETH and is delivered as ETH — the splitter and
+                  engine hold no swap route and no payout asset. The AI vault, the utility token’s Premium surface
+                  and the production broker collection are later steps.
+                </div>
+              </>
+            ) : vaultUnavailable ? (
+              <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+                <Icon name="info" size={13} /> No SparkPoint contracts are deployed on Robinhood Chain yet — the
+                utility token, the AI vault, the Sparky Broker and the reward engine all arrive in a later step.
+                Swaps use the network&rsquo;s existing Uniswap V3 (user-signed; SparkPoint never holds your funds).
+              </div>
+            ) : (
+              <>
+                <AddrRow label="Vault (ERC-4626)" addr={vault} />
+                <AddrRow label="Cap registry" addr={capReg} />
+                <AddrRow label="Guardian (timelock)" addr={guardian} />
+                <AddrRow label="Guardian controller (2-of-3 Safe)" addr={govSafe} />
+                <AddrRow label="Pauser" addr={pauser} />
+                <AddrRow label="Fee recipient (2-of-3 treasury)" addr={feeRecipient} />
+                <AddrRow label="Vault factory (branded wrappers)" addr={factory} />
+                <AddrRow label="Swap router (Uniswap V3 · user-signed)" addr={swapRouter} />
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The <b>vault factory</b> only deploys branded wrapper vaults (deploy-time
+                  only — never a fund path). The <b>swap router</b> powers the separate <b>user-signed</b> swap page: you
+                  sign every swap yourself, and it is <b>not</b> a vault or agent path.
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 8, lineHeight: 1.5 }}>
+                  <Icon name="info" size={12} /> The guardian timelock is controlled by a <b>2-of-3 multisig</b> — no single
+                  key can pause the vault or change fees/caps; only <b>2-of-3</b> of the guardian signers can, after the
+                  timelock delay. It is <b>pause-only</b> and can never block your withdrawals (N2/N5). A <b>separate</b>{" "}
+                  2-of-3 multisig only <b>receives</b> fees (via <span className="mono">feeRecipient()</span>) and has no power
+                  over the vault.
+                </div>
+              </>
+            )}
           </div>
-          {WHITELISTED.length > 0 && (
+          {!vaultUnavailable && WHITELISTED.length > 0 && (
             <div className="card card-pad">
               <div className="card-hd">
                 <span className="t">Whitelisted protocols</span>
@@ -222,7 +304,7 @@ export default function Page() {
                   <a
                     className="mono"
                     style={{ fontSize: 12, color: "var(--primary)" }}
-                    href={`${EXPLORER}/address/${p.address}`}
+                    href={explorerAddressUrl(VAULT_CHAIN, p.address)}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -254,7 +336,7 @@ export default function Page() {
                       <a
                         className="mono"
                         style={{ fontSize: 12, color: "var(--primary)" }}
-                        href={`${EXPLORER}/address/${w.address}`}
+                        href={explorerAddressUrl(VAULT_CHAIN, w.address)}
                         target="_blank"
                         rel="noreferrer"
                       >

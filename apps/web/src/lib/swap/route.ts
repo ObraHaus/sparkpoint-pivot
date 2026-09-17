@@ -13,7 +13,8 @@
 import { BaseError, type Address, type Hex } from "viem";
 import { getPublicClient } from "@/lib/chain/clients";
 import { quoterV2Abi } from "./abis";
-import { planCandidates, pickBest, type Candidate } from "./route.pure";
+import { CHAIN_IDS } from "@sparkpoint/shared/chains";
+import { planCandidates, pickBest, FEE_TIERS, FEE_TIER_1BP, type Candidate } from "./route.pure";
 
 export type RouteResult =
   | { readonly kind: "single"; readonly fee: number; readonly amountOut: bigint; readonly via: null }
@@ -28,6 +29,8 @@ export interface RouteInput {
   readonly weth: Address;
   readonly usdc?: Address;
   readonly usdcIsRoutingAsset: boolean;
+  /** true ⇒ quote direct pools only (the W.7 fee-router is single-hop by design). */
+  readonly singleHopOnly?: boolean;
 }
 
 export type RouteQuote =
@@ -99,12 +102,18 @@ const quoteCandidate = (client: Client, i: RouteInput, c: Candidate, amountIn: b
 /** Best route for the pair + amount, or an honest `noRoute` / `error`. */
 export async function bestRoute(input: RouteInput): Promise<RouteQuote> {
   const client = getPublicClient(input.chainId);
+  // Robinhood mainnet's WETH/USDG pool is the 1bp (0.01%) tier, so probe it THERE — without adding a
+  // tier to every other chain's quote (Base / Base Sepolia stay on the default FEE_TIERS, unchanged).
+  const feeTiers =
+    input.chainId === CHAIN_IDS.robinhoodMainnet ? [FEE_TIER_1BP, ...FEE_TIERS] : undefined;
   const candidates = planCandidates({
     tokenIn: input.tokenIn,
     tokenOut: input.tokenOut,
     weth: input.weth,
     usdc: input.usdc,
     usdcIsRoutingAsset: input.usdcIsRoutingAsset,
+    feeTiers,
+    singleHopOnly: input.singleHopOnly,
   });
 
   const settled = await Promise.allSettled(

@@ -29,18 +29,24 @@ import type { Address } from "viem";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { Icon } from "@/lib/icons";
+import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
+import type { WagmiChainId } from "@/lib/wagmi";
 
-/** The vault lives on Base Sepolia (84532); read there regardless of the connected chain. */
-const VAULT_CHAIN = 84532;
-/** Fallback guardian (used only until the live read resolves). */
-const GUARDIAN_FALLBACK = "0x0A21A9B4c2cd2d6a68EC828188826B673572d720";
+/** The chain the vault lives on (Base Sepolia today); read there regardless of the connected chain. */
+const VAULT_CHAIN = VAULT_CHAIN_ID as WagmiChainId;
 
 export function KillSwitchPanel() {
   const vault = getAddresses(VAULT_CHAIN).vault as Address | undefined;
   const govSafe = getAddresses(VAULT_CHAIN).governanceSafe as Address | undefined;
   const vaultC = { address: vault as Address, abi: sparkPointVaultAbi, chainId: VAULT_CHAIN } as const;
+  // Gate on the vault CHAIN being registered in this build: on the mainnet-beta (only 4663 registered)
+  // the vault is Base-only and absent, so a read scoped to Base Sepolia (84532) would error. Disabled
+  // ⇒ the pill/guardian show an honest "no vault on this network" state instead of a stuck "Reading…".
+  const vaultUnavailable = !VAULT_CHAIN_AVAILABLE;
   const reads = useReadContracts({
-    query: { enabled: !!vault, refetchInterval: 30_000 },
+    query: { enabled: !!vault && VAULT_CHAIN_AVAILABLE, refetchInterval: 30_000 },
     contracts: [
       { ...vaultC, functionName: "paused" }, // 0
       { ...vaultC, functionName: "guardian" }, // 1
@@ -48,7 +54,8 @@ export function KillSwitchPanel() {
   });
   // LIVE pause state — undefined while the read is in flight (shown as "…"), never a fake default.
   const paused = reads.data?.[0]?.result as boolean | undefined;
-  const guardian = (reads.data?.[1]?.result as string | undefined) ?? GUARDIAN_FALLBACK;
+  // LIVE guardian — undefined while the read is in flight (shown as "Reading chain…"), never a fake default.
+  const guardian = reads.data?.[1]?.result as string | undefined;
 
   return (
     <>
@@ -57,9 +64,15 @@ export function KillSwitchPanel() {
           <h1>Emergency kill-switch</h1>
           <div className="sub">Multisig-governed, pause-only. It can halt new execution — it can never touch user funds or block withdrawals.</div>
         </div>
-        <span className={`pill ${paused ? "amber" : "info"}`}>
+        <span className={`pill ${vaultUnavailable ? "info" : paused ? "amber" : "info"}`}>
           <span className="led" />
-          {paused === undefined ? "Reading chain…" : paused ? "Paused · new deposits halted" : "Pause-only · inactive"}
+          {vaultUnavailable
+            ? "No vault on this network"
+            : paused === undefined
+              ? "Reading chain…"
+              : paused
+                ? "Paused · new deposits halted"
+                : "Pause-only · inactive"}
         </span>
       </div>
       <div
@@ -118,15 +131,21 @@ export function KillSwitchPanel() {
           </div>
           <div className="statusrow">
             <span className="muted">Guardian (live)</span>
-            <a
-              className="mono"
-              style={{ fontSize: 11, color: "var(--primary)" }}
-              href={`https://sepolia.basescan.org/address/${guardian}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {guardian.slice(0, 6)}…{guardian.slice(-4)} <Icon name="ext" size={11} />
-            </a>
+            {guardian ? (
+              <a
+                className="mono"
+                style={{ fontSize: 11, color: "var(--primary)" }}
+                href={explorerAddressUrl(VAULT_CHAIN, guardian)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {guardian.slice(0, 6)}…{guardian.slice(-4)} <Icon name="ext" size={11} />
+              </a>
+            ) : (
+              <span className="muted" style={{ fontSize: 11 }}>
+                {vaultUnavailable ? "Base-only · not on this network" : "Reading chain…"}
+              </span>
+            )}
           </div>
           <div className="statusrow">
             <span className="muted">Type</span>
@@ -138,7 +157,7 @@ export function KillSwitchPanel() {
               <a
                 className="mono"
                 style={{ fontSize: 11, color: "var(--primary)" }}
-                href={`https://sepolia.basescan.org/address/${govSafe}`}
+                href={explorerAddressUrl(VAULT_CHAIN, govSafe)}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -150,8 +169,8 @@ export function KillSwitchPanel() {
           </div>
           <div className="statusrow">
             <span className="muted">2-of-3 Safe + delay</span>
-            <span className="pill ok" style={{ fontSize: 10 }}>
-              <span className="led" /> Live
+            <span className={`pill ${vaultUnavailable ? "info" : "ok"}`} style={{ fontSize: 10 }}>
+              <span className="led" /> {vaultUnavailable ? "Base-only" : "Live"}
             </span>
           </div>
           <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
@@ -190,7 +209,7 @@ export function KillSwitchPanel() {
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
           The 2-of-3 guardian Safe executed a verification pause→unpause round-trip during the governance cutover.
           A live event feed of pause/unpause actions is not yet wired into this panel; for now, the guardian
-          timelock and Safe are auditable directly on Basescan.
+          timelock and Safe are auditable directly on the chain&rsquo;s block explorer.
         </div>
       </div>
     </>

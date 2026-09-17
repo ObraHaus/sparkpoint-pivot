@@ -4,9 +4,9 @@ name: knowledge-boundary
 # the deterministic policy path, and knowledge_search must stay out of the build/sim registries.
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

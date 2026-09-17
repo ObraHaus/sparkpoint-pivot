@@ -59,3 +59,46 @@ test("both gates agree, so the artifact cannot be public in only one deploy shap
     "whether the allocation document is fetchable must not depend on SITE_LOCKED",
   );
 });
+
+/**
+ * 045 — the public alpha application, same trap, different shape.
+ *
+ * The form is rendered by the LANDING PAGE, and the landing page is served on a locked deploy (`/`
+ * is in ALLOW_EXACT). So the endpoint it posts to has to be served there too. Gate 1 has no `/api`
+ * prefix entry by design — only exact matches survive it — which is precisely how a form could ship
+ * looking perfectly fine on develop and 307 every submission to /coming-soon in the other
+ * deployment, where the client would read the redirected HTML as a failure.
+ */
+test("the public application endpoint is reachable under the LOCKED gate", () => {
+  assert.ok(
+    entriesOf("ALLOW_EXACT").includes("/api/access/apply"),
+    "a locked deploy renders the application form and 307s its submission — Gate 1 has no /api " +
+      "prefix, so the exact path must be listed",
+  );
+});
+
+test("the application page is public under BOTH gates", () => {
+  assert.ok(
+    entriesOf("ALLOW_EXACT").includes("/apply"),
+    "a locked deploy would send /apply to /coming-soon",
+  );
+  assert.ok(
+    entriesOf("PUBLIC_EXACT").includes("/apply"),
+    "an unlocked deploy would 307 /apply to /connect — asking for access would require access",
+  );
+});
+
+test("applying never requires a session under either gate", () => {
+  // The one invariant that makes the feature work at all: the applicant has no wallet, no
+  // signature and no cookie. Any gate that redirects them lands them on the wall they are writing
+  // to ask about.
+  const gate1 = entriesOf("ALLOW_EXACT");
+  const gate2Pages = entriesOf("PUBLIC_EXACT");
+  const gate2Api = entriesOf("INFRA_PREFIX");
+  assert.ok(gate1.includes("/apply") && gate2Pages.includes("/apply"));
+  assert.ok(
+    gate1.includes("/api/access/apply") && gate2Api.some((p) => "/api/access/apply".startsWith(p)),
+    "Gate 2 passes /api/* via INFRA_PREFIX; if that prefix is ever narrowed, this path needs its " +
+      "own entry",
+  );
+});

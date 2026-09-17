@@ -12,7 +12,10 @@
 
 import { useEffect, useState } from "react";
 
+import type { Hex } from "viem";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
+import { VAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { explorerTxUrl } from "@/lib/chain/explorer";
 import { Icon } from "@/lib/icons";
 
 import { isEligibleForAutoExec } from "@/lib/automation/coverage";
@@ -20,7 +23,7 @@ import { hasSessionKey, type KeyScope } from "@/lib/automation/sessionKeyStore";
 import { useSessionExecute } from "@/lib/automation/useSessionExecute";
 import { useSessionKeys } from "@/lib/automation/useSessionKey";
 
-const VAULT_CHAIN = 84532;
+const VAULT_CHAIN = VAULT_CHAIN_ID;
 
 const BUSY_LABEL: Record<string, string> = {
   unlocking: "Unlock in your wallet…",
@@ -62,7 +65,7 @@ export function HandsOffAction({ action }: { action: ProposedAction }) {
       <div style={{ fontSize: 12.5, color: "var(--gain)", display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
         <Icon name="check" size={14} /> Executed automatically under your automation.
         {exec.txHash && (
-          <a href={`https://sepolia.basescan.org/tx/${exec.txHash}`} target="_blank" rel="noreferrer" style={{ color: "var(--info)" }}>
+          <a href={explorerTxUrl(VAULT_CHAIN, exec.txHash as Hex)} target="_blank" rel="noreferrer" style={{ color: "var(--info)" }}>
             View ↗
           </a>
         )}

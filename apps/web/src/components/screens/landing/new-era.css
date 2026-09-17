@@ -854,6 +854,12 @@ body:has(.new-era-root) {
   opacity: 0.6;
   cursor: progress;
 }
+/* 045 — the closing section offers the two ways in side by side: "Connect wallet" for someone who
+   already has access, "Apply for alpha access" for everyone else. The application FORM was briefly
+   inlined here and has moved to /apply; four text fields at the end of a scroll-driven WebGL
+   sequence turned the closing statement into a data-entry screen, and the form is easier to find,
+   share and come back to at its own address. `.fbtn.ghost` below already styles the second button
+   for this permanently-white panel. */
 .new-era-root footer.close .fbtns {
   display: flex;
   gap: 12px;
