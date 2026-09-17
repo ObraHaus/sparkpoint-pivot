@@ -25,6 +25,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { useNetwork } from "@/lib/network";
 import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
@@ -42,6 +43,8 @@ const ETH_GAS_BUFFER = 10n ** 15n; // 0.001 ETH
 
 const eqAddr = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
 function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: SwapToken } {
   const rec = swapTokens(chainId);
   return { tin: rec.find((t) => t.isNative) ?? rec[0], tout: rec.find((t) => !t.isNative) ?? rec[1] };
@@ -56,7 +59,13 @@ function fmt(v: bigint | undefined, decimals: number, max = 6): string {
 export default function Page() {
   const router = useRouter();
   const { isConnected, chainId } = useAccount();
-  const activeChain = isConnected ? chainId : DISPLAY_CHAIN_ID;
+  const { switchToChain } = useNetwork();
+  // Beta build = 4663 only (see useSwapConfirm): clamp an unsupported wallet chain to the build
+  // chain and prompt a switch via `s.wrongChain` — never quote a fallback network.
+  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+  const activeChain = IS_BETA_BUILD
+    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
+    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
 
   const [dexId, setDexId] = useState<DexId>("uniswap_v3");
   const initial = defaultTokens(DISPLAY_CHAIN_ID);
@@ -95,6 +104,21 @@ export default function Page() {
 
   const { quote, netOut, netMinOut, feeAmount } = s;
   const balanceIn = s.balanceIn;
+
+  // §fee-router (W.7): when the book wires a router the fee is taken on the INPUT side — disclose the
+  // bps and destination read LIVE from the router (never a hardcoded percentage string).
+  const feeOnInput = s.feeRouterActive;
+  const feePct =
+    feeOnInput && s.feeBpsLive !== undefined
+      ? formatBpsPercent(s.feeBpsLive)
+      : formatBpsPercent(ROUTING_FEE_BIPS);
+  const feeDisplay = feeOnInput
+    ? s.feeAmountIn !== undefined && tokenIn
+      ? `${fmt(s.feeAmountIn, tokenIn.decimals)} ${tokenIn.symbol}`
+      : DASH
+    : feeAmount !== undefined && tokenOut
+      ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}`
+      : DASH;
 
   // Safety gate — a non-recommended (unverified) receive-token must be acknowledged before confirming.
   const outUnverified = !!tokenOut && !tokenOut.isNative && !tokenOut.verified;
@@ -207,7 +231,7 @@ export default function Page() {
           </button>
         </div>
         <TokenRow
-          label={s.feeActive ? "You receive (estimated, after fee)" : "You receive (estimated)"}
+          label={s.feeActive && !feeOnInput ? "You receive (estimated, after fee)" : "You receive (estimated)"}
           token={tokenOut}
           value={canQuote && netOut !== undefined && tokenOut ? fmt(netOut, tokenOut.decimals) : ""}
           placeholder={quote.isLoading ? "…" : "0.00"}
@@ -266,9 +290,12 @@ export default function Page() {
             />
             {s.feeActive && (
               <Row
-                k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
-                v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
+                k={`SparkPoint swap fee (${feePct})`}
+                v={feeDisplay}
               />
+            )}
+            {feeOnInput && s.feeDestination && (
+              <Row k="Fee destination" v={`RevenueSplitter ${shortAddr(s.feeDestination)}`} />
             )}
             <Row
               k={`Min received (slippage ${formatBpsPercent(slippageBps)})`}
@@ -294,6 +321,18 @@ export default function Page() {
         {dexId === "uniswap_v3" && !dexLive && (
           <Notice>{uniswapVenue} isn&apos;t available on this network — switch to a supported network.</Notice>
         )}
+        {s.wrongChain && (
+          <Notice>
+            Your wallet is on a different network.{" "}
+            <a
+              style={{ color: "var(--primary)", cursor: "pointer" }}
+              onClick={() => switchToChain(APP_DEFAULT_CHAIN_ID as Parameters<typeof switchToChain>[0])}
+            >
+              Switch to Robinhood Chain
+            </a>{" "}
+            to swap.
+          </Notice>
+        )}
         {canQuote && quote.noRoute && (
           <Notice>No {uniswapVenue} route for this pair on {netLabel} — no direct pool or WETH/USDC path has liquidity.</Notice>
         )}
@@ -310,6 +349,9 @@ export default function Page() {
           </Notice>
         )}
         {s.insufficient && <Notice>Amount exceeds your {tokenIn?.symbol} balance.</Notice>}
+        {s.feeRouterPending && s.amountIn > 0n && (
+          <Notice>Reading the swap fee from the router… the swap needs its fee and destination before you can confirm.</Notice>
+        )}
         {canQuote && !s.insufficient && s.feeRecipientPending && (
           <Notice>Reading the routing-fee recipient from the vault… the swap needs it before you can confirm.</Notice>
         )}
@@ -330,14 +372,12 @@ export default function Page() {
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Confirm swap</div>
               <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
                 <Row k="You pay" v={`${amount} ${tokenIn?.symbol}`} />
-                {s.feeActive && (
-                  <Row
-                    k={`SparkPoint routing fee (${formatBpsPercent(ROUTING_FEE_BIPS)})`}
-                    v={feeAmount !== undefined && tokenOut ? `${fmt(feeAmount, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
-                  />
+                {s.feeActive && <Row k={`SparkPoint swap fee (${feePct})`} v={feeDisplay} />}
+                {feeOnInput && s.feeDestination && (
+                  <Row k="Fee destination" v={`RevenueSplitter ${shortAddr(s.feeDestination)}`} />
                 )}
                 <Row
-                  k={s.feeActive ? "You receive (est., after fee)" : "You receive (est.)"}
+                  k={s.feeActive && !feeOnInput ? "You receive (est., after fee)" : "You receive (est.)"}
                   v={netOut !== undefined && tokenOut ? `${fmt(netOut, tokenOut.decimals)} ${tokenOut.symbol}` : DASH}
                 />
                 <Row
@@ -362,8 +402,15 @@ export default function Page() {
               )}
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted-foreground)" }}>
                 You sign this from your own wallet. SparkPoint never holds your keys or funds — the swap
-                output{s.feeActive ? ` (net of the ${formatBpsPercent(ROUTING_FEE_BIPS)} routing fee)` : ""} goes
-                straight to your address{s.feeActive ? ", and the fee goes on-chain straight to the vault's fee recipient" : ""}.
+                output
+                {s.feeActive && !feeOnInput ? ` (net of the ${feePct} routing fee)` : ""} goes straight to
+                your address
+                {feeOnInput
+                  ? `, and the ${feePct} fee is charged on the amount you pay and sent on-chain to the RevenueSplitter`
+                  : s.feeActive
+                    ? ", and the fee goes on-chain straight to the vault's fee recipient"
+                    : ""}
+                .
               </div>
               {swapCtrl.error && (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--loss)" }}>{swapCtrl.error}</div>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, ROUTING_FEE_BIPS, afterFee, amountOutMinimum, clampProposedSlippageBps, formatBpsPercent } from "./math.ts";
+import { POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, ROUTING_FEE_BIPS, afterFee, amountOutMinimum, clampProposedSlippageBps, formatBpsPercent, inputFee, netInput } from "./math.ts";
 
 test("afterFee takes the routing fee (0.20%) as an exact integer floor", () => {
   assert.equal(ROUTING_FEE_BIPS, 20); // matches the /fees page 0.20%
@@ -17,6 +17,27 @@ test("afterFee clamps feeBips to the Uniswap 100-bip (1%) cap", () => {
   assert.equal(afterFee(1_000n, 100), 990n); // 1% max
   assert.equal(afterFee(1_000n, 500), 990n); // clamped to 100
   assert.equal(afterFee(1_000n, -5), 1_000n); // clamped to 0
+});
+
+// W.7 fee-router: the fee is INPUT-side and the quote must see the NET input. These two helpers
+// mirror `FeeRouter.swapExactInputSingle` exactly — floor(amount × bps / 10000), same dust rule.
+test("inputFee mirrors the on-chain input-side fee (floor, 0.20%)", () => {
+  assert.equal(inputFee(1_000_000_000n, 20), 2_000_000n); // 1000 USDC → 2 USDC
+  assert.equal(inputFee(999n, 20), 1n); // floors, never rounds up against the user
+  assert.equal(inputFee(499n, 20), 0n); // dust below one basis point → no fee
+  assert.equal(inputFee(1_000n, 0), 0n);
+});
+
+test("netInput is what the router actually swaps after the input fee", () => {
+  assert.equal(netInput(1_000_000_000n, 20), 998_000_000n);
+  assert.equal(netInput(999n, 20), 998n);
+  assert.equal(netInput(499n, 20), 499n);
+});
+
+test("inputFee/netInput clamp the bps to the router's 100-bip hard ceiling", () => {
+  assert.equal(inputFee(1_000n, 10_000), 10n); // clamped to 1% = 10 base units
+  assert.equal(netInput(1_000n, 10_000), 990n);
+  assert.equal(inputFee(1_000n, -5), 0n);
 });
 
 test("amountOutMinimum applies the slippage floor as exact integer math (never a float)", () => {

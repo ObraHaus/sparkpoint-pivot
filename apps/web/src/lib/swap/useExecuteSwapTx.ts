@@ -3,17 +3,23 @@
 /**
  * useExecuteSwapTx — the REAL Uniswap V3 swap execution flow (manual swap page).
  *
- * Mirrors `useExecuteVaultTx`'s approve→action two-leg, user-signed pattern for a Uniswap V3
- * `SwapRouter02` swap. The user is the SOLE signer (`writeContractAsync`); SparkPoint holds no key
- * and takes no custody. The recipient is ALWAYS the connecting account. Native ETH is handled the
- * standard Uniswap way, and the `multicall(deadline, …)` overload gives deadline protection:
+ * Mirrors `useExecuteVaultTx`'s approve→action two-leg, user-signed pattern. The user is the SOLE
+ * signer (`writeContractAsync`); SparkPoint holds no key and takes no custody. The recipient is
+ * ALWAYS the connecting account.
  *
- *   • ETH → USDC : multicall(deadline, [exactInputSingle{ tokenIn: WETH, recipient: user }]) with
- *                  msg.value = amountIn (the router wraps ETH). No approve leg.
- *   • USDC → ETH : approve(router, amountIn) →
- *                  multicall(deadline, [exactInputSingle{ recipient: ADDRESS_THIS, amountOutMinimum: 0 },
- *                                       unwrapWETH9(amountOutMinimum, user)]) — the unwrap enforces
- *                  the slippage floor and forwards native ETH to the user.
+ * Two router kinds are supported, selected by the resolved `SwapExec.kind`:
+ *
+ *   • `"router02"` (feature 007, chains with no fee-router) — the external SwapRouter02 via its
+ *     `multicall(deadline, …)` overload:
+ *       - ETH → USDC : multicall(deadline, [exactInputSingle{ tokenIn: WETH, recipient: user }]) with
+ *                      msg.value = amountIn (the router wraps ETH). No approve leg.
+ *       - USDC → ETH : approve(router, amountIn) →
+ *                      multicall(deadline, [exactInputSingle{ recipient: ADDRESS_THIS, amountOutMinimum: 0 },
+ *                                           unwrapWETH9(amountOutMinimum, user)]).
+ *     A vault-chain routing fee adds a `*WithFee` pay-leg (output-side split).
+ *   • `"feeRouter"` (W.7, e.g. 4663 once wired) — the custom `FeeRouter.swapExactInputSingle`, which
+ *     charges the 0.20% on the INPUT side and settles it at the RevenueSplitter. One `approve`
+ *     (to the fee-router) plus one call; the deadline is inside the params (the `02` router has none).
  *
  * INERT when `exec` is `undefined` (Rules-of-Hooks safe). Slippage floor (`amountOutMinimum`) +
  * `deadline` are always present — critical given the thin testnet pool.
@@ -22,6 +28,7 @@
 import { useCallback, useState } from "react";
 import { useWriteContract, usePublicClient } from "wagmi";
 import { erc20Abi, encodeFunctionData, type Address, type Hex } from "viem";
+import { feeRouterAbi } from "@sparkpoint/shared/abis";
 import { wagmiConfig } from "@/lib/wagmi";
 import { swapRouter02Abi, ADDRESS_THIS } from "./abis";
 
@@ -29,8 +36,10 @@ type WagmiChainId = (typeof wagmiConfig)["chains"][number]["id"];
 
 /** A resolved swap intent — built by the swap page from a live QuoterV2 quote + slippage setting. */
 export interface SwapExec {
+  /** Which router executes this swap: the external SwapRouter02, or the W.7 FeeRouter. */
+  readonly kind: "router02" | "feeRouter";
   readonly chainId: number;
-  /** Uniswap V3 SwapRouter02. */
+  /** The swap target — SwapRouter02 for `"router02"`, the FeeRouter for `"feeRouter"`. */
   readonly router: Address;
   /** tokenIn on-chain address — for the native-ETH input this is WETH (the router wraps msg.value). */
   readonly tokenIn: Address;
@@ -217,19 +226,39 @@ export function useExecuteSwapTx(exec: SwapExec | undefined): SwapExecController
           }
         }
 
-        // ── terminal leg: the swap (multicall for deadline + native-ETH unwrap) ──
+        // ── terminal leg: the swap ──
         setStage("execute");
         setAwaitingWallet(true);
         // Stamp the absolute deadline at signing time (in this callback — not during render).
         const deadline = BigInt(Math.floor(Date.now() / 1000) + e.deadlineSeconds);
-        const tx = await writeContractAsync({
-          address: e.router,
-          abi: swapRouter02Abi,
-          functionName: "multicall",
-          args: [deadline, swapCalls(e)],
-          value: e.fromNative ? e.amountIn : 0n,
-          chainId: e.chainId as WagmiChainId,
-        });
+        const tx =
+          e.kind === "feeRouter"
+            ? await writeContractAsync({
+                address: e.router,
+                abi: feeRouterAbi,
+                functionName: "swapExactInputSingle",
+                args: [
+                  {
+                    tokenIn: e.tokenIn,
+                    tokenOut: e.tokenOut,
+                    fee: e.fee,
+                    recipient: e.account,
+                    amountIn: e.amountIn,
+                    amountOutMinimum: e.amountOutMinimum,
+                    deadline,
+                  },
+                ],
+                value: e.fromNative ? e.amountIn : 0n,
+                chainId: e.chainId as WagmiChainId,
+              })
+            : await writeContractAsync({
+                address: e.router,
+                abi: swapRouter02Abi,
+                functionName: "multicall",
+                args: [deadline, swapCalls(e)],
+                value: e.fromNative ? e.amountIn : 0n,
+                chainId: e.chainId as WagmiChainId,
+              });
         setAwaitingWallet(false);
         setTxHash(tx);
         const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });

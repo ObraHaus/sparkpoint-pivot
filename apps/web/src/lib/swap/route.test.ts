@@ -52,6 +52,20 @@ test("planCandidates: skips the USDC hop where USDC isn't a real routing asset",
   assert.equal(c.filter((x) => x.kind === "multi" && x.via === "WETH").length, 4);
 });
 
+// W.7 fee-router: it executes a single exactInputSingle hop, so multi-hop candidates must not be
+// quoted (a path route cannot be expressed through it).
+test("planCandidates: singleHopOnly keeps direct pools only", () => {
+  const c = planCandidates({ tokenIn: A, tokenOut: B, weth: WETH, usdc: USDC, usdcIsRoutingAsset: true, singleHopOnly: true });
+  assert.equal(c.length, 3);
+  assert.ok(c.every((x) => x.kind === "single"));
+});
+
+test("planCandidates: singleHopOnly still widens to the caller's fee tiers (Robinhood 1bp)", () => {
+  const c = planCandidates({ tokenIn: A, tokenOut: B, weth: WETH, usdc: USDC, usdcIsRoutingAsset: true, feeTiers: [100, 500, 3000, 10000], singleHopOnly: true });
+  assert.equal(c.length, 4);
+  assert.ok(c.some((x) => x.kind === "single" && x.fee === 100));
+});
+
 test("planCandidates: prunes the via-USDC hop when a side already IS USDC", () => {
   const c = planCandidates({ tokenIn: USDC, tokenOut: B, weth: WETH, usdc: USDC, usdcIsRoutingAsset: true });
   assert.equal(c.filter((x) => x.kind === "multi" && x.via === "USDC").length, 0);

@@ -51,9 +51,15 @@ export const robinhoodMainnet: AddressBook = {
   uniswapV3QuoterV2: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
   uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
 
-  // Phase-1 beta swap is FEE-FREE: no own fee-router, and no sweepWithFee recipient set yet. Setting
-  // this to a revenue EOA turns on the 0.20% fee (via the router's sweep) — a one-line Phase-2 change.
+  // Phase-1 beta swap is FEE-FREE. The interim `sweepWithFee` hook is verified ABSENT on the deployed
+  // SwapRouter02, so the Phase-2 fee path is the custom `feeRouter` below (W.7) — NOT this field.
   swapFeeRecipient: undefined,
+
+  // W.7 fee-router — DEPLOYED + wired 2026-09-17: proxy 0x0f5c…7F3, impl 0xA91a…F372
+  // (impl tx 0x5d78…5a6f · proxy tx 0x15d9…a6a). 4663 swaps now route through it: the 0.20% is
+  // charged on the input side, sent to the splitter, and the swap page quotes the net input and
+  // discloses the fee + destination from the router's LIVE `feeBps()`/`splitter()`.
+  feeRouter: "0x0f5c10d550387b2dE4E14F4855E67Ee3321ae7F3",
 
   // ── ERC-20 tokens — VERIFIED on 4663 (2026-09-10). USDG is the 4663 stable and is 6 DECIMALS (NOT
   // 18) — tokens.ts pins USDG decimals per-chain. WETH is the 4663 predeploy. The `usdc` field is the
@@ -70,8 +76,23 @@ export const robinhoodMainnet: AddressBook = {
   premiumTreasury: undefined,
   srkFaucet: undefined,
 
-  // Sparky Broker (OpenSea) + the revenue-engine set — deployed in feature C, recorded here then.
-  brokerNft: undefined,
+  // ── §beta-revenue (Phase 2) — DEPLOYED and verified on 4663, 2026-09-16. These are the beta
+  // set; alpha (Base Sepolia) never reads them. Mirrors contracts/deployments/4663/addresses.json.
+  // The legacy broker fields above stay undefined on purpose: the pre-pivot registry/sale/
+  // distributor are NOT deployed here, and the app must not treat them as live. ──
+  utilityToken: "0x790316a2a1B403b55c6E8a6857Dd768078503553", // Sparky - Test (SPARKYTEST), OZ ERC20Burnable
+  brokerEngine: "0x08a578D2Fa194E24786f5644AFabC578f2daDB43", // PROXY — wire THIS
+  brokerVault: "0x4B0b09086Bd1D3c3D6eF94BC59D36ba8e37B8455",
+  revenueSplitter: "0xD4dD7E2CAfBcC40f25d2D5Fb975B8E6E033609C1", // immutable; the Pons creatorFeeRecipient
+  royaltySink: "0x0009a0fEf5a5371B05727e257FF9500EeF0a7d66",
+  revenueTreasury: "0x376293DDb027555aB7F483c00e1D61b2a7757dE8", // the splitter's immutable 10% destination
+  ponsCurve: "0xbE38eE16810d2ac0a9AA944fdDd68b07a5E17C53",
+  ponsFeeEscrow: "0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e",
+
+  // Sparky Broker - Test (SPKBTest, supply 5,555) — deployed on 4663 2026-09-16 and wired here for
+  // the beta broker surfaces (W.3). The legacy pre-pivot fields below stay undefined: the
+  // registry/sale/distributor are NOT deployed on 4663 and the app must not treat them as live.
+  brokerNft: "0x706b4b449d9b007b7fbd29866122e758d9903d3f",
   brokerRegistry: undefined,
   brokerSale: undefined,
   brokerRevenueDistributor: undefined,

@@ -3,7 +3,7 @@ title: SRK, Sparky Broker and Premium
 source: srk-and-premium
 tags: [srk, premium, token, faucet, sparky-broker, nft, activation, pricing]
 risk_tier: conservative
-updated: 2026-08-14
+updated: 2026-09-16
 ---
 
 # SRK, Sparky Broker and Premium
@@ -17,9 +17,14 @@ never require SRK, and never require a broker.
 > answer is the Sparky Broker.** The old 10,000-SRK-per-month subscription has been **retired**.
 > Never quote a monthly price, an expiry date, or "cancel anytime" for Premium.
 
+> **On the Robinhood Chain beta (4663) this system is a rehearsal.** There the collection is a test
+> drop, activation burns the test utility token (SPARKYTEST) through the broker engine, and **Premium
+> is not wired on that network** — do not offer it there. See [[beta-broker-and-revenue]] for exactly
+> what is live on 4663 today.
+
 ## What a Sparky Broker is
 
-A Sparky Broker is a collectible ERC-721 on **Robinhood Chain** — 10,000 of them, ids from 1. It is a
+A Sparky Broker is a collectible ERC-721 on **Robinhood Chain** — 5,555 of them, ids from 1 to 5,555. It is a
 membership you own, and on its own it does nothing.
 
 **You activate it by retiring SRK, once.** That activation is permanent: nothing renews, nothing

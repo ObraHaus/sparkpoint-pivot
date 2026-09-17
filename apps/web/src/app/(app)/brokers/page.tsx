@@ -3,7 +3,13 @@
 /**
  * /brokers — mint a Sparky Broker, and see the ones you hold (feature 043, US3 + US4).
  *
- * Everything on this page is an on-chain read. Activation state is read on every load and never
+ * ⚠️ TWO SURFACES, ONE ROUTE (W.3.4). The mainnet-beta build (4663) no longer shows the "coming
+ * soon" gate: it renders `BetaBrokers`, which binds the deployed `BrokerEngine` (clock in /
+ * promote / fuse against the OpenSea drop clone). The alpha/testnet build keeps THIS page — the
+ * 043 sale + activation-registry flow on 46630 — unchanged, and the branch below is the only thing
+ * that decides which one runs.
+ *
+ * Everything on the 043 page is an on-chain read. Activation state is read on every load and never
  * cached into component state as a flag: a flag can outlive the transfer that cleared it, and "a
  * stranger keeps the access their broker was sold with" is the one bug this whole collection exists
  * to prevent.
@@ -27,6 +33,16 @@ import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { brokerViews, deriveMintState, type BrokerToken } from "@/lib/chain/brokers";
 import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
+import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { BetaBrokers } from "./BetaBrokers";
+
+/**
+ * The mainnet-beta build serves the engine-backed broker surface; every other build (alpha/testnet)
+ * keeps the 043 page below, byte-for-byte unchanged.
+ */
+export default function Page() {
+  return APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet ? <BetaBrokers /> : <TestnetBrokers />;
+}
 
 /** The chain the collection lives on. Robinhood testnet today; mainnet is a separate decision. */
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
@@ -45,7 +61,7 @@ const METADATA_ORIGIN =
  * wallet holds. This page therefore checks ownership of ids `1..totalMinted`, batched.
  *
  * That is now the FALLBACK path only: `GET /brokers/owned` (feature 044) walks `Transfer` logs in
- * the agent and scales to the full 10,000. The scan runs when the indexer cannot answer, because
+ * the agent and scales to the full 5,555. The scan runs when the indexer cannot answer, because
  * the browser can still read the chain directly when the agent is down.
  * The cap below stops the page melting in the meantime; when it bites, the page says so instead of
  * silently showing a partial gallery, because a holder seeing 40 of their 60 brokers and being told
@@ -53,7 +69,8 @@ const METADATA_ORIGIN =
  */
 const OWNERSHIP_SCAN_LIMIT = 500;
 
-export default function Page() {
+/** The 46630 page (043): mint via the sale, read activation from the registry. */
+function TestnetBrokers() {
   const router = useRouter();
   const { address, isConnected, chainId: walletChain } = useAccount();
   const owner = address as Address | undefined;
@@ -92,7 +109,7 @@ export default function Page() {
 
   const minted = totalMinted.data as bigint | undefined;
 
-  // The indexer walks Transfer logs and scales to the full 10,000. The scan below is the fallback
+  // The indexer walks Transfer logs and scales to the full 5,555. The scan below is the fallback
   // for when it cannot answer -- the browser can still read the chain directly even if the agent
   // is down, and a bounded scan is correct while the collection is small.
   const indexed = useIndexedBrokers(onChain);
@@ -201,7 +218,7 @@ export default function Page() {
         <div>
           <h1>Sparky Broker</h1>
           <div className="sub">
-            10,000 brokers. Retiring SRK activates one, permanently: Premium for as long as you hold
+            5,555 brokers. Retiring SRK activates one, permanently: Premium for as long as you hold
             it, with nothing to renew. Sell it and the activation clears — the next owner retires
             their own.
           </div>

@@ -156,8 +156,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   // status is then RE-RESOLVED, so a qualifying holder gets in on this login, not the next one.
   // Fail-open at every step (`runSrkMainnetGate` returns false on any error) — a balance read must
   // never be able to block a login, and it can only ever ADD access.
-  if (!status.beta && (await runSrkMainnetGate(lower, chainId))) {
-    status = (await fetchAllowlistStatus(lower, chainId)) ?? status;
+  // `gateUnavailable` distinguishes "we read the balance and it was too low" from "we never got to
+  // read it" — the form uses it to offer a retry instead of a dead end. It is PURELY advisory: it
+  // never affects the roles minted below.
+  let gateUnavailable = false;
+  if (!status.beta) {
+    const gate = await runSrkMainnetGate(lower, chainId);
+    gateUnavailable = gate.reason === "timed_out";
+    if (gate.granted) status = (await fetchAllowlistStatus(lower, chainId)) ?? status;
   }
 
   const token = await signSession({
@@ -172,6 +178,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     address: lower,
     beta: status.beta,
     admin: status.admin,
+    gateUnavailable,
   });
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,

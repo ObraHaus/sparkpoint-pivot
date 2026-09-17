@@ -3,7 +3,7 @@ title: SparkPoint Platform Surfaces
 source: platform-surfaces
 tags: [trust-center, outcomes, fees, learn, changelog, navigation, product]
 risk_tier: conservative
-updated: 2026-08-03
+updated: 2026-09-16
 ---
 
 # SparkPoint Platform Surfaces
@@ -67,9 +67,10 @@ Information section of the navigation.
 - **/portfolio** — positions, allocation and profit and loss.
 - **/vault** — the Aave yield vault: deposit, withdraw, current rate.
 - **/swap** — user-signed swaps, 0.20% routing fee.
-- **/brokers** (Trust & Control → Information → Sparky Broker) — mint a broker and activate it by retiring SRK; also lists the brokers you hold and whether each is activated.
+- **/brokers** (Trust & Control → Information → Sparky Broker) — mint a broker and activate it by retiring SRK; also lists the brokers you hold and whether each is activated. **On the Robinhood Chain beta (4663) this page is different**: the collection is a test OpenSea drop and the verbs are clock in / promote / fuse against the broker engine, burning SPARKYTEST. See [[beta-broker-and-revenue]].
+- **/brokers/revenue** — the fee route and what a holder can withdraw. On the beta it shows the real route (trading fees → splitter 90/10 → engine pot → broker vault → your withdraw) and only ever the amounts the contracts actually hold; no projections, no rate. On other networks it is the period-based revenue-share claim.
 - **/premium** — the Premium tier and which source is currently paying for it. Premium comes from an activated Sparky Broker; the old monthly subscription is retired. See
-  [[srk-and-premium]].
+  [[srk-and-premium]]. (Not part of the Robinhood Chain beta.)
 - **/srk** (Information → SRK) — the token explainer and the **faucet** (5,000 SRK / 24h). The faucet moved here from /premium in 043, because Premium is no longer something you buy with SRK.
 - **/notifications** — alerts derived from real on-chain activity.
 - **Settings → Memory** — read or erase what Sparky remembers.
