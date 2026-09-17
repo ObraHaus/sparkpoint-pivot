@@ -18,10 +18,42 @@ AS-IS** change: fees arrive as ETH and any ERC-20 and are distributed **without 
 | `BrokerEngine.sol` | ✅ ported — AS-IS multi-asset settlement (design below) |
 | `script/DeployBetaRevenue.s.sol` | ✅ ported — dry-run first, `$BCAST` to deploy |
 
-Tests: `contracts/test/revenue/RevenueSuite.t.sol` (22) + `contracts/test/revenue/BrokerEngine.t.sol` (20)
+Tests: `contracts/test/revenue/RevenueSuite.t.sol` (22) + `contracts/test/revenue/BrokerEngine.t.sol` (21)
 — splitter 90/10 + curve/token sweeps, sink, vault credit/merge/withdraw + EIP-712, and the engine:
 verbs, weights/round boundaries, AS-IS ETH + ERC-20 delivery, pro-rata splits, sold/burned drops and
-salvage, admin one-shots. Full contracts suite: **397 passing / 0 failing** (was 355).
+salvage, admin one-shots, and the rewind-window promotion regression. Full contracts suite: **400
+passing / 0 failing**, plus the 4663 fork proof below.
+
+## Fork proof (W.8, 2026-09-17)
+
+`test/fork/BrokerRevenueFork.t.sol` runs the full loop on a **pinned 4663 fork** against the deployed
+set — real Pons curve, real token, real splitter, real engine and vault: buy → clock in → fuse →
+sweep → settle → deliver → withdraw. Only the collection's ownership oracle is stubbed (the OpenSea
+drop has minted nothing at the pinned block; the test asserts that premise before etching).
+
+```bash
+export ROBINHOOD_MAINNET_RPC=<archive endpoint for 4663>
+forge test --match-contract BrokerRevenueFork -vv
+```
+
+Two findings, both pinned as tests:
+
+- ✅ **A promotion queued inside the round-length rewind window was retroactive — FIXED in source.**
+  After `setRoundSeconds(86400)` the grid can rewind (`currentRound() < settledRound`), and
+  `_changeWeight` keyed the promotion boundary on `roundInProgress()` — a round that was already
+  closed. `_crystallise` then paid the whole accumulator at the queued weight while `settle()` had
+  divided the pot by the old `totalWeight`: 1 ETH of revenue became 2.5 ETH owed and `deliver`
+  reverted `OutOfFunds`. The boundary is now `settledRound + 1` (the next round to be closed).
+  Pinned by `test_setRoundSeconds_promotionInTheRewindWindowIsNotRetroactive`.
+  ⚠️ **The deployed proxy (impl `0x6338…0C2a`) still runs the old implementation — the owner must
+  upgrade the engine before any production broadcast.**
+- ⚠️ **The post-graduation ERC-20 leg is an OPEN finding.**
+  `RevenueSplitter.sweepToken` PUSHES the holder leg to the engine as a bare `transfer`, and the
+  engine only books revenue through `receive()` (ETH) or a pull-based `depositAsset` (ERC-20). A
+  pushed ERC-20 is therefore never credited to `pendingPot`. Pre-graduation (ETH fees) is unaffected;
+  after graduation the hook can charge the fee in a token leg. Pinned by
+  `test_fork_postGradTokenLeg_pushIsNotBooked_butPullIs` — the fix (an engine intake or a pull-based
+  splitter leg) changes this test in the same commit.
 
 ## Deliberate divergences from the reference
 

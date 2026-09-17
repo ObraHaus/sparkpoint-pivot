@@ -248,6 +248,9 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
     }
 
     /// @notice The round now accruing revenue. Always `currentRound() + 1`.
+    /// @dev ⚠️ NOT the round an increase takes effect in. After a round-length increase the grid
+    /// can rewind (`currentRound() < settledRound`) and this points at a round that is already
+    /// closed — `_changeWeight` must key its boundary on `settledRound + 1` instead.
     function roundInProgress() public view returns (uint256) {
         return currentRound() + 1;
     }
@@ -591,7 +594,14 @@ contract BrokerEngine is ReentrancyGuard, Initializable, UUPSUpgradeable {
             uint256 wanted = newWeight - held;
             totalWeightNext = totalWeightNext + wanted - Math.min(totalWeightNext, contributed);
             pendingWeightOf[tokenId] = newWeight;
-            promoteAfterRoundOf[tokenId] = roundInProgress();
+            // ⚠️ The NEXT round to be CLOSED — never `roundInProgress()`, which after a
+            // round-length increase points into the rewind window (`currentRound() <
+            // settledRound`) at a round that is already closed. `_crystallise` resolves a
+            // promotion at `accAtRound[boundary]`; a past boundary (whose accumulator predates
+            // the revenue) makes the increase retroactive — the whole accumulator is then paid at
+            // the queued weight even though `settle()` divided the pot by the old `totalWeight`,
+            // and the engine can be made to owe more than it holds (found by the 4663 fork proof).
+            promoteAfterRoundOf[tokenId] = settledRound + 1;
             emit WeightCached(tokenId, held, held, newWeight);
         } else if (newWeight < held) {
             totalWeight = totalWeight + newWeight - Math.min(totalWeight, held);
