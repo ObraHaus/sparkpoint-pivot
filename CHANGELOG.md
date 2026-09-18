@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (CI — the OH Defender monorepo shim is gone)
+- **The OH Defender scan-action is re-pinned to `v1.8.0` (`be05036`), whose build tier finds the Foundry project root itself, and the repo-root `foundry.toml` shim is deleted.** The shim existed only because the scanner ran `forge build` from the repository root, where this monorepo has no project (the real one is `contracts/`), degrading slither/aderyn and falsely gating clean PRs red. The upstream fix landed as `obrahaus-defender#85` (v1.8.0); `detect-solidity.sh --foundry-root` now resolves `contracts/` on this checkout and the build tier runs there. This PR's own Defender scan is the proof: it must report `degraded:false` with no root `foundry.toml`.
+
 ### Added (Trust Center — the swap contracts are disclosed too)
 - **The beta Trust Center now lists the `FeeRouter` (the 0.20% swap fee → splitter) and `BetaQuoterV2` (the read-only quote source) alongside the revenue set.** Both were shipped earlier today; the "Contracts & roles" list now names every contract the swap touches, with the same chain-verifiable address rows as the rest of the beta set.
 
