@@ -358,8 +358,8 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             {state.short > 0n && (
               <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--loss)" }}>
                 You need {formatSrk(state.short)} more.{" "}
-                <a className="cite" onClick={() => router.push(toHref("premium"))} style={{ cursor: "pointer" }}>
-                  Claim SRK from the faucet ↗
+                <a className="cite" onClick={() => router.push(toHref("srk"))} style={{ cursor: "pointer" }}>
+                  How to get SRK ↗
                 </a>
               </div>
             )}

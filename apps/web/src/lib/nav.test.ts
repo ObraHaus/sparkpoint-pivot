@@ -24,8 +24,9 @@ import {
 
 /** The pre-regroup flat secondary rail — the regroup must HIDE NOTHING. */
 const LEGACY_SECONDARY_ROUTES = [
+  // "bridge" is deliberately HIDDEN for now (operator decision 2026-09-18). The page still renders
+  // its honest "not part of the beta yet" state if visited by URL; it is not advertised in nav or ⌘K.
   "swap",
-  "bridge",
   "trust",
   "automation",
   "outcomes",
@@ -48,16 +49,17 @@ test("every destination stays reachable: nav routes + the off-nav Settings-surfa
       `route "${r}" is neither in the nav nor a tracked off-nav destination`,
     );
   }
-  assert.deepEqual(offNav, ["premium", "automation"]);
-  assert.ok(routes.includes("changelog"), "changelog lives on (inside Information)");
+  assert.deepEqual(offNav, ["premium", "automation", "srk", "changelog"]);
+  assert.ok(!routes.includes("changelog"), "changelog moved into Settings (off-nav, searchable)");
+  assert.ok(!routes.includes("srk"), "SRK moved inside Learn (off-nav, searchable)");
 });
 
-test("top-level order is the decided one: Swap, Bridge, Information, Settings", () => {
+test("top-level order is the decided one: Swap, Information, Settings", () => {
   const top = SECONDARY.map((n) => (isNavGroup(n) ? `group:${n.key}` : n.route));
-  assert.deepEqual(top, ["swap", "bridge", `group:${INFORMATION_GROUP_KEY}`, "settings"]);
+  assert.deepEqual(top, ["swap", `group:${INFORMATION_GROUP_KEY}`, "settings"]);
 });
 
-test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, Sparky Broker, Revenue share, Changelog", () => {
+test("the Information group holds Trust Center, Outcome Log, Fees, Learn, Sparky Broker, Revenue share", () => {
   const group = SECONDARY.find((n): n is NavGroup => isNavGroup(n) && n.key === INFORMATION_GROUP_KEY);
   assert.ok(group);
   // 043 — Sparky Broker sits after SRK, deliberately: SRK is what you spend to activate one, so the
@@ -67,7 +69,7 @@ test("the Information group holds Trust Center, Outcome Log, Fees, Learn, SRK, S
   // typing the URL, which is why this list is asserted rather than trusted.
   assert.deepEqual(
     group.children.map((c) => c.route),
-    ["trust", "outcomes", "fees", "learn", "srk", "brokers", "brokers/revenue", "changelog"],
+    ["trust", "outcomes", "fees", "learn", "brokers", "brokers/revenue"],
   );
 });
 
@@ -78,9 +80,9 @@ test("the exit path is pinned OUTSIDE the tree — it can never sit inside a col
 });
 
 test("containsRoute sees group children (mobile 'More' stays active inside a collapsed group)", () => {
-  assert.equal(containsRoute(SECONDARY, "srk"), true);
+  assert.equal(containsRoute(SECONDARY, "srk"), false); // moved inside Learn
   assert.equal(containsRoute(SECONDARY, "fees"), true);
-  assert.equal(containsRoute(SECONDARY, "changelog"), true);
+  assert.equal(containsRoute(SECONDARY, "changelog"), false); // moved into Settings
   assert.equal(containsRoute(SECONDARY, "chat"), false);
 });
 
@@ -88,15 +90,12 @@ test("navLeaves flattens groups in source order", () => {
   const leaves = navLeaves(SECONDARY).map((n) => n.route);
   assert.deepEqual(leaves, [
     "swap",
-    "bridge",
     "trust",
     "outcomes",
     "fees",
     "learn",
-    "srk",
     "brokers",
     "brokers/revenue",
-    "changelog",
     "settings",
   ]);
 });
@@ -144,13 +143,13 @@ test("never toggled + active route outside the group ⇒ COLLAPSED on first load
 });
 
 test("never toggled + active route inside the group ⇒ open, so a deep link is never orphaned", () => {
-  assert.equal(resolveGroupOpen({}, infoGroup, "srk"), true);
+  assert.equal(resolveGroupOpen({}, infoGroup, "trust"), true);
   assert.equal(resolveGroupOpen({}, infoGroup, "fees"), true);
 });
 
 test("an explicit stored choice wins in both directions", () => {
   assert.equal(resolveGroupOpen({ [INFORMATION_GROUP_KEY]: true }, infoGroup, "chat"), true);
-  assert.equal(resolveGroupOpen({ [INFORMATION_GROUP_KEY]: false }, infoGroup, "srk"), false);
+  assert.equal(resolveGroupOpen({ [INFORMATION_GROUP_KEY]: false }, infoGroup, "fees"), false);
 });
 
 test("coerceNavGroupState drops anything that isn't a boolean (untrusted localStorage)", () => {
@@ -184,8 +183,8 @@ test("Sparky Broker has a real slot inside Information, and is searchable", () =
   assert.ok(containsRoute(info.children, "brokers"), "specifically inside Information");
   assert.deepEqual(
     OFF_NAV_DESTINATIONS.map((n) => n.route),
-    ["premium", "automation"],
-    "the Settings-surfaced pair is unchanged",
+    ["premium", "automation", "srk", "changelog"],
+    "now also carries SRK (inside Learn) and the Changelog (inside Settings)",
   );
 
   const palette = commandActions().map((a) => a.route);

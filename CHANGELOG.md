@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 > The repo changelog and the in-app changelog (`services/agent/content_seed/whats-new.json`) are
 > reset together; a seed reset prunes the old in-app entries on the next agent boot/reingest.
 
+## [Unreleased]
+
+### Changed (beta polish — honest labels, tidier pages, less in the way)
+
+- **Fixed the label/value spacing on the broker and revenue pages.** `.payrow` was only styled on the premium page, so rows rendered as “Supply9 of 5,555 exist”; the style now lives in the global sheet.
+- **“Partial data” chips are gone.** When something isn't available yet, the page says so plainly (the same register as `/vault` and `/strategies`) instead of carrying a badge.
+- **Navigation cleanup:** Bridge is hidden for now, SRK moved inside Learn, and the Changelog moved into Settings — all still deep-linkable and searchable.
+- **No testnet/faucet copy on the beta.** The testnet funding tip and the vault tips are gone; the SRK page no longer offers a faucet and states that SRK is a placeholder token (with the Pons buy link to be wired once the URL is confirmed).
+- **The Sparky Broker page links to OpenSea** and says the collection is a placeholder for testing.
+
 ## [0.3.0] — 2026-09-18 — Beta launch (Robinhood Chain)
 
 ### Added

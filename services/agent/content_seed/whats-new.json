@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "beta-ui-polish-honest-labels",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A cleaner beta: honest labels, tidier pages, less clutter",
+      "body": "A pass over the beta's rough edges:\n\n\u2022 the broker and revenue pages no longer run their labels into the numbers;\n\u2022 the \u201cpartial data\u201d chips are gone \u2014 a feature that isn't available yet now simply says so;\n\u2022 Bridge is tucked away for now, SRK lives inside Learn, and the Changelog moved into Settings (all still reachable);\n\u2022 no testnet or faucet talk anywhere \u2014 SRK is described plainly as a placeholder token;\n\u2022 the broker page links to OpenSea and says the collection is a test placeholder.\n\nNothing about how anything works changed \u2014 this is clarity.",
+      "published_at": "2026-09-18T08:44:00Z"
+    },
+    {
       "slug": "beta-launch-robinhood-chain",
       "type": "changelog",
       "tag": "Announcement",
