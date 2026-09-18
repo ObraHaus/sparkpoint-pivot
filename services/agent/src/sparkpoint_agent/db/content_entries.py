@@ -90,6 +90,12 @@ _UPDATE_SEED_SQL = (
     "published_at = COALESCE($10, published_at), author = 'seed', updated_at = now() WHERE id = $1"
 )
 _ADOPT_SLUG_SQL = "UPDATE content_entries SET slug = $2, updated_at = now() WHERE id = $1"
+#: Seed-owned rows the committed file no longer lists. `author = 'seed'` is the whole safety
+#: property: an operator's live edit (author set and != 'seed') is never a candidate.
+_PRUNE_SEED_SQL = (
+    "SELECT id, slug FROM content_entries "
+    "WHERE author = 'seed' AND slug IS NOT NULL AND slug <> ALL($1::text[])"
+)
 
 
 @dataclass
@@ -246,6 +252,27 @@ class ContentEntryStore:
                 json.dumps({"slug": slug, "src": "whats-new"}, ensure_ascii=False),
             )
             return "inserted"
+
+    async def prune_seed(self, keep_slugs: set[str]) -> int:
+        """Delete repo-seeded entries the committed seed no longer lists (a changelog reset).
+
+        Scope is deliberate and narrow: only rows the seed owns (``author = 'seed'``) are
+        candidates — an entry an operator has edited in Admin → Updates is never touched. Each
+        deletion writes the same audit row shape as an admin delete, with ``actor = 'seed'`` and a
+        ``reason``. Returns the number deleted.
+        """
+        async with self.db.acquire() as conn, conn.transaction():
+            rows = await conn.fetch(_PRUNE_SEED_SQL, list(keep_slugs))
+            for row in rows:
+                await conn.execute(_DELETE_SQL, row["id"])
+                await conn.execute(
+                    _AUDIT_SQL, "delete", str(row["id"]), "seed",
+                    json.dumps(
+                        {"slug": row["slug"], "src": "whats-new", "reason": "seed-reset"},
+                        ensure_ascii=False,
+                    ),
+                )
+        return len(rows)
 
     async def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self.db.fetch(_AUDIT_READ_SQL, max(1, min(limit, 500)))

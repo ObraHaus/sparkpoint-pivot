@@ -145,9 +145,19 @@ def _warn_if_future_dated(entry: dict[str, Any]) -> None:
 
 
 async def seed_changelog(store: ContentEntryStore) -> dict[str, int]:
-    """UPSERT every seed entry by slug. Returns counts {inserted, updated, adopted, skipped}."""
-    counts = {"inserted": 0, "updated": 0, "adopted": 0, "skipped": 0}
-    for entry in load_entries():
+    """UPSERT every seed entry by slug, then PRUNE seed-owned rows no longer in the file.
+
+    Pruning makes the committed seed the single source of truth: replacing the whole file (a reset)
+    removes the old seed rows on the next boot / ``POST /admin/content/reingest``. Rows an operator
+    has edited in Admin → Updates (``author != 'seed'``) are preserved. Returns counts
+    ``{inserted, updated, adopted, skipped, pruned}``.
+
+    ⚠️ An unreadable or EMPTY seed file never prunes: "nothing to say" must not mean "delete the
+    changelog". Only a non-empty, successfully parsed file reconciles.
+    """
+    counts = {"inserted": 0, "updated": 0, "adopted": 0, "skipped": 0, "pruned": 0}
+    entries = load_entries()
+    for entry in entries:
         _warn_if_future_dated(entry)
         try:
             result = await store.upsert_seed(**entry)
@@ -155,5 +165,11 @@ async def seed_changelog(store: ContentEntryStore) -> dict[str, int]:
             logger.warning("whats_new_upsert_failed slug=%s", entry.get("slug"))
             continue
         counts[result] = counts.get(result, 0) + 1
+    if entries:
+        try:
+            counts["pruned"] = await store.prune_seed({e["slug"] for e in entries})
+        except Exception:
+            # Fail-open, content only (N2): a prune that cannot run leaves the old rows in place.
+            logger.warning("whats_new_prune_failed")
     logger.info("whats_new_seeded total=%d %s", sum(counts.values()), counts)
     return counts
