@@ -58,7 +58,8 @@ export const INFORMATION_GROUP_KEY = "information";
  */
 export const SECONDARY: NavNode[] = [
   { route: "swap", label: "Swap", icon: "swap", keywords: ["swap tokens", "trade"] },
-  { route: "bridge", label: "Bridge", icon: "refresh", keywords: ["bridge assets", "move between networks"] },
+  // Bridge is HIDDEN for now (operator decision 2026-09-18) — still deep-linkable, and the page
+  // itself shows the honest "not part of the beta yet" state. Add it back to re-list it.
   {
     key: INFORMATION_GROUP_KEY,
     label: "Information",
@@ -67,8 +68,7 @@ export const SECONDARY: NavNode[] = [
       { route: "trust", label: "Trust Center", icon: "shieldcheck", keywords: ["proof", "guarantees", "custody"] },
       { route: "outcomes", label: "Outcome Log", icon: "activity", keywords: ["results", "attribution", "track record"] },
       { route: "fees", label: "Fees", icon: "coins", keywords: ["how we make money", "pricing", "costs"] },
-      { route: "learn", label: "Learn", icon: "book", keywords: ["guides", "education", "glossary"] },
-      { route: "srk", label: "SRK", icon: "coins", keywords: ["token", "sparkpoint token", "faucet", "claim srk"] },
+      { route: "learn", label: "Learn", icon: "book", keywords: ["guides", "education", "glossary", "srk", "token"] },
       {
         route: "brokers",
         label: "Sparky Broker",
@@ -85,7 +85,8 @@ export const SECONDARY: NavNode[] = [
         icon: "coins",
         keywords: ["revenue", "share", "claim", "payout", "distribution", "period", "broker"],
       },
-      { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
+      // SRK moved INSIDE Learn, and the Changelog into Settings (operator decision 2026-09-18).
+      // Both stay deep-linkable and searchable via OFF_NAV_DESTINATIONS.
     ],
   },
   { route: "settings", label: "Settings", icon: "settings", keywords: ["preferences", "mandate", "account", "premium", "plan", "automation", "session key"] },
@@ -100,6 +101,10 @@ export const SECONDARY: NavNode[] = [
 export const OFF_NAV_DESTINATIONS: NavItem[] = [
   { route: "premium", label: "Premium", icon: "zap", keywords: ["upgrade", "subscription", "faucet", "claim srk", "plan"] },
   { route: "automation", label: "Automation", icon: "zap", keywords: ["revoke automation", "session key", "hands-off"] },
+  // Moved off the rail 2026-09-18 but kept searchable: SRK now lives inside Learn, the Changelog
+  // inside Settings. Removing them from the rail must never make them unreachable (N2).
+  { route: "srk", label: "SRK", icon: "coins", keywords: ["token", "sparkpoint token", "placeholder token", "buy srk", "pons"] },
+  { route: "changelog", label: "Changelog", icon: "book", keywords: ["what's new", "releases", "updates"] },
 ];
 
 /**

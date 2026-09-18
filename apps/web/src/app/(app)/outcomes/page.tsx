@@ -93,14 +93,11 @@ function OutcomeTag({ hasData }: { hasData: boolean }) {
     );
   }
   return (
-    <StatusTag
-      variant="partial"
-      label="No data yet"
-      works={["Reads your real indexed on-chain flows — no fabricated figures"]}
-      pending={[
-        "Outcomes appear once you act on a recommendation (or withdraw) and the history reconciles on-chain",
-      ]}
-    />
+    <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+      <b style={{ color: "var(--foreground)" }}>No data yet.</b> Reads your real indexed on-chain
+      flows — no fabricated figures. Outcomes appear once you act on a recommendation (or withdraw)
+      and the history reconciles on-chain.
+    </div>
   );
 }
 

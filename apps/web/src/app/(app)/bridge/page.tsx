@@ -249,8 +249,7 @@ export default function Page() {
           </div>
         </div>
         <div className="card card-pad" style={{ marginTop: 12, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-          Bridging isn&rsquo;t part of the Robinhood mainnet beta yet. The testnet bridge helpers apply to the test
-          networks only.
+          Bridging isn&rsquo;t part of the Robinhood mainnet beta yet — it ships after the beta.
         </div>
       </div>
     );

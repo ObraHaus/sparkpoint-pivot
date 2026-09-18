@@ -72,11 +72,6 @@ export default function Page() {
         <div>
           <h1 style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             Fees &amp; how we make money
-            <StatusTag
-              variant="partial"
-              works={["Fee params (performance fee, recipient) read live from the vault", "0% deposit/withdraw fee is structural (ERC-4626)", "Fee terms shown are the live on-chain performance fee — no fabricated figures"]}
-              pending={["No per-wallet \"fees paid\" figure — the fee is share dilution to a shared recipient, so a truthful personal number isn't indexed"]}
-            />
           </h1>
           <div className="fees-lede">
             We only earn when you earn — never on your principal, never by taking custody. Here&apos;s exactly what we
@@ -218,7 +213,9 @@ export default function Page() {
       <div className="card honesty">
         <div className="card-hd">
           <span className="t">We only earn when you earn</span>
-          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live fee read" : "Reading…"} />
+          {!vaultUnavailable && (
+            <StatusTag variant={readsLive ? "live" : "mock"} label={readsLive ? "Live fee read" : "Reading…"} />
+          )}
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
           On the Aave Yield Vault, SparkPoint charges{" "}
@@ -237,7 +234,9 @@ export default function Page() {
       <div className="card verify">
         <div className="card-hd" style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
           <span className="t">Verify — don&apos;t take our word for it</span>
-          <StatusTag variant={!vaultUnavailable && readsLive ? "live" : "partial"} label={vaultUnavailable ? "Vault not available yet" : readsLive ? "Live reads" : "Reading…"} />
+          {!vaultUnavailable && (
+            <StatusTag variant={readsLive ? "live" : "mock"} label={readsLive ? "Live reads" : "Reading…"} />
+          )}
         </div>
         <div className="vrow">
           <span>Vault deposit/withdraw fee</span>

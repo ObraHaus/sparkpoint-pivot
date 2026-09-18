@@ -73,12 +73,11 @@ function NotifTag({ hasRows }: { hasRows: boolean }) {
     );
   }
   return (
-    <StatusTag
-      variant="partial"
-      label="No notifications yet"
-      works={["Reads your real indexed on-chain activity — no fabricated alerts"]}
-      pending={["Notifications appear as you deposit, withdraw, or an outcome is realized on-chain"]}
-    />
+    <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+      <b style={{ color: "var(--foreground)" }}>No notifications yet.</b> Reads your real indexed
+      on-chain activity — no fabricated alerts — and notifications appear as you deposit, withdraw,
+      or an outcome is realized on-chain.
+    </div>
   );
 }
 

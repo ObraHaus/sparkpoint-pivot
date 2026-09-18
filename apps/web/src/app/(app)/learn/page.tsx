@@ -6,6 +6,7 @@
  */
 
 import { Icon } from "@/lib/icons";
+import Link from "next/link";
 import "@/components/screens/support.css";
 
 const topics: [string, string][] = [
@@ -40,6 +41,23 @@ export default function Page() {
           </div>
         ))}
       </div>
+
+      {/* SRK moved INSIDE Learn (operator decision 2026-09-18): it is an explainer, not a nav-level
+          surface. The card links to the full page. */}
+      <Link
+        href="/srk"
+        className="learn-card"
+        style={{ display: "block", marginTop: 14, textDecoration: "none" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7, color: "var(--info)" }}>
+          <Icon name="coins" size={16} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--foreground)" }}>What is SRK?</span>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
+          A placeholder utility token — nothing core depends on it. Read what it is, what it is not,
+          and where it can be acquired.
+        </div>
+      </Link>
     </div>
   );
 }

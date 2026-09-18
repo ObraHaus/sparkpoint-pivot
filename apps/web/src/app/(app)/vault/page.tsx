@@ -178,7 +178,7 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
     <div className="page page-wide">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>{v.label} <StatusTag variant="partial" works={["Vault caps, fee, your shares/value/idle read live on-chain", "Real approve + deposit + withdraw / exit"]} pending={[isWrapper ? "Net APY feed not yet wired — shown as —" : "Net APY reflects the live Aave supply rate (≈0% on testnet)"]} /></h1>
+          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>{v.label}</h1>
           <div className="sub">{isWrapper ? "Branded Morpho-wrapper vault · yield routed via Morpho · Base" : "Conservative, capital-preservation-first yield on USDC · Base"}</div>
         </div>
         <div className="actions">
