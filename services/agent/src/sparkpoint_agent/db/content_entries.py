@@ -90,11 +90,13 @@ _UPDATE_SEED_SQL = (
     "published_at = COALESCE($10, published_at), author = 'seed', updated_at = now() WHERE id = $1"
 )
 _ADOPT_SLUG_SQL = "UPDATE content_entries SET slug = $2, updated_at = now() WHERE id = $1"
-#: Seed-owned rows the committed file no longer lists. `author = 'seed'` is the whole safety
-#: property: an operator's live edit (author set and != 'seed') is never a candidate.
+#: Seed-owned rows the committed file no longer lists, INCLUDING pre-slug legacy rows
+#: (`slug IS NULL`) that an older seed created before slugs existed — those are exactly the rows a
+#: reset must clear. `author = 'seed'` is the whole safety property: an operator's live edit
+#: (author set and != 'seed') is never a candidate, and neither is a NULL-author legacy admin row.
 _PRUNE_SEED_SQL = (
     "SELECT id, slug FROM content_entries "
-    "WHERE author = 'seed' AND slug IS NOT NULL AND slug <> ALL($1::text[])"
+    "WHERE author = 'seed' AND (slug IS NULL OR slug <> ALL($1::text[]))"
 )
 
 
@@ -257,9 +259,10 @@ class ContentEntryStore:
         """Delete repo-seeded entries the committed seed no longer lists (a changelog reset).
 
         Scope is deliberate and narrow: only rows the seed owns (``author = 'seed'``) are
-        candidates — an entry an operator has edited in Admin → Updates is never touched. Each
-        deletion writes the same audit row shape as an admin delete, with ``actor = 'seed'`` and a
-        ``reason``. Returns the number deleted.
+        candidates — including pre-slug legacy seed rows (``slug IS NULL``), which is how a reset
+        clears entries created before slugs existed. An entry an operator has edited in Admin →
+        Updates is never touched. Each deletion writes the same audit row shape as an admin delete,
+        with ``actor = 'seed'`` and a ``reason``. Returns the number deleted.
         """
         async with self.db.acquire() as conn, conn.transaction():
             rows = await conn.fetch(_PRUNE_SEED_SQL, list(keep_slugs))
