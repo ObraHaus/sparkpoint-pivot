@@ -594,7 +594,8 @@ def test_non_admin_gets_404_never_403() -> None:
 
 def _ingest_body(**over: Any) -> dict[str, Any]:
     body = {
-        "runKey": "curator-4663-20260918",
+        # gitleaks false positive: this is a run ID fixture, not a credential.
+        "runKey": "curator-4663-20260918",  #gitleaks:allow
         "asOf": _NOW.isoformat(),
         "source": "morpho",
         "ok": True,
@@ -652,7 +653,7 @@ def test_a_failed_run_is_a_noop_for_the_list_and_the_pick(
     resp = c.post(
         "/curator/ingest",
         json=_ingest_body(
-            runKey="curator-4663-failed",
+            runKey="curator-4663-failed",  #gitleaks:allow (run ID fixture, not a credential)
             ok=False,
             error="morpho returned 503",
             vaults=[],
