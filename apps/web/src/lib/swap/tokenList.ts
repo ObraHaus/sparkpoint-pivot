@@ -10,6 +10,7 @@
 
 import type { Address } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { RH_STOCK_TOKENS } from "@/lib/swap/tokens";
 
 export interface VerifiedToken {
   readonly symbol: string;
@@ -22,8 +23,9 @@ export interface VerifiedToken {
  */
 const CURATED_EXTRA: Record<number, readonly VerifiedToken[]> = {
   // 8453 (Base mainnet): add well-known majors (DAI, WBTC, cbETH) here once each address is confirmed.
-  // Robinhood Chain 4663: SPCX — verified on Blockscout, live USDG/SPCX Uniswap V3 pool (fee 3000).
-  4663: [{ symbol: "SPCX", address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa" }],
+  // Robinhood Chain 4663: the canonical Stock Tokens (official RH registry + on-chain verified; see
+  // RH_STOCK_TOKENS). Derived here so the verified set can never drift from the picker's list.
+  4663: RH_STOCK_TOKENS.map((t) => ({ symbol: t.symbol, address: t.address })),
 };
 
 const eqAddr = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

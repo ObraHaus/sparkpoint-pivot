@@ -18,10 +18,11 @@ import "@/components/screens/support.css";
 const SRK_CHAIN = APP_DEFAULT_CHAIN_ID;
 
 /**
- * Where to buy SRK — the Pons launchpad. Set this the moment the operator confirms the URL; the
- * card below renders the link only when it is present (never a guessed/broken link).
+ * Where to buy SRK — the Pons launchpad (operator-confirmed 2026-09-18). The card below renders the
+ * link only when it is present (never a guessed/broken link).
  */
-const PONS_SRK_URL: string | undefined = undefined;
+const PONS_SRK_URL: string | undefined =
+  "https://www.ponsfamily.com/launchpad/0x790316a2a1B403b55c6E8a6857Dd768078503553";
 
 const FACTS: [string, string][] = [
   [

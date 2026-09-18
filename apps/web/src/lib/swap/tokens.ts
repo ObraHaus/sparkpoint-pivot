@@ -6,9 +6,16 @@
  * USDC (the Aave-market test token — the one you can then DEPOSIT into the vault). Addresses come
  * from the shared registry (`getAddresses`); symbols/decimals are pinned here (ETH 18dp; USDC 6dp on
  * Base, 18dp on Robinhood testnet — see USDC_DECIMALS).
+ *
+ * The pure data + helpers live in `tokens.pure.ts` (re-exported here) so node:test can load them
+ * without the address-book bundle; this module adds the per-chain lookups.
  */
 
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { RH_STOCK_TOKENS, type SwapToken } from "./tokens.pure";
+
+export type { SwapToken, TokenSource } from "./tokens.pure";
+export { RH_STOCK_TOKENS, formatSeedAmount, isConfiguredToken } from "./tokens.pure";
 
 /**
  * USDC decimals PER CHAIN. Base Sepolia / Base mainnet USDC is 6dp, but Robinhood testnet's (Synthra
@@ -28,33 +35,11 @@ const STABLE_SYMBOL: Record<number, string> = {
 const DEFAULT_STABLE_SYMBOL = "USDC";
 
 // Curated one-tap tokens beyond ETH + the stable, per chain — ONLY addresses verified on-chain with a
-// live Uniswap V3 pool (never fabricated; a wrong "verified" address is a safety bug). Robinhood Chain
-// 4663: SPCX (18dp) — Blockscout-verified, live USDG/SPCX pool. Any other ERC-20 is still paste-importable.
+// live Uniswap V3 pool (never fabricated; a wrong "verified" address is a safety bug). Any other ERC-20
+// is still paste-importable. See `RH_STOCK_TOKENS` for the 4663 Stock Token provenance + checks.
 const CURATED_ONETAP: Record<number, readonly SwapToken[]> = {
-  4663: [
-    { symbol: "SPCX", decimals: 18, address: "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa", isNative: false, source: "recommended", verified: true },
-  ],
+  4663: RH_STOCK_TOKENS,
 };
-
-/** Where a {@link SwapToken} came from — drives the picker section + the verified/unverified badge. */
-export type TokenSource = "recommended" | "imported" | "native";
-
-export interface SwapToken {
-  readonly symbol: string;
-  /** Decimals of the token amount the user enters/receives (native ETH + WETH are 18; USDC 6). Always
-   * the ON-CHAIN value for a pasted token (resolved via metadata.ts) — never a wire/agent/cached hint. */
-  readonly decimals: number;
-  /** The ERC-20 address used on-chain — for the native-ETH pseudo-token this is WETH (routing). */
-  readonly address: `0x${string}`;
-  /** true ⇒ NATIVE ETH: balance is native, ETH-in needs no ERC-20 approve, ETH-out is unwrapped. */
-  readonly isNative: boolean;
-  /** Human name (`name()`), when known — display only. */
-  readonly name?: string;
-  /** Provenance: native ETH, a curated recommended token, or a user-imported custom token. */
-  readonly source?: TokenSource;
-  /** true ⇒ the ADDRESS is in the curated verified set (tokenList). Never inferred from the symbol. */
-  readonly verified?: boolean;
-}
 
 /**
  * The tokens offered on `chainId`, or `[]` when the chain isn't a supported swap chain (fail-closed
@@ -89,8 +74,3 @@ export function swapTokens(chainId: number | undefined): SwapToken[] {
  * output as {@link swapTokens}; kept as a clearer name now that arbitrary imported tokens also exist.
  */
 export const recommendedTokens = swapTokens;
-
-/** Zero address sentinel used to detect an unconfigured token (a chain whose book leaves it at 0x0). */
-export function isConfiguredToken(t: SwapToken): boolean {
-  return !/^0x0{40}$/i.test(t.address);
-}
