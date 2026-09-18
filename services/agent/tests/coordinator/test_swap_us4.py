@@ -109,3 +109,53 @@ def test_swap_proposed_action_default_is_within_the_ceiling() -> None:
     )
     emitted = _swap_proposed_action(intent, 84532)["params"]["maxSlippageBps"]
     assert emitted == 50 <= SLIPPAGE.absolute_ceiling_bps
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pre-fill support (2026-09-18): the inline card seeds the amount for ANY input token, so the wire
+# must carry real decimals + the chain-local stable symbol. A 6-dp USDG input mislabeled 18 (or
+# named "USDC") would either mis-scale the pre-filled amount by 1e12 or label the token wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_swap_proposed_action_4663_carries_usdg_decimals_on_the_eth_to_stable_pair() -> None:
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.ETH,
+        amount=10**15,  # 0.001 ETH in base units
+    )
+    wire = _swap_proposed_action(intent, 4663)
+    assert wire["tokenIn"]["symbol"] == "ETH"
+    assert wire["tokenIn"]["decimals"] == 18
+    assert wire["decimals"] == 18  # legacy field now matches the FROM token, not a filler
+    assert wire["tokenOut"]["symbol"] == "USDG"  # never "USDC" on 4663
+    assert wire["tokenOut"]["decimals"] == 6
+    assert wire["amount"] == str(10**15)  # base units of the FROM token
+
+
+def test_swap_proposed_action_4663_stable_in_carries_6_decimals() -> None:
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.USDC,  # the generic stable slot = USDG on 4663
+        amount=100_000_000,  # 100 USDG in base units
+    )
+    wire = _swap_proposed_action(intent, 4663)
+    assert wire["tokenIn"]["symbol"] == "USDG"
+    assert wire["tokenIn"]["decimals"] == 6
+    assert wire["decimals"] == 6
+    assert wire["tokenOut"]["symbol"] == "ETH"
+    assert wire["tokenOut"]["decimals"] == 18
+
+
+def test_swap_proposed_action_does_not_guess_decimals_for_a_pasted_token() -> None:
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.ETH,
+        amount=10**18,
+        token_out_addr=_CUSTOM,
+    )
+    wire = _swap_proposed_action(intent, 4663)
+    assert wire["tokenOut"] == {"address": _CUSTOM}  # the web resolves it on-chain

@@ -35,7 +35,6 @@ import { feeBasisShortLabel, vaultFeeChain } from "@/lib/policy/feeCopy";
 import { VaultPicker } from "@/components/ui/VaultPicker";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
-import { StatusTag } from "@/components/ui/status-tag";
 
 const DECIMALS = 6;
 

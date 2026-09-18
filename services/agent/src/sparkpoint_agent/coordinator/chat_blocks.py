@@ -107,6 +107,20 @@ def token_address(chain_id: int, asset: Asset) -> str:
     return book.usdc if asset is Asset.USDC else book.weth
 
 
+def token_decimals(chain_id: int, asset: Asset) -> int:
+    """Decimals of the token behind a symbolic policy ``Asset`` on ``chain_id``.
+
+    ETH/WETH is 18 everywhere. The generic stablecoin slot is 6 dp on Base mainnet / Base Sepolia /
+    Robinhood Chain 4663 (USDG, verified on-chain) but 18 dp on Robinhood testnet 46630. Mirrors the
+    web's per-chain table (`apps/web/src/lib/swap/tokens.ts`) — the inline swap card scales the
+    assistant's base-unit amount with the resolved token's decimals, so a wrong number here would
+    mis-scale a pre-filled swap by 1e12.
+    """
+    if asset is Asset.ETH:
+        return 18
+    return 18 if chain_id == 46630 else 6
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Provenance + verdict wire pieces.
 # ─────────────────────────────────────────────────────────────────────────────

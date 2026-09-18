@@ -10,12 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (swap polish — more tokens, one-tap chat swaps, less chrome)
+
+- **The swap picker now recommends Robinhood Chain's canonical Stock Tokens** — SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, SPCX, QQQ, GLD, CRCL, RDDT. Addresses come from Robinhood's **official asset registry** (`api.robinhood.com/rhj/assets`, the same source as docs.robinhood.com/chain/contracts) and each was verified on-chain (18dp + a live Uniswap V3 pool vs WETH/USDG). Any other ERC-20 remains paste-importable.
+- **“Route via” is gone from `/swap`.** Uniswap V3 is the one venue wired for execution and the quote engine already chooses the pool/path; the selector was chrome. The chosen route is still disclosed on the confirm screen.
+- **Chat swap proposals arrive pre-filled.** “Swap 0.001 ETH to USDG” opens the inline card with the amount and both tokens already set — the user only confirms. To make that safe, `_swap_proposed_action` now carries the FROM token's real `decimals` (USDG is 6dp on 4663; the legacy field previously claimed 18) and the chain-local stable symbol (never labels USDG as USDC), and the card scales the base-unit amount with the resolved token's decimals (recommended pin or on-chain read).
+- **SRK Pons buy link wired** (operator-confirmed launchpad URL) and the **Sparky Broker OpenSea link now points at the collection**.
+
 ### Changed (beta polish — honest labels, tidier pages, less in the way)
 
 - **Fixed the label/value spacing on the broker and revenue pages.** `.payrow` was only styled on the premium page, so rows rendered as “Supply9 of 5,555 exist”; the style now lives in the global sheet.
 - **“Partial data” chips are gone.** When something isn't available yet, the page says so plainly (the same register as `/vault` and `/strategies`) instead of carrying a badge.
 - **Navigation cleanup:** Bridge is hidden for now, SRK moved inside Learn, and the Changelog moved into Settings — all still deep-linkable and searchable.
-- **No testnet/faucet copy on the beta.** The testnet funding tip and the vault tips are gone; the SRK page no longer offers a faucet and states that SRK is a placeholder token (with the Pons buy link to be wired once the URL is confirmed).
+- **No testnet/faucet copy on the beta.** The testnet funding tip and the vault tips are gone; the SRK page no longer offers a faucet, states that SRK is a placeholder token, and links to its Pons launchpad.
 - **The Sparky Broker page links to OpenSea** and says the collection is a placeholder for testing.
 
 ## [0.3.0] — 2026-09-18 — Beta launch (Robinhood Chain)
