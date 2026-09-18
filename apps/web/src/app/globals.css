@@ -449,3 +449,9 @@ button{font-family:inherit;}
   transition-duration:.001ms !important;
   scroll-behavior:auto !important;
 }
+
+/* ── .payrow — the shared label/value row. Moved here 2026-09-18 because the beta
+   broker + revenue pages use it but only /premium imported premium.css, so their
+   labels and values collapsed together ("Supply9 of 5,555 exist"). ── */
+.payrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px;}
+.payrow:last-child{border-bottom:none;}

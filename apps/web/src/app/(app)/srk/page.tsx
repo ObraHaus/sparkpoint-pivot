@@ -1,24 +1,27 @@
 /**
  * /srk — what the SRK utility token is, and (more importantly) what it is NOT. Informational only.
  *
- * Feature 026 split this screen: the live balance, the faucet and the acquire flow all moved to
- * the Premium page, next to the thing SRK actually buys. What stayed is the explainer — and the dead
- * bits went with it (the hardcoded "0 SRK" balance card and the "How to earn" button that did
- * nothing were showcase leftovers, and a fabricated balance on a trust surface is worse than none).
- * The route is unchanged and is listed under the rail's "Information" group.
+ * 2026-09-18 (operator): the route moved INSIDE Learn (no longer a rail item), the faucet card was
+ * removed, and the page now says plainly that this is a placeholder token. Acquisition is a link to
+ * the Pons launchpad once that URL is confirmed; until then the card explains without a link.
  */
 
 import Link from "next/link";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
-import { SrkFaucetCard } from "@/components/premium/SrkFaucetCard";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
 
 /** SRK is Base-Sepolia-only by design (a fixed-supply TEST token, hand-distributed). */
 const SRK_CHAIN = APP_DEFAULT_CHAIN_ID;
+
+/**
+ * Where to buy SRK — the Pons launchpad. Set this the moment the operator confirms the URL; the
+ * card below renders the link only when it is present (never a guessed/broken link).
+ */
+const PONS_SRK_URL: string | undefined = undefined;
 
 const FACTS: [string, string][] = [
   [
@@ -30,8 +33,8 @@ const FACTS: [string, string][] = [
     "Activating a Sparky Broker. You retire SRK once, and that broker carries Premium — deeper analysis, higher limits, advanced analytics — for as long as you hold it. That is the whole utility surface.",
   ],
   [
-    "It is a testnet token with a fixed supply",
-    "The alpha SRK is a plain 18-decimal ERC-20 deployed for testing. Its entire supply was minted once at creation: there is no mint function and no owner, so the supply can never change. It is deliberately NOT the older, exchange-listed SparkPoint token — only the name and symbol are shared, for familiarity.",
+    "It is a placeholder token with a fixed supply",
+    "A plain 18-decimal ERC-20 for testing. Its entire supply was minted once at creation: there is no mint function and no owner, so the supply can never change. It is deliberately NOT the older, exchange-listed SparkPoint token — only the name and symbol are shared, for familiarity.",
   ],
   [
     "Retiring it does not destroy it",
@@ -51,13 +54,39 @@ export default function Page() {
       <div className="pagehead">
         <div>
           <h1>SRK</h1>
-          <div className="sub">A non-essential utility token. Nothing core depends on it.</div>
+          <div className="sub">A placeholder utility token. Nothing core depends on it.</div>
         </div>
       </div>
 
-      {/* 043 — the faucet lives HERE now, not on /premium. Premium is no longer something you buy
-          with SRK, so the acquire path belongs beside the token it hands out. */}
-      <SrkFaucetCard />
+      {/* Acquisition — no faucet. The launchpad link unlocks when the operator confirms the URL. */}
+      <div
+        className="card card-pad"
+        style={{
+          marginBottom: 16,
+          background: "var(--info-subtle)",
+          borderColor: "color-mix(in srgb,var(--info) 22%,transparent)",
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.5, flex: 1, minWidth: 220 }}>
+          <b style={{ color: "var(--foreground)" }}>This is a placeholder token.</b> It exists so the
+          mechanics can be tested — it carries no promise, no yield and no claim on anything. If you
+          do want some, it is traded on the <b>Pons</b> launchpad.
+        </span>
+        {PONS_SRK_URL ? (
+          <a className="btn btn-primary btn-md" href={PONS_SRK_URL} target="_blank" rel="noreferrer">
+            Buy SRK on Pons <Icon name="ext" size={12} />
+          </a>
+        ) : (
+          <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+            Pons link coming
+          </span>
+        )}
+      </div>
 
       <div
         className="card card-pad"
@@ -76,7 +105,7 @@ export default function Page() {
           <Link href="/brokers" style={{ color: "var(--primary)" }}>
             Sparky Broker
           </Link>
-          , which is what unlocks Premium — and the faucet above is how you get some.
+          , which is what unlocks Premium. It is a placeholder token — nothing core depends on it.
         </span>
       </div>
 

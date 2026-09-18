@@ -256,8 +256,18 @@ export function BetaBrokers() {
                 lineHeight: 1.55,
               }}
             >
-              The collection mints on OpenSea. Holding one is the start; each broker then earns in
-              proportion to the weight its rank records — and nothing renews.
+              This is a <b>placeholder collection for testing</b> — the production Sparky Broker
+              drop comes later. You can view it on{" "}
+              <a
+                href={`https://opensea.io/assets/robinhood/${nft}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--primary)" }}
+              >
+                OpenSea
+              </a>
+              . Holding one is the start; each broker then earns in proportion to the weight its
+              rank records — and nothing renews.
             </div>
           </div>
 

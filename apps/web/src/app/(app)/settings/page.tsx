@@ -22,7 +22,6 @@ import { chainName } from "@sparkpoint/shared/chains";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
-import { StatusTag } from "@/components/ui/status-tag";
 import {
   useMandate,
   useUpdateMandate,
@@ -357,8 +356,8 @@ function ContributionInput({
 
 /** The one honest sentence that has to sit next to the list, in the user's own words. */
 const MEMORY_DISCLOSURE =
-  "This includes your recent platform activity — deposits, withdrawals, swaps, and faucet " +
-  "claims — alongside what you've discussed. It is advisory context for suggestions and " +
+  "This includes your recent platform activity — deposits, withdrawals, swaps and broker " +
+  "activations — alongside what you've discussed. It is advisory context for suggestions and " +
   "answers only — it never authorises anything, and it is never used to move your funds.";
 
 /**
@@ -503,7 +502,7 @@ export default function Page() {
     <div className="page page-narrow">
       <div className="pagehead">
         <div>
-          <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>Settings <StatusTag variant="partial" works={["Your mandate (risk + slippage) is real and drives recommendations", "Sparky's memory is real: the Memory tab shows the actual notes it carries between conversations, and Clear memory really erases them", "In-app notifications are live — these category toggles filter your real notifications feed", "Display preferences are saved on this device; compact density and reduce-motion apply across the app"]} pending={["Only email / push DELIVERY of notifications isn’t wired yet (in-app is live); session-key alerts arrive once automation ships"]} /></h1>
+          <h1>Settings</h1>
         </div>
         <button
           className="btn btn-ghost btn-md"
@@ -586,6 +585,18 @@ export default function Page() {
                 }}
               >
                 <Icon name="logout" size={15} /> Disconnect
+              </button>
+            </div>
+            {/* Changelog moved into Settings (operator decision 2026-09-18) — no longer a rail item. */}
+            <div className="setrow">
+              <div>
+                <div style={{ fontWeight: 600 }}>Changelog</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  What shipped, newest first.
+                </div>
+              </div>
+              <button className="btn btn-outline btn-md" onClick={() => router.push(toHref("changelog"))}>
+                <Icon name="book" size={15} /> View updates
               </button>
             </div>
           </>
