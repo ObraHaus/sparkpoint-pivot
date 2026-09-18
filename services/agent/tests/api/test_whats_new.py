@@ -63,15 +63,66 @@ async def test_seed_changelog_upserts_each_and_aggregates(
     class _Fake:
         def __init__(self) -> None:
             self.calls: list[str] = []
+            self.pruned: set[str] | None = None
 
         async def upsert_seed(self, **kw: Any) -> str:
             self.calls.append(kw["slug"])
             return "inserted"
 
+        async def prune_seed(self, keep_slugs: set[str]) -> int:
+            self.pruned = keep_slugs
+            return 0
+
     store = _Fake()
     counts = await content_seed.seed_changelog(store)  # type: ignore[arg-type]
     assert store.calls == ["a", "b"]
+    assert store.pruned == {"a", "b"}  # the seed file is the keep-list, exactly
     assert counts["inserted"] == 2
+    assert counts["pruned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_seed_changelog_empty_file_never_prunes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable/empty seed must never be read as 'delete every entry'."""
+    monkeypatch.setenv("SPARKPOINT_WHATS_NEW_PATH", str(tmp_path / "missing.json"))
+
+    class _Recording:
+        def __init__(self) -> None:
+            self.prune_called = False
+
+        async def upsert_seed(self, **kw: Any) -> str:  # pragma: no cover - never reached
+            return "inserted"
+
+        async def prune_seed(self, keep_slugs: set[str]) -> int:
+            self.prune_called = True
+            return 0
+
+    store = _Recording()
+    counts = await content_seed.seed_changelog(store)  # type: ignore[arg-type]
+    assert store.prune_called is False
+    assert counts["pruned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_seed_changelog_prune_failure_is_swallowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    f = tmp_path / "whats-new.json"
+    _write(f, [{"slug": "a", "title": "A", "body": "ba"}])
+    monkeypatch.setenv("SPARKPOINT_WHATS_NEW_PATH", str(f))
+
+    class _Boom:
+        async def upsert_seed(self, **kw: Any) -> str:
+            return "inserted"
+
+        async def prune_seed(self, keep_slugs: set[str]) -> int:
+            raise RuntimeError("db down")
+
+    counts = await content_seed.seed_changelog(_Boom())  # type: ignore[arg-type]
+    assert counts["inserted"] == 1
+    assert counts["pruned"] == 0  # fail-open, content only
 
 
 @pytest.mark.asyncio
