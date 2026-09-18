@@ -268,6 +268,30 @@ export default function ChatPage() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
+  /**
+   * 048 — the `/vault` board's "Ask Sparky about vaults" entry point arrives as `?ask=…`.
+   *
+   * PREFILLED, not auto-sent: the user reads the question, edits it if they like, and presses send.
+   * Auto-sending from a link would spend a model turn the moment the page loads and take the
+   * decision away from the person. Read once from `window.location` (a one-shot client action, so
+   * no `useSearchParams` Suspense boundary is needed), then strip the param so a refresh does not
+   * re-prefill over a draft.
+   */
+  const askPrefilledRef = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- The `?ask=` param exists only in the browser
+     URL, so it cannot be initial state. It is read ONCE, the URL is stripped, and the ref guards
+     re-entry, so this cannot cascade. */
+  useEffect(() => {
+    if (askPrefilledRef.current) return;
+    const ask = new URLSearchParams(window.location.search).get("ask");
+    if (!ask) return;
+    askPrefilledRef.current = true;
+    setDraft(ask.slice(0, 300));
+    window.history.replaceState(null, "", window.location.pathname);
+    taRef.current?.focus();
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   // client-only flag so the cite-sheet portal never runs during SSR (matches OverlayProvider).
   const mounted = useSyncExternalStore(
     () => () => {},
