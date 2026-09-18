@@ -22,9 +22,12 @@ jobs:
         with: { version: 9.15.9 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm, cache-dependency-path: runners/pnpm-lock.yaml }
-      # runners/ is intentionally NOT a pnpm workspace member (its lockfile is standalone); install
-      # from its own directory so the frozen lockfile in THIS package is what CI resolves.
-      - run: pnpm install --frozen-lockfile
+      # runners/ is intentionally NOT a pnpm workspace member (its lockfile is standalone), but it
+      # lives UNDER the repo root's pnpm-workspace.yaml. Without --ignore-workspace, pnpm resolves
+      # upward, installs the ROOT workspace ("Scope: all 3 workspace projects") and leaves
+      # runners/node_modules empty — which is exactly how this job first failed with `tsc: not
+      # found`. --ignore-workspace makes the frozen runners/pnpm-lock.yaml the install.
+      - run: pnpm install --frozen-lockfile --ignore-workspace
       - name: typecheck
         run: pnpm typecheck
       # 048: the curator's screening/scoring/selection + the Morpho adapter + the loop's publish
