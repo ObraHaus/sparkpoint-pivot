@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "swap-polish-more-tokens-one-tap",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Swapping: more tokens, fewer taps",
+      "body": "The Swap page and Sparky got easier:\n\n\u2022 the token picker now recommends the chain's real Stock Tokens \u2014 SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, QQQ, GLD, CRCL, RDDT and SPCX \u2014 each verified on-chain, and you can still paste any other token address;\n\u2022 the \u201cRoute via\u201d box is gone \u2014 Uniswap V3 is where swaps run, and the route still shows on the confirm screen;\n\u2022 ask Sparky for a swap (\u201cswap 0.001 ETH to USDG\u201d) and the card now opens with the amount and both tokens already filled in \u2014 you just review and confirm;\n\u2022 the SRK page links to its Pons launchpad, and the broker page links to the collection on OpenSea.\n\nAs always: you sign from your own wallet, and SparkPoint never holds your funds.",
+      "published_at": "2026-09-18T09:20:00Z"
+    },
+    {
       "slug": "beta-ui-polish-honest-labels",
       "type": "changelog",
       "tag": "Improved",

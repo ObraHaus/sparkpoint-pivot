@@ -259,7 +259,7 @@ export function BetaBrokers() {
               This is a <b>placeholder collection for testing</b> — the production Sparky Broker
               drop comes later. You can view it on{" "}
               <a
-                href={`https://opensea.io/assets/robinhood/${nft}`}
+                href="https://opensea.io/collection/sparky-broker-test"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "var(--primary)" }}

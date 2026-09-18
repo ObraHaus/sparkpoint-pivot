@@ -76,6 +76,7 @@ from .chat_blocks import (
     proposed_action_wire,
     recommendation_protocol,
     token_address,
+    token_decimals,
 )
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
@@ -882,10 +883,13 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
 
     Carries an optional custom token PAIR + chain (007 · US4). ``tokenIn`` is always a recommended,
     known-decimals token (ETH/USDC — the token the user swaps FROM) so the web can safely seed the
-    amount for an ETH input; ``tokenOut`` is a user-pasted ERC-20 address when given, else the
-    opposite recommended token. The web re-reads ``decimals()`` on-chain and treats a
-    non-recommended token as UNVERIFIED — the agent only PROPOSES; the swap is user-signed via the
-    web's Uniswap path, outside the fail-closed policy (no ``Asset`` enum / allowlist widening).
+    amount for ANY input token, not just ETH; ``tokenOut`` is a user-pasted ERC-20 address when
+    given, else the opposite recommended token. Both refs carry a symbolic ``symbol`` and the
+    ``decimals`` of their token, and the legacy top-level ``decimals`` now matches the FROM token
+    (it used to be a hardcoded 18 filler — wrong for a 6-dp USDG input on 4663). These are
+    DISPLAY/scaling hints: the web re-reads ``decimals()`` on-chain and treats a non-recommended
+    token as UNVERIFIED — the agent only PROPOSES; the swap is user-signed via the web's Uniswap
+    path, outside the fail-closed policy (no ``Asset`` enum / allowlist widening).
     """
     # R1 medium #1 — clamp at SOURCE. The planner's `_coerce_bps` accepts any non-negative
     # integer, so a prompt-injected turn could put e.g. 9900 here, and the chat-inline swap card
@@ -898,19 +902,29 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
     slippage = max(0, min(slippage, SLIPPAGE.absolute_ceiling_bps))
     in_asset = intent.asset or Asset.ETH  # the token to swap FROM (default ETH)
     in_addr = token_address(chain_id, in_asset)
+    in_decimals = token_decimals(chain_id, in_asset)
+    # The chain-local stable symbol (USDG on 4663, USDC elsewhere) — never label USDG "USDC".
+    in_symbol = _swap_stable_symbol(chain_id) if in_asset is Asset.USDC else "ETH"
     if intent.token_out_addr is not None:
+        # A pasted address — the web resolves symbol/decimals on-chain and marks it unverified.
         token_out: dict[str, Any] = {"address": intent.token_out_addr}
     else:
         out_asset = Asset.USDC if in_asset is Asset.ETH else Asset.ETH
-        token_out = {"address": token_address(chain_id, out_asset), "symbol": out_asset.value}
+        out_symbol = _swap_stable_symbol(chain_id) if out_asset is Asset.USDC else "ETH"
+        token_out = {
+            "address": token_address(chain_id, out_asset),
+            "symbol": out_symbol,
+            "decimals": token_decimals(chain_id, out_asset),
+        }
     return {
         "type": ActionType.AERODROME_SWAP.value,
         # legacy single-asset field (schema-required); the web ignores it when a pair is present.
         "asset": _SWAP_ASSET_FILLER,
-        "decimals": 18,
+        # legacy decimals field — now the FROM token's real decimals (was a hardcoded 18 filler).
+        "decimals": in_decimals,
         "amount": str(intent.amount) if intent.amount else "0",
         "params": {"maxSlippageBps": slippage},
-        "tokenIn": {"address": in_addr, "symbol": in_asset.value},
+        "tokenIn": {"address": in_addr, "symbol": in_symbol, "decimals": in_decimals},
         "tokenOut": token_out,
         "chainId": chain_id,
     }

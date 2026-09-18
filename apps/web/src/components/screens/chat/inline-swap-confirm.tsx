@@ -24,7 +24,7 @@ import { useNetwork } from "@/lib/network";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
-import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
+import { formatSeedAmount, swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { resolveErc20 } from "@/lib/swap/metadata";
 import { isVerifiedAddress, findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { TokenPicker } from "@/components/screens/swap/TokenPicker";
@@ -149,22 +149,26 @@ export function InlineSwapConfirm({
           : undefined;
       };
 
+      let chosenIn: SwapToken | undefined;
       if (propIn || propOut) {
         const [ti, to] = await Promise.all([resolveRef(propIn), resolveRef(propOut)]);
         if (cancelled) return;
-        setTokenIn(ti ?? recEth);
+        chosenIn = ti ?? recEth;
+        setTokenIn(chosenIn);
         setTokenOut(to ?? recUsdc);
       } else {
         if (cancelled) return;
         const eth = initialEthToUsdc ?? true;
-        setTokenIn(eth ? recEth : recUsdc);
+        chosenIn = eth ? recEth : recUsdc;
+        setTokenIn(chosenIn);
         setTokenOut(eth ? recUsdc : recEth);
       }
-      // Seed the amount ONLY for a native-ETH input (18-dp, chain-agnostic). For any other input token the
-      // agent's base-units amount can't be trusted (decimals vary/unknown) — the user types it, and the web
-      // scales it with the on-chain decimals. Mirrors the original card's ETH-only seeding.
-      const inIsNative = (propIn ? eqAddr(propIn.address, recEth?.address) : (initialEthToUsdc ?? true));
-      setAmount(initialAmountIn && initialAmountIn > 0n && inIsNative ? formatUnits(initialAmountIn, 18) : "");
+      // Seed the amount for ANY input token whose decimals are known — a recommended token's pinned
+      // decimals, or a pasted token's on-chain `decimals()` just read above. The assistant's `amount` is
+      // base units OF THAT TOKEN, so this is what makes "swap 0.0001 ETH to USDG" arrive pre-filled for
+      // one-tap confirmation. An unresolved input token stays blank (a mis-scaled amount is a fund-loss
+      // bug) and the user types it.
+      setAmount(formatSeedAmount(initialAmountIn, chosenIn));
       setReviewing(false);
       setAckUnverified(false);
     })();

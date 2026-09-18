@@ -26,7 +26,7 @@ import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { useNetwork } from "@/lib/network";
-import { DEXES, dexById, dexDisplayLabel, dexLiveOn, type DexId } from "@/lib/swap/dex";
+import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
@@ -67,7 +67,6 @@ export default function Page() {
     ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
     : (isConnected ? chainId : DISPLAY_CHAIN_ID);
 
-  const [dexId, setDexId] = useState<DexId>("uniswap_v3");
   const initial = defaultTokens(DISPLAY_CHAIN_ID);
   const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(initial.tin);
   const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(initial.tout);
@@ -91,7 +90,9 @@ export default function Page() {
   }, [activeChain]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const dex = dexById(dexId);
+  // One venue wired for execution (Uniswap V3) — the route is chosen on-chain by the quote engine, so
+  // there is no venue selector. Kept as `dex` for the labels + the live availability check.
+  const dex = dexById("uniswap_v3");
   const dexLive = dexLiveOn(dex, activeChain);
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
   const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
@@ -126,7 +127,7 @@ export default function Page() {
   const outCollisionMismatch = !!outCollision && !eqAddr(outCollision.address, tokenOut!.address);
   const safetyGateOk = !outUnverified || ackUnverified;
 
-  const canQuote = dexId === "uniswap_v3" && dexLive && s.canQuote;
+  const canQuote = dexLive && s.canQuote;
   const highImpact = (quote.priceImpactBps ?? 0) >= HIGH_IMPACT_BPS;
   const canReview =
     canQuote && quote.amountOut !== undefined && !s.insufficient && s.amountIn > 0n && !s.feeRecipientPending && safetyGateOk;
@@ -183,26 +184,6 @@ export default function Page() {
           onClose={() => setPickerFor(null)}
         />
       )}
-
-      {/* DEX selector */}
-      <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="card-hd">
-          <span className="lbl">Route via</span>
-        </div>
-        <Seg
-          options={DEXES.filter((d) => dexLiveOn(d, activeChain)).map((d) => ({ value: d.id, label: dexDisplayLabel(d, activeChain) }))}
-          value={dexId}
-          onChange={(v) => {
-            setDexId(v as DexId);
-            setReviewing(false);
-          }}
-        />
-        {!dexLive && (
-          <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--caution)" }}>
-            {dex.unavailableNote ?? `${dex.label} isn't available on this network.`}
-          </div>
-        )}
-      </div>
 
       {/* Swap form */}
       <div className="card card-pad">
@@ -315,10 +296,7 @@ export default function Page() {
         </div>
 
         {/* Honest state messages */}
-        {dexId !== "uniswap_v3" && (
-          <Notice>Only {uniswapVenue} is wired for execution right now. Pick {uniswapVenue} to swap.</Notice>
-        )}
-        {dexId === "uniswap_v3" && !dexLive && (
+        {!dexLive && (
           <Notice>{uniswapVenue} isn&apos;t available on this network — switch to a supported network.</Notice>
         )}
         {s.wrongChain && (
