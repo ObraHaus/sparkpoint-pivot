@@ -1,6 +1,6 @@
 # Uptime monitors — SparkPoint develop (Uptime Kuma on spark-mon)
 
-> **✅ INSTALLED + LIVE (2026-07-17).** Uptime Kuma is running on **spark-mon** (`192.168.31.175`) —
+> **✅ INSTALLED + LIVE (2026-07-17); curatorial push monitor added 2026-09-18 (048).** Uptime Kuma is running on **spark-mon** (`192.168.31.175`) —
 > native **Node 20** install (no Docker: unprivileged LXC), a `uptime-kuma` **systemd** service on
 > **:3001**, `--max-old-space-size=320` so it stays well within the 512 MiB LXC (~200 MiB in use).
 > Dashboard: **http://192.168.31.175:3001** (admin `admin`; password in `/home/hello/project/.claude/.env`
@@ -19,6 +19,7 @@ Monitors (created via the Kuma Socket.IO API; the table is the source of truth f
 | 3 | agent readyz | HTTP(s) — keyword | `https://8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app/readyz` | 200 (anon body is `{"ready":true|false}`; alert on non-200 / unreachable, NOT on `ready:false` alone — a dependency blip is expected to flip it) | 60s |
 | 4 | LiteLLM gateway | HTTP(s) | `https://fi5zmq5osp0g3aam93gnv2j4rl.aldrickb.app/health/liveliness` | 200 | 60s |
 | 5 | spark-anvil (sim fork) | HTTP(s) — JSON query | `POST http://<spark-anvil>:8545` body `{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}` | 200 + JSON has `result` | 120s |
+| 8 | curator run (4663 beta) | Push | `http://192.168.31.175:3001/api/push/VfkMPJzl1V` | the keyless curator pings UP after a published discovery run and DOWN when discovery fails — 048; 25h heartbeat window (daily cadence). ⚠️ Reads RUN health, not process liveness; until the curator container is deployed it will legitimately report DOWN. | push |
 
 Notes:
 - **Do NOT monitor `/exit` or `/trust` as health gates** — they're public and must never be treated
