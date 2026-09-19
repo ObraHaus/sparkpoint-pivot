@@ -34,6 +34,7 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     rpcUrl: null,
     archiveRpcUrl: null,
     vaultV2Factory: null,
+    onchainRequired: true,
     apyLookbackDays: 7,
     stableAssets: ["USDC", "USDG", "USDT", "DAI"],
     ...over,
