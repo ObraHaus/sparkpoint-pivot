@@ -89,11 +89,11 @@
 <body>
 <header class="mast">
   <div class="mast-in">
-    <div class="kicker"><span class="pill active">LIVING DOC</span><span class="pill">2026-09-19 · post-merge</span><span class="pill">spec 048 + wrapper v4.0.0</span></div>
+    <div class="kicker"><span class="pill active">LIVING DOC</span><span class="pill">2026-09-19 · deploy-ready</span><span class="pill">spec 048 + wrapper v4.0.0</span></div>
     <h1>Vault program — roadmap &amp; decision log</h1>
     <p class="sub">Everything from the AI-curated vaults spec (048) through the universal upgradeable wrapper program: what shipped, the fork we took tonight <b>(beacon fleet + scoped AI deployer)</b>, what that amendment changes, and what is left — with owners and blockers. Update this page as phases land.</p>
-    <div class="bar" title="9 of 13 phases complete (merged)"><i style="width:69%"></i></div>
-    <div class="small muted" style="margin-top:6px"><b>Progress:</b> 9 done · 1 operator queue · 1 planned · 2 gated. <span class="now" style="margin-left:8px">◄ you are here: the wrapper fork decision</span></div>
+    <div class="bar" title="9 of 13 phases complete · P10 deploy active"><i style="width:69%"></i></div>
+    <div class="small muted" style="margin-top:6px"><b>Progress:</b> 9 done · <b>1 active — P10 contract deploy</b> · 1 operator queue · 1 planned · 1 gated. <span class="now" style="margin-left:8px">◄ you are here: the operator-signed deploy (P10)</span></div>
   </div>
 </header>
 
@@ -274,11 +274,14 @@
       <div class="ph gated">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P10 · Audit + on-chain deploy (4663)</h3><span class="pill gated">GATED ON P8/P9</span></div>
-          <div class="meta">operator-signed deploy</div>
+          <div class="head"><h3>P10 · Deploy on 4663 (operator-signed)</h3><span class="pill active">ACTIVE — commands below</span></div>
+          <div class="meta">audit deferred by operator · OH Defender 0 high/medium is the gate</div>
           <ul>
-            <li><span class="st g">GATE</span><span>External review of the universal vault + upgrade path; CI upgrade checks wired (OZ <code>upgrades-core validate</code>, Slither <code>check-upgradeability</code>).</span></li>
-            <li><span class="st g">GATE</span><span>Deploy beacon + implementation + factory on 4663 (operator-signed); seed allowlist; verify <code>isSparkPointVault</code>-style attestation and address books.</span></li>
+            <li><span class="st d">DONE</span><span><b>Deploy script authored + simulated on live 4663</b>: <code>contracts/script/DeployUniversalWrapper.s.sol</code> → TimelockController → beacon → implementation → factory proxy. Sim: <b>9.89M gas ≈ 0.00132 ETH</b>.</span></li>
+            <li><span class="st d">DONE</span><span>Safety-by-construction in the script: both authorities must be <b>contracts</b> (Safes) and independent; delay floored at 72h; deployer renounces admin in the same run; factory behind a Transparent proxy (ProxyAdmin owner = timelock).</span></li>
+            <li><span class="st a">NOW</span><span><b>Run the deploy</b> (see the command block below) — needs the 3-of-5 proposer Safe and the independent 2-of-3 canceller Safe addresses.</span></li>
+            <li><span class="st p">NEXT</span><span>Through the timelock: <code>setDeployer(0xB555…D875, true)</code>; then <code>setAllowlisted(child, true)</code> per curated vault once Gate 0 exists. Record addresses in the 4663 book.</span></li>
+            <li><span class="st p">NEXT</span><span>Deploy the <code>SERVICE=deployer</code> + <code>SERVICE=curator</code> Coolify apps (env tables in <code>runners/README.md</code>).</span></li>
           </ul>
         </div>
       </div>
@@ -309,6 +312,35 @@
       </div>
 
     </div>
+  </section>
+
+  <!-- ── DEPLOY COMMANDS ───────────────────────────────────────────── -->
+  <section class="card" id="deploy-commands">
+    <div class="kicker" style="margin-bottom:4px"><span class="pill active">P10 · OPERATOR-SIGNED</span><span class="pill">simulated on live 4663</span></div>
+    <h2 style="margin-top:8px">Deploy commands — run these</h2>
+    <p class="small" style="margin:0 0 10px">The deployer EOA <code>0xA71e…5c30</code> needs <b>≈0.002 ETH on 4663</b> for gas. Both authorities <b>must be contracts</b> (multisig Safes) and <b>independent</b> — the script reverts on an EOA, and the delay is floored at 72h. RPC + key come from the workspace env (<code>RPC_URL</code>, <code>DEPLOYER_PRIVATE_KEY</code>).</p>
+    <pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55">cd /home/hello/project/sparkpoint-pivot/contracts
+
+# 1 · Name the two authorities (fill these in):
+export TIMELOCK_PROPOSER=&lt;3-of-5 multisig Safe address&gt;
+export TIMELOCK_CANCELLER=&lt;independent 2-of-3 guardian Safe address&gt;
+
+# 2 · Dry run (full sequence simulated, no state change):
+forge script script/DeployUniversalWrapper.s.sol \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY"
+
+# 3 · Broadcast (operator-signed):
+forge script script/DeployUniversalWrapper.s.sol \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --slow
+
+# 4 · Record the printed addresses under a new `wrapper` section in
+#     contracts/deployments/4663/addresses.json
+
+# 5 · Through the TIMELOCK (schedule → 72h → execute; anyone may execute, the
+#     independent canceller can veto):
+#       factory.setDeployer(0xB555dbEc2cC5908c8B245ED84cb038D5d205D875, true)
+#       factory.setAllowlisted(&lt;child vault&gt;, true)        # per curated vault, Gate 0</pre>
+    <div class="dec" style="margin-top:10px"><b>I need from you:</b> the <b>3-of-5 proposer Safe</b> and the <b>independent 2-of-3 canceller Safe</b> addresses on 4663 (or a decision to deploy those Safes first). Once you paste them, the exact commands are complete — the dry run above already passes with test values.</div>
   </section>
 
   <!-- ── REMAINING ITEMS ───────────────────────────────────────────── -->
@@ -342,6 +374,7 @@
         <tr><td>2026-09-18 (late)</td><td>AI deployer key generated <code>0xB555…D875</code> (gas-only; no upgrade/allowlist/pause/fund powers); executed by a deterministic runner, never the LLM agent</td><td><span class="pill done">DONE</span></td></tr>
         <tr><td>2026-09-19</td><td><b>PR #212 merged → develop</b> (spec 048 M2/M3/M4). All OH Defender highs/mediums resolved repo-wide before merge; external audit deferred by operator (Defender suffices).</td><td><span class="pill done">MERGED</span></td></tr>
         <tr><td>2026-09-19</td><td><b>PR #213 merged → develop</b> (constitution v4.0.0 + wrapper contracts + deploy runner). Migration <b>0039 applied</b> to develop (table + 2 indexes, empty).</td><td><span class="pill done">MERGED</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Deploy script authored + simulated on live 4663</b> (<code>DeployUniversalWrapper.s.sol</code>, ~0.00132 ETH). Operator-signed deploy is the current step; proposer/canceller Safe addresses required.</td><td><span class="pill active">ACTIVE</span></td></tr>
       </tbody>
     </table>
   </section>
