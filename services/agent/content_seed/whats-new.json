@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "Curated vaults: clearer wrapper fees and upgrades",
       "body": "Wrapped curated vaults now explain their upgrade model up front: every wrapper upgrade must wait out a public 72-hour timelock, a separate multisig can cancel it, and nothing — not a pause, not an upgrade, not SparkPoint — can stop you from withdrawing.\n\nThe Vault page also keeps its promise to say exactly where a fee applies: a vault shows the SparkPoint wrapper deposit path only after the wrapper has actually been deployed, and a wrapper is never shown before then. Fees stay performance-only: gains above your high-water mark, never a deposit, a withdrawal, or a losing position.",
-      "published_at": "2026-09-19T12:50:00Z"
+      "published_at": "2026-09-19T11:45:00Z"
     },
     {
       "slug": "vault-page-wrap-only",
