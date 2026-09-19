@@ -10,17 +10,17 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 
 ## Phase W1 — Contracts (P8)
 
-- [ ] **T101** Add `@openzeppelin/contracts-upgradeable` (v5.1.x, matching the vendored OZ 5.1.0) + remapping; `forge build` green.
-- [ ] **T102** `SparkPointUniversalVault.sol` — implementation per plan: initializer, child binding, HWM fee (dilution, fail-open), caps, pause-deposits-only, direct unwind, slippage overload, decimals offset, ERC-7201 storage.
-- [ ] **T103** `SparkPointVaultFactoryV2.sol` — deploy-only, allowlist + on-chain validation + role-gated deployer, CREATE2 BeaconProxy + per-wrapper CapRegistry, events.
-- [ ] **T104** Beacon: thin `SparkPointVaultBeacon` (OZ `UpgradeableBeacon`) + deploy script wiring the TimelockController as owner.
-- [ ] **T105** Interfaces + natspec (custody invariants documented per selector; no fund-moving selector exists).
+- [x] **T101** Add `@openzeppelin/contracts-upgradeable` (v5.1.x, matching the vendored OZ 5.1.0) + remapping; `forge build` green.
+- [x] **T102** `SparkPointUniversalVault.sol` — implementation per plan: initializer, child binding, HWM fee (dilution, fail-open), caps, pause-deposits-only, direct unwind, slippage overload, decimals offset, ERC-7201 storage.
+- [x] **T103** `SparkPointVaultFactoryV2.sol` — deploy-only, allowlist + on-chain validation + role-gated deployer, CREATE2 BeaconProxy + per-wrapper CapRegistry, events.
+- [x] **T104** Beacon: thin `SparkPointVaultBeacon` (OZ `UpgradeableBeacon`) + deploy script wiring the TimelockController as owner.
+- [x] **T105** Interfaces + natspec (custody invariants documented per selector; no fund-moving selector exists).
 
 ## Phase W2 — Tests (P8)
 
-- [ ] **T201** Unit/fuzz: initializer guards; child binding immutability; deposit/mint/withdraw/redeem; HWM fee above/below (fuzz incl. loss-then-gain); cap enforcement; pause-deposits-only; minSharesOut; inflation/donation; V2 `max*==0` liquidity fallback.
-- [ ] **T202** Factory: deployer gating, allowlist, fee cap, validation rejects, deterministic address prediction, CapRegistry ownership.
-- [ ] **T203** Upgrade suite: beacon upgrade preserves storage + invariants; malicious implementation caught by CI checks; storage-layout compatibility.
+- [x] **T201** Unit/fuzz: initializer guards; child binding immutability; deposit/mint/withdraw/redeem; HWM fee above/below (fuzz incl. loss-then-gain); cap enforcement; pause-deposits-only; minSharesOut; inflation/donation; V2 `max*==0` liquidity fallback.
+- [x] **T202** Factory: deployer gating, allowlist, fee cap, validation rejects, deterministic address prediction, CapRegistry ownership.
+- [x] **T203** Upgrade suite: beacon upgrade preserves storage + invariants; malicious implementation caught by CI checks; storage-layout compatibility.
 - [ ] **T204** Invariant/fuzz harness: withdraw-always, fee ≤ cap, child unchanged across upgrades, no asset path to any SparkPoint address.
 - [ ] **T205** [GATED] Fork rehearsal against a real vault (4663 when one exists, else the supported-chain equivalent) incl. upgrade-with-open-position.
 
