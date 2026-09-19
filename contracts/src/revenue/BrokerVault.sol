@@ -254,17 +254,29 @@ contract BrokerVault is IBrokerVault, ReentrancyGuard {
         if ((_heldMask[tokenId] & bit) == 0) _heldMask[tokenId] |= bit;
     }
 
-    /// @dev Balances are zeroed before any transfer, so a reentrant call finds nothing left. The
-    /// `nonReentrant` guard on the callers is belt to this contract's braces.
+    /// @dev TWO PASSES, deliberately: pass 1 settles EVERY balance to zero before a single external
+    /// call, so a reentrant token (or a malformed asset) can never observe or re-spend a balance
+    /// that is already being paid out (strict checks-effects-interactions). Pass 2 only transfers.
+    /// A failing transfer still reverts the whole call, exactly as before. The `nonReentrant` guard
+    /// on the callers remains belt to this contract's braces.
     function _payOut(uint256 tokenId, address[] calldata assets, address to) private {
         uint256 n = assets.length;
         uint256 paid = 0;
+        uint256[] memory amounts = new uint256[](n);
         for (uint256 i = 0; i < n; ++i) {
             address asset = assets[i];
             uint256 amount = _balance[tokenId][asset];
             if (amount < 1) continue;
             _balance[tokenId][asset] = 0;
+            amounts[i] = amount;
             ++paid;
+        }
+        if (paid == 0) revert NothingToWithdraw();
+
+        for (uint256 i = 0; i < n; ++i) {
+            uint256 amount = amounts[i];
+            if (amount < 1) continue;
+            address asset = assets[i];
             if (asset == address(0)) {
                 // Native ETH — `Address.sendValue` forwards all available gas and reverts on
                 // failure. `to` is the token's current owner, never a caller-supplied address.
@@ -274,6 +286,5 @@ contract BrokerVault is IBrokerVault, ReentrancyGuard {
             }
             emit Withdrawn(tokenId, to, asset, amount);
         }
-        if (paid == 0) revert NothingToWithdraw();
     }
 }
