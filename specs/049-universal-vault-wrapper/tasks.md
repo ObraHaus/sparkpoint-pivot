@@ -45,3 +45,12 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 - [x] **T502** Trust Center rewritten: 3-of-5 proposer Safe → 72h timelock, independent 2-of-3 canceller, exit never gated, residual-risk stated; the "non-upgradeable" guarantee now scoped to SparkPoint's own vault (§W5, #225).
 - [x] **T503** Spec 048 M1 closed with the review recorded there; both changelogs updated same-beat (#225).
 - [x] **T504** Admin → Vaults → Wrapper deployments: provenance on each row, request form (fee/caps/name/symbol/label), cancel-while-pending; the runner executes and reports back (#225).
+
+## Phase W6 — V3 pivot (amendment v4.1.0, 2026-09-19)
+
+- [x] **T601** `SparkPointVaultFactoryV3` + `ISparkPointVaultFactoryV3` — OZ `AccessControl` admission (instant `ADMIN_ROLE` lane · cooldown-gated `DEPLOYER_ROLE` lane), `releaseNow` / `unwhitelist` / `setCooldown` (bounded 1h–7d), `wrapperOf` one-wrapper-per-child, V2 deploy path retained (CREATE2 `BeaconProxy` + per-wrapper CapRegistry, child validation, fee/caps, rolling `deployLimit`); 41 Foundry tests + `DeployVaultFactoryV3.s.sol` (PR #228).
+- [x] **T602** Operator-signed V.3 deploy on 4663: impl `0xa65596e6…2213`, Transparent proxy `0x1de85106…6406` (ProxyAdmin owner = timelock); initializer role grants + cooldown + fleet wiring verified on-chain; recorded in `contracts/deployments/4663/addresses.json → wrapper.factoryV3`.
+- [ ] **T603** V.4 sunset: cancel the Sep 22 `setDeployer` op via Safe B (`timelock.cancel(opId)`) + delete the auto-execute cron; mark the V2 factory sunset in the book.
+- [ ] **T604** V.5 runner: auto-whitelist newly published curated vaults as AI entries → auto-deploy after the cooldown; SKIP entries not added by the AI key (provenance); report + heartbeat; tests.
+- [ ] **T605** V.6 panel: whitelist queue (countdown / ready / deployed / cancelled), instant Whitelist / Deploy-now / Cancel, cooldown setting; agent migration + routes + tests.
+- [ ] **T606** V.7 wiring + disclosure: book + `packages/shared` + deployer app `WRAPPER_FACTORY_ADDRESS` → V3; Trust Center + BOTH changelogs; V.8 go-live (Steakhouse USDG).

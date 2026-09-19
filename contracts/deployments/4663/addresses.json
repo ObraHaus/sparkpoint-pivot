@@ -62,9 +62,17 @@
     "implementation": "0xCe1cd084f677F313bcD4Bb39B37Df9767853D542",
     "factory": "0x040A7BFD9aB7a86f5f0f47D98F610E9e14C466dE",
     "factoryImpl": "0x67C4481515DAB42F5e21dbB3d52D143773bB3212",
+    "factoryV3": "0x1de85106Fb6be911C6e3B186aB689e136eAA6406",
+    "factoryV3Impl": "0xa65596e614B3ff32793e50a29E9A2438F00f2213",
+    "factoryV3DeployedAt": "2026-09-19",
+    "factoryV3DeployTxs": {
+      "implementation": "0x64d884dbd16aba7cf54eab916eb50b568044c1d615296e6734129a24f91d79ea",
+      "proxy": "0xc4a2b7f274fb0656aa0dce3696f37e55b0b417de101c49928b3d8fb15c09166f"
+    },
+    "factoryV3Admission": "DEFAULT_ADMIN_ROLE = timelock (cannot admit or deploy) · ADMIN_ROLE = operator EOA 0x3762…7dE8 (instant admission/release/cancel/cooldown/deploy) · DEPLOYER_ROLE = AI 0xB555…D875 (whitelist → readyAt = now + cooldown, default 24h, bounded 1h–7d; deploy) · one wrapper per child via wrapperOf · ProxyAdmin = timelock",
     "feeRecipient": "0x376293DDb027555aB7F483c00e1D61b2a7757dE8",
     "minDelaySeconds": 259200,
-    "note": "049 universal wrapper fleet — deploy-only factory behind a Transparent proxy; beacon + factory owned by the timelock.",
+    "note": "049 universal wrapper fleet — deploy-only factory behind a Transparent proxy; beacon + factory owned by the timelock. factoryV3 (v4.1.0 admission-gateway, RBAC + on-chain cooldown) supersedes factory for FUTURE wrappers; factory is sunset and never deployed a wrapper.",
     "timelockOps": {
       "setDeployer": {
         "deployer": "0xB555dbEc2cC5908c8B245ED84cb038D5d205D875",

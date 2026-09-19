@@ -24,3 +24,4 @@ export { feeRouterAbi } from "./feeRouter";
 export { betaQuoterV2Abi } from "./betaQuoterV2";
 export { sparkPointUniversalVaultAbi } from "./sparkPointUniversalVault";
 export { sparkPointVaultFactoryV2Abi } from "./sparkPointVaultFactoryV2";
+export { sparkPointVaultFactoryV3Abi } from "./sparkPointVaultFactoryV3";

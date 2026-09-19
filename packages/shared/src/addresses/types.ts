@@ -236,6 +236,26 @@ export interface AddressBook {
    */
   readonly sparkPointVaultFactory?: Address;
   /**
+   * `SparkPointVaultFactoryV3` (feature 049, constitution v4.1.0) — the admission-gateway factory on
+   * Robinhood Chain 4663: OpenZeppelin `AccessControl` (the TimelockController is role admin and
+   * governs non-admission params only, the operator EOA admits/deploys instantly, the scoped AI
+   * deployer admits subject to an on-chain cooling-off window), one wrapper per child enforced
+   * on-chain. A PLAIN address-book field, **NOT** a policy `TargetRef`. Undefined ⇒ not deployed on
+   * this chain.
+   */
+  readonly sparkPointVaultFactoryV3?: Address;
+  /**
+   * The `TimelockController` owning the wrapper beacon and the V3 factory's ProxyAdmin (feature 049)
+   * — the ONLY code/proxy upgrade authority, and never an admission role on V3. Display/disclosure
+   * only; **NOT** a policy `TargetRef`. Undefined ⇒ no wrapper fleet on this chain.
+   */
+  readonly sparkPointVaultTimelock?: Address;
+  /**
+   * The `UpgradeableBeacon` behind every wrapper (feature 049) — the timelock-owned implementation
+   * authority for `SparkPointUniversalVault`. Display/disclosure only; **NOT** a policy `TargetRef`.
+   */
+  readonly sparkPointVaultBeacon?: Address;
+  /**
    * Curated Morpho ERC-4626 vaults (feature 011) the factory may wrap on this chain — a vetted display
    * list for the app / 010 reader; **NOT** policy `TargetRef`s. Empty/undefined ⇒ none curated yet
    * (e.g. Base Sepolia, where Morpho has no ready curated vaults with real TVL/liquidity).

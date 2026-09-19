@@ -59,6 +59,9 @@ CONTRACTS=(
   # TS consumer bind the SAME ABI the factory initializes (spec 049 / constitution v4.0.0).
   "SparkPointUniversalVault:SparkPointUniversalVault:sparkPointUniversalVault"
   "SparkPointVaultFactoryV2:SparkPointVaultFactoryV2:sparkPointVaultFactoryV2"
+  # 049 v4.1.0 — the admission-gateway factory (RBAC + on-chain cooldown). The admin panel signs
+  # whitelistVault/releaseNow/unwhitelist/setCooldown/createVault from the operator EOA.
+  "SparkPointVaultFactoryV3:SparkPointVaultFactoryV3:sparkPointVaultFactoryV3"
 )
 
 if [ ! -d "$OUT" ]; then
