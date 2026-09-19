@@ -249,8 +249,10 @@ def test_non_admin_gets_404_never_403() -> None:
     c = TestClient(app)
     assert c.get("/admin/vaults/wrappers").status_code == 404
     assert c.post("/admin/vaults/wrappers/request", json=_request_body()).status_code == 404
-    # The machine route is NOT admin-gated (identity only), so it still answers.
-    assert c.get("/curator/wrapper-jobs").status_code == 200
+    # ⚠️ The machine routes are admin/service-gated too: the BFF reaches them for EVERY alpha
+    # session, so a non-admin must not be able to poll the queue or forge a report.
+    assert c.get("/curator/wrapper-jobs").status_code == 404
+    assert c.post("/curator/wrapper-jobs/report", json={"id": "x", "ok": True}).status_code == 404
 
 
 def _route_paths(routes: Any) -> list[str]:

@@ -33,7 +33,6 @@ from ..db.wrapper_deployments import (
 )
 from .allowlist import require_admin
 from .errors import ApiError, ErrorCode
-from .mandate import get_account
 from .security import AccountContext
 
 router = APIRouter(tags=["wrapper-deployments"])
@@ -185,13 +184,18 @@ async def admin_cancel_wrapper(
 
 @router.get("/curator/wrapper-jobs")
 async def runner_pending_jobs(
-    account: Annotated[AccountContext, Depends(get_account)],
+    # ⚠️ Admin/service identity, not a bare S2S call: the BFF proxies EVERY alpha session to these
+    # paths, so "any signed-in user could poll/forge the deploy queue". The runner asserts the
+    # operator (admin) wallet, so this still works for the machine and 404s for everyone else.
+    account: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[PgDeploymentStore, Depends(get_deployment_store)],
 ) -> dict[str, Any]:
     """Pending wrapper deploy requests for this chain, oldest first.
 
-    S2S-authenticated, NOT admin-gated: the caller is a machine and this grants nothing. The runner
-    owns its cadence; this only tells it what a human has asked for.
+    ADMIN-GATED (the runner asserts the operator wallet): the BFF reaches this path for every alpha
+    session, so without the gate any signed-in user could read the queue. The calls grant nothing
+    on-chain — the factory's allowlist/role/bounds are Solidity-enforced — but the queue is
+    operator data.
     """
     rows = await store.pending(account.chain_id, limit=20)
     return {"jobs": _wire_many(rows)}
@@ -200,7 +204,7 @@ async def runner_pending_jobs(
 @router.post("/curator/wrapper-jobs/report")
 async def runner_report_job(
     body: DeploymentReport,
-    account: Annotated[AccountContext, Depends(get_account)],
+    account: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[PgDeploymentStore, Depends(get_deployment_store)],
 ) -> dict[str, Any]:
     """Record the runner's result for one deploy request.
