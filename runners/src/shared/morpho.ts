@@ -1,19 +1,21 @@
 /**
- * The Morpho GraphQL adapter: the curator's only source, for now.
+ * The Morpho GraphQL adapter — one of the curator's two sources (the other is the chain itself,
+ * `onchain-vaults.ts`).
  *
- * Shape verified against the live API on 2026-09-18 (`blue-api.morpho.org/graphql`):
+ * Shape verified against the live API on 2026-09-19 (`api.morpho.org/graphql`):
  *
- *   vaults(first, orderBy: TotalAssetsUsd, orderDirection: Desc, where: {chainId_in: [$chain]}) {
+ *   vaultV2s(first, orderBy: TotalAssetsUsd, orderDirection: Desc, where: {chainId_in: [$chain]}) {
  *     items { address name symbol listed creationTimestamp
  *             asset { address symbol decimals }
- *             liquidity { underlying usd }
- *             state { totalAssetsUsd netApy curator curators { name verified addresses { chainId address } } }
- *             warnings { type level } } }
+ *             curator { address }
+ *             totalAssetsUsd liquidityUsd netApy performanceFee managementFee } }
+ *   vaults(...)   # V1/MetaMorpho, same shape as before
  *
- * ⚠️ The verified blocker (spec 048): **chain 4663 returns `items: []`** — Morpho has no vaults
- * there. That is a VALID response, not an error: the parser returns an empty list, the agent gets
- * an honest empty run, and `/vault` shows the empty state. Re-pointing at any chain/source that
- * does have vaults is configuration (`CURATOR_CHAIN_ID`, `CURATOR_MORPHO_URL`), not a rewrite.
+ * ⚠️ Two corrections worth keeping:
+ *   1. The endpoint is `api.morpho.org/graphql`; `blue-api.morpho.org` is the legacy host.
+ *   2. On chain 4663 the vaults are **Vault V2s** — the V1 `vaults(...)` query returns `items: []`
+ *      there, which is a VALID response and NOT evidence that the chain is empty. The chain has had
+ *      V2 vaults since July 2026; `vaultV2s(...)` is the query that sees them.
  *
  * The parser is deliberately defensive — this is third-party JSON. Anything malformed is DROPPED
  * rather than guessed at; a vault we cannot parse is not a vault we can screen.
@@ -139,6 +141,118 @@ export function graphqlErrors(payload: unknown): string[] {
   return asArray(root?.errors)
     .map((e) => asString(asRecord(e)?.message) ?? "unknown GraphQL error")
     .filter(Boolean);
+}
+
+// ── Vault V2 (the shape that actually exists on 4663) ────────────────────────────────────────────
+
+export const MORPHO_VAULT_V2S_QUERY = `
+query CuratorVaultV2s($chainId: Int!, $first: Int!) {
+  vaultV2s(
+    first: $first
+    orderBy: TotalAssetsUsd
+    orderDirection: Desc
+    where: { chainId_in: [$chainId] }
+  ) {
+    items {
+      address
+      name
+      symbol
+      listed
+      creationTimestamp
+      asset { address symbol decimals }
+      curator { address }
+      totalAssetsUsd
+      liquidityUsd
+      netApy
+      performanceFee
+      managementFee
+    }
+  }
+}
+`.trim();
+
+/**
+ * Parse one `vaultV2s` item. `netApy` arrives as a FRACTION (0.0359 = 3.59%); the store speaks
+ * basis points. Fee floats are fractions too and are surfaced as informational warnings — they
+ * stack under our wrapper's fee and the disclosure must state them.
+ */
+export function parseMorphoV2Vault(item: unknown, now: Date): DiscoveredVault | null {
+  const record = asRecord(item);
+  if (!record) return null;
+  const address = asString(record.address);
+  if (!isAddress(address)) return null;
+
+  const asset = asRecord(record.asset);
+  const curator = asRecord(record.curator);
+  const creationTimestamp = asNumber(record.creationTimestamp);
+  const ageSeconds =
+    creationTimestamp === null
+      ? null
+      : Math.max(0, Math.floor(now.getTime() / 1000 - creationTimestamp));
+
+  const netApy = asNumber(record.netApy);
+  const netApyBps = netApy === null ? null : Math.round(netApy * 10_000);
+
+  const warnings: string[] = [];
+  const performanceFee = asNumber(record.performanceFee);
+  const managementFee = asNumber(record.managementFee);
+  if (performanceFee !== null && performanceFee > 0) {
+    warnings.push(`source fee: performance ${Math.round(performanceFee * 10_000) / 100}%`);
+  }
+  if (managementFee !== null && managementFee > 0) {
+    warnings.push(`source fee: management ${Math.round(managementFee * 10_000) / 100}%`);
+  }
+
+  return {
+    address: address.toLowerCase(),
+    label: asString(record.name) ?? asString(record.symbol) ?? address,
+    assetAddress: asString(asset?.address)?.toLowerCase() ?? null,
+    assetSymbol: asString(asset?.symbol),
+    assetDecimals: asNumber(asset?.decimals),
+    curator: asString(curator?.address)?.toLowerCase() ?? null,
+    curatorVerified: false,
+    listed: asBool(record.listed),
+    netApyBps,
+    tvlUsd: asNumber(record.totalAssetsUsd),
+    liquidityUsd: asNumber(record.liquidityUsd),
+    ageSeconds,
+    warnings,
+  };
+}
+
+export function parseMorphoV2Response(payload: unknown, now: Date = new Date()): DiscoveredVault[] {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  const vaults = asRecord(data?.vaultV2s);
+  return asArray(vaults?.items)
+    .map((item) => parseMorphoV2Vault(item, now))
+    .filter((v): v is DiscoveredVault => v !== null);
+}
+
+/** Fetch + parse the configured chain's Vault V2s (see the header for why this is the V2 query). */
+export async function fetchMorphoV2Vaults(
+  config: CuratorConfig,
+  now: Date = new Date(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<DiscoveredVault[]> {
+  const response = await fetchImpl(config.morphoUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      query: MORPHO_VAULT_V2S_QUERY,
+      variables: { chainId: config.chainId, first: config.maxVaults },
+    }),
+    signal: AbortSignal.timeout(config.fetchTimeoutSec * 1_000),
+  });
+  if (!response.ok) {
+    throw new Error(`morpho api -> HTTP ${response.status} ${response.statusText}`);
+  }
+  const payload: unknown = await response.json();
+  const errors = graphqlErrors(payload);
+  if (errors.length > 0) {
+    throw new Error(`morpho api GraphQL error: ${errors.join("; ")}`);
+  }
+  return parseMorphoV2Response(payload, now);
 }
 
 /**
