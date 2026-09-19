@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (049 P9 — scoped wrapper deploy runner)
+
+- **Agent queue + S2S work/report surface**: `wrapper_deployments` (migration 0039) records an admin's wrapper deploy request and the runner's result — loud failures included; `/curator/wrapper-jobs*` is machine-facing (S2S, no admin) and never authority. Registered before the `/admin/vaults/{vault}` catch-all.
+- **`runners/src/deployer.ts`** (`SERVICE=deployer`): the scoped executor — local validation, on-chain allowlist check, simulate + `createVault`, success-receipt check, `VaultCreated` decode, CREATE2 salt from the request id, and lost-report recovery (existing code at the predicted address ⇒ report without a second tx). Holds the deploy-only key; contains no upgrade/allowlist/pause/fund selector (pinned by test). 14 new node:test units.
+
+
+### Changed (governance — constitution v4.0.0: universal upgradeable wrapper family)
+
+- **Contracts implemented (spec 049 P8):** `SparkPointUniversalVault` (universal implementation; child bound at initialization with no setter; child-claim `totalAssets`; HWM performance fee with fail-open accrual; caps + deposit-side pause; direct child unwind with a V2 `max*==0` liquidity fallback; `minSharesOut` overload; ERC-7201 storage), `SparkPointVaultFactoryV2` (fundless factory behind a Transparent proxy; curated allowlist; role-gated scoped deployer; on-chain child validation; CREATE2 BeaconProxy + per-wrapper CapRegistry; optional rolling deploy limit), plus OZ `UpgradeableBeacon` (owned by the timelock). 20 new Foundry tests (binding, gates, fee-above-HWM, loss/flat, pause-only, caps, slippage, donation, V2 fallback, beacon/factory upgrade authorization); full contracts suite **460 passed**. Not deployed — audit + operator-signed deploy remain.
+
+- **Constitution v4.0.0 ratified** (MAJOR; operator grant 2026-09-18): NON-NEGOTIABLE **N5** is redefined from "non-upgradeable custody semantics" to **bounded, verifiable custody semantics** — a wrapper admitted under IV.5 may be upgraded **only** through a TimelockController-owned beacon (3-of-5 proposer, independent 2-of-3 canceller, ≥72h delay, no EOA), whose upgrade path is never an asset path and never gates withdrawals. Guardrails IV.5(a)/IV.6, Principle V (wrapper shapes + factory), the upgradeability constraint, and the named-contracts list are amended accordingly; single-child/no-meta-vault, allowlist admission, N1–N4, and the fee model are unchanged. Proposal: `.specify/memory/constitution-amendment-v4.0.0.md`.
+- **Spec 049 (`specs/049-universal-vault-wrapper/`)** specifies the beacon fleet (`SparkPointUniversalVault` + TimelockController-owned beacon + deploy-only `SparkPointVaultFactoryV2` + `BeaconProxy` per curated vault) and the **scoped AI deployer** (deploy-only hot key held by a deterministic runner, never the keyless LLM agent). Residual risk recorded: an upgrade key can replace custody code — the timelock is a speed limit and exit window, not an impossibility proof.
+- **Program roadmap** added at `docs/orchestration/vault-program-roadmap.html` (phases, status, decision log).
+
 ### Added (AI-curated vaults — spec 048, phases M2 + M4 + M3)
 
 - **The curated store (agent, migration `0038_curated_vaults`).** Four additive tables: `curated_vaults` (screened vaults with verbatim score inputs, screening verdicts, observed APY/TVL/liquidity, status and provenance), `vault_recommendations` (one pick + alternates per run, idempotent on `run_key`; unpublished rows are AI proposals the public read ignores), `vault_curation_audit` (every admin action and run report), `vault_curation_state` (`auto_publish` — default **off**: "AI proposes, admin publishes" — last-run timestamps and the Run-now request marker). Admin edits set `provenance='admin'` and are never overwritten by a scan; the scan never writes `status` on an existing row. ⚠️ **PENDING** on develop — apply with `PGCLIENTENCODING=UTF8` before the curator runner deploys (see `MIGRATIONS.md`).

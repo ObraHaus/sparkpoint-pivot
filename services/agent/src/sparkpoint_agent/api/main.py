@@ -75,6 +75,7 @@ from .tips import router as tips_router
 from .usage import router as usage_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
+from .wrapper_deployments import router as wrapper_deployments_router
 
 logger = logging.getLogger("sparkpoint_agent.api")
 
@@ -889,6 +890,11 @@ app.include_router(usage_router)
 # "curation" (FastAPI matches in registration order, exactly the trap documented on
 # /admin/vault-registry).
 app.include_router(curated_vaults_router)
+
+# Feature 049 wrapper deploy requests (admin) + the deploy runner's queue (/curator/wrapper-jobs*).
+# ⚠️ Registered BEFORE admin_vaults_router: its literal /admin/vaults/wrappers* routes would
+# otherwise be swallowed by GET /admin/vaults/{vault} (matching is registration-order).
+app.include_router(wrapper_deployments_router)
 # Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the
 # branded Morpho wrapper factory. Every mutating route returns calldata the operator signs off-app;
 # NO server key, NO fund path, and NO move-funds guardian verb exists (N1/N2/US4).
