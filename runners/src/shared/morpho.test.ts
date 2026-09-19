@@ -70,7 +70,7 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     apiBaseUrl: "http://agent:31102",
     s2sToken: "s2s",
     reportOwner: "0xabc",
-    morphoUrl: "https://blue-api.morpho.org/graphql",
+    morphoUrl: "https://api.morpho.org/graphql",
     kumaPushUrl: null,
     intervalSec: 86_400,
     pollSec: 300,
@@ -83,6 +83,11 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     requireListed: true,
     requireVerifiedCurator: false,
     assetAllowlist: ["USDC"],
+    rpcUrl: null,
+    archiveRpcUrl: null,
+    vaultV2Factory: null,
+    apyLookbackDays: 7,
+    stableAssets: ["USDC", "USDG", "USDT", "DAI"],
     ...over,
   };
 }
@@ -145,7 +150,7 @@ test("fetchMorphoVaults posts the chain-scoped query and parses the response", a
   }) as typeof fetch;
 
   const vaults = await fetchMorphoVaults(config(), NOW, fakeFetch);
-  assert.equal(seenUrl, "https://blue-api.morpho.org/graphql");
+  assert.equal(seenUrl, "https://api.morpho.org/graphql");
   assert.equal(seenBody.variables?.chainId, 4663);
   assert.equal(seenBody.variables?.first, 100);
   assert.match(seenBody.query ?? "", /chainId_in: \[\$chainId\]/);

@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The “SparkPoint’s own vault” card is gone from `/vault`.** The vault program is wrap-only for now — curate an existing vault, wrap it via our factory, onboard it — so the page stays focused on the curated board and no longer implies a SparkPoint-originated vault is coming to this network.
 
+### Added (P12 — on-chain vault discovery)
+
+- **The curator now discovers vaults from the chain itself, not just an API.** A new crawler enumerates every `VaultV2Factory.CreateVaultV2` log on 4663 (block 0 → head), reads each vault's facts on-chain (asset, `totalAssets`, fees, curator/owner, age, gate abdication) and re-checks the FR-020 gate abdications for every candidate. API candidates missing from those logs get a DANGER warning and fail screening; a crawl failure degrades to API-only and says so (fail-open). A second, optional archive RPC derives a share-price APY for vaults the API has no figure for.
+- **Adapter pointed at the right source: `api.morpho.org/graphql` + the `vaultV2s` query.** The previous `blue-api…vaults` call returns an empty set on 4663 because the chain is V2-only — that empty set, not an empty chain, was the "0 vaults" blocker. First live run: **58 vaults enumerated, 58 verified, pick = Steakhouse USDG (~$482.4M, 3.58% net APY, score 57)**, alternate Purinta USDG.
+
 ### Fixed (beta runners)
 
 - **The `deployer` service was rejected by the container healthcheck.** `healthcheck.ts` still only allowed `keeper` / `sweeper` / `curator`, so the new `sparkpoint-deployer-beta` container exited 1 on every health probe and Coolify stopped it right after deploy. The deployer now has its own freshness window driven by `DEPLOYER_POLL_SEC` (default 120s), plus a regression test covering the service list.

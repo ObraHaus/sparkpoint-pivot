@@ -1,24 +1,39 @@
 /**
  * The curator: daily vault discovery for the AI-curated `/vault` board. **This process holds NO
- * key and signs nothing.** Its entire job is: ask the agent whether a run is due → read a public
- * vault API → screen/score/rank → POST the result to the agent. That is what keeps the agent
- * provably keyless (N2) while discovery still runs on its own schedule.
+ * key and signs nothing.** Its entire job is: ask the agent whether a run is due → read the Morpho
+ * API for Vault V2s → corroborate every candidate against the chain itself (P12, `onchain-vaults.ts`
+ * — the factory's creation logs are the source of truth) → screen/score/rank → POST the result to
+ * the agent. That is what keeps the agent provably keyless (N2) while discovery still runs on its
+ * own schedule.
  *
  *   ⚠️ "Run now" in the admin panel is a REQUEST marker in the agent's database. This runner reads
  *   it on its next poll (CURATOR_POLL_SEC, default 5m) and acts. The agent cannot command this
  *   process, and no route exists that could make it. Do not add one.
  *
  * FAIL-OPEN (FR-011): a failed discovery or publish records the failure (or nothing) and leaves
- * the agent's last good list and pick untouched. A failed run must never empty `/vault`.
+ * the agent's last good list and pick untouched. A failed run must never empty `/vault`. A failed
+ * on-chain crawl alone degrades to API-only discovery and says so — it does not fail the run.
  *
  * The decisions live in `shared/curator-core.ts` (pure, tested); the Morpho adapter lives in
- * `shared/morpho.ts`; this file is the loop + HTTP edges.
+ * `shared/morpho.ts`; the on-chain crawler in `shared/onchain-vaults.ts`; this file is the loop +
+ * HTTP edges.
  */
 
+import { createPublicClient, defineChain, http, type PublicClient } from "viem";
+
 import { forever, logger } from "./shared/log.ts";
-import { fetchMorphoVaults } from "./shared/morpho.ts";
+import { fetchMorphoVaults, fetchMorphoV2Vaults } from "./shared/morpho.ts";
+import {
+  enumerateVaultV2Creations,
+  mergeOnchainDiscovery,
+  onchainApyBps,
+  readVaultV2Facts,
+  type VaultV2Facts,
+} from "./shared/onchain-vaults.ts";
+import { CHAINS, isKnownChain } from "./shared/chain.ts";
 import {
   type CuratorConfig,
+  type DiscoveredVault,
   decideRun,
   parseCuratorConfig,
   rejectedVaults,
@@ -27,6 +42,8 @@ import {
 } from "./shared/curator-core.ts";
 
 const log = logger("curator");
+
+const CRAWL_CONCURRENCY = 6;
 
 type RunState = {
   chainId: number;
@@ -104,20 +121,154 @@ export async function publishRun(
   });
 }
 
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      await fn(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+}
+
+function clientFor(config: CuratorConfig, url: string): PublicClient {
+  const chain = defineChain({
+    id: config.chainId,
+    name: isKnownChain(config.chainId) ? CHAINS[config.chainId].name : `Chain ${config.chainId}`,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [url] } },
+  });
+  // ⚠️ No transport batching (see shared/chain.ts): a batched read can collapse into one oversized
+  // JSON-RPC frame the node rejects, and every read then fails while the process still looks alive.
+  return createPublicClient({ chain, transport: http(url) });
+}
+
+function crawlClient(config: CuratorConfig): PublicClient {
+  if (!config.rpcUrl) throw new Error("crawlClient called without CURATOR_RPC_URL");
+  return clientFor(config, config.rpcUrl);
+}
+
+function archiveClient(config: CuratorConfig): PublicClient {
+  if (!config.archiveRpcUrl) throw new Error("archiveClient called without CURATOR_ARCHIVE_RPC_URL");
+  return clientFor(config, config.archiveRpcUrl);
+}
+
+/** API lists merged: V2 wins on an address collision (V1 and V2 are different products). */
+function mergeApiLists(v2: DiscoveredVault[] | null, v1: DiscoveredVault[] | null): DiscoveredVault[] {
+  const byAddress = new Map<string, DiscoveredVault>();
+  for (const vault of [...(v2 ?? []), ...(v1 ?? [])]) {
+    const key = vault.address.toLowerCase();
+    if (!byAddress.has(key)) byAddress.set(key, vault);
+  }
+  return [...byAddress.values()];
+}
+
+export type DiscoveryResult = {
+  vaults: DiscoveredVault[];
+  source: string;
+  notes: string[];
+};
+
+/**
+ * Discovery = API (rich figures) + chain (truth). The chain layer enumerates every Vault V2 the
+ * factory ever created and reads its facts; API candidates absent from the logs get a DANGER
+ * warning and fail screening. A crawl failure degrades to API-only and says so (FR-011).
+ */
+export async function discover(
+  config: CuratorConfig,
+  now: Date,
+  client?: PublicClient,
+): Promise<DiscoveryResult> {
+  const [v2, v1] = await Promise.allSettled([
+    fetchMorphoV2Vaults(config, now),
+    fetchMorphoVaults(config, now),
+  ]);
+  const v2Vaults = v2.status === "fulfilled" ? v2.value : null;
+  const v1Vaults = v1.status === "fulfilled" ? v1.value : null;
+  if (v2Vaults === null && v1Vaults === null) {
+    const detail = [v2, v1]
+      .map((r) => (r.status === "rejected" ? String(r.reason) : ""))
+      .filter(Boolean)
+      .join("; ");
+    throw new Error(`morpho api unavailable: ${detail.slice(0, 400)}`);
+  }
+  const apiVaults = mergeApiLists(v2Vaults, v1Vaults);
+  const notes = [
+    v2.status === "rejected" ? `vaultV2s query failed: ${String(v2.reason).slice(0, 200)}` : "",
+    v1.status === "rejected" ? `vaults query failed: ${String(v1.reason).slice(0, 200)}` : "",
+  ].filter(Boolean);
+
+  if (!config.rpcUrl || !config.vaultV2Factory) {
+    return { vaults: apiVaults, source: "morpho-api", notes };
+  }
+
+  const factory = config.vaultV2Factory;
+  try {
+    const crawl = client ?? crawlClient(config);
+    const creations = await enumerateVaultV2Creations(crawl, factory);
+    const apiKnown = new Set(apiVaults.map((v) => v.address.toLowerCase()));
+    // Bound RPC work by maxVaults, but never drop an API candidate: those are what we recommend.
+    const selected = [
+      ...creations.filter((c) => apiKnown.has(c.address)),
+      ...creations.filter((c) => !apiKnown.has(c.address)),
+    ].slice(0, config.maxVaults);
+
+    const facts = new Map<string, VaultV2Facts>();
+    const apyBps = new Map<string, number | null>();
+    // The lookback needs historical state, which the public chain RPC cannot serve; use the
+    // optional archive RPC and degrade to "no on-chain APY" when it is not configured.
+    const archive = config.archiveRpcUrl ? client ?? archiveClient(config) : null;
+    await mapWithConcurrency(selected, CRAWL_CONCURRENCY, async (creation) => {
+      facts.set(creation.address, await readVaultV2Facts(crawl, factory, creation));
+      if (!apiKnown.has(creation.address) && archive) {
+        apyBps.set(
+          creation.address,
+          await onchainApyBps(archive, creation.address, config.apyLookbackDays, now),
+        );
+      }
+    });
+
+    const vaults = mergeOnchainDiscovery(apiVaults, selected, facts, apyBps, config, now);
+    const dangerCount = vaults.filter((v) => v.warnings.some((w) => w.startsWith("DANGER"))).length;
+    notes.push(
+      `on-chain: ${creations.length} creations, ${selected.length} verified` +
+        (dangerCount > 0 ? `, ${dangerCount} with danger warnings` : ""),
+    );
+    return { vaults, source: "morpho-api+onchain", notes };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    log.warn(`on-chain crawl failed: ${detail.slice(0, 200)} — continuing API-only (fail-open)`);
+    notes.push(`on-chain crawl failed: ${detail.slice(0, 200)}`);
+    return { vaults: apiVaults, source: "morpho-api", notes };
+  }
+}
+
 /** One discovery run: fetch, screen, rank, and report. Never throws for a SOURCE failure. */
 export async function runOnce(config: CuratorConfig, asOf: Date): Promise<void> {
   const runKey = `curator-${config.chainId}-${asOf.toISOString()}`;
-  const base = { runKey, asOf: asOf.toISOString(), source: "morpho" };
 
-  let discovered;
+  let discovered: DiscoveredVault[];
+  let source = "morpho-api";
+  let notes: string[] = [];
   try {
-    discovered = await fetchMorphoVaults(config, asOf);
+    const result = await discover(config, asOf);
+    discovered = result.vaults;
+    source = result.source;
+    notes = result.notes;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     log.warn(`discovery failed: ${detail} — reporting a failed run; the last good record stays`);
     // The agent stores the failure on its state row ONLY: the list and pick are untouched.
     await publishRun(config, {
-      ...base,
+      runKey,
+      asOf: asOf.toISOString(),
+      source: "morpho-api",
       ok: false,
       error: detail.slice(0, 500),
       vaults: [],
@@ -129,13 +280,16 @@ export async function runOnce(config: CuratorConfig, asOf: Date): Promise<void> 
     return;
   }
 
+  for (const note of notes) log.warn(note);
+  const base = { runKey, asOf: asOf.toISOString(), source };
+
   const screened = screenVaults(discovered, config, asOf);
   const accepted = screened.filter((v) => v.screened);
   const rejected = rejectedVaults(screened);
   const { pick, alternates } = selectRecommendation(screened);
 
   if (discovered.length === 0) {
-    log.info(`no vaults on chain ${config.chainId} yet (source morpho) — honest empty run`);
+    log.info(`no vaults on chain ${config.chainId} yet (source ${source}) — honest empty run`);
   } else {
     const reasonCounts = new Map<string, number>();
     for (const r of rejected) {
@@ -193,6 +347,12 @@ async function main(): Promise<void> {
   log.info(
     `curating chain ${config.chainId} via ${config.morphoUrl} every ${config.intervalSec}s ` +
       `(poll ${config.pollSec}s, assets ${config.assetAllowlist.join(",")}; keyless)`,
+  );
+  log.info(
+    config.rpcUrl && config.vaultV2Factory
+      ? `on-chain crawl ON: factory ${config.vaultV2Factory} via ${config.rpcUrl}` +
+          (config.archiveRpcUrl ? " (+ archive lookback)" : " (no archive — APY lookback off)")
+      : "on-chain crawl OFF (CURATOR_RPC_URL unset) — API-only discovery",
   );
 
   await forever(

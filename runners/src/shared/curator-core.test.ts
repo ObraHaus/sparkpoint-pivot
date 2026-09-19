@@ -18,7 +18,7 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     apiBaseUrl: "http://agent:31102",
     s2sToken: "s2s",
     reportOwner: "0xA71e24359A6cb7A939aae2d62dD12b6256365c30",
-    morphoUrl: "https://blue-api.morpho.org/graphql",
+    morphoUrl: "https://api.morpho.org/graphql",
     kumaPushUrl: null,
     intervalSec: 86_400,
     pollSec: 300,
@@ -31,6 +31,11 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     requireListed: true,
     requireVerifiedCurator: false,
     assetAllowlist: ["USDC"],
+    rpcUrl: null,
+    archiveRpcUrl: null,
+    vaultV2Factory: null,
+    apyLookbackDays: 7,
+    stableAssets: ["USDC", "USDG", "USDT", "DAI"],
     ...over,
   };
 }

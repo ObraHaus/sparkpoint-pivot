@@ -41,6 +41,31 @@ export type CuratorConfig = {
   requireVerifiedCurator: boolean;
   /** Uppercase asset symbols the chain will curate (USDC first by convention). */
   assetAllowlist: string[];
+  /**
+   * P12 — optional chain RPC for the on-chain crawler. When set, the curator enumerates Vault V2s
+   * from the factory's creation logs (the chain is the source of truth; the API is an indexer that
+   * can lag or go blind) and verifies every candidate against it. Still keyless: reading needs no key.
+   */
+  rpcUrl: string | null;
+  /**
+   * Optional ARCHIVE RPC for the share-price lookback only. The public chain RPC serves full-range
+   * `eth_getLogs` (one call) but refuses historical `eth_call`; managed providers are the reverse.
+   * When unset, no on-chain APY is derived (vaults without an API figure stay unknown).
+   */
+  archiveRpcUrl: string | null;
+  /** VaultV2Factory to enumerate; defaults per chain, override with CURATOR_VAULT_V2_FACTORY. */
+  vaultV2Factory: string | null;
+  /** Share-price lookback used to derive an on-chain APY for vaults the API has no figure for. */
+  apyLookbackDays: number;
+  /** Assets treated as USD 1:1 when the API has no USD figure (documented, never silent). */
+  stableAssets: string[];
+};
+
+/** Known VaultV2Factory deployments (verified 2026-07-30, spec 024 §1). */
+export const VAULT_V2_FACTORIES: Record<number, string> = {
+  8453: "0x4501125508079A99ebBebCE205DeC9593C2b5857",
+  84532: "0xE3a2CEbca662d99D0F279aF13a6bb8c9825D2ea0",
+  4663: "0x0FBad98595b0186dA120E41f77C102beb49f803c",
 };
 
 export type DiscoveredVault = {
@@ -122,12 +147,23 @@ export function parseCuratorConfig(env: NodeJS.ProcessEnv): CuratorConfig {
   if (assetAllowlist.length === 0) {
     throw new ConfigError("CURATOR_ASSET_ALLOWLIST is empty — nothing could ever be curated");
   }
+  const chainId = envInt(env, "CURATOR_CHAIN_ID", 4663, { min: 1 });
+  const rpcUrl = env.CURATOR_RPC_URL?.trim() || null;
+  const archiveRpcUrl = env.CURATOR_ARCHIVE_RPC_URL?.trim() || null;
+  const vaultV2Factory =
+    env.CURATOR_VAULT_V2_FACTORY?.trim() || VAULT_V2_FACTORIES[chainId] || null;
+  if (rpcUrl && !vaultV2Factory) {
+    throw new ConfigError(
+      `CURATOR_RPC_URL is set but no VaultV2Factory is known for chain ${chainId} — ` +
+        "set CURATOR_VAULT_V2_FACTORY or unset CURATOR_RPC_URL",
+    );
+  }
   const config: CuratorConfig = {
-    chainId: envInt(env, "CURATOR_CHAIN_ID", 4663, { min: 1 }),
+    chainId,
     apiBaseUrl: env.CURATOR_API_BASE_URL ?? env.AGENT_INTERNAL_URL ?? "",
     s2sToken: env.AGENT_S2S_TOKEN ?? "",
     reportOwner: env.CURATOR_REPORT_OWNER ?? env.BOT_REPORT_OWNER ?? "",
-    morphoUrl: env.CURATOR_MORPHO_URL ?? "https://blue-api.morpho.org/graphql",
+    morphoUrl: env.CURATOR_MORPHO_URL ?? "https://api.morpho.org/graphql",
     kumaPushUrl: env.CURATOR_KUMA_PUSH_URL?.trim() || null,
     intervalSec: envInt(env, "CURATOR_INTERVAL_SEC", 86_400, { min: 60 }),
     pollSec: envInt(env, "CURATOR_POLL_SEC", 300, { min: 30 }),
@@ -140,6 +176,14 @@ export function parseCuratorConfig(env: NodeJS.ProcessEnv): CuratorConfig {
     requireListed: envBool(env, "CURATOR_REQUIRE_LISTED", true),
     requireVerifiedCurator: envBool(env, "CURATOR_REQUIRE_VERIFIED_CURATOR", false),
     assetAllowlist,
+    rpcUrl,
+    archiveRpcUrl,
+    vaultV2Factory,
+    apyLookbackDays: envInt(env, "CURATOR_APY_LOOKBACK_DAYS", 7, { min: 1, max: 90 }),
+    stableAssets: (env.CURATOR_STABLE_ASSETS ?? "USDC,USDG,USDT,DAI")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
   };
   if (!config.apiBaseUrl || !config.s2sToken || !config.reportOwner) {
     throw new ConfigError(
