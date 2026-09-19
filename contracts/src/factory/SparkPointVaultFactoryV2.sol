@@ -231,9 +231,11 @@ contract SparkPointVaultFactoryV2 is Initializable, OwnableUpgradeable, ISparkPo
         if (address(child).code.length == 0) revert InvalidChild();
         if (child.asset() == address(0)) revert InvalidChild();
         if (child.decimals() > _MAX_DECIMALS) revert InvalidChild();
-        // A reverting conversion is a hard reject; a 0 here (empty or fully-capped child) is legal.
-        try child.convertToAssets(1e18) { }
-        catch {
+        // A reverting conversion is a hard reject; so is a child that claims 1e18 shares are worth
+        // exactly 0 assets (broken or hostile pricing) — the probe is read AND checked.
+        try child.convertToAssets(1e18) returns (uint256 probe) {
+            if (probe == 0) revert InvalidChild();
+        } catch {
             revert InvalidChild();
         }
     }

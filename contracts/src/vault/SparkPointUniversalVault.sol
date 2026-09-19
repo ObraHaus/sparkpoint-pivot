@@ -209,7 +209,7 @@ contract SparkPointUniversalVault is
     ///         never a spuriously-zero clamp that would block the escape hatch.
     function availableLiquidity() public view returns (uint256) {
         UniversalVaultStorage storage $ = _store();
-        uint256 mw;
+        uint256 mw = type(uint256).max; // optimistic default; the try overrides on success
         // EIP-4626 says max* MUST NOT revert — real vaults do anyway. A revert here would brick
         // `maxWithdraw` and, through the OZ clamp, BLOCK the exit (N2). On a reverting view we fall
         // back to the full claim (optimistic): the real child.withdraw and the "PARTIAL" require in
@@ -315,10 +315,14 @@ contract SparkPointUniversalVault is
         internal
         override
     {
+        // EFFECTS BEFORE INTERACTIONS: mint first, then pull and supply. No state is written after
+        // an external call, so a hook-bearing asset or a reentrant child has nothing to observe;
+        // the `nonReentrant` guard on the public entry points is the second line of defense. A
+        // failing transfer or child deposit reverts the whole call, unwinding the mint.
+        _mint(receiver, shares);
         IERC20 asset_ = IERC20(asset());
         asset_.safeTransferFrom(caller, address(this), assets);
         uint256 childShares = _store().child.deposit(assets, address(this));
-        _mint(receiver, shares);
         emit Deposit(caller, receiver, assets, shares);
         emit ChildSupplied(address(_store().child), assets, childShares);
     }
@@ -408,7 +412,13 @@ contract SparkPointUniversalVault is
     /// @dev FAIL-OPEN: a revert in fee accrual is swallowed so redemption/deposit is never blocked
     ///      (N2). The external self-call boundary is what makes the try/catch effective.
     function _tryAccrueFee() internal {
-        try this.accrueFee() { } catch { }
+        // The return is bound AND referenced: some analyzer builds treat a bare `try f() {}` as an
+        // ignored return even though the result is deliberately unused (the mint is the side effect).
+        try this.accrueFee() returns (uint256 feeShares) {
+            if (feeShares > 0) {
+                // A fee was accrued (the mint happened inside accrueFee); nothing else to do here.
+            }
+        } catch { }
     }
 
     /// @notice MANDATORY (non-fail-open) deposit-time HWM advance: settles the HWM up to the current
