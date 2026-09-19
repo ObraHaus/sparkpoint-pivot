@@ -2,10 +2,12 @@
 pragma solidity 0.8.24;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { OwnableUpgradeable } from
-    "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import { UUPSUpgradeable } from
-    "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
@@ -135,7 +137,9 @@ contract SparkPointVaultFactoryV2 is
         bytes memory initData = _initData($, p, capRegistry);
         return Create2.computeAddress(
             p.salt,
-            keccak256(abi.encodePacked(type(BeaconProxy).creationCode, abi.encode($.beacon, initData)))
+            keccak256(
+                abi.encodePacked(type(BeaconProxy).creationCode, abi.encode($.beacon, initData))
+            )
         );
     }
 
@@ -241,12 +245,15 @@ contract SparkPointVaultFactoryV2 is
         }
     }
 
-    function _deployCapRegistry(uint256 perUserCap, uint256 totalCap, uint256 vaultCap, bytes32 salt)
-        internal
-        returns (address capRegistry)
-    {
-        capRegistry =
-            address(new CapRegistry{ salt: _capSalt(salt) }(owner(), perUserCap, totalCap, vaultCap));
+    function _deployCapRegistry(
+        uint256 perUserCap,
+        uint256 totalCap,
+        uint256 vaultCap,
+        bytes32 salt
+    ) internal returns (address capRegistry) {
+        capRegistry = address(
+            new CapRegistry{ salt: _capSalt(salt) }(owner(), perUserCap, totalCap, vaultCap)
+        );
     }
 
     function _predictCapRegistry(
@@ -270,15 +277,14 @@ contract SparkPointVaultFactoryV2 is
         return keccak256(abi.encode(salt, "sparkpoint.cap"));
     }
 
-    function _initData(
-        FactoryStorage storage $,
-        CreateVaultParams calldata p,
-        address capRegistry
-    ) internal view returns (bytes memory) {
+    function _initData(FactoryStorage storage $, CreateVaultParams calldata p, address capRegistry)
+        internal
+        view
+        returns (bytes memory)
+    {
         return abi.encodeCall(
             SparkPointUniversalVault.initialize,
-            (
-                ISparkPointUniversalVault.InitParams({
+            (ISparkPointUniversalVault.InitParams({
                     asset: IERC20(p.child.asset()),
                     child: p.child,
                     guardian: $.guardian,
@@ -289,8 +295,7 @@ contract SparkPointVaultFactoryV2 is
                     name: p.name,
                     symbol: p.symbol,
                     label: p.label
-                })
-            )
+                }))
         );
     }
 }

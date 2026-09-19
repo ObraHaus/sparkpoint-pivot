@@ -55,6 +55,10 @@ CONTRACTS=(
   # W.7 follow-up — the minimal single-hop quoter. 4663 has no working QuoterV2, so the swap page's
   # quote path binds this ABI-compatible contract (same `quoteExactInputSingle` shape).
   "BetaQuoterV2:BetaQuoterV2:betaQuoterV2"
+  # 049 — the universal wrapper family. Exported so the web, the deploy runner and any
+  # TS consumer bind the SAME ABI the factory initializes (spec 049 / constitution v4.0.0).
+  "SparkPointUniversalVault:SparkPointUniversalVault:sparkPointUniversalVault"
+  "SparkPointVaultFactoryV2:SparkPointVaultFactoryV2:sparkPointVaultFactoryV2"
 )
 
 if [ ! -d "$OUT" ]; then

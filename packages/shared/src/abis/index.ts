@@ -22,3 +22,5 @@ export { revenueSplitterAbi } from "./revenueSplitter";
 export { royaltySinkAbi } from "./royaltySink";
 export { feeRouterAbi } from "./feeRouter";
 export { betaQuoterV2Abi } from "./betaQuoterV2";
+export { sparkPointUniversalVaultAbi } from "./sparkPointUniversalVault";
+export { sparkPointVaultFactoryV2Abi } from "./sparkPointVaultFactoryV2";

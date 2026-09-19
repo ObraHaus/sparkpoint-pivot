@@ -47,8 +47,7 @@ contract UniversalVaultTest is Test {
         // Fundless factory behind a UUPS proxy (owner = the timelock stand-in).
         SparkPointVaultFactoryV2 factoryImpl = new SparkPointVaultFactoryV2();
         bytes memory init = abi.encodeCall(
-            SparkPointVaultFactoryV2.initialize,
-            (owner, address(beacon), guardian, feeRecipient)
+            SparkPointVaultFactoryV2.initialize, (owner, address(beacon), guardian, feeRecipient)
         );
         factory = SparkPointVaultFactoryV2(address(new ERC1967Proxy(address(factoryImpl), init)));
 
