@@ -64,6 +64,17 @@
     "factoryImpl": "0x67C4481515DAB42F5e21dbB3d52D143773bB3212",
     "feeRecipient": "0x376293DDb027555aB7F483c00e1D61b2a7757dE8",
     "minDelaySeconds": 259200,
-    "note": "049 universal wrapper fleet — deploy-only factory behind a Transparent proxy; beacon + factory owned by the timelock."
+    "note": "049 universal wrapper fleet — deploy-only factory behind a Transparent proxy; beacon + factory owned by the timelock.",
+    "timelockOps": {
+      "setDeployer": {
+        "deployer": "0xB555dbEc2cC5908c8B245ED84cb038D5d205D875",
+        "opId": "0x3581b36c0e9a935702fea66082ad61f2227ccaa3dfee484b80690f8f9d9c85e0",
+        "safeTx": "0x9e6d3d05251ad1d52479c0cc1e4067ed6d4c0625ce6e60efc66bc0af7b8ac0df",
+        "scheduledBy": "0xA63Ad1a26b062A289C6b0D0Ac76AD8527061E7Bf",
+        "scheduledAt": "2026-09-19T07:43:22Z",
+        "executableAt": "2026-09-22T07:43:22Z",
+        "salt": "0xa966a0210fc442680c268be0ad51ea0714025f916cf8cfbf5043c6ed86334897"
+      }
+    }
   }
 }
