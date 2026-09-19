@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (049 V.6b/V.7 — admission panel + V3 wiring)
+
+- **Admin → Vaults now has the admission queue.** The retired wrapper-request card is replaced by a wallet-signed queue: every approved unwrapped vault shows its admission state (not admitted / cooling off with a live countdown / ready / wrapped / cancelled / failed) with **Whitelist now**, **Deploy now** (releases a cooling AI entry first), **Release** and **Cancel** actions signed by the operator EOA on 4663, plus the AI cooling-off window setting (1–168 hours; chain bounds read live). The agent only records the confirmed txs — it never signs.
+- **V3 wiring:** `packages/shared` now exports `sparkPointVaultFactoryV3Abi`, and the 4663 address book carries `sparkPointVaultFactoryV3` (`0x1de85106…6406`), `sparkPointVaultTimelock` (`0x62b8…b0B5`) and `sparkPointVaultBeacon` (`0xC4D6…ab0c`). The deployer app's `WRAPPER_FACTORY_ADDRESS` moves to the V3 proxy (operator env change at promotion).
+- **Trust Center states the admission model plainly:** AI admission under a configurable cooling-off window, operator instant admission / release / cancel, one wrapper per vault enforced on-chain, and the timelock confined to code/proxy upgrades and non-admission parameters.
+
 ### Added (049 V.6a — admission queue: agent migration + routes)
 
 - **The agent now mirrors the V3 admission lifecycle** (`wrapper_whitelist`, migration **0040** — PENDING on develop; apply with `PGCLIENTENCODING=UTF8` before the next agent redeploy): `child_address`, `by_address`, `ready_at`, the prefilled wrapper params, `status` (`pending | deployed | cancelled | failed`) and the tx/proxy/CapRegistry/error record. New routes: `GET /curator/wrapper-whitelist` (the AI runner's unwrapped candidates with deterministic params) + `POST …/report` (whitelist/deploy results, failures as loud as successes) and `GET /admin/vaults/whitelist` + `POST …/record` (the panel records the instant wallet-tx lane; the agent never signs). A successful deploy still flips the curated row to `wrapped`. The AI defaults mirror the P11 form exactly (fee 1000, CapRegistry defaults scaled by asset decimals, `sp…` symbol, `· SparkPoint wrapper` label). 19 new pytest units; the retired V2 request queue is untouched until the panel switches in V.6b.

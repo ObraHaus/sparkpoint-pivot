@@ -238,6 +238,9 @@ export default function Page() {
                 <AddrRow chainId={BETA_CHAIN} label="Swap quoter BetaQuoterV2 (read-only swap quotes)" addr={beta.uniswapV3QuoterV2 as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="RoyaltySink (immutable · marketplace royalties)" addr={beta.royaltySink as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="Revenue treasury (the 10% share)" addr={beta.revenueTreasury as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Vault factory V3 (admission gateway · one wrapper per vault)" addr={beta.sparkPointVaultFactoryV3 as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Vault upgrade timelock (72h · owns the wrapper beacon)" addr={beta.sparkPointVaultTimelock as Address | undefined} />
+                <AddrRow chainId={BETA_CHAIN} label="Wrapper beacon (upgrade authority for wrapper code)" addr={beta.sparkPointVaultBeacon as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="Engine owner (can upgrade the engine)" addr={engineOwner} />
                 <AddrRow chainId={BETA_CHAIN} label="Pons curve (trading fees accrue here)" addr={beta.ponsCurve as Address | undefined} />
                 <AddrRow chainId={BETA_CHAIN} label="Pons fee escrow" addr={beta.ponsFeeEscrow as Address | undefined} />
@@ -388,16 +391,27 @@ export default function Page() {
           it.
         </div>
         <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 10 }}>
+          <b>Admission: the AI wraps on a cooling-off window; a person can act instantly.</b> When a
+          curated vault gets a wrapper, the AI can admit it on its own — but the wrapper is not
+          deployable until an on-chain <b>cooling-off window</b> elapses (24 hours by default,
+          operator-configurable between 1 hour and 7 days). The operator can admit and deploy a vault{" "}
+          <b>immediately</b>, release a cooling entry early, or cancel a pending one.{" "}
+          <b>One wrapper per vault</b> is enforced on-chain, and the AI never deploys an entry the
+          operator added — provenance is checked off-chain before the AI acts.
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 10 }}>
           <b>Wrappers upgrade behind a timelock; your exit never waits on anyone.</b> The wrapper
           family is upgradeable by design so a fix reaches every wrapper at once — but only a{" "}
           <b>3-of-5 proposer multisig</b> can start an upgrade, it must wait out a{" "}
           <b>72-hour timelock</b>, and an independent <b>2-of-3 canceller</b> can veto it. The
-          deployer that creates wrappers has no upgrade, allowlist or pause power. Withdrawals are
-          direct on-chain calls to the wrapper: no pause, upgrade or operator action can block
-          them. <b>Residual risk:</b> an upgrade is still a change to the code around your position,
-          and a curated child vault is a third-party venue (Morpho) with its own risks — the
-          timelock, the canceller and the always-open exit are the guardrails, not a guarantee of
-          returns.
+          timelock is confined to <b>code/proxy upgrades and non-admission parameters</b> (beacon,
+          guardian, fee recipient, deploy limit, roles) — it cannot admit or deploy a vault. The AI
+          deployer key can only admit (after the cooldown) and deploy; it has no unwhitelist,
+          release, cooldown, upgrade, pause or fund power. Withdrawals are direct on-chain calls to
+          the wrapper: no pause, upgrade or operator action can block them.{" "}
+          <b>Residual risk:</b> an upgrade is still a change to the code around your position, and a
+          curated child vault is a third-party venue (Morpho) with its own risks — the timelock, the
+          canceller and the always-open exit are the guardrails, not a guarantee of returns.
         </div>
         <div style={{ fontSize: 12.5, lineHeight: 1.7, marginTop: 12 }}>
           <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault"))}>
