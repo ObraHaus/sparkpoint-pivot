@@ -1,20 +1,24 @@
 /**
- * Feature 049 — the wrapper-deploy runner's PURE core: job shape, validation, salt derivation and
- * the minimal factory ABI. Everything here is deterministic and unit-tested; the I/O lives in
- * `../deployer.ts`.
+ * Feature 049 (v4.1.0 pivot) — the AI wrapper-admission runner's PURE core: candidate shape,
+ * validation, deterministic CREATE2 salt, the V3 factory ABI and the deterministic admission
+ * decision. Everything here is pure and unit-tested; the I/O lives in `../deployer.ts`.
  *
- * SCOPE: this runner holds the SCOPED deploy-only hot key. It can call exactly one privileged
- * function — `createVault` on the factory — for children already on the curated on-chain allowlist,
- * with fee ≤ cap and caps within bounds (all re-enforced in Solidity). It can NOT upgrade anything,
- * change the allowlist, pause, set recipients, or move funds; there is no code path here for any of
- * those, and `wrapper-abi.ts`-style selectors are pinned by test.
+ * SCOPE: this runner holds the scoped AI key (`DEPLOYER_ROLE`). It can call exactly two factory
+ * functions — `whitelistVault(child)` (admits a curated child; deployable only after the on-chain
+ * cooldown) and `createVault(params)` (deploys a ready child). It can NOT unwhitelist, release,
+ * set the cooldown, upgrade anything, pause, set recipients, or move funds; there is no code path
+ * here for any of those, and the selector set is pinned by test.
+ *
+ * PROVENANCE RULE: the runner only deploys entries whose on-chain `by` is its own address.
+ * Admin-added entries are the admin's to deploy — `decideAdmission` skips them.
  */
 
 import { keccak256, toHex, type Address, type Hex } from "viem";
 
-export type WrapperJob = {
-  id: string;
-  chainId: number;
+export const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
+
+/** One curated, unwrapped child offered by the agent for AI admission (params are prefilled). */
+export type WrapperCandidate = {
   childAddress: Address;
   feeBps: number;
   perUserCap: string;
@@ -50,13 +54,60 @@ export type CreateVaultParams = {
   salt: Hex;
 };
 
+/** The on-chain admission state for one child (all three views are cheap, sync reads). */
+export type AdmissionState = {
+  /** `wrapperOf(child)`; the ZERO address when no wrapper exists. */
+  wrapper: Address;
+  /** `whitelistOf(child).by`; the ZERO address when no admission is pending. */
+  whitelistedBy: Address;
+  /** `isReady(child)` — true once an AI admission's cooldown has elapsed (or immediately for admin). */
+  ready: boolean;
+};
+
+export type AdmissionDecision =
+  | { action: "whitelist" }
+  | { action: "deploy" }
+  | { action: "wait" }
+  | { action: "skip"; reason: string };
+
 export const FACTORY_ABI = [
   {
     type: "function",
-    name: "isAllowlisted",
+    name: "whitelistVault",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "child", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "whitelistOf",
+    stateMutability: "view",
+    inputs: [{ name: "child", type: "address" }],
+    outputs: [
+      { name: "by", type: "address" },
+      { name: "readyAt", type: "uint64" },
+    ],
+  },
+  {
+    type: "function",
+    name: "isReady",
     stateMutability: "view",
     inputs: [{ name: "child", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "wrapperOf",
+    stateMutability: "view",
+    inputs: [{ name: "child", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "cooldown",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint64" }],
   },
   {
     type: "function",
@@ -116,46 +167,62 @@ export const FACTORY_ABI = [
       { name: "label", type: "string", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "VaultWhitelisted",
+    inputs: [
+      { name: "child", type: "address", indexed: true },
+      { name: "by", type: "address", indexed: true },
+      { name: "readyAt", type: "uint64", indexed: false },
+    ],
+  },
 ] as const;
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const UINT256_MAX = (1n << 256n) - 1n;
 
 export function isAddress(value: string): boolean {
   return ADDRESS_RE.test(value);
 }
 
-/** Deterministic CREATE2 salt for a request id: a retried deploy lands on the SAME address. */
-export function saltForJob(id: string): Hex {
-  return keccak256(toHex(id));
+/**
+ * Deterministic CREATE2 salt for a child: a retried admission lands on the SAME wrapper address.
+ * Domain-separated from the retired admin-request (UUID) salts so the two lanes can never collide.
+ */
+export function saltForChild(child: Address): Hex {
+  return keccak256(toHex(`sparkpoint.wrapper.v3:${child.toLowerCase()}`));
 }
 
-export type JobCheck = { ok: true; args: CreateVaultParams } | { ok: false; reason: string };
+export type CandidateCheck = { ok: true; args: CreateVaultParams } | { ok: false; reason: string };
 
 /**
- * Validate a job locally BEFORE spending gas (and before hitting the chain), mirroring the
- * factory's own checks: a malformed request is reported as a failure with a reason, not attempted.
+ * Validate a candidate locally BEFORE spending gas (and before hitting the chain), mirroring the
+ * factory's own checks: a malformed candidate is reported as a failure with a reason, not attempted.
  */
-export function prepareJob(job: WrapperJob, config: DeployerConfig): JobCheck {
-  if (!UUID_RE.test(job.id)) return { ok: false, reason: `job id ${job.id} is not a UUID` };
-  if (job.chainId !== config.chainId) {
-    return { ok: false, reason: `job chain ${job.chainId} != runner chain ${config.chainId}` };
+export function prepareCandidate(
+  candidate: WrapperCandidate,
+  config: DeployerConfig,
+): CandidateCheck {
+  if (!isAddress(candidate.childAddress)) {
+    return { ok: false, reason: "childAddress is not an address" };
   }
-  if (!isAddress(job.childAddress)) return { ok: false, reason: "childAddress is not an address" };
-  if (!Number.isInteger(job.feeBps) || job.feeBps < 0 || job.feeBps > config.maxFeeBps) {
-    return { ok: false, reason: `feeBps ${job.feeBps} outside 0..${config.maxFeeBps}` };
+  if (
+    !Number.isInteger(candidate.feeBps) ||
+    candidate.feeBps < 0 ||
+    candidate.feeBps > config.maxFeeBps
+  ) {
+    return { ok: false, reason: `feeBps ${candidate.feeBps} outside 0..${config.maxFeeBps}` };
   }
-  if (!job.name || !job.symbol || !job.label) {
+  if (!candidate.name || !candidate.symbol || !candidate.label) {
     return { ok: false, reason: "name/symbol/label must be non-empty" };
   }
   let perUserCap: bigint;
   let totalCap: bigint;
   let vaultCap: bigint;
   try {
-    perUserCap = BigInt(job.perUserCap);
-    totalCap = BigInt(job.totalCap);
-    vaultCap = BigInt(job.vaultCap);
+    perUserCap = BigInt(candidate.perUserCap);
+    totalCap = BigInt(candidate.totalCap);
+    vaultCap = BigInt(candidate.vaultCap);
   } catch {
     return { ok: false, reason: "caps must be integer strings" };
   }
@@ -169,15 +236,34 @@ export function prepareJob(job: WrapperJob, config: DeployerConfig): JobCheck {
   return {
     ok: true,
     args: {
-      child: job.childAddress,
-      feeBps: job.feeBps,
+      child: candidate.childAddress,
+      feeBps: candidate.feeBps,
       perUserCap,
       totalCap,
       vaultCap,
-      name: job.name,
-      symbol: job.symbol,
-      label: job.label,
-      salt: saltForJob(job.id),
+      name: candidate.name,
+      symbol: candidate.symbol,
+      label: candidate.label,
+      salt: saltForChild(candidate.childAddress),
     },
   };
+}
+
+/**
+ * The provenance rule, deterministically: deploy only what the AI itself admitted.
+ *   * a wrapper already exists        → skip (one wrapper per child, on-chain)
+ *   * no admission pending            → whitelist (AI entry; deployable after the cooldown)
+ *   * pending admission, `by` ≠ AI    → skip (an admin entry — the admin's to release/deploy)
+ *   * pending AI admission, ready     → deploy
+ *   * pending AI admission, cooling   → wait (a later tick re-checks)
+ */
+export function decideAdmission(state: AdmissionState, runner: Address): AdmissionDecision {
+  if (state.wrapper !== ZERO_ADDRESS) {
+    return { action: "skip", reason: "already wrapped (one wrapper per child)" };
+  }
+  if (state.whitelistedBy === ZERO_ADDRESS) return { action: "whitelist" };
+  if (state.whitelistedBy.toLowerCase() !== runner.toLowerCase()) {
+    return { action: "skip", reason: "admin entry — not the AI's to deploy" };
+  }
+  return state.ready ? { action: "deploy" } : { action: "wait" };
 }

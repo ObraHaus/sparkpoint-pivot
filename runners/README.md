@@ -82,22 +82,32 @@ this container — the agent must serve `/curator/run-state` + `/curator/ingest`
 Rejections are recorded on the run detail (`lastFailedDetail` / `screenedOut`), so an empty board
 can be told apart from an unreachable source. The runner holds no key — do not add one.
 
-## The wrapper deploy runner (049)
+## The AI wrapper-admission runner (049 v4.1.0 pivot)
 
-`src/deployer.ts` (`SERVICE=deployer`) is the **scoped** executor for wrapper deployments requested
-in Admin → Vaults. It holds ONE hot key that can do exactly one privileged thing: call
-`createVault` on `SparkPointVaultFactoryV2` for a child **already on the curated on-chain
-allowlist**, with fee ≤ cap and caps within bounds. It **cannot upgrade anything** (factory, beacon,
-implementation), change the allowlist, pause, set recipients, or move funds — those authorities
-belong to the TimelockController, and this image has no selector for them.
+`src/deployer.ts` (`SERVICE=deployer`) is the **scoped AI admission** runner. It holds ONE hot key
+(the `DEPLOYER_ROLE` account) that can do exactly two privileged things on
+`SparkPointVaultFactoryV3`: `whitelistVault(child)` — admitting a curated child that becomes
+deployable only after the on-chain cooldown (default 24h, admin-bounded 1h–7d; no timelock in the
+admission path) — and `createVault(params)` once that entry is ready. It **cannot unwhitelist,
+release an entry, change the cooldown, upgrade anything** (factory, beacon, implementation),
+pause, set recipients, or move funds — those authorities belong to the operator EOA
+(`ADMIN_ROLE`) and the TimelockController (`DEFAULT_ADMIN_ROLE`), and this image has no selector
+for them (pinned by test).
 
-- Polls `GET /curator/wrapper-jobs` (agent, S2S), validates locally, checks the on-chain allowlist,
-  simulates, sends, waits for a success receipt, parses `VaultCreated`, and reports to
-  `POST /curator/wrapper-jobs/report`.
-- **Idempotent:** the CREATE2 salt is derived from the request id. If code already exists at the
+- Polls `GET /curator/wrapper-whitelist` (agent, S2S) for unwrapped curated candidates with their
+  wrapper params, reads `wrapperOf` / `whitelistOf` / `isReady` on-chain, then per candidate:
+  whitelist (no entry) → wait (AI entry cooling off) → deploy (AI entry ready); **skip** admin
+  entries and already-wrapped children. Simulates, sends, waits for a success receipt, parses
+  `VaultWhitelisted` / `VaultCreated`, and reports to `POST /curator/wrapper-whitelist/report`.
+- **Provenance rule (off-chain):** the AI deploys ONLY entries whose on-chain `by` is its own
+  address. Admin-added entries are the admin's to release/deploy; the runner skips them.
+- **Idempotent:** the CREATE2 salt is derived from the child address. If code already exists at the
   predicted address (a previous attempt landed but its report was lost), it reports success WITHOUT
-  sending a second transaction. A reverted tx is a failure (a mined revert is not a delivery).
-- **The agent stays keyless:** it only queues and records. The LLM never holds this key.
+  sending a second transaction; a landed-but-unreported whitelist is recovered by the next tick
+  (`by` is already the AI's). A reverted tx is a failure (a mined revert is not a delivery).
+- **One wrapper per child** is enforced on-chain (`wrapperOf`), as is the fee/caps/child validation.
+- **The agent stays keyless:** it only serves candidates and records reports. The LLM never holds
+  this key.
 
 ### Deployer env (Coolify, `SERVICE=deployer`)
 
@@ -106,8 +116,8 @@ belong to the TimelockController, and this image has no selector for them.
 | `SERVICE` | `deployer` |
 | `CHAIN_ID` | `4663` |
 | `RPC_URL` | Alchemy 4663 (secret) |
-| `WRAPPER_FACTORY_ADDRESS` | `SparkPointVaultFactoryV2` proxy (set after the P10 deploy) |
-| `WRAPPER_DEPLOYER_PRIVATE_KEY` | the scoped deploy-only key (secret; gas only) |
+| `WRAPPER_FACTORY_ADDRESS` | `SparkPointVaultFactoryV3` proxy `0x1de85106…6406` (V.7 wiring) |
+| `WRAPPER_DEPLOYER_PRIVATE_KEY` | the scoped AI key (secret; gas only) |
 | `AGENT_BASE_URL` | the agent's internal URL (falls back to `CURATOR_API_BASE_URL`) |
 | `AGENT_S2S_TOKEN` | same service token the web BFF uses (secret) |
 | `DEPLOYER_REPORT_OWNER` | the operator wallet asserted in the scoping headers |
@@ -115,8 +125,8 @@ belong to the TimelockController, and this image has no selector for them.
 | `WRAPPER_MAX_FEE_BPS` | `2000` |
 | `HEARTBEAT_DIR` | `/tmp/sparky-beta-runners` |
 
-Liveness follows the shared contract: a completed poll touches the heartbeat; whether a DEPLOY
-succeeded is reported to the agent (`wrapper_deployments`) and visible in the panel.
+Liveness follows the shared contract: a completed poll touches the heartbeat; every whitelist /
+deploy / failure is reported to the agent (`wrapper_whitelist`) and visible in the panel.
 
 ## Run locally
 
