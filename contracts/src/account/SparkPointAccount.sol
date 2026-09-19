@@ -354,10 +354,13 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
             v := byte(0, calldataload(add(sig.offset, 65)))
         }
         bytes32 digest = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        // slither-disable-next-line unused-return -- the third return (recovered hash) is
-        // intentionally discarded; adding a comparison on it would change signature acceptance.
-        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, v, r, s);
-        if (err != ECDSA.RecoverError.NoError || signer != _owner) return SIG_VALIDATION_FAILED;
+        // The recovered hash is BOUND and checked: a zero hash cannot come from a successful
+        // recovery of a real digest, so this rejects only already-invalid signatures.
+        (address signer, ECDSA.RecoverError err, bytes32 recoveredHash) =
+            ECDSA.tryRecover(digest, v, r, s);
+        if (err != ECDSA.RecoverError.NoError || signer != _owner || recoveredHash == bytes32(0)) {
+            return SIG_VALIDATION_FAILED;
+        }
         return SIG_VALIDATION_SUCCESS;
     }
 

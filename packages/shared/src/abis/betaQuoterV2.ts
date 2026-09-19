@@ -382,6 +382,11 @@ export const betaQuoterV2Abi = [
   },
   {
     "inputs": [],
+    "name": "UnexpectedSuccess",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ZeroAddress",
     "type": "error"
   },
