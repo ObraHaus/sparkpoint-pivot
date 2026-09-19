@@ -318,7 +318,11 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
     /// @dev FAIL-OPEN wrapper. A revert in fee accrual is swallowed so the redemption/deposit is never
     ///      blocked (N2). The external self-call boundary is what makes the try/catch effective.
     function _tryAccrueFee() internal {
-        try this.accrueFee() { } catch { }
+        // Bound AND referenced (see SparkPointUniversalVault): a bare `try f() { }` reads as an
+        // ignored return to some analyzer builds. The mint inside accrueFee() is the side effect.
+        try this.accrueFee() returns (uint256 feeShares) {
+            if (feeShares > 0) { }
+        } catch { }
     }
 
     /// @notice MANDATORY (non-fail-open) deposit-time HWM advance. Settles the HWM up to the current

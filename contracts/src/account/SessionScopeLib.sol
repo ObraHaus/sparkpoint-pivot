@@ -80,10 +80,14 @@ library SessionScopeLib {
             v := byte(0, calldataload(add(sig.offset, 65)))
         }
         bytes32 digest = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        // slither-disable-next-line unused-return -- the third return (recovered hash) is
-        // intentionally discarded; adding a comparison on it would change signature acceptance.
-        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, v, r, s);
-        if (err != ECDSA.RecoverError.NoError) return address(0);
+        // All three returns are bound; the third is OZ's error detail (zero on success) and is
+        // deliberately not compared (see SparkPointAccount._validateOwnerSignature).
+        (address signer, ECDSA.RecoverError err, bytes32 errorDetail) =
+            ECDSA.tryRecover(digest, v, r, s);
+        if (err != ECDSA.RecoverError.NoError) {
+            errorDetail;
+            return address(0);
+        }
         return signer;
     }
 

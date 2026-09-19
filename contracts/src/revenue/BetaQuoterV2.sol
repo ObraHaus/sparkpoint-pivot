@@ -58,6 +58,7 @@ contract BetaQuoterV2 is Initializable, UUPSUpgradeable {
     error ZeroAddress();
     error NotOwner();
     error ZeroAmount();
+    error UnexpectedSuccess();
     error InvalidPool();
     error NotPool();
     error RescueFailed();
@@ -130,9 +131,13 @@ contract BetaQuoterV2 is Initializable, UUPSUpgradeable {
             .swap(
                 address(this), zeroForOne, int256(params.amountIn), limit, abi.encode(pool)
             ) returns (
-            int256, int256
-        ) { }
-        catch (bytes memory reason) {
+            int256 amount0Delta, int256 amount1Delta
+        ) {
+            // Unreachable: the callback always reverts (that revert IS the quote). Reaching here
+            // means the pool misbehaved; revert so no fabricated quote is returned.
+            if (amount0Delta == 0 && amount1Delta == 0) revert UnexpectedSuccess();
+            revert UnexpectedSuccess();
+        } catch (bytes memory reason) {
             (amountOut, sqrtPriceX96After) = abi.decode(reason, (uint256, uint160));
             initializedTicksCrossed = 0; // not tracked; no consumer uses it
             gasEstimate = 0; // not tracked; no consumer uses it
