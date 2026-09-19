@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (049 V.2 — V3 factory: AI-autonomous admission under amendment v4.1.0)
+
+- **`SparkPointVaultFactoryV3` implemented and Foundry-tested (NOT deployed).** The admission model is rebuilt on OpenZeppelin `AccessControl`: `DEFAULT_ADMIN_ROLE` = the TimelockController (role admin + beacon/guardian/fee-recipient/deploy-limit only), `ADMIN_ROLE` = the operator EOA (instant `whitelistVault`, `releaseNow`, `unwhitelist`, `setCooldown`, `createVault`), `DEPLOYER_ROLE` = the AI deploy runner (`whitelistVault` → deployable after the on-chain cooldown; `createVault`). The cooldown is a plain inline `block.timestamp` check — default 24h, admin-bounded 1h–7d, evented — with **no timelock in the admission path**; the timelock is deliberately not an admission role. Admission is one pending `{by, readyAt}` per child; `createVault` consumes it and records `wrapperOf[child]`, so exactly one wrapper per child is enforced on-chain. The whitelist is the allowlist and the existing fee/caps/child validation and `deployLimit` are retained; the runner's “AI never deploys admin-added entries” rule stays off-chain (provenance via `by`). 41 new Foundry tests (role separation incl. “the timelock cannot admit”, initializer grants + duplicate-holder guard, cooldown math/bounds/release/unwhitelist, one-per-child, child validation, deploy limit, N1 value rejection, timelock-only upgrade) plus `script/DeployVaultFactoryV3.s.sol` for the operator-signed V.3 deploy; deployment remains gated on operator confirmation.
+
 ### Removed (web)
 
 - **The “SparkPoint’s own vault” card is gone from `/vault`.** The vault program is wrap-only for now — curate an existing vault, wrap it via our factory, onboard it — so the page stays focused on the curated board and no longer implies a SparkPoint-originated vault is coming to this network.
