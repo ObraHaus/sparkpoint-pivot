@@ -307,13 +307,13 @@
       <div class="ph done">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P12 · On-chain discovery crawler (4663)</h3><span class="pill done">BUILT · DEPLOY PENDING</span></div>
+          <div class="head"><h3>P12 · On-chain discovery crawler (4663)</h3><span class="pill done">LIVE · FIRST RUN PENDING</span></div>
           <div class="meta">factory logs = source of truth · + corrected API adapter</div>
           <ul>
             <li><span class="st d">DONE</span><span>Enumerates every <code>CreateVaultV2</code> log (block 0 → head) via the public chain RPC, reads asset/<code>totalAssets</code>/fees/curator/age per vault, and re-checks the FR-020 gate abdications on-chain. API candidates missing from the logs fail screening with a DANGER warning. Tests: 54/54 including the crawler suite.</span></li>
             <li><span class="st d">DONE</span><span>Adapter corrected: <code>api.morpho.org/graphql</code> + the <b><code>vaultV2s</code></b> query. The earlier “API blind / 0 vaults” was the V1 <code>vaults</code> query on a V2-only chain — 4663 has <b>58 V2 vaults</b> today.</span></li>
             <li><span class="st d">DONE</span><span>First live run (2026-09-19): <b>58 enumerated, 58 verified</b>, 2 pass screening — pick <b>Steakhouse USDG</b> (~$482.4M, 3.58% net APY, score 57), alternate Purinta USDG; 56 rejected (29 on FR-020 gate danger, plus unlisted / TVL / liquidity).</span></li>
-            <li><span class="st a">NEXT</span><span>Ship with the next curator deploy: set <code>CURATOR_RPC_URL</code> (public chain RPC) + <code>CURATOR_ARCHIVE_RPC_URL</code> (Alchemy) + <code>CURATOR_ASSET_ALLOWLIST=USDG</code>, then Run-now on the panel and approve the pick.</span></li>
+            <li><span class="st d">LIVE</span><span><b>Deployed</b> via #222/#223: curator-beta runs the crawler (logs: <code>on-chain crawl ON: factory 0x0FBad… (+ archive lookback)</code>, assets USDG). Next run due <b>~09:03 UTC 2026-09-20</b> — or hit <b>Run-now</b> on the curation panel; then approve the pick.</span></li>
           </ul>
         </div>
       </div>
