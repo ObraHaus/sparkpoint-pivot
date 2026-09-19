@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-wrapping-cooling-off-groundwork",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Under the hood: a safer path to automatic vault wrapping",
+      "body": "We are upgrading how a curated vault gets its SparkPoint wrapper. Under the new on-chain model, the AI can admit an approved vault on its own but must wait out a public cooling-off window before it can wrap it (24 hours by default, operator-configurable between 1 hour and 7 days); the operator keeps an instant lane to add, release, or cancel a wrapper, and one wrapper per vault is enforced on-chain.\n\nThis groundwork is being rolled out now, so the Vault page will say plainly when a wrapper is live. Nothing changes about fees or exits: performance-only above your high-water mark, and withdrawals are never gated.",
+      "published_at": "2026-09-19T17:30:00Z"
+    },
+    {
       "slug": "wrapper-upgrade-and-deploy-disclosure",
       "type": "changelog",
       "tag": "Improved",
