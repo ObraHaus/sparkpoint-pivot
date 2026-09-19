@@ -1,17 +1,24 @@
 /**
- * Feature 049 — the wrapper DEPLOY RUNNER. Holds the scoped, deploy-only hot key and nothing else.
+ * Feature 049 (v4.1.0 pivot) — the AI wrapper-ADMISSION runner. Holds the scoped AI key
+ * (`DEPLOYER_ROLE`) and nothing else.
  *
- * It polls the agent for admin-requested wrapper deployments, validates each job locally, asks the
- * factory whether the child is on the curated on-chain allowlist, simulates `createVault`, sends it,
- * and reports the result. There is deliberately NO code path to upgrade anything, change the
- * allowlist, pause, set recipients, or move funds — the factory enforces those powers away from this
- * key on-chain, and this file has no selector for them.
+ * Each tick it asks the agent for curated, unwrapped children; for each it reads the on-chain
+ * admission state, then (deterministically, by provenance):
+ *   * no pending admission        → `whitelistVault(child)` — an AI entry, deployable after the
+ *                                   on-chain cooldown (default 24h); no timelock is involved.
+ *   * AI entry still cooling off  → wait (a later tick re-checks).
+ *   * AI entry ready              → `createVault(params)`.
+ *   * admin entry / already wrapped → skip. The AI never deploys admin-added entries.
  *
- * IDEMPOTENT BY CONSTRUCTION: the CREATE2 salt is derived from the request id, and if code already
- * exists at the predicted address (a previous attempt succeeded but its report was lost), the
- * runner reports success without sending a second transaction.
+ * There is deliberately NO code path to unwhitelist, release, set the cooldown, upgrade anything,
+ * pause, set recipients, or move funds — the factory enforces those powers away from this key
+ * on-chain, and this file has no selector for them.
  *
- * The LLM agent stays keyless: it only serves the queue and stores the report.
+ * IDEMPOTENT BY CONSTRUCTION: the CREATE2 salt is derived from the child address and a landed-but-
+ * unreported deploy is recovered by checking for code at the predicted address. A landed-but-
+ * unreported whitelist is recovered by the next tick (the entry now exists; `by` is the AI's).
+ *
+ * The LLM agent stays keyless: it only serves candidates and stores reports.
  */
 
 import { createPublicClient, createWalletClient, defineChain, http, parseEventLogs } from "viem";
@@ -21,10 +28,12 @@ import { privateKeyToAccount } from "viem/accounts";
 import { forever, logger } from "./shared/log.ts";
 import {
   FACTORY_ABI,
-  prepareJob,
+  decideAdmission,
+  prepareCandidate,
+  type AdmissionState,
   type CreateVaultParams,
   type DeployerConfig,
-  type WrapperJob,
+  type WrapperCandidate,
 } from "./shared/wrapper.ts";
 
 const log = logger("deployer");
@@ -72,21 +81,26 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): DeployerCon
   };
 }
 
-export type JobOutcome = {
-  id: string;
+export type AdmissionOutcome = {
+  childAddress: Address;
+  action: "whitelist" | "deploy" | "none";
   ok: boolean;
   txHash?: Hex;
   proxyAddress?: Address;
   capRegistry?: Address | null;
+  readyAt?: number;
   error?: string;
 };
 
 export type DeployerDeps = {
-  fetchJobs(): Promise<WrapperJob[]>;
-  report(outcome: JobOutcome): Promise<void>;
-  isAllowlisted(child: Address): Promise<boolean>;
+  /** The scoped AI account address — the provenance anchor (`whitelistOf(child).by`). */
+  runnerAddress: Address;
+  fetchCandidates(): Promise<WrapperCandidate[]>;
+  report(outcome: AdmissionOutcome): Promise<void>;
+  getAdmissionState(child: Address): Promise<AdmissionState>;
   predict(args: CreateVaultParams): Promise<Address>;
   getCode(address: Address): Promise<Hex | undefined>;
+  whitelistVault(child: Address): Promise<{ txHash: Hex; readyAt: number }>;
   createVault(args: CreateVaultParams): Promise<{
     txHash: Hex;
     proxy: Address;
@@ -104,72 +118,96 @@ function errorText(error: unknown): string {
 }
 
 /**
- * One polling pass: process every pending job, oldest first. A single bad job is reported and never
- * stops the rest; a transport failure fetching the queue propagates (the tick is degraded and the
- * heartbeat must not advance).
+ * One polling pass. A single bad candidate is reported and never stops the rest; a transport
+ * failure fetching the candidate list propagates (the tick is degraded and the heartbeat must not
+ * advance). Returns the number of on-chain actions taken (whitelists + deploys).
  */
 export async function runOnce(config: DeployerConfig, deps: DeployerDeps): Promise<number> {
-  const jobs = await deps.fetchJobs();
-  if (jobs.length === 0) {
-    log.info("no pending wrapper deploys");
+  const candidates = await deps.fetchCandidates();
+  if (candidates.length === 0) {
+    log.info("no unwrapped curated candidates");
     return 0;
   }
-  log.info(`${jobs.length} pending wrapper deploy(s)`);
+  log.info(`${candidates.length} unwrapped curated candidate(s)`);
 
-  let deployed = 0;
-  for (const job of jobs) {
-    const check = prepareJob(job, config);
+  let acted = 0;
+  for (const candidate of candidates) {
+    const check = prepareCandidate(candidate, config);
     if (!check.ok) {
-      log.warn(`job ${job.id} rejected locally: ${check.reason}`);
-      await deps.report({ id: job.id, ok: false, error: `rejected: ${check.reason}` });
+      log.warn(`${candidate.childAddress} rejected locally: ${check.reason}`);
+      await deps.report({
+        childAddress: candidate.childAddress,
+        action: "none",
+        ok: false,
+        error: `rejected: ${check.reason}`,
+      });
       continue;
     }
     const args = check.args;
+    let action: AdmissionOutcome["action"] = "none";
 
     try {
-      if (!(await deps.isAllowlisted(job.childAddress))) {
-        // No gas spent on a child the on-chain allowlist does not carry (the factory would revert).
-        log.warn(`job ${job.id}: ${job.childAddress} is not on the on-chain allowlist`);
-        await deps.report({
-          id: job.id,
-          ok: false,
-          error: "child is not on the on-chain curated allowlist",
-        });
+      const state = await deps.getAdmissionState(args.child);
+      const decision = decideAdmission(state, deps.runnerAddress);
+      if (decision.action === "wait") {
+        log.info(`${args.child}: AI entry still cooling off — waiting for a later tick`);
+        continue;
+      }
+      if (decision.action === "skip") {
+        log.info(`${args.child}: skipped (${decision.reason})`);
         continue;
       }
 
+      if (decision.action === "whitelist") {
+        action = "whitelist";
+        const result = await deps.whitelistVault(args.child);
+        log.info(`${args.child}: whitelisted, ready at ${result.readyAt} (tx ${result.txHash})`);
+        await deps.report({
+          childAddress: args.child,
+          action,
+          ok: true,
+          txHash: result.txHash,
+          readyAt: result.readyAt,
+        });
+        acted += 1;
+        continue;
+      }
+
+      action = "deploy";
       const predicted = await deps.predict(args);
       const existing = await deps.getCode(predicted);
       if (existing !== undefined && existing !== "0x") {
         // Recovery: a prior attempt landed but its report was lost. Do NOT send again.
-        log.warn(`job ${job.id}: ${predicted} already exists — reporting without sending`);
+        log.warn(`${args.child}: ${predicted} already exists — reporting without sending`);
         await deps.report({
-          id: job.id,
+          childAddress: args.child,
+          action,
           ok: true,
           proxyAddress: predicted,
           capRegistry: await deps.readCapRegistry(predicted),
         });
-        deployed += 1;
+        acted += 1;
         continue;
       }
 
       const result = await deps.createVault(args);
-      log.info(`job ${job.id}: deployed ${result.proxy} (tx ${result.txHash})`);
+      log.info(`${args.child}: deployed ${result.proxy} (tx ${result.txHash})`);
       await deps.report({
-        id: job.id,
+        childAddress: args.child,
+        action,
         ok: true,
         txHash: result.txHash,
         proxyAddress: result.proxy,
         capRegistry: result.capRegistry,
       });
-      deployed += 1;
+      acted += 1;
     } catch (error) {
       const detail = errorText(error);
-      log.warn(`job ${job.id} failed: ${detail}`);
-      await deps.report({ id: job.id, ok: false, error: detail });
+      log.warn(`${args.child} ${action} failed: ${detail}`);
+      await deps.report({ childAddress: args.child, action, ok: false, error: detail });
     }
   }
-  return deployed;
+  return acted;
 }
 
 function chainFor(config: DeployerConfig) {
@@ -207,17 +245,19 @@ export function realDeps(config: DeployerConfig, privateKey: Hex): DeployerDeps 
       args: [args],
     });
 
-  const jobReport = async (outcome: JobOutcome): Promise<void> => {
+  const admissionReport = async (outcome: AdmissionOutcome): Promise<void> => {
     const base = config.apiBaseUrl.replace(/\/+$/, "");
-    const res = await fetch(`${base}/curator/wrapper-jobs/report`, {
+    const res = await fetch(`${base}/curator/wrapper-whitelist/report`, {
       method: "POST",
       headers: agentHeaders(config),
       body: JSON.stringify({
-        id: outcome.id,
+        childAddress: outcome.childAddress,
+        action: outcome.action,
         ok: outcome.ok,
         txHash: outcome.txHash ?? null,
         proxyAddress: outcome.proxyAddress ?? null,
         capRegistry: outcome.capRegistry ?? null,
+        readyAt: outcome.readyAt ?? null,
         error: outcome.error ?? null,
         runnerCommit: process.env.DEPLOYER_COMMIT ?? null,
       }),
@@ -227,26 +267,75 @@ export function realDeps(config: DeployerConfig, privateKey: Hex): DeployerDeps 
   };
 
   return {
-    async fetchJobs() {
+    runnerAddress: account.address,
+    async fetchCandidates() {
       const base = config.apiBaseUrl.replace(/\/+$/, "");
-      const res = await fetch(`${base}/curator/wrapper-jobs`, {
+      const res = await fetch(`${base}/curator/wrapper-whitelist`, {
         headers: agentHeaders(config),
         signal: AbortSignal.timeout(config.fetchTimeoutSec * 1_000),
       });
-      if (!res.ok) throw new Error(`agent wrapper-jobs -> HTTP ${res.status}`);
-      const body = (await res.json()) as { jobs?: WrapperJob[] };
-      return body.jobs ?? [];
+      if (!res.ok) throw new Error(`agent wrapper-whitelist -> HTTP ${res.status}`);
+      const body = (await res.json()) as { candidates?: WrapperCandidate[] };
+      return body.candidates ?? [];
     },
-    report: jobReport,
-    isAllowlisted: (child) =>
-      publicClient.readContract({
-        address: config.factoryAddress,
-        abi: FACTORY_ABI,
-        functionName: "isAllowlisted",
-        args: [child],
-      }),
+    report: admissionReport,
+    async getAdmissionState(child) {
+      const [wrapper, whitelist, ready] = await Promise.all([
+        publicClient.readContract({
+          address: config.factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "wrapperOf",
+          args: [child],
+        }),
+        publicClient.readContract({
+          address: config.factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "whitelistOf",
+          args: [child],
+        }),
+        publicClient.readContract({
+          address: config.factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "isReady",
+          args: [child],
+        }),
+      ]);
+      return { wrapper, whitelistedBy: whitelist[0], ready };
+    },
     predict,
     getCode: (address) => publicClient.getCode({ address }),
+    async whitelistVault(child) {
+      // Simulate first: a revert caught here is a sentence, a revert on chain is gas spent to learn
+      // the same thing.
+      const { request } = await publicClient.simulateContract({
+        address: config.factoryAddress,
+        abi: FACTORY_ABI,
+        functionName: "whitelistVault",
+        args: [child],
+        account,
+      });
+      const txHash = await walletClient.writeContract({ ...request, chain });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      // waitForTransactionReceipt RESOLVES on a reverted tx — check status explicitly.
+      if (receipt.status !== "success") {
+        throw new Error(`tx ${txHash} reverted on chain (gas used ${receipt.gasUsed})`);
+      }
+      const parsed = parseEventLogs({
+        abi: FACTORY_ABI,
+        logs: receipt.logs,
+        eventName: "VaultWhitelisted",
+      });
+      const event = parsed[0]?.args as unknown as { readyAt?: bigint } | undefined;
+      if (event?.readyAt !== undefined) return { txHash, readyAt: Number(event.readyAt) };
+      // Fallback: re-read the entry (the event should always be there; never report a wrong wait).
+      const entry = await publicClient.readContract({
+        address: config.factoryAddress,
+        abi: FACTORY_ABI,
+        functionName: "whitelistOf",
+        args: [child],
+      });
+      return { txHash, readyAt: Number(entry[1]) };
+    },
     async createVault(args) {
       // Simulate first: a revert caught here is a sentence, a revert on chain is gas spent to learn
       // the same thing (and, with a CREATE2 collision, a confusing one).
@@ -259,7 +348,6 @@ export function realDeps(config: DeployerConfig, privateKey: Hex): DeployerDeps 
       });
       const txHash = await walletClient.writeContract({ ...request, chain });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-      // waitForTransactionReceipt RESOLVES on a reverted tx — check status explicitly.
       if (receipt.status !== "success") {
         throw new Error(`tx ${txHash} reverted on chain (gas used ${receipt.gasUsed})`);
       }
@@ -304,8 +392,9 @@ async function main(): Promise<void> {
   const privateKey = required(process.env, "WRAPPER_DEPLOYER_PRIVATE_KEY") as Hex;
   const deps = realDeps(config, privateKey);
   log.info(
-    `wrapper deploy runner: chain ${config.chainId}, factory ${config.factoryAddress}, ` +
-      `poll ${config.pollSec}s (scoped deploy-only key; no upgrade/allowlist/pause power)`,
+    `AI wrapper-admission runner: chain ${config.chainId}, factory ${config.factoryAddress}, ` +
+      `runner ${deps.runnerAddress}, poll ${config.pollSec}s ` +
+      `(scoped admission key: whitelist + createVault only; no unwhitelist/release/cooldown/upgrade)`,
   );
 
   await forever(
@@ -313,8 +402,8 @@ async function main(): Promise<void> {
     "tick",
     () => config.pollSec * 1_000,
     async () => {
-      const deployed = await runOnce(config, deps);
-      if (deployed > 0) log.info(`deployed ${deployed} wrapper(s) this tick`);
+      const acted = await runOnce(config, deps);
+      if (acted > 0) log.info(`whitelisted/deployed ${acted} wrapper(s) this tick`);
     },
     "deployer",
   );
