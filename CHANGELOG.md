@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The “SparkPoint’s own vault” card is gone from `/vault`.** The vault program is wrap-only for now — curate an existing vault, wrap it via our factory, onboard it — so the page stays focused on the curated board and no longer implies a SparkPoint-originated vault is coming to this network.
 
+### Added (P11 — product wiring + disclosure)
+
+- **Wrapper deployments are now a reviewable request in Admin → Vaults.** A new queue card lists every request and lets an admin request one for an approved vault (fee defaulting to 10%, caps to the CapRegistry defaults) or cancel it while pending; the deploy is executed by the scoped runner, never the agent.
+- **A verified deploy reaches the board by itself.** When the runner reports a successful `createVault`, the curated row flips to `wrapped = true` with the deployed proxy address, so the deposit rail routes through the wrapper (with its performance-fee disclosure) instead of a direct deposit. Failures leave the row unwrapped and are recorded loudly.
+- **Trust Center now states the real upgrade model**: wrappers upgrade only through the 3-of-5 proposer Safe and a 72-hour timelock, with an independent 2-of-3 canceller; no upgrade or pause can block an exit; residual risk stated plainly. The "non-upgradeable" claim is now scoped to SparkPoint's own vault.
+- Cap inputs in the admin form are converted through a tested helper (`toRawCaps`) so a mistyped cap cannot silently block deposits.
+
 ### Added (P12 — on-chain vault discovery)
 
 - **The curator now discovers vaults from the chain itself, not just an API.** A new crawler enumerates every `VaultV2Factory.CreateVaultV2` log on 4663 (block 0 → head), reads each vault's facts on-chain (asset, `totalAssets`, fees, curator/owner, age, gate abdication) and re-checks the FR-020 gate abdications for every candidate. API candidates missing from those logs get a DANGER warning and fail screening; API rows are cross-checked against chain truth (asset address/symbol mismatch or a >50% TVL disagreement is DANGER); a configured crawl that fails **fails the run** (last-good list preserved) unless `CURATOR_ONCHAIN_REQUIRED=false` opts into API-only degradation. A second, optional archive RPC derives a share-price APY for vaults the API has no figure for.
