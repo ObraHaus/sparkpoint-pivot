@@ -36,7 +36,7 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 
 - [ ] **T401** CI: `upgrades-core validate` + `slither-check-upgradeability` + full Foundry suite on every PR touching contracts.
 - [ ] **T402** External review of the implementation + beacon upgrade path; resolve findings.
-- [ ] **T403** Operator-signed deploy on 4663: TimelockController → beacon → implementation → factory; seed allowlist; verify addresses + attestation; update address books.
+- [x] **T403** Operator-signed deploy on 4663: TimelockController → beacon → implementation → factory; on-chain verification passed; 4663 book updated. *(allowlist seed remains gated on Gate 0; Safe `setDeployer` op `0x3581b36c…85e0` scheduled 2026-09-19, executable 2026-09-22 07:43 UTC.)*
 - [ ] **T404** [GATED] First wrapper deployment for a live curated vault (requires Gate 0) via the deploy runner.
 
 ## Phase W5 — Product wiring + disclosure (P11)
