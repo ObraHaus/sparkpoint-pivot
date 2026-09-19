@@ -4,6 +4,9 @@ pragma solidity 0.8.24;
 import {
     ERC4626Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -43,7 +46,11 @@ import { ISparkPointUniversalVault } from "../interfaces/ISparkPointUniversalVau
 ///      tax principal.
 ///
 ///      STORAGE: ERC-7201 namespaced (slot derived from "sparkpoint.storage.SparkPointUniversalVault").
-contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVault {
+contract SparkPointUniversalVault is
+    ERC4626Upgradeable,
+    ReentrancyGuardUpgradeable,
+    ISparkPointUniversalVault
+{
     using SafeERC20 for IERC20;
 
     /// @dev Hard cap on the performance-fee rate (bytecode constant). Governance can NEVER exceed it.
@@ -121,6 +128,9 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
 
         __ERC20_init(p.name, p.symbol);
         __ERC4626_init(p.asset);
+        // Deposits/withdrawals are user entry points that make external calls to the child; the
+        // guard makes a reentrant child (or a hook-bearing share token) unable to re-enter them.
+        __ReentrancyGuard_init();
 
         UniversalVaultStorage storage $ = _store();
         $.child = p.child;
@@ -199,7 +209,16 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     ///         never a spuriously-zero clamp that would block the escape hatch.
     function availableLiquidity() public view returns (uint256) {
         UniversalVaultStorage storage $ = _store();
-        uint256 mw = $.child.maxWithdraw(address(this));
+        uint256 mw;
+        // EIP-4626 says max* MUST NOT revert — real vaults do anyway. A revert here would brick
+        // `maxWithdraw` and, through the OZ clamp, BLOCK the exit (N2). On a reverting view we fall
+        // back to the full claim (optimistic): the real child.withdraw and the "PARTIAL" require in
+        // `_withdraw` still fail-close CLEANLY if liquidity is genuinely short.
+        try $.child.maxWithdraw(address(this)) returns (uint256 value) {
+            mw = value;
+        } catch {
+            mw = type(uint256).max;
+        }
         if (mw == 0 && totalAssets() > 0) {
             return $.child.convertToAssets($.child.balanceOf(address(this)));
         }
@@ -226,6 +245,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
         public
         override
         whenDepositsAllowed
+        nonReentrant
         returns (uint256 shares)
     {
         shares = _depositChecked(assets, receiver, 0);
@@ -236,6 +256,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     function deposit(uint256 assets, address receiver, uint256 minSharesOut)
         external
         whenDepositsAllowed
+        nonReentrant
         returns (uint256 shares)
     {
         shares = _depositChecked(assets, receiver, minSharesOut);
@@ -245,6 +266,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
         public
         override
         whenDepositsAllowed
+        nonReentrant
         returns (uint256 assets)
     {
         assets = _mintChecked(shares, receiver, type(uint256).max);
@@ -254,6 +276,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     function mint(uint256 shares, address receiver, uint256 maxAssetsIn)
         external
         whenDepositsAllowed
+        nonReentrant
         returns (uint256 assets)
     {
         assets = _mintChecked(shares, receiver, maxAssetsIn);
@@ -307,6 +330,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     function withdraw(uint256 assets, address receiver, address owner)
         public
         override
+        nonReentrant
         returns (uint256 shares)
     {
         _tryAccrueFee(); // FAIL-OPEN: can never block the exit
@@ -316,6 +340,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     function redeem(uint256 shares, address receiver, address owner)
         public
         override
+        nonReentrant
         returns (uint256 assets)
     {
         _tryAccrueFee(); // FAIL-OPEN: can never block the exit
@@ -355,8 +380,12 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
         if (pps <= hwm) return 0; // flat/down -> no fee, HWM unchanged
 
         uint256 supply = totalSupply();
-        uint256 gainAssets = ((pps - hwm) * supply) / 1e18; // yield realized above the mark
-        uint256 feeAssets = (gainAssets * $.performanceFeeBps) / _BPS_DENOMINATOR;
+        uint256 gross = (pps - hwm) * supply; // yield x shares, before any division
+        uint256 gainAssets = gross / 1e18; // event figure (floored, as before)
+        // ONE division over the full-precision product: no precision is lost to an intermediate
+        // floor, and the result still rounds DOWN (holders' favor). Math.mulDiv keeps the
+        // 512-bit intermediate safe at any realistic supply.
+        uint256 feeAssets = Math.mulDiv(gross, $.performanceFeeBps, 1e18 * _BPS_DENOMINATOR);
         if (feeAssets < 1) return 0;
 
         uint256 ta = totalAssets();
@@ -379,7 +408,7 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
     /// @dev FAIL-OPEN: a revert in fee accrual is swallowed so redemption/deposit is never blocked
     ///      (N2). The external self-call boundary is what makes the try/catch effective.
     function _tryAccrueFee() internal {
-        try this.accrueFee() returns (uint256) { } catch { }
+        try this.accrueFee() { } catch { }
     }
 
     /// @notice MANDATORY (non-fail-open) deposit-time HWM advance: settles the HWM up to the current

@@ -26,7 +26,7 @@ import { ISparkPointVaultFactoryV2 } from "../interfaces/ISparkPointVaultFactory
 /// @dev AUTHORITY (constitution v4.0.0):
 ///        owner        the TimelockController (3-of-5 proposer, independent canceller, ≥72h delay).
 ///                     Owns the allowlist, the deployer role, the fleet defaults, and this factory's
-///                     own UUPS upgrade path (`_authorizeUpgrade onlyOwner`) — never an EOA.
+///                     own upgrade path (Transparent proxy; ProxyAdmin owner) — never an EOA.
 ///        deployer     a scoped hot key (the AI wrapper-deploy runner). It can ONLY call
 ///                     `createVault` for an ALLOWLISTED child with fee ≤ 2000 and bounded caps.
 ///                     It cannot upgrade, allowlist, pause, set recipients, or move funds.
@@ -79,7 +79,7 @@ contract SparkPointVaultFactoryV2 is Initializable, OwnableUpgradeable, ISparkPo
         _disableInitializers();
     }
 
-    /// @notice One-time initializer (the factory is deployed behind a UUPS ERC1967 proxy).
+    /// @notice One-time initializer (the factory runs behind a Transparent proxy).
     /// @param owner_ the TimelockController.
     /// @param beacon_ the UpgradeableBeacon owned by the same timelock.
     /// @param guardian_ the wrapper guardian (normally the same timelock).
@@ -232,7 +232,7 @@ contract SparkPointVaultFactoryV2 is Initializable, OwnableUpgradeable, ISparkPo
         if (child.asset() == address(0)) revert InvalidChild();
         if (child.decimals() > _MAX_DECIMALS) revert InvalidChild();
         // A reverting conversion is a hard reject; a 0 here (empty or fully-capped child) is legal.
-        try child.convertToAssets(1e18) returns (uint256) { }
+        try child.convertToAssets(1e18) { }
         catch {
             revert InvalidChild();
         }
