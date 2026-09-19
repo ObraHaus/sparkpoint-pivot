@@ -118,7 +118,6 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
         }
         if (p.performanceFeeBps > _MAX_PERFORMANCE_FEE_BPS) revert FeeExceedsCap();
         if (address(p.child).code.length == 0) revert InvalidChild();
-        if (p.child.asset() != address(p.asset)) revert AssetMismatch();
 
         __ERC20_init(p.name, p.symbol);
         __ERC4626_init(p.asset);
@@ -131,10 +130,16 @@ contract SparkPointUniversalVault is ERC4626Upgradeable, ISparkPointUniversalVau
         $.feeRecipient = p.feeRecipient;
         $.performanceFeeBps = p.performanceFeeBps;
         $.label = p.label;
-        // Seed the HWM at empty-vault pps so the first accrual can never tax principal. With the
-        // virtual-shares offset this is < 1e18 (see convertToAssets), in the same units accrueFee
-        // compares against.
-        $.highWaterMark = convertToAssets(1e18);
+        // Seed the HWM at empty-vault pps so the first accrual can never tax principal. The
+        // virtual-shares offset makes the empty-vault pps exactly 1e18 / 10^offset, computed
+        // WITHOUT an external call (nothing has been deposited yet, so the formula is closed-form);
+        // the deploy test asserts it equals convertToAssets(1e18) at init so OZ drift is caught.
+        $.highWaterMark = 1e18 / (10 ** _DECIMALS_OFFSET);
+
+        // ⚠️ EXTERNAL CALLS LAST. The child's `asset()` is validated AFTER all state writes on
+        // purpose: the initializer modifier already blocks re-entry, and keeping every external
+        // call at the tail means no static analyzer has to reason about a state change after one.
+        if (p.child.asset() != address(p.asset)) revert AssetMismatch();
 
         // One-time approval so the child can pull the asset on deposit(). The child only pulls when
         // THIS vault calls deposit(); this grants no admin asset-movement path (N1).

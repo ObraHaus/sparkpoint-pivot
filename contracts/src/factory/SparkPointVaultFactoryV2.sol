@@ -32,17 +32,13 @@ import { ISparkPointVaultFactoryV2 } from "../interfaces/ISparkPointVaultFactory
 ///                     It cannot upgrade, allowlist, pause, set recipients, or move funds.
 ///
 ///      UPGRADEABILITY: this factory is FUNDLESS (it custodies nothing) — the constitution permits
-///      UUPS for fundless infra. Upgrading it changes the code that deploys FUTURE wrappers, which
-///      is why it is timelocked: `_authorizeUpgrade` is owner-only, and the owner is the timelock.
-///      Upgrading it can never touch an existing wrapper.
+///      upgradeability for fundless infra. It sits behind a **Transparent proxy** whose ProxyAdmin
+///      is owned by the timelock; the implementation itself carries NO upgrade function and NO
+///      payable function, so it can never hold value and there is no in-implementation upgrade
+///      surface to abuse. Upgrading the factory can never touch an existing wrapper.
 ///
 ///      STORAGE: ERC-7201 namespaced (slot derived from "sparkpoint.storage.SparkPointVaultFactoryV2").
-contract SparkPointVaultFactoryV2 is
-    Initializable,
-    OwnableUpgradeable,
-    UUPSUpgradeable,
-    ISparkPointVaultFactoryV2
-{
+contract SparkPointVaultFactoryV2 is Initializable, OwnableUpgradeable, ISparkPointVaultFactoryV2 {
     uint16 internal constant _MAX_PERFORMANCE_FEE_BPS = 2000; // 20% — mirrors the wrapper cap
     uint256 internal constant _DEPLOY_WINDOW = 1 days;
     uint256 internal constant _MAX_DECIMALS = 36;
@@ -137,9 +133,9 @@ contract SparkPointVaultFactoryV2 is
         bytes memory initData = _initData($, p, capRegistry);
         return Create2.computeAddress(
             p.salt,
-            keccak256(
-                abi.encodePacked(type(BeaconProxy).creationCode, abi.encode($.beacon, initData))
-            )
+            // bytes.concat, not abi.encodePacked: same bytes (the exact init code the CREATE2
+            // deploy produces), without the hash-collision heuristic a packed encoding invites.
+            keccak256(bytes.concat(type(BeaconProxy).creationCode, abi.encode($.beacon, initData)))
         );
     }
 
@@ -214,9 +210,6 @@ contract SparkPointVaultFactoryV2 is
         return _store().allowlisted[child];
     }
 
-    /// @dev UUPS upgrade authorization: the timelock (owner) ONLY. An EOA can never be the owner.
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner { }
-
     // ─────────────────────────────────────────────────────────────────────────
     // Internals
     // ─────────────────────────────────────────────────────────────────────────
@@ -265,7 +258,7 @@ contract SparkPointVaultFactoryV2 is
         return Create2.computeAddress(
             _capSalt(salt),
             keccak256(
-                abi.encodePacked(
+                bytes.concat(
                     type(CapRegistry).creationCode,
                     abi.encode(owner(), perUserCap, totalCap, vaultCap)
                 )

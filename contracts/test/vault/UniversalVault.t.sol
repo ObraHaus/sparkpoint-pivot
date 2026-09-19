@@ -4,8 +4,14 @@ pragma solidity 0.8.24;
 import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { UpgradeableBeacon } from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
+import {
+    TransparentUpgradeableProxy
+} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import { ProxyAdmin } from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {
+    ITransparentUpgradeableProxy
+} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import { SparkPointUniversalVault } from "../../src/vault/SparkPointUniversalVault.sol";
 import { SparkPointVaultFactoryV2 } from "../../src/factory/SparkPointVaultFactoryV2.sol";
@@ -44,12 +50,14 @@ contract UniversalVaultTest is Test {
         implementation = new SparkPointUniversalVault();
         beacon = new UpgradeableBeacon(address(implementation), owner);
 
-        // Fundless factory behind a UUPS proxy (owner = the timelock stand-in).
+        // Fundless factory behind a Transparent proxy (ProxyAdmin owner = the timelock stand-in).
         SparkPointVaultFactoryV2 factoryImpl = new SparkPointVaultFactoryV2();
         bytes memory init = abi.encodeCall(
             SparkPointVaultFactoryV2.initialize, (owner, address(beacon), guardian, feeRecipient)
         );
-        factory = SparkPointVaultFactoryV2(address(new ERC1967Proxy(address(factoryImpl), init)));
+        factory = SparkPointVaultFactoryV2(
+            address(new TransparentUpgradeableProxy(address(factoryImpl), owner, init))
+        );
 
         vm.startPrank(owner);
         factory.setAllowlisted(address(child), true);
@@ -105,6 +113,8 @@ contract UniversalVaultTest is Test {
         assertEq(vault.exitFeeBasisPoints(), 0);
         assertEq(vault.managementFeeBasisPoints(), 0);
         assertEq(vault.MAX_PERFORMANCE_FEE_BPS(), 2000);
+        // The constant seed must equal OZ's empty-vault convertToAssets(1e18) — catches formula drift.
+        assertEq(vault.highWaterMark(), vault.convertToAssets(1e18));
     }
 
     function test_predict_matches_deployed_address() public {
@@ -375,12 +385,17 @@ contract UniversalVaultTest is Test {
     }
 
     function test_factory_upgrade_only_owner() public {
+        // Transparent proxy: the ProxyAdmin (owned by the timelock) is the only upgrade path.
+        bytes32 adminSlot = bytes32(uint256(keccak256("eip1967.proxy.admin")) - 1);
+        ProxyAdmin admin = ProxyAdmin(address(uint160(uint256(vm.load(address(factory), adminSlot)))));
         SparkPointVaultFactoryV2 newImpl = new SparkPointVaultFactoryV2();
+
         vm.prank(alice);
         vm.expectRevert();
-        factory.upgradeToAndCall(address(newImpl), "");
+        admin.upgradeAndCall(ITransparentUpgradeableProxy(address(factory)), address(newImpl), "");
+
         vm.prank(owner);
-        factory.upgradeToAndCall(address(newImpl), "");
+        admin.upgradeAndCall(ITransparentUpgradeableProxy(address(factory)), address(newImpl), "");
         assertEq(factory.guardian(), guardian);
     }
 

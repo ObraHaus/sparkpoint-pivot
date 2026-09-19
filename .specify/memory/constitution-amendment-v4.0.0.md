@@ -22,7 +22,7 @@ The memo's evidence is the rationale; summarized:
 |---|---|
 | `SparkPointUniversalVault` | The ONE implementation: any allowlisted ERC-4626 child, share-price HWM performance fee (≤20%, share dilution to a non-privileged recipient), 0 management/entry/exit, pause deposits only, withdraw always open, no sweep/rescue/upgrade selector of its own, child bound at initialization with **no setter**. |
 | `UpgradeableBeacon` (`SparkPointVaultBeacon`) | Owner = the **TimelockController**. A beacon upgrade replaces the implementation for every proxy at once (fleet-wide; accepted and disclosed). |
-| `SparkPointVaultFactoryV2` | **Deploy-only**: validates the child on-chain, CREATE2-deploys a `BeaconProxy` + initializes it, deploys the per-wrapper `CapRegistry`. Holds no funds and retains **no** authority over deployed wrappers (the beacon owner is the timelock, not the factory). |
+| `SparkPointVaultFactoryV2` | **Deploy-only**: validates the child on-chain, CREATE2-deploys a `BeaconProxy` + initializes it, deploys the per-wrapper `CapRegistry`. Holds no funds and retains **no** authority over deployed wrappers (the beacon owner is the timelock, not the factory). The factory itself runs behind a **Transparent proxy** (ProxyAdmin owner = timelock): its implementation carries no upgrade function and no payable function, so it can never hold value. |
 | Scoped deployer | A dedicated hot key (generated `0xB555dbEc2cC5908c8B245ED84cb038D5d205D875`) held by a **deterministic runner** (keeper-style), never by the LLM agent. Factory role-gated to it: it can deploy for an **already-allowlisted** child with fee ≤ cap and caps within bounds, and nothing else. Gas only. |
 
 **Authority split (mandatory, enforced by construction):**
@@ -53,7 +53,7 @@ The memo's evidence is the rationale; summarized:
 | **V · factory** | deploy-only, no post-deploy authority | adds: role-gated to a **scoped deployer** with no upgrade/allowlist/pause/fund power. |
 | **VII** | "each wrapper is bound to exactly one **Morpho** vault for its entire lifetime" | "exactly one **allowlisted child vault** for its entire lifetime" — single-child rule unchanged; no meta-vault, no cross-vault routing. **Admission remains Morpho-allowlist-scoped unless separately amended** (the wrapper's code is universal; admission is not). |
 | **Additional · chain & scope** | "single-purpose, non-upgradeable ERC-4626 wrapper" | same sentence, upgraded to "single-purpose wrapper under the IV.5/v4.0.0 upgrade rule". |
-| **Additional · upgradeability** | UUPS permitted only for the user account + fundless infra | adds: "(c) the wrapper **beacon**, owned by the TimelockController under IV.5/v4.0.0; the automated deployer holds no upgrade power." |
+| **Additional · upgradeability** | UUPS permitted only for the user account + fundless infra | generalized to "proxy upgradeability (UUPS or Transparent/ProxyAdmin)"; adds "(c) the wrapper **beacon**, owned by the TimelockController under IV.5/v4.0.0; the automated deployer holds no upgrade power." |
 | **Contracts (authoritative)** | `SparkPointMorphoVault` family | adds `SparkPointUniversalVault`, `SparkPointVaultFactoryV2`, and the TimelockController-owned beacon; the scoped deployer runner. |
 
 ## Non-custody analysis (why this is a super-majority re-ratification)
