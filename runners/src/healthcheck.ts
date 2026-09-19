@@ -35,9 +35,15 @@ function envInt(name: string, fallback: number): number {
   return value;
 }
 
-if (SERVICE !== "keeper" && SERVICE !== "sweeper" && SERVICE !== "curator") {
+if (
+  SERVICE !== "keeper" &&
+  SERVICE !== "sweeper" &&
+  SERVICE !== "curator" &&
+  SERVICE !== "deployer"
+) {
   console.error(
-    `SERVICE must be "keeper", "sweeper" or "curator" (got ${SERVICE ? `"${SERVICE}"` : "unset"})`,
+    `SERVICE must be "keeper", "sweeper", "curator" or "deployer" ` +
+      `(got ${SERVICE ? `"${SERVICE}"` : "unset"})`,
   );
   // Non-zero so a container started without SERVICE reports unhealthy rather than passing blindly.
   process.exit(1);
@@ -58,7 +64,9 @@ const intervalSec =
     ? envInt("KEEPER_TICK_SEC", 60)
     : SERVICE === "sweeper"
       ? envInt("SWEEP_INTERVAL_SEC", 300)
-      : envInt("CURATOR_POLL_SEC", 300);
+      : SERVICE === "deployer"
+        ? envInt("DEPLOYER_POLL_SEC", 120)
+        : envInt("CURATOR_POLL_SEC", 300);
 const maxAgeSec = envInt("HEALTHCHECK_MAX_AGE_SEC", intervalSec * 3 + 60);
 
 if (isFresh(SERVICE, maxAgeSec)) {
