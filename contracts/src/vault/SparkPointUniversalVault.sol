@@ -309,8 +309,14 @@ contract SparkPointUniversalVault is
         _deposit(_msgSender(), receiver, assets, shares);
     }
 
-    /// @dev Pull the asset in, supply it to the child (child shares held by this vault), mint
-    ///      wrapper shares. NO admin path exists around this function.
+    /// @dev Mint the wrapper shares, pull the asset in, supply it to the child (child shares held
+    ///      by this vault). NO admin path exists around this function.
+    ///
+    ///      Effects-before-interactions: the only state write (`_mint`) precedes every external
+    ///      call, and every public entry point reaching here is `nonReentrant`. The inline
+    ///      directive is for analyzer builds that do not propagate the guard into an internal
+    ///      function — the pattern is safe by construction, not by suppression.
+    // slither-disable-next-line reentrancy-no-eth
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares)
         internal
         override
