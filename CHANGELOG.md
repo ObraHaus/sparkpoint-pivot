@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (governance — constitution v4.0.0: universal upgradeable wrapper family)
+
+- **Constitution v4.0.0 ratified** (MAJOR; operator grant 2026-09-18): NON-NEGOTIABLE **N5** is redefined from "non-upgradeable custody semantics" to **bounded, verifiable custody semantics** — a wrapper admitted under IV.5 may be upgraded **only** through a TimelockController-owned beacon (3-of-5 proposer, independent 2-of-3 canceller, ≥72h delay, no EOA), whose upgrade path is never an asset path and never gates withdrawals. Guardrails IV.5(a)/IV.6, Principle V (wrapper shapes + factory), the upgradeability constraint, and the named-contracts list are amended accordingly; single-child/no-meta-vault, allowlist admission, N1–N4, and the fee model are unchanged. Proposal: `.specify/memory/constitution-amendment-v4.0.0.md`.
+- **Spec 049 (`specs/049-universal-vault-wrapper/`)** specifies the beacon fleet (`SparkPointUniversalVault` + TimelockController-owned beacon + deploy-only `SparkPointVaultFactoryV2` + `BeaconProxy` per curated vault) and the **scoped AI deployer** (deploy-only hot key held by a deterministic runner, never the keyless LLM agent). Residual risk recorded: an upgrade key can replace custody code — the timelock is a speed limit and exit window, not an impossibility proof.
+- **Program roadmap** added at `docs/orchestration/vault-program-roadmap.html` (phases, status, decision log).
+
+
 ### Changed (swap polish — more tokens, one-tap chat swaps, less chrome)
 
 - **The swap picker now recommends Robinhood Chain's canonical Stock Tokens** — SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, SPCX, QQQ, GLD, CRCL, RDDT. Addresses come from Robinhood's **official asset registry** (`api.robinhood.com/rhj/assets`, the same source as docs.robinhood.com/chain/contracts) and each was verified on-chain (18dp + a live Uniswap V3 pool vs WETH/USDG). Any other ERC-20 remains paste-importable.
