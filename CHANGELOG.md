@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (049 — wrapper fleet deployed on Robinhood Chain 4663)
+
+- **The universal wrapper fleet is live on 4663** (operator-signed, 2026-09-19): TimelockController `0x62b8b01c…b0B5` (72h delay, PROPOSER = a 3-of-5 Safe `0xA63Ad1a2…E7Bf`, CANCELLER = an independent 2-of-3 Safe `0xe208F33a…8150`, deployer renounced admin), `UpgradeableBeacon` `0xC4D6D11f…ab0c`, `SparkPointUniversalVault` implementation `0xCe1cd084…3D542`, and `SparkPointVaultFactoryV2` behind a Transparent proxy `0x040A7BFD…466dE` (owner/guardian = the timelock). All roles, owners and the 72h delay verified by on-chain reads; recorded in `contracts/deployments/4663/addresses.json → wrapper`. The AI deployer (`0xB555…D875`) is being enabled through the timelock (schedule → 72h → execute); nothing is wrapped yet — Gate 0 (a live child vault on 4663) still stands.
+
+
 ### Added (049 P9 — scoped wrapper deploy runner)
 
 - **Agent queue + S2S work/report surface**: `wrapper_deployments` (migration 0039) records an admin's wrapper deploy request and the runner's result — loud failures included; `/curator/wrapper-jobs*` is machine-facing (S2S, no admin) and never authority. Registered before the `/admin/vaults/{vault}` catch-all.
