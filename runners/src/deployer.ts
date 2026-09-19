@@ -89,6 +89,7 @@ export type AdmissionOutcome = {
   proxyAddress?: Address;
   capRegistry?: Address | null;
   readyAt?: number;
+  byAddress?: Address;
   error?: string;
 };
 
@@ -168,6 +169,9 @@ export async function runOnce(config: DeployerConfig, deps: DeployerDeps): Promi
           ok: true,
           txHash: result.txHash,
           readyAt: result.readyAt,
+          // The on-chain `by` is the runner itself; recording it keeps the panel's provenance
+          // honest (AI entry vs an admin admission) without an extra chain read.
+          byAddress: deps.runnerAddress,
         });
         acted += 1;
         continue;
@@ -258,6 +262,7 @@ export function realDeps(config: DeployerConfig, privateKey: Hex): DeployerDeps 
         proxyAddress: outcome.proxyAddress ?? null,
         capRegistry: outcome.capRegistry ?? null,
         readyAt: outcome.readyAt ?? null,
+        byAddress: outcome.byAddress ?? null,
         error: outcome.error ?? null,
         runnerCommit: process.env.DEPLOYER_COMMIT ?? null,
       }),
