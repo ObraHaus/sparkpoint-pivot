@@ -279,7 +279,7 @@
           <ul>
             <li><span class="st d">DONE</span><span><b>Deploy script authored + simulated on live 4663</b>: <code>contracts/script/DeployUniversalWrapper.s.sol</code> → TimelockController → beacon → implementation → factory proxy. Sim: <b>9.89M gas ≈ 0.00132 ETH</b>.</span></li>
             <li><span class="st d">DONE</span><span>Safety-by-construction in the script: both authorities must be <b>contracts</b> (Safes) and independent; delay floored at 72h; deployer renounces admin in the same run; factory behind a Transparent proxy (ProxyAdmin owner = timelock).</span></li>
-            <li><span class="st d">DONE</span><span><b>Cast deploy path authored + dry-run on live 4663</b> (<code>deploy-wrapper-fleet-4663.sh</code>: Safes → timelock → beacon → impl → factory, every tx awaited/receipt-checked; deterministic Safes <b>0xA63Ad1a2…E7Bf</b> / <b>0xe208F33a…8150</b>); forge scripts kept as the simulated alternative. Five signer wallets generated.</span></li>
+            <li><span class="st d">DONE</span><span><b>Deploy scripts authored + simulated on live 4663</b> in the tracker convention (<code>$LIVE</code> + keystore, dry-run then <code>--broadcast</code>, <code>--slow</code>): Safes first (deterministic <b>0xA63Ad1a2…E7Bf</b> / <b>0xe208F33a…8150</b>), then timelock → beacon → impl → factory. Five signer wallets generated.</span></li>
             <li><span class="st a">NOW</span><span><b>Run the deploy</b> (see the command block below) — needs the 3-of-5 proposer Safe and the independent 2-of-3 canceller Safe addresses.</span></li>
             <li><span class="st p">NEXT</span><span>Through the timelock: <code>setDeployer(0xB555…D875, true)</code>; then <code>setAllowlisted(child, true)</code> per curated vault once Gate 0 exists. Record addresses in the 4663 book.</span></li>
             <li><span class="st p">NEXT</span><span>Deploy the <code>SERVICE=deployer</code> + <code>SERVICE=curator</code> Coolify apps (env tables in <code>runners/README.md</code>).</span></li>
@@ -319,39 +319,63 @@
   <section class="card" id="deploy-commands">
     <div class="kicker" style="margin-bottom:4px"><span class="pill active">P10 · OPERATOR-SIGNED</span><span class="pill">simulated on live 4663</span></div>
     <h2 style="margin-top:8px">Deploy commands — run these</h2>
-    <p class="small" style="margin:0 0 10px">One <b>cast</b> script does the whole sequence: two Safes → TimelockController → beacon → implementation → factory proxy, with every transaction awaited and receipt-checked. The deployer EOA <code>0xA71e…5c30</code> needs <b>~0.005 ETH on 4663</b> headroom. <b>Deviation recorded:</b> the canceller quorum (W3–W5) overlaps the proposer owner set and one operator holds all five keys today — the 72h delay is the primary guard.</p>
-<pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55">cd /home/hello/project/sparkpoint-pivot/contracts
+    <p class="small" style="margin:0 0 10px">Tracker convention: <code>$LIVE</code> + the <code>sparkybeta-deployer</code> keystore, <code>unset BCAST</code> to dry-run then <code>export BCAST=--broadcast</code>, <code>--slow</code> always (delegated EOA), every step a separate awaited tx, verified with <code>cast call</code>. Deployer balance headroom: <b>~0.005 ETH</b>. <b>Deviation recorded:</b> the canceller quorum (W3–W5) overlaps the proposer owner set and one operator holds all five keys today — the 72h delay is the primary guard.</p>
+<pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55"><span class="c"># 0 · SETUP (once) — tracker convention: $LIVE, the sparkybeta-deployer keystore, $BCAST unset = dry-run</span>
+cd ~/project/sparkpoint-pivot/contracts
+export LIVE="&lt;4663 Alchemy RPC&gt;"        <span class="c"># Chainstack is out of RUs — never use it</span>
+unset BCAST
+cast chain-id --rpc-url $LIVE              <span class="c"># must print 4663</span>
+cast balance "$(cast wallet address --account sparkybeta-deployer)" --ether --rpc-url $LIVE
 
-# Prereqs: RPC_URL + DEPLOYER_PRIVATE_KEY in the environment (workspace env file);
-#          deployer 0xA71e…5c30 funded with ~0.005 ETH on 4663 for headroom.
-# Style: CAST, one awaited receipt-checked tx per step — the deployer EOA is
-#        EIP-7702 delegated and back-to-back sends can drop a receipt (same
-#        reason the Vault-V2 deploy script uses cast).
+<span class="c"># 1 · THE TWO SAFES — dry run first (prints the deterministic addresses)</span>
+export W1=0x95c72A341bA9F7b97820caffF9B8179DF0668E04
+export W2=0xCE1098d1be482A458F40F6078f53055a434F05FF
+export W3=0xB11c12673E6cC8b8636239DFcC1d92317Fd4968D
+export W4=0x529459AC59e539a51C43C99E5e88A9074bA4a6BC
+export W5=0x5843cE8c3DDA1F2262FD5A6c09D10953B8BE256c
+export PROPOSER_OWNERS="$W1,$W2,$W3,$W4,$W5"     <span class="c"># threshold 3</span>
+export CANCELLER_OWNERS="$W3,$W4,$W5"            <span class="c"># threshold 2 (recorded deviation: overlaps proposer)</span>
+forge script script/DeployWrapperSafes.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
 
-# 1 · PLAN — read-only; prints the deterministic Safe addresses + the sequence:
-DRY_RUN=1 bash script/deploy-wrapper-fleet-4663.sh
+<span class="c"># 2 · THE TWO SAFES — broadcast</span>
+export BCAST=--broadcast
+forge script script/DeployWrapperSafes.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
 
-# 2 · DEPLOY (operator-signed, ~0.0015 ETH):
-bash script/deploy-wrapper-fleet-4663.sh
-#   creates → proposer Safe 0xA63Ad1a2…E7Bf (3-of-5)
-#             canceller Safe 0xe208F33a…8150 (2-of-3)
-#             TimelockController(72h, explicit roles, deployer renounces admin)
-#             SparkPointUniversalVault impl · UpgradeableBeacon(owner=timelock)
-#             SparkPointVaultFactoryV2 impl · Transparent proxy(owner=timelock)
-#   then VERIFIES roles + ownership on-chain and prints the address block.
+<span class="c"># 3 · EXPORT + VERIFY the Safes (predicted: 0xA63Ad1a2…E7Bf / 0xe208F33a…8150)</span>
+export TIMELOCK_PROPOSER=0xA63Ad1a26b062A289C6b0D0Ac76AD8527061E7Bf
+export TIMELOCK_CANCELLER=0xe208F33a72ec8dEaC9956e478f0a63d189678150
+cast code $TIMELOCK_PROPOSER  --rpc-url $LIVE    <span class="c"># must NOT be 0x</span>
+cast code $TIMELOCK_CANCELLER --rpc-url $LIVE    <span class="c"># must NOT be 0x</span>
 
-# 3 · Record the printed addresses under a new `wrapper` section in
-#     contracts/deployments/4663/addresses.json
+<span class="c"># 4 · THE FLEET — dry run (simulated: ~0.00132 ETH)</span>
+unset BCAST
+forge script script/DeployUniversalWrapper.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
 
-# 4 · Through the TIMELOCK (Safe A schedules → 72h → anyone executes; Safe B vetoes):
-#       factory.setDeployer(0xB555dbEc2cC5908c8B245ED84cb038D5d205D875, true)
-#       factory.setAllowlisted(&lt;child vault&gt;, true)        # per curated vault, Gate 0
+<span class="c"># 5 · THE FLEET — broadcast, then export what it prints</span>
+export BCAST=--broadcast
+forge script script/DeployUniversalWrapper.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
+export TIMELOCK=0x… BEACON=0x… IMPL=0x… FACTORY=0x… FACTORY_IMPL=0x…
 
-# 5 · Deploy the runner apps: SERVICE=deployer + SERVICE=curator (env: runners/README.md).
+<span class="c"># 6 · VERIFY on-chain</span>
+cast call $BEACON  "implementation()(address)" --rpc-url $LIVE    <span class="c"># == $IMPL</span>
+cast call $FACTORY "owner()(address)"          --rpc-url $LIVE    <span class="c"># == $TIMELOCK</span>
+cast call $FACTORY "guardian()(address)"       --rpc-url $LIVE    <span class="c"># == $TIMELOCK</span>
+cast call $FACTORY "beacon()(address)"         --rpc-url $LIVE    <span class="c"># == $BEACON</span>
+cast call $TIMELOCK "hasRole(bytes32,address)(bool)" $(cast keccak "PROPOSER_ROLE")  $TIMELOCK_PROPOSER  --rpc-url $LIVE   <span class="c"># true</span>
+cast call $TIMELOCK "hasRole(bytes32,address)(bool)" $(cast keccak "CANCELLER_ROLE") $TIMELOCK_CANCELLER --rpc-url $LIVE   <span class="c"># true</span>
+cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"># 259200</span>
 
-# (A forge-script path also exists — script/DeployWrapperSafes.s.sol +
-#  script/DeployUniversalWrapper.s.sol — kept as the simulated alternative.)</pre>
-    <div class="dec" style="margin-top:10px"><b>Assets provided (2026-09-19):</b> five signer wallets generated (mnemonic + key in <code>~/.claude/sparkpoint-wrapper-signers.txt</code>, 0600, never in the repo); a <b>cast deploy script</b> (<code>deploy-wrapper-fleet-4663.sh</code>) covering Safes → timelock → beacon → implementation → factory with on-chain verification; and the forge-script alternative (simulated: Safes ~0.00012 ETH, fleet ~0.00132 ETH). Deterministic Safe addresses: <b>proposer 0xA63Ad1a2…E7Bf</b> · <b>canceller 0xe208F33a…8150</b>. <b>Deviation recorded:</b> the canceller quorum (W3–W5) overlaps the proposer set and one operator holds all five keys today — the 72h timelock delay is the primary guard until signers move to independent hardware holders.</div>
+<span class="c"># 7 · RECORD: add a `wrapper` section to contracts/deployments/4663/addresses.json</span>
+
+<span class="c"># 8 · THROUGH THE TIMELOCK (Safe A schedules → 72h → anyone executes; Safe B can veto):</span>
+<span class="c">#     factory.setDeployer(0xB555dbEc2cC5908c8B245ED84cb038D5d205D875, true)</span>
+<span class="c">#     factory.setAllowlisted(&lt;child vault&gt;, true)      # per curated vault, once Gate 0 exists</span>
+<span class="c">#   e.g. schedule from Safe A: cast send $TIMELOCK "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" \</span>
+<span class="c">#     $FACTORY 0 $(cast calldata "setDeployer(address,bool)" 0xB555dbEc2cC5908c8B245ED84cb038D5d205D875 true) \</span>
+<span class="c">#     $ZERO32 $SALT 259200 --rpc-url $LIVE --account sparkybeta-deployer</span>
+
+<span class="c"># 9 · RUNNER APPS: SERVICE=deployer + SERVICE=curator (env tables: runners/README.md)</span></pre>
+    <div class="dec" style="margin-top:10px"><b>Assets provided (2026-09-19):</b> five signer wallets generated (mnemonic + key in <code>~/.claude/sparkpoint-wrapper-signers.txt</code>, 0600, never in the repo); two forge scripts following the tracker convention, both simulated on live 4663 — <code>DeployWrapperSafes.s.sol</code> (~0.00012 ETH, deterministic Safes <b>0xA63Ad1a2…E7Bf</b> / <b>0xe208F33a…8150</b>) and <code>DeployUniversalWrapper.s.sol</code> (~0.00132 ETH, fleet + on-chain verification). <b>Deviation recorded:</b> the canceller quorum (W3–W5) overlaps the proposer set and one operator holds all five keys today — the 72h timelock delay is the primary guard until signers move to independent hardware holders.</div>
   </section>
 
   <!-- ── REMAINING ITEMS ───────────────────────────────────────────── -->
