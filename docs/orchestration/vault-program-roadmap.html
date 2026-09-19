@@ -279,6 +279,7 @@
           <ul>
             <li><span class="st d">DONE</span><span><b>Deploy script authored + simulated on live 4663</b>: <code>contracts/script/DeployUniversalWrapper.s.sol</code> → TimelockController → beacon → implementation → factory proxy. Sim: <b>9.89M gas ≈ 0.00132 ETH</b>.</span></li>
             <li><span class="st d">DONE</span><span>Safety-by-construction in the script: both authorities must be <b>contracts</b> (Safes) and independent; delay floored at 72h; deployer renounces admin in the same run; factory behind a Transparent proxy (ProxyAdmin owner = timelock).</span></li>
+            <li><span class="st d">DONE</span><span><b>Safe-deploy script authored + simulated</b> (<code>DeployWrapperSafes.s.sol</code> → canonical Safe v1.4.1 factory on 4663, ~0.00012 ETH): proposer 3-of-5, canceller 2-of-3; five fresh signer wallets generated.</span></li>
             <li><span class="st a">NOW</span><span><b>Run the deploy</b> (see the command block below) — needs the 3-of-5 proposer Safe and the independent 2-of-3 canceller Safe addresses.</span></li>
             <li><span class="st p">NEXT</span><span>Through the timelock: <code>setDeployer(0xB555…D875, true)</code>; then <code>setAllowlisted(child, true)</code> per curated vault once Gate 0 exists. Record addresses in the 4663 book.</span></li>
             <li><span class="st p">NEXT</span><span>Deploy the <code>SERVICE=deployer</code> + <code>SERVICE=curator</code> Coolify apps (env tables in <code>runners/README.md</code>).</span></li>
@@ -319,17 +320,32 @@
     <div class="kicker" style="margin-bottom:4px"><span class="pill active">P10 · OPERATOR-SIGNED</span><span class="pill">simulated on live 4663</span></div>
     <h2 style="margin-top:8px">Deploy commands — run these</h2>
     <p class="small" style="margin:0 0 10px">The deployer EOA <code>0xA71e…5c30</code> needs <b>≈0.002 ETH on 4663</b> for gas. Both authorities <b>must be contracts</b> (multisig Safes) and <b>independent</b> — the script reverts on an EOA, and the delay is floored at 72h. RPC + key come from the workspace env (<code>RPC_URL</code>, <code>DEPLOYER_PRIVATE_KEY</code>).</p>
-    <pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55">cd /home/hello/project/sparkpoint-pivot/contracts
+<pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55">cd /home/hello/project/sparkpoint-pivot/contracts
 
-# 1 · Name the two authorities (fill these in):
-export TIMELOCK_PROPOSER=&lt;3-of-5 multisig Safe address&gt;
-export TIMELOCK_CANCELLER=&lt;independent 2-of-3 guardian Safe address&gt;
+# 0 · CREATE THE TWO SAFES (owners = the five generated signer wallets, saved at
+#     ~/.claude/sparkpoint-wrapper-signers.txt — addresses below; move them to hardware).
+#     proposer = 3-of-5 over W1..W5 · canceller = 2-of-3 over W3,W4,W5.
+W1=0x95c72A341bA9F7b97820caffF9B8179DF0668E04
+W2=0xCE1098d1be482A458F40F6078f53055a434F05FF
+W3=0xB11c12673E6cC8b8636239DFcC1d92317Fd4968D
+W4=0x529459AC59e539a51C43C99E5e88A9074bA4a6BC
+W5=0x5843cE8c3DDA1F2262FD5A6c09D10953B8BE256c
 
-# 2 · Dry run (full sequence simulated, no state change):
+export PROPOSER_OWNERS="$W1,$W2,$W3,$W4,$W5"     # threshold 3 (default)
+export CANCELLER_OWNERS="$W3,$W4,$W5"            # threshold 2 (default)
+forge script script/DeployWrapperSafes.s.sol \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --slow
+#    → prints the two SAFE ADDRESSES; paste them below.
+
+# 1 · Point the timelock deploy at those Safe addresses:
+export TIMELOCK_PROPOSER=&lt;proposer Safe printed in step 0&gt;
+export TIMELOCK_CANCELLER=&lt;canceller Safe printed in step 0&gt;
+
+# 2 · Dry run the fleet (full sequence simulated, no state change):
 forge script script/DeployUniversalWrapper.s.sol \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY"
 
-# 3 · Broadcast (operator-signed):
+# 3 · Broadcast the fleet (operator-signed):
 forge script script/DeployUniversalWrapper.s.sol \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --slow
 
@@ -340,7 +356,7 @@ forge script script/DeployUniversalWrapper.s.sol \
 #     independent canceller can veto):
 #       factory.setDeployer(0xB555dbEc2cC5908c8B245ED84cb038D5d205D875, true)
 #       factory.setAllowlisted(&lt;child vault&gt;, true)        # per curated vault, Gate 0</pre>
-    <div class="dec" style="margin-top:10px"><b>I need from you:</b> the <b>3-of-5 proposer Safe</b> and the <b>independent 2-of-3 canceller Safe</b> addresses on 4663 (or a decision to deploy those Safes first). Once you paste them, the exact commands are complete — the dry run above already passes with test values.</div>
+    <div class="dec" style="margin-top:10px"><b>Assets provided (2026-09-19):</b> five signer wallets generated (mnemonic + key in <code>~/.claude/sparkpoint-wrapper-signers.txt</code>, 0600, never in the repo) and two Safe-deploy scripts authored + simulated on live 4663 (<code>DeployWrapperSafes.s.sol</code> ~0.00012 ETH · <code>DeployUniversalWrapper.s.sol</code> ~0.00132 ETH). <b>Deviation recorded:</b> the canceller quorum (W3–W5) overlaps the proposer set and one operator holds all five keys today — the 72h timelock delay is the primary guard until signers move to independent hardware holders.</div>
   </section>
 
   <!-- ── REMAINING ITEMS ───────────────────────────────────────────── -->
@@ -374,7 +390,8 @@ forge script script/DeployUniversalWrapper.s.sol \
         <tr><td>2026-09-18 (late)</td><td>AI deployer key generated <code>0xB555…D875</code> (gas-only; no upgrade/allowlist/pause/fund powers); executed by a deterministic runner, never the LLM agent</td><td><span class="pill done">DONE</span></td></tr>
         <tr><td>2026-09-19</td><td><b>PR #212 merged → develop</b> (spec 048 M2/M3/M4). All OH Defender highs/mediums resolved repo-wide before merge; external audit deferred by operator (Defender suffices).</td><td><span class="pill done">MERGED</span></td></tr>
         <tr><td>2026-09-19</td><td><b>PR #213 merged → develop</b> (constitution v4.0.0 + wrapper contracts + deploy runner). Migration <b>0039 applied</b> to develop (table + 2 indexes, empty).</td><td><span class="pill done">MERGED</span></td></tr>
-        <tr><td>2026-09-19</td><td><b>Deploy script authored + simulated on live 4663</b> (<code>DeployUniversalWrapper.s.sol</code>, ~0.00132 ETH). Operator-signed deploy is the current step; proposer/canceller Safe addresses required.</td><td><span class="pill active">ACTIVE</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Deploy scripts authored + simulated on live 4663</b>: <code>DeployWrapperSafes.s.sol</code> (~0.00012 ETH) then <code>DeployUniversalWrapper.s.sol</code> (~0.00132 ETH). Five signer wallets generated (keystore outside the repo). Operator-signed run is the current step.</td><td><span class="pill active">ACTIVE</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Recorded deviation:</b> canceller quorum (W3–W5) is a subset of the proposer owner set; one operator holds all five keys until hardware distribution. The 72h delay + independent-canceller <i>address</i> remain; true signer independence is a follow-up.</td><td><span class="pill">DEVIATION</span></td></tr>
       </tbody>
     </table>
   </section>
