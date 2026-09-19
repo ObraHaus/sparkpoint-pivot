@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed (web)
+
+- **The “SparkPoint’s own vault” card is gone from `/vault`.** The vault program is wrap-only for now — curate an existing vault, wrap it via our factory, onboard it — so the page stays focused on the curated board and no longer implies a SparkPoint-originated vault is coming to this network.
+
 ### Fixed (beta runners)
 
 - **The `deployer` service was rejected by the container healthcheck.** `healthcheck.ts` still only allowed `keeper` / `sweeper` / `curator`, so the new `sparkpoint-deployer-beta` container exited 1 on every health probe and Coolify stopped it right after deploy. The deployer now has its own freshness window driven by `DEPLOYER_POLL_SEC` (default 120s), plus a regression test covering the service list.

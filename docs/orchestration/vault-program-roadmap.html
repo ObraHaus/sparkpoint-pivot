@@ -150,7 +150,7 @@
           <div class="meta">2026-09-18 · commit 2ebdf2e</div>
           <ul>
             <li><span class="st d">DONE</span><span><b>spec.md / plan.md / tasks.md</b> with locked decisions: performance-fee only · 4663 · daily · hybrid · wireframe A+C.</span></li>
-            <li><span class="st d">DONE</span><span>Verified blocker recorded: Morpho API returned 0 vaults on 4663.</span></li>
+            <li><span class="st d">DONE</span><span>Blocker recorded — later corrected: Morpho’s API returns an empty set for 4663 (it does not index Robinhood Chain), but the chain itself has <b>21 V2 vaults</b> (re-verified 2026-09-19: Steakhouse USDG <code>0xBeEff…09dd</code>, ~$482M). Discovery is the gap — not supply.</span></li>
           </ul>
         </div>
       </div>
@@ -162,7 +162,7 @@
           <div class="meta">agent + runners · migration 0038</div>
           <ul>
             <li><span class="st d">DONE</span><span>Migration <b>0038 applied to develop</b>; 4 tables + 9 indexes verified (empty = honest state).</span></li>
-            <li><span class="st d">DONE</span><span>Keyless curator (daily + Run-now poll), Morpho adapter, screening/scoring; live-verified 4663 empty · 8453 deterministic pick.</span></li>
+            <li><span class="st d">DONE</span><span>Keyless curator (daily + Run-now poll), Morpho adapter, screening/scoring; 8453 deterministic pick · 4663 returns the API’s empty set (source blindness — see P12).</span></li>
             <li><span class="st d">DONE</span><span>Public <code>GET /vaults/curated</code>, S2S ingest, admin curation API, audit; fail-open run semantics.</span></li>
           </ul>
         </div>
@@ -284,9 +284,9 @@
             <li><span class="st d">DONE</span><span><b>Fleet deployed on 4663</b> (2026-09-19): timelock <code>0x62b8b01c…b0B5</code> · beacon <code>0xC4D6D11f…ab0c</code> · impl <code>0xCe1cd084…3D542</code> · <b>factory <code>0x040A7BFD…466dE</code></b> · factory impl <code>0x67C44815…B3212</code>; on-chain reads all verified (roles, owners, minDelay 259200). Recorded in the 4663 book.</span></li>
             <li><span class="st d">DONE</span><span><b>Timelock op scheduled</b>: Safe-A tx <code>0x9e6d3d05…c0df</code> → <code>schedule(factory.setDeployer(0xB555…D875, true))</code>, op <code>0x3581b36c…85e0</code> pending. <b>Executable 2026-09-22 07:43:22 UTC</b> (72h delay; permissionless; gas from W1).</span></li>
             <li><span class="st d">DONE</span><span><b>Beta runners live</b>: promotion #216 put 048+049 on <code>main</code>; <code>sparkpoint-deployer-beta</code> + <code>sparkpoint-curator-beta</code> deployed from it (deployer polls every 120s — no jobs until execute; curator keyless). Fixed a deployer healthcheck bug on the way (#217/#218) — both <code>running:healthy</code>.</span></li>
-            <li><span class="st a">NEXT</span><span><b>Execute</b> the timelock op (auto-cron 2026-09-22 07:43 UTC), verify <code>isDeployer(0xB555…D875) == true</code>, then P11 wiring: deposit rail + Trust Center copy + 048 M1 close.</span></li>
-            <li><span class="st p">NEXT</span><span>Through the timelock: <code>setDeployer(0xB555…D875, true)</code>; then <code>setAllowlisted(child, true)</code> per curated vault once Gate 0 exists. Record addresses in the 4663 book.</span></li>
-            <li><span class="st p">NEXT</span><span>Deploy the <code>SERVICE=deployer</code> + <code>SERVICE=curator</code> Coolify apps (env tables in <code>runners/README.md</code>).</span></li>
+            <li><span class="st a">NEXT</span><span><b>Execute</b> the timelock op (auto-cron 2026-09-22 07:43 UTC) → verify <code>isDeployer(0xB555…D875) == true</code>; then <b>crawl • curate • wrap</b> the existing 4663 vaults and land P11 wiring.</span></li>
+            <li><span class="st p">NEXT</span><span>Through the timelock: <code>setAllowlisted(&lt;child vault&gt;, true)</code> per curated vault once curation approves it. Record every op in the 4663 book.</span></li>
+            <li><span class="st d">DONE</span><span><code>SERVICE=deployer</code> + <code>SERVICE=curator</code> Coolify apps deployed from <code>main</code> and healthy (#216 promotion; deployer healthcheck fixed in #217/#218). Env tables in <code>runners/README.md</code>.</span></li>
           </ul>
         </div>
       </div>
@@ -304,14 +304,28 @@
         </div>
       </div>
 
-      <div class="ph gated">
+      <div class="ph">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>GATE 0 · A live child vault on 4663</h3><span class="pill gated">EXTERNAL — CLOSED TODAY</span></div>
-          <div class="meta">Morpho V2 factory live · 0 vaults</div>
+          <div class="head"><h3>P12 · On-chain discovery crawler (4663)</h3><span class="pill active">BUILD NEXT</span></div>
+          <div class="meta">replaces the API-only source · runner</div>
           <ul>
-            <li><span class="st d">VERIFIED</span><span>Morpho <b>Vault V2 factory is deployed on 4663</b> (<code>0x0FBad…803c</code>, 23,124 bytes) and the API now lists the chain — but returns <b>0 vaults</b>.</span></li>
-            <li><span class="st g">BLOCKER</span><span>Nothing can be wrapped until a live ERC-4626 vault exists there (third party, or an operator/scope decision). The beacon/factory/runner work in P8–P9 is NOT blocked by this; only wrapping is.</span></li>
+            <li><span class="st p">BUILD</span><span>Enumerate child vaults from the Morpho V2 factory on 4663 (creation events / registry), then read <code>asset()</code>, <code>totalAssets()</code>, fees and curator on-chain — the Blue API does not index this chain.</span></li>
+            <li><span class="st p">BUILD</span><span>Feed the same screening pipeline (asset allowlist, listing-equivalent vetting, TVL/liquidity/age) and publish through the existing ingest; keep the API adapter as a secondary source for the chains it covers.</span></li>
+            <li><span class="st p">BUILD</span><span>First target: Steakhouse USDG <code>0xBeEff…09dd</code> (~$482M) screened, approved and onboarded end-to-end.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="ph done">
+        <span class="node"></span>
+        <div class="card">
+          <div class="head"><h3>GATE 0 · A live child vault on 4663</h3><span class="pill done">RESOLVED — VAULTS EXIST</span></div>
+          <div class="meta">21 V2 vaults on-chain · Morpho API blind to 4663</div>
+          <ul>
+            <li><span class="st d">VERIFIED</span><span>Robinhood Chain <b>already has 21 V2 vaults</b>; re-read 2026-09-19: Steakhouse USDG <code>0xBeEff033…09dd</code> (<code>steakUSDG</code>, asset USDG) holds <b>~$482.3M</b> totalAssets — up from $216.5M on 2026-07-30.</span></li>
+            <li><span class="st d">CORRECTED</span><span>The earlier “0 vaults” was the <b>Morpho Blue API</b> returning an empty set for 4663 — it does not index this chain. Discovery is the gap; supply is not.</span></li>
+            <li><span class="st a">NEXT</span><span>P12 crawler enumerates and screens the on-chain vaults; wrapping starts after the Sep 22 execute, then <code>setAllowlisted</code> per curated vault (+72h).</span></li>
           </ul>
         </div>
       </div>
@@ -377,7 +391,7 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
 
 <span class="c"># 8 · THROUGH THE TIMELOCK (Safe A schedules → 72h → anyone executes; Safe B can veto):</span>
 <span class="c">#     factory.setDeployer(0xB555dbEc2cC5908c8B245ED84cb038D5d205D875, true)</span>
-<span class="c">#     factory.setAllowlisted(&lt;child vault&gt;, true)      # per curated vault, once Gate 0 exists</span>
+<span class="c">#     factory.setAllowlisted(&lt;child vault&gt;, true)      # per curated vault, once curation approves it</span>
 <span class="c">#   e.g. schedule from Safe A: cast send $TIMELOCK "schedule(address,uint256,bytes,bytes32,bytes32,uint256)" \</span>
 <span class="c">#     $FACTORY 0 $(cast calldata "setDeployer(address,bool)" 0xB555dbEc2cC5908c8B245ED84cb038D5d205D875 true) \</span>
 <span class="c">#     $ZERO32 $SALT 259200 --rpc-url $LIVE --account sparkybeta-deployer</span>
@@ -392,18 +406,18 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
     <table>
       <thead><tr><th>#</th><th>Item</th><th>Owner</th><th>Blocked by</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td>Merge PR #212 → develop; promote develop → main</td><td>Operator</td><td>Nothing (all gates green)</td><td><span class="pill op">READY</span></td></tr>
-        <tr><td>2</td><td>Create curator app in Coolify (dashboard duplicate) + deploy</td><td>Operator</td><td>Item 1 (agent must serve <code>/curator/*</code>)</td><td><span class="pill op">QUEUED</span></td></tr>
-        <tr><td>3</td><td>Ratify constitution v4.0.0 + commit amendment file</td><td>Operator</td><td>Nothing (skeleton ready §8)</td><td><span class="pill active">ACTIVE</span></td></tr>
-        <tr><td>4</td><td>Build universal wrapper + beacon + factory v2 (+ tests)</td><td>Build</td><td>Item 3 for the rule set; not for coding</td><td><span class="pill plan">PLANNED</span></td></tr>
-        <tr><td>5</td><td>AI deploy runner + role gating + monitoring</td><td>Build</td><td>Item 4 (factory interface)</td><td><span class="pill plan">PLANNED</span></td></tr>
-        <tr><td>6</td><td>External audit + upgrade CI gates + fork rehearsal</td><td>Build/Operator</td><td>Item 4</td><td><span class="pill plan">PLANNED</span></td></tr>
-        <tr><td>7</td><td>Deploy contracts on 4663 (operator-signed)</td><td>Operator</td><td>Item 6</td><td><span class="pill gated">GATED</span></td></tr>
-        <tr><td>8</td><td>Rewrite spec 048 M1 (T501–T504) + wire rail + Trust Center copy</td><td>Build</td><td>Items 3, 7</td><td><span class="pill plan">PLANNED</span></td></tr>
-        <tr><td>9</td><td>A live ERC-4626 child vault on 4663 (Gate 0)</td><td>External/scope decision</td><td>—</td><td><span class="pill gated">CLOSED</span></td></tr>
+        <tr><td>1</td><td>Merge 048/049 (#212–#215) + promote develop → main (#216)</td><td>Operator/Build</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>2</td><td>Curator + deployer Coolify apps live (healthcheck fix #217/#218)</td><td>Build</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>3</td><td>Constitution v4.0.0 ratified + fleet deployed on 4663 + book</td><td>Operator</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>4</td><td>Beta DB migrated 0038+0039 (39/39)</td><td>Build</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>5</td><td>Timelock execute <code>setDeployer</code> (op 0x3581b36c…, cron armed)</td><td>Automated</td><td>72h delay → 2026-09-22 07:43:22 UTC</td><td><span class="pill active">ARMED</span></td></tr>
+        <tr><td>6</td><td><b>P12 on-chain discovery crawler + first onboard (Steakhouse USDG)</b></td><td>Build</td><td>Nothing — vaults exist; the API is blind</td><td><span class="pill active">NEXT</span></td></tr>
+        <tr><td>7</td><td>P11 wiring: deposit rail + Trust Center copy + 048 M1 close</td><td>Build</td><td>Item 5 for wrapping; rail can build now</td><td><span class="pill plan">PLANNED</span></td></tr>
+        <tr><td>8</td><td><code>setAllowlisted</code> per curated vault through the timelock</td><td>Build/Operator</td><td>Per vault after curation (+72h)</td><td><span class="pill plan">PLANNED</span></td></tr>
+        <tr><td>9</td><td>SparkPoint-originated vault (not in scope — wrap-only for now)</td><td>Product</td><td>—</td><td><span class="pill">DEFERRED</span></td></tr>
       </tbody>
     </table>
-    <p class="small muted" style="margin:10px 0 0"><b>Critical path (post-merge 2026-09-19):</b> items 1–5 are done and merged to develop. Remaining: <b>operator-signed contract deploy</b> (beacon/impl/factory on 4663) → deploy the runner app + curator app in Coolify → <b>P11 wiring</b> (rail, Trust Center, spec 048 M1 close). Only the <b>wrapping of a specific vault</b> waits on Gate 0. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
+    <p class="small muted" style="margin:10px 0 0"><b>Critical path (2026-09-19):</b> fleet deployed, runners live, 048+049 on <code>main</code>, beta DB 39/39. Remaining: <b>execute</b> (Sep 22 07:43 UTC) → <b>P12 crawler</b> onboards the existing 4663 vaults (Steakhouse USDG first) → <b>wrap</b> → <code>setAllowlisted</code> +72h → <b>P11 rails</b>. No external gate: the chain has vaults; the API blindness is what the crawler removes. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
   </section>
 
   <!-- ── DECISION LOG ──────────────────────────────────────────────── -->
@@ -420,6 +434,9 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
         <tr><td>2026-09-19</td><td><b>Deploy scripts authored + simulated on live 4663</b>: <code>DeployWrapperSafes.s.sol</code> (~0.00012 ETH) then <code>DeployUniversalWrapper.s.sol</code> (~0.00132 ETH). Five signer wallets generated (keystore outside the repo). Operator-signed run is the current step.</td><td><span class="pill active">ACTIVE</span></td></tr>
         <tr><td>2026-09-19</td><td><b>Wrapper fleet deployed on 4663</b> (operator-signed): Safe 3-of-5 proposer <code>0xA63Ad1a2…E7Bf</code> + 2-of-3 canceller <code>0xe208F33a…8150</code>; TimelockController <code>0x62b8b01c…b0B5</code> (72h, deployer renounced admin); beacon <code>0xC4D6D11f…ab0c</code>; implementation <code>0xCe1cd084…3D542</code>; factory (Transparent proxy) <code>0x040A7BFD…466dE</code>. Recorded in <code>contracts/deployments/4663/addresses.json → wrapper</code>. Deployer bot enabled via timelock op <code>0x3581b36c…85e0</code> (Safe-A tx <code>0x9e6d3d05…c0df</code> scheduled 2026-09-19 07:43 UTC, executable 2026-09-22 07:43 UTC).</td><td><span class="pill done">DEPLOYED</span></td></tr>
         <tr><td>2026-09-19</td><td><b>Recorded deviation:</b> canceller quorum (W3–W5) is a subset of the proposer owner set; one operator holds all five keys until hardware distribution. The 72h delay + independent-canceller <i>address</i> remain; true signer independence is a follow-up.</td><td><span class="pill">DEVIATION</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Gate 0 corrected:</b> 4663 already has 21 V2 vaults (Steakhouse USDG re-read on-chain at ~$482.3M); the “0 vaults” conclusion came from the Morpho Blue API, which does not index Robinhood Chain. New workstream: <b>P12 on-chain discovery crawler</b>.</td><td><span class="pill done">RATIFIED</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Scope confirmed — wrap-only:</b> SparkPoint will not originate its own vault for now; “create” means curate an existing vault and wrap it via our factory. The “SparkPoint’s own vault” card was removed from <code>/vault</code>.</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>Beta shipped:</b> #216 promoted 048+049 to <code>main</code>; curator + deployer apps deployed and healthy (#217/#218); beta DB migrated 39/39.</td><td><span class="pill done">DONE</span></td></tr>
       </tbody>
     </table>
   </section>

@@ -160,8 +160,8 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
 
   // On a build whose app chain has no vault (the Robinhood Chain beta — VAULT_CHAIN_AVAILABLE=false),
   // the 048 curated board IS the vault experience: Sparky's screened picks, off-chain and
-  // admin-reviewed. The SparkPoint Aave vault itself is still Base-only, and that stays stated
-  // rather than implied.
+  // admin-reviewed. A SparkPoint-originated vault is not part of this program for now — the page
+  // stays about curated third-party vaults rather than implying one of our own is coming.
   if (!VAULT_CHAIN_AVAILABLE) {
     return (
       <div className="page page-wide">
@@ -177,18 +177,6 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
           knownVaults={knownVaults}
           fetchedAt={curated.fetchedAt}
         />
-        <div className="card card-pad" style={{ marginTop: 14 }}>
-          <div className="card-hd">
-            <span className="t">SparkPoint’s own vault</span>
-            <span className="lbl">Base-only for now</span>
-          </div>
-          <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-            The AI-managed Aave vault isn&rsquo;t part of this network yet — it arrives in a later
-            step. What&rsquo;s live here is the curated board above: vaults Sparky finds and
-            screens, with deposits you sign from your own wallet. You are always the only one who
-            can move your funds.
-          </div>
-        </div>
       </div>
     );
   }
