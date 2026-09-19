@@ -9,7 +9,7 @@ import { beat } from "./health.ts";
  * a sweep that succeeded against an empty contract.
  */
 /** Only two runners exist off the simulation: the trader and the faucet are sim-only. */
-export type Service = "keeper" | "sweeper";
+export type Service = "keeper" | "sweeper" | "curator" | "deployer";
 
 function stamp(): string {
   return new Date().toISOString();

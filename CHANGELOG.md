@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (049 P9 — scoped wrapper deploy runner)
+
+- **Agent queue + S2S work/report surface**: `wrapper_deployments` (migration 0039) records an admin's wrapper deploy request and the runner's result — loud failures included; `/curator/wrapper-jobs*` is machine-facing (S2S, no admin) and never authority. Registered before the `/admin/vaults/{vault}` catch-all.
+- **`runners/src/deployer.ts`** (`SERVICE=deployer`): the scoped executor — local validation, on-chain allowlist check, simulate + `createVault`, success-receipt check, `VaultCreated` decode, CREATE2 salt from the request id, and lost-report recovery (existing code at the predicted address ⇒ report without a second tx). Holds the deploy-only key; contains no upgrade/allowlist/pause/fund selector (pinned by test). 14 new node:test units.
+
+
 ### Changed (governance — constitution v4.0.0: universal upgradeable wrapper family)
 
 - **Contracts implemented (spec 049 P8):** `SparkPointUniversalVault` (universal implementation; child bound at initialization with no setter; child-claim `totalAssets`; HWM performance fee with fail-open accrual; caps + deposit-side pause; direct child unwind with a V2 `max*==0` liquidity fallback; `minSharesOut` overload; ERC-7201 storage), `SparkPointVaultFactoryV2` (UUPS fundless factory; curated allowlist; role-gated scoped deployer; on-chain child validation; CREATE2 BeaconProxy + per-wrapper CapRegistry; optional rolling deploy limit), plus OZ `UpgradeableBeacon` (owned by the timelock). 20 new Foundry tests (binding, gates, fee-above-HWM, loss/flat, pause-only, caps, slippage, donation, V2 fallback, beacon/factory upgrade authorization); full contracts suite **460 passed**. Not deployed — audit + operator-signed deploy remain.

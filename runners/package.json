@@ -9,7 +9,9 @@
   "scripts": {
     "keeper": "node --experimental-strip-types src/keeper.ts",
     "sweeper": "node --experimental-strip-types src/sweeper.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deployer": "node --experimental-strip-types src/deployer.ts",
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "22.20.1",

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "wrapper-infrastructure-preview",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Under the hood: upgradeable curated-vault wrappers",
+      "body": "We built the system that lets SparkPoint wrap a curated vault in its own upgradeable wrapper \u2014 so fees on gains stay future-proof and fixes can reach every wrapper at once.\n\nNothing changes on this network yet: there is still no curated vault live here, so there is nothing to deposit. When one goes live, the Vault page will show it with the full fee disclosure, and you will always sign from your own wallet.",
+      "published_at": "2026-09-18T13:30:00Z"
+    },
+    {
       "slug": "swap-polish-more-tokens-one-tap",
       "type": "changelog",
       "tag": "Improved",

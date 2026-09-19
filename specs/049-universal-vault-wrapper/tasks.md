@@ -26,10 +26,11 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 
 ## Phase W3 — Deployer runner (P9)
 
-- [ ] **T301** Agent endpoints: admin deploy-request + S2S deploy-report (mirror the curator Run-now/ingest pattern; the agent holds no key).
-- [ ] **T302** `runners/src/deployer.ts`: poll requests, pre-check allowlist/fee/caps, simulate + `createVault`, report tx/address, heartbeat; fail loud, never silent.
-- [ ] **T303** Tests (node:test) + runbook/env (`WRAPPER_DEPLOYER_PRIVATE_KEY`, chain 4663, gas-only, rotation) + Kuma monitor.
+- [x] **T301** Agent endpoints: admin deploy-request + S2S deploy-report (mirror the curator Run-now/ingest pattern; the agent holds no key).
+- [x] **T302** `runners/src/deployer.ts`: poll requests, pre-check allowlist/fee/caps, simulate + `createVault`, report tx/address, heartbeat; fail loud, never silent.
+- [x] **T303** Tests (node:test) + runbook/env (`WRAPPER_DEPLOYER_PRIVATE_KEY`, chain 4663, gas-only, rotation) + Kuma monitor.
 - [ ] **T304** Monitoring/ops: deploy alert (child + tx + proxy), no-report incident, funding alerts.
+      *(runner side done: every attempt is reported loudly; Kuma/monitor wiring is an ops step.)*
 
 ## Phase W4 — Audit + deploy (P10)
 

@@ -17,6 +17,42 @@ accruing in the engine and a restart collects everything owed — delivery is *l
 
 Keys live in the workspace keystore (`.claude/sparky-beta-bots.txt`), never in the repo.
 
+## The wrapper deploy runner (049)
+
+`src/deployer.ts` (`SERVICE=deployer`) is the **scoped** executor for wrapper deployments requested
+in Admin → Vaults. It holds ONE hot key that can do exactly one privileged thing: call
+`createVault` on `SparkPointVaultFactoryV2` for a child **already on the curated on-chain
+allowlist**, with fee ≤ cap and caps within bounds. It **cannot upgrade anything** (factory, beacon,
+implementation), change the allowlist, pause, set recipients, or move funds — those authorities
+belong to the TimelockController, and this image has no selector for them.
+
+- Polls `GET /curator/wrapper-jobs` (agent, S2S), validates locally, checks the on-chain allowlist,
+  simulates, sends, waits for a success receipt, parses `VaultCreated`, and reports to
+  `POST /curator/wrapper-jobs/report`.
+- **Idempotent:** the CREATE2 salt is derived from the request id. If code already exists at the
+  predicted address (a previous attempt landed but its report was lost), it reports success WITHOUT
+  sending a second transaction. A reverted tx is a failure (a mined revert is not a delivery).
+- **The agent stays keyless:** it only queues and records. The LLM never holds this key.
+
+### Deployer env (Coolify, `SERVICE=deployer`)
+
+| Key | Value |
+|---|---|
+| `SERVICE` | `deployer` |
+| `CHAIN_ID` | `4663` |
+| `RPC_URL` | Alchemy 4663 (secret) |
+| `WRAPPER_FACTORY_ADDRESS` | `SparkPointVaultFactoryV2` proxy (set after the P10 deploy) |
+| `WRAPPER_DEPLOYER_PRIVATE_KEY` | the scoped deploy-only key (secret; gas only) |
+| `AGENT_BASE_URL` | the agent's internal URL (falls back to `CURATOR_API_BASE_URL`) |
+| `AGENT_S2S_TOKEN` | same service token the web BFF uses (secret) |
+| `DEPLOYER_REPORT_OWNER` | the operator wallet asserted in the scoping headers |
+| `DEPLOYER_POLL_SEC` | `120` |
+| `WRAPPER_MAX_FEE_BPS` | `2000` |
+| `HEARTBEAT_DIR` | `/tmp/sparky-beta-runners` |
+
+Liveness follows the shared contract: a completed poll touches the heartbeat; whether a DEPLOY
+succeeded is reported to the agent (`wrapper_deployments`) and visible in the panel.
+
 ## Run locally
 
 ```bash
