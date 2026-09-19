@@ -44,17 +44,17 @@ contract MockToken is ERC20 {
 }
 
 contract BrokerEngineTest is Test {
-    uint256 constant ROUND = 3600;
+    uint256 private constant ROUND = 3600;
 
     event RoundSecondsSet(uint256 roundSeconds);
 
-    MockNFT nft;
-    MockToken token;
-    BrokerEngine engine;
-    BrokerVault vault;
+    MockNFT private nft;
+    MockToken private token;
+    BrokerEngine private engine;
+    BrokerVault private vault;
 
-    address alice = address(0xA11CE);
-    address bob = address(0xB0B);
+    address private alice = address(0xA11CE);
+    address private bob = address(0xB0B);
 
     function setUp() public {
         nft = new MockNFT();
@@ -62,14 +62,12 @@ contract BrokerEngineTest is Test {
 
         BrokerEngine impl = new BrokerEngine();
         engine = BrokerEngine(
-            payable(
-                address(
+            payable(address(
                     new ERC1967Proxy(
                         address(impl),
                         abi.encodeCall(BrokerEngine.initialize, (address(nft), ROUND))
                     )
-                )
-            )
+                ))
         );
 
         vault = new BrokerVault(address(nft), address(engine));
@@ -408,14 +406,12 @@ contract BrokerEngineTest is Test {
     function _freshEngine() private returns (BrokerEngine fresh) {
         BrokerEngine impl = new BrokerEngine();
         fresh = BrokerEngine(
-            payable(
-                address(
+            payable(address(
                     new ERC1967Proxy(
                         address(impl),
                         abi.encodeCall(BrokerEngine.initialize, (address(nft), ROUND))
                     )
-                )
-            )
+                ))
         );
     }
 

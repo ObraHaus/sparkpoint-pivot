@@ -127,7 +127,11 @@ contract BetaQuoterV2 is Initializable, UUPSUpgradeable {
         // The pool pays the output to this contract, then calls the callback — which reverts with
         // the amounts, unwinding the whole swap. `try/catch` turns that revert into the return.
         try IUniswapV3PoolMinimal(pool)
-            .swap(address(this), zeroForOne, int256(params.amountIn), limit, abi.encode(pool)) { }
+            .swap(
+                address(this), zeroForOne, int256(params.amountIn), limit, abi.encode(pool)
+            ) returns (
+            int256, int256
+        ) { }
         catch (bytes memory reason) {
             (amountOut, sqrtPriceX96After) = abi.decode(reason, (uint256, uint160));
             initializedTicksCrossed = 0; // not tracked; no consumer uses it
@@ -146,7 +150,7 @@ contract BetaQuoterV2 is Initializable, UUPSUpgradeable {
         if (msg.sender != pool) revert NotPool();
 
         // Inside the callback the pool has already written its final slot0 for this swap.
-        (uint160 sqrtPriceX96After,,,,,,) = IUniswapV3PoolMinimal(msg.sender).slot0();
+        uint160 sqrtPriceX96After = IUniswapV3PoolMinimal(msg.sender).slot0();
 
         // Exactly one delta is negative (the output side); return its magnitude.
         uint256 amountOut = amount0Delta > 0 ? uint256(-amount1Delta) : uint256(-amount0Delta);
@@ -194,16 +198,7 @@ interface IUniswapV3PoolMinimal {
         bytes calldata data
     ) external returns (int256 amount0, int256 amount1);
 
-    function slot0()
-        external
-        view
-        returns (
-            uint160 sqrtPriceX96,
-            int24 tick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            uint16 observationCardinalityNext,
-            uint8 feeProtocol,
-            bool unlocked
-        );
+    /// @dev Only the price is read (the first return word); the rest is decoded away by not
+    ///      declaring it — the selector is unchanged and extra returndata is ignored.
+    function slot0() external view returns (uint160 sqrtPriceX96);
 }
