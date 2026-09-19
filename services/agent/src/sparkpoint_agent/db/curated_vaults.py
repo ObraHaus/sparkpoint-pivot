@@ -389,6 +389,10 @@ class CurationStore(Protocol):
         detail: dict[str, Any],
     ) -> bool: ...
 
+    async def set_wrapper(self, chain_id: int, *, child_address: str, wrapper_address: str) -> bool:
+        """Mark the curated row for ``child_address`` as wrapped (T501). True when a row changed."""
+        ...
+
 
 class PgCurationStore:
     """asyncpg-backed :class:`CurationStore` (migration 0038).
@@ -622,9 +626,7 @@ class PgCurationStore:
     async def set_auto_publish(self, chain_id: int, *, enabled: bool, actor: str | None) -> None:
         try:
             await self._db.execute(_UPSERT_STATE_SQL, chain_id, enabled)
-            await self._audit(
-                "auto-publish", chain_id, None, actor, {"enabled": enabled}
-            )
+            await self._audit("auto-publish", chain_id, None, actor, {"enabled": enabled})
         except UndefinedTableError:
             logger.warning("vault_curation_state absent (0038 unapplied); toggle not stored")
 
@@ -710,9 +712,7 @@ class PgCurationStore:
                 _actor(actor),
             )
             created = str(status).strip().startswith("INSERT")
-            await self._audit(
-                "add", chain_id, address, actor, {"created": created, "label": label}
-            )
+            await self._audit("add", chain_id, address, actor, {"created": created, "label": label})
             return created
         except UndefinedTableError:
             logger.warning("curated_vaults table absent (0038 unapplied); add dropped")
@@ -750,9 +750,7 @@ class PgCurationStore:
             return False
         updated = str(result).strip().endswith("1")
         if updated:
-            await self._audit(
-                status, chain_id, address, actor, {"note": note} if note else {}
-            )
+            await self._audit(status, chain_id, address, actor, {"note": note} if note else {})
         return updated
 
     async def set_pinned(
@@ -793,9 +791,7 @@ class PgCurationStore:
             return False
         updated = str(result).strip().endswith("1")
         if updated:
-            await self._audit(
-                "pin" if pinned else "unpin", chain_id, address, actor, {}
-            )
+            await self._audit("pin" if pinned else "unpin", chain_id, address, actor, {})
         return updated
 
     async def update_metadata(
@@ -832,6 +828,32 @@ class PgCurationStore:
             return None
         await self._audit("edit", chain_id, address, actor, {"fields": fields})
         return await self.get_vault(chain_id, address)
+
+    async def set_wrapper(self, chain_id: int, *, child_address: str, wrapper_address: str) -> bool:
+        """Flip a curated row to the wrapper deposit path after a VERIFIED deploy report.
+
+        Called only from the deploy-runner report handler once the runner has reported a successful
+        ``createVault`` (proxy address included). Not an admin edit: provenance is untouched, and a
+        row that is missing (or a table that is absent) simply yields ``False`` — the deployment
+        row remains the record. The DB CHECK (wrapped requires an address) backs the pairing.
+        """
+        try:
+            result = await self._db.execute(
+                """
+                UPDATE curated_vaults
+                   SET wrapped = true,
+                       wrapper_address = $3,
+                       deposit_mode = 'wrapper',
+                       updated_at = now()
+                 WHERE chain_id = $1 AND vault_address = $2
+                """,
+                chain_id,
+                child_address.strip().lower(),
+                wrapper_address.strip().lower(),
+            )
+        except UndefinedTableError:
+            return False
+        return str(result).strip().endswith("1")
 
     # ── audit ─────────────────────────────────────────────────────────────────────────────────
 

@@ -55,7 +55,7 @@ const GUARANTEES: [IconName, string, string][] = [
   ["door", "Withdraw-always", "Exit directly on-chain, even if Sparky's app and AI are completely offline."],
   ["key", "You own your keys", "You own your keys and your account. We never generate a wallet for you or hold your keys."],
   ["zap", "Scoped, revocable automation", "Any automation you grant is scoped, capped, time-limited, and revocable by you instantly — without our help."],
-  ["pause", "Non-upgradeable, pause-only", "The vault is single-purpose and non-upgradeable. Any pause control governs pausing only — never your funds."],
+  ["pause", "Non-upgradeable core, pause-only", "SparkPoint’s own vault is single-purpose and non-upgradeable; any pause control governs pausing only — never your funds. Curated-vault wrappers can be upgraded, but only through a public 72-hour timelock, and no upgrade can ever block an exit."],
 ];
 
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
@@ -386,6 +386,18 @@ export default function Page() {
           deposited <b>directly</b> from your wallet and carries <b>no SparkPoint fee</b>; the board
           says which is which, and a wrapper is only shown once an operator has actually deployed
           it.
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 10 }}>
+          <b>Wrappers upgrade behind a timelock; your exit never waits on anyone.</b> The wrapper
+          family is upgradeable by design so a fix reaches every wrapper at once — but only a{" "}
+          <b>3-of-5 proposer multisig</b> can start an upgrade, it must wait out a{" "}
+          <b>72-hour timelock</b>, and an independent <b>2-of-3 canceller</b> can veto it. The
+          deployer that creates wrappers has no upgrade, allowlist or pause power. Withdrawals are
+          direct on-chain calls to the wrapper: no pause, upgrade or operator action can block
+          them. <b>Residual risk:</b> an upgrade is still a change to the code around your position,
+          and a curated child vault is a third-party venue (Morpho) with its own risks — the
+          timelock, the canceller and the always-open exit are the guardrails, not a guarantee of
+          returns.
         </div>
         <div style={{ fontSize: 12.5, lineHeight: 1.7, marginTop: 12 }}>
           <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault"))}>
