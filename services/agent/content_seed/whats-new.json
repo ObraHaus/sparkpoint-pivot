@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-page-wrap-only",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Vault page is now just the curated board",
+      "body": "We removed the “SparkPoint’s own vault” card. SparkPoint is not launching its own vault on this network — the plan is to find strong vaults that already exist here, wrap them in SparkPoint’s own upgradeable wrapper, and bring them to the Vault page for you to use.\n\nWhen the first vault is onboarded it will appear on the board by itself; until then the page says honestly that there is nothing to show. Deposits and withdrawals always stay in your own wallet.",
+      "published_at": "2026-09-19T09:45:00Z"
+    },
+    {
       "slug": "wrapper-infrastructure-preview",
       "type": "changelog",
       "tag": "Improved",
