@@ -55,6 +55,12 @@ export type CuratorConfig = {
   archiveRpcUrl: string | null;
   /** VaultV2Factory to enumerate; defaults per chain, override with CURATOR_VAULT_V2_FACTORY. */
   vaultV2Factory: string | null;
+  /**
+   * When the crawl is configured (CURATOR_RPC_URL set) and it FAILS, fail the whole run rather than
+   * publishing candidates whose FR-020 gate verification was skipped. Set
+   * CURATOR_ONCHAIN_REQUIRED=false to accept the weaker API-only degradation.
+   */
+  onchainRequired: boolean;
   /** Share-price lookback used to derive an on-chain APY for vaults the API has no figure for. */
   apyLookbackDays: number;
   /** Assets treated as USD 1:1 when the API has no USD figure (documented, never silent). */
@@ -179,6 +185,7 @@ export function parseCuratorConfig(env: NodeJS.ProcessEnv): CuratorConfig {
     rpcUrl,
     archiveRpcUrl,
     vaultV2Factory,
+    onchainRequired: envBool(env, "CURATOR_ONCHAIN_REQUIRED", true),
     apyLookbackDays: envInt(env, "CURATOR_APY_LOOKBACK_DAYS", 7, { min: 1, max: 90 }),
     stableAssets: (env.CURATOR_STABLE_ASSETS ?? "USDC,USDG,USDT,DAI")
       .split(",")

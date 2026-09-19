@@ -213,20 +213,25 @@ export async function discover(
     const crawl = client ?? crawlClient(config);
     const creations = await enumerateVaultV2Creations(crawl, factory);
     const apiKnown = new Set(apiVaults.map((v) => v.address.toLowerCase()));
-    // Bound RPC work by maxVaults, but never drop an API candidate: those are what we recommend.
-    const selected = [
-      ...creations.filter((c) => apiKnown.has(c.address)),
-      ...creations.filter((c) => !apiKnown.has(c.address)),
-    ].slice(0, config.maxVaults);
+    // Every API candidate must be verified, whatever the cap — merge() keys off the creations it
+    // is given, and a dropped one would be flagged "not in the logs" for the wrong reason. Only
+    // the surplus of API-unknown creations is capped.
+    const known = creations.filter((c) => apiKnown.has(c.address));
+    const extra = creations
+      .filter((c) => !apiKnown.has(c.address))
+      .slice(0, Math.max(0, config.maxVaults - known.length));
+    const selected = [...known, ...extra];
 
     const facts = new Map<string, VaultV2Facts>();
     const apyBps = new Map<string, number | null>();
     // The lookback needs historical state, which the public chain RPC cannot serve; use the
     // optional archive RPC and degrade to "no on-chain APY" when it is not configured.
     const archive = config.archiveRpcUrl ? client ?? archiveClient(config) : null;
+    const apiByAddress = new Map(apiVaults.map((v) => [v.address.toLowerCase(), v]));
     await mapWithConcurrency(selected, CRAWL_CONCURRENCY, async (creation) => {
       facts.set(creation.address, await readVaultV2Facts(crawl, factory, creation));
-      if (!apiKnown.has(creation.address) && archive) {
+      // Independent on-chain APY wherever the API has no figure (known or not).
+      if (archive && apiByAddress.get(creation.address)?.netApyBps == null) {
         apyBps.set(
           creation.address,
           await onchainApyBps(archive, creation.address, config.apyLookbackDays, now),
@@ -243,6 +248,11 @@ export async function discover(
     return { vaults, source: "morpho-api+onchain", notes };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    if (config.onchainRequired) {
+      // The crawl is configured and REQUIRED: publishing now would skip FR-020 gate verification
+      // for every candidate. Fail the run instead — the agent keeps the last good list and pick.
+      throw new Error(`on-chain crawl failed (CURATOR_ONCHAIN_REQUIRED=true): ${detail.slice(0, 300)}`);
+    }
     log.warn(`on-chain crawl failed: ${detail.slice(0, 200)} — continuing API-only (fail-open)`);
     notes.push(`on-chain crawl failed: ${detail.slice(0, 200)}`);
     return { vaults: apiVaults, source: "morpho-api", notes };

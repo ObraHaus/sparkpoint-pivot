@@ -5,6 +5,7 @@ import type { PublicClient } from "viem";
 
 import type { CuratorConfig, DiscoveredVault } from "./curator-core.ts";
 import {
+  crossCheck,
   enumerateVaultV2Creations,
   mergeOnchainDiscovery,
   onchainApyBps,
@@ -51,6 +52,7 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     rpcUrl: "https://rpc.example",
     archiveRpcUrl: null,
     vaultV2Factory: FACTORY,
+    onchainRequired: true,
     apyLookbackDays: 7,
     stableAssets: ["USDC", "USDG", "USDT", "DAI"],
     ...over,
@@ -299,4 +301,39 @@ test("mergeOnchainDiscovery builds an honest on-chain-only candidate from stable
   assert.equal(vault.netApyBps, 271);
   assert.equal(Math.round(vault.tvlUsd ?? 0), 482_476_128); // 482,476.127695 USDG ≈ 1:1
   assert.match(vault.warnings.join(" "), /on-chain-only/);
+});
+
+// ── API ↔ chain cross-checks (OH Defender AI-review high) ────────────────────────────────────────
+
+test("crossCheck passes a consistent API row", () => {
+  assert.deepEqual(crossCheck(apiVault(), facts(), config()), []);
+});
+
+test("crossCheck raises DANGER when the API asset disagrees with the chain", () => {
+  const warnings = crossCheck(
+    apiVault({
+      assetAddress: "0x9999999999999999999999999999999999999999",
+      assetSymbol: "FAKE",
+    }),
+    facts(),
+    config(),
+  );
+  assert.match(warnings.join(" "), /DANGER: API asset .* disagrees with the vault's on-chain asset/);
+  assert.match(warnings.join(" "), /DANGER: API asset symbol FAKE disagrees with on-chain USDG/);
+});
+
+test("crossCheck raises DANGER when the API TVL drifts beyond tolerance", () => {
+  const warnings = crossCheck(apiVault({ tvlUsd: 100_000 }), facts(), config());
+  assert.match(warnings.join(" "), /DANGER: API TVL .* disagrees with on-chain/);
+});
+
+test("mergeOnchainDiscovery propagates cross-check failures onto the merged row", () => {
+  const merged = mergeOnchainDiscovery(
+    [apiVault({ assetAddress: "0x9999999999999999999999999999999999999999" })],
+    [creation()],
+    new Map([[VAULT, facts()]]),
+    new Map(),
+    config(),
+  );
+  assert.match(merged[0]!.warnings.join(" "), /DANGER: API asset/);
 });

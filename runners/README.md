@@ -66,6 +66,7 @@ operator, only once a live vault exists on the chain.
 | `CURATOR_VAULT_V2_FACTORY` | optional override; defaults per chain (`4663` → `0x0FBad985…803c`) |
 | `CURATOR_APY_LOOKBACK_DAYS` | `7` — window for on-chain APY on vaults the API has no figure for |
 | `CURATOR_STABLE_ASSETS` | `USDC,USDG,USDT,DAI` — assets valued USD 1:1 for on-chain TVL (warned, never silent) |
+| `CURATOR_ONCHAIN_REQUIRED` | `true` — when the crawl is configured and fails, the run fails (last-good list stays) instead of publishing candidates whose FR-020 verification was skipped; set `false` to accept the weaker API-only degradation |
 | `CURATOR_MIN_TVL_USD` / `CURATOR_MIN_LIQUIDITY_USD` | `10000` / `1000` |
 | `CURATOR_MIN_AGE_DAYS` / `CURATOR_MAX_NET_APY_BPS` | `1` / `10000` |
 | `CURATOR_KUMA_PUSH_URL` | optional Uptime-Kuma PUSH monitor URL; the runner pings UP after a published run and DOWN when discovery fails |

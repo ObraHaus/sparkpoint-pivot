@@ -439,6 +439,11 @@ function stableUsd(facts: VaultV2Facts, stableAssets: string[]): number | null {
  * Merge the API's rich-but-third-party figures with the chain's authoritative-but-sparse facts.
  * On-chain is the KEY SET: every creation gets a row. API-only rows are kept too, but flagged
  * DANGER so screening rejects them — an unverifiable candidate must never reach the board.
+ *
+ * ⚠️ The API is only trusted where the chain can corroborate it: asset identity, asset symbol and
+ * (for configured stables) TVL are compared, and a material disagreement is a DANGER verdict. Net
+ * APY and withdrawable liquidity have no on-chain equivalent and stay API-sourced — that is stated
+ * in the run's notes, not silently assumed.
  */
 export function mergeOnchainDiscovery(
   apiVaults: DiscoveredVault[],
@@ -477,12 +482,8 @@ export function mergeOnchainDiscovery(
     }
 
     if (api) {
-      merged.push({
-        ...api,
-        address: creation.address,
-        ageSeconds,
-        warnings: [...api.warnings, ...facts.warnings],
-      });
+      const warnings = [...api.warnings, ...facts.warnings, ...crossCheck(api, facts, config)];
+      merged.push({ ...api, address: creation.address, ageSeconds, warnings });
       continue;
     }
 
@@ -534,4 +535,49 @@ export function mergeOnchainDiscovery(
     return a.address.toLowerCase() < b.address.toLowerCase() ? -1 : 1;
   });
   return merged.slice(0, config.maxVaults);
+}
+
+/** Relative TVL disagreement that stops being explainable by indexer lag (deposits/withdrawals). */
+export const TVL_CROSSCHECK_TOLERANCE = 0.5;
+
+/**
+ * Compare the API row against chain truth for a vault both sources know. The asset is what the
+ * allowlist screen keys on, so an asset mismatch is always DANGER; a stable-valued TVL that
+ * disagrees by more than `TVL_CROSSCHECK_TOLERANCE` means one of the two is wrong about the size
+ * of the position and is DANGER too. Net APY/liquidity are not comparable (no on-chain source).
+ */
+export function crossCheck(
+  api: DiscoveredVault,
+  facts: VaultV2Facts,
+  config: CuratorConfig,
+): string[] {
+  const warnings: string[] = [];
+
+  const apiAsset = api.assetAddress?.toLowerCase() ?? null;
+  const chainAsset = facts.assetAddress?.toLowerCase() ?? null;
+  if (apiAsset && chainAsset && apiAsset !== chainAsset) {
+    warnings.push(
+      `DANGER: API asset ${api.assetAddress} disagrees with the vault's on-chain asset ${facts.assetAddress}`,
+    );
+  }
+  const apiSymbol = (api.assetSymbol ?? "").toUpperCase();
+  const chainSymbol = (facts.assetSymbol ?? "").toUpperCase();
+  if (apiSymbol && chainSymbol && apiSymbol !== chainSymbol) {
+    warnings.push(
+      `DANGER: API asset symbol ${api.assetSymbol} disagrees with on-chain ${facts.assetSymbol}`,
+    );
+  }
+
+  const onchainUsd = stableUsd(facts, config.stableAssets);
+  if (api.tvlUsd !== null && onchainUsd !== null && onchainUsd > 0) {
+    const drift = Math.abs(api.tvlUsd - onchainUsd) / onchainUsd;
+    if (drift > TVL_CROSSCHECK_TOLERANCE) {
+      warnings.push(
+        `DANGER: API TVL $${Math.round(api.tvlUsd).toLocaleString("en-US")} disagrees with ` +
+          `on-chain $${Math.round(onchainUsd).toLocaleString("en-US")} by ` +
+          `${Math.round(drift * 100)}%`,
+      );
+    }
+  }
+  return warnings;
 }
