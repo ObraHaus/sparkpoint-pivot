@@ -59,8 +59,14 @@ operator, only once a live vault exists on the chain.
 | `AGENT_S2S_TOKEN` | same service token the web BFF uses (secret) |
 | `CURATOR_REPORT_OWNER` | the operator/admin wallet asserted in the scoping headers |
 | `CURATOR_INTERVAL_SEC` / `CURATOR_POLL_SEC` | `86400` / `300` |
-| `CURATOR_ASSET_ALLOWLIST` | `USDC` (comma-separated symbols) |
+| `CURATOR_ASSET_ALLOWLIST` | `USDC` (comma-separated symbols; on 4663 the only child asset is `USDG`) |
 | `CURATOR_REQUIRE_LISTED` | `true` |
+| `CURATOR_RPC_URL` | chain RPC for **P12 on-chain discovery** — the public chain RPC (`https://rpc.mainnet.chain.robinhood.com`) serves the full-range `eth_getLogs` the factory enumeration needs; unset ⇒ API-only discovery |
+| `CURATOR_ARCHIVE_RPC_URL` | optional **archive** RPC (Alchemy) for the share-price APY lookback; public RPCs refuse historical `eth_call`, managed ones cap log ranges — hence the split |
+| `CURATOR_VAULT_V2_FACTORY` | optional override; defaults per chain (`4663` → `0x0FBad985…803c`) |
+| `CURATOR_APY_LOOKBACK_DAYS` | `7` — window for on-chain APY on vaults the API has no figure for |
+| `CURATOR_STABLE_ASSETS` | `USDC,USDG,USDT,DAI` — assets valued USD 1:1 for on-chain TVL (warned, never silent) |
+| `CURATOR_ONCHAIN_REQUIRED` | `true` — when the crawl is configured and fails, the run fails (last-good list stays) instead of publishing candidates whose FR-020 verification was skipped; set `false` to accept the weaker API-only degradation |
 | `CURATOR_MIN_TVL_USD` / `CURATOR_MIN_LIQUIDITY_USD` | `10000` / `1000` |
 | `CURATOR_MIN_AGE_DAYS` / `CURATOR_MAX_NET_APY_BPS` | `1` / `10000` |
 | `CURATOR_KUMA_PUSH_URL` | optional Uptime-Kuma PUSH monitor URL; the runner pings UP after a published run and DOWN when discovery fails |

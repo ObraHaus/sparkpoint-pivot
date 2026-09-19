@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { runOnce } from "./curator.ts";
+import { discover, runOnce } from "./curator.ts";
+import type { PublicClient } from "viem";
+
 import type { CuratorConfig } from "./shared/curator-core.ts";
 
 const NOW = new Date("2026-09-18T12:00:00Z");
@@ -12,7 +14,7 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     apiBaseUrl: "http://agent:31102",
     s2sToken: "s2s-token",
     reportOwner: "0xA71e24359A6cb7A939aae2d62dD12b6256365c30",
-    morphoUrl: "https://blue-api.morpho.org/graphql",
+    morphoUrl: "https://api.morpho.org/graphql",
     kumaPushUrl: null,
     intervalSec: 86_400,
     pollSec: 300,
@@ -25,6 +27,12 @@ function config(over: Partial<CuratorConfig> = {}): CuratorConfig {
     requireListed: true,
     requireVerifiedCurator: false,
     assetAllowlist: ["USDC"],
+    rpcUrl: null,
+    archiveRpcUrl: null,
+    vaultV2Factory: null,
+    onchainRequired: true,
+    apyLookbackDays: 7,
+    stableAssets: ["USDC", "USDG", "USDT", "DAI"],
     ...over,
   };
 }
@@ -187,4 +195,49 @@ test("screened-out vaults are reported as rejected, never as candidates", async 
   const rejected = body.rejected as { address: string; reasons: string[] }[];
   assert.equal(rejected.length, 2);
   assert.ok(rejected.every((r) => r.reasons.length > 0));
+});
+
+test("a required crawl failure fails the run instead of publishing unverified candidates", async () => {
+  installFetch(async () =>
+    new Response(JSON.stringify({ data: { vaults: { items: [vaultItem()] } } }), { status: 200 }),
+  );
+  const deadClient = {
+    getBlockNumber: async () => 1n,
+    getBlock: async () => ({ timestamp: 0n }),
+    getLogs: async () => {
+      throw new Error("rpc down");
+    },
+    readContract: async () => 0n,
+  } as unknown as PublicClient;
+
+  const cfg = config({
+    rpcUrl: "https://rpc.example",
+    vaultV2Factory: "0x0FBad98595b0186dA120E41f77C102beb49f803c",
+    onchainRequired: true,
+  });
+  await assert.rejects(() => discover(cfg, NOW, deadClient), /on-chain crawl failed/);
+});
+
+test("an optional crawl failure degrades to API-only and says so", async () => {
+  installFetch(async () =>
+    new Response(JSON.stringify({ data: { vaults: { items: [vaultItem()] } } }), { status: 200 }),
+  );
+  const deadClient = {
+    getBlockNumber: async () => 1n,
+    getBlock: async () => ({ timestamp: 0n }),
+    getLogs: async () => {
+      throw new Error("rpc down");
+    },
+    readContract: async () => 0n,
+  } as unknown as PublicClient;
+
+  const cfg = config({
+    rpcUrl: "https://rpc.example",
+    vaultV2Factory: "0x0FBad98595b0186dA120E41f77C102beb49f803c",
+    onchainRequired: false,
+  });
+  const result = await discover(cfg, NOW, deadClient);
+  assert.equal(result.source, "morpho-api");
+  assert.equal(result.vaults.length, 1);
+  assert.match(result.notes.join(" "), /on-chain crawl failed/);
 });

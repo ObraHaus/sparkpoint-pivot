@@ -304,15 +304,16 @@
         </div>
       </div>
 
-      <div class="ph">
+      <div class="ph done">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P12 · On-chain discovery crawler (4663)</h3><span class="pill active">BUILD NEXT</span></div>
-          <div class="meta">replaces the API-only source · runner</div>
+          <div class="head"><h3>P12 · On-chain discovery crawler (4663)</h3><span class="pill done">BUILT · DEPLOY PENDING</span></div>
+          <div class="meta">factory logs = source of truth · + corrected API adapter</div>
           <ul>
-            <li><span class="st p">BUILD</span><span>Enumerate child vaults from the Morpho V2 factory on 4663 (creation events / registry), then read <code>asset()</code>, <code>totalAssets()</code>, fees and curator on-chain — the Blue API does not index this chain.</span></li>
-            <li><span class="st p">BUILD</span><span>Feed the same screening pipeline (asset allowlist, listing-equivalent vetting, TVL/liquidity/age) and publish through the existing ingest; keep the API adapter as a secondary source for the chains it covers.</span></li>
-            <li><span class="st p">BUILD</span><span>First target: Steakhouse USDG <code>0xBeEff…09dd</code> (~$482M) screened, approved and onboarded end-to-end.</span></li>
+            <li><span class="st d">DONE</span><span>Enumerates every <code>CreateVaultV2</code> log (block 0 → head) via the public chain RPC, reads asset/<code>totalAssets</code>/fees/curator/age per vault, and re-checks the FR-020 gate abdications on-chain. API candidates missing from the logs fail screening with a DANGER warning. Tests: 54/54 including the crawler suite.</span></li>
+            <li><span class="st d">DONE</span><span>Adapter corrected: <code>api.morpho.org/graphql</code> + the <b><code>vaultV2s</code></b> query. The earlier “API blind / 0 vaults” was the V1 <code>vaults</code> query on a V2-only chain — 4663 has <b>58 V2 vaults</b> today.</span></li>
+            <li><span class="st d">DONE</span><span>First live run (2026-09-19): <b>58 enumerated, 58 verified</b>, 2 pass screening — pick <b>Steakhouse USDG</b> (~$482.4M, 3.58% net APY, score 57), alternate Purinta USDG; 56 rejected (29 on FR-020 gate danger, plus unlisted / TVL / liquidity).</span></li>
+            <li><span class="st a">NEXT</span><span>Ship with the next curator deploy: set <code>CURATOR_RPC_URL</code> (public chain RPC) + <code>CURATOR_ARCHIVE_RPC_URL</code> (Alchemy) + <code>CURATOR_ASSET_ALLOWLIST=USDG</code>, then Run-now on the panel and approve the pick.</span></li>
           </ul>
         </div>
       </div>
@@ -417,7 +418,7 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
         <tr><td>9</td><td>SparkPoint-originated vault (not in scope — wrap-only for now)</td><td>Product</td><td>—</td><td><span class="pill">DEFERRED</span></td></tr>
       </tbody>
     </table>
-    <p class="small muted" style="margin:10px 0 0"><b>Critical path (2026-09-19):</b> fleet deployed, runners live, 048+049 on <code>main</code>, beta DB 39/39. Remaining: <b>execute</b> (Sep 22 07:43 UTC) → <b>P12 crawler</b> onboards the existing 4663 vaults (Steakhouse USDG first) → <b>wrap</b> → <code>setAllowlisted</code> +72h → <b>P11 rails</b>. No external gate: the chain has vaults; the API blindness is what the crawler removes. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
+    <p class="small muted" style="margin:10px 0 0"><b>Critical path (2026-09-19):</b> fleet deployed, runners live, 048+049 on <code>main</code>, beta DB 39/39. Remaining: <b>execute</b> (Sep 22 07:43 UTC) → <b>P12 crawler</b> is built (first run: 58 vaults, pick Steakhouse USDG) and ships with the next curator deploy → <b>wrap</b> → <code>setAllowlisted</code> +72h → <b>P11 rails</b>. No external gate: the chain has vaults; the API blindness is what the crawler removes. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
   </section>
 
   <!-- ── DECISION LOG ──────────────────────────────────────────────── -->
@@ -437,6 +438,7 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
         <tr><td>2026-09-19</td><td><b>Gate 0 corrected:</b> 4663 already has 21 V2 vaults (Steakhouse USDG re-read on-chain at ~$482.3M); the “0 vaults” conclusion came from the Morpho Blue API, which does not index Robinhood Chain. New workstream: <b>P12 on-chain discovery crawler</b>.</td><td><span class="pill done">RATIFIED</span></td></tr>
         <tr><td>2026-09-19</td><td><b>Scope confirmed — wrap-only:</b> SparkPoint will not originate its own vault for now; “create” means curate an existing vault and wrap it via our factory. The “SparkPoint’s own vault” card was removed from <code>/vault</code>.</td><td><span class="pill done">DONE</span></td></tr>
         <tr><td>2026-09-19</td><td><b>Beta shipped:</b> #216 promoted 048+049 to <code>main</code>; curator + deployer apps deployed and healthy (#217/#218); beta DB migrated 39/39.</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>“API blind” corrected + P12 built:</b> the empty result was the V1 <code>vaults</code> query against <code>blue-api</code>; the live source is <code>api.morpho.org/graphql</code> + <code>vaultV2s</code>. On-chain crawler enumerates the factory's creation logs — first run: 58 V2 vaults, 58 verified, 2 pass screening, pick Steakhouse USDG (~$482.4M). No external gate remains for discovery; wrap-only scope unchanged.</td><td><span class="pill done">BUILT</span></td></tr>
       </tbody>
     </table>
   </section>
