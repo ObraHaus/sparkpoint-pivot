@@ -89,11 +89,11 @@
 <body>
 <header class="mast">
   <div class="mast-in">
-    <div class="kicker"><span class="pill active">LIVING DOC</span><span class="pill">2026-09-18 · late</span><span class="pill">spec 048 + wrapper v4.0.0</span></div>
+    <div class="kicker"><span class="pill active">LIVING DOC</span><span class="pill">2026-09-19 · post-merge</span><span class="pill">spec 048 + wrapper v4.0.0</span></div>
     <h1>Vault program — roadmap &amp; decision log</h1>
     <p class="sub">Everything from the AI-curated vaults spec (048) through the universal upgradeable wrapper program: what shipped, the fork we took tonight <b>(beacon fleet + scoped AI deployer)</b>, what that amendment changes, and what is left — with owners and blockers. Update this page as phases land.</p>
-    <div class="bar" title="6 of 13 phases complete"><i style="width:46%"></i></div>
-    <div class="small muted" style="margin-top:6px"><b>Progress:</b> 6 done · 1 active · 3 planned · 1 operator queue · 2 gated. <span class="now" style="margin-left:8px">◄ you are here: the wrapper fork decision</span></div>
+    <div class="bar" title="9 of 13 phases complete (merged)"><i style="width:69%"></i></div>
+    <div class="small muted" style="margin-top:6px"><b>Progress:</b> 9 done · 1 operator queue · 1 planned · 2 gated. <span class="now" style="margin-left:8px">◄ you are here: the wrapper fork decision</span></div>
   </div>
 </header>
 
@@ -195,8 +195,8 @@
       <div class="ph done">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P4 · Gates + PR</h3><span class="pill done">DONE</span></div>
-          <div class="meta">agent 1647 · web 713 · runners 29 · both builds · Defender</div>
+          <div class="head"><h3>P4 · Gates + PR</h3><span class="pill done">DONE · MERGED</span></div>
+          <div class="meta">PR #212 merged 2026-09-19T03:52Z · agent 1647 · web 713 · both builds</div>
           <ul>
             <li><span class="st d">DONE</span><span><b>PR #212</b> open to develop — <b>all 9 checks pass</b> incl. OH Defender (2 gitleaks FPs annotated).</span></li>
             <li><span class="st d">DONE</span><span>Both changelogs updated; runbook + MIGRATIONS.md + Kuma docs.</span></li>
@@ -223,7 +223,7 @@
           <div class="head"><h3>P6 · Ship the off-chain program</h3><span class="pill op">OPERATOR QUEUE</span></div>
           <div class="meta">merge → deploy → curator app</div>
           <ul>
-            <li><span class="st o">OP</span><span><b>Merge PR #212 → develop</b> (all gates green), then promote <b>develop → main</b>.</span></li>
+            <li><span class="st d">DONE</span><span><b>PR #212 merged → develop</b> (2026-09-19T03:52Z). Promoting <b>develop → main</b> (beta deploy) remains an operator call.</span></li>
             <li><span class="st o">OP</span><span>Duplicate <code>sparkpoint-keeper-beta</code> in Coolify → <code>SERVICE=curator</code> + staged env; deploy <b>after</b> the agent serves <code>/curator/*</code>.</span></li>
             <li><span class="st o">OP</span><span>Verify: <code>GET /vaults/curated</code> honest empty board; curator heartbeat UP; Kuma monitor stops reporting DOWN.</span></li>
           </ul>
@@ -233,12 +233,12 @@
       <div class="ph active">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P7 · Constitution v4.0.0 <span class="small muted" style="font-weight:500">(the fork is here)</span></h3><span class="pill active">ACTIVE</span></div>
-          <div class="meta">skeleton drafted → ratify</div>
+          <div class="head"><h3>P7 · Constitution v4.0.0 <span class="small muted" style="font-weight:500">(the fork is here)</span></h3><span class="pill done">DONE · MERGED</span></div>
+          <div class="meta">v4.0.0 amendment + spec 049 merged via PR #213</div>
           <ul>
-            <li><span class="st a">ACTIVE</span><span><b>Amendment skeleton drafted</b> (plan memo §8): IV.5 admission unchanged · IV.6/N5 → BeaconProxy + TimelockController rule · N1/N2 carried · upgradeability clause extended · Principle VII unchanged (no meta-vault).</span></li>
-            <li><span class="st o">OP</span><span><b>Ratify</b>: operator sign-off, version bump <b>4.0.0</b>, amendment file committed alongside <code>constitution-amendment-v3.0.0.md</code>.</span></li>
-            <li><span class="st p">NEXT</span><span>Rewrite Trust Center guarantee copy (“Non-upgradeable, pause-only” → timelock + exit window + residual-risk sentence).</span></li>
+            <li><span class="st d">DONE</span><span><b>Amendment + constitution v4.0.0 merged</b>: IV.5 admission unchanged · IV.6/N5 → BeaconProxy + TimelockController rule · N1/N2 carried · upgradeability clause extended (UUPS or Transparent) · Principle VII unchanged (no meta-vault).</span></li>
+            <li><span class="st d">DONE</span><span>Operator sign-off recorded; version bumped to <b>4.0.0</b>; amendment file committed alongside <code>constitution-amendment-v3.0.0.md</code>.</span></li>
+            <li><span class="st p">NEXT (P11)</span><span>Trust Center copy rewrite lands with the deployed contracts (P11).</span></li>
           </ul>
         </div>
       </div>
@@ -246,8 +246,8 @@
       <div class="ph">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P8 · Universal wrapper contracts</h3><span class="pill plan">PLANNED</span></div>
-          <div class="meta">contracts/ · audited Solidity</div>
+          <div class="head"><h3>P8 · Universal wrapper contracts</h3><span class="pill done">DONE · MERGED</span></div>
+          <div class="meta">PR #213 merged · forge 460 passed · Defender 0 high/medium</div>
           <ul>
             <li><span class="st p">BUILD</span><span><code>SparkPointUniversalVault</code> — one implementation: any vetted ERC-4626 child, HWM performance fee (≤20%, dilution), pause deposits only, withdraw always open, no admin asset path.</span></li>
             <li><span class="st p">BUILD</span><span><code>SparkPointVaultBeacon</code> (OZ <code>UpgradeableBeacon</code>, owner = timelock) + <code>SparkPointVaultFactoryV2</code> (deploy-only; on-chain validation; CREATE2 BeaconProxy + initialize) + per-wrapper <code>CapRegistry</code>.</span></li>
@@ -260,8 +260,8 @@
       <div class="ph">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P9 · AI deploy runner</h3><span class="pill plan">PLANNED</span></div>
-          <div class="meta">wallet ready · runner + policy</div>
+          <div class="head"><h3>P9 · AI deploy runner</h3><span class="pill done">DONE · MERGED</span></div>
+          <div class="meta">PR #213 merged · migration 0039 APPLIED to develop</div>
           <ul>
             <li><span class="st d">DONE</span><span><b>Deployer wallet generated</b> <code>0xB555…D875</code> (gas-only, no privileges).</span></li>
             <li><span class="st p">BUILD</span><span>Runner (keeper-style) executes scoped <code>createVault</code>, reports each deploy; LLM agent stays keyless.</span></li>
@@ -328,7 +328,7 @@
         <tr><td>9</td><td>A live ERC-4626 child vault on 4663 (Gate 0)</td><td>External/scope decision</td><td>—</td><td><span class="pill gated">CLOSED</span></td></tr>
       </tbody>
     </table>
-    <p class="small muted" style="margin:10px 0 0"><b>Critical path:</b> merge (1) → curator app (2) is independent of the wrapper program; the wrapper path is P7 → P8 → P9 → audit → deploy → wire, and only the <b>wrapping of a specific vault</b> waits on Gate 0.</p>
+    <p class="small muted" style="margin:10px 0 0"><b>Critical path (post-merge 2026-09-19):</b> items 1–5 are done and merged to develop. Remaining: <b>operator-signed contract deploy</b> (beacon/impl/factory on 4663) → deploy the runner app + curator app in Coolify → <b>P11 wiring</b> (rail, Trust Center, spec 048 M1 close). Only the <b>wrapping of a specific vault</b> waits on Gate 0. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
   </section>
 
   <!-- ── DECISION LOG ──────────────────────────────────────────────── -->
@@ -340,6 +340,8 @@
         <tr><td>2026-09-18</td><td>D1–D5 locked: performance fee only · Robinhood Chain 4663 · daily cadence · hybrid wrappers/direct · wireframe A+C</td><td><span class="pill done">RATIFIED</span></td></tr>
         <tr><td>2026-09-18 (late)</td><td><b>Wrapper architecture fork → Option C, refined</b>: universal implementation + beacon fleet (one BeaconProxy per vault) + TimelockController upgrade authority + scoped AI deployer wallet; constitution v4.0.0 amendment granted</td><td><span class="pill active">GRANTED · FORMALIZATION PENDING</span></td></tr>
         <tr><td>2026-09-18 (late)</td><td>AI deployer key generated <code>0xB555…D875</code> (gas-only; no upgrade/allowlist/pause/fund powers); executed by a deterministic runner, never the LLM agent</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>PR #212 merged → develop</b> (spec 048 M2/M3/M4). All OH Defender highs/mediums resolved repo-wide before merge; external audit deferred by operator (Defender suffices).</td><td><span class="pill done">MERGED</span></td></tr>
+        <tr><td>2026-09-19</td><td><b>PR #213 merged → develop</b> (constitution v4.0.0 + wrapper contracts + deploy runner). Migration <b>0039 applied</b> to develop (table + 2 indexes, empty).</td><td><span class="pill done">MERGED</span></td></tr>
       </tbody>
     </table>
   </section>
