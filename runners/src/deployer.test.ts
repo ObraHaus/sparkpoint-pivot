@@ -96,6 +96,7 @@ test("no admission yet: whitelists once and reports the cooldown", async () => {
       ok: true,
       txHash: TX_WHITELIST,
       readyAt: READY_AT,
+      byAddress: RUNNER,
     },
   ]);
 });
