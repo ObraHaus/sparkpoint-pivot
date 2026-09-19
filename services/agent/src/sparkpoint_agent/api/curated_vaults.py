@@ -4,8 +4,9 @@ Three surfaces, deliberately separated by who calls them:
 
   * ``GET  /vaults/curated``            — the PUBLIC board (beta wallet). Honest empty shape.
   * ``GET  /curator/run-state`` +
-    ``POST /curator/ingest``           — the KEYLESS curator runner's control/readback. S2S auth,
-                                          machine identity, no admin gate and no authority.
+    ``POST /curator/ingest``           — the KEYLESS curator runner's control/readback. S2S auth +
+                                          the operator (admin) identity: the BFF proxies every alpha
+                                          session here, so these are admin-gated; no authority.
   * ``GET/POST /admin/vaults/curation*`` — the admin review surface (``require_admin`` → 404 to a
                                           non-admin, mirroring ``admin/tips`` / ``admin/access``).
 
@@ -251,13 +252,17 @@ class CuratorIngest(BaseModel):
 
 @router.get("/curator/run-state")
 async def curator_run_state(
-    account: Annotated[AccountContext, Depends(get_account)],
+    # ⚠️ ADMIN/SERVICE identity, not a bare S2S call: the BFF proxies EVERY alpha session to
+    # /curator/*, so "any signed-in user could poll the curator's state". The runner asserts the
+    # operator (admin) wallet, so the machine still works and everyone else gets 404.
+    account: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[PgCurationStore, Depends(get_curation_store)],
 ) -> dict[str, Any]:
     """What the runner needs to decide whether to run: last success, and any pending request.
 
-    S2S-authenticated, NOT admin-gated: the caller is a machine and this grants nothing. The
-    runner owns its cadence; this only tells it what the agent already knows.
+    ADMIN-GATED (the runner asserts the operator wallet): the BFF reaches this path for every
+    alpha session. It grants nothing on-chain — the runner owns its cadence and this only reports
+    what the agent already knows — but the state is operator data and must not be user-readable.
     """
     state = await store.get_state(account.chain_id)
     return {"source": SOURCE_MORPHO, **state.to_wire()}
@@ -266,7 +271,7 @@ async def curator_run_state(
 @router.post("/curator/ingest")
 async def curator_ingest(
     body: CuratorIngest,
-    account: Annotated[AccountContext, Depends(get_account)],
+    account: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[PgCurationStore, Depends(get_curation_store)],
 ) -> dict[str, Any]:
     """Accept one discovery run, and publish it only under the agent's policy.
