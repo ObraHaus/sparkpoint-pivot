@@ -1,0 +1,132 @@
+"""048 — "what's the best vault / where should I deposit?" answered from the CURATED RECORD.
+
+FR-004: the answer comes from the same stored row the `/vault` board renders, and it never invents
+a vault or a number. Deterministic (no model call), like the other shape-sensitive answers — an APY
+is the one figure a user cannot sanity-check, so a model is not asked for one.
+
+The read is INJECTED (:attr:`CoordinatorDag.curated`) and fail-open: a store outage yields an honest
+"couldn't read it" error block, never a remembered vault. Nothing here is on the policy/action
+path — the output is a ``text`` block, which cannot carry a proposed action or a policy stamp.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+__all__ = [
+    "BEST_VAULT_RE",
+    "CURATED_FAILURE",
+    "CuratedContext",
+    "CuratedPick",
+    "curated_answer",
+]
+
+#: The question shapes this route owns. Deliberately narrow: a real command ("deposit 100 USDC into
+#: the vault") must still build an action, and a specific vault question ("what's the vault fee?")
+#: still belongs on the grounded corpus path.
+BEST_VAULT_RE = re.compile(
+    r"\b(?:best|top|safest|recommended)\b[^.?!]{0,30}\bvaults?\b"
+    r"|\bwhich vaults?\b"
+    r"|\bwhere (?:should|do|can|would) i (?:deposit|put (?:my )?(?:money|funds|usdc)|invest|earn)\b"
+    r"|\bbest (?:place|way) to (?:deposit|earn|invest)\b",
+    re.IGNORECASE,
+)
+
+#: An ERROR block renders the retry affordance and is NOT persisted as an answer — so a failed read
+#: can never be replayed later as though Sparky had said it.
+CURATED_FAILURE = (
+    "I couldn't read the curated vault list just now, and I won't guess at a vault or a rate. "
+    "Try again in a moment, or open the **Vault** page (/vault) to see the current board."
+)
+
+
+@dataclass(frozen=True)
+class CuratedPick:
+    """The stored pick, as chat needs it. Every figure is the stored one — None means unknown."""
+
+    address: str
+    label: str
+    net_apy_bps: int | None
+    tvl_usd: float | None
+    curator: str | None
+    curator_verified: bool
+    reason: str
+    as_of: str | None
+    wrapped: bool
+
+
+@dataclass(frozen=True)
+class CuratedContext:
+    """What the store said this turn: how many approved vaults, and the published pick (if any)."""
+
+    vault_count: int
+    pick: CuratedPick | None = None
+
+
+def _fmt_apy(bps: int | None) -> str:
+    if bps is None:
+        return "not available right now"
+    return f"{bps / 100:.2f}%"
+
+
+def _fmt_usd(value: float | None) -> str:
+    if value is None:
+        return "not available right now"
+    if value >= 1_000_000_000:
+        return f"${value / 1_000_000_000:.1f}B"
+    if value >= 1_000_000:
+        return f"${value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"${value / 1_000:.0f}k"
+    return f"${value:.0f}"
+
+
+def _fee_note(wrapped: bool) -> str:
+    if wrapped:
+        return (
+            "It has a SparkPoint performance-fee wrapper: the fee applies only to your gains above "
+            "the high-water mark — never to a deposit, a withdrawal, or a flat or losing position."
+        )
+    return (
+        "SparkPoint charges no fee on this one — you deposit directly into the vault contract from "
+        "your own wallet, and you can withdraw directly at any time."
+    )
+
+
+def curated_answer(context: CuratedContext) -> str:
+    """Compose the deterministic answer. Pure — every sentence is a fact from the stored record."""
+    pick = context.pick
+    if pick is None:
+        if context.vault_count == 0:
+            return (
+                "There are no curated vaults on this network yet — I don't have one I've screened, "
+                "and I won't invent one.\n\n"
+                "Discovery runs daily against this chain's vault source, and the board on the "
+                "**Vault** page (/vault) fills in by itself when there is something real to show. "
+                "In the meantime I can explain how the vaults work, or help you with a swap."
+            )
+        return (
+            f"I'm tracking {context.vault_count} curated vault"
+            f"{'s' if context.vault_count != 1 else ''} on this network, but no best pick has "
+            "been published yet — an admin reviews what the curator proposes before it leads the "
+            "board.\n\n"
+            "You can see them under **Vault** (/vault). I'll name a pick here as soon as there is "
+            "a published one."
+        )
+
+    lines = [f"I'd point you at **{pick.label}** — {pick.reason}", ""]
+    as_of = f" (as of {pick.as_of[:10]})" if pick.as_of else ""
+    lines.append(f"- Net APY: {_fmt_apy(pick.net_apy_bps)}{as_of}")
+    lines.append(f"- TVL: {_fmt_usd(pick.tvl_usd)}")
+    if pick.curator:
+        curator = f"{pick.curator} (verified)" if pick.curator_verified else pick.curator
+        lines.append(f"- Curator: {curator}")
+    lines += [
+        "",
+        _fee_note(pick.wrapped),
+        "",
+        "The full board — including the vaults I'm watching but not recommending — is on the "
+        "**Vault** page (/vault). I suggest; you choose and sign.",
+    ]
+    return "\n".join(lines)

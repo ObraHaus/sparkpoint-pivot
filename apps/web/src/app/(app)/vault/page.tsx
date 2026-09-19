@@ -33,6 +33,8 @@ import { apyLabel, ZERO_APY_BPS } from "@/lib/chain/aaveApy";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
 import { feeBasisShortLabel, vaultFeeChain } from "@/lib/policy/feeCopy";
 import { VaultPicker } from "@/components/ui/VaultPicker";
+import { CuratedBoard } from "@/components/vault/CuratedBoard";
+import { useCuratedBoard } from "@/lib/curation/useCuratedBoard";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
 
@@ -80,6 +82,16 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const book = safeAddresses(bookChainId);
   const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
   const sel = resolveSelectedVault(options, selectedParam);
+
+  // 048 — the AI-curated board. A read through the BFF; the deposit rail routes only to vaults the
+  // in-app flow already knows, and everything else is disclosed as a direct deposit (T303).
+  const curated = useCuratedBoard();
+  const knownVaults = options
+    .filter((o) => !!o.vaultAddress)
+    .map((o) => ({
+      address: o.vaultAddress as string,
+      depositHref: toHref("vault/deposit") + `?vault=${o.vaultAddress}`,
+    }));
   // `isWrapper` stays LEGACY-SPECIFIC (the SparkPointMorphoVault): it gates copy about a branded
   // wrapper over one curated Morpho vault. `isMorphoVenue` is the broader question — "is the yield
   // Morpho's rather than Aave's?" — and is what the APY/fee panel branches on, so a Vault V2 gets the
@@ -147,26 +159,34 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const capPct = capRaw > 0n ? Math.min((toNum(usedRaw) / toNum(capRaw)) * 100, 100) : 0;
 
   // On a build whose app chain has no vault (the Robinhood Chain beta — VAULT_CHAIN_AVAILABLE=false),
-  // render a single clean "not available yet" state instead of the whole deposit dashboard (which
-  // would otherwise show Base-only figures + a "switch to Base Sepolia" banner).
+  // the 048 curated board IS the vault experience: Sparky's screened picks, off-chain and
+  // admin-reviewed. The SparkPoint Aave vault itself is still Base-only, and that stays stated
+  // rather than implied.
   if (!VAULT_CHAIN_AVAILABLE) {
     return (
-      <div className="page page-narrow">
+      <div className="page page-wide">
         <div className="pagehead">
           <div>
             <h1>Vault</h1>
-            <div className="sub">AI-managed yield vault</div>
+            <div className="sub">AI-curated vaults · discovered, screened and reviewed</div>
           </div>
         </div>
-        <div className="card card-pad" style={{ marginTop: 8 }}>
+        <CuratedBoard
+          board={curated.board}
+          state={curated.state}
+          knownVaults={knownVaults}
+          fetchedAt={curated.fetchedAt}
+        />
+        <div className="card card-pad" style={{ marginTop: 14 }}>
           <div className="card-hd">
-            <span className="t">Not available yet</span>
-            <span className="lbl">coming soon</span>
+            <span className="t">SparkPoint’s own vault</span>
+            <span className="lbl">Base-only for now</span>
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-            The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — it arrives in a later step.
-            When it does, you&rsquo;ll deposit, earn and withdraw here, and you&rsquo;ll always be the only one who can
-            move your funds. There&rsquo;s nothing to deposit on this network right now.
+          <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+            The AI-managed Aave vault isn&rsquo;t part of this network yet — it arrives in a later
+            step. What&rsquo;s live here is the curated board above: vaults Sparky finds and
+            screens, with deposits you sign from your own wallet. You are always the only one who
+            can move your funds.
           </div>
         </div>
       </div>
@@ -427,6 +447,16 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
           )}
         </div>
       </div>
+
+      {/* 048 — the curated board sits below the SparkPoint vault on vault-bearing chains (Base
+          today). It is chain-scoped by the caller's session, so on the alpha build it shows that
+          chain's record and says honestly when there is none. */}
+      <CuratedBoard
+        board={curated.board}
+        state={curated.state}
+        knownVaults={knownVaults}
+        fetchedAt={curated.fetchedAt}
+      />
     </div>
   );
 }
