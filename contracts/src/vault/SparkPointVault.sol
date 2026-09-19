@@ -288,7 +288,11 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
         if (pps <= hwm) return 0; // flat/down -> no fee, HWM unchanged
 
         uint256 supply = totalSupply();
+        // slither-disable-next-line divide-before-multiply -- intentional two-step floor,
+        // identical to the shipped/audited fee arithmetic; a one-step mulDiv would change the
+        // rounded fee on a DEPLOYED vault.
         uint256 gainAssets = ((pps - hwm) * supply) / 1e18; // yield realized above the mark
+        // slither-disable-next-line divide-before-multiply -- see the note on gainAssets.
         uint256 feeAssets = (gainAssets * _performanceFeeBps) / _BPS_DENOMINATOR;
         // `< 1` == `== 0` for a uint; avoids slither's strict-equality FP on balance-tainted values.
         if (feeAssets < 1) return 0;
@@ -314,7 +318,11 @@ contract SparkPointVault is ERC4626, ISparkPointVault {
     /// @dev FAIL-OPEN wrapper. A revert in fee accrual is swallowed so the redemption/deposit is never
     ///      blocked (N2). The external self-call boundary is what makes the try/catch effective.
     function _tryAccrueFee() internal {
-        try this.accrueFee() returns (uint256) { } catch { }
+        // Bound AND referenced (see SparkPointUniversalVault): a bare `try f() { }` reads as an
+        // ignored return to some analyzer builds. The mint inside accrueFee() is the side effect.
+        try this.accrueFee() returns (uint256 feeShares) {
+            if (feeShares > 0) { }
+        } catch { }
     }
 
     /// @notice MANDATORY (non-fail-open) deposit-time HWM advance. Settles the HWM up to the current

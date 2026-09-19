@@ -13,6 +13,7 @@ import { MockERC20 } from "../mocks/Mocks.sol";
 /// @dev Accepts ETH and remembers it — stands in for the engine and the treasury in splitter tests.
 contract EthSink {
     uint256 public received;
+
     receive() external payable {
         received += msg.value;
     }
@@ -72,8 +73,8 @@ contract MockBrokerNFT {
 // ------------------------------------------------------------------ RoyaltySink
 
 contract RoyaltySinkTest is Test {
-    EthSink splitter;
-    RoyaltySink sink;
+    EthSink private splitter;
+    RoyaltySink private sink;
 
     function setUp() public {
         splitter = new EthSink();
@@ -105,10 +106,10 @@ contract RoyaltySinkTest is Test {
 // ------------------------------------------------------------------ RevenueSplitter
 
 contract RevenueSplitterTest is Test {
-    MockFeeEscrow escrow;
-    EthSink engine;
-    EthSink treasury;
-    RevenueSplitter splitter;
+    MockFeeEscrow private escrow;
+    EthSink private engine;
+    EthSink private treasury;
+    RevenueSplitter private splitter;
 
     function setUp() public {
         escrow = new MockFeeEscrow();
@@ -185,12 +186,12 @@ contract RevenueSplitterTest is Test {
 // ------------------------------------------------------------------ BrokerVault
 
 contract BrokerVaultTest is Test {
-    MockBrokerNFT nft;
-    BrokerVault vault;
-    MockERC20 token;
-    uint256 ownerPk = 0xA11CE;
-    address owner;
-    address stranger = address(0xB0B);
+    MockBrokerNFT private nft;
+    BrokerVault private vault;
+    MockERC20 private token;
+    uint256 private ownerPk = 0xA11CE;
+    address private owner;
+    address private stranger = address(0xB0B);
 
     function setUp() public {
         owner = vm.addr(ownerPk);

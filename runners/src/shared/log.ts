@@ -8,8 +8,12 @@ import { beat } from "./health.ts";
  * treasury" tells them whether the demo is working, and it is the only line that would have caught
  * a sweep that succeeded against an empty contract.
  */
-/** Only two runners exist off the simulation: the trader and the faucet are sim-only. */
-export type Service = "keeper" | "sweeper";
+/**
+ * Only these runners exist off the simulation: the trader and the faucet are sim-only.
+ * `curator` is the keyless one — it reports to the agent and holds nothing. `deployer` holds a
+ * SCOPED, deploy-only key (no upgrade/allowlist/pause/fund power) and is likewise never the LLM.
+ */
+export type Service = "keeper" | "sweeper" | "curator" | "deployer";
 
 function stamp(): string {
   return new Date().toISOString();

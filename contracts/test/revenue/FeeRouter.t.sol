@@ -213,21 +213,21 @@ contract FeeRouterV2 is FeeRouter {
 // ---------------------------------------------------------------- tests
 
 contract FeeRouterTest is Test {
-    uint256 constant FEE_CEILING = 100;
-    uint256 constant FEE_BPS = 20;
+    uint256 private constant FEE_CEILING = 100;
+    uint256 private constant FEE_BPS = 20;
 
-    MockWeth weth;
-    MockToken usdg;
-    MockToken spark;
-    MockSplitter splitter;
-    MockSwapRouter swapRouter;
-    FeeRouter router;
-    FeeRouter impl;
+    MockWeth private weth;
+    MockToken private usdg;
+    MockToken private spark;
+    MockSplitter private splitter;
+    MockSwapRouter private swapRouter;
+    FeeRouter private router;
+    FeeRouter private impl;
 
-    address owner = address(this);
-    address alice = address(0xA11CE);
-    address treasury = address(0x7EA5);
-    address engine = address(0xE1161);
+    address private owner = address(this);
+    address private alice = address(0xA11CE);
+    address private treasury = address(0x7EA5);
+    address private engine = address(0xE1161);
 
     event FeeRouted(address indexed asset, uint256 amount, bool inEth);
     event SwapExecuted(

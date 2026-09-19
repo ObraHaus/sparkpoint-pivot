@@ -35,8 +35,10 @@ function envInt(name: string, fallback: number): number {
   return value;
 }
 
-if (SERVICE !== "keeper" && SERVICE !== "sweeper") {
-  console.error(`SERVICE must be "keeper" or "sweeper" (got ${SERVICE ? `"${SERVICE}"` : "unset"})`);
+if (SERVICE !== "keeper" && SERVICE !== "sweeper" && SERVICE !== "curator") {
+  console.error(
+    `SERVICE must be "keeper", "sweeper" or "curator" (got ${SERVICE ? `"${SERVICE}"` : "unset"})`,
+  );
   // Non-zero so a container started without SERVICE reports unhealthy rather than passing blindly.
   process.exit(1);
 }
@@ -46,7 +48,17 @@ if (SERVICE !== "keeper" && SERVICE !== "sweeper") {
 // missed intervals plus a margin for a slow tick before calling it stale — long enough not to flap
 // on one slow round, short enough to catch a wedged or unfunded runner within minutes. Override with
 // HEALTHCHECK_MAX_AGE_SEC when a deployment's cadence differs.
-const intervalSec = SERVICE === "keeper" ? envInt("KEEPER_TICK_SEC", 60) : envInt("SWEEP_INTERVAL_SEC", 300);
+//
+// ⚠️ For the curator this is its POLL cadence, not its daily run interval: it beats on an idle
+// poll, and whether a RUN succeeded is recorded on the agent (`lastRunAt` / `lastRunOk`), which is
+// what the admin panel and the Kuma monitor read. The heartbeat answers "is this process alive and
+// reaching the agent", not "is Morpho healthy".
+const intervalSec =
+  SERVICE === "keeper"
+    ? envInt("KEEPER_TICK_SEC", 60)
+    : SERVICE === "sweeper"
+      ? envInt("SWEEP_INTERVAL_SEC", 300)
+      : envInt("CURATOR_POLL_SEC", 300);
 const maxAgeSec = envInt("HEALTHCHECK_MAX_AGE_SEC", intervalSec * 3 + 60);
 
 if (isFresh(SERVICE, maxAgeSec)) {

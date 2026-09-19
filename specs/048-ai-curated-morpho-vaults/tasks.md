@@ -10,37 +10,37 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live vault o
 - [x] **T003** Write `tasks.md` (this file), and keep the operator todo in sync.
 - [ ] **T004** Read the plan back to the operator before M2 starts (pending their go — spec only so far).
 
-## Phase M2 — Curator runner + curated store (no vault needed)
+## Phase M2 — Curator runner + curated store (no vault needed) — ✅ implemented (0038 pending apply)
 
-- [ ] **T101** Agent DB migration: `curated_vaults`, `vault_recommendations`, `vault_curation_audit`.
-- [ ] **T102** Agent public read: `GET /vaults/curated` → `{ pick, alternates, vaults, lastRunAt, source }`
+- [x] **T101** Agent DB migration: `curated_vaults`, `vault_recommendations`, `vault_curation_audit`.
+- [x] **T102** Agent public read: `GET /vaults/curated` → `{ pick, alternates, vaults, lastRunAt, source }`
       with the honest empty shape.
-- [ ] **T103** Agent admin endpoints: list/approve/deny/pin/hide/edit/add-by-address/run-now/
+- [x] **T103** Agent admin endpoints: list/approve/deny/pin/hide/edit/add-by-address/run-now/
       auto-publish/audit (mirror `admin/tips`); admin writes set `provenance=admin` and win over scans.
-- [ ] **T104** `runners/src/curator.ts`: daily loop + Morpho source adapter + screening + scoring +
+- [x] **T104** `runners/src/curator.ts`: daily loop + Morpho source adapter + screening + scoring +
       publish via the S2S admin API; fail-open to the last good record.
-- [ ] **T105** Scoring/screening units: anomaly guard, asset allowlist, best-pick determinism, no-op run.
-- [ ] **T106** Fixture-driven verification on 4663 (empty result today → empty state; a fixture vault →
+- [x] **T105** Scoring/screening units: anomaly guard, asset allowlist, best-pick determinism, no-op run.
+- [x] **T106** Fixture-driven verification on 4663 (empty result today → empty state; a fixture vault →
       populated list and pick).
 - [ ] **T107** Ops: env wiring in the Coolify “Beta Bots” project, Kuma monitor, logs, runbook note.
 
-## Phase M4 — Admin → Vaults panel
+## Phase M4 — Admin → Vaults panel — ✅ implemented
 
-- [ ] **T201** Admin panel: candidate queue with scores/provenance, approve/deny/pin/hide, metadata edit,
+- [x] **T201** Admin panel: candidate queue with scores/provenance, approve/deny/pin/hide, metadata edit,
       add-by-address validation, Run-now, auto-publish toggle, audit view.
-- [ ] **T202** Tests: admin precedence over a scan, audit rows, non-admin 404 (mirrors the other panels).
+- [x] **T202** Tests: admin precedence over a scan, audit rows, non-admin 404 (mirrors the other panels).
 
-## Phase M3 — App surfaces (wireframe A+C) + chat
+## Phase M3 — App surfaces (wireframe A+C) + chat — ✅ implemented
 
-- [ ] **T301** `/vault` redesign: hero pick + curated table + filters + provenance (“AI pick · last scan”)
+- [x] **T301** `/vault` redesign: hero pick + curated table + filters + provenance (“AI pick · last scan”)
       + “new this week”; honest empty state on 4663; keep the existing vault page intact where a vault
       exists (alpha).
-- [ ] **T302** Chat entry point on the page + “best vault / where to deposit” intent answering from the
+- [x] **T302** Chat entry point on the page + “best vault / where to deposit” intent answering from the
       curated record with a `/vault` deep link.
-- [ ] **T303** Deposit rail: wrapped ⇒ wrapper deposit (performance fee disclosed); unwrapped ⇒ direct
+- [x] **T303** Deposit rail: wrapped ⇒ wrapper deposit (performance fee disclosed); unwrapped ⇒ direct
       ERC-4626 with the no-wrapper disclosure.
-- [ ] **T304** Web unit tests: pick/table/provenance render; empty state; chat answer from the record.
-- [ ] **T305** Trust Center: wrapper + off-chain-curation + admin-override disclosure.
+- [x] **T304** Web unit tests: pick/table/provenance render; empty state; chat answer from the record.
+- [x] **T305** Trust Center: wrapper + off-chain-curation + admin-override disclosure.
 
 ## Phase Gate 0 — a live vault on 4663
 

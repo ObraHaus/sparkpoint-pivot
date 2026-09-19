@@ -1,12 +1,28 @@
 {
-  "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
+  "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
+    {
+      "slug": "wrapper-infrastructure-preview",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Under the hood: upgradeable curated-vault wrappers",
+      "body": "We built the system that lets SparkPoint wrap a curated vault in its own upgradeable wrapper — so fees on gains stay future-proof and fixes can reach every wrapper at once.\n\nNothing changes on this network yet: there is still no curated vault live here, so there is nothing to deposit. When one goes live, the Vault page will show it with the full fee disclosure, and you will always sign from your own wallet.",
+      "published_at": "2026-09-18T13:30:00Z"
+    },
+    {
+      "slug": "ai-curated-vaults-board",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now hunts for the best vaults for you",
+      "body": "The Vault page has a new job: a daily curator bot checks this network for vaults, screens each one, and ranks them. Sparky then proposes the best pick — and a person on the team reviews and publishes it, so nothing reaches you unchecked.\n\nWhat you'll see on the Vault page:\n\n• Sparky's pick for today, with its net APY, TVL, curator and the reason it was chosen — always shown with the time it was measured;\n• the full curated list, where each row says whether it came from the AI or an admin, and when it was last checked;\n• an “Ask Sparky about vaults” button that opens chat with the question already typed;\n• if there are no vaults on this network yet, the page says exactly that — no empty table pretending to be a market.\n\nOn fees: where SparkPoint adds its performance-fee wrapper, the fee applies only to gains above your high-water mark — never to a deposit, a withdrawal, or a flat or losing position. Vaults without a wrapper are deposited directly from your wallet and carry no SparkPoint fee at all. Either way, you sign from your own wallet and can withdraw directly at any time.\n\nThis network doesn't have a curated vault yet, so you'll see the honest empty state for now. When the curator finds one, the page fills in by itself.",
+      "published_at": "2026-09-18T10:30:00Z"
+    },
     {
       "slug": "swap-polish-more-tokens-one-tap",
       "type": "changelog",
       "tag": "Improved",
       "title": "Swapping: more tokens, fewer taps",
-      "body": "The Swap page and Sparky got easier:\n\n\u2022 the token picker now recommends the chain's real Stock Tokens \u2014 SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, QQQ, GLD, CRCL, RDDT and SPCX \u2014 each verified on-chain, and you can still paste any other token address;\n\u2022 the \u201cRoute via\u201d box is gone \u2014 Uniswap V3 is where swaps run, and the route still shows on the confirm screen;\n\u2022 ask Sparky for a swap (\u201cswap 0.001 ETH to USDG\u201d) and the card now opens with the amount and both tokens already filled in \u2014 you just review and confirm;\n\u2022 the SRK page links to its Pons launchpad, and the broker page links to the collection on OpenSea.\n\nAs always: you sign from your own wallet, and SparkPoint never holds your funds.",
+      "body": "The Swap page and Sparky got easier:\n\n• the token picker now recommends the chain's real Stock Tokens — SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, QQQ, GLD, CRCL, RDDT and SPCX — each verified on-chain, and you can still paste any other token address;\n• the “Route via” box is gone — Uniswap V3 is where swaps run, and the route still shows on the confirm screen;\n• ask Sparky for a swap (“swap 0.001 ETH to USDG”) and the card now opens with the amount and both tokens already filled in — you just review and confirm;\n• the SRK page links to its Pons launchpad, and the broker page links to the collection on OpenSea.\n\nAs always: you sign from your own wallet, and SparkPoint never holds your funds.",
       "published_at": "2026-09-18T09:20:00Z"
     },
     {
@@ -14,7 +30,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "A cleaner beta: honest labels, tidier pages, less clutter",
-      "body": "A pass over the beta's rough edges:\n\n\u2022 the broker and revenue pages no longer run their labels into the numbers;\n\u2022 the \u201cpartial data\u201d chips are gone \u2014 a feature that isn't available yet now simply says so;\n\u2022 Bridge is tucked away for now, SRK lives inside Learn, and the Changelog moved into Settings (all still reachable);\n\u2022 no testnet or faucet talk anywhere \u2014 SRK is described plainly as a placeholder token;\n\u2022 the broker page links to OpenSea and says the collection is a test placeholder.\n\nNothing about how anything works changed \u2014 this is clarity.",
+      "body": "A pass over the beta's rough edges:\n\n• the broker and revenue pages no longer run their labels into the numbers;\n• the “partial data” chips are gone — a feature that isn't available yet now simply says so;\n• Bridge is tucked away for now, SRK lives inside Learn, and the Changelog moved into Settings (all still reachable);\n• no testnet or faucet talk anywhere — SRK is described plainly as a placeholder token;\n• the broker page links to OpenSea and says the collection is a test placeholder.\n\nNothing about how anything works changed — this is clarity.",
       "published_at": "2026-09-18T08:44:00Z"
     },
     {
@@ -22,7 +38,7 @@
       "type": "changelog",
       "tag": "Announcement",
       "title": "SparkPoint beta is live on Robinhood Chain",
-      "body": "The beta is open at beta.sparkpoint.io on Robinhood Chain. Connect a wallet, sign a message to prove it is yours (nothing on-chain moves), and you can:\n\n\u2022 chat with Sparky about your portfolio;\n\u2022 swap ETH and USDG on the network's own Uniswap V3;\n\u2022 if you hold a Sparky Broker, clock it in and collect its share of trading revenue \u2014 promote or fuse brokers too.\n\nThe swap charges the advertised 0.20% fee, and the confirm screen shows the exact amount and where it goes before you sign. Everything is non-custodial: you sign from your own wallet, and SparkPoint never holds your funds.\n\nThis is a beta \u2014 the token and the collection are test assets. Try it, and tell us what to improve.",
+      "body": "The beta is open at beta.sparkpoint.io on Robinhood Chain. Connect a wallet, sign a message to prove it is yours (nothing on-chain moves), and you can:\n\n• chat with Sparky about your portfolio;\n• swap ETH and USDG on the network's own Uniswap V3;\n• if you hold a Sparky Broker, clock it in and collect its share of trading revenue — promote or fuse brokers too.\n\nThe swap charges the advertised 0.20% fee, and the confirm screen shows the exact amount and where it goes before you sign. Everything is non-custodial: you sign from your own wallet, and SparkPoint never holds your funds.\n\nThis is a beta — the token and the collection are test assets. Try it, and tell us what to improve.",
       "published_at": "2026-09-18T07:21:00Z"
     }
   ]

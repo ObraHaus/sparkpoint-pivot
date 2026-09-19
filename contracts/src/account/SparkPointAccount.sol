@@ -287,7 +287,8 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
         if (uint256(p.spent) + valueUSD > p.cumulativeCap) return (false, REASON_CUMULATIVE_CAP);
         if (
             isSwap
-                && (amountOutMin == 0 || amountOutMin < SessionScopeLib.slippageFloor(notional, p.maxSlippageBps))
+                && (amountOutMin == 0
+                    || amountOutMin < SessionScopeLib.slippageFloor(notional, p.maxSlippageBps))
         ) {
             return (false, REASON_SLIPPAGE);
         }
@@ -353,8 +354,13 @@ contract SparkPointAccount is ISparkPointAccount, Initializable, UUPSUpgradeable
             v := byte(0, calldataload(add(sig.offset, 65)))
         }
         bytes32 digest = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, v, r, s);
-        if (err != ECDSA.RecoverError.NoError || signer != _owner) return SIG_VALIDATION_FAILED;
+        // The recovered hash is BOUND and checked: a zero hash cannot come from a successful
+        // recovery of a real digest, so this rejects only already-invalid signatures.
+        (address signer, ECDSA.RecoverError err, bytes32 recoveredHash) =
+            ECDSA.tryRecover(digest, v, r, s);
+        if (err != ECDSA.RecoverError.NoError || signer != _owner || recoveredHash == bytes32(0)) {
+            return SIG_VALIDATION_FAILED;
+        }
         return SIG_VALIDATION_SUCCESS;
     }
 

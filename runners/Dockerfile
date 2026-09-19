@@ -1,10 +1,12 @@
-# The Sparky beta revenue bots, as one image. `SERVICE` picks which one this container is.
+# The Sparky beta bots, as one image. `SERVICE` picks which one this container is.
 #
-# ⚠️ ONE image, TWO deployments. The keeper and the sweeper differ only in their entrypoint and their
-# cadence, so building two near-identical images would be two things to keep in step. Instead this
-# builds once and each Coolify app sets `SERVICE=keeper` or `SERVICE=sweeper` — which selects both the
-# process `CMD` starts and the heartbeat the `HEALTHCHECK` reads. They still run as separate apps with
-# separate funded hot wallets (KEEPER_PRIVATE_KEY / SWEEPER_PRIVATE_KEY); this shares only the code.
+# ⚠️ ONE image, THREE deployments. The keeper and the sweeper differ only in their entrypoint and
+# their cadence, and the curator (048, keyless — it reports to the agent and holds no wallet) shares
+# the same loop/liveness contract, so building near-identical images would be things to keep in step.
+# This builds once and each Coolify app sets `SERVICE=keeper` / `SERVICE=sweeper` / `SERVICE=curator`
+# — which selects both the process `CMD` starts and the heartbeat the `HEALTHCHECK` reads. The two
+# funded runners still run as separate apps with separate hot wallets (KEEPER_PRIVATE_KEY /
+# SWEEPER_PRIVATE_KEY); the curator needs neither a key nor the address book. This shares only code.
 #
 #   docker build -t sparky-beta-runners runners
 #   docker run -e SERVICE=keeper  --env-file runners/.env -v $BOOK:/srv/mainnet.json:ro sparky-beta-runners

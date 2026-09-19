@@ -78,6 +78,7 @@ from .chat_blocks import (
     token_address,
     token_decimals,
 )
+from .curated import BEST_VAULT_RE, CURATED_FAILURE, CuratedContext, curated_answer
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -326,6 +327,10 @@ class CoordinatorDag:
     #: 031 — an async read of the newest published updates, injected by the chat wiring. ``None``
     #: for the non-chat consumers, which simply do not take the "what's new" route.
     changelog: Callable[[], Awaitable[Sequence[Mapping[str, Any]]]] | None = None
+    #: 048 — an async read of the CURATED RECORD for a chain. Returns the stored summary (possibly
+    #: with no pick), or ``None`` when the read failed — which the "best vault" route renders as an
+    #: honest error, never a remembered vault. Advisory/display only: its output is a text block.
+    curated: Callable[[int], Awaitable[CuratedContext | None]] | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -537,6 +542,21 @@ class CoordinatorDag:
             yield ToolStepBlock("Understanding your request", "running")
             yield ToolStepBlock("Understanding your request", "done")
             yield TextBlock(_HOW_TO_EXIT_ANSWER if _offers_vault(chain) else _HOW_TO_EXIT_NO_VAULT)
+            return
+
+        # 048 — "what's the best vault / where should I deposit?" is answered from the CURATED
+        # RECORD: the same row `/vault` renders, with its stored as-of. Deterministic, because the
+        # one number a user cannot sanity-check is an APY and a model must not supply one. The read
+        # is fail-open: a store outage says so (an error block, never persisted as an answer)
+        # rather than naming a vault from memory.
+        if BEST_VAULT_RE.search(message) and self.curated is not None:
+            yield ToolStepBlock("Checking the curated vaults", "running")
+            curated_record = await self.curated(chain.chain_id)
+            yield ToolStepBlock("Checking the curated vaults", "done")
+            if curated_record is None:
+                yield ErrorBlock("UPSTREAM_UNAVAILABLE", CURATED_FAILURE)
+                return
+            yield TextBlock(curated_answer(curated_record))
             return
 
         direct = _direct_answer(message, chain)
