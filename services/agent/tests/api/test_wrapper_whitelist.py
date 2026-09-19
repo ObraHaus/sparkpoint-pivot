@@ -142,6 +142,9 @@ class FakeStore:
     async def record_cancel(self, chain_id: int, **kw: Any) -> WrapperWhitelistEntry | None:
         return await self._resolve(chain_id, kw["child_address"], status="cancelled")
 
+    async def record_release(self, chain_id: int, **kw: Any) -> WrapperWhitelistEntry | None:
+        return await self._resolve(chain_id, kw["child_address"], ready_at=0)
+
     async def record_failure(self, chain_id: int, **kw: Any) -> WrapperWhitelistEntry | None:
         return await self._resolve(
             chain_id, kw["child_address"], status="failed", error=kw["error"]
@@ -315,6 +318,24 @@ def test_admin_instant_whitelist_records_admin_and_ready_now(
     assert resp.status_code == 200, resp.text
     entry = resp.json()["entry"]
     assert entry["byAddress"] == _OWNER.lower()
+    assert entry["readyAt"] == 0
+    assert entry["ready"] is True
+    assert entry["status"] == PENDING
+
+
+def test_admin_release_zeros_the_cooldown(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, _, _ = client
+    c.post(
+        "/admin/vaults/whitelist/record",
+        json={"childAddress": _CHILD, "action": "whitelist", "readyAt": 4_102_444_800},
+    )
+    resp = c.post(
+        "/admin/vaults/whitelist/record", json={"childAddress": _CHILD, "action": "release"}
+    )
+    assert resp.status_code == 200, resp.text
+    entry = resp.json()["entry"]
     assert entry["readyAt"] == 0
     assert entry["ready"] is True
     assert entry["status"] == PENDING

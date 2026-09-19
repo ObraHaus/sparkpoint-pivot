@@ -185,6 +185,10 @@ class WhitelistStore(Protocol):
         self, chain_id: int, *, child_address: str, actor: str | None
     ) -> WrapperWhitelistEntry | None: ...
 
+    async def record_release(
+        self, chain_id: int, *, child_address: str, actor: str | None
+    ) -> WrapperWhitelistEntry | None: ...
+
     async def record_failure(
         self,
         chain_id: int,
@@ -388,6 +392,30 @@ class PgWhitelistStore:
                 UPDATE wrapper_whitelist
                    SET status = 'cancelled', recorded_by = COALESCE($3, recorded_by),
                        cancelled_at = now(), updated_at = now()
+                 WHERE id = (
+                     SELECT id FROM wrapper_whitelist
+                      WHERE chain_id = $1 AND child_address = $2 AND status = 'pending'
+                      ORDER BY created_at DESC LIMIT 1
+                 )
+                RETURNING {_COLUMNS}
+                """,
+                chain_id,
+                child_address.strip().lower(),
+                actor,
+            )
+        except UndefinedTableError:
+            return None
+        return _row_to_entry(row) if row else None
+
+    async def record_release(
+        self, chain_id: int, *, child_address: str, actor: str | None
+    ) -> WrapperWhitelistEntry | None:
+        """`releaseNow`: zero a pending AI entry's cooldown so it can be deployed immediately."""
+        try:
+            row = await self._db.fetchrow(
+                f"""
+                UPDATE wrapper_whitelist
+                   SET ready_at = 0, recorded_by = COALESCE($3, recorded_by), updated_at = now()
                  WHERE id = (
                      SELECT id FROM wrapper_whitelist
                       WHERE chain_id = $1 AND child_address = $2 AND status = 'pending'

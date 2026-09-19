@@ -105,6 +105,13 @@ export const robinhoodMainnet: AddressBook = {
 
   feeTreasury: undefined,
 
+  // ── 049 v4.1.0 wrapper fleet (Robinhood Chain 4663, deployed 2026-09-19) ──
+  // The admission-gateway factory (proxy) + the timelock-owned beacon. Wrapper INSTANCES are
+  // deployed on demand and served by the agent's curated board — never a static list here.
+  sparkPointVaultFactoryV3: "0x1de85106Fb6be911C6e3B186aB689e136eAA6406",
+  sparkPointVaultTimelock: "0x62b8b01cEcecBc191F35A0dD93f5898A6848b0B5",
+  sparkPointVaultBeacon: "0xC4D6D11fe9d7F1091b9f74b55b27D6D1cbB0ab0c",
+
   // ── SparkPoint vault stack — Base-only ⇒ undefined here (fail-closed) ──
   sparkPointAccountImpl: undefined,
   accountFactory: undefined,

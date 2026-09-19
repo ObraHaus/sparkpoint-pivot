@@ -95,7 +95,7 @@ class AdminRecord(BaseModel):
     """
 
     childAddress: str
-    action: Literal["whitelist", "deploy", "unwhitelist", "fail"]
+    action: Literal["whitelist", "deploy", "unwhitelist", "release", "fail"]
     txHash: str | None = Field(default=None, max_length=80)
     readyAt: int | None = Field(default=None, ge=0, le=(1 << 63) - 1)
     proxyAddress: str | None = None
@@ -310,6 +310,16 @@ async def admin_record_whitelist(
 
     if body.action == "unwhitelist":
         entry = await store.record_cancel(
+            admin.chain_id, child_address=body.childAddress, actor=admin.owner
+        )
+        if entry is None:
+            raise ApiError(
+                ErrorCode.NOT_FOUND, "no pending admission for that child on this chain"
+            )
+        return {"ok": True, "updated": True, "entry": entry.to_wire()}
+
+    if body.action == "release":
+        entry = await store.record_release(
             admin.chain_id, child_address=body.childAddress, actor=admin.owner
         )
         if entry is None:
