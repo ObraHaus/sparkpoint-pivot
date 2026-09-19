@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vault program — live topology + why there is no vault yet</title>
+<style>
+  :root{
+    --bg:#F5F7FC; --surface:#FFFFFF; --surface-2:#EDF1FA; --surface-3:#E2E8F5;
+    --ink:#0F1524; --ink-2:#454F68; --ink-3:#78829B;
+    --line:#DBE1EE; --line-strong:#C1CADE;
+    --cobalt:#2A57DC; --cobalt-soft:#E7ECFB;
+    --gold:#B0770F; --gold-soft:#F8EFD9;
+    --coral:#D22E3A; --coral-soft:#FBE7E8;
+    --emerald:#1B8A57; --emerald-soft:#E3F3EA;
+    --violet:#7443C6; --violet-soft:#F0E9FB;
+    --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --shadow:0 1px 2px rgba(15,21,36,.05), 0 8px 24px -12px rgba(15,21,36,.15);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#090D17; --surface:#111725; --surface-2:#161E30; --surface-3:#1D2740;
+    --ink:#E9EDF7; --ink-2:#A4AFC7; --ink-3:#6C7791;
+    --line:#212B40; --line-strong:#33405B;
+    --cobalt:#6E92F0; --cobalt-soft:#16223F;
+    --gold:#E4B057; --gold-soft:#26200F;
+    --coral:#F0666B; --coral-soft:#2A1517;
+    --emerald:#51CB8E; --emerald-soft:#0F2419;
+    --violet:#B491E9; --violet-soft:#1C1430;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(0,0,0,.6);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px 70px}
+  code,.mono{font-family:var(--mono)}
+  a{color:var(--cobalt);text-decoration:none} a:hover{text-decoration:underline}
+  header.mast{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 90% -30%,var(--cobalt-soft) 0%,transparent 55%),var(--surface)}
+  .mast-in{max-width:1100px;margin:0 auto;padding:30px 20px 24px}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  h1{font-size:clamp(23px,4vw,33px);line-height:1.1;letter-spacing:-.02em;margin:10px 0 0;font-weight:700}
+  .sub{margin:8px 0 0;color:var(--ink-2);max-width:84ch}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-2)}
+  .pill.done{border-color:var(--emerald);background:var(--emerald-soft);color:var(--emerald)}
+  .pill.active{border-color:var(--cobalt);background:var(--cobalt-soft);color:var(--cobalt)}
+  .pill.plan{border-color:var(--line-strong);background:var(--surface-3);color:var(--ink-3)}
+  .pill.op{border-color:var(--gold);background:var(--gold-soft);color:var(--gold)}
+  .pill.gated{border-color:var(--coral);background:var(--coral-soft);color:var(--coral)}
+  section{margin:26px 0 0}
+  h2{font-size:19px;letter-spacing:-.01em;margin:0 0 4px;font-weight:700}
+  .small{font-size:13px}
+  .muted{color:var(--ink-3)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
+  .card + .card{margin-top:12px}
+  .card h3{margin:0 0 6px;font-size:15.5px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:860px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}}
+  .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-2)}
+  .tag.chain{border-color:var(--violet);background:var(--violet-soft);color:var(--violet)}
+  .tag.off{border-color:var(--cobalt);background:var(--cobalt-soft);color:var(--cobalt)}
+  .tag.human{border-color:var(--gold);background:var(--gold-soft);color:var(--gold)}
+  .tag.live{border-color:var(--emerald);background:var(--emerald-soft);color:var(--emerald)}
+  .flow{display:flex;flex-direction:column;gap:0;margin:6px 0 0}
+  .step{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+  .step .dot{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--line-strong);background:var(--surface);color:var(--ink-2);margin-top:2px}
+  .step.done .dot{border-color:var(--emerald);color:var(--emerald);background:var(--emerald-soft)}
+  .step.now .dot{border-color:var(--cobalt);color:var(--cobalt);background:var(--cobalt-soft)}
+  .step.wait .dot{border-color:var(--gold);color:var(--gold);background:var(--gold-soft)}
+  .step .body{padding:0 0 18px}
+  .step:not(:last-child) .body{border-left:2px dashed var(--line);margin-left:-27px;padding-left:37px}
+  .step .t{font-weight:600}
+  .step .d{font-size:13px;color:var(--ink-2)}
+  .lnk{height:26px;display:flex;align-items:center;margin-left:15px;color:var(--line-strong);font-size:18px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .mono-sm{font-family:var(--mono);font-size:12px}
+  .addr{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .note{border-left:3px solid var(--gold);background:var(--gold-soft);border-radius:0 10px 10px 0;padding:10px 14px;font-size:13.5px;color:var(--ink-2)}
+  .note.blue{border-left-color:var(--cobalt);background:var(--cobalt-soft)}
+  .note.green{border-left-color:var(--emerald);background:var(--emerald-soft)}
+  .note.red{border-left-color:var(--coral);background:var(--coral-soft)}
+  .chainbox{background:var(--violet-soft);border:1px solid var(--violet);border-radius:12px;padding:12px 14px}
+  .offbox{background:var(--cobalt-soft);border:1px solid var(--cobalt);border-radius:12px;padding:12px 14px}
+  .node{background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;padding:8px 11px;font-size:13px;box-shadow:var(--shadow)}
+  .node b{display:block;font-size:13.5px}
+  .node .m{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:16px;font-family:var(--mono)}
+  .row{display:grid;gap:10px;align-items:center}
+  @media(min-width:860px){.row.r5{grid-template-columns:1fr 40px 1fr 40px 1fr}.row.r3{grid-template-columns:1fr 40px 1fr}}
+  .stamp{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  footer{margin-top:28px;color:var(--ink-3);font-size:12.5px}
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-in">
+    <div class="kicker">
+      <span class="pill active">LIVE TOPOLOGY</span>
+      <span class="pill">2026-09-19 · snapshot</span>
+      <span class="pill">Robinhood Chain 4663</span>
+    </div>
+    <h1>Why there is no vault on beta yet — and what Sep 22–23 means</h1>
+    <p class="sub">
+      Everything in the vault program is built and deployed. What remains is a <b>constitutional waiting
+      period</b> (a 72-hour timelock), one curation approval, and one admin click. This page is the map:
+      what exists right now, who controls what, and the exact sequence between here and a depositable vault.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ── 1 · THE TWO HALVES ─────────────────────────────────────────── -->
+  <section>
+    <h2>1 · The two halves of the system</h2>
+    <p class="small muted" style="margin:4px 0 12px">Off-chain decides <i>what</i> is offered. On-chain holds <i>value</i>. They meet at exactly two moments: a signed deposit, and a signed withdrawal — both by you.</p>
+    <div class="grid two">
+      <div class="offbox">
+        <div class="tag off">OFF-CHAIN · keyless</div>
+        <h3 style="margin:8px 0 8px">Curation &amp; serving</h3>
+        <div class="grid" style="gap:8px">
+          <div class="node"><b>Curator runner <span class="pill done">running:healthy</span></b><span class="m">discovery · screening · scoring — holds NO key</span></div>
+          <div class="node"><b>Agent (API + store)</b><span class="m">curated board, deploy queue, admin routes · holds NO key</span></div>
+          <div class="node"><b>Admin panel</b><span class="m">approve · pin · request wrapper deploy</span></div>
+          <div class="node"><b>beta.sparkpoint.io/vault</b><span class="m">the board you see · deposits route per row</span></div>
+        </div>
+      </div>
+      <div class="chainbox">
+        <div class="tag chain">ON-CHAIN · 4663</div>
+        <h3 style="margin:8px 0 8px">Wrapper fleet (deployed &amp; verified)</h3>
+        <div class="grid" style="gap:8px">
+          <div class="node"><b>TimelockController</b><span class="m">0x62b8b01c…b0B5 · 72h delay · proposer = Safe A 3-of-5 · canceller = Safe B 2-of-3</span></div>
+          <div class="node"><b>UpgradeableBeacon</b><span class="m">0xC4D6D11f…ab0c · owns the implementation pointer</span></div>
+          <div class="node"><b>Wrapper implementation</b><span class="m">0xCe1cd084…3D542 · the code every wrapper proxy runs</span></div>
+          <div class="node"><b>VaultFactoryV2 (proxy)</b><span class="m">0x040A7BFD…466dE · owner/guardian = timelock · deploy-only</span></div>
+          <div class="node"><b>Steakhouse USDG (child)</b><span class="m">0xBeEff033…09dd · $482M · NOT wrapped yet</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2 · WHAT A VAULT IS ────────────────────────────────────────── -->
+  <section>
+    <h2>2 · What “having a vault” actually means here</h2>
+    <div class="card">
+      <div class="row r5">
+        <div class="node" style="text-align:center"><b>You</b><span class="m">your wallet, your signature</span></div>
+        <div class="arrow">→</div>
+        <div class="node" style="text-align:center;border-color:var(--emerald)"><b>SparkPoint wrapper</b><span class="m">BeaconProxy · one per curated vault · NOT deployed yet</span></div>
+        <div class="arrow">→</div>
+        <div class="node" style="text-align:center"><b>Steakhouse USDG</b><span class="m">the Morpho V2 vault that earns the yield</span></div>
+      </div>
+      <div class="note red" style="margin-top:12px">
+        <b>The missing piece is the middle box.</b> The child vault has existed since July (≈$482M in it today).
+        The wrapper — the only thing that makes it <i>SparkPoint-branded, fee-disclosed and servable</i> — has not
+        been deployed, because deploying it requires two on-chain permissions that are deliberately slow to grant.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3 · THE PERMISSIONS ────────────────────────────────────────── -->
+  <section>
+    <h2>3 · Why the permissions are slow (this is the feature, not the bug)</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3>Permission 1 — <span class="mono-sm">setDeployer</span></h3>
+        <p class="small" style="margin:4px 0">Allows the scoped AI deployer key (<span class="addr">0xB555…D875</span>) to call <span class="mono-sm">createVault</span> on the factory. Nothing else — no upgrade, no allowlist, no pause.</p>
+        <p class="small" style="margin:4px 0"><span class="tag human">HUMAN</span> Safe A (3-of-5) signs a schedule tx <span class="mono-sm">→ 72h timelock → anyone executes.</span></p>
+      </div>
+      <div class="card">
+        <h3>Permission 2 — <span class="mono-sm">setAllowlisted(child)</span></h3>
+        <p class="small" style="margin:4px 0">Tells the factory that <i>this specific child vault</i> may be wrapped. Even with the deployer role, the factory refuses any child not on this list.</p>
+        <p class="small" style="margin:4px 0"><span class="tag human">HUMAN</span> Safe A signs again <span class="mono-sm">→ another 72h → execute.</span></p>
+      </div>
+    </div>
+    <div class="note blue" style="margin-top:12px">
+      The 72 hours is enforced <b>on-chain by the TimelockController</b>, not by a calendar reminder. During the
+      window, the independent 2-of-3 canceller Safe can veto. That is why we can’t just “flip it on” — and why
+      nobody (including us, including the AI) can rush a wrapper out.
+    </div>
+  </section>
+
+  <!-- ── 4 · TIMELINE ───────────────────────────────────────────────── -->
+  <section>
+    <h2>4 · The exact sequence — and what Sep 22–23 means</h2>
+    <div class="card">
+      <div class="flow">
+        <div class="step done">
+          <div class="dot">✓</div>
+          <div class="body">
+            <div class="t">Fleet deployed on 4663 <span class="stamp">2026-09-19 07:43 UTC</span></div>
+            <div class="d">Timelock, beacon, implementation, factory proxy — all live, all verified by on-chain reads.</div>
+          </div>
+        </div>
+        <div class="step done">
+          <div class="dot">✓</div>
+          <div class="body">
+            <div class="t">Permission 1 scheduled <span class="stamp">2026-09-19 07:43 UTC</span></div>
+            <div class="d"><span class="mono-sm">setDeployer</span> op <span class="mono-sm">0x3581b36c…85e0</span> submitted through Safe A. The 72h clock started.</div>
+          </div>
+        </div>
+        <div class="step now">
+          <div class="dot">2</div>
+          <div class="body">
+            <div class="t">Waiting out the timelock <span class="pill active">NOW</span></div>
+            <div class="d">Nothing is broken — the chain is simply enforcing the delay. Meanwhile: crawler live, 58 vaults screened, Steakhouse USDG is the standing pick.</div>
+          </div>
+        </div>
+        <div class="step wait">
+          <div class="dot">3</div>
+          <div class="body">
+            <div class="t">Permission 1 executes — <b>Sep 22, 07:43 UTC</b> <span class="pill op">AUTOMATED</span></div>
+            <div class="d">A cron job already armed on this machine fires the permissionless <span class="mono-sm">execute</span> (gas from W1). After this: <b>the AI deployer key can create wrappers.</b></div>
+          </div>
+        </div>
+        <div class="step wait">
+          <div class="dot">4</div>
+          <div class="body">
+            <div class="t">Permission 2 <b>can be scheduled in parallel — today</b> <span class="pill op">ONE SIGN</span></div>
+            <div class="d">The two permissions are <b>independent timelock operations</b>: <span class="mono-sm">setAllowlisted(Steakhouse)</span> does not need the deployer to exist first. Safe A can schedule it now (approve the pick first — the panel click), and its 72h clock runs <b>alongside</b> Permission 1’s. Only the final <i>wrap</i> needs both.</div>
+          </div>
+        </div>
+        <div class="step wait">
+          <div class="dot">5</div>
+          <div class="body">
+            <div class="t">Permission 2 executes — <b>scheduled time + 72h</b></div>
+            <div class="d">Scheduled today → executable <b>≈ Sep 22 midday</b>, hours after Permission 1. Scheduled only after Sep 22 → executable ≈ Sep 25.</div>
+          </div>
+        </div>
+        <div class="step wait">
+          <div class="dot">6</div>
+          <div class="body">
+            <div class="t">Wrap — <b>minutes after both permissions land</b> <span class="pill op">ONE CLICK</span></div>
+            <div class="d">Admin panel → “Request wrapper deployment” → the scoped runner deploys the BeaconProxy + CapRegistry, reports back, and the curated row flips to <span class="mono-sm">wrapped</span>. The deposit rail lights up.</div>
+          </div>
+        </div>
+        <div class="step done">
+          <div class="dot">✓</div>
+          <div class="body">
+            <div class="t">A depositable vault on beta.sparkpoint.io</div>
+            <div class="d">You sign a deposit into the SparkPoint wrapper; the wrapper allocates into Steakhouse USDG. Withdrawals stay direct on-chain, never gated.</div>
+          </div>
+        </div>
+      </div>
+      <div class="note green" style="margin-top:6px">
+        <b>So when, honestly?</b> The permissions run in parallel, so the finish line is
+        <span class="mono-sm">max(Permission 1, Permission 2)</span>:
+        <br>· <b>Schedule Permission 2 today</b> → both land by <b>≈ Sep 22 midday</b> → wrap the same hour → <b>a depositable vault on Sep 22</b>.
+        <br>· <b>Schedule it only after Sep 22</b> → Permission 2 becomes executable <b>≈ Sep 25</b> → vault live then.
+        <br>The only thing standing between us and the fast path is the curation approval click — the on-chain part can start the moment that lands.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 5 · WHAT EXISTS NOW ────────────────────────────────────────── -->
+  <section>
+    <h2>5 · What is live <i>right now</i> (so “no vault” isn’t “nothing”)</h2>
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Piece</th><th>State</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>Wrapper fleet on 4663</td><td><span class="pill done">LIVE</span></td><td class="mono-sm">timelock · beacon · impl · factory verified by <span class="mono-sm">cast call</span></td></tr>
+          <tr><td>AI deployer key</td><td><span class="pill op">SCHEDULED</span></td><td class="mono-sm">op 0x3581b36c…85e0 · executes Sep 22 07:43 UTC (cron armed)</td></tr>
+          <tr><td>Curator crawler (P12)</td><td><span class="pill done">LIVE</span></td><td class="mono-sm">58 V2 vaults enumerated on-chain · 58 verified · 2 pass screening</td></tr>
+          <tr><td>Standing pick</td><td><span class="pill done">READY</span></td><td class="mono-sm">Steakhouse USDG · ~$482M TVL · 3.58% net APY · score 57</td></tr>
+          <tr><td>Curation approval</td><td><span class="pill plan">PENDING</span></td><td>Admin → Vaults → approve (or auto-publish on next run)</td></tr>
+          <tr><td>Admin deploy queue (P11)</td><td><span class="pill done">LIVE</span></td><td class="mono-sm">request / cancel · verified report flips the row to wrapped</td></tr>
+          <tr><td>Trust Center disclosure</td><td><span class="pill done">LIVE</span></td><td>timelock + canceller + exit-never-gated + residual risk</td></tr>
+          <tr><td>Deposit rail</td><td><span class="pill done">LIVE</span></td><td class="mono-sm">routes to wrapper once wrapped=true · direct path carries no SparkPoint fee</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── 6 · AUTHORITY MAP ──────────────────────────────────────────── -->
+  <section>
+    <h2>6 · Who can do what (no single point of control)</h2>
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Actor</th><th>Can</th><th>Cannot</th></tr></thead>
+        <tbody>
+          <tr><td><b>Safe A</b> · 3-of-5 proposer</td><td>schedule any timelock action (deployer role, allowlist, upgrades, fee changes)</td><td>execute before 72h; bypass the canceller</td></tr>
+          <tr><td><b>Safe B</b> · 2-of-3 canceller</td><td>veto any pending action during the window</td><td>propose or execute anything</td></tr>
+          <tr><td><b>AI deployer</b> · 0xB555…D875</td><td>create wrappers for allowlisted children within fee/caps bounds</td><td>upgrade · allowlist · pause · move funds · set recipients</td></tr>
+          <tr><td><b>Agent / curator</b></td><td>discover, screen, queue requests, serve the board</td><td>sign anything at all — keyless by construction</td></tr>
+          <tr><td><b>You</b></td><td>deposit, withdraw, exit directly on-chain</td><td>— (nothing can block your exit)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Snapshot 2026-09-19 · chain 4663 · sources: on-chain reads, <span class="mono-sm">contracts/deployments/4663/addresses.json</span>,
+    roadmap artifact, Coolify deployment records. This page records state; it changes nothing.
+  </footer>
+</div>
+</body>
+</html>
