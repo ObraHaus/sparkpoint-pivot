@@ -62,9 +62,11 @@ from ..coordinator import (
     PositionLite,
     TokenBalanceLite,
 )
+from ..coordinator.curated import CuratedContext, CuratedPick
 from ..db import get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
+from ..db.curated_vaults import APPROVED, PgCurationStore
 from ..db.executions import ExecutionStore
 from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
@@ -73,6 +75,7 @@ from ..knowledge import KnowledgeRetriever, default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
 from ..persona import get_persona
+from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
 from .quota import require_within_quota
 from .recommendations import (
@@ -321,6 +324,51 @@ async def _recent_changelog() -> list[dict[str, Any]]:
         return []
 
 
+def _curated_number(pick: dict[str, Any], key: str) -> float | None:
+    value = pick.get(key)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+async def _curated_context(chain_id: int) -> CuratedContext | None:
+    """The curated record for a chain — the SAME composition the public ``/vaults/curated`` route
+    serves (approved vaults + the latest PUBLISHED recommendation + the admin pin).
+
+    Fail-open to ``None`` on any read failure, which the "best vault" route renders as an honest
+    error. It never fabricates a pick: a store outage must not become a remembered vault. Advisory
+    display only — the result ends in a ``text`` block and never reaches propose/build/policy.
+    """
+    try:
+        store = PgCurationStore(get_database())
+        vaults = await store.list_vaults(chain_id, statuses=(APPROVED,))
+        state = await store.get_state(chain_id)
+        rec = await store.latest_recommendation(chain_id, published_only=True)
+        board = public_board(chain_id, vaults, rec, state)
+    except Exception:  # noqa: BLE001 — a curated read must never cost the user their answer
+        _warn_once("chat_curated_unavailable")
+        return None
+
+    raw_pick = board.get("pick")
+    if not isinstance(raw_pick, dict):
+        return CuratedContext(vault_count=len(vaults))
+    net_apy = _curated_number(raw_pick, "netApyBps")
+    curator = raw_pick.get("curator")
+    as_of = raw_pick.get("asOf")
+    return CuratedContext(
+        vault_count=len(vaults),
+        pick=CuratedPick(
+            address=str(raw_pick.get("address") or ""),
+            label=str(raw_pick.get("label") or "this vault"),
+            net_apy_bps=int(net_apy) if net_apy is not None else None,
+            tvl_usd=_curated_number(raw_pick, "tvlUsd"),
+            curator=str(curator) if curator else None,
+            curator_verified=bool(raw_pick.get("curatorVerified")),
+            reason=str(raw_pick.get("reason") or "it scored best in the latest screening."),
+            as_of=str(as_of) if as_of else None,
+            wrapped=bool(raw_pick.get("wrapped")),
+        ),
+    )
+
+
 def _safe_citation_retriever() -> KnowledgeRetriever | None:
     """The corpus retriever, or ``None`` — degrading to no-RAG on a misconfigured embedder.
 
@@ -384,6 +432,9 @@ def get_coordinator_dag(
         # published. Read the newest directly instead; fail-open to None, which simply restores
         # the retrieval-only behaviour.
         changelog=_recent_changelog,
+        # 048 — "what's the best vault?" reads the CURATED RECORD (the same row /vault renders).
+        # Fail-open to an honest error; never a remembered vault or a model-supplied APY.
+        curated=_curated_context,
         portfolio_provider=_VaultChatPortfolioProvider(reader, config),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky

@@ -51,6 +51,7 @@ from .brokers import router as brokers_router
 from .chat import router as chat_router
 from .content import router as content_router
 from .conversations import router as conversations_router
+from .curated_vaults import router as curated_vaults_router
 from .errors import (
     ApiError,
     api_error_handler,
@@ -879,6 +880,15 @@ app.include_router(admin_revenue_router)
 app.include_router(admin_analytics_router)
 # Feature 008 self-scoped usage read (/usage/self) — a wallet reads its OWN allowance (not admin).
 app.include_router(usage_router)
+# Feature 048 AI-curated vaults — public board (/vaults/curated), the keyless curator runner's
+# control/ingest (/curator/*), and the admin curation panel (/admin/vaults/curation*). Off-chain
+# only: no key, no signature, no fund path (N1/N2).
+#
+# ⚠️ MUST be included BEFORE admin_vaults_router: that router declares GET /admin/vaults/{vault}, a
+# catch-all param route that would otherwise swallow /admin/vaults/curation as a vault named
+# "curation" (FastAPI matches in registration order, exactly the trap documented on
+# /admin/vault-registry).
+app.include_router(curated_vaults_router)
 # Feature 011 admin MANAGE half (/admin/vaults*) — admin-gated READ + PREPARE-CALLDATA for the
 # branded Morpho wrapper factory. Every mutating route returns calldata the operator signs off-app;
 # NO server key, NO fund path, and NO move-funds guardian verb exists (N1/N2/US4).

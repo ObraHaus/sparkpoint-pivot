@@ -359,6 +359,45 @@ export default function Page() {
           )}
         </div>
       </div>
+
+      {/* 048 / T305 — AI-curated vaults: the disclosure FR-010 requires, in the user's terms.
+          Everything here is a property of the system, not a promise about returns. */}
+      <div className="card card-pad" style={{ marginBottom: 18 }}>
+        <div className="card-hd">
+          <span className="t">AI-curated vaults</span>
+          <span className="lbl">off-chain list · on-chain deposits</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The curated board on the <b>Vault</b> page is assembled by Sparky: a daily bot reads a
+          public vault source, screens each candidate (asset, size, withdrawable liquidity, age,
+          warnings) and scores it. That list lives <b>off-chain</b> in SparkPoint&rsquo;s database —
+          adding, ranking or removing a vault is a record, never a transaction, and the only
+          on-chain step is <b>your own signed deposit</b>.
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 10 }}>
+          <b>AI proposes, a person publishes.</b> Every autonomous action has a manual equivalent in
+          the admin panel, every admin decision outranks the bot and is never overwritten by a later
+          scan, and each row is labelled <b>AI</b> or <b>Admin</b> so you can see who put it there.
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 10 }}>
+          <b>Fees are performance-only.</b> Where SparkPoint deploys a wrapper over a curated vault,
+          the fee applies <b>only to gains above the high-water mark</b> — never to a deposit, a
+          withdrawal, or a flat or losing position. A curated vault <b>without</b> a wrapper is
+          deposited <b>directly</b> from your wallet and carries <b>no SparkPoint fee</b>; the board
+          says which is which, and a wrapper is only shown once an operator has actually deployed
+          it.
+        </div>
+        <div style={{ fontSize: 12.5, lineHeight: 1.7, marginTop: 12 }}>
+          <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault"))}>
+            Open the curated board
+          </a>
+          <span className="muted"> · </span>
+          <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("trust/permissions"))}>
+            What the admin can and cannot do
+          </a>
+        </div>
+      </div>
+
       <div className="card card-pad" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Exit anytime</div>

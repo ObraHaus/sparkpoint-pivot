@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "ai-curated-vaults-board",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now hunts for the best vaults for you",
+      "body": "The Vault page has a new job: a daily curator bot checks this network for vaults, screens each one, and ranks them. Sparky then proposes the best pick \u2014 and a person on the team reviews and publishes it, so nothing reaches you unchecked.\n\nWhat you'll see on the Vault page:\n\n\u2022 Sparky's pick for today, with its net APY, TVL, curator and the reason it was chosen \u2014 always shown with the time it was measured;\n\u2022 the full curated list, where each row says whether it came from the AI or an admin, and when it was last checked;\n\u2022 an \u201cAsk Sparky about vaults\u201d button that opens chat with the question already typed;\n\u2022 if there are no vaults on this network yet, the page says exactly that \u2014 no empty table pretending to be a market.\n\nOn fees: where SparkPoint adds its performance-fee wrapper, the fee applies only to gains above your high-water mark \u2014 never to a deposit, a withdrawal, or a flat or losing position. Vaults without a wrapper are deposited directly from your wallet and carry no SparkPoint fee at all. Either way, you sign from your own wallet and can withdraw directly at any time.\n\nThis network doesn't have a curated vault yet, so you'll see the honest empty state for now. When the curator finds one, the page fills in by itself.",
+      "published_at": "2026-09-18T10:30:00Z"
+    },
+    {
       "slug": "swap-polish-more-tokens-one-tap",
       "type": "changelog",
       "tag": "Improved",
