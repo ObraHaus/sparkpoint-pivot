@@ -41,7 +41,7 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 
 ## Phase W5 — Product wiring + disclosure (P11)
 
-- [ ] **T501** Curated store `wrapped`/`wrapperAddress` wired from real deployments; deposit rail flips to the wrapper path; fee disclosure copy.
-- [ ] **T502** Trust Center rewrite (timelock + exit-window guarantee + residual-risk sentence); remove "Non-upgradeable" for wrapper surfaces only where the contract now exists.
-- [ ] **T503** Spec 048 M1 (T501–T504) closed with a recorded T501 review pointing at this spec; both changelogs updated.
-- [ ] **T504** Admin → Vaults: wrapper provenance + "Deploy wrapper" request button (agent-keyless, runner-executed).
+- [x] **T501** Curated store `wrapped`/`wrapperAddress` wired from real deployments (the runner's success report flips the row), deposit rail already routed wrappers with the fee disclosure; the first real wrapper book entry lands with T404. Runner report wiring + tests in #225.
+- [x] **T502** Trust Center rewritten: 3-of-5 proposer Safe → 72h timelock, independent 2-of-3 canceller, exit never gated, residual-risk stated; the "non-upgradeable" guarantee now scoped to SparkPoint's own vault (§W5, #225).
+- [x] **T503** Spec 048 M1 closed with the review recorded there; both changelogs updated same-beat (#225).
+- [x] **T504** Admin → Vaults → Wrapper deployments: provenance on each row, request form (fee/caps/name/symbol/label), cancel-while-pending; the runner executes and reports back (#225).

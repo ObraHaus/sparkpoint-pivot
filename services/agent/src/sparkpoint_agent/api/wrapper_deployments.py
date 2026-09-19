@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
 from ..db import get_database
+from ..db.curated_vaults import PgCurationStore
 from ..db.wrapper_deployments import (
     MAX_FEE_BPS,
     MAX_UINT256,
@@ -32,6 +33,7 @@ from ..db.wrapper_deployments import (
     WrapperDeployment,
 )
 from .allowlist import require_admin
+from .curated_vaults import get_curation_store
 from .errors import ApiError, ErrorCode
 from .security import AccountContext
 
@@ -206,13 +208,23 @@ async def runner_report_job(
     body: DeploymentReport,
     account: Annotated[AccountContext, Depends(require_admin)],
     store: Annotated[PgDeploymentStore, Depends(get_deployment_store)],
+    curation: Annotated[PgCurationStore, Depends(get_curation_store)],
 ) -> dict[str, Any]:
     """Record the runner's result for one deploy request.
 
     Idempotent on the row's state: only a `requested` row can be resolved, so a retried report is a
     no-op rather than a rewrite. A failure is recorded as loudly as a success (status `failed` +
     `error`), which is what makes a silent deploy runner impossible.
+
+    ⚠️ T501 wiring: a SUCCESSFUL report also flips the curated row for this child to
+    ``wrapped=true, wrapper_address=<proxy>`` — after this, the deposit rail on `/vault` routes
+    deposits through the wrapper. The deployment row itself remains the record of the transaction;
+    this update only propagates the verified on-chain fact into the board's data.
     """
+    row = await store.get(account.chain_id, body.id)
+    if row is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "no wrapper deployment with that id on this chain")
+
     updated = await store.report(
         account.chain_id,
         deployment_id=body.id,
@@ -224,9 +236,13 @@ async def runner_report_job(
         runner_commit=body.runnerCommit,
     )
     if not updated:
-        # Already resolved or unknown: tell the caller plainly instead of pretending.
-        existing = await store.get(account.chain_id, body.id)
-        if existing is None:
-            raise ApiError(ErrorCode.NOT_FOUND, "no wrapper deployment with that id on this chain")
-        return {"ok": True, "updated": False, "status": existing.status}
+        # Already resolved: tell the caller plainly instead of pretending.
+        return {"ok": True, "updated": False, "status": row.status}
+
+    if body.ok and body.proxyAddress:
+        await curation.set_wrapper(
+            account.chain_id,
+            child_address=row.child_address,
+            wrapper_address=body.proxyAddress,
+        )
     return {"ok": True, "updated": True, "status": "deployed" if body.ok else "failed"}

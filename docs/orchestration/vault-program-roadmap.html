@@ -291,15 +291,16 @@
         </div>
       </div>
 
-      <div class="ph">
+      <div class="ph done">
         <span class="node"></span>
         <div class="card">
-          <div class="head"><h3>P11 · Product wiring + disclosure</h3><span class="pill plan">PLANNED</span></div>
-          <div class="meta">spec 048 M1 rewrite · UI</div>
+          <div class="head"><h3>P11 · Product wiring + disclosure</h3><span class="pill done">BUILT</span></div>
+          <div class="meta">spec 048 M1 closed · admin + Trust Center + rail</div>
           <ul>
-            <li><span class="st p">BUILD</span><span>Spec 048 M1 tasks T501–T504 rewritten to the beacon/proxy + deploy-runner design; old “reuse feature-011” line closed with the T501 review recorded.</span></li>
-            <li><span class="st p">BUILD</span><span><code>wrapped</code> flag + wrapper address in the curated store; deposit rail flips to the wrapper path; fee disclosure copy.</span></li>
-            <li><span class="st p">BUILD</span><span>Trust Center copy + both changelogs; admin panel wrapper provenance.</span></li>
+            <li><span class="st d">DONE</span><span>Admin → Vaults → <b>Wrapper deployments</b>: request form (fee default 10%, CapRegistry-default caps), provenance per row, cancel-while-pending. A verified runner report flips the curated row to <code>wrapped</code> + proxy, and the deposit rail routes through the wrapper with the performance-fee disclosure.</span></li>
+            <li><span class="st d">DONE</span><span>Trust Center: 3-of-5 proposer Safe → 72h timelock, independent canceller, exit never gated, residual risk stated; “non-upgradeable” scoped to SparkPoint’s own vault. Spec 048 M1 closed (T501 review recorded).</span></li>
+            <li><span class="st d">DONE</span><span>Both changelogs updated; cap inputs converted through a tested helper so a typo cannot block deposits.</span></li>
+            <li><span class="st p">PENDING DATA</span><span>The first real wrapper entry appears when T404 deploys (after the Sep 22 execute + <code>setAllowlisted</code> +72h); the address book entry ships with that deploy.</span></li>
           </ul>
         </div>
       </div>
@@ -413,12 +414,12 @@ cast call $TIMELOCK "getMinDelay()(uint256)" --rpc-url $LIVE     <span class="c"
         <tr><td>4</td><td>Beta DB migrated 0038+0039 (39/39)</td><td>Build</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
         <tr><td>5</td><td>Timelock execute <code>setDeployer</code> (op 0x3581b36c…, cron armed)</td><td>Automated</td><td>72h delay → 2026-09-22 07:43:22 UTC</td><td><span class="pill active">ARMED</span></td></tr>
         <tr><td>6</td><td><b>P12 on-chain discovery crawler + first onboard (Steakhouse USDG)</b></td><td>Build</td><td>Nothing — vaults exist; the API is blind</td><td><span class="pill active">NEXT</span></td></tr>
-        <tr><td>7</td><td>P11 wiring: deposit rail + Trust Center copy + 048 M1 close</td><td>Build</td><td>Item 5 for wrapping; rail can build now</td><td><span class="pill plan">PLANNED</span></td></tr>
+        <tr><td>7</td><td>P11 wiring: deposit rail + Trust Center copy + 048 M1 close</td><td>Build</td><td>—</td><td><span class="pill done">DONE</span></td></tr>
         <tr><td>8</td><td><code>setAllowlisted</code> per curated vault through the timelock</td><td>Build/Operator</td><td>Per vault after curation (+72h)</td><td><span class="pill plan">PLANNED</span></td></tr>
         <tr><td>9</td><td>SparkPoint-originated vault (not in scope — wrap-only for now)</td><td>Product</td><td>—</td><td><span class="pill">DEFERRED</span></td></tr>
       </tbody>
     </table>
-    <p class="small muted" style="margin:10px 0 0"><b>Critical path (2026-09-19):</b> fleet deployed, runners live, 048+049 on <code>main</code>, beta DB 39/39. Remaining: <b>execute</b> (Sep 22 07:43 UTC) → <b>P12 crawler</b> is built (first run: 58 vaults, pick Steakhouse USDG) and ships with the next curator deploy → <b>wrap</b> → <code>setAllowlisted</code> +72h → <b>P11 rails</b>. No external gate: the chain has vaults; the API blindness is what the crawler removes. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
+    <p class="small muted" style="margin:10px 0 0"><b>Critical path (2026-09-19):</b> fleet deployed, runners live, 048+049 on <code>main</code>, beta DB 39/39. Remaining: <b>execute</b> (Sep 22 07:43 UTC) → <b>P12 crawler</b> is built (first run: 58 vaults, pick Steakhouse USDG) and ships with the next curator deploy → <b>wrap</b> → <code>setAllowlisted</code> +72h → <b>P11 rails (built)</b>. No external gate: the chain has vaults; the API blindness is what the crawler removes. Audit deferred by operator — OH Defender (0 high/medium) is the gate.</p>
   </section>
 
   <!-- ── DECISION LOG ──────────────────────────────────────────────── -->

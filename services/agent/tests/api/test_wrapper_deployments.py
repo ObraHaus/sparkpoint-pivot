@@ -21,6 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api.allowlist import get_allowlist_store
+from sparkpoint_agent.api.curated_vaults import get_curation_store
 from sparkpoint_agent.api.errors import ApiError, api_error_handler, validation_error_handler
 from sparkpoint_agent.api.mandate import get_account
 from sparkpoint_agent.api.security import AccountContext
@@ -40,8 +41,17 @@ class FakeStore:
         self._n = 0
 
     async def request(
-        self, chain_id: int, *, child_address: str, fee_bps: int, per_user_cap: int,
-        total_cap: int, vault_cap: int, name: str, symbol: str, label: str,
+        self,
+        chain_id: int,
+        *,
+        child_address: str,
+        fee_bps: int,
+        per_user_cap: int,
+        total_cap: int,
+        vault_cap: int,
+        name: str,
+        symbol: str,
+        label: str,
         actor: str | None,
     ) -> WrapperDeployment:
         self._n += 1
@@ -81,8 +91,15 @@ class FakeStore:
         return self.rows.get(deployment_id)
 
     async def report(
-        self, chain_id: int, *, deployment_id: str, ok: bool, tx_hash: str | None,
-        proxy_address: str | None, cap_registry: str | None, error: str | None,
+        self,
+        chain_id: int,
+        *,
+        deployment_id: str,
+        ok: bool,
+        tx_hash: str | None,
+        proxy_address: str | None,
+        cap_registry: str | None,
+        error: str | None,
         runner_commit: str | None,
     ) -> bool:
         row = self.rows.get(deployment_id)
@@ -108,9 +125,23 @@ class FakeStore:
         return True
 
 
+class FakeCuration:
+    """In-memory curation store: records the T501 wrapped-row updates from deploy reports."""
+
+    def __init__(self) -> None:
+        self.wrapped: dict[tuple[int, str], str] = {}
+        self.calls = 0
+
+    async def set_wrapper(self, chain_id: int, *, child_address: str, wrapper_address: str) -> bool:
+        self.calls += 1
+        self.wrapped[(chain_id, child_address.lower())] = wrapper_address.lower()
+        return True
+
+
 @pytest.fixture
-def client() -> tuple[TestClient, FakeStore]:
+def client() -> tuple[TestClient, FakeStore, FakeCuration]:
     store = FakeStore()
+    curation = FakeCuration()
     app = FastAPI()
     app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
@@ -125,7 +156,8 @@ def client() -> tuple[TestClient, FakeStore]:
             return address.lower() == _OWNER.lower()
 
     app.dependency_overrides[get_allowlist_store] = lambda: FakeAllowlist()
-    return TestClient(app), store
+    app.dependency_overrides[get_curation_store] = lambda: curation
+    return TestClient(app), store, curation
 
 
 def _request_body(**over: Any) -> dict[str, Any]:
@@ -144,9 +176,9 @@ def _request_body(**over: Any) -> dict[str, Any]:
 
 
 def test_admin_request_queues_work_and_shows_in_the_list(
-    client: tuple[TestClient, FakeStore],
+    client: tuple[TestClient, FakeStore, FakeCuration],
 ) -> None:
-    c, store = client
+    c, store, curation = client
     resp = c.post("/admin/vaults/wrappers/request", json=_request_body())
     assert resp.status_code == 200, resp.text
     created = resp.json()["deployment"]
@@ -159,8 +191,10 @@ def test_admin_request_queues_work_and_shows_in_the_list(
     assert listing["deployments"][0]["id"] == created["id"]
 
 
-def test_request_rejects_malformed_input(client: tuple[TestClient, FakeStore]) -> None:
-    c, _ = client
+def test_request_rejects_malformed_input(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, _, _ = client
     bad_addr = c.post("/admin/vaults/wrappers/request", json=_request_body(childAddress="0x123"))
     assert bad_addr.status_code == 400
     bad_fee = c.post("/admin/vaults/wrappers/request", json=_request_body(feeBps=2001))
@@ -170,7 +204,7 @@ def test_request_rejects_malformed_input(client: tuple[TestClient, FakeStore]) -
 
 
 def test_runner_sees_only_pending_and_resolves_once(client: tuple[TestClient, FakeStore]) -> None:
-    c, store = client
+    c, store, curation = client
     first = c.post("/admin/vaults/wrappers/request", json=_request_body()).json()["deployment"]
     c.post("/admin/vaults/wrappers/request", json=_request_body(label="second"))
 
@@ -199,8 +233,10 @@ def test_runner_sees_only_pending_and_resolves_once(client: tuple[TestClient, Fa
     assert jobs[0]["id"] != first["id"]
 
 
-def test_a_failed_report_is_recorded_loudly(client: tuple[TestClient, FakeStore]) -> None:
-    c, store = client
+def test_a_failed_report_is_recorded_loudly(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, store, curation = client
     row = c.post("/admin/vaults/wrappers/request", json=_request_body()).json()["deployment"]
     resp = c.post(
         "/curator/wrapper-jobs/report",
@@ -212,8 +248,10 @@ def test_a_failed_report_is_recorded_loudly(client: tuple[TestClient, FakeStore]
     assert "NotAllowlisted" in (stored.error or "")
 
 
-def test_report_for_an_unknown_id_is_404(client: tuple[TestClient, FakeStore]) -> None:
-    c, _ = client
+def test_report_for_an_unknown_id_is_404(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, _, _ = client
     resp = c.post(
         "/curator/wrapper-jobs/report",
         json={"id": "11111111-1111-4111-8111-111111111111", "ok": True},
@@ -221,8 +259,10 @@ def test_report_for_an_unknown_id_is_404(client: tuple[TestClient, FakeStore]) -
     assert resp.status_code == 404
 
 
-def test_cancel_only_works_while_pending(client: tuple[TestClient, FakeStore]) -> None:
-    c, _ = client
+def test_cancel_only_works_while_pending(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, _, _ = client
     row = c.post("/admin/vaults/wrappers/request", json=_request_body()).json()["deployment"]
     assert c.post("/admin/vaults/wrappers/cancel", json={"id": row["id"]}).status_code == 200
     assert c.post("/admin/vaults/wrappers/cancel", json={"id": row["id"]}).status_code == 404
@@ -246,6 +286,7 @@ def test_non_admin_gets_404_never_403() -> None:
             return False
 
     app.dependency_overrides[get_allowlist_store] = lambda: NotAdmin()
+    app.dependency_overrides[get_curation_store] = lambda: FakeCuration()
     c = TestClient(app)
     assert c.get("/admin/vaults/wrappers").status_code == 404
     assert c.post("/admin/vaults/wrappers/request", json=_request_body()).status_code == 404
@@ -273,3 +314,43 @@ def test_wrapper_routes_are_registered_before_the_vault_catch_all() -> None:
     paths = _route_paths(app.routes)
     assert paths.index("/admin/vaults/wrappers") < paths.index("/admin/vaults/{vault}")
     assert "/curator/wrapper-jobs" in paths
+
+
+def test_successful_report_flips_the_curated_row_to_wrapped(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    """T501 — the verified deploy fact must reach the board's data, and only on success."""
+    c, _store, curation = client
+    row = c.post("/admin/vaults/wrappers/request", json=_request_body()).json()["deployment"]
+    proxy = "0x" + "11" * 20
+
+    ok = c.post(
+        "/curator/wrapper-jobs/report",
+        json={"id": row["id"], "ok": True, "txHash": "0x" + "ab" * 32, "proxyAddress": proxy},
+    )
+    assert ok.status_code == 200, ok.text
+    assert curation.wrapped[(_CHAIN, _CHILD)] == proxy.lower()
+    assert curation.calls == 1
+
+    # An idempotent retry is a no-op: the deployment row is resolved and the row must not be
+    # written twice (a rewrite could mask a different later deployment).
+    again = c.post(
+        "/curator/wrapper-jobs/report",
+        json={"id": row["id"], "ok": True, "proxyAddress": "0x" + "99" * 20},
+    )
+    assert again.json()["updated"] is False
+    assert curation.calls == 1
+
+
+def test_failed_report_leaves_the_curated_row_unwrapped(
+    client: tuple[TestClient, FakeStore, FakeCuration],
+) -> None:
+    c, _store, curation = client
+    row = c.post("/admin/vaults/wrappers/request", json=_request_body()).json()["deployment"]
+    resp = c.post(
+        "/curator/wrapper-jobs/report",
+        json={"id": row["id"], "ok": False, "error": "createVault reverted: NotAllowlisted"},
+    )
+    assert resp.json()["status"] == "failed"
+    assert curation.calls == 0
+    assert curation.wrapped == {}

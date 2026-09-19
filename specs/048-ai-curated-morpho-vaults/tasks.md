@@ -47,13 +47,13 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live vault o
 - [ ] **T401** Confirm at least one ERC-4626 vault exists on 4663 (source configured/verified on-chain).
 - [ ] **T402** Re-pin the fork proof to a block where that vault is live.
 
-## Phase M1 — Wrapper + performance fee [GATED]
+## Phase M1 — Wrapper + performance fee [CLOSED → superseded by spec 049]
 
-- [ ] **T501** Review the feature-011 wrapper factory reuse against constitution v3.0.0; record the call.
-- [ ] **T502** Wrapper deploy for the first curated vault (operator-signed), record the address.
-- [ ] **T503** Fork test: performance fee **only** on gain above the high-water mark; zero on deposit,
+- [x] **T501** Review recorded: feature-011 reuse was superseded by the universal beacon fleet + TimelockController under constitution v4.0.0 (spec 049 §W2). See `specs/049-universal-vault-wrapper/spec.md`.
+- [ ] **T502** Superseded by **049 T404** — the first wrapper deploy runs through the scoped deploy runner after the timelock executes and the child is allowlisted. Not yet done (awaits the Sep 22 execute + curation approval).
+- [x] **T503** Covered by the `SparkPointUniversalVault` Foundry suite (fee-only-above-HWM fuzz, zero on deposit/withdrawal) shipped with #213; fork rehearsal deferred to the operator. Original text: performance fee **only** on gain above the high-water mark; zero on deposit,
       withdrawal, flat or loss; withdraw always open.
-- [ ] **T504** Wire the wrapped flag in the curated store so the deposit rail routes correctly.
+- [x] **T504** Closed by **049 T501**: the runner's verified report flips `wrapped`/`wrapper_address` and the rail routes through the wrapper.
 
 ## Phase M5 — Hardening
 
