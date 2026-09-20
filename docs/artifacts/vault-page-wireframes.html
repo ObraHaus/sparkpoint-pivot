@@ -406,7 +406,9 @@
     <div class="frame">
       <div class="frame-bar">
         <span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option C (chosen)
-        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+          state:
+          <button class="chip" id="stateToggle" type="button" data-empty="0" style="padding:2px 10px">live</button>
           session:
           <button class="chip" id="adminToggle" type="button" data-on="0" style="padding:2px 10px">public</button>
         </span>
@@ -417,6 +419,7 @@
           <span class="pill info">live · wrapped only</span>
         </div>
 
+        <div id="cLive">
         <div class="feature">
           <div class="featuregrid">
             <div>
@@ -449,17 +452,6 @@
               <div class="note">30d range 3.21% – 3.61% · mock</div>
             </div>
           </div>
-        </div>
-
-        <!-- Admin-only: directly under the feature card, rendered ONLY for an admin session. -->
-        <div class="adminbox" id="adminOnly" style="display:none;border-color:var(--caution)">
-          <h4>Not on this page — admin only</h4>
-          <div class="note" style="margin-bottom:10px">
-            3 approved-but-unwrapped · 2 whitelisted (1 cooling off until 22:54 UTC) · 1 failed deploy ·
-            12 candidates. These rows come from the admin endpoints and are <b>never</b> part of the public
-            board response.
-          </div>
-          <a class="btn btn-primary btn-sm" href="/admin/vault?section=curated">Manage in Admin → Vaults</a>
         </div>
 
         <div class="apphead" style="margin:20px 0 10px">
@@ -514,6 +506,41 @@
 
         <div class="loadstatus" id="liveStatus" aria-live="polite"></div>
         <div class="sentinel" id="liveSentinel"></div>
+        </div><!-- /cLive -->
+
+        <!-- Empty state — what the PUBLIC sees when nothing is wrapped/live yet. -->
+        <div id="cEmpty" style="display:none">
+          <div class="card pad" style="text-align:center;padding:40px 22px">
+            <div style="width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:var(--spark-subtle);display:flex;align-items:center;justify-content:center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" stroke="var(--primary)" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" fill="var(--primary)" opacity=".55"/>
+              </svg>
+            </div>
+            <div style="font-size:19px;font-weight:650;letter-spacing:-.01em">Sparky is screening vaults</div>
+            <p style="max-width:58ch;margin:8px auto 0;color:var(--muted-foreground);font-size:13px;line-height:1.65">
+              Nothing is depositable yet. A curated vault appears here only after Sparky wraps it: the AI
+              admits an approved vault under a public cooling-off window, and the wrapper must be deployed
+              before any deposit is possible. <b>Nothing in flight is shown here</b> — no upcoming or
+              pending rows, no dead CTAs.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px">
+              <button class="btn btn-primary">Ask Sparky about vaults</button>
+              <span class="pill info">last scan · 0 wrapped</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin-only: sits under the feature (or the empty state) and renders ONLY for an admin session. -->
+        <div class="adminbox" id="adminOnly" style="display:none;border-color:var(--caution)">
+          <h4>Not on this page — admin only</h4>
+          <div class="note" style="margin-bottom:10px">
+            3 approved-but-unwrapped · 2 whitelisted (1 cooling off until 22:54 UTC) · 1 failed deploy ·
+            12 candidates. These rows come from the admin endpoints and are <b>never</b> part of the public
+            board response — an admin still sees them when the public page is empty.
+          </div>
+          <a class="btn btn-primary btn-sm" href="/admin/vault?section=curated">Manage in Admin → Vaults</a>
+        </div>
       </div>
     </div>
     <div class="foot"><b>Option C (chosen):</b> full-width recommendation feature, the admin-conditional “not on this page” panel directly beneath it, then every live vault as a card that lazy-loads on scroll — spinner, then “you’ve reached the bottom”. <b>Try it:</b> toggle the session in the frame bar and scroll the list.</div>
@@ -591,7 +618,7 @@
       <h2 style="margin:8px 0 0;font-size:19px">Edge cases</h2>
       <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
         <li><b>Loading:</b> hero skeleton + 3 card skeletons (no spinner-only).</li>
-        <li><b>Empty (nothing live):</b> “Sparky is screening vaults — nothing is depositable yet.” + Ask Sparky CTA.</li>
+        <li><b>Empty (nothing live):</b> “Sparky is screening vaults / Nothing is depositable yet” card + Ask Sparky CTA + a last-scan pill; an admin additionally sees the in-flight panel beneath it. No skeleton rows, no “coming soon”.</li>
         <li><b>Error:</b> the board read failed — wallet/funds unaffected; retry on next poll.</li>
         <li><b>Mobile:</b> hero stacks (chart below), grid → 1 column, CTAs full-width; filters become a horizontal chip scroll.</li>
         <li><b>Accessibility:</b> badges are text+icon (not color-only); charts have an accessible summary line.</li>
@@ -632,6 +659,21 @@
       adminToggle.textContent = on ? "admin" : "public";
       adminToggle.classList.toggle("on", on);
       adminOnly.style.display = on ? "" : "none";
+    });
+  }
+
+  // Option C demo — live vs empty state (empty = nothing wrapped yet).
+  const stateToggle = document.getElementById("stateToggle");
+  const cLive = document.getElementById("cLive");
+  const cEmpty = document.getElementById("cEmpty");
+  if (stateToggle && cLive && cEmpty) {
+    stateToggle.addEventListener("click", () => {
+      const empty = stateToggle.dataset.empty !== "1";
+      stateToggle.dataset.empty = empty ? "1" : "0";
+      stateToggle.textContent = empty ? "empty" : "live";
+      stateToggle.classList.toggle("on", empty);
+      cLive.style.display = empty ? "none" : "";
+      cEmpty.style.display = empty ? "" : "none";
     });
   }
 
