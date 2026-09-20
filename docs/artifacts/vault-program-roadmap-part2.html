@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vault program — Part 2: the V3 pivot (AI-autonomous admission · amendment v4.1.0)</title>
+<style>
+  :root{
+    --bg:#F5F7FC; --surface:#FFFFFF; --surface-2:#EDF1FA; --surface-3:#E2E8F5;
+    --ink:#0F1524; --ink-2:#454F68; --ink-3:#78829B;
+    --line:#DBE1EE; --line-strong:#C1CADE;
+    --cobalt:#2A57DC; --cobalt-soft:#E7ECFB;
+    --gold:#B0770F; --gold-soft:#F8EFD9;
+    --coral:#D22E3A; --coral-soft:#FBE7E8;
+    --emerald:#1B8A57; --emerald-soft:#E3F3EA;
+    --violet:#7443C6; --violet-soft:#F0E9FB;
+    --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --shadow:0 1px 2px rgba(15,21,36,.05), 0 8px 24px -12px rgba(15,21,36,.15);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#090D17; --surface:#111725; --surface-2:#161E30; --surface-3:#1D2740;
+    --ink:#E9EDF7; --ink-2:#A4AFC7; --ink-3:#6C7791;
+    --line:#212B40; --line-strong:#33405B;
+    --cobalt:#6E92F0; --cobalt-soft:#16223F;
+    --gold:#E4B057; --gold-soft:#26200F;
+    --coral:#F0666B; --coral-soft:#2A1517;
+    --emerald:#51CB8E; --emerald-soft:#0F2419;
+    --violet:#B491E9; --violet-soft:#1C1430;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(0,0,0,.6);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 70px}
+  code,.mono{font-family:var(--mono)}
+  a{color:var(--cobalt);text-decoration:none} a:hover{text-decoration:underline}
+  header.mast{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 90% -30%,var(--violet-soft) 0%,transparent 55%),var(--surface)}
+  .mast-in{max-width:1080px;margin:0 auto;padding:30px 20px 24px}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  h1{font-size:clamp(24px,4vw,34px);line-height:1.08;letter-spacing:-.02em;margin:10px 0 0;font-weight:700}
+  .sub{margin:8px 0 0;color:var(--ink-2);max-width:84ch}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-2)}
+  .pill.done{border-color:var(--emerald);background:var(--emerald-soft);color:var(--emerald)}
+  .pill.active{border-color:var(--cobalt);background:var(--cobalt-soft);color:var(--cobalt)}
+  .pill.plan{border-color:var(--line-strong);background:var(--surface-3);color:var(--ink-3)}
+  .pill.op{border-color:var(--gold);background:var(--gold-soft);color:var(--gold)}
+  .pill.gated{border-color:var(--coral);background:var(--coral-soft);color:var(--coral)}
+  section{margin:28px 0 0}
+  h2{font-size:20px;letter-spacing:-.015em;margin:0 0 10px;font-weight:700}
+  h3{font-size:15.5px;margin:0 0 6px;font-weight:650}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px 20px}
+  .card + .card{margin-top:12px}
+  .grid{display:grid;gap:14px}
+  @media(min-width:860px){.cols-2{grid-template-columns:repeat(2,1fr)} .cols-3{grid-template-columns:repeat(3,1fr)}}
+  .muted{color:var(--ink-3)} .small{font-size:12.5px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .dec{border-left:3px solid var(--gold);padding:11px 13px;background:var(--gold-soft);border-radius:0 10px 10px 0}
+  .yes{border-left:3px solid var(--emerald);padding:11px 13px;background:var(--emerald-soft);border-radius:0 10px 10px 0}
+  .no{border-left:3px solid var(--coral);padding:11px 13px;background:var(--coral-soft);border-radius:0 10px 10px 0}
+  .info{border-left:3px solid var(--cobalt);padding:11px 13px;background:var(--cobalt-soft);border-radius:0 10px 10px 0}
+  .tl{position:relative;margin-top:6px;padding-left:30px}
+  .tl:before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--line-strong)}
+  .ph{position:relative;margin:0 0 16px}
+  .ph .node{position:absolute;left:-30px;top:16px;width:20px;height:20px;border-radius:50%;border:3px solid var(--line-strong);background:var(--surface)}
+  .ph.done .node{border-color:var(--emerald);background:var(--emerald)}
+  .ph.active .node{border-color:var(--violet);background:var(--violet);box-shadow:0 0 0 5px var(--violet-soft)}
+  .ph.op .node{border-color:var(--gold);background:var(--gold)}
+  .ph .card{position:relative}
+  .ph .head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
+  .ph .meta{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .ph ul{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+  .ph li{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2)}
+  .ph li b{color:var(--ink)}
+  .st{flex:none;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:2px 6px;margin-top:1px}
+  .st.d{background:var(--emerald-soft);color:var(--emerald)}
+  .st.a{background:var(--cobalt-soft);color:var(--cobalt)}
+  .st.p{background:var(--surface-3);color:var(--ink-3)}
+  .st.o{background:var(--gold-soft);color:var(--gold)}
+  .st.g{background:var(--coral-soft);color:var(--coral)}
+  .addr{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  pre.cmd{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55;white-space:pre}
+  pre.cmd .c{color:var(--ink-3)}
+  footer{margin-top:30px;color:var(--ink-3);font-size:12.5px}
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-in">
+    <div class="kicker">
+      <span class="pill active">PART 2 · v4.1.0 PIVOT</span>
+      <span class="pill done">V.1 REVIEWED 2026-09-19</span>
+      <span class="pill done">V.2 MERGED #228 (3106f6d)</span>
+      <span class="pill done">V.3 LIVE + VERIFIED 2026-09-19</span>
+      <span class="pill done">v4.1.0 RATIFIED (#229, 6e08207)</span>
+      <span class="pill done">V.5 MERGED #230 (583e128)</span>
+      <span class="pill done">V.6a MERGED #231 (98e9764)</span>
+      <span class="pill done">V.6b/V.7 MERGED #232 (4fb4703)</span>
+      <span class="pill done">CODE COMPLETE — PROMOTED #237 (e8a9ac2)</span>
+      <span class="pill done">V.4 DONE — op cancelled 0x481f6e18…</span>
+      <span class="pill op">V.8 — DEPLOY CLICK (or auto 09-20 22:54 UTC)</span>
+      <span class="pill">Robinhood Chain 4663</span>
+      <span class="pill">2026-09-19</span>
+    </div>
+    <h1>Vault program, part 2 — AI-autonomous wrapping with an admin fast lane</h1>
+    <p class="sub">
+      <a href="vault-program-roadmap.html">Part 1</a> records what was built and deployed: the v4.0.0 fleet,
+      the curator + P12 crawler, the runner apps, P11 wiring. <b>Part 2 is the pivot.</b> Because no wrapper was
+      ever deployed, the admission model is being replaced before any vault exists: the AI curates, whitelists,
+      and deploys wrappers on its own after a configurable cooling-off window; the operator keeps an instant
+      whitelist/deploy lane; the timelock is confined to code and proxy upgrades. Amendment
+      <span class="mono">v4.1.0</span> (draft at <span class="mono">.specify/memory/constitution-amendment-v4.1.0.md</span>) carries the governance change.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <div class="info">
+      <b>Read this first.</b> Nothing in this plan has been built yet — it is gated on the operator's review
+      (<b>V.1</b>). The v4.0.0 contracts on 4663 hold no user funds and no wrapper was ever deployed, so the V2
+      factory can be sunset without migration. What stays live regardless: the curator, the admin panel, the web
+      app, the keepers — and the custody invariants (no admin withdrawal, exits never gated).
+    </div>
+  </section>
+
+  <!-- ── 1 · WHY ─────────────────────────────────────────────────────── -->
+  <section>
+    <h2>1 · Why the pivot</h2>
+    <div class="card">
+      <div class="dec">
+        <b>Operator directive (2026-09-19).</b> “I want the AI on its own to curate the list of Morpho vaults and
+        deploy wrappers for them — with the additional control that an admin human can manually add or modify new
+        vaults. The 3-day wait (6 days total) is not doable even if the constitution requires it; the client is
+        already waiting. Reinforce the timelock only for code/proxy upgrades. AI can auto whitelist + deploy, but
+        waits 1 day — configurable by an admin. Admin whitelist → immediate; admin can override and deploy
+        immediately. One wrapper per whitelisted vault. Admin-whitelisted vaults are not the AI's to deploy.”
+      </div>
+      <div class="grid cols-2" style="margin-top:12px">
+        <div class="no" style="margin:0">
+          <b>Part 1 path (superseded):</b> Safe-A schedules <span class="mono">setDeployer</span> → 72h → execute
+          Sep 22 · then a <i>separate</i> 72h timelock per vault to allowlist it · then a human queues each deploy.
+          Every new vault waits days; the first deliverable slips to Sep 22–25.
+        </div>
+        <div class="yes" style="margin:0">
+          <b>Part 2 path:</b> deploy the V3 factory → the AI admits and deploys on a 24h on-chain cooldown
+          (no timelock involved) → the admin admits and deploys <b>instantly</b> from the panel. First vault live
+          as early as <b>Sep 20</b>; every vault after that needs no waiting beyond the cooldown.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2 · WHAT CHANGES / STAYS ────────────────────────────────────── -->
+  <section>
+    <h2>2 · What changes, what does not</h2>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Changes</h3>
+        <table>
+          <tr><td><b>Admission</b></td><td>multisig + 72h timelock per vault → <b>AI whitelist + configurable cooldown (default 24h)</b>; admin whitelist = instant</td></tr>
+          <tr><td><b>Timelock scope</b></td><td>everything → <b>code/proxy upgrades + non-admission params only</b> (beacon, guardian, fee recipient, deploy limit, role admin)</td></tr>
+          <tr><td><b>Factory</b></td><td>V2 (<span class="mono">0x040A7BFD…</span>) sunset → <b>V3</b> with OpenZeppelin <span class="mono">AccessControl</span>, <span class="mono">releaseNow</span>, <span class="mono">unwhitelist</span>, <span class="mono">setCooldown</span></td></tr>
+          <tr><td><b>One wrapper per child</b></td><td>not enforced → <b><span class="mono">wrapperOf[child]</span> check, on-chain</b></td></tr>
+          <tr><td><b>AI behaviour</b></td><td>executes only admin-queued jobs → <b>auto-whitelists and auto-deploys its own entries</b>; never touches admin-added entries (off-chain runner rule)</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Does not change</h3>
+        <table>
+          <tr><td><b>Wrapper code</b></td><td><span class="mono">SparkPointUniversalVault</span> + the timelock-owned beacon — upgrades still 72h, still no EOA</td></tr>
+          <tr><td><b>Custody invariants</b></td><td>no admin withdrawal · no sweep/rescue/migrate · child bound immutably · exits never gated (N2)</td></tr>
+          <tr><td><b>Fees</b></td><td>≤20% performance-only above the high-water mark · 0 management/entry/exit · share dilution to a non-privileged recipient</td></tr>
+          <tr><td><b>Bounds</b></td><td>caps within ceilings · <span class="mono">deployLimit</span> rate limit · on-chain child validation (code, asset, decimals, non-reverting conversion)</td></tr>
+          <tr><td><b>Off-chain stack</b></td><td>keyless agent + curator (P12 crawler), admin curation panel, <span class="mono">/vault</span> board, deposit rail, Trust Center</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3 · ROLES ───────────────────────────────────────────────────── -->
+  <section>
+    <h2>3 · Roles &amp; powers (OpenZeppelin AccessControl)</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>Role</th><th>Holder</th><th>Can</th><th>Cannot</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>DEFAULT_ADMIN_ROLE</b></td>
+            <td><span class="addr">TimelockController 0x62b8b01c…b0B5</span><br><span class="small muted">3-of-5 proposer · independent 2-of-3 canceller · ≥72h</span></td>
+            <td>grant/revoke roles · set beacon, guardian, fee recipient, deploy limit · <b>factory code upgrades</b> via the ProxyAdmin</td>
+            <td>admit or deploy vaults (that lane belongs to ADMIN/DEPLOYER)</td>
+          </tr>
+          <tr>
+            <td><b>ADMIN_ROLE</b></td>
+            <td><span class="addr">0x376293DDb027555aB7F483c00e1D61b2a7757dE8</span><br><span class="small muted">operator EOA — stays an EOA; the Safe remains for everything that needs a timelock</span></td>
+            <td><b>whitelist instantly</b> · <span class="mono">releaseNow</span> (override a cooldown) · <span class="mono">unwhitelist</span> · <span class="mono">setCooldown</span> (1h–7d) · <span class="mono">createVault</span></td>
+            <td>upgrade code · move funds · change fees outside the timelock path</td>
+          </tr>
+          <tr>
+            <td><b>DEPLOYER_ROLE</b></td>
+            <td><span class="addr">0xB555dbEc2cC5908c8B245ED84cb038D5d205D875</span><br><span class="small muted">AI deployer — deterministic runner, never the LLM</span></td>
+            <td><b>whitelist</b> (becomes deployable after the cooldown) · <span class="mono">createVault</span> for its own ready entries within fee/caps bounds</td>
+            <td>unwhitelist · releaseNow · setCooldown · upgrade · pause · move funds · set recipients</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="small muted" style="margin-top:10px">
+        Initial roles are granted atomically in the factory initializer at deployment (it is the one moment the
+        deploy tx itself is the authority); every subsequent role change is a timelocked
+        <span class="mono">DEFAULT_ADMIN_ROLE</span> action. The admin EOA can never widen its own powers.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4 · LIFECYCLE ───────────────────────────────────────────────── -->
+  <section>
+    <h2>4 · The admission lifecycle</h2>
+    <div class="card">
+      <div class="grid cols-3">
+        <div>
+          <h3>AI lane</h3>
+          <ol class="small" style="margin:0;padding-left:18px;line-height:1.7">
+            <li>Curator publishes a new pick</li>
+            <li>Runner calls <span class="mono">whitelistVault(child)</span> → <span class="mono">readyAt = now + 24h</span></li>
+            <li>Entry appears in the admin queue with a countdown</li>
+            <li>After the cooldown the runner calls <span class="mono">createVault</span></li>
+            <li>Reports back → curated row flips to <span class="mono">wrapped</span> → deposit rail live</li>
+          </ol>
+        </div>
+        <div>
+          <h3>Admin lane</h3>
+          <ol class="small" style="margin:0;padding-left:18px;line-height:1.7">
+            <li>Admin whitelists from the panel (wallet tx, <b>instant</b>)</li>
+            <li>Deploys immediately (panel)</li>
+            <li>Or cancels with <span class="mono">unwhitelist</span></li>
+          </ol>
+          <h3 style="margin-top:12px">Override</h3>
+          <p class="small" style="margin:0">Admin <span class="mono">releaseNow(child)</span> zeroes an AI entry's cooldown → deploy immediately.</p>
+        </div>
+        <div>
+          <h3>Guardrails</h3>
+          <ul class="small" style="margin:0;padding-left:18px;line-height:1.7">
+            <li><b>One wrapper per child</b> — on-chain revert on a second attempt</li>
+            <li><b>AI skips admin entries</b> — runner checks <span class="mono">whitelistedBy</span> before acting</li>
+            <li><b>Cooldown bounds</b> — 1h min · 7d max, admin-settable, evented</li>
+            <li><b>deployLimit</b> — the timelocked per-day rate cap stays</li>
+            <li><b>Exits</b> — never gated by admission or upgrade</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 5 · CHECKLIST ───────────────────────────────────────────────── -->
+  <section>
+    <h2>5 · Build checklist (the trackable items)</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>#</th><th>Step</th><th>What</th><th>Owner</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>V.1</b></td><td>Review</td><td>Operator reviews amendment v4.1.0 (roles, cooldown bounds, one-per-child, timelock scope)</td><td>Operator</td><td><span class="pill done">DONE 2026-09-19</span></td></tr>
+          <tr><td><b>V.2</b></td><td>Contracts</td><td><span class="mono">SparkPointVaultFactoryV3</span>: AccessControl roles, whitelist/release/unwhitelist/setCooldown, one-wrapper-per-child, Foundry tests + Defender</td><td>Build</td><td><span class="pill done">MERGED #228</span></td></tr>
+          <tr><td><b>V.3</b></td><td>Deploy</td><td>New impl + Transparent proxy (ProxyAdmin = timelock); initializer grants the three roles; verify + record in the 4663 book</td><td>Operator <span class="small muted">(sparkybeta-deployer)</span></td><td><span class="pill done">DONE · VERIFIED</span></td></tr>
+          <tr><td><b>V.4</b></td><td>Sunset</td><td>Cancel the Sep 22 <span class="mono">setDeployer</span> cron + pending op (Safe B); mark V2 factory sunset</td><td>Both</td><td><span class="pill done">DONE 2026-09-20 · tx 0x481f6e18…</span></td></tr>
+          <tr><td><b>V.5</b></td><td>Runner</td><td>Auto-whitelist → cooldown → auto-deploy; skip non-AI entries; report + heartbeat; tests</td><td>Build</td><td><span class="pill done">MERGED #230</span></td></tr>
+          <tr><td><b>V.6</b></td><td>Panel</td><td>Whitelist queue (countdown/ready/deployed), instant actions, cooldown setting; agent migration + routes + tests</td><td>Build</td><td><span class="pill done">MERGED #231 + #232</span></td></tr>
+          <tr><td><b>V.7</b></td><td>Wiring</td><td>Book + shared package + deployer app → V3; Trust Center + both changelogs + artifacts</td><td>Build</td><td><span class="pill done">CODE MERGED #232</span> <span class="small muted">env/migration = operator</span></td></tr>
+          <tr><td><b>V.8</b></td><td>Go-live</td><td>Whitelist Steakhouse USDG → deploy → first wrapper live on beta.sparkpoint.io; verify rail</td><td>Both</td><td><span class="pill op">ADMITTED by AI · deploy = 1 click (or auto 2026-09-20 22:54 UTC)</span></td></tr>
+        </tbody>
+      </table>
+      <div class="small muted" style="margin-top:10px">
+        The same steps live in the operator's tracker (board section <b>V</b>) for click-through status.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 6 · SUNSET ──────────────────────────────────────────────────── -->
+  <section>
+    <h2>6 · Sunset &amp; cancellations</h2>
+    <div class="card">
+      <table>
+        <tr><td><b>V2 factory</b></td><td><span class="mono">0x040A7BFD9aB7a86f5f0f47D98F610E9e14C466dE</span></td><td>sunset — never deployed a wrapper; allowlist empty. Book note added.</td></tr>
+        <tr><td><b>Pending setDeployer op</b></td><td><span class="mono">0x3581b36c…85e0</span> (ready Sep 22 07:43 UTC)</td><td>cancel via Safe B (canceller) — it enables the dead factory</td></tr>
+        <tr><td><b>Auto-execute cron</b></td><td><span class="mono">step8-execute-w1.sh</span> on this machine</td><td>delete — frees the cron lane</td></tr>
+        <tr><td><b>Retained</b></td><td>beacon <span class="mono">0xC4D6D11f…ab0c</span> · implementation <span class="mono">0xCe1cd084…3D542</span> · timelock <span class="mono">0x62b8b01c…b0B5</span> · both Safes</td><td>the upgrade authority for wrapper code and the new factory proxy</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── 7 · DISCLOSURE ──────────────────────────────────────────────── -->
+  <section>
+    <h2>7 · Governance &amp; disclosure</h2>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Amendment v4.1.0 (MAJOR)</h3>
+        <p class="small">
+          IV.5(b) changes from “no single key may add an entry / multisig + timelock” to “AI admission under an
+          on-chain cooling-off window; admin instant admission; the timelock governs upgrades and non-admission
+          parameters only.” That is a deliberate relaxation of an admission rule, so it is classified MAJOR and
+          requires the operator's super-majority re-ratification. Draft at
+          <span class="mono">.specify/memory/constitution-amendment-v4.1.0.md</span>.
+        </p>
+      </div>
+      <div class="card">
+        <h3>What the user-facing copy must say (when V lands)</h3>
+        <ul class="small" style="margin:0;padding-left:18px;line-height:1.7">
+          <li>AI admission is delayed by a configurable cooling-off window (default 24h).</li>
+          <li>The operator admin can admit and deploy a vault immediately.</li>
+          <li>Wrapper and factory code upgrade only through the 72h timelock; exits are never gated.</li>
+          <li>One wrapper per curated vault; fees performance-only above the high-water mark.</li>
+        </ul>
+        <p class="small muted" style="margin:8px 0 0">Both changelogs (repo + in-app) update in the same change.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 8 · GO-LIVE ─────────────────────────────────────────────────── -->
+  <section>
+    <h2>8 · Go-live target</h2>
+    <div class="tl">
+      <div class="ph op">
+        <span class="node"></span>
+        <div class="card">
+          <div class="head"><h3>Sep 19–20 · review → build → deploy</h3><span class="pill op">TARGET</span></div>
+          <div class="meta">V.1 → V.3</div>
+          <ul>
+            <li><span class="st d">DONE</span><span>Operator reviewed <b>V.1</b> (2026-09-19) — amendment v4.1.0 ratified in principle; <span class="mono">constitution.md</span> bumps to v4.1.0 in the same change that lands the V3 factory.</span></li>
+            <li><span class="st a">BUILD</span><span>V.2 in <b>PR #228</b> (contracts + 41 Foundry tests + deploy script; 501 passed, Slither no high/medium). Runner + panel + wiring follow after the V.3 deploy confirmation.</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="ph active">
+        <span class="node"></span>
+        <div class="card">
+          <div class="head"><h3>Sep 20 · first wrapper live on beta</h3><span class="pill active">FIRST VAULT</span></div>
+          <div class="meta">V.8 · Steakhouse USDG ~$482M</div>
+          <ul>
+            <li><span class="st a">NOW</span><span>Admin whitelists Steakhouse (instant) → deploy via the panel → curated row flips to <span class="mono">wrapped</span> → the deposit rail serves it at beta.sparkpoint.io.</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="ph">
+        <span class="node"></span>
+        <div class="card">
+          <div class="head"><h3>After · AI autonomy for every new vault</h3><span class="pill plan">STEADY STATE</span></div>
+          <div class="meta">no human step required</div>
+          <ul>
+            <li><span class="st p">FLOW</span><span>New curated pick → AI whitelist → 24h cooldown (visible in the admin queue) → auto-deploy → live on the board. Admin can release or cancel at any point.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 9 · V.3 COMMANDS ────────────────────────────────────────────── -->
+  <section id="v3-commands">
+    <h2>9 · Commands — V.3 deploy (run these)</h2>
+    <div class="card">
+      <div class="kicker" style="margin-bottom:4px"><span class="pill op">V.3 · OPERATOR-SIGNED</span><span class="pill">sparkybeta-deployer keystore</span><span class="pill">Robinhood Chain 4663</span></div>
+      <p class="small" style="margin:8px 0 10px">
+        Tracker convention: <code>$LIVE</code> + the <code>sparkybeta-deployer</code> keystore ·
+        <code>unset BCAST</code> to dry-run, then <code>export BCAST=--broadcast</code> ·
+        <code>--slow</code> always (delegated EOA) · verify with <code>cast call</code>.
+        <b>Nothing is deployed until step 2</b> — step 1 is a simulation only.
+      </p>
+<pre class="cmd"><span class="c"># 0 · SETUP — pull the merged V.2, point at 4663, confirm the float</span>
+cd ~/project/sparkpoint-pivot/contracts
+git pull --ff-only origin develop
+export LIVE="&lt;4663 Alchemy RPC&gt;"          <span class="c"># Chainstack is out of RUs — never use it</span>
+unset BCAST
+cast chain-id --rpc-url $LIVE              <span class="c"># must print 4663</span>
+cast balance "$(cast wallet address --account sparkybeta-deployer)" --ether --rpc-url $LIVE
+
+<span class="c"># 1 · V.3 — DRY RUN (no state change; prints impl + proxy + role holders)</span>
+forge script script/DeployVaultFactoryV3.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
+
+<span class="c"># 2 · V.3 — BROADCAST (the deploy)</span>
+export BCAST=--broadcast
+forge script script/DeployVaultFactoryV3.s.sol --rpc-url $LIVE --slow --account sparkybeta-deployer $BCAST
+
+<span class="c"># 3 · EXPORT what the script printed — DONE 2026-09-19 (actual deployed addresses)</span>
+export FACTORY=0x1de85106Fb6be911C6e3B186aB689e136eAA6406      <span class="c"># proxy — record + wire THIS</span>
+export FACTORY_IMPL=0xa65596e614B3ff32793e50a29E9A2438F00f2213
+<span class="c"># deploy txs: impl 0x64d884db…79ea @ block 67221158 · proxy 0xc4a2b7f2…166f @ block 67221165 (0.000229 ETH total)</span>
+export TIMELOCK=0x62b8b01cEcecBc191F35A0dD93f5898A6848b0B5
+export ADMIN=0x376293DDb027555aB7F483c00e1D61b2a7757dE8
+export AI=0xB555dbEc2cC5908c8B245ED84cb038D5d205D875
+export BEACON=0xC4D6D11fe9d7F1091b9f74b55b27D6D1cbB0ab0c
+export ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
+
+<span class="c"># 4 · VERIFY — roles: timelock DEFAULT_ADMIN, admin ADMIN, AI DEPLOYER, and the timelock cannot admit</span>
+cast call $FACTORY "hasRole(bytes32,address)(bool)" $ZERO32 $TIMELOCK --rpc-url $LIVE                            <span class="c"># true</span>
+cast call $FACTORY "hasRole(bytes32,address)(bool)" $(cast keccak "ADMIN_ROLE") $ADMIN --rpc-url $LIVE            <span class="c"># true</span>
+cast call $FACTORY "hasRole(bytes32,address)(bool)" $(cast keccak "DEPLOYER_ROLE") $AI --rpc-url $LIVE           <span class="c"># true</span>
+cast call $FACTORY "hasRole(bytes32,address)(bool)" $(cast keccak "ADMIN_ROLE") $TIMELOCK --rpc-url $LIVE         <span class="c"># false</span>
+cast call $FACTORY "hasRole(bytes32,address)(bool)" $(cast keccak "DEPLOYER_ROLE") $TIMELOCK --rpc-url $LIVE      <span class="c"># false</span>
+
+<span class="c"># 5 · VERIFY — cooldown (default 24h, bounds 1h–7d) + fleet wiring</span>
+cast call $FACTORY "cooldown()(uint64)" --rpc-url $LIVE         <span class="c"># 86400</span>
+cast call $FACTORY "MIN_COOLDOWN()(uint64)" --rpc-url $LIVE    <span class="c"># 3600</span>
+cast call $FACTORY "MAX_COOLDOWN()(uint64)" --rpc-url $LIVE    <span class="c"># 604800</span>
+cast call $FACTORY "timelock()(address)" --rpc-url $LIVE       <span class="c"># == $TIMELOCK</span>
+cast call $FACTORY "beacon()(address)" --rpc-url $LIVE         <span class="c"># == $BEACON</span>
+cast call $FACTORY "guardian()(address)" --rpc-url $LIVE       <span class="c"># == $TIMELOCK</span>
+cast call $FACTORY "feeRecipient()(address)" --rpc-url $LIVE   <span class="c"># == $ADMIN</span>
+
+<span class="c"># 6 · VERIFY — proxy wiring: impl slot + ProxyAdmin owner (both EIP-1967 slots)</span>
+cast parse-bytes32-address $(cast storage $FACTORY 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc --rpc-url $LIVE)    <span class="c"># == $FACTORY_IMPL</span>
+export PROXY_ADMIN=$(cast parse-bytes32-address $(cast storage $FACTORY 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103 --rpc-url $LIVE))
+cast call $PROXY_ADMIN "owner()(address)" --rpc-url $LIVE      <span class="c"># == $TIMELOCK (72h upgrades only)</span>
+
+<span class="c"># 7 · RECORD: add wrapper.factoryV3 + wrapper.factoryV3Impl to contracts/deployments/4663/addresses.json</span>
+<span class="c">#     (packages/shared book + deployer WRAPPER_FACTORY_ADDRESS + Trust Center = V.7; V.5/V.6 build on this)</span></pre>
+      <div class="yes" style="margin-top:10px"><b>✅ V.3 verified on-chain (2026-09-19).</b> <span class="mono">DEFAULT_ADMIN_ROLE</span> = timelock · <span class="mono">ADMIN_ROLE</span> = 0x3762…7dE8 · <span class="mono">DEPLOYER_ROLE</span> = 0xB555…D875 · the timelock holds neither admission role · <span class="mono">cooldown()</span> 86400 (min 3600 / max 604800) · beacon / guardian / timelock / feeRecipient wired · impl slot <span class="mono">0xa655…2213</span> · ProxyAdmin <span class="mono">0x8C40…E2e1</span> owner = timelock · <span class="mono">deployLimit</span> 0. Recorded in <span class="mono">contracts/deployments/4663/addresses.json</span> · constitution bumped to <b>v4.1.0</b> in the same change (PR <b>#229</b>, merge <span class="mono">6e08207</span>).</div>
+    </div>
+  </section>
+
+  <!-- ── 10 · V.4 CANCEL ─────────────────────────────────────────────── -->
+  <section id="v4-cancel">
+    <h2>10 · V.4 — cancel the Sep 22 setDeployer op + cron</h2>
+    <div class="card">
+      <p class="small" style="margin:0 0 10px">
+        <b>✅ DONE 2026-09-20 01:36 UTC.</b> Safe B executed <span class="mono">timelock.cancel(opId)</span> in tx
+        <span class="mono">0x481f6e18…c239</span> (pre-signed 2-of-3 <span class="mono">execTransaction</span>, W1 paid gas);
+        <span class="mono">isOperationPending</span> = false on-chain and the auto-execute cron was removed. The
+        instructions below are kept as the record of how the window was closed.
+      </p>
+      <p class="small" style="margin:0 0 10px">
+        Time-sensitive: the pending op <code>0x3581b36c…85e0</code> executes after
+        <b>2026-09-22 07:43 UTC</b>. Cancel from Safe B (canceller, 2-of-3) via
+        <b>Transaction Builder</b>, and remove the auto-execute cron on this machine.
+      </p>
+<pre class="cmd"><span class="c"># a) Safe B → Transaction Builder: to $TIMELOCK, data = the calldata below</span>
+cast calldata "cancel(bytes32)" 0x3581b36c0e9a935702fea66082ad61f2227ccaa3dfee484b80690f8f9d9c85e0
+
+<span class="c"># b) delete the auto-execute cron (this machine) + confirm it is gone</span>
+crontab -l | grep -v step8-execute-w1.sh | crontab -
+crontab -l | grep -q step8-execute-w1.sh || echo "cron removed"</pre>
+    </div>
+  </section>
+
+  <footer>
+    Sources: constitution amendment v4.1.0 draft · <span class="mono">contracts/src/factory/SparkPointVaultFactoryV2.sol</span> ·
+    on-chain 4663 reads (2026-09-19) · operator decisions 2026-09-19 · tracker board section V.
+    Part 1: <a href="vault-program-roadmap.html">vault-program-roadmap.html</a> · this page records the plan; it changes nothing on-chain.
+  </footer>
+</div>
+</body>
+</html>

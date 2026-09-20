@@ -23,6 +23,7 @@ secrets/
 # ---- Foundry / smart contracts ----
 cache/
 artifacts/
+!docs/artifacts/
 broadcast/
 forge-cache/
 typechain-types/
