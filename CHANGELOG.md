@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (050 follow-up — live-page polish + e2e proof)
+
+- **The feature card renders with the full brand gradient** (white text, light badges, translucent chart panel) — matching the approved Option C wireframe instead of a thin gradient border.
+- **A deployed wrapper is no longer described as “not deployed yet.”** The deposit rail now distinguishes “wrapper deployed on-chain, in-app deposits not wired for this build yet” (with the wrapper address) from a genuinely undeployed wrapper — no false claim, no dead CTA. (Full in-app deposit routing for the V3 universal wrapper is the next build item.)
+- **Fork e2e proof added** (`contracts/test/fork/UniversalWrapperV3Fork.t.sol`): against live 4663 state, a 10 USDG deposit into the live V3 wrapper mints shares and redeems back to principal, and a round trip can never return more than it put in.
+
 ### Changed (050 — /vault redesign: editorial feature + live-only cards)
 
 - **The vault page is card-first now.** A full-width **Sparky recommends** feature card leads (net APY, stored-scan sparkline, TVL/withdrawable, Deposit + Ask Sparky), followed by every live vault as a card with badges and CTAs. The list **lazy-loads on scroll** (batches of 6, a spinner row, then “You’ve reached the bottom — that’s every live vault Sparky has wrapped”), with an honest empty state when nothing is wrapped.

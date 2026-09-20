@@ -106,8 +106,21 @@ export function depositRail(
         disclosure: wrapperFeeDisclosure(vault.label),
       };
     }
-    // Claimed wrapped but no deployed wrapper in this build: M1 is gated, and a CTA here would
-    // deposit without the fee wrapper the vault is described as having. Say so instead.
+    // The curated record says a wrapper IS deployed, but this build's deposit flow does not route
+    // into it yet (the dynamically-deployed V3 fleet is not in the app's static vault list). Say
+    // exactly that — never claim it isn't deployed, and never offer a CTA that would deposit
+    // without the fee wrapper the vault is described as having.
+    if (vault.wrapperAddress) {
+      return {
+        kind: "wrapper-pending",
+        label: "In-app deposit coming soon",
+        note:
+          `The SparkPoint wrapper for this vault is deployed on-chain (${vault.wrapperAddress}), ` +
+          "but in-app deposits aren't wired for it in this build yet. Nothing is deposit-ready in " +
+          "the app here yet.",
+      };
+    }
+    // No wrapper address on the record at all: the honest M1-gated note.
     return {
       kind: "wrapper-pending",
       label: "Wrapper not deployed yet",
