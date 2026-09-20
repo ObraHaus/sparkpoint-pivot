@@ -1,42 +1,60 @@
 "use client";
 
 /**
- * 048 / T301 — wireframe A + C: the curated board (hero pick + table + provenance) with a chat
- * entry point ("Ask Sparky about vaults") that opens the assistant with the question prefilled.
+ * 048 + 050 — the curated board on `/vault`, Option C (editorial feature, card-first, live-only).
  *
- * Everything here is DISPLAY over the agent's stored record: approval, publication and pins are
- * admin decisions, and the board never merges candidates into the public list. When there is
- * nothing to show it says so — the empty state is deliberate product copy, not a placeholder.
+ * Layout: a full-width **Sparky recommends** feature card, then (admin sessions only) the in-flight
+ * panel, then every live vault as a card that lazy-loads on scroll with an honest terminal message.
  *
- * Deposit routing (T303) is decided by `depositRail`: a wrapped vault goes to the wrapper deposit
- * with the performance-fee disclosure, an unwrapped one is a direct ERC-4626 deposit (no SparkPoint
- * fee) — and a claimed-but-undeployed wrapper is an honest "not yet", never a dead CTA.
+ * Everything here is DISPLAY over the agent's stored record. Feature 050 tightened the public
+ * rule: only `wrapped` vaults are shown — candidates, approved-but-unwrapped, whitelisted/cooling,
+ * cancelled and failed rows are admin-panel data. The agent already filters server-side; the client
+ * re-checks defensively so an in-flight row can never leak through a stale payload.
+ *
+ * Deposit routing (T303) is unchanged: `depositRail` sends a wrapped vault to the wrapper deposit
+ * with the performance-fee disclosure; a claimed-but-undeployed wrapper is an honest "not yet".
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { useSession } from "@/lib/auth/useSiwe";
 import {
   boardEmptyCopy,
-  boardIsEmpty,
   boardProvenance,
   chatAskHref,
-  filterVaults,
-  provenanceChip,
 } from "@/lib/curation/board";
 import { depositRail, type KnownVault } from "@/lib/curation/depositRail";
 import {
+  LIVE_BATCH_SIZE,
+  filterBoard,
+  hasMore,
+  heroPick,
+  inFlightCounts,
+  liveVaults,
+  nextBatch,
+  sparklinePath,
+  sparklineRange,
+  type BoardFilters,
+  type InFlightCounts,
+} from "@/lib/curation/boardV2";
+import {
   curatorLabel,
-  fmtAge,
   fmtApyBps,
   fmtUsdCompact,
+  fmtWhen,
   newThisWeek,
   shortAddr,
+  type ApyPoint,
   type CurationBoard as Board,
   type CurationVault,
 } from "@/lib/curation/model";
 import "@/components/screens/vault.css";
+import "@/components/vault/board.css";
+
+// ── shared bits ──────────────────────────────────────────────────────────────────────────────────
 
 function RailCta({
   vault,
@@ -58,13 +76,7 @@ function RailCta({
   }
   if (rail.kind === "direct-external") {
     return (
-      <a
-        className={className}
-        href={rail.href}
-        target="_blank"
-        rel="noreferrer"
-        title={rail.disclosure}
-      >
+      <a className={className} href={rail.href} target="_blank" rel="noreferrer" title={rail.disclosure}>
         {rail.label}
       </a>
     );
@@ -76,88 +88,291 @@ function RailCta({
   );
 }
 
-function PickHero({ pick, knownVaults }: { pick: CurationVault; knownVaults: KnownVault[] }) {
-  const rail = depositRail(pick, knownVaults, explorerAddressUrl);
+function Sparkline({ points, big = false }: { points?: ApyPoint[]; big?: boolean }) {
+  const path = sparklinePath(points, big ? 300 : 120, big ? 96 : 34);
+  if (!path) return null;
   return (
-    <div className="card card-pad" id="pick">
-      <div className="card-hd">
-        <span className="lbl">Sparky’s pick today</span>
-        <span className="badge badge-ai">AI-curated</span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 260, flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.01em" }}>{pick.label}</div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-            {curatorLabel(pick)} · {pick.asset.symbol ?? "—"} ·{" "}
-            <span className="mono">{shortAddr(pick.address)}</span>
-            {pick.pinned ? " · pinned by an admin" : ""}
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "var(--muted-foreground)",
-              marginTop: 12,
-              maxWidth: 560,
-              lineHeight: 1.55,
-            }}
-          >
-            {pick.reason}
-          </div>
-        </div>
-        <div style={{ textAlign: "right", minWidth: 150 }}>
-          <div style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-.02em" }} className="tnum">
-            {fmtApyBps(pick.netApyBps)}
-          </div>
-          <div className="muted" style={{ fontSize: 12 }}>
-            net APY · as stored
-          </div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            TVL {fmtUsdCompact(pick.tvlUsd)} · Score {pick.score ?? "—"}
-          </div>
-        </div>
-      </div>
-      <div className="divider" style={{ margin: "14px 0" }} />
-      {rail.kind === "wrapper-pending" ? (
-        <div className="infobanner" style={{ background: "var(--caution-subtle)" }}>
-          {rail.note}
-        </div>
+    <svg
+      className={big ? "vb-spark vb-spark-big" : "vb-spark"}
+      viewBox={`0 0 ${big ? 300 : 120} ${big ? 96 : 34}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path d={path} fill="none" stroke="var(--gain)" strokeWidth={big ? 2.4 : 2} />
+    </svg>
+  );
+}
+
+function Badges({
+  vault,
+  isNew,
+  light = false,
+}: {
+  vault: CurationVault;
+  isNew: boolean;
+  light?: boolean;
+}) {
+  const cls = light ? "vb-badge light" : "vb-badge";
+  return (
+    <div className="vb-badges">
+      {vault.provenance === "ai" ? (
+        <span className={`${cls} ai`}>AI-curated</span>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <RailCta vault={pick} knownVaults={knownVaults} className="btn btn-primary btn-md" />
-          <Link className="btn btn-outline btn-md" href={chatAskHref()}>
-            Ask Sparky about vaults
-          </Link>
-        </div>
+        <span className={`${cls} admin`}>Admin pick</span>
       )}
-      {rail.kind !== "wrapper-pending" && (
-        <div className="muted" style={{ fontSize: 12, marginTop: 10, lineHeight: 1.5 }}>
-          {rail.disclosure}
-        </div>
-      )}
+      <span className={`${cls} wrapped`}>Wrapped</span>
+      <span className={`${cls} fee`}>Performance fee · above HWM</span>
+      {isNew && <span className={`${cls} new`}>New this week</span>}
     </div>
   );
 }
 
-function EmptyBoard({ board }: { board: Board }) {
-  const { title, body } = boardEmptyCopy(board);
+// ── Option C: the feature card ───────────────────────────────────────────────────────────────────
+
+function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: KnownVault[] }) {
+  const range = sparklineRange(pick.apyHistory);
   return (
-    <div className="card card-pad">
-      <div className="card-hd">
-        <span className="t">{title}</span>
-        <span className="lbl">curation is off-chain</span>
+    <section className="vb-feature" aria-label="Sparky recommends">
+      <div className="vb-feature-grid">
+        <div>
+          <div className="vb-badges">
+            <span className="vb-badge light spark">✦ Sparky recommends</span>
+            <span className="vb-badge light">{pick.provenance === "ai" ? "AI-curated" : "Admin pick"}</span>
+            <span className="vb-badge light">Wrapped · deposit live</span>
+          </div>
+          <h2>{pick.label}</h2>
+          <div className="vb-feature-meta">
+            {curatorLabel(pick)} · {pick.asset.symbol ?? "—"} ·{" "}
+            <span className="mono">{shortAddr(pick.address)}</span>
+            {pick.ageSeconds != null ? ` · ${Math.floor(pick.ageSeconds / 86_400)}d live` : ""}
+          </div>
+          {pick.reason && <p className="vb-feature-reason">{pick.reason}</p>}
+          <div className="vb-stats">
+            <div className="vb-stat big">
+              <div className="v tnum">{fmtApyBps(pick.netApyBps)}</div>
+              <div className="l">net APY · as stored</div>
+            </div>
+            <div className="vb-stat">
+              <div className="v tnum">{fmtUsdCompact(pick.tvlUsd)}</div>
+              <div className="l">TVL</div>
+            </div>
+            <div className="vb-stat">
+              <div className="v tnum">{fmtUsdCompact(pick.liquidityUsd)}</div>
+              <div className="l">withdrawable</div>
+            </div>
+            {pick.score != null && (
+              <div className="vb-stat">
+                <div className="v tnum">{pick.score}</div>
+                <div className="l">Sparky score</div>
+              </div>
+            )}
+          </div>
+          <div className="vb-ctas">
+            <RailCta vault={pick} knownVaults={knownVaults} className="btn btn-primary btn-md" />
+            <Link className="btn vb-btn-on-feature btn-md" href={chatAskHref()}>
+              Ask Sparky why
+            </Link>
+          </div>
+          <div className="vb-feature-note">
+            Performance-only fee above your high-water mark · no deposit, exit or management fee ·
+            exits are direct on-chain calls, never gated.
+          </div>
+        </div>
+        <div className="vb-feature-chart">
+          <div className="vb-chart-hd">
+            <span>NET APY · 30d</span>
+            {range && <span>{range}</span>}
+          </div>
+          <Sparkline points={pick.apyHistory} big />
+          {!range && (
+            <div className="vb-chart-empty">
+              History builds with each daily scan — the stored APY is shown without a chart until
+              there are at least two observations.
+            </div>
+          )}
+        </div>
       </div>
-      <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>{body}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-        <Link className="btn btn-outline btn-md" href={chatAskHref()}>
-          Ask Sparky about vaults
-        </Link>
-        <span className="muted" style={{ fontSize: 12 }}>
-          {boardProvenance(board)}
-        </span>
-      </div>
-    </div>
+    </section>
   );
 }
+
+// ── Option C: a live-vault card ──────────────────────────────────────────────────────────────────
+
+function VaultCard({
+  vault,
+  knownVaults,
+  isNew,
+  isPick,
+}: {
+  vault: CurationVault;
+  knownVaults: KnownVault[];
+  isNew: boolean;
+  isPick: boolean;
+}) {
+  const range = sparklineRange(vault.apyHistory);
+  return (
+    <article className="vb-card" id={`vault-${vault.address}`}>
+      <div className="vb-card-top">
+        <div>
+          <div className="vb-card-name">{vault.label}</div>
+          <div className="vb-card-sub">
+            {curatorLabel(vault)} · {vault.asset.symbol ?? "—"}
+          </div>
+        </div>
+        {isPick && <span className="vb-badge spark">✦ pick</span>}
+      </div>
+      <div className="vb-apyrow">
+        <div className="vb-apy tnum">
+          {fmtApyBps(vault.netApyBps)}
+          <small>net APY</small>
+        </div>
+        <Sparkline points={vault.apyHistory} />
+      </div>
+      <div className="vb-metrics">
+        <div className="vb-metric">
+          <b className="tnum">{fmtUsdCompact(vault.tvlUsd)}</b>TVL
+        </div>
+        <div className="vb-metric">
+          <b className="tnum">{fmtUsdCompact(vault.liquidityUsd)}</b>withdrawable
+        </div>
+        <div className="vb-metric">
+          <b>perf-only</b>fee above HWM
+        </div>
+      </div>
+      <Badges vault={vault} isNew={isNew} />
+      {vault.reason && <div className="vb-card-why">Why: {vault.reason}</div>}
+      {range && <div className="vb-card-range">30d range {range} · stored scans</div>}
+      <div className="vb-card-cta">
+        <RailCta vault={vault} knownVaults={knownVaults} className="btn btn-primary btn-sm btn-block" />
+        <a
+          className="btn btn-outline btn-sm"
+          href={explorerAddressUrl(vault.chainId, vault.address)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Details
+        </a>
+      </div>
+    </article>
+  );
+}
+
+// ── 050: admin-only in-flight panel ──────────────────────────────────────────────────────────────
+
+interface WhitelistWire {
+  entries?: Array<{ status: string; ready: boolean }>;
+  candidates?: unknown[];
+}
+interface CurationWire {
+  vaults?: Array<{ status: string }>;
+}
+
+/**
+ * Rendered ONLY for an admin session, directly under the feature card. The counts come from the
+ * admin-gated endpoints (they 404 for everyone else), and the panel hides itself on any failure —
+ * a public visitor never sees it and never triggers the calls.
+ */
+function AdminInFlightPanel() {
+  const { session } = useSession();
+  const isAdmin = Boolean(session?.admin);
+  const [counts, setCounts] = useState<InFlightCounts | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let live = true;
+    const get = (path: string) =>
+      fetch(path, { headers: { "x-chain-id": APP_CHAIN_ID_HEADER }, cache: "no-store" }).then(
+        (res) => (res.ok ? res.json() : null),
+      );
+    Promise.all([
+      get("/api/agent/admin/vaults/whitelist"),
+      get("/api/agent/admin/vaults/curation"),
+    ])
+      .then(([wl, cu]: [WhitelistWire | null, CurationWire | null]) => {
+        if (!live || !wl || !cu) return;
+        setCounts(
+          inFlightCounts({
+            entries: wl.entries ?? [],
+            candidates: wl.candidates ?? [],
+            curation: cu.vaults ?? [],
+          }),
+        );
+      })
+      .catch(() => {
+        /* best-effort admin view; never break the public page */
+      });
+    return () => {
+      live = false;
+    };
+  }, [isAdmin]);
+
+  if (!isAdmin || counts === null) return null;
+  return (
+    <section className="vb-admin" aria-label="Admin: in-flight vaults">
+      <div className="vb-admin-hd">
+        <h3>Not on this page — admin only</h3>
+        <span className="vb-badge admin">operator view</span>
+      </div>
+      <p>
+        In-flight rows are never public. These counts come from the admin endpoints, not the board:
+      </p>
+      <div className="vb-admin-counts">
+        <span>
+          <b className="tnum">{counts.approvedUnwrapped}</b> approved, no wrapper
+        </span>
+        <span>
+          <b className="tnum">{counts.whitelisted}</b> whitelisted
+          {counts.cooling > 0 ? ` (${counts.cooling} cooling)` : ""}
+        </span>
+        <span>
+          <b className="tnum">{counts.failed}</b> failed
+        </span>
+        <span>
+          <b className="tnum">{counts.candidates}</b> candidates
+        </span>
+      </div>
+      <Link className="btn btn-primary btn-sm" href="/admin/vault?section=curated">
+        Manage in Admin → Vaults
+      </Link>
+    </section>
+  );
+}
+
+// ── states ───────────────────────────────────────────────────────────────────────────────────────
+
+function EmptyState({ board }: { board: Board }) {
+  const { title, body } = boardEmptyCopy(board);
+  return (
+    <section className="vb-empty">
+      <div className="vb-empty-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"
+            stroke="var(--primary)"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z"
+            fill="var(--primary)"
+            opacity=".55"
+          />
+        </svg>
+      </div>
+      <h2>{board.note ? "Sparky is screening vaults" : title}</h2>
+      <p>{board.note ?? body}</p>
+      <div className="vb-empty-cta">
+        <Link className="btn btn-primary btn-md" href={chatAskHref()}>
+          Ask Sparky about vaults
+        </Link>
+        <span className="vb-badge ghosty">last scan {fmtWhen(board.lastRunAt)} · 0 wrapped</span>
+      </div>
+      <div className="vb-empty-prov">{boardProvenance(board)}</div>
+    </section>
+  );
+}
+
+// ── the board ────────────────────────────────────────────────────────────────────────────────────
 
 export function CuratedBoard({
   board,
@@ -170,19 +385,73 @@ export function CuratedBoard({
   knownVaults?: KnownVault[];
   fetchedAt?: number;
 }) {
-  const [query, setQuery] = useState("");
-  const [newOnly, setNewOnly] = useState(false);
+  const [filters, setFilters] = useState<BoardFilters>({ newOnly: false, aiOnly: false });
+  const [shown, setShown] = useState(LIVE_BATCH_SIZE);
+  const [phase, setPhase] = useState<"idle" | "loading" | "end">("idle");
+  const phaseRef = useRef<"idle" | "loading" | "end">("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const newAddresses = useMemo(() => {
-    if (!board || fetchedAt === 0) return new Set<string>();
-    return new Set(newThisWeek(board.vaults, fetchedAt).map((v) => v.address));
-  }, [board, fetchedAt]);
+  const live = useMemo(() => (board ? liveVaults(board) : []), [board]);
+  const list = useMemo(
+    () => (board ? filterBoard(live, filters, fetchedAt) : []),
+    [board, live, filters, fetchedAt],
+  );
+  const pick = useMemo(() => (board ? heroPick(board) : null), [board]);
+  const fresh = useMemo(
+    () =>
+      board && fetchedAt > 0
+        ? new Set(newThisWeek(board.vaults, fetchedAt).map((v) => v.address))
+        : new Set<string>(),
+    [board, fetchedAt],
+  );
 
-  // `fetchedAt` is state stamped by the hook when the board arrived — never `Date.now()` in a
-  // render, which is impure and trips the purity lint.
-  const rows = useMemo(
-    () => (board ? filterVaults(board.vaults, { query, newOnly }, fetchedAt) : []),
-    [board, query, newOnly, fetchedAt],
+  const applyFilters = useCallback((next: BoardFilters) => {
+    setFilters(next);
+    setShown(LIVE_BATCH_SIZE);
+    phaseRef.current = "idle";
+    setPhase("idle");
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const reveal = useCallback(() => {
+    if (phaseRef.current !== "idle") return;
+    const total = list.length;
+    phaseRef.current = "loading";
+    setPhase("loading");
+    if (shown >= total) {
+      // Nothing left: one spinner beat, then the honest terminal message.
+      timerRef.current = setTimeout(() => {
+        phaseRef.current = "end";
+        setPhase("end");
+      }, 700);
+      return;
+    }
+    timerRef.current = setTimeout(() => {
+      setShown((current) => nextBatch(current, total));
+      phaseRef.current = "idle";
+      setPhase("idle");
+    }, 600);
+  }, [list.length, shown]);
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || list.length === 0) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) reveal();
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [reveal, list.length]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
   );
 
   if (state === "loading") {
@@ -212,111 +481,73 @@ export function CuratedBoard({
     );
   }
 
-  if (boardIsEmpty(board)) {
-    return (
-      <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-        <EmptyBoard board={board} />
-      </div>
-    );
-  }
+  const visible = list.slice(0, shown);
 
   return (
-    <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-      {board.pick && <PickHero pick={board.pick} knownVaults={knownVaults} />}
+    <div className="vb-board">
+      {pick ? <FeatureCard pick={pick} knownVaults={knownVaults} /> : <EmptyState board={board} />}
 
-      <div className="card card-pad">
-        <div className="card-hd">
-          <span className="t">Curated list</span>
-          <span className="prov">
-            {boardProvenance(board)} · {board.vaults.length} approved
-          </span>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <input
-            className="input"
-            style={{ maxWidth: 260 }}
-            placeholder="Filter by name, symbol or address"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={newOnly}
-              onChange={(e) => setNewOnly(e.target.checked)}
-            />
-            New this week
-          </label>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="tbl" style={{ width: "100%", minWidth: 760 }}>
-            <thead>
-              <tr>
-                <th>Vault</th>
-                <th>Asset</th>
-                <th>Net APY</th>
-                <th>TVL</th>
-                <th>Curator</th>
-                <th>Age</th>
-                <th>Provenance</th>
-                <th>Deposit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="muted" style={{ padding: "10px 8px", fontSize: 13 }}>
-                    No vaults match that filter.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((v) => {
-                  const chip = provenanceChip(v);
-                  return (
-                    <tr key={v.address} id={`vault-${v.address}`}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>
-                          {v.label}
-                          {newAddresses.has(v.address) && (
-                            <span className="pill info" style={{ marginLeft: 8 }}>
-                              new
-                            </span>
-                          )}
-                        </div>
-                        <div className="muted mono" style={{ fontSize: 11 }}>
-                          {shortAddr(v.address)}
-                        </div>
-                      </td>
-                      <td className="mono">{v.asset.symbol ?? "—"}</td>
-                      <td className="mono tnum">{fmtApyBps(v.netApyBps)}</td>
-                      <td className="mono tnum">{fmtUsdCompact(v.tvlUsd)}</td>
-                      <td>{curatorLabel(v)}</td>
-                      <td className="muted">{fmtAge(v.ageSeconds)}</td>
-                      <td>
-                        <span className={`pill ${chip.tone}`}>{chip.label}</span>
-                      </td>
-                      <td>
-                        <RailCta vault={v} knownVaults={knownVaults} />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="muted" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.5 }}>
-          Figures are as-of the stored scan — no projections. Curation runs off-chain and an admin
-          can always override it; AI picks and admin decisions are labelled per row.
-        </div>
+      <AdminInFlightPanel />
+
+      {list.length > 0 && (
+        <>
+          <div className="vb-listhead">
+            <h2>All live vaults</h2>
+            <span className="vb-badge ghosty">wrapped only · {list.length}</span>
+          </div>
+          <div className="vb-chiprow" role="group" aria-label="Filter live vaults">
+            <button
+              className={`vb-chip${!filters.newOnly && !filters.aiOnly ? " on" : ""}`}
+              onClick={() => applyFilters({ newOnly: false, aiOnly: false })}
+            >
+              All live
+            </button>
+            <button
+              className={`vb-chip${filters.newOnly ? " on" : ""}`}
+              onClick={() => applyFilters({ ...filters, newOnly: !filters.newOnly })}
+            >
+              New this week
+            </button>
+            <button
+              className={`vb-chip${filters.aiOnly ? " on" : ""}`}
+              onClick={() => applyFilters({ ...filters, aiOnly: !filters.aiOnly })}
+            >
+              AI-curated
+            </button>
+          </div>
+          <div className="vb-grid">
+            {visible.map((vault) => (
+              <VaultCard
+                key={vault.address}
+                vault={vault}
+                knownVaults={knownVaults}
+                isNew={fresh.has(vault.address)}
+                isPick={pick?.address === vault.address}
+              />
+            ))}
+          </div>
+          {visible.length === 0 && (
+            <div className="vb-loadstatus">No live vaults match that filter.</div>
+          )}
+          <div className="vb-loadstatus" aria-live="polite">
+            {phase === "loading" && (
+              <>
+                <span className="vb-spinner" />
+                Loading more vaults…
+              </>
+            )}
+            {phase === "end" && (
+              <>You’ve reached the bottom — that’s every live vault Sparky has wrapped.</>
+            )}
+          </div>
+          <div ref={sentinelRef} className="vb-sentinel" aria-hidden="true" />
+        </>
+      )}
+
+      <div className="vb-boardfoot">
+        Figures are as-of the stored scan — no projections. Curation runs off-chain and an admin can
+        always override it; AI picks and admin decisions are labelled on each card.
+        {hasMore(shown, list.length) ? " Scroll for more live vaults." : ""}
       </div>
     </div>
   );

@@ -13,7 +13,10 @@ The load-bearing rules pinned here:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+from asyncpg.exceptions import UndefinedTableError
 
 from sparkpoint_agent.api.curated_vaults import public_board
 from sparkpoint_agent.db.curated_vaults import (
@@ -62,6 +65,7 @@ class _FakeDb:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.execute_result = "UPDATE 1"
         self.fetch_rows: list[Any] = []
+        self.fetch_error: Exception | None = None
         self.executemany_count = 0
 
     def acquire(self) -> _Ctx:
@@ -73,6 +77,8 @@ class _FakeDb:
 
     async def fetch(self, sql: str, *args: Any) -> list[Any]:
         self.calls.append((sql, args))
+        if self.fetch_error is not None:
+            raise self.fetch_error
         return self.fetch_rows
 
 
@@ -145,8 +151,10 @@ async def test_latest_recommendation_can_exclude_unpublished_proposals() -> None
 
 async def test_pin_outranks_published_pick_and_hidden_never_surfaces() -> None:
     """Pure composition test: a pin outranks a published AI pick; hidden vaults never surface."""
-    approved = _vault("0xaaa", status=APPROVED, pinned_at=_NOW.isoformat())
-    other = _vault("0xbbb", status=APPROVED, score=99)
+    approved = _vault(
+        "0xaaa", status=APPROVED, pinned_at=_NOW.isoformat(), wrapped=True, wrapper_address="0xw"
+    )
+    other = _vault("0xbbb", status=APPROVED, score=99, wrapped=True, wrapper_address="0xw")
     hidden = _vault("0xccc", status=HIDDEN)
     rec = Recommendation(
         chain_id=4663,
@@ -172,8 +180,103 @@ async def test_empty_board_is_honest_not_a_bare_table() -> None:
     board = public_board(4663, [], None, S(chain_id=4663, auto_publish=False))
     assert board["pick"] is None
     assert board["vaults"] == []
-    assert board["note"] and "No curated vaults" in board["note"]
+    assert board["note"] and "Nothing is depositable yet" in board["note"]
     assert board["lastRunAt"] is None
+
+
+def test_hero_falls_back_to_top_live_when_the_pick_is_not_wrapped() -> None:
+    """050 — an approved-but-unwrapped pick never leads; the best LIVE vault does."""
+    top = _vault("0xbbb", status=APPROVED, score=99, wrapped=True, wrapper_address="0xw")
+    mid = _vault("0xaaa", status=APPROVED, score=50, wrapped=True, wrapper_address="0xw")
+    unwrapped = _vault("0xccc", status=APPROVED, score=100)
+    rec = Recommendation(
+        chain_id=4663,
+        run_key="r1",
+        as_of="2026-09-17T00:00:00+00:00",
+        source="morpho",
+        pick_address="0xccc",
+        pick_reason="Best net APY.",
+        alternates=[],
+        published=True,
+        provenance="ai",
+    )
+    board = public_board(4663, [top, mid, unwrapped], rec, S(chain_id=4663, auto_publish=True))
+    assert board["pick"] is not None
+    assert board["pick"]["address"] == "0xbbb"
+    assert "Highest-scoring live vault" in board["pick"]["reason"]
+    assert [v["address"] for v in board["vaults"]] == ["0xbbb", "0xaaa"]
+    assert all(v["address"] != "0xccc" for v in board["vaults"])
+
+
+def test_public_vaults_carry_stored_apy_history() -> None:
+    """050 — the card sparkline reads the real stored points, never a synthesized series."""
+    live = _vault("0xaaa", status=APPROVED, wrapped=True, wrapper_address="0xw")
+    history = {
+        "0xaaa": [
+            {"at": "2026-09-01T00:00:00+00:00", "netApyBps": 400},
+            {"at": "2026-09-02T00:00:00+00:00", "netApyBps": 420},
+        ]
+    }
+    board = public_board(
+        4663, [live], None, S(chain_id=4663, auto_publish=False), history=history
+    )
+    assert board["vaults"][0]["apyHistory"] == history["0xaaa"]
+    assert board["pick"]["apyHistory"] == history["0xaaa"]
+    # No history ⇒ empty list, not a fabricated chart.
+    board = public_board(4663, [live], None, S(chain_id=4663, auto_publish=False))
+    assert board["vaults"][0]["apyHistory"] == []
+
+
+# ── 050 · APY history store ──────────────────────────────────────────────────────────────────────
+
+_MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
+
+
+def test_migration_0041_is_next_free_and_additive() -> None:
+    numbers = sorted(int(p.name[:4]) for p in _MIGRATIONS.glob("0*.sql"))
+    assert 41 in numbers, "0041 migration must exist"
+    assert max(n for n in numbers if n < 41) == 40
+    sql = (_MIGRATIONS / "0041_curated_vault_apy_history.sql").read_text().lower()
+    assert "create table if not exists curated_vault_apy_history" in sql
+    assert "alter table" not in sql  # additive only
+
+
+async def test_scan_upsert_appends_apy_history_for_observed_vaults() -> None:
+    store, db = _store()
+    written = await store.upsert_scan_vaults(
+        4663,
+        [
+            ScanVault(address="0xAbC", label="V", screened=True, net_apy_bps=420),
+            ScanVault(address="0xDeF", label="W", screened=True, net_apy_bps=None),
+        ],
+        source="morpho",
+        as_of=_NOW,
+    )
+    assert written == 2
+    inserts = [(sql, params) for sql, params in db.calls if "curated_vault_apy_history" in sql]
+    assert len(inserts) == 1
+    assert inserts[0][1] == ((4663, "0xabc", _NOW, 420),)
+
+
+async def test_apy_history_groups_chronological_points() -> None:
+    store, db = _store()
+    db.fetch_rows = [
+        {"vault_address": "0xaaa", "observed_at": _NOW, "net_apy_bps": 400},
+        {"vault_address": "0xaaa", "observed_at": _NOW, "net_apy_bps": 420},
+        {"vault_address": "0xbbb", "observed_at": _NOW, "net_apy_bps": 300},
+    ]
+    history = await store.apy_history(4663, ["0xAAA", "0xbbb"])
+    assert list(history) == ["0xaaa", "0xbbb"]
+    assert [p["netApyBps"] for p in history["0xaaa"]] == [400, 420]
+    sql = db.calls[-1][0]
+    assert "row_number() OVER" in sql
+    assert db.calls[-1][1][1] == ["0xaaa", "0xbbb"]
+
+
+async def test_apy_history_fail_opens_on_an_unapplied_db() -> None:
+    store, db = _store()
+    db.fetch_error = UndefinedTableError()
+    assert await store.apy_history(4663, ["0xaaa"]) == {}
 
 
 def _vault(address: str, **over: Any) -> V:

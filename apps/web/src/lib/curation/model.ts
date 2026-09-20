@@ -16,6 +16,13 @@ export interface CurationAsset {
   decimals: number | null;
 }
 
+/** One stored net-APY observation (feature 050) — a point on the card's sparkline. */
+export interface ApyPoint {
+  /** ISO timestamp of the scan that observed it. */
+  at: string;
+  netApyBps: number;
+}
+
 export interface ScreeningVerdict {
   code: string;
   ok: boolean;
@@ -54,6 +61,8 @@ export interface CurationVault {
   /** Merged from the recommendation for the public pick/alternates. */
   reason?: string;
   asOf?: string | null;
+  /** 050 — the last ~30 stored APY observations (oldest → newest); absent ⇒ no chart. */
+  apyHistory?: ApyPoint[];
 }
 
 export interface RecommendationItem {

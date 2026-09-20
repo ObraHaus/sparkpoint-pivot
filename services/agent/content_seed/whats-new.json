@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-page-card-first",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The Vault page is card-first — and shows only vaults you can deposit into",
+      "body": "Sparky's recommended vault now leads the page in a full-width feature card, and every live vault sits below as a card with its net APY, TVL, withdrawable liquidity and a 30-day trend chart — no more table. Scroll and more cards load in.\n\nWe also tightened what's public: only vaults whose SparkPoint wrapper is actually deployed appear here, so every card is depositable today. Vaults still being screened or wrapped are handled in the admin panel and are never shown as 'coming soon'.",
+      "published_at": "2026-09-20T04:47:08Z"
+    },
+    {
       "slug": "vault-admission-queue-cleanup",
       "type": "changelog",
       "tag": "Improved",
