@@ -95,6 +95,8 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
     vaultAddress: input.vaultAddress,
     kind: input.kind,
     label: input.label,
+    // 051 — curated provenance for a V3 universal wrapper (its trust root; V3 has no attestation).
+    verified: input.verified,
   });
 
   // 017 — the LIVE Aave USDC supply rate (bps), read on-chain; null when unreadable (→ "—").
