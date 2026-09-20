@@ -18,7 +18,7 @@ never an authority.
 
 ⚠️ Registration order: this router owns literal ``/admin/vaults/whitelist*`` routes and MUST be
 included BEFORE ``admin_vaults_router`` (whose ``GET /admin/vaults/{vault}`` would otherwise
-swallow them), same rule as ``api/curated_vaults.py`` and ``api/wrapper_deployments.py``.
+swallow them), same rule as ``api/curated_vaults.py``.
 """
 
 from __future__ import annotations

@@ -75,7 +75,6 @@ from .tips import router as tips_router
 from .usage import router as usage_router
 from .vault import router as vault_router
 from .vault import vault_unavailable_handler
-from .wrapper_deployments import router as wrapper_deployments_router
 from .wrapper_whitelist import router as wrapper_whitelist_router
 
 logger = logging.getLogger("sparkpoint_agent.api")
@@ -891,11 +890,6 @@ app.include_router(usage_router)
 # "curation" (FastAPI matches in registration order, exactly the trap documented on
 # /admin/vault-registry).
 app.include_router(curated_vaults_router)
-
-# Feature 049 wrapper deploy requests (admin) + the deploy runner's queue (/curator/wrapper-jobs*).
-# ⚠️ Registered BEFORE admin_vaults_router: its literal /admin/vaults/wrappers* routes would
-# otherwise be swallowed by GET /admin/vaults/{vault} (matching is registration-order).
-app.include_router(wrapper_deployments_router)
 
 # Feature 049 v4.1.0 admission queue (admin) + the AI runner's candidate/report surface
 # (/curator/wrapper-whitelist*). ⚠️ Registered BEFORE admin_vaults_router for the same reason as
