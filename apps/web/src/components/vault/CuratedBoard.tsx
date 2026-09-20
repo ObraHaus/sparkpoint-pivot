@@ -72,7 +72,11 @@ function RailCta({
   className?: string;
 }) {
   const router = useRouter();
-  const rail = depositRail(vault, knownVaults, explorerAddressUrl);
+  const rail = depositRail(
+    { ...vault, assetSymbol: vault.asset.symbol ?? undefined },
+    knownVaults,
+    explorerAddressUrl,
+  );
   if (rail.kind === "wrapper" || rail.kind === "direct") {
     return (
       <button className={className} title={rail.disclosure} onClick={() => router.push(rail.href)}>

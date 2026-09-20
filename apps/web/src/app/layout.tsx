@@ -44,6 +44,15 @@ export const viewport: Viewport = {
   colorScheme: "dark light",
 };
 
+/**
+ * Force DYNAMIC rendering for every page. Without this, Next serves the app HTML from its full-route
+ * cache with `s-maxage=31536000` — a browser/CDN that reloads still gets the OLD HTML and therefore
+ * the old JS, so a new deployment never reaches an open tab (the force-refresh banner reloads, sees
+ * the same stale page, and trips its loop-breaker). `/_next/static` chunks keep their immutable
+ * content-hash caching; only the HTML shell is no-store now.
+ */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
