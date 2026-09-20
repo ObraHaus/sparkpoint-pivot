@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **CTA wording:** “Deposit via SparkPoint wrapper” → **“Deposit USDG”** (the token). “SparkPoint wrapper” no longer appears in vault UI copy — docs/learn/trust keep the full term.
 - **Portfolio beta notice** now points at the live curated vaults instead of claiming the AI vault is absent on 4663.
 - **Auto-refresh on new deployments:** page HTML was served from Next’s full-route cache with `s-maxage=31536000`, so a reload kept the old build and the force-refresh banner looped to a manual Refresh. The root layout is now `dynamic = "force-dynamic"` — HTML is no-store, while `/_next/static` chunks keep immutable caching.
+- **The force-refresh build id is deterministic now.** `next.config.ts` is evaluated more than once per build, so appending `Date.now()` gave the client and server bundles **different** ids for the same build — the stale-tab check saw a permanent mismatch and the banner looped to a manual Refresh (observed live: HTML `…mu9o4ris` vs `/api/version` `…mu9o4rpg`). The id is now the commit (stable across evaluations, still changes on every real deploy), and commit-only ids compare by inequality.
 
 ### Added (052 — token logos)
 

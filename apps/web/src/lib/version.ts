@@ -18,9 +18,11 @@ export function isKnownId(id: string | null | undefined): id is string {
   return typeof id === "string" && id.length > 0 && !UNKNOWN_IDS.has(id);
 }
 
-/** The trailing base-36 build timestamp (next.config appends `-<Date.now().toString(36)>`), or null. */
+/** The trailing base-36 build timestamp (`<commit>-<Date.now().toString(36)>`), or null. */
 function buildTimestamp(id: string): number | null {
-  const seg = id.slice(id.lastIndexOf("-") + 1);
+  const i = id.lastIndexOf("-");
+  if (i <= 0) return null; // no suffix segment (a commit-only id) → compare by inequality instead
+  const seg = id.slice(i + 1);
   const n = Number.parseInt(seg, 36);
   return Number.isNaN(n) ? null : n;
 }
