@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { TokenLogo } from "@/components/ui/TokenLogo";
 import { useSession } from "@/lib/auth/useSiwe";
 import {
   boardEmptyCopy,
@@ -55,6 +56,11 @@ import "@/components/screens/vault.css";
 import "@/components/vault/board.css";
 
 // ── shared bits ──────────────────────────────────────────────────────────────────────────────────
+
+/** 052 — the vault's asset as a logo token (local art by address/symbol; avatar fallback). */
+function assetToken(v: CurationVault) {
+  return { symbol: v.asset.symbol ?? "?", address: v.asset.address ?? "", verified: true };
+}
 
 function RailCta({
   vault,
@@ -140,7 +146,10 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
             <span className="vb-badge light">{pick.provenance === "ai" ? "AI-curated" : "Admin pick"}</span>
             <span className="vb-badge light">Wrapped · deposit live</span>
           </div>
-          <h2>{pick.label}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+            <TokenLogo token={assetToken(pick)} chainId={pick.chainId} size={34} />
+            <h2 style={{ margin: 0 }}>{pick.label}</h2>
+          </div>
           <div className="vb-feature-meta">
             {curatorLabel(pick)} · {pick.asset.symbol ?? "—"} ·{" "}
             <span className="mono">{shortAddr(pick.address)}</span>
@@ -213,10 +222,13 @@ function VaultCard({
   return (
     <article className="vb-card" id={`vault-${vault.address}`}>
       <div className="vb-card-top">
-        <div>
-          <div className="vb-card-name">{vault.label}</div>
-          <div className="vb-card-sub">
-            {curatorLabel(vault)} · {vault.asset.symbol ?? "—"}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <TokenLogo token={assetToken(vault)} chainId={vault.chainId} size={28} />
+          <div>
+            <div className="vb-card-name">{vault.label}</div>
+            <div className="vb-card-sub">
+              {curatorLabel(vault)} · {vault.asset.symbol ?? "—"}
+            </div>
           </div>
         </div>
         {isPick && <span className="vb-badge spark">✦ pick</span>}

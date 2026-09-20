@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "token-logos",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Real token logos in the swap and vault pages",
+      "body": "USDG, ETH and the Robinhood stock tokens now show their real logos in the swap picker, the vault cards and your portfolio — no more plain letter circles. The art is bundled with the app (no third-party calls), and logos stay decorative: the verified badge is still what tells you a token is the right one.",
+      "published_at": "2026-09-20T08:23:15Z"
+    },
+    {
       "slug": "vault-deposit-rail-live",
       "type": "changelog",
       "tag": "Improved",

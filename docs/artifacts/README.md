@@ -17,3 +17,4 @@ setsid nohup python3 -m http.server 8123 </dev/null >/tmp/opencode/artifact-serv
 | `vault-program-roadmap-part2.html` | Part 2 — the V3 pivot: plan, roles, lifecycle, checklist V.1–V.8, deploy/cancel commands. |
 | `vault-topology.html` | One-page live topology explainer (what is live, what a vault is, the two timelock permissions). |
 | `vault-page-wireframes.html` | `/vault` redesign — three card-first wireframe options (Spotlight, Leaderboard, Editorial) + the public-vs-admin data contract. Mock only. |
+| `token-logos.html` | Token-logo collection for review (embedded art + sources): USDG, ETH/WETH/USDC, the Robinhood Stock Tokens, and the gaps. |

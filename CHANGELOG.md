@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (052 — token logos)
+
+- **Real token logos across the app.** The collected art is bundled locally in `apps/web/public/tokens/`: USDG (the official Global Dollar mark), ETH/WETH/USDC, and 11 of the 14 Robinhood Stock Tokens (full-colour official marks via Wikimedia Commons; CRCL monochrome via Simple Icons). `lib/logos.ts` now resolves **local-first** by chain + exact address or a verified symbol, then the Trust Wallet CDN, then the letter avatar — so the swap picker/header, the vault cards (feature + live) and the portfolio rows show real marks on 4663 instead of letters. The verified-only symbol rule and “decorative, never a trust signal” are unchanged. SPY, QQQ and GLD keep the avatar (no reliable public logo found).
+
 ### Added (051 — universal-wrapper deposit/withdraw rail)
 
 - **The board's CTA now routes into the live V3 wrapper.** A new `universal_wrapper` vault kind threads through the options → `useVault` → confirm model: the app reads the wrapper's own `asset()` and the asset's decimals separately (the V3 wrapper runs 9 share decimals over a 6-dp asset, unlike the legacy wrappers), trusts the **curated board's** `wrapped` + `wrapperAddress` record as provenance (V3 has no factory attestation), and fails closed ("Unverified vault") without it. Deposit signability also requires the wrapper asset to match the chain stable.
