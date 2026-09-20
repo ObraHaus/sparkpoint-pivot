@@ -80,6 +80,18 @@ def _vault(address: str, **over: Any) -> CuratedVault:
     return CuratedVault(**base)
 
 
+_WRAPPER = "0x9999999999999999999999999999999999999999"
+
+
+def _live(address: str, **over: Any) -> CuratedVault:
+    """An APPROVED, WRAPPED vault — the only shape the public board shows (feature 050)."""
+    over.setdefault("status", APPROVED)
+    over.setdefault("wrapped", True)
+    over.setdefault("wrapper_address", _WRAPPER)
+    over.setdefault("deposit_mode", "wrapper")
+    return _vault(address, **over)
+
+
 class FakeStore:
     """An in-memory :class:`CurationStore` that mirrors the store's core semantics."""
 
@@ -112,6 +124,11 @@ class FakeStore:
 
     async def get_vault(self, chain_id: int, address: str) -> CuratedVault | None:
         return self.vaults.get(address.lower())
+
+    async def apy_history(
+        self, chain_id: int, addresses: list[str], *, limit_per: int = 30
+    ) -> dict[str, list[dict[str, Any]]]:
+        return {}
 
     async def upsert_scan_vaults(
         self, chain_id: int, vaults: list[Any], *, source: str, as_of: datetime
@@ -369,16 +386,29 @@ def test_empty_board_is_an_honest_state_not_a_bare_table(
     assert data["pick"] is None
     assert data["alternates"] == []
     assert data["vaults"] == []
-    assert "No curated vaults" in (data["note"] or "")
+    assert "Nothing is depositable yet" in (data["note"] or "")
     assert data["lastRunAt"] is None
     assert data["autoPublish"] is False
 
 
+def test_approved_but_unwrapped_is_never_public(client: tuple[TestClient, FakeStore]) -> None:
+    """050 — in-flight rows (approved, no wrapper) are admin-only; the public board hides them."""
+    c, store = client
+    store.vaults[_A1] = _vault(_A1, status=APPROVED)
+    data = c.get("/vaults/curated").json()
+    assert data["vaults"] == []
+    assert data["pick"] is None
+    assert data["note"]
+    # The admin panel still sees it.
+    admin = c.get("/admin/vaults/curation").json()
+    assert [v["address"] for v in admin["vaults"]] == [_A1]
+
+
 def test_published_pick_and_alternates_render(client: tuple[TestClient, FakeStore]) -> None:
     c, store = client
-    store.vaults[_A1] = _vault(_A1, status=APPROVED, label="Alpha", net_apy_bps=500)
-    store.vaults[_A2] = _vault(_A2, status=APPROVED, label="Beta", score=60)
-    store.vaults[_A3] = _vault(_A3, status=APPROVED, label="Gamma", score=50)
+    store.vaults[_A1] = _live(_A1, label="Alpha", net_apy_bps=500)
+    store.vaults[_A2] = _live(_A2, label="Beta", score=60)
+    store.vaults[_A3] = _live(_A3, label="Gamma", score=50)
     store.recs.append(
         Recommendation(
             chain_id=_CHAIN,
@@ -435,6 +465,11 @@ def test_approve_publishes_and_records_provenance(
     assert resp.status_code == 200
     assert store.vaults[_A1].status == APPROVED
     assert store.vaults[_A1].provenance == "admin"
+    # 050 — approved is not enough; the public board waits for the wrapper.
+    assert c.get("/vaults/curated").json()["vaults"] == []
+    store.vaults[_A1] = replace(
+        store.vaults[_A1], wrapped=True, wrapper_address=_WRAPPER, deposit_mode="wrapper"
+    )
     assert c.get("/vaults/curated").json()["vaults"][0]["address"] == _A1
 
 
@@ -442,7 +477,8 @@ def test_deny_and_hide_remove_from_the_public_board(
     client: tuple[TestClient, FakeStore],
 ) -> None:
     c, store = client
-    store.vaults[_A1] = _vault(_A1, status=APPROVED)
+    store.vaults[_A1] = _live(_A1)
+    assert [v["address"] for v in c.get("/vaults/curated").json()["vaults"]] == [_A1]
     assert c.post("/admin/vaults/curation/deny", json={"address": _A1}).status_code == 200
     assert c.get("/vaults/curated").json()["vaults"] == []
     store.vaults[_A1] = replace(store.vaults[_A1], status=APPROVED)
@@ -452,8 +488,8 @@ def test_deny_and_hide_remove_from_the_public_board(
 
 def test_pin_wins_the_hero_over_the_ai_pick(client: tuple[TestClient, FakeStore]) -> None:
     c, store = client
-    store.vaults[_A1] = _vault(_A1, status=APPROVED)
-    store.vaults[_A2] = _vault(_A2, status=APPROVED)
+    store.vaults[_A1] = _live(_A1)
+    store.vaults[_A2] = _live(_A2)
     store.recs.append(
         Recommendation(
             chain_id=_CHAIN,
@@ -636,7 +672,7 @@ def test_a_failed_run_is_a_noop_for_the_list_and_the_pick(
     client: tuple[TestClient, FakeStore],
 ) -> None:
     c, store = client
-    store.vaults[_A3] = _vault(_A3, status=APPROVED)
+    store.vaults[_A3] = _live(_A3)
     store.recs.append(
         Recommendation(
             chain_id=_CHAIN,
@@ -695,6 +731,17 @@ def test_auto_publish_on_approves_candidates_and_publishes(
     assert resp.status_code == 200, resp.text
     assert resp.json()["published"] is True
     assert resp.json()["approved"] == 2
+    # 050 — auto-publish approves, but the public board waits for the wrappers.
+    board = c.get("/vaults/curated").json()
+    assert board["pick"] is None
+    assert board["vaults"] == []
+    for address in (_A1, _A2):
+        store.vaults[address] = replace(
+            store.vaults[address],
+            wrapped=True,
+            wrapper_address=_WRAPPER,
+            deposit_mode="wrapper",
+        )
     board = c.get("/vaults/curated").json()
     assert board["pick"]["address"] == _A1
     assert board["pick"]["reason"] == "Best risk-adjusted net APY."

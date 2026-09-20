@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vault page redesign — wireframe options (card-first, live-only)</title>
+<style>
+  :root, .dark{
+    --background:#080C17; --card:#101626; --card-2:#151D30; --popover:#182033;
+    --muted:#1B2438; --muted-foreground:#8C98AE; --foreground:#EAEEF7;
+    --border:#283455; --border-soft:#1D2740; --input:#313D5E;
+    --primary:#4D83FF; --primary-hover:#3A72F5; --spark-subtle:rgba(77,131,255,.14);
+    --brand-gold:#F5B62E; --brand-coral:#F2683C; --brand-cyan:#38C6F4; --brand-blue:#4D83FF;
+    --brand-gradient:linear-gradient(110deg,#4D83FF 0%,#38C6F4 34%,#F5B62E 72%,#F2683C 100%);
+    --gain:#34CF7A; --gain-subtle:rgba(52,207,122,.14); --loss:#FF5C5C;
+    --caution:#FFC53D; --caution-subtle:rgba(255,197,61,.14); --info:#38C6F4; --info-subtle:rgba(56,198,244,.14);
+    --radius:10px; --radius-sm:8px; --radius-lg:14px;
+    --shadow-md:0 8px 24px -10px rgba(0,0,0,.55); --shadow-lg:0 24px 60px -20px rgba(0,0,0,.65);
+    --sans:system-ui,-apple-system,"Segoe UI","Geist","Inter",sans-serif;
+    --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  html.light{
+    --background:#F6F9FE; --card:#FFFFFF; --card-2:#F1F5FC; --popover:#FFFFFF;
+    --muted:#EDF2FA; --muted-foreground:#586079; --foreground:#101A33;
+    --border:#DCE4F2; --border-soft:#E9EFF8; --input:#CFD9EC;
+    --primary:#2F6BFF; --primary-hover:#1E59F0; --spark-subtle:rgba(47,107,255,.10);
+    --brand-gold:#E59A12; --brand-coral:#E2562B; --brand-cyan:#1AA3D6; --brand-blue:#2F6BFF;
+    --brand-gradient:linear-gradient(110deg,#2F6BFF 0%,#1AA3D6 34%,#E59A12 72%,#E2562B 100%);
+    --gain:#0E8A52; --gain-subtle:rgba(14,138,82,.12); --loss:#D23B2E;
+    --caution:#9A6A00; --caution-subtle:rgba(154,106,0,.12); --info:#1387B5; --info-subtle:rgba(19,135,181,.12);
+    --shadow-md:0 6px 20px -12px rgba(16,26,51,.18); --shadow-lg:0 24px 60px -28px rgba(16,26,51,.25);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--background);color:var(--foreground);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+  a{color:var(--primary);text-decoration:none}
+  code,.mono,.tnum{font-family:var(--mono)}
+  .tnum{font-variant-numeric:tabular-nums}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 18px 80px}
+  .mast{border-bottom:1px solid var(--border);background:radial-gradient(120% 150% at 88% -30%,var(--spark-subtle) 0%,transparent 55%),var(--card)}
+  .mast-in{max-width:1160px;margin:0 auto;padding:26px 18px 22px}
+  .kicker{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+  h1{font-size:clamp(22px,3.6vw,32px);line-height:1.1;letter-spacing:-.02em;margin:10px 0 0}
+  .sub{margin:8px 0 0;color:var(--muted-foreground);max-width:88ch}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--border);background:var(--card-2);color:var(--muted-foreground);white-space:nowrap}
+  .pill.gold{border-color:var(--brand-gold);color:var(--brand-gold);background:var(--caution-subtle)}
+  .pill.blue{border-color:var(--primary);color:var(--primary);background:var(--spark-subtle)}
+  .pill.green{border-color:var(--gain);color:var(--gain);background:var(--gain-subtle)}
+  .pill.info{border-color:var(--info);color:var(--info);background:var(--info-subtle)}
+  .pill.violet{border-color:#A06FE8;color:#A06FE8;background:rgba(160,111,232,.14)}
+  .pill.gradient{border:0;color:#fff;background:var(--brand-gradient)}
+  .btn{display:inline-flex;align-items:center;gap:7px;border-radius:var(--radius);border:1px solid transparent;font-weight:600;font-size:13px;padding:9px 14px;cursor:pointer;font-family:var(--sans)}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:var(--primary-hover)}
+  .btn-outline{background:transparent;border-color:var(--border);color:var(--foreground)}
+  .btn-ghost{background:transparent;color:var(--muted-foreground)}
+  .btn-sm{padding:7px 11px;font-size:12.5px}
+  .btn-block{width:100%;justify-content:center}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md)}
+  .pad{padding:18px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 10px}
+  .tabs button{border:1px solid var(--border);background:var(--card);color:var(--muted-foreground);border-radius:999px;padding:8px 14px;font-weight:600;font-size:12.5px;cursor:pointer}
+  .tabs button.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .option{display:none}.option.active{display:block}
+  .frame{background:var(--background);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg);margin-top:12px}
+  .frame-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--card-2);font-family:var(--mono);font-size:11px;color:var(--muted-foreground)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--border)}
+  .frame-body{padding:22px}
+  .apphead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .apphead h2{margin:0;font-size:20px;letter-spacing:-.015em}
+  .hero{position:relative;border-radius:var(--radius-lg);padding:1px;background:var(--brand-gradient);box-shadow:var(--shadow-lg)}
+  .hero-in{background:var(--card);border-radius:calc(var(--radius-lg) - 1px);padding:20px;display:grid;grid-template-columns:1.35fr .95fr;gap:20px}
+  @media(max-width:880px){.hero-in{grid-template-columns:1fr}}
+  .hero h3{margin:8px 0 2px;font-size:26px;letter-spacing:-.02em}
+  .hero .meta{color:var(--muted-foreground);font-size:12.5px}
+  .reason{color:var(--muted-foreground);font-size:13px;line-height:1.6;margin-top:10px;max-width:60ch}
+  .statrow{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px}
+  .stat .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;letter-spacing:-.02em}
+  .stat .l{font-size:11px;color:var(--muted-foreground);margin-top:1px}
+  .stat.big .v{font-size:38px;color:var(--gain)}
+  .chartbox{background:var(--card-2);border:1px solid var(--border-soft);border-radius:var(--radius);padding:12px}
+  .chartbox .hd{display:flex;justify-content:space-between;font-size:11px;color:var(--muted-foreground);font-family:var(--mono)}
+  .chartbox svg{display:block;width:100%;height:96px;margin-top:6px}
+  .note{font-size:11.5px;color:var(--muted-foreground);line-height:1.5}
+  .chiprow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:18px 0 12px}
+  .chip{border:1px solid var(--border);background:var(--card);color:var(--muted-foreground);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+  .chip.on{background:var(--spark-subtle);border-color:var(--primary);color:var(--primary)}
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(3,1fr)}
+  @media(max-width:980px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  .vcard{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow-md);position:relative;transition:transform .12s ease,border-color .12s ease}
+  .vcard:hover{transform:translateY(-2px);border-color:var(--input)}
+  .vcard .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .vcard .name{font-weight:650;font-size:15px;letter-spacing:-.01em}
+  .vcard .sub{color:var(--muted-foreground);font-size:11.5px;margin-top:2px}
+  .badges{display:flex;gap:5px;flex-wrap:wrap}
+  .apyrow{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+  .apy{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;letter-spacing:-.02em;color:var(--gain)}
+  .apy small{font-size:11px;color:var(--muted-foreground);font-family:var(--sans);font-weight:500;display:block;letter-spacing:0}
+  .spark{width:112px;height:38px}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-top:1px solid var(--border-soft);padding-top:10px}
+  .metrics .m{font-size:11px;color:var(--muted-foreground)}
+  .metrics .m b{display:block;font-family:var(--mono);font-size:12.5px;color:var(--foreground);font-weight:600}
+  .vcard .cta{display:flex;gap:8px;margin-top:2px}
+  .adminbox{border:1px dashed var(--border);border-radius:var(--radius);padding:12px 14px;margin-top:16px;background:var(--card-2)}
+  .adminbox h4{margin:0 0 6px;font-size:12px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:820px){.split{grid-template-columns:1fr}}
+  .split .side{border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:var(--card)}
+  .split .side.pub{border-color:var(--gain)}
+  .split .side.adm{border-color:var(--caution)}
+  .split h5{margin:0 0 8px;font-size:13px}
+  .split ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted-foreground);line-height:1.7}
+  .foot{margin-top:26px;color:var(--muted-foreground);font-size:12px}
+  .warn{border-left:3px solid var(--caution);background:var(--caution-subtle);border-radius:0 10px 10px 0;padding:11px 13px;font-size:12.5px;margin-top:14px}
+  .ok{border-left:3px solid var(--gain);background:var(--gain-subtle);border-radius:0 10px 10px 0;padding:11px 13px;font-size:12.5px;margin-top:14px}
+  table.spec{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  table.spec th,table.spec td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.spec th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
+  .rank{position:absolute;top:-9px;left:14px;font-family:var(--mono);font-size:11px;font-weight:700;background:var(--card-2);border:1px solid var(--border);border-radius:999px;padding:2px 8px;color:var(--muted-foreground)}
+  .rank.first{background:var(--brand-gradient);border:0;color:#fff}
+  .feature{border-radius:var(--radius-lg);padding:22px;background:radial-gradient(130% 160% at 90% -20%,rgba(255,255,255,.22) 0%,transparent 55%),var(--brand-gradient);color:#fff;box-shadow:var(--shadow-lg)}
+  .feature .badges .pill{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);color:#fff}
+  .feature .apy{color:#fff}
+  .feature .note{color:rgba(255,255,255,.85)}
+  .featuregrid{display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:center}
+  @media(max-width:880px){.featuregrid{grid-template-columns:1fr}}
+  .toggle{position:fixed;right:16px;bottom:16px;z-index:5}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loadstatus{display:flex;align-items:center;justify-content:center;gap:4px;color:var(--muted-foreground);font-size:12.5px;padding:16px 0 4px;min-height:26px}
+  .sentinel{height:1px}
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-in">
+    <div class="kicker">
+      <span class="pill gradient">WIREFRAME · MOCK ONLY</span>
+      <span class="pill blue">✔ CHOSEN: Option C — Editorial feature (refined)</span>
+      <span class="pill">admin-conditional panel · infinite scroll</span>
+      <span class="pill">data contract in §4</span>
+    </div>
+    <h1>Vault page redesign — Option C, refined</h1>
+    <p class="sub">
+      Chosen direction: a full-width <b>Sparky recommends</b> feature card, the <b>admin-only “not on this
+      page” panel directly under it</b> (rendered only for an admin session, with a button into Admin →
+      Vaults), then <b>all live vaults as cards</b> that <b>lazy-load on scroll</b> — spinner, then an
+      honest “you’ve reached the bottom”. Only wrapped, depositable vaults are public. All numbers are
+      mock; the scroll + admin toggle below are live demos.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="card pad" style="margin-top:20px">
+    <div class="kicker" style="color:var(--muted-foreground)"><span class="pill">VISIBILITY RULE</span></div>
+    <div class="split" style="margin-top:10px">
+      <div class="side pub">
+        <h5>Public <span class="mono">/vault</span> shows</h5>
+        <ul>
+          <li><b>Wrapped</b> vaults only — a wrapper is deployed, the deposit rail is live.</li>
+          <li>Published picks/alternates that are <b>wrapped</b> (the hero must be depositable).</li>
+          <li>Badges + figures from the stored scan (net APY, TVL, liquidity, age, score).</li>
+          <li>Honest empty state when nothing is live yet.</li>
+        </ul>
+      </div>
+      <div class="side adm">
+        <h5>Admin panel only <span class="mono">Admin → Vaults</span></h5>
+        <ul>
+          <li>Candidate queue, approve/deny/pin/hide, provenance (AI / Admin).</li>
+          <li><b>Approved but unwrapped</b>, AI whitelisted / cooling-off / ready, release, cancel.</li>
+          <li>Deploy-now, wrapper params, cooldown, tx + error records.</li>
+          <li>Uncurated / hidden / denied / failed — never merged into the public list.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ok"><b>Net effect:</b> the public page can only ever show something a user can actually deposit into today; everything in flight is operator-only. No “coming soon” rows, no dead CTAs.</div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button class="active" data-opt="c">✔ Chosen · Option C (refined)</button>
+    <button data-opt="a">Option A · reference</button>
+    <button data-opt="b">Option B · reference</button>
+    <button data-opt="d">§4 · Data &amp; rules</button>
+  </div>
+
+  <!-- ================= OPTION A (reference) ================= -->
+  <section class="option" id="opt-a">
+    <div class="frame">
+      <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option A</div>
+      <div class="frame-body">
+        <div class="apphead">
+          <h2>Vaults</h2>
+          <span class="pill info">live · wrapped only</span>
+        </div>
+
+        <div class="hero">
+          <div class="hero-in">
+            <div>
+              <div class="badges">
+                <span class="pill gradient">✦ Sparky recommends</span>
+                <span class="pill blue">AI-curated</span>
+                <span class="pill green">Wrapped · deposit live</span>
+                <span class="pill gold">10% perf-fee · HWM</span>
+              </div>
+              <h3>Steakhouse USDG</h3>
+              <div class="meta">Curator <b>Steakhouse Financial</b> · USDG · <span class="mono">0xBeEf…09dd</span> · 214d live</div>
+              <p class="reason">
+                “Highest risk-adjusted net APY of the live set with the deepest withdrawable liquidity —
+                $12.1M available right now. Wrapped by SparkPoint, so the performance fee only ever
+                touches gains above your high-water mark.”
+              </p>
+              <div class="statrow">
+                <div class="stat big"><div class="v">3.58%</div><div class="l">net APY · 30d</div></div>
+                <div class="stat"><div class="v">$482.4M</div><div class="l">TVL</div></div>
+                <div class="stat"><div class="v">$12.1M</div><div class="l">withdrawable</div></div>
+                <div class="stat"><div class="v">57</div><div class="l">Sparky score</div></div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+                <button class="btn btn-primary">Deposit USDG</button>
+                <button class="btn btn-outline">Ask Sparky why</button>
+              </div>
+              <div class="note" style="margin-top:10px">No deposit, exit or management fee · exits are direct on-chain calls, never gated.</div>
+            </div>
+            <div class="chartbox">
+              <div class="hd"><span>NET APY · 30d</span><span>▲ +0.21 pts</span></div>
+              <svg viewBox="0 0 300 96" preserveAspectRatio="none" aria-hidden="true">
+                <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#34CF7A" stop-opacity=".35"/><stop offset="1" stop-color="#34CF7A" stop-opacity="0"/>
+                </linearGradient></defs>
+                <path d="M0,72 C25,66 45,70 70,60 C95,50 115,58 140,48 C165,40 185,44 210,34 C235,28 255,30 280,22 L300,18 L300,96 L0,96 Z" fill="url(#gA)"/>
+                <path d="M0,72 C25,66 45,70 70,60 C95,50 115,58 140,48 C165,40 185,44 210,34 C235,28 255,30 280,22 L300,18" fill="none" stroke="#34CF7A" stroke-width="2.2"/>
+              </svg>
+              <div class="note" style="margin-top:6px">30d range 3.21% – 3.61% · source: stored scans (mock)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chiprow">
+          <span class="chip on">All live (4)</span>
+          <span class="chip">New this week</span>
+          <span class="chip">Stablecoin</span>
+          <span class="chip">AI-curated</span>
+          <span class="muted" style="font-size:12px;color:var(--muted-foreground)">sorted by Sparky score</span>
+        </div>
+
+        <div class="grid">
+          <article class="vcard">
+            <div class="top">
+              <div><div class="name">Steakhouse USDG</div><div class="sub">Steakhouse Financial · USDG</div></div>
+              <div class="badges"><span class="pill gradient">✦ pick</span></div>
+            </div>
+            <div class="apyrow">
+              <div class="apy tnum">3.58%<small>net APY</small></div>
+              <svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,30 C18,26 30,29 48,22 C66,16 82,18 112,9" fill="none" stroke="#34CF7A" stroke-width="2"/></svg>
+            </div>
+            <div class="metrics">
+              <div class="m"><b>$482.4M</b>TVL</div><div class="m"><b>$12.1M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div>
+            </div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill blue">AI</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+
+          <article class="vcard">
+            <div class="top">
+              <div><div class="name">Purinta USDG</div><div class="sub">Purinta · USDG</div></div>
+              <div class="badges"><span class="pill violet">new</span></div>
+            </div>
+            <div class="apyrow">
+              <div class="apy tnum">3.21%<small>net APY</small></div>
+              <svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,26 C20,28 34,20 52,22 C70,24 86,14 112,12" fill="none" stroke="#34CF7A" stroke-width="2"/></svg>
+            </div>
+            <div class="metrics">
+              <div class="m"><b>$128.6M</b>TVL</div><div class="m"><b>$6.4M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div>
+            </div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill blue">AI</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+
+          <article class="vcard">
+            <div class="top">
+              <div><div class="name">Gauntlet USDG Core</div><div class="sub">Gauntlet · USDG</div></div>
+              <div class="badges"><span class="pill gold">admin pick</span></div>
+            </div>
+            <div class="apyrow">
+              <div class="apy tnum">2.94%<small>net APY</small></div>
+              <svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,24 C18,22 36,26 54,18 C72,12 90,16 112,11" fill="none" stroke="#34CF7A" stroke-width="2"/></svg>
+            </div>
+            <div class="metrics">
+              <div class="m"><b>$96.2M</b>TVL</div><div class="m"><b>$4.8M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div>
+            </div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill gold">Admin</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+
+          <article class="vcard">
+            <div class="top">
+              <div><div class="name">Re7 USDG</div><div class="sub">Re7 Capital · USDG</div></div>
+              <div class="badges"></div>
+            </div>
+            <div class="apyrow">
+              <div class="apy tnum">2.62%<small>net APY</small></div>
+              <svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,22 C20,24 34,18 52,20 C70,22 88,15 112,13" fill="none" stroke="#34CF8A" stroke-width="2"/></svg>
+            </div>
+            <div class="metrics">
+              <div class="m"><b>$41.8M</b>TVL</div><div class="m"><b>$2.1M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div>
+            </div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill blue">AI</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+        </div>
+
+        <div class="adminbox">
+          <h4>Not on this page (admin-only)</h4>
+          <div class="note">
+            3 approved-but-unwrapped · 2 whitelisted (1 cooling off until 22:54 UTC) · 1 failed deploy ·
+            12 candidates — all visible and actionable in <b>Admin → Vaults</b>. The public API returns
+            only <span class="mono">wrapped === true</span> rows.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><b>Option A why:</b> closest to the current page (hero + list), so the change is a table→cards swap and a stricter public filter. Best scanability on desktop and mobile; hero carries the recommendation story.</div>
+  </section>
+
+  <!-- ================= OPTION B ================= -->
+  <section class="option" id="opt-b">
+    <div class="frame">
+      <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option B</div>
+      <div class="frame-body">
+        <div class="apphead">
+          <h2>Vaults · live leaderboard</h2>
+          <span class="pill info">wrapped only · ranked by Sparky score</span>
+        </div>
+
+        <article class="vcard" style="border-color:var(--brand-gold);box-shadow:var(--shadow-lg);padding:20px">
+          <span class="rank first">#1 · Sparky recommends</span>
+          <div style="display:grid;grid-template-columns:1.25fr .75fr;gap:18px;align-items:center;margin-top:6px" class="split">
+            <div>
+              <div class="badges">
+                <span class="pill gradient">✦ AI pick</span><span class="pill blue">AI-curated</span>
+                <span class="pill green">Wrapped</span><span class="pill gold">10% perf-fee · HWM</span>
+              </div>
+              <div class="name" style="font-size:22px;margin-top:8px">Steakhouse USDG</div>
+              <div class="sub" style="color:var(--muted-foreground);font-size:12px">Steakhouse Financial · USDG · 214d live · score 57</div>
+              <div class="statrow">
+                <div class="stat big"><div class="v">3.58%</div><div class="l">net APY · 30d</div></div>
+                <div class="stat"><div class="v">$482.4M</div><div class="l">TVL</div></div>
+                <div class="stat"><div class="v">$12.1M</div><div class="l">withdrawable</div></div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                <button class="btn btn-primary">Deposit USDG</button>
+                <button class="btn btn-outline">Ask Sparky why</button>
+              </div>
+            </div>
+            <div class="chartbox">
+              <div class="hd"><span>NET APY · 30d</span><span>▲ +0.21</span></div>
+              <svg viewBox="0 0 300 96" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M0,72 C25,66 45,70 70,60 C95,50 115,58 140,48 C165,40 185,44 210,34 C235,28 255,30 280,22 L300,18 L300,96 L0,96 Z" fill="rgba(52,207,122,.16)"/>
+                <path d="M0,72 C25,66 45,70 70,60 C95,50 115,58 140,48 C165,40 185,44 210,34 C235,28 255,30 280,22 L300,18" fill="none" stroke="#34CF7A" stroke-width="2.2"/>
+              </svg>
+              <div class="note" style="margin-top:6px">30d range 3.21% – 3.61% · mock</div>
+            </div>
+          </div>
+        </article>
+
+        <div class="grid" style="margin-top:18px">
+          <article class="vcard">
+            <span class="rank">#2</span>
+            <div class="top"><div><div class="name">Purinta USDG</div><div class="sub">Purinta · USDG</div></div><div class="badges"><span class="pill violet">new</span></div></div>
+            <div class="apyrow"><div class="apy tnum">3.21%<small>net APY</small></div><svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,26 C20,28 34,20 52,22 C70,24 86,14 112,12" fill="none" stroke="#34CF7A" stroke-width="2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$128.6M</b>TVL</div><div class="m"><b>$6.4M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill blue">AI</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button></div>
+          </article>
+          <article class="vcard">
+            <span class="rank">#3</span>
+            <div class="top"><div><div class="name">Gauntlet USDG Core</div><div class="sub">Gauntlet · USDG</div></div><div class="badges"><span class="pill gold">admin</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.94%<small>net APY</small></div><svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,24 C18,22 36,26 54,18 C72,12 90,16 112,11" fill="none" stroke="#34CF7A" stroke-width="2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$96.2M</b>TVL</div><div class="m"><b>$4.8M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill gold">Admin</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button></div>
+          </article>
+          <article class="vcard">
+            <span class="rank">#4</span>
+            <div class="top"><div><div class="name">Re7 USDG</div><div class="sub">Re7 Capital · USDG</div></div><div class="badges"></div></div>
+            <div class="apyrow"><div class="apy tnum">2.62%<small>net APY</small></div><svg class="spark" viewBox="0 0 112 38" aria-hidden="true"><path d="M0,22 C20,24 34,18 52,20 C70,22 88,15 112,13" fill="none" stroke="#34CF7A" stroke-width="2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$41.8M</b>TVL</div><div class="m"><b>$2.1M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="badges"><span class="pill green">wrapped</span><span class="pill blue">AI</span></div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button></div>
+          </article>
+        </div>
+
+        <div class="adminbox">
+          <h4>Not on this page (admin-only)</h4>
+          <div class="note">Approved-unwrapped, whitelisted/cooling, failed, candidates and uncurated rows never render publicly — they live in <b>Admin → Vaults</b>.</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><b>Option B why:</b> the ranking IS the story — every card carries its position, the pick is just #1 with a gold edge. Denser than A; less editorial, more “board”.</div>
+  </section>
+
+  <!-- ================= OPTION C (CHOSEN) ================= -->
+  <section class="option active" id="opt-c">
+    <div class="frame">
+      <div class="frame-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option C (chosen)
+        <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+          state:
+          <button class="chip" id="stateToggle" type="button" data-empty="0" style="padding:2px 10px">live</button>
+          session:
+          <button class="chip" id="adminToggle" type="button" data-on="0" style="padding:2px 10px">public</button>
+        </span>
+      </div>
+      <div class="frame-body">
+        <div class="apphead">
+          <h2>Vaults</h2>
+          <span class="pill info">live · wrapped only</span>
+        </div>
+
+        <div id="cLive">
+        <div class="feature">
+          <div class="featuregrid">
+            <div>
+              <div class="badges">
+                <span class="pill">✦ Sparky recommends</span><span class="pill">AI-curated</span><span class="pill">Wrapped</span>
+              </div>
+              <div style="font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:10px">Steakhouse USDG</div>
+              <div class="note" style="margin-top:4px">Steakhouse Financial · USDG · 214d live · score 57</div>
+              <p style="max-width:58ch;margin:12px 0 0;font-size:13.5px;line-height:1.6">
+                The deepest, steadiest live vault in the set: highest risk-adjusted net APY with $12.1M
+                withdrawable right now. SparkPoint wraps it — the 10% performance fee applies only above
+                your high-water mark, and exits are never gated.
+              </p>
+              <div class="statrow">
+                <div class="stat big"><div class="v">3.58%</div><div class="l">net APY · 30d</div></div>
+                <div class="stat"><div class="v">$482.4M</div><div class="l">TVL</div></div>
+                <div class="stat"><div class="v">$12.1M</div><div class="l">withdrawable</div></div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+                <button class="btn" style="background:#fff;color:#101A33">Deposit USDG</button>
+                <button class="btn" style="border:1px solid rgba(255,255,255,.45);color:#fff;background:transparent">Ask Sparky why</button>
+              </div>
+            </div>
+            <div style="background:rgba(255,255,255,.14);border-radius:12px;padding:14px">
+              <div class="hd" style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.85)"><span>NET APY · 30d</span><span>▲ +0.21</span></div>
+              <svg viewBox="0 0 300 110" preserveAspectRatio="none" style="width:100%;height:120px;margin-top:6px" aria-hidden="true">
+                <path d="M0,82 C25,76 45,80 70,68 C95,56 115,66 140,54 C165,45 185,50 210,38 C235,31 255,34 280,24 L300,20 L300,110 L0,110 Z" fill="rgba(255,255,255,.18)"/>
+                <path d="M0,82 C25,76 45,80 70,68 C95,56 115,66 140,54 C165,45 185,50 210,38 C235,31 255,34 280,24 L300,20" fill="none" stroke="#fff" stroke-width="2.4"/>
+              </svg>
+              <div class="note">30d range 3.21% – 3.61% · mock</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="apphead" style="margin:20px 0 10px">
+          <h2 style="font-size:17px">All live vaults</h2>
+          <span class="pill info">wrapped only · lazy-loads on scroll</span>
+        </div>
+
+        <div class="grid" id="liveGrid" style="grid-template-columns:1fr 1fr">
+          <article class="vcard">
+            <div class="top"><div><div class="name">Purinta USDG</div><div class="sub">Purinta · USDG</div></div><div class="badges"><span class="pill violet">new this week</span><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">3.21%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,30 C26,32 46,22 70,26 C94,29 116,16 150,13" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$128.6M</b>TVL</div><div class="m"><b>$6.4M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: strong net APY, verified curator, clean gates — a solid alternate to the pick.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard">
+            <div class="top"><div><div class="name">Gauntlet USDG Core</div><div class="sub">Gauntlet · USDG</div></div><div class="badges"><span class="pill gold">admin pick</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.94%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,28 C24,26 48,30 72,20 C96,14 120,18 150,12" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$96.2M</b>TVL</div><div class="m"><b>$4.8M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: lowest drawdown in the set; the operator pinned it as a conservative alternate.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Re7 USDG</div><div class="sub">Re7 Capital · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.62%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,26 C26,28 46,20 70,22 C94,24 116,15 150,13" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$41.8M</b>TVL</div><div class="m"><b>$2.1M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: steady, well-curated, smaller book — the deepest fallback after the top three.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">MEV Capital USDG</div><div class="sub">MEV Capital · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.48%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,24 C26,26 46,24 70,20 C94,18 116,20 150,14" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$37.4M</b>TVL</div><div class="m"><b>$1.9M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: conservative allocation, verified curator.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Apostro USDG</div><div class="sub">Apostro · USDG</div></div><div class="badges"><span class="pill violet">new this week</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.31%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,22 C26,24 46,22 70,18 C94,16 116,18 150,15" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$22.6M</b>TVL</div><div class="m"><b>$1.2M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: newer book, clean gates, smaller caps on the wrapper.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Tulip USDG</div><div class="sub">Tulip · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.05%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,20 C26,22 46,21 70,19 C94,17 116,19 150,16" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$18.9M</b>TVL</div><div class="m"><b>$0.9M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: lowest APY of the live set; shown for completeness, not recommended.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+        </div>
+
+        <div class="loadstatus" id="liveStatus" aria-live="polite"></div>
+        <div class="sentinel" id="liveSentinel"></div>
+        </div><!-- /cLive -->
+
+        <!-- Empty state — what the PUBLIC sees when nothing is wrapped/live yet. -->
+        <div id="cEmpty" style="display:none">
+          <div class="card pad" style="text-align:center;padding:40px 22px">
+            <div style="width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:var(--spark-subtle);display:flex;align-items:center;justify-content:center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" stroke="var(--primary)" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" fill="var(--primary)" opacity=".55"/>
+              </svg>
+            </div>
+            <div style="font-size:19px;font-weight:650;letter-spacing:-.01em">Sparky is screening vaults</div>
+            <p style="max-width:58ch;margin:8px auto 0;color:var(--muted-foreground);font-size:13px;line-height:1.65">
+              Nothing is depositable yet. A curated vault appears here only after Sparky wraps it: the AI
+              admits an approved vault under a public cooling-off window, and the wrapper must be deployed
+              before any deposit is possible. <b>Nothing in flight is shown here</b> — no upcoming or
+              pending rows, no dead CTAs.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px">
+              <button class="btn btn-primary">Ask Sparky about vaults</button>
+              <span class="pill info">last scan · 0 wrapped</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin-only: sits under the feature (or the empty state) and renders ONLY for an admin session. -->
+        <div class="adminbox" id="adminOnly" style="display:none;border-color:var(--caution)">
+          <h4>Not on this page — admin only</h4>
+          <div class="note" style="margin-bottom:10px">
+            3 approved-but-unwrapped · 2 whitelisted (1 cooling off until 22:54 UTC) · 1 failed deploy ·
+            12 candidates. These rows come from the admin endpoints and are <b>never</b> part of the public
+            board response — an admin still sees them when the public page is empty.
+          </div>
+          <a class="btn btn-primary btn-sm" href="/admin/vault?section=curated">Manage in Admin → Vaults</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><b>Option C (chosen):</b> full-width recommendation feature, the admin-conditional “not on this page” panel directly beneath it, then every live vault as a card that lazy-loads on scroll — spinner, then “you’ve reached the bottom”. <b>Try it:</b> toggle the session in the frame bar and scroll the list.</div>
+  </section>
+
+  <!-- ================= §4 DATA & RULES ================= -->
+  <section class="option" id="opt-d">
+    <div class="card pad">
+      <div class="kicker"><span class="pill blue">DATA CONTRACT</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">What the cards read (existing fields — no new backend)</h2>
+      <table class="spec">
+        <thead><tr><th>Element</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Name / curator / asset</td><td><span class="mono">label, curator, curatorVerified, asset.symbol</span></td><td>Curator badge only when <span class="mono">curatorVerified</span>.</td></tr>
+          <tr><td>Net APY</td><td><span class="mono">netApyBps</span></td><td>Stored scan value; <span class="mono">null → “—”</span>, never 0.</td></tr>
+          <tr><td>TVL / withdrawable</td><td><span class="mono">tvlUsd, liquidityUsd</span></td><td>Liquidity is the honest “can I exit” figure.</td></tr>
+          <tr><td>30d sparkline</td><td>stored scans (per <span class="mono">lastScanAt</span>)</td><td><b>New:</b> a small history array (or snapshot table) is needed for a real chart; mock otherwise.</td></tr>
+          <tr><td>Badges</td><td><span class="mono">wrapped, provenance, pinned, firstSeenAt</span></td><td>AI pick / Admin pick / Wrapped / New / perf-fee.</td></tr>
+          <tr><td>CTA</td><td><span class="mono">depositRail(vault)</span></td><td>Wrapped → wrapper deposit; public page only ever shows this branch.</td></tr>
+          <tr><td>Admin-only panel</td><td><span class="mono">/admin/vaults/curation</span> + <span class="mono">/admin/vaults/whitelist</span> (admin-gated)</td><td>Rendered <b>only for an admin session</b>; the public board response must never contain these rows. Button deep-links to <span class="mono">/admin/vault?section=curated</span>.</td></tr>
+          <tr><td>Score / age</td><td><span class="mono">score, ageSeconds</span></td><td>Optional in the card footer (“why this vault”).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card pad" style="margin-top:14px">
+      <div class="kicker"><span class="pill green">PUBLIC FILTER</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">Only live vaults render</h2>
+      <p class="note" style="margin-top:8px">
+        <b>Public list</b> = <span class="mono">status === "approved" && wrapped === true && wrapperAddress != null</span>.
+        <b>Hero</b> = the published pick <i>if it satisfies that filter</i>, else the highest-score live vault. If none
+        are live, show the honest empty state (no “coming soon” placeholders).
+      </p>
+      <table class="spec">
+        <thead><tr><th>State</th><th>Public /vault</th><th>Admin panel</th></tr></thead>
+        <tbody>
+          <tr><td>Candidate (AI-proposed, unapproved)</td><td>hidden</td><td>candidate queue</td></tr>
+          <tr><td>Approved, no wrapper yet</td><td><b>hidden</b> (was a row before)</td><td>approve/pin/hide + whitelist lane</td></tr>
+          <tr><td>Whitelisted — cooling / ready</td><td><b>hidden</b></td><td>countdown, release, cancel, deploy-now</td></tr>
+          <tr><td>Deploy failed / cancelled</td><td>hidden</td><td>error record + retry</td></tr>
+          <tr><td>Wrapped (deposit live)</td><td><b>shown</b> (hero + grid)</td><td>same row + wrapper/tx provenance</td></tr>
+          <tr><td>Hidden / denied / uncurated</td><td>hidden</td><td>queue + audit log</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card pad" style="margin-top:14px">
+      <div class="kicker"><span class="pill gold">CARD ANATOMY</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">Every card, same skeleton</h2>
+      <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
+        <li><b>Header:</b> name + curator/asset line · badges (AI/Admin, Wrapped, New, perf-fee).</li>
+        <li><b>Figure:</b> big net APY (green, tabular) + 30d sparkline.</li>
+        <li><b>Metrics:</b> TVL · withdrawable · perf-fee (three columns).</li>
+        <li><b>Why (optional):</b> one stored reason line for picks/alternates.</li>
+        <li><b>CTA:</b> primary <i>Deposit</i> + secondary <i>Details</i> / <i>Ask Sparky</i>.</li>
+        <li><b>Footnote:</b> “as of &lt;scan&gt;” on the board; no projections.</li>
+      </ul>
+      <div class="warn"><b>Honesty rules stay:</b> figures are stored scans (never 0 for unknown), the perf-fee line is performance-only above HWM, and the deposit rail disclosure is unchanged.</div>
+    </div>
+
+    <div class="card pad" style="margin-top:14px">
+      <div class="kicker"><span class="pill info">INFINITE SCROLL</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">Lazy-load on scroll, no pagination</h2>
+      <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
+        <li><b>v1 (today's data):</b> the board is fetched once and the client reveals cards in batches via an <span class="mono">IntersectionObserver</span> sentinel — no extra API calls.</li>
+        <li><b>Growth path:</b> when the live set exceeds ~24, add a cursor to the public read (<span class="mono">GET /vaults/curated?cursor=…</span>); the UI contract stays identical.</li>
+        <li><b>Loading row:</b> spinner + “Loading more vaults…” while the next batch renders (min ~600ms so it never flickers).</li>
+        <li><b>Terminal state:</b> after the final batch, one last spinner, then <b>“You’ve reached the bottom — that’s every live vault Sparky has wrapped.”</b></li>
+        <li><b>No numbered pages, no Load-more button</b> — scroll is the only control; the end message is the honest stop.</li>
+      </ul>
+    </div>
+
+    <div class="card pad" style="margin-top:14px">
+      <div class="kicker"><span class="pill violet">STATES &amp; MOBILE</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">Edge cases</h2>
+      <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
+        <li><b>Loading:</b> hero skeleton + 3 card skeletons (no spinner-only).</li>
+        <li><b>Empty (nothing live):</b> “Sparky is screening vaults / Nothing is depositable yet” card + Ask Sparky CTA + a last-scan pill; an admin additionally sees the in-flight panel beneath it. No skeleton rows, no “coming soon”.</li>
+        <li><b>Error:</b> the board read failed — wallet/funds unaffected; retry on next poll.</li>
+        <li><b>Mobile:</b> hero stacks (chart below), grid → 1 column, CTAs full-width; filters become a horizontal chip scroll.</li>
+        <li><b>Accessibility:</b> badges are text+icon (not color-only); charts have an accessible summary line.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- MORE -->
+
+  <footer class="foot">
+    Mock data only — no projections, no live figures. Tokens match <span class="mono">apps/web/src/app/globals.css</span>.
+    Companion: <a href="vault-program-roadmap-part2.html">Part 2 roadmap</a>.
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll(".tabs button").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".tabs button").forEach((x) => x.classList.remove("active"));
+      document.querySelectorAll(".option").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      document.getElementById("opt-" + b.dataset.opt).classList.add("active");
+    });
+  });
+  const toggle = document.createElement("button");
+  toggle.className = "btn btn-outline btn-sm toggle";
+  toggle.textContent = "Light / dark";
+  toggle.onclick = () => document.documentElement.classList.toggle("light");
+  document.body.appendChild(toggle);
+
+  // Option C demo — the admin-only panel renders ONLY for an admin session.
+  const adminToggle = document.getElementById("adminToggle");
+  const adminOnly = document.getElementById("adminOnly");
+  if (adminToggle && adminOnly) {
+    adminToggle.addEventListener("click", () => {
+      const on = adminToggle.dataset.on !== "1";
+      adminToggle.dataset.on = on ? "1" : "0";
+      adminToggle.textContent = on ? "admin" : "public";
+      adminToggle.classList.toggle("on", on);
+      adminOnly.style.display = on ? "" : "none";
+    });
+  }
+
+  // Option C demo — live vs empty state (empty = nothing wrapped yet).
+  const stateToggle = document.getElementById("stateToggle");
+  const cLive = document.getElementById("cLive");
+  const cEmpty = document.getElementById("cEmpty");
+  if (stateToggle && cLive && cEmpty) {
+    stateToggle.addEventListener("click", () => {
+      const empty = stateToggle.dataset.empty !== "1";
+      stateToggle.dataset.empty = empty ? "1" : "0";
+      stateToggle.textContent = empty ? "empty" : "live";
+      stateToggle.classList.toggle("on", empty);
+      cLive.style.display = empty ? "none" : "";
+      cEmpty.style.display = empty ? "" : "none";
+    });
+  }
+
+  // Option C demo — lazy-load the live-vault cards on scroll (no pagination).
+  const grid = document.getElementById("liveGrid");
+  const status = document.getElementById("liveStatus");
+  const sentinel = document.getElementById("liveSentinel");
+  if (grid && status && sentinel) {
+    const cards = Array.from(grid.querySelectorAll(".vcard"));
+    let shown = cards.filter((c) => !c.classList.contains("lazy")).length;
+    let loading = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || loading) return;
+        if (shown >= cards.length) {
+          io.disconnect();
+          return;
+        }
+        loading = true;
+        status.innerHTML = '<span class="spinner"></span>Loading more vaults…';
+        setTimeout(() => {
+          cards.slice(shown, shown + 2).forEach((c) => {
+            c.style.display = "";
+          });
+          shown = Math.min(shown + 2, cards.length);
+          loading = false;
+          if (shown >= cards.length) {
+            status.innerHTML = '<span class="spinner"></span>Loading…';
+            setTimeout(() => {
+              status.textContent =
+                "You’ve reached the bottom — that’s every live vault Sparky has wrapped.";
+            }, 900);
+            io.disconnect();
+          } else {
+            status.textContent = "";
+          }
+        }, 700);
+      },
+      { rootMargin: "160px" },
+    );
+    io.observe(sentinel);
+  }
+</script>
+</body>
+</html>
