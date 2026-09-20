@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
   description: TAGLINE,
   applicationName: "Sparky",
-  keywords: ["DeFi", "Aave", "Base", "AI", "self-custodial", "yield vault", "onchain hedge fund"],
+  keywords: ["DeFi", "Robinhood Chain", "AI", "self-custodial", "yield vault", "onchain hedge fund"],
   authors: [{ name: "Sparky" }],
   creator: "Sparky",
   alternates: { canonical: "/" },

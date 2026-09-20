@@ -44,7 +44,7 @@ function explorerTx(hash: string): string | undefined {
 }
 
 const SAFE: [string, string][] = [
-  ["Allowlist", "Can only touch the audited Aave vault — nothing else."],
+  ["Allowlist", "Can only touch the allowlisted vault — nothing else."],
   ["Per-tx + cumulative caps", "Bounded spend per action and in total."],
   ["Max slippage", "Trades stop if prices move against you."],
   ["Hard expiry", "Auto-expires; you set the window."],
@@ -172,7 +172,7 @@ function GrantCard({ grant, account }: { grant: SessionKeyGrant; account?: strin
       ? "—"
       : targets.length === 1
         ? vault && targets[0] === vault
-          ? "Aave Yield Vault"
+          ? "Live vault"
           : short(targets[0])
         : `${targets.length} contracts`;
 

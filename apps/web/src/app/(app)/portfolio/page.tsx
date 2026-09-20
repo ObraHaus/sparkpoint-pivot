@@ -219,7 +219,7 @@ export default function Page() {
     ? "conic-gradient(var(--border-soft) 0 100%)"
     : `conic-gradient(var(--risk-1) 0 ${vaultPct}%, var(--muted-foreground) ${vaultPct}% 100%)`;
   const pctText = (p: number) => (live || preview ? `${p.toFixed(0)}%` : DASH);
-  const largest = live ? (d.vaultValue >= d.idleUsdc ? "Aave Yield Vault" : "Idle USDC") : preview ? "Aave Yield Vault" : DASH;
+  const largest = live ? (d.vaultValue >= d.idleUsdc ? "Aave Yield Vault" : "Idle USDC") : preview && VAULT_CHAIN_AVAILABLE ? "Aave Yield Vault" : DASH;
 
   const netWorthText = loading ? "…" : live ? money(d.totalUsd) : preview ? money(data.netWorth) : DASH;
   const donutTotalText = loading ? "…" : live ? money(d.totalUsd, 0) : preview ? money(mockTotal, 0) : DASH;
@@ -388,7 +388,7 @@ export default function Page() {
           <div className="rp-row">
             <span className="muted">Portfolio risk</span>
             {live || preview ? (
-              <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The Aave vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
+              <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The live vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
             ) : (
               <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
             )}
@@ -458,7 +458,7 @@ export default function Page() {
           </div>
           {(live || preview) && (
             <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-              Capital-preservation-first. The audited Aave vault is the lowest tier on our scale.{" "}
+              Capital-preservation-first. The live vault is the lowest tier on our scale.{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("strategies"))}>Improve this</a>
             </div>
           )}
@@ -476,7 +476,7 @@ export default function Page() {
               No positions yet.{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault/deposit"))}>Deposit USDC</a> to get started.
             </div>
-          ) : degraded ? (
+          ) : degraded || !VAULT_CHAIN_AVAILABLE ? (
             // Mirror the Positions card: when there's no live vault position (e.g. connected on the
             // beta, no vault), don't render the static "Aave Yield Vault / Idle USDC" donut legend —
             // it reads as a real allocation for a vault/token that isn't on this network.
@@ -521,7 +521,7 @@ export default function Page() {
           </div>
           {emptyLive ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>No open positions.</div>
-          ) : degraded ? (
+          ) : degraded || !VAULT_CHAIN_AVAILABLE ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
               {loading ? "Reading your positions…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
             </div>

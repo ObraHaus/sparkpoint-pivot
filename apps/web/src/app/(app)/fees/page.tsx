@@ -104,7 +104,7 @@ export default function Page() {
             <li>
               <Icon name="check" size={14} />
               <span>
-                <b>The Aave Yield Vault</b> — deposit, earn, and withdraw with{" "}
+                <b>{vaultUnavailable ? "Wrapped vaults" : "The Aave Yield Vault"}</b> — deposit, earn, and withdraw with{" "}
                 <b>0% on your deposits, principal &amp; withdrawals</b>.
               </span>
             </li>
@@ -219,11 +219,21 @@ export default function Page() {
           )}
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, marginTop: 6 }}>
-          On the Aave Yield Vault, SparkPoint charges{" "}
-          <b style={{ color: "var(--foreground)" }}>{perfFeePct !== undefined ? `${perfFeePct}%` : "—"}</b> of your{" "}
-          <b>profit above your high-water mark</b> — profit-only, read live from the vault. There is{" "}
-          <b>0%</b> on your principal and <b>0%</b> to deposit or withdraw (structural to the ERC-4626 vault,
-          not a promise). {feeBasisRecoverySentence(LAUNCH_FEE_BASIS)}
+          {vaultUnavailable ? (
+            <>
+              Every wrapped vault carries its own performance fee, read live on the Vault page. SparkPoint charges{" "}
+              <b>0%</b> on your principal and <b>0%</b> to deposit or withdraw (structural to the ERC-4626 wrapper,
+              not a promise). We never charge on your deposits.
+            </>
+          ) : (
+            <>
+              On the Aave Yield Vault, SparkPoint charges{" "}
+              <b style={{ color: "var(--foreground)" }}>{perfFeePct !== undefined ? `${perfFeePct}%` : "—"}</b> of your{" "}
+              <b>profit above your high-water mark</b> — profit-only, read live from the vault. There is{" "}
+              <b>0%</b> on your principal and <b>0%</b> to deposit or withdraw (structural to the ERC-4626 vault,
+              not a promise). {feeBasisRecoverySentence(LAUNCH_FEE_BASIS)}
+            </>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 10, lineHeight: 1.5 }}>
           <Icon name="info" size={12} /> We don&apos;t show a per-wallet &ldquo;fees paid&rdquo; figure: the fee is

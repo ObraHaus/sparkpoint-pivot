@@ -677,7 +677,7 @@ function renderStream(
                 </svg>
               </span>
               <div>
-                Only the Lower-risk Aave vault is live today. Higher-risk strategies will rank here as more vaults open
+                Only the lower-risk vault is live today. Higher-risk strategies will rank here as more vaults open
                 — this is information, not a block.
               </div>
             </div>
@@ -727,7 +727,7 @@ function renderStream(
                 </span>
               </div>
               <div className="recthesis">
-                Move your idle USDC into the <b>Aave Yield Vault</b>. It fits your plan — lower risk,
+                Move your idle stablecoins into the <b>live curated vault</b>. It fits your plan — lower risk,
                 capital-preservation-first, steady yield.
               </div>
               <div className="recrow">
