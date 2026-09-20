@@ -125,6 +125,10 @@
   .featuregrid{display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:center}
   @media(max-width:880px){.featuregrid{grid-template-columns:1fr}}
   .toggle{position:fixed;right:16px;bottom:16px;z-index:5}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loadstatus{display:flex;align-items:center;justify-content:center;gap:4px;color:var(--muted-foreground);font-size:12.5px;padding:16px 0 4px;min-height:26px}
+  .sentinel{height:1px}
 </style>
 </head>
 <body>
@@ -132,16 +136,17 @@
   <div class="mast-in">
     <div class="kicker">
       <span class="pill gradient">WIREFRAME · MOCK ONLY</span>
-      <span class="pill">/vault redesign</span>
-      <span class="pill blue">card-first · live-only</span>
+      <span class="pill blue">✔ CHOSEN: Option C — Editorial feature (refined)</span>
+      <span class="pill">admin-conditional panel · infinite scroll</span>
       <span class="pill">data contract in §4</span>
     </div>
-    <h1>Vault page redesign — three card-first options</h1>
+    <h1>Vault page redesign — Option C, refined</h1>
     <p class="sub">
-      Direction: <b>Sparky recommends one vault at the top</b>, then <b>all live vaults as cards</b> (no
-      table) with badges, a 30-day APY sparkline and deposit CTAs. <b>Only wrapped, depositable vaults
-      are public</b> — candidates, approved-but-unwrapped, whitelisted/cooling, cancelled and failed rows
-      live in the admin panel only. All numbers below are mock.
+      Chosen direction: a full-width <b>Sparky recommends</b> feature card, the <b>admin-only “not on this
+      page” panel directly under it</b> (rendered only for an admin session, with a button into Admin →
+      Vaults), then <b>all live vaults as cards</b> that <b>lazy-load on scroll</b> — spinner, then an
+      honest “you’ve reached the bottom”. Only wrapped, depositable vaults are public. All numbers are
+      mock; the scroll + admin toggle below are live demos.
     </p>
   </div>
 </header>
@@ -174,14 +179,14 @@
   </section>
 
   <div class="tabs" role="tablist">
-    <button class="active" data-opt="a">Option A · Spotlight + grid</button>
-    <button data-opt="b">Option B · Leaderboard</button>
-    <button data-opt="c">Option C · Editorial feature</button>
+    <button class="active" data-opt="c">✔ Chosen · Option C (refined)</button>
+    <button data-opt="a">Option A · reference</button>
+    <button data-opt="b">Option B · reference</button>
     <button data-opt="d">§4 · Data &amp; rules</button>
   </div>
 
-  <!-- ================= OPTION A ================= -->
-  <section class="option active" id="opt-a">
+  <!-- ================= OPTION A (reference) ================= -->
+  <section class="option" id="opt-a">
     <div class="frame">
       <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option A</div>
       <div class="frame-body">
@@ -396,10 +401,16 @@
     <div class="foot"><b>Option B why:</b> the ranking IS the story — every card carries its position, the pick is just #1 with a gold edge. Denser than A; less editorial, more “board”.</div>
   </section>
 
-  <!-- ================= OPTION C ================= -->
-  <section class="option" id="opt-c">
+  <!-- ================= OPTION C (CHOSEN) ================= -->
+  <section class="option active" id="opt-c">
     <div class="frame">
-      <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option C</div>
+      <div class="frame-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; beta.sparkpoint.io/vault · Option C (chosen)
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          session:
+          <button class="chip" id="adminToggle" type="button" data-on="0" style="padding:2px 10px">public</button>
+        </span>
+      </div>
       <div class="frame-body">
         <div class="apphead">
           <h2>Vaults</h2>
@@ -440,7 +451,23 @@
           </div>
         </div>
 
-        <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:16px">
+        <!-- Admin-only: directly under the feature card, rendered ONLY for an admin session. -->
+        <div class="adminbox" id="adminOnly" style="display:none;border-color:var(--caution)">
+          <h4>Not on this page — admin only</h4>
+          <div class="note" style="margin-bottom:10px">
+            3 approved-but-unwrapped · 2 whitelisted (1 cooling off until 22:54 UTC) · 1 failed deploy ·
+            12 candidates. These rows come from the admin endpoints and are <b>never</b> part of the public
+            board response.
+          </div>
+          <a class="btn btn-primary btn-sm" href="/admin/vault?section=curated">Manage in Admin → Vaults</a>
+        </div>
+
+        <div class="apphead" style="margin:20px 0 10px">
+          <h2 style="font-size:17px">All live vaults</h2>
+          <span class="pill info">wrapped only · lazy-loads on scroll</span>
+        </div>
+
+        <div class="grid" id="liveGrid" style="grid-template-columns:1fr 1fr">
           <article class="vcard">
             <div class="top"><div><div class="name">Purinta USDG</div><div class="sub">Purinta · USDG</div></div><div class="badges"><span class="pill violet">new this week</span><span class="pill blue">AI</span></div></div>
             <div class="apyrow"><div class="apy tnum">3.21%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,30 C26,32 46,22 70,26 C94,29 116,16 150,13" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
@@ -455,15 +482,41 @@
             <div class="note">Why: lowest drawdown in the set; the operator pinned it as a conservative alternate.</div>
             <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
           </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Re7 USDG</div><div class="sub">Re7 Capital · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.62%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,26 C26,28 46,20 70,22 C94,24 116,15 150,13" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$41.8M</b>TVL</div><div class="m"><b>$2.1M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: steady, well-curated, smaller book — the deepest fallback after the top three.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">MEV Capital USDG</div><div class="sub">MEV Capital · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.48%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,24 C26,26 46,24 70,20 C94,18 116,20 150,14" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$37.4M</b>TVL</div><div class="m"><b>$1.9M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: conservative allocation, verified curator.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Apostro USDG</div><div class="sub">Apostro · USDG</div></div><div class="badges"><span class="pill violet">new this week</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.31%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,22 C26,24 46,22 70,18 C94,16 116,18 150,15" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$22.6M</b>TVL</div><div class="m"><b>$1.2M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: newer book, clean gates, smaller caps on the wrapper.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
+          <article class="vcard lazy" style="display:none">
+            <div class="top"><div><div class="name">Tulip USDG</div><div class="sub">Tulip · USDG</div></div><div class="badges"><span class="pill blue">AI</span></div></div>
+            <div class="apyrow"><div class="apy tnum">2.05%<small>net APY</small></div><svg class="spark" style="width:150px;height:44px" viewBox="0 0 150 44" aria-hidden="true"><path d="M0,20 C26,22 46,21 70,19 C94,17 116,19 150,16" fill="none" stroke="#34CF7A" stroke-width="2.2"/></svg></div>
+            <div class="metrics"><div class="m"><b>$18.9M</b>TVL</div><div class="m"><b>$0.9M</b>withdrawable</div><div class="m"><b>10%</b>perf-fee</div></div>
+            <div class="note">Why: lowest APY of the live set; shown for completeness, not recommended.</div>
+            <div class="cta"><button class="btn btn-primary btn-sm btn-block">Deposit</button><button class="btn btn-outline btn-sm">Details</button></div>
+          </article>
         </div>
 
-        <div class="adminbox">
-          <h4>Not on this page (admin-only)</h4>
-          <div class="note">Everything not yet depositable — candidates, approved-unwrapped, whitelisted/cooling, cancelled, failed — stays in <b>Admin → Vaults</b>.</div>
-        </div>
+        <div class="loadstatus" id="liveStatus" aria-live="polite"></div>
+        <div class="sentinel" id="liveSentinel"></div>
       </div>
     </div>
-    <div class="foot"><b>Option C why:</b> most “product marketing” — a full-width feature tells the recommendation story, cards carry a one-line “why”. Heaviest visually; best if the board stays small (≤8 live vaults).</div>
+    <div class="foot"><b>Option C (chosen):</b> full-width recommendation feature, the admin-conditional “not on this page” panel directly beneath it, then every live vault as a card that lazy-loads on scroll — spinner, then “you’ve reached the bottom”. <b>Try it:</b> toggle the session in the frame bar and scroll the list.</div>
   </section>
 
   <!-- ================= §4 DATA & RULES ================= -->
@@ -480,6 +533,7 @@
           <tr><td>30d sparkline</td><td>stored scans (per <span class="mono">lastScanAt</span>)</td><td><b>New:</b> a small history array (or snapshot table) is needed for a real chart; mock otherwise.</td></tr>
           <tr><td>Badges</td><td><span class="mono">wrapped, provenance, pinned, firstSeenAt</span></td><td>AI pick / Admin pick / Wrapped / New / perf-fee.</td></tr>
           <tr><td>CTA</td><td><span class="mono">depositRail(vault)</span></td><td>Wrapped → wrapper deposit; public page only ever shows this branch.</td></tr>
+          <tr><td>Admin-only panel</td><td><span class="mono">/admin/vaults/curation</span> + <span class="mono">/admin/vaults/whitelist</span> (admin-gated)</td><td>Rendered <b>only for an admin session</b>; the public board response must never contain these rows. Button deep-links to <span class="mono">/admin/vault?section=curated</span>.</td></tr>
           <tr><td>Score / age</td><td><span class="mono">score, ageSeconds</span></td><td>Optional in the card footer (“why this vault”).</td></tr>
         </tbody>
       </table>
@@ -521,6 +575,18 @@
     </div>
 
     <div class="card pad" style="margin-top:14px">
+      <div class="kicker"><span class="pill info">INFINITE SCROLL</span></div>
+      <h2 style="margin:8px 0 0;font-size:19px">Lazy-load on scroll, no pagination</h2>
+      <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
+        <li><b>v1 (today's data):</b> the board is fetched once and the client reveals cards in batches via an <span class="mono">IntersectionObserver</span> sentinel — no extra API calls.</li>
+        <li><b>Growth path:</b> when the live set exceeds ~24, add a cursor to the public read (<span class="mono">GET /vaults/curated?cursor=…</span>); the UI contract stays identical.</li>
+        <li><b>Loading row:</b> spinner + “Loading more vaults…” while the next batch renders (min ~600ms so it never flickers).</li>
+        <li><b>Terminal state:</b> after the final batch, one last spinner, then <b>“You’ve reached the bottom — that’s every live vault Sparky has wrapped.”</b></li>
+        <li><b>No numbered pages, no Load-more button</b> — scroll is the only control; the end message is the honest stop.</li>
+      </ul>
+    </div>
+
+    <div class="card pad" style="margin-top:14px">
       <div class="kicker"><span class="pill violet">STATES &amp; MOBILE</span></div>
       <h2 style="margin:8px 0 0;font-size:19px">Edge cases</h2>
       <ul style="font-size:13px;color:var(--muted-foreground);line-height:1.8;margin:10px 0 0;padding-left:20px">
@@ -555,6 +621,59 @@
   toggle.textContent = "Light / dark";
   toggle.onclick = () => document.documentElement.classList.toggle("light");
   document.body.appendChild(toggle);
+
+  // Option C demo — the admin-only panel renders ONLY for an admin session.
+  const adminToggle = document.getElementById("adminToggle");
+  const adminOnly = document.getElementById("adminOnly");
+  if (adminToggle && adminOnly) {
+    adminToggle.addEventListener("click", () => {
+      const on = adminToggle.dataset.on !== "1";
+      adminToggle.dataset.on = on ? "1" : "0";
+      adminToggle.textContent = on ? "admin" : "public";
+      adminToggle.classList.toggle("on", on);
+      adminOnly.style.display = on ? "" : "none";
+    });
+  }
+
+  // Option C demo — lazy-load the live-vault cards on scroll (no pagination).
+  const grid = document.getElementById("liveGrid");
+  const status = document.getElementById("liveStatus");
+  const sentinel = document.getElementById("liveSentinel");
+  if (grid && status && sentinel) {
+    const cards = Array.from(grid.querySelectorAll(".vcard"));
+    let shown = cards.filter((c) => !c.classList.contains("lazy")).length;
+    let loading = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || loading) return;
+        if (shown >= cards.length) {
+          io.disconnect();
+          return;
+        }
+        loading = true;
+        status.innerHTML = '<span class="spinner"></span>Loading more vaults…';
+        setTimeout(() => {
+          cards.slice(shown, shown + 2).forEach((c) => {
+            c.style.display = "";
+          });
+          shown = Math.min(shown + 2, cards.length);
+          loading = false;
+          if (shown >= cards.length) {
+            status.innerHTML = '<span class="spinner"></span>Loading…';
+            setTimeout(() => {
+              status.textContent =
+                "You’ve reached the bottom — that’s every live vault Sparky has wrapped.";
+            }, 900);
+            io.disconnect();
+          } else {
+            status.textContent = "";
+          }
+        }, 700);
+      },
+      { rootMargin: "160px" },
+    );
+    io.observe(sentinel);
+  }
 </script>
 </body>
 </html>
