@@ -71,3 +71,10 @@ test("parseVersion: null on every uncertainty (non-200, non-JSON, missing/empty,
   });
   assert.equal(await parseVersion(badJson), null);
 });
+
+test("isRealUpdate: commit-only ids (no timestamp suffix) compare by inequality", () => {
+  const a = "7e19b0eae0074f94e16c9cb8ea4df4ba03eaad4c";
+  const b = "f52b381dfc7befbf4aca0b565cf32d4cf8ca810c";
+  assert.equal(isRealUpdate(a, b), true); // different commit → update
+  assert.equal(isRealUpdate(a, a), false); // same commit, same build → no-op
+});

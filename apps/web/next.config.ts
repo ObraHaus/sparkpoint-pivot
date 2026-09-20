@@ -1,12 +1,17 @@
 import type { NextConfig } from "next";
 
-// Per-build release identity (feature 006, force-refresh-on-new-release). Computed ONCE per build and
-// frozen, so it changes on EVERY real deploy — including a config/dependency-only redeploy where the
-// git commit is unchanged (a pure SHA would miss those and leave stale clients). SOURCE_COMMIT is
-// provided by the Coolify build (build_command `git rev-parse`, or "Include Source Commit in Build");
-// the base-36 timestamp fallback guarantees a non-empty, per-build value even when neither is wired.
+// Per-build release identity (feature 006, force-refresh-on-new-release).
+//
+// ⚠️ MUST be deterministic within a single build. `next.config.ts` is evaluated MORE THAN ONCE per
+// build (separate client/server compilations in different processes), so appending `Date.now()` here
+// gave the client bundle and the server bundle DIFFERENT ids for the SAME build — the stale-tab check
+// then saw a permanent "newer server" and the force-refresh banner reloaded, re-mismatched and tripped
+// its loop-breaker (observed live 2026-09-20: HTML id `…-mu9o4ris` vs /api/version `…-mu9o4rpg`).
+// The commit is stable across evaluations and still changes on every real deploy. (A same-commit
+// rebuild with only env changes will not force a banner; the HTML is no-store, so the next navigation
+// picks it up anyway.)
 const RELEASE_COMMIT = process.env.SPARKPOINT_BUILD_ID || process.env.SOURCE_COMMIT || "dev";
-const BUILD_ID = `${RELEASE_COMMIT}-${Date.now().toString(36)}`;
+const BUILD_ID = RELEASE_COMMIT;
 
 const nextConfig: NextConfig = {
   // The shared source-of-truth package (`@sparkpoint/shared`) ships raw TS
