@@ -31,6 +31,7 @@ function makeView(o: Partial<VaultConfirmView> = {}): VaultConfirmView {
   return {
     kind: "aave_launch",
     factoryVerified: undefined,
+    curatedVerified: false,
     retired: false,
     label: "Aave Yield Vault",
     chainId: 84532,
@@ -291,4 +292,74 @@ test("retired via the VIEW alone still leaves withdraw fully open (N2, 024 regre
   assert.equal(dead.withdrawReady, open.withdrawReady);
   assert.equal(dead.redeemShares, open.redeemShares);
   assert.equal(dead.label, open.label);
+});
+
+// ── 051 · the V3 universal wrapper (curated provenance, not factory attestation) ─────────────────
+
+test("universal wrapper: curated-verified + matching asset is deposit-signable", () => {
+  const m = deriveVaultConfirm(
+    makeView({ kind: "universal_wrapper", curatedVerified: true, vault: WRAPPER, asset: USDC }),
+    DEP,
+    CTX,
+  );
+  assert.equal(m.isWrapper, true);
+  assert.equal(m.showWrapperIdentity, true);
+  assert.equal(m.depositSignable, true);
+  assert.equal(m.depositReady, true);
+  assert.equal(m.label, "Review deposit");
+});
+
+test("universal wrapper WITHOUT curated provenance fail-closes the deposit", () => {
+  const m = deriveVaultConfirm(
+    makeView({ kind: "universal_wrapper", curatedVerified: false, vault: WRAPPER, asset: USDC }),
+    DEP,
+    CTX,
+  );
+  assert.equal(m.isWrapper, true);
+  assert.equal(m.showWrapperIdentity, false);
+  assert.equal(m.vaultName, "vault");
+  assert.equal(m.depositSignable, false);
+  assert.equal(m.label, "Unverified vault");
+});
+
+test("universal wrapper over a non-USDG asset fail-closes with the honest label", () => {
+  const m = deriveVaultConfirm(
+    makeView({ kind: "universal_wrapper", curatedVerified: true, vault: WRAPPER, asset: NOT_USDC }),
+    DEP,
+    CTX,
+  );
+  assert.equal(m.depositSignable, false);
+  assert.equal(m.label, "Unsupported vault asset");
+});
+
+test("universal wrapper shows the STORED curator-scan APY, labeled as such", () => {
+  const m = deriveVaultConfirm(
+    makeView({ kind: "universal_wrapper", curatedVerified: true, vault: WRAPPER, asset: USDC }),
+    { ...DEP, curatedNetApyBps: 362 },
+    CTX,
+  );
+  assert.equal(m.netApyText, "3.62% (curator scan)");
+  // No stored figure ⇒ "—", never the Aave framing.
+  const bare = deriveVaultConfirm(
+    makeView({ kind: "universal_wrapper", curatedVerified: true, vault: WRAPPER, asset: USDC }),
+    DEP,
+    CTX,
+  );
+  assert.equal(bare.netApyText, "—");
+});
+
+test("universal wrapper withdraw is never provenance-gated (N2)", () => {
+  const view = makeView({
+    kind: "universal_wrapper",
+    curatedVerified: false, // even an unverified wrapper
+    vault: WRAPPER,
+    asset: USDC,
+    shares: 10_000_000_000n,
+    underlying: 10_000_000n,
+    maxRedeem: 9_999_999_999n, // OZ rounds maxRedeem down 1 wei — still redeemable
+  });
+  const m = deriveVaultConfirm(view, { mode: "withdraw", assets: 5_000_000n }, CTX);
+  assert.equal(m.withdrawReady, true);
+  assert.ok(m.redeemShares > 0n);
+  assert.equal(m.label, "Review withdrawal");
 });

@@ -47,7 +47,7 @@ import { wagmiConfig } from "@/lib/wagmi";
  * fee-disclosure basis from this union rather than letting each surface decide: our own vaults keep a
  * real `_highWaterMark`, and a Vault V2 keeps none (024/T024).
  */
-export type VaultKind = "aave_launch" | "morpho_wrapper" | "morpho_fee_wrapper";
+export type VaultKind = "aave_launch" | "morpho_wrapper" | "morpho_fee_wrapper" | "universal_wrapper";
 
 /**
  * The fee-disclosure basis implied by a vault kind — resolved CENTRALLY, never per call site.
@@ -146,6 +146,12 @@ export interface UseVaultOptions {
   readonly kind?: VaultKind;
   /** A registry display label override (else the launch default, or the wrapper's on-chain `label()`). */
   readonly label?: string;
+  /**
+   * 051 — CURATED PROVENANCE for a `universal_wrapper`: true only when this wrapper address came from
+   * the agent's curated board (`wrapped` + `wrapperAddress` on an approved row). It is the trust root
+   * for the V3 fleet (the factory exposes no `isSparkPointVault`), and deposit fail-closes without it.
+   */
+  readonly verified?: boolean;
 }
 
 export interface UseVaultResult {
@@ -215,6 +221,12 @@ export interface UseVaultResult {
    * `false` ⇒ refused (fail-closed), `undefined` ⇒ launch vault / factory not deployed / still loading.
    */
   readonly factoryVerified: boolean | undefined;
+  /**
+   * 051 — CURATED PROVENANCE for a `universal_wrapper`: true only when the wrapper address came from
+   * the agent's curated board. The V3 fleet's trust root (the factory has no `isSparkPointVault`);
+   * deposit fail-closes without it. Always false for other kinds.
+   */
+  readonly curatedVerified: boolean;
 
   // ── fail-closed gate ─────────────────────────────────────────────────────
   /** Non-null ⇒ the live view can't act; render a notice. Never gate `/exit` on this. */
@@ -350,7 +362,10 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // read path (a distinct V2 ABI) lands with the Phase 3 deployment; today the kind exists so the fee
   // DISCLOSURE is honest before any Fee Wrapper can take a deposit (024/T024).
   const isWrapper = kind === "morpho_wrapper";
-  const isMorphoVenue = kind === "morpho_wrapper" || kind === "morpho_fee_wrapper";
+  /** 051 — the V3 admission-gateway fleet: a `SparkPointUniversalVault` BeaconProxy. Its trust root
+   *  is the CURATED BOARD (`verified`), not a factory attestation (V3 has no `isSparkPointVault`). */
+  const isUniversalWrapper = kind === "universal_wrapper";
+  const isMorphoVenue = kind === "morpho_wrapper" || kind === "morpho_fee_wrapper" || isUniversalWrapper;
   /**
    * 024 Phase 3 — a **Morpho Vault V2 Fee Wrapper**. A THIRD predicate, deliberately separate from
    * `isWrapper` and from `feeBasis`, because the three answer different questions:
@@ -525,7 +540,8 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
    * approve on a token the vault never pulls, and the deposit would then revert on-chain — the worst
    * shape of failure, because the approve looks like it worked.
    */
-  const depositToken = isFeeWrapper ? (asset ?? feeWrapperEntry?.asset) : usdcAddress;
+  const depositToken =
+    isFeeWrapper || isUniversalWrapper ? (asset ?? usdcAddress) : usdcAddress;
 
   // ── live CapRegistry caps (US1) ───────────────────────────────────────────
   // The governance-settable per-user / total / vault caps, read DIRECTLY on-chain from the bounded
@@ -639,11 +655,18 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     abi: erc20Abi,
     chainId: readChainId,
     functionName: "decimals",
-    query: { enabled: enabledGlobal && isFeeWrapper && asset !== undefined },
+    // 024/051 — any vault that sets a decimals offset (a Morpho Vault V2, and the V3
+    // SparkPointUniversalVault at offset 1e3) reads share decimals ≠ asset decimals, so the
+    // ASSET's own decimals must be read separately. Launch + SparkPointMorphoVault: 6 == 6.
+    query: {
+      enabled: enabledGlobal && (isFeeWrapper || isUniversalWrapper) && asset !== undefined,
+    },
   });
   const assetDecimals = isFeeWrapper
     ? ((assetDecimalsRead.data as number | undefined) ?? feeWrapperEntry?.assetDecimals ?? USDC_DECIMALS)
-    : (decimalsLive ?? USDC_DECIMALS);
+    : isUniversalWrapper
+      ? ((assetDecimalsRead.data as number | undefined) ?? USDC_DECIMALS)
+      : (decimalsLive ?? USDC_DECIMALS);
   /**
    * The vault's SHARE-token decimals. Equal to {@link assetDecimals} on SparkPoint's own ERC-4626s
    * (`_decimalsOffset() == 0`), and **18 over a 6-dp asset** on a Vault V2. Exposed separately so a
@@ -682,7 +705,9 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   // ── multi-vault identity ─────────────────────────────────────────────────
   const label = isWrapper
     ? (wrapperLabel ?? options.label ?? "SparkPoint Vault")
-    : (options.label ?? "Aave Yield Vault");
+    : isUniversalWrapper
+      ? (options.label ?? "SparkPoint Vault")
+      : (options.label ?? "Aave Yield Vault");
   const underlyingProtocol: "aave_v3" | "morpho" = isMorphoVenue ? "morpho" : "aave_v3";
 
   // ── parameterized previews ───────────────────────────────────────────────
@@ -823,5 +848,6 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     previewRedeemAssets,
     needsApproval,
     netApy,
+    curatedVerified: options.verified === true,
   };
 }

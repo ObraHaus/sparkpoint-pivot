@@ -15,9 +15,10 @@
  * indexer-sourced estimates (no pure-RPC source), so they stay as the design's estimate.
  */
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatUnits } from "viem";
+import type { Address } from "viem";
 import { useAccount, useBalance } from "wagmi";
 import { Icon } from "@/lib/icons";
 import { money, fmt } from "@/lib/utils";
@@ -77,15 +78,31 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
 
   // Multi-vault selection (011): the picker stores the chosen vault in `?vault=<address>` (absent ⇒ the
   // launch Aave vault — the byte-identical default). Options come from the STATIC address-book SoT for the
-  // display chain; a wrapper-less chain yields launch-only and the picker renders nothing.
+  // display chain PLUS the curated board's live V3 wrappers (051 — they are deployed dynamically and can
+  // never appear in a static book); a wrapper-less chain yields launch-only and the picker renders nothing.
   const bookChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
   const book = safeAddresses(bookChainId);
-  const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
-  const sel = resolveSelectedVault(options, selectedParam);
 
   // 048 — the AI-curated board. A read through the BFF; the deposit rail routes only to vaults the
   // in-app flow already knows, and everything else is disclosed as a direct deposit (T303).
   const curated = useCuratedBoard();
+  const boardWrappers = useMemo(
+    () =>
+      (curated.board?.vaults ?? [])
+        .filter((v) => v.wrapped && v.wrapperAddress)
+        .map((v) => ({
+          address: v.wrapperAddress as Address,
+          label: v.label,
+          symbol: v.asset.symbol ?? undefined,
+          netApyBps: v.netApyBps ?? undefined,
+        })),
+    [curated.board],
+  );
+  const options = buildVaultOptions({
+    wrappers: book?.sparkPointWrappers,
+    universalWrappers: boardWrappers,
+  });
+  const sel = resolveSelectedVault(options, selectedParam);
   const knownVaults = options
     .filter((o) => !!o.vaultAddress)
     .map((o) => ({

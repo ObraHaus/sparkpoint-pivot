@@ -122,3 +122,28 @@ test("resolveSelectedVault: a RETIRED wrapper still resolves, never silently fal
   assert.equal(sel.retired, true);
   assert.notEqual(sel.kind, "aave_launch");
 });
+
+// ── 051 · dynamically-deployed V3 universal wrappers from the curated board ──────────────────────
+
+test("buildVaultOptions: universal wrappers are appended, marked verified, with the new kind", () => {
+  const opts = buildVaultOptions({
+    wrappers: [wrapper],
+    universalWrappers: [{ address: WRAPPER, label: "Steakhouse USDG", symbol: "USDG" }],
+  });
+  assert.equal(opts.length, 3);
+  const u = opts[2];
+  assert.equal(u.vaultAddress, WRAPPER);
+  assert.equal(u.kind, "universal_wrapper");
+  assert.equal(u.label, "Steakhouse USDG");
+  assert.equal(u.verified, true);
+});
+
+test("resolveSelectedVault: a universal wrapper deep link resolves to it, not the launch vault", () => {
+  const opts = buildVaultOptions({
+    universalWrappers: [{ address: WRAPPER, label: "Steakhouse USDG" }],
+  });
+  const sel = resolveSelectedVault(opts, WRAPPER.toLowerCase());
+  assert.equal(sel.vaultAddress, WRAPPER);
+  assert.equal(sel.kind, "universal_wrapper");
+  assert.equal(sel.verified, true);
+});

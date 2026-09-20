@@ -64,6 +64,17 @@ export interface VaultConfirmInput {
    * liquidity may block an exit, never a SparkPoint decision.
    */
   readonly retired?: boolean;
+  /**
+   * 051 — the stored curator-scan net APY (bps) for a universal wrapper, shown LABELED as a stored
+   * figure ("3.62% (curator scan)"). Absent ⇒ "—" (never a fabricated rate).
+   */
+  readonly curatedNetApyBps?: number;
+  /**
+   * 051 — curated provenance passed THROUGH to `useVault` (it is not read by this pure model; the
+   * model reads `v.curatedVerified`). True only for a `universal_wrapper` option built from the
+   * agent's `wrapped` + `wrapperAddress` record.
+   */
+  readonly verified?: boolean;
 }
 
 /**
@@ -74,6 +85,7 @@ export type VaultConfirmView = Pick<
   UseVaultResult,
   | "kind"
   | "factoryVerified"
+  | "curatedVerified"
   | "retired"
   | "label"
   | "chainId"
@@ -178,14 +190,19 @@ export function deriveVaultConfirm(
   //    root; a `morpho_wrapper` kind counts as a wrapper too but is fail-closed on deposit unless
   //    attested. The launch vault (neither) keeps its exact Aave copy. See the file header. ──
   const attested = v.factoryVerified === true;
-  const isWrapper = v.kind === "morpho_wrapper" || attested;
+  // 051 — the V3 universal wrapper's trust root is the CURATED BOARD (`curatedVerified`), set only
+  // for options built from the agent's `wrapped` + `wrapperAddress` record; V3 exposes no
+  // `isSparkPointVault`, so there is no factory attestation to read.
+  const curatedVerified = v.kind === "universal_wrapper" && v.curatedVerified === true;
+  const isWrapper = v.kind === "morpho_wrapper" || v.kind === "universal_wrapper" || attested;
+  const wrapperVerified = attested || curatedVerified;
   // 024/T024 — HOW the performance fee accrues, which is NOT the same question as "is it a wrapper".
   // Today's `morpho_wrapper` is a SparkPointMorphoVault and DOES hold a real `_highWaterMark`, so
   // `isWrapper` is the wrong switch for fee copy. Only a `morpho_fee_wrapper` (a Morpho Vault V2)
   // lacks a HWM. Derived from the kind, never from attestation.
   const feeBasis: VaultFeeBasis = v.kind === "morpho_fee_wrapper" ? "per_period_gain" : "high_water_mark";
   const hwmClause = feeBasis === "high_water_mark" ? " over your high-water mark" : " for the period";
-  const showWrapperIdentity = isWrapper && attested;
+  const showWrapperIdentity = isWrapper && wrapperVerified;
   const vaultName = showWrapperIdentity ? v.label : isWrapper ? "vault" : v.label;
   const shareSymbol = isWrapper ? "shares" : "spvUSDC";
   const dec = v.assetDecimals; // read per vault — never hardcoded 6dp
@@ -198,7 +215,7 @@ export function deriveVaultConfirm(
     v.asset !== undefined &&
     v.usdcAddress !== undefined &&
     v.asset.toLowerCase() === v.usdcAddress.toLowerCase();
-  const wrapperDepositSafe = attested && assetMatchesUsdc;
+  const wrapperDepositSafe = wrapperVerified && assetMatchesUsdc;
   /**
    * RETIRED (024). The AUTHORITATIVE source is `v.retired`, which `useVault` resolves from the address
    * book by vault address — so every mount point inherits the fail-close whether or not it remembers
@@ -258,7 +275,7 @@ export function deriveVaultConfirm(
         ? "Enter an amount"
         : retired
           ? "Vault retired — withdrawals only"
-          : isWrapper && !attested
+          : isWrapper && !wrapperVerified
             ? "Unverified vault"
           : isWrapper && !assetMatchesUsdc
             ? "Unsupported vault asset"
@@ -307,14 +324,21 @@ export function deriveVaultConfirm(
   // Honest net APY: "—" for a wrapper or an unreadable gross; "≈0% (testnet)" when the live rate is
   // ~0; else the real net-of-fee %. Never the old fabricated 3.87%.
   const _ZERO_APY_BPS = 5;
+  // 051 — a universal wrapper shows the STORED curator-scan APY when the caller supplies it, clearly
+  // labeled as such (the live gross rate is Aave's and does not describe this vault). Absent ⇒ "—".
+  const curatedApy = input.curatedNetApyBps;
   const netApyText =
-    isWrapper || framing === null
-      ? "—"
-      : framing.netApyBps <= _ZERO_APY_BPS
-        ? ctx.testnet
-          ? "≈0% (testnet)"
-          : "≈0%"
-        : `${netPct.toFixed(2)}%`;
+    isWrapper
+      ? typeof curatedApy === "number" && Number.isFinite(curatedApy)
+        ? `${(curatedApy / 100).toFixed(2)}% (curator scan)`
+        : "—"
+      : framing === null
+        ? "—"
+        : framing.netApyBps <= _ZERO_APY_BPS
+          ? ctx.testnet
+            ? "≈0% (testnet)"
+            : "≈0%"
+          : `${netPct.toFixed(2)}%`;
   const netApyRow: [string, string, string] = ["Net APY on new shares", netApyText, ""];
   // The 0% management/AUM fee, stated explicitly alongside the profit-only performance fee
   // (§3.7: "0% management, entry, and exit"). Identical launch + wrapper — never an AUM fee.

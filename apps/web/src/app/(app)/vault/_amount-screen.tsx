@@ -21,11 +21,12 @@
  * whose live pre-sign check (agent quote + on-chain preview) gates the real Sign.
  */
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { parseUnits, formatUnits } from "viem";
+import type { Address } from "viem";
 import { Icon } from "@/lib/icons";
 import { money, fmt } from "@/lib/utils";
 import { capNoun } from "@/lib/stage";
@@ -37,6 +38,7 @@ import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
+import { useCuratedBoard } from "@/lib/curation/useCuratedBoard";
 import "@/components/screens/vault.css";
 
 const DECIMALS = 6;
@@ -82,10 +84,31 @@ export function AmountScreen({
 
   // Multi-vault selection (011): resolve the `?vault=` address (carried here by the /vault picker) into
   // the selected vault. Absent/unknown ⇒ the launch Aave vault, so the flow is byte-identical by default.
+  // 051: the curated board's live V3 wrappers are merged in — they are deployed dynamically and can
+  // never appear in the static book, so the board's `wrapped` record is their provenance.
   const bookChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
   const book = safeAddresses(bookChainId);
-  const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
+  const curated = useCuratedBoard();
+  const boardWrappers = useMemo(
+    () =>
+      (curated.board?.vaults ?? [])
+        .filter((v) => v.wrapped && v.wrapperAddress)
+        .map((v) => ({
+          address: v.wrapperAddress as Address,
+          label: v.label,
+          symbol: v.asset.symbol ?? undefined,
+          netApyBps: v.netApyBps ?? undefined,
+        })),
+    [curated.board],
+  );
+  const options = buildVaultOptions({
+    wrappers: book?.sparkPointWrappers,
+    universalWrappers: boardWrappers,
+  });
   const sel = resolveSelectedVault(options, selectedParam);
+  const selectedBoardVault = boardWrappers.find(
+    (w) => w.address.toLowerCase() === (sel.vaultAddress ?? "").toLowerCase(),
+  );
   const backHref = toHref("vault") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
 
   // LIVE figures + gating + the REAL execution config (shared with the chat inline path). The selected
@@ -111,6 +134,9 @@ export function AmountScreen({
     vaultAddress: sel.vaultAddress,
     kind: sel.kind,
     label: sel.label,
+    // 051 — curated provenance + the stored scan APY for a dynamically-deployed V3 wrapper.
+    verified: sel.verified,
+    curatedNetApyBps: selectedBoardVault?.netApyBps,
     // 024: a retired vault fail-closes DEPOSIT only. `mode: "withdraw"` never reads this (N2).
     retired: sel.retired,
   });

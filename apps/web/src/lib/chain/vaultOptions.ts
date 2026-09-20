@@ -31,6 +31,11 @@ export interface VaultOption {
    */
   readonly retired?: boolean;
   readonly retiredReason?: string;
+  /**
+   * 051 — curated provenance for a `universal_wrapper` option: true only when the address came from
+   * the agent's curated board (`wrapped` + `wrapperAddress`). Deposit fail-closes without it.
+   */
+  readonly verified?: boolean;
 }
 
 /** The launch Aave vault option — matches `useVault`'s defaults exactly, so selecting it is byte-identical. */
@@ -48,8 +53,20 @@ export const LAUNCH_VAULT_OPTION: VaultOption = {
  * The launch option intentionally carries `vaultAddress: undefined` — `useVault` resolves the chain's
  * real launch vault from the SoT, so no launch address needs threading in here.
  */
+/**
+ * 051 — a dynamically-deployed V3 wrapper from the curated board. Unlike `sparkPointWrappers`
+ * (a static book), these are discovered at runtime: the agent's `wrapped` + `wrapperAddress` record
+ * IS the provenance, so `buildVaultOptions` marks them `verified` and the deposit path trusts them.
+ */
+export interface UniversalWrapperInput {
+  readonly address: Address;
+  readonly label: string;
+  readonly symbol?: string;
+}
+
 export function buildVaultOptions(input: {
   wrappers?: readonly SparkPointWrapper[];
+  universalWrappers?: readonly UniversalWrapperInput[];
 }): VaultOption[] {
   const wrapperOptions: VaultOption[] = (input.wrappers ?? []).map((w) => ({
     vaultAddress: w.address,
@@ -60,7 +77,14 @@ export function buildVaultOptions(input: {
     retired: w.retired,
     retiredReason: w.retiredReason,
   }));
-  return [LAUNCH_VAULT_OPTION, ...wrapperOptions];
+  const universalOptions: VaultOption[] = (input.universalWrappers ?? []).map((w) => ({
+    vaultAddress: w.address,
+    kind: "universal_wrapper" as const,
+    label: w.label,
+    symbol: w.symbol,
+    verified: true,
+  }));
+  return [LAUNCH_VAULT_OPTION, ...wrapperOptions, ...universalOptions];
 }
 
 /**
