@@ -49,9 +49,23 @@ test("a wrapped vault with a deployed wrapper routes to the wrapper deposit and 
   }
 });
 
-test("a wrapped vault whose wrapper is not deployed gets an honest note, not a dead CTA", () => {
+test("a deployed wrapper this build cannot route into gets the truth, not 'not deployed'", () => {
   const rail = depositRail(
-    vault({ wrapped: true, wrapperAddress: "0xNotDeployed", depositMode: "wrapper" }),
+    vault({ wrapped: true, wrapperAddress: "0xDeployed", depositMode: "wrapper" }),
+    KNOWN,
+    explorer,
+  );
+  assert.equal(rail.kind, "wrapper-pending");
+  if (rail.kind === "wrapper-pending") {
+    assert.match(rail.label, /coming soon/i);
+    assert.match(rail.note, /deployed on-chain/);
+    assert.equal("href" in rail, false);
+  }
+});
+
+test("a wrapped record with NO wrapper address gets the honest not-deployed note", () => {
+  const rail = depositRail(
+    vault({ wrapped: true, wrapperAddress: null, depositMode: "wrapper" }),
     KNOWN,
     explorer,
   );

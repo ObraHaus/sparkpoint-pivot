@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-page-polish",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Vault page: full-colour pick card and honest wrapper status",
+      "body": "The recommended-vault card now wears SparkPoint's full brand gradient, and a vault whose wrapper is deployed no longer claims otherwise — it says plainly that in-app deposits for it are coming shortly.",
+      "published_at": "2026-09-20T06:41:47Z"
+    },
+    {
       "slug": "vault-page-card-first",
       "type": "changelog",
       "tag": "Improved",
