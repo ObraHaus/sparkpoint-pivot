@@ -5,7 +5,7 @@ Legend: `[x]` done · `[ ]` not started · **[GATED]** blocked by a live child v
 ## Phase W0 — Constitution + spec kit
 
 - [x] **T001** Constitution **v4.0.0** amendment (`.specify/memory/constitution-amendment-v4.0.0.md`) + `constitution.md` updated (N5, IV.5(a), IV.6, Principle V, upgradeability, contracts list, amendment log).
-- [x] **T002** Spec/plan/tasks (`specs/049-universal-vault-wrapper/`) + roadmap artifact (`docs/orchestration/vault-program-roadmap.html`).
+- [x] **T002** Spec/plan/tasks (`specs/049-universal-vault-wrapper/`) + roadmap artifact (`docs/artifacts/vault-program-roadmap.html`; moved from `docs/orchestration/` 2026-09-20).
 - [x] **T003** Generate the scoped AI deployer wallet (address recorded: `0xB555dbEc2cC5908c8B245ED84cb038D5d205D875`; key outside the repo, 0600).
 
 ## Phase W1 — Contracts (P8)
