@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (050 — /vault redesign: editorial feature + live-only cards)
+
+- **The vault page is card-first now.** A full-width **Sparky recommends** feature card leads (net APY, stored-scan sparkline, TVL/withdrawable, Deposit + Ask Sparky), followed by every live vault as a card with badges and CTAs. The list **lazy-loads on scroll** (batches of 6, a spinner row, then “You’ve reached the bottom — that’s every live vault Sparky has wrapped”), with an honest empty state when nothing is wrapped.
+- **Only wrapped vaults are public.** Candidates, approved-but-unwrapped, whitelisted/cooling, cancelled/failed and uncurated rows no longer appear on `/vault` — they live in Admin → Vaults only. An **admin session** additionally sees an in-flight panel directly under the feature card (counts + **Manage in Admin → Vaults**), fed by admin-gated endpoints and never rendered for public sessions.
+- **New `curated_vault_apy_history` (migration 0041)** records one APY observation per vault per curator scan so the card sparkline is real stored history; the public board returns the last ~30 points per vault. Fail-open: an unapplied table means no chart, never a broken page. The hero falls back to the highest-score **live** vault when the published pick isn’t wrapped.
+
 ### Removed (049 — retired the V2 wrapper request queue)
 
 - **The pre-pivot wrapper deploy request queue is gone.** The routes (`/admin/vaults/wrappers*`, `/curator/wrapper-jobs*`), the `PgDeploymentStore` module, and their tests were removed; the V3 admission queue (`/admin/vaults/whitelist*` + `/curator/wrapper-whitelist*`) fully replaces them. The `wrapper_deployments` table (migration 0039) is retained as history and no code reads or writes it (safe to drop later). No on-chain effect.

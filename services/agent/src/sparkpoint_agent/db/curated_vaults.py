@@ -303,6 +303,12 @@ ON CONFLICT (chain_id, vault_address) DO UPDATE SET
     -- deliberately ABSENT: a scan may not approve, deny, hide, wrap or un-admin a vault.
 """
 
+#: 050 — one append-only APY observation per vault per scan (the card sparkline's source).
+_INSERT_APY_HISTORY_SQL = """
+INSERT INTO curated_vault_apy_history (chain_id, vault_address, observed_at, net_apy_bps)
+VALUES ($1, $2, $3, $4)
+"""
+
 _UPSERT_STATE_SQL = """
 INSERT INTO vault_curation_state (chain_id, auto_publish, updated_at)
 VALUES ($1, $2, now())
@@ -350,6 +356,10 @@ class CurationStore(Protocol):
     async def upsert_scan_vaults(
         self, chain_id: int, vaults: list[ScanVault], *, source: str, as_of: datetime
     ) -> int: ...
+
+    async def apy_history(
+        self, chain_id: int, addresses: list[str], *, limit_per: int = 30
+    ) -> dict[str, list[dict[str, Any]]]: ...
 
     async def approve_recommended(self, chain_id: int, addresses: list[str]) -> int: ...
 
@@ -525,7 +535,59 @@ class PgCurationStore:
         except UndefinedTableError:
             logger.warning("curated_vaults table absent (0038 unapplied); scan not stored")
             return 0
+        # 050 — append the scan's APY observation to the history table (separate transaction so an
+        # unapplied 0041 degrades to "no chart", never a failed scan).
+        history = [
+            (chain_id, v.address.strip().lower(), as_of, v.net_apy_bps)
+            for v in vaults
+            if v.net_apy_bps is not None
+        ]
+        if history:
+            try:
+                async with self._db.acquire() as conn, conn.transaction():
+                    await conn.executemany(_INSERT_APY_HISTORY_SQL, history)
+            except UndefinedTableError:
+                logger.warning(
+                    "curated_vault_apy_history absent (0041 unapplied); history not stored"
+                )
         return len(params)
+
+    async def apy_history(
+        self, chain_id: int, addresses: list[str], *, limit_per: int = 30
+    ) -> dict[str, list[dict[str, Any]]]:
+        """The last ``limit_per`` APY observations per vault, chronological (oldest → newest).
+
+        Fail-open on an unapplied 0041 (empty history ⇒ the UI renders cards without a chart).
+        """
+        if not addresses:
+            return {}
+        try:
+            rows = await self._db.fetch(
+                """
+                SELECT vault_address, observed_at, net_apy_bps FROM (
+                    SELECT vault_address, observed_at, net_apy_bps,
+                           row_number() OVER (
+                               PARTITION BY vault_address ORDER BY observed_at DESC
+                           ) AS rn
+                      FROM curated_vault_apy_history
+                     WHERE chain_id = $1 AND vault_address = ANY($2::text[])
+                ) ranked
+                 WHERE rn <= $3
+                 ORDER BY vault_address, observed_at ASC
+                """,
+                chain_id,
+                [a.strip().lower() for a in addresses],
+                max(1, min(limit_per, 200)),
+            )
+        except UndefinedTableError:
+            logger.warning("curated_vault_apy_history absent (0041 unapplied); empty history")
+            return {}
+        out: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            out.setdefault(str(row["vault_address"]), []).append(
+                {"at": _iso(row["observed_at"]), "netApyBps": int(row["net_apy_bps"])}
+            )
+        return out
 
     async def approve_recommended(self, chain_id: int, addresses: list[str]) -> int:
         """Auto-publish: flip AI candidates the run recommended to ``approved`` (never admin rows).

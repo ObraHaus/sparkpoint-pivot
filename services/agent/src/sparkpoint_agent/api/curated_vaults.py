@@ -63,11 +63,14 @@ _STATUSES = (CANDIDATE, APPROVED, HIDDEN, DENIED)
 #: Reason shown for an admin-pinned pick when the run record does not explain it.
 _PIN_REASON = "Pinned by SparkPoint."
 
-#: The public empty-state sentence. Rendered verbatim by /vault; honest, never an empty table
-#: pretending to be a market (FR-008).
-_NO_VAULTS_NOTE = (
-    "No curated vaults on this chain yet — discovery is configured for it and this page will "
-    "populate as soon as a vault source reports one."
+#: 050 — the fallback feature-card reason when the published pick is not live (not wrapped yet).
+_TOP_REASON = "Highest-scoring live vault while no published pick is depositable."
+
+#: 050 — the public empty-state sentence when nothing is wrapped/live yet. Rendered verbatim by
+#: /vault; honest, and never an in-flight row pretending to be a market (FR-008).
+_NO_LIVE_VAULTS_NOTE = (
+    "Nothing is depositable yet — a curated vault appears here only after Sparky wraps it. "
+    "Discovery and admission keep running; this page updates as soon as a wrapper is deployed."
 )
 
 
@@ -86,16 +89,34 @@ def _norm_address(value: str) -> str:
 # ── public board ─────────────────────────────────────────────────────────────────────────────────
 
 
-def _hydrate(vault: CuratedVault, *, reason: str, as_of: str | None) -> dict[str, Any]:
-    """A vault wire with the recommendation context merged in (one object the UI can render)."""
+def _wire_with_history(
+    vault: CuratedVault, history: dict[str, list[dict[str, Any]]]
+) -> dict[str, Any]:
+    """A vault wire plus its stored APY history (empty when 0041 is unapplied — no chart)."""
     wire = vault.to_wire()
+    wire["apyHistory"] = history.get(vault.vault_address, [])
+    return wire
+
+
+def _hydrate(
+    vault: CuratedVault,
+    *,
+    reason: str,
+    as_of: str | None,
+    history: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """A vault wire with the recommendation context merged in (one object the UI can render)."""
+    wire = _wire_with_history(vault, history or {})
     wire["reason"] = reason
     wire["asOf"] = as_of
     return wire
 
 
 def _public_alternates(
-    rec: Recommendation | None, vaults: dict[str, CuratedVault], pick_address: str | None
+    rec: Recommendation | None,
+    vaults: dict[str, CuratedVault],
+    pick_address: str | None,
+    history: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     if rec is None:
         return []
@@ -105,7 +126,9 @@ def _public_alternates(
         vault = vaults.get(address)
         if vault is None or address == pick_address:
             continue
-        out.append(_hydrate(vault, reason=str(alt.get("reason", "")), as_of=rec.as_of))
+        out.append(
+            _hydrate(vault, reason=str(alt.get("reason", "")), as_of=rec.as_of, history=history)
+        )
     return out
 
 
@@ -114,15 +137,26 @@ def public_board(
     vaults: list[CuratedVault],
     rec: Recommendation | None,
     state: CurationState,
+    history: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Compose the public ``/vaults/curated`` payload. Pure — unit-testable without a store.
 
+    PUBLIC = LIVE ONLY (feature 050): a vault renders only once its wrapper is deployed
+    (``wrapped`` + ``wrapper_address``). Candidates, approved-but-unwrapped, whitelisted/cooling,
+    cancelled and failed rows are admin-panel data and never appear in this payload.
+
     Pick precedence: an admin PIN wins (FR-007), otherwise the latest PUBLISHED recommendation
-    (only written when auto-publish was on or an admin approved/pinned). A recommendation whose
-    vault was later hidden or denied does not surface.
+    (only written when auto-publish was on or an admin approved/pinned); if neither is live, the
+    highest-score live vault becomes the feature card so the page always shows something
+    depositable. No live vaults ⇒ ``pick`` is null and the note says why.
     """
-    approved = {v.vault_address: v for v in vaults if v.status == APPROVED}
-    pinned = next((v for v in approved.values() if v.pinned_at), None)
+    history = history or {}
+    live = {
+        v.vault_address: v
+        for v in vaults
+        if v.status == APPROVED and v.wrapped and v.wrapper_address
+    }
+    pinned = next((v for v in live.values() if v.pinned_at), None)
 
     pick: dict[str, Any] | None = None
     if pinned is not None:
@@ -131,10 +165,20 @@ def public_board(
         if rec is not None and rec.pick_address == pinned.vault_address:
             reason = rec.pick_reason
             as_of = rec.as_of
-        pick = _hydrate(pinned, reason=reason, as_of=as_of)
-    elif rec is not None and rec.pick_address in approved:
-        vault = approved[rec.pick_address]
-        pick = _hydrate(vault, reason=rec.pick_reason, as_of=rec.as_of)
+        pick = _hydrate(pinned, reason=reason, as_of=as_of, history=history)
+    elif rec is not None and rec.pick_address in live:
+        vault = live[rec.pick_address]
+        pick = _hydrate(vault, reason=rec.pick_reason, as_of=rec.as_of, history=history)
+    elif live:
+        top = sorted(
+            live.values(),
+            key=lambda v: (
+                -(v.score if v.score is not None else -1),
+                -(v.tvl_usd or 0.0),
+                v.vault_address,
+            ),
+        )[0]
+        pick = _hydrate(top, reason=_TOP_REASON, as_of=top.last_scan_at, history=history)
 
     pick_address = pick["address"] if pick is not None else None
 
@@ -145,11 +189,11 @@ def public_board(
         "lastRunOk": state.last_run_ok,
         "autoPublish": state.auto_publish,
         "pick": pick,
-        "alternates": _public_alternates(rec, approved, pick_address),
-        "vaults": [v.to_wire() for v in approved.values()],
-        # Present only when it would otherwise look like a broken table: an empty board must say
-        # WHY it is empty, and it must never imply a market that isn't there.
-        "note": None if approved else _NO_VAULTS_NOTE,
+        "alternates": _public_alternates(rec, live, pick_address, history),
+        "vaults": [_wire_with_history(v, history) for v in live.values()],
+        # Present only when it would otherwise look like a broken page: an empty board must say WHY
+        # it is empty (nothing wrapped yet), and it must never show an in-flight row.
+        "note": None if live else _NO_LIVE_VAULTS_NOTE,
     }
 
 
@@ -158,15 +202,18 @@ async def list_curated(
     account: Annotated[AccountContext, Depends(get_account)],
     store: Annotated[PgCurationStore, Depends(get_curation_store)],
 ) -> dict[str, Any]:
-    """The curated board for the caller's chain: pick + alternates + approved vaults + as-of.
+    """The curated board for the caller's chain: pick + alternates + LIVE vaults + as-of.
 
     Beta-gated by the BFF like every other read; the agent additionally scopes by ``X-Chain-Id``.
-    Returns the honest empty shape when discovery has found nothing (4663 today)."""
+    Feature 050: only wrapped/depositable vaults are public — in-flight rows (candidates,
+    approved-unwrapped, whitelisted/cooling, cancelled, failed) are admin-panel data. Returns the
+    honest empty shape when nothing is wrapped yet."""
     chain_id = account.chain_id
     vaults = await store.list_vaults(chain_id, statuses=(APPROVED,))
+    history = await store.apy_history(chain_id, [v.vault_address for v in vaults])
     state = await store.get_state(chain_id)
     rec = await store.latest_recommendation(chain_id, published_only=True)
-    return public_board(chain_id, vaults, rec, state)
+    return public_board(chain_id, vaults, rec, state, history)
 
 
 # ── curator runner control + ingest (machine, S2S, no admin) ─────────────────────────────────────
