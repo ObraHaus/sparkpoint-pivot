@@ -182,7 +182,8 @@ export default function Page() {
         </div>
         <div className="card card-pad fcard">
           <h3>
-            <Icon name="coins" size={17} /> Performance fee · Aave Yield Vault{" "}
+            <Icon name="coins" size={17} />{" "}
+            {vaultUnavailable ? "Performance fee · wrapped vaults" : "Performance fee · Aave Yield Vault"}{" "}
             <span className="feetag" style={{ background: "var(--spark-subtle)", color: "var(--primary)" }}>
               Active · v1
             </span>
@@ -279,7 +280,7 @@ export default function Page() {
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-          These fees live in the contracts, not this app{vaultUnavailable ? " — the vault isn’t in the Robinhood Chain beta yet" : " — read live from the vault chain"}.{" "}
+          These fees live in the contracts, not this app{vaultUnavailable ? " — every wrapped vault's fee is read live on the Vault page" : " — read live from the vault chain"}.{" "}
           <a
             style={{ color: "var(--primary)", cursor: "pointer" }}
             onClick={() => router.push(toHref("trust/permissions"))}
