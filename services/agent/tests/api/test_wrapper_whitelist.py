@@ -406,7 +406,7 @@ def test_non_admin_gets_404_on_every_surface() -> None:
 
 
 def _route_paths(routes: list[Any]) -> list[str]:
-    """Flatten the real app's routes (mirrors tests/api/test_wrapper_deployments.py)."""
+    """Flatten the real app's mounted routes (sub-routers expose `original_router`)."""
     out: list[str] = []
     for route in routes:
         path = getattr(route, "path", None)

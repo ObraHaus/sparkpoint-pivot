@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-admission-queue-cleanup",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Under the hood: one clean vault-admission queue",
+      "body": "The vault admission flow now has a single queue. The old wrapper-request path was retired after the new admission queue went live — the AI can admit a curated vault under the public cooling-off window, and the operator keeps the instant lane. Nothing changes for you: deposits, withdrawals and fees are untouched.",
+      "published_at": "2026-09-20T01:58:43Z"
+    },
+    {
       "slug": "vault-admission-cooling-off",
       "type": "changelog",
       "tag": "Improved",

@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed (049 — retired the V2 wrapper request queue)
+
+- **The pre-pivot wrapper deploy request queue is gone.** The routes (`/admin/vaults/wrappers*`, `/curator/wrapper-jobs*`), the `PgDeploymentStore` module, and their tests were removed; the V3 admission queue (`/admin/vaults/whitelist*` + `/curator/wrapper-whitelist*`) fully replaces them. The `wrapper_deployments` table (migration 0039) is retained as history and no code reads or writes it (safe to drop later). No on-chain effect.
+
+### Changed (049 V.4 — V2 factory sunset completed)
+
+- **The pending Sep 22 `setDeployer` timelock op was cancelled** (Safe B, canceller 2-of-3; tx `0x481f6e18…c239`, 2026-09-20): `isOperationPending` = false on-chain, and the auto-execute cron was already removed. The sunset V2 factory never deployed a wrapper; `wrapper.factoryV3` is the live admission gateway. Recorded in `contracts/deployments/4663/addresses.json → wrapper` (`factoryStatus`, `timelockOps.setDeployer.status`).
+
+### Fixed (049 runner)
+
+- **The AI admission runner now reports `byAddress` with its whitelist result.** The agent's admission mirror records the on-chain `by` so the panel's provenance (AI entry vs admin admission) is honest; without it the row showed no provenance. (The live Steakhouse row was backfilled.)
+
 ### Added (049 V.6b/V.7 — admission panel + V3 wiring)
 
 - **Admin → Vaults now has the admission queue.** The retired wrapper-request card is replaced by a wallet-signed queue: every approved unwrapped vault shows its admission state (not admitted / cooling off with a live countdown / ready / wrapped / cancelled / failed) with **Whitelist now**, **Deploy now** (releases a cooling AI entry first), **Release** and **Cancel** actions signed by the operator EOA on 4663, plus the AI cooling-off window setting (1–168 hours; chain bounds read live). The agent only records the confirmed txs — it never signs.
