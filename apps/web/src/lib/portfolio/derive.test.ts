@@ -103,3 +103,51 @@ test("unknown-price wrapper asset is NOT folded into the USD total (no oracle in
   assert.equal(d.wrapperValue, 0);
   assert.equal(d.totalUsd, 1);
 });
+
+// ── 053: the beta portfolio reads — chain-stable decimals + V3 wrapper share scale ──
+
+test("053: stableDecimals values the idle balance at the chain stable's real scale", () => {
+  const d = derivePortfolio({ usdcBalance: 2_150_000_000n, stableDecimals: 9 }); // a 9-dp stable
+  assert.equal(d.idleUsdc, 2.15);
+  assert.equal(d.totalUsd, 2.15);
+});
+
+test("053: a V3 wrapper formats SHARES with shareDecimals and value with the asset decimals", () => {
+  const d = derivePortfolio({
+    wrappers: [
+      {
+        vaultAddress: "0x00000000000000000000000000000000000000aa",
+        label: "Steakhouse USDG",
+        underlying: 100_000_000n, // 100 USDG (6dp)
+        shares: 99_900_000_000n, // 99.9 shares (9dp) — formatting with 6dp would read 99,900
+        decimals: 6,
+        shareDecimals: 9,
+        usdPriced: true,
+      },
+    ],
+  });
+  assert.equal(d.wrapperValue, 100);
+  assert.equal(d.totalUsd, 100);
+  const w = d.positions.find((p) => p.key.startsWith("ext:"));
+  assert.ok(w);
+  assert.equal(w.shares, 99.9);
+  assert.match(w.sub, /99\.9 shares/);
+});
+
+test("053: an unknown-price wrapper is shown but NOT folded into the USD total", () => {
+  const d = derivePortfolio({
+    wrappers: [
+      {
+        vaultAddress: "0x00000000000000000000000000000000000000bb",
+        label: "Mystery",
+        underlying: 5_000_000n,
+        shares: 5_000_000n,
+        decimals: 6,
+        usdPriced: false,
+      },
+    ],
+  });
+  assert.equal(d.wrapperValue, 0);
+  assert.equal(d.totalUsd, 0);
+  assert.equal(d.positions.filter((p) => p.key.startsWith("ext:")).length, 1);
+});
