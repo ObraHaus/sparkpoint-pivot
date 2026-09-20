@@ -81,16 +81,21 @@ export default function Page() {
             <span className="lbl">coming soon</span>
           </div>
           <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-            Strategy recommendations arrive with the AI vault, which isn&rsquo;t part of the Robinhood
-            Chain beta yet. When it opens here, Sparky will rank moves against your mandate and show
-            what each would earn on your own balance. Today you can swap on the{" "}
+            Ranked strategy recommendations arrive later. Today, curated vaults are live on the{" "}
+            <a
+              style={{ color: "var(--primary)", cursor: "pointer" }}
+              onClick={() => router.push(toHref("vault"))}
+            >
+              Vault page
+            </a>{" "}
+            — you sign every deposit yourself — and you can swap on the{" "}
             <a
               style={{ color: "var(--primary)", cursor: "pointer" }}
               onClick={() => router.push(toHref("swap"))}
             >
               Swap page
             </a>{" "}
-            — you sign every swap yourself — and see your position in{" "}
+            or see your position in{" "}
             <a
               style={{ color: "var(--primary)", cursor: "pointer" }}
               onClick={() => router.push(toHref("portfolio"))}

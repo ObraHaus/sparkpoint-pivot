@@ -104,6 +104,8 @@ export function AmountScreen({
   const options = buildVaultOptions({
     wrappers: book?.sparkPointWrappers,
     universalWrappers: boardWrappers,
+    // Beta: no launch Aave vault — the default selection is the first live curated wrapper.
+    includeLaunch: VAULT_CHAIN_AVAILABLE,
   });
   const sel = resolveSelectedVault(options, selectedParam);
   const selectedBoardVault = boardWrappers.find(
@@ -154,26 +156,26 @@ export function AmountScreen({
     return <ConfirmFlow intent={mode} mount="route" onchain={onchain} />;
   }
 
-  // Robinhood Chain beta without a curated wrapper selected: the SparkPoint Aave vault is Base-only.
+  // No curated vault selected on the Robinhood Chain beta: point at the board instead of a notice
+  // about a vault that isn't part of this program.
   if (!VAULT_CHAIN_AVAILABLE && !isUniversalWrapper) {
     return (
       <div className="page page-narrow">
         <div className="pagehead">
           <div>
             <h1>{isDep ? "Deposit" : "Withdraw"}</h1>
-            <div className="sub">AI-managed yield vault</div>
+            <div className="sub">Curated vaults</div>
           </div>
         </div>
         <div
           className="card card-pad"
           style={{ marginTop: 8, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}
         >
-          The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — there&rsquo;s nothing to{" "}
-          {mode} on this network right now. Curated vaults are live on the{" "}
+          Pick a live vault first — open the{" "}
           <Link style={{ color: "var(--primary)" }} href={toHref("vault")}>
             Vault page
-          </Link>
-          .
+          </Link>{" "}
+          and choose one to {mode}.
         </div>
       </div>
     );

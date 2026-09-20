@@ -67,6 +67,12 @@ export interface UniversalWrapperInput {
 export function buildVaultOptions(input: {
   wrappers?: readonly SparkPointWrapper[];
   universalWrappers?: readonly UniversalWrapperInput[];
+  /**
+   * Include the launch Aave vault as the default option (default true — the alpha/Base builds keep
+   * their byte-identical picker). On the Robinhood Chain beta there is no launch vault in this
+   * program, so the picker shows ONLY curated wrappers (051).
+   */
+  includeLaunch?: boolean;
 }): VaultOption[] {
   const wrapperOptions: VaultOption[] = (input.wrappers ?? []).map((w) => ({
     vaultAddress: w.address,
@@ -84,25 +90,27 @@ export function buildVaultOptions(input: {
     symbol: w.symbol,
     verified: true,
   }));
-  return [LAUNCH_VAULT_OPTION, ...wrapperOptions, ...universalOptions];
+  const launch = input.includeLaunch === false ? [] : [LAUNCH_VAULT_OPTION];
+  return [...launch, ...wrapperOptions, ...universalOptions];
 }
 
 /**
  * Resolve the selected option from a URL `?vault=` value. Case-insensitive address match; an absent,
- * `"launch"`, or unknown value resolves to the launch vault — so the DEFAULT is always the conservative
- * launch vault (never a wrapper), keeping the no-selection path byte-identical.
+ * `"launch"`, or unknown value resolves to the FIRST option — which is the launch vault whenever it
+ * is present (the alpha/Base default), and the first curated wrapper on a build without it. The
+ * no-selection path on alpha is byte-identical to before.
  */
 export function resolveSelectedVault(
   options: readonly VaultOption[],
   selected: string | null | undefined,
 ): VaultOption {
-  const launch = options.find((o) => o.vaultAddress === undefined) ?? LAUNCH_VAULT_OPTION;
-  if (!selected || selected.toLowerCase() === "launch") return launch;
+  const fallback = options[0] ?? LAUNCH_VAULT_OPTION;
+  if (!selected || selected.toLowerCase() === "launch") return fallback;
   const target = selected.toLowerCase();
   return (
     options.find(
       (o) => o.vaultAddress !== undefined && o.vaultAddress.toLowerCase() === target,
-    ) ?? launch
+    ) ?? fallback
   );
 }
 

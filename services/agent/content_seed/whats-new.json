@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "beta-copy-live-only",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "The beta now speaks only to what's live",
+      "body": "A copy pass across the app: the vault picker, deposit and withdraw notices, strategies, fees and portfolio now describe only the live curated-vault program, so every label and notice matches something you can actually use today.",
+      "published_at": "2026-09-20T11:18:39Z"
+    },
+    {
       "slug": "deterministic-build-id",
       "type": "changelog",
       "tag": "Fixed",
