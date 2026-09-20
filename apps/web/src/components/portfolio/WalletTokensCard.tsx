@@ -13,6 +13,7 @@
 
 import { useBalance } from "wagmi";
 import { formatUnits } from "viem";
+import { TokenLogo } from "@/components/ui/TokenLogo";
 import { useWalletTokens } from "@/lib/portfolio/useWalletTokens";
 
 /** Ethereum brand purple for the native row; ERC-20s get a deterministic color from their symbol. */
@@ -55,7 +56,22 @@ function Avatar({ symbol, color }: { symbol: string; color: string }) {
   );
 }
 
-function TokenRow({ symbol, name, right, color }: { symbol: string; name: string; right: string; color: string }) {
+function TokenRow({
+  symbol,
+  name,
+  right,
+  color,
+  token,
+  chainId,
+}: {
+  symbol: string;
+  name: string;
+  right: string;
+  color: string;
+  /** 052 — when present, the row shows the token's real logo (local art first; avatar fallback). */
+  token?: { symbol: string; address: string; isNative?: boolean; verified?: boolean };
+  chainId?: number;
+}) {
   return (
     <div
       style={{
@@ -66,7 +82,7 @@ function TokenRow({ symbol, name, right, color }: { symbol: string; name: string
         borderTop: "1px solid var(--border-soft)",
       }}
     >
-      <Avatar symbol={symbol} color={color} />
+      {token ? <TokenLogo token={token} chainId={chainId} size={30} /> : <Avatar symbol={symbol} color={color} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 13.5 }}>{symbol}</div>
         <div
@@ -120,6 +136,8 @@ export function WalletTokensCard({
           symbol="ETH"
           name="Ether · native gas token"
           color={ETH_COLOR}
+          token={{ symbol: "ETH", address: "", isNative: true }}
+          chainId={chainId}
           right={ethAmount !== undefined ? `${fmtAmount(ethAmount)} ETH` : "…"}
         />
 
@@ -145,6 +163,8 @@ export function WalletTokensCard({
               symbol={t.symbol}
               name={t.name}
               color={colorFor(t.symbol)}
+              token={{ symbol: t.symbol, address: t.address, verified: false }}
+              chainId={chainId}
               right={`${fmtAmount(t.amount)} ${t.symbol}`}
             />
           ))
