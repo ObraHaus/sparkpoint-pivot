@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (049 V.4 — V2 factory sunset completed)
+
+- **The pending Sep 22 `setDeployer` timelock op was cancelled** (Safe B, canceller 2-of-3; tx `0x481f6e18…c239`, 2026-09-20): `isOperationPending` = false on-chain, and the auto-execute cron was already removed. The sunset V2 factory never deployed a wrapper; `wrapper.factoryV3` is the live admission gateway. Recorded in `contracts/deployments/4663/addresses.json → wrapper` (`factoryStatus`, `timelockOps.setDeployer.status`).
+
 ### Fixed (049 runner)
 
 - **The AI admission runner now reports `byAddress` with its whitelist result.** The agent's admission mirror records the on-chain `by` so the panel's provenance (AI entry vs admin admission) is honest; without it the row showed no provenance. (The live Steakhouse row was backfilled.)
