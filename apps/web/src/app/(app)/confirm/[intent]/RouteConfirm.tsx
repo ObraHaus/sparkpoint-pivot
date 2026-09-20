@@ -34,6 +34,7 @@ import { ConfirmFlow, type ConfirmIntent } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm } from "@/lib/chain/useVaultConfirm";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOptions";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { parseConfirmParams } from "@/lib/chain/confirmParams";
 import { useBeta } from "@/lib/auth/whitelist";
 import { BetaGate } from "@/components/BetaGate";
@@ -78,7 +79,10 @@ function RouteVaultConfirm({ mode }: { mode: "deposit" | "withdraw" }) {
   // Resolve the `?vault=` selection exactly as _amount-screen does (default = launch Aave vault).
   const bookChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
   const book = safeAddresses(bookChainId);
-  const options = buildVaultOptions({ wrappers: book?.sparkPointWrappers });
+  const options = buildVaultOptions({
+    wrappers: book?.sparkPointWrappers,
+    includeLaunch: VAULT_CHAIN_AVAILABLE,
+  });
   const sel = resolveSelectedVault(options, params.vaultSelected);
 
   // Redeem-by-shares applies to withdraw only; deposit ignores it.

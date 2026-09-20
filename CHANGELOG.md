@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (beta copy — the app speaks only to what is live)
+
+- **Copy pass across the beta surfaces.** The vault picker, deposit/withdraw notices, strategies, fees and portfolio copy now describe only the live curated-vault program — no references to unscheduled launches. The vault picker on the beta shows curated vaults only, and the default deposit selection is the first live vault.
+
 ### Fixed (051 follow-up — beta deposit route, CTA wording, fresh builds)
 
 - **The deposit/withdraw screen now works for curated wrappers on the beta.** The route-level “no vault on this build” notice (correct for the Base-only Aave vault) fired before the `?vault=` selection was read, so the Steakhouse wrapper’s deposit page showed “isn’t part of the Robinhood Chain beta yet”. The notice now renders only when no curated wrapper is selected, and the form shows **Deposit USDG** with the wrapper’s own asset.

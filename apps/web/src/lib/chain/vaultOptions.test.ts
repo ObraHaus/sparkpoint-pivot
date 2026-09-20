@@ -147,3 +147,25 @@ test("resolveSelectedVault: a universal wrapper deep link resolves to it, not th
   assert.equal(sel.kind, "universal_wrapper");
   assert.equal(sel.verified, true);
 });
+
+// 051 — on a build without the launch vault (the Robinhood Chain beta) the picker shows ONLY curated
+// wrappers, and the default selection is the first live wrapper.
+test("buildVaultOptions: includeLaunch=false omits the launch Aave vault", () => {
+  const opts = buildVaultOptions({
+    universalWrappers: [{ address: WRAPPER, label: "Steakhouse USDG" }],
+    includeLaunch: false,
+  });
+  assert.equal(opts.length, 1);
+  assert.equal(opts[0].kind, "universal_wrapper");
+  assert.equal(opts.some((o) => o.kind === "aave_launch"), false);
+});
+
+test("resolveSelectedVault: without a launch option the default is the first curated wrapper", () => {
+  const opts = buildVaultOptions({
+    universalWrappers: [{ address: WRAPPER, label: "Steakhouse USDG" }],
+    includeLaunch: false,
+  });
+  const sel = resolveSelectedVault(opts, null);
+  assert.equal(sel.vaultAddress, WRAPPER);
+  assert.equal(sel.kind, "universal_wrapper");
+});

@@ -249,20 +249,15 @@ export default function Page() {
         </div>
       </div>
 
-      {wrongNetwork && (
+      {wrongNetwork && VAULT_CHAIN_AVAILABLE && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, padding: "11px 14px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-foreground)", background: "var(--caution-subtle)", border: "1px solid color-mix(in srgb,var(--caution) 26%,transparent)" }}>
           <span style={{ color: "var(--caution)", flex: "none", marginTop: 1 }}>
             <Icon name="info" size={16} />
           </span>
           {robinhood ? (
             <span>You’re on <b>Robinhood Testnet</b>. The SparkPoint vault is <b>Base-only</b> — switch to <b>Base Sepolia</b> for your vault position.{eth.data?.value !== undefined && ` Your Robinhood ETH balance: ${d.ethBalance.toFixed(4)} ETH.`} Your vault funds on Base are always withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
-          ) : VAULT_CHAIN_AVAILABLE ? (
-            <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
           ) : (
-            // Beta build: no vault chain is registered and the user never had a position here, so
-            // there is nothing to "exit" — drop the /exit reassurance (it would point off-build) and
-            // say plainly it's a later step. Your funds are always in your own wallet.
-            <span>The SparkPoint Aave vault is <b>Base-only</b>. On Robinhood Chain, curated vaults are live — deposit from the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault"))}>Vault page</a>. Your funds stay in your own wallet, and you can swap on the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("swap"))}>Swap page</a>.</span>
+            <span>The SparkPoint vault isn’t deployed on your connected network. Switch to <b>Base Sepolia</b> to see your live position. Your funds are safe and withdrawable via <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("exit"))}>/exit</a>.</span>
           )}
         </div>
       )}

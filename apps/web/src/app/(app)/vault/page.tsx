@@ -101,6 +101,8 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
   const options = buildVaultOptions({
     wrappers: book?.sparkPointWrappers,
     universalWrappers: boardWrappers,
+    // On the beta there is no launch Aave vault in this program — the picker shows curated wrappers only.
+    includeLaunch: VAULT_CHAIN_AVAILABLE,
   });
   const sel = resolveSelectedVault(options, selectedParam);
   const knownVaults = options
