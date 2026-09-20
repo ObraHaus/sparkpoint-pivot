@@ -262,7 +262,7 @@ export default function Page() {
             // Beta build: no vault chain is registered and the user never had a position here, so
             // there is nothing to "exit" — drop the /exit reassurance (it would point off-build) and
             // say plainly it's a later step. Your funds are always in your own wallet.
-            <span>The AI vault isn’t part of the Robinhood Chain beta yet — it arrives in a later step. Nothing is deposited here; your funds stay in your own wallet, and you can swap on the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("swap"))}>Swap page</a>.</span>
+            <span>The SparkPoint Aave vault is <b>Base-only</b>. On Robinhood Chain, curated vaults are live — deposit from the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault"))}>Vault page</a>. Your funds stay in your own wallet, and you can swap on the <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("swap"))}>Swap page</a>.</span>
           )}
         </div>
       )}
