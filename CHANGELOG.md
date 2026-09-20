@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (051 — universal-wrapper deposit/withdraw rail)
+
+- **The board's CTA now routes into the live V3 wrapper.** A new `universal_wrapper` vault kind threads through the options → `useVault` → confirm model: the app reads the wrapper's own `asset()` and the asset's decimals separately (the V3 wrapper runs 9 share decimals over a 6-dp asset, unlike the legacy wrappers), trusts the **curated board's** `wrapped` + `wrapperAddress` record as provenance (V3 has no factory attestation), and fails closed ("Unverified vault") without it. Deposit signability also requires the wrapper asset to match the chain stable.
+- **The amount screen resolves dynamically-deployed wrappers** (vault page + deposit/withdraw merge the board's live wrappers into the options), shows the **stored curator-scan APY labeled as such** ("3.62% (curator scan)"), and withdraw stays ungated by provenance (N2). The legacy "In-app deposit coming soon" copy is replaced by a working deposit rail.
+
 ### Fixed (050 follow-up — live-page polish + e2e proof)
 
 - **The feature card renders with the full brand gradient** (white text, light badges, translucent chart panel) — matching the approved Option C wireframe instead of a thin gradient border.

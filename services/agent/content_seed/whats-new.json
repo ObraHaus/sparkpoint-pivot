@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "vault-deposit-rail-live",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "You can deposit into the wrapped vaults now",
+      "body": "The Vault page's recommended vault and every live vault card now open a working deposit flow: the app resolves the SparkPoint wrapper, shows the wrapper's own fee disclosure, and signs the deposit against it. The card also shows the stored curator-scan net APY, labelled as a stored figure, and withdrawals are never gated.\n\nUnder the hood this wires the app to the new V3 wrapper fleet — one wrapper per vault, deployed on-chain and verified.",
+      "published_at": "2026-09-20T07:34:03Z"
+    },
+    {
       "slug": "vault-page-polish",
       "type": "changelog",
       "tag": "Improved",
