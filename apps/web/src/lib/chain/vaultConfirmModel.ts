@@ -270,7 +270,7 @@ export function deriveVaultConfirm(
   const depositLabel = !v.isConnected
     ? "Connect your wallet"
     : !v.isDeployed
-      ? "Switch to Base Sepolia"
+      ? "Switch network"
       : wantUnits <= 0n
         ? "Enter an amount"
         : retired
@@ -296,7 +296,7 @@ export function deriveVaultConfirm(
   const withdrawLabel = !v.isConnected
     ? "Connect your wallet"
     : !v.isDeployed
-      ? "Switch to Base Sepolia"
+      ? "Switch network"
       : !hasPosition
         ? "No position to withdraw"
         : redeemShares <= 0n
@@ -309,7 +309,7 @@ export function deriveVaultConfirm(
   const label = isDep ? depositLabel : withdrawLabel;
 
   // ── honest per-vault copy (plain data; the hook renders identical JSX around it) ──
-  const subYieldNote = isWrapper ? " Yield comes from Morpho, not Aave." : "";
+  const subYieldNote = isWrapper ? " Yield comes from Morpho." : "";
   // For a wrapper the SparkPoint performance fee STACKS on TOP of the Morpho vault's own native
   // curator fee — both are disclosed (Constitution III / FR-023).
   const feeRow: [string, string, string] = isWrapper
@@ -354,7 +354,7 @@ export function deriveVaultConfirm(
     ? `Accrued performance fee: ${feePctInt}% of profit${hwmClause} — already reflected in your share price (stacks on Morpho's curator fee). 0% to withdraw, 0% on your principal.`
     : `Accrued performance fee: ${feePctInt}% of profit${hwmClause} — already reflected in your share price. 0% to withdraw, 0% on your principal.`;
   const venueGuard = isWrapper
-    ? "Yield source — Morpho (external), not Aave"
+    ? "Yield source — Morpho (external)"
     : "Allowlisted protocol — Aave v3 (Base)";
   const withdrawGuardN2 = isWrapper
     ? "SparkPoint never pauses/caps withdrawals; exit is bounded only by live Morpho liquidity (N2)."

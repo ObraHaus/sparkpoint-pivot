@@ -127,8 +127,9 @@ export const CHAIN_META: Readonly<Record<number, ChainMeta>> = {
     explorerRoot: "https://explorer.mainnet.chain.robinhood.com",
     testnet: false,
     color: "#00C805",
-    // §B beta (Phase 1): the ONLY chain the mainnet beta serves. No vault (Base-only); the swap is
-    // the user-signed Uniswap V3 path (address book wired + verified). Switchable so the wallet can
+    // §B beta (Phase 1): the ONLY chain the mainnet beta serves. No launch vault here (the launch
+    // vault is deferred); the beta serves the curated wrapper program, and the swap is the
+    // user-signed Uniswap V3 path (address book wired + verified). Switchable so the wallet can
     // operate on it; the agent's 4663 policy allowlist stays empty (fail-closed).
     offersVault: false,
     switchable: true,

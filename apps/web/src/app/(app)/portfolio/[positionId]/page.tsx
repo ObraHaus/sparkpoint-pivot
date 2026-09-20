@@ -19,6 +19,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { usePortfolioView, usePositionTransactions, type PositionTx } from "@/lib/agent/useAgent";
 import { explorerRoot, explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import "@/components/screens/portfolio.css";
 
 const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
@@ -52,6 +53,19 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
   // §B2/§tx agent-derived PnL + transaction history (called unconditionally — Rules of Hooks).
   const agent = usePortfolioView();
   const txView = usePositionTransactions();
+
+  if (!VAULT_CHAIN_AVAILABLE) {
+    return (
+      <div className="page page-narrow">
+        <Link className="qlink" style={{ display: "inline-flex", marginBottom: 14 }} href={toHref("portfolio")}>
+          <Icon name="chevr" size={15} /> Back to portfolio
+        </Link>
+        <div className="card card-pad muted">
+          Vault positions aren&rsquo;t part of the Robinhood Chain beta yet.
+        </div>
+      </div>
+    );
+  }
 
   if (positionId !== "vault") {
     return (

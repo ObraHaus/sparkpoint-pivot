@@ -137,6 +137,13 @@ const EMPTY_CHIPS: string[] = IS_ROBINHOOD_MAINNET_BUILD
   ? ["Swap ETH → USDG", "What’s in my wallet?", "How do you keep my funds safe?", "What can you do?"]
   : [...STARTER_CHIPS];
 
+// 037's follow-up chips are written for the alpha product (Aave vault, direct supply). On the
+// Robinhood Chain beta those suggestions are wrong-network, so the explicit alpha-only ones are
+// dropped here at the consumer — leaving `followups.ts` a pure leaf module.
+const BETA_BLOCKED_CHIP = /aave|direct supply/i;
+const betaChips = (chips: string[]): string[] =>
+  IS_ROBINHOOD_MAINNET_BUILD ? chips.filter((c) => !BETA_BLOCKED_CHIP.test(c)) : chips;
+
 /**
  * 037 — the signals a finished turn offers, read off its own blocks.
  *
@@ -187,7 +194,7 @@ function followUpsFor(userMessage: string, cards: ChatCard[]): string[] {
     if (block.type === "tip") tipTopics.push(block.topic);
     if (block.type === "tool_step") stepLabels.push(block.label);
   }
-  return followUps({ userMessage, blockTypes, tipTopics, stepLabels });
+  return betaChips(followUps({ userMessage, blockTypes, tipTopics, stepLabels }));
 }
 
 let UID = 0;
@@ -960,7 +967,7 @@ export default function ChatPage() {
         setTurns(replayed);
         // 039 — a saved conversation is not a new one. It used to reset to the starters, so a
         // thread that had spent ten turns on fees reopened offering "What's in my wallet?".
-        const resumed = followUpsForThread(threadTurnsFor(replayed));
+        const resumed = betaChips(followUpsForThread(threadTurnsFor(replayed)));
         setChips(resumed.length ? resumed : EMPTY_CHIPS);
       } catch {
         setTurns([{ id: nextId(), kind: "ai", text: "Couldn’t load that conversation." }]);

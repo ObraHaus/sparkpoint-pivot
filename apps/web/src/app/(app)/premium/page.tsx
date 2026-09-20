@@ -21,7 +21,7 @@ import "@/components/screens/premium.css";
 const FEATURES: [string, string, string][] = [
   ["AI chat assistant", "Full", "Full"],
   ["Portfolio & read access", "Full", "Full"],
-  ["Aave Yield Vault — deposit / yield / withdraw", "Full", "Full"],
+  ["Live vault — deposit / yield / withdraw", "Full", "Full"],
   ["Swaps & withdraw-always", "Full", "Full"],
   ["Strategy analysis", "Basic", "Deeper & more frequent"],
   ["Advanced strategy vaults (when live)", "—", "Included"],
@@ -148,7 +148,7 @@ export default function Page() {
           <div className="pp">$0</div>
           <div className="psub">Fully capable — forever</div>
           <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-            Chat, portfolio, the Aave vault, swaps, withdraw-always.
+            Chat, portfolio, the live vault, swaps, withdraw-always.
           </div>
           <button className="btn btn-outline btn-md" style={{ width: "100%", marginTop: 16 }} disabled>
             {premium.active ? "Always included" : "Your current plan"}
