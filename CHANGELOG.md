@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed (beta copy — the app speaks only to what is live)
 
 - **Copy pass across the beta surfaces.** The vault picker, deposit/withdraw notices, strategies, fees and portfolio copy now describe only the live curated-vault program — no references to unscheduled launches. The vault picker on the beta shows curated vaults only, and the default deposit selection is the first live vault.
+- **Copy pass (continued).** The public landing page, SEO metadata, onboarding, premium, automation, portfolio position detail, and the chat follow-up chips now describe only the live curated-vault program, in the app's own words.
 
 ### Fixed (051 follow-up — beta deposit route, CTA wording, fresh builds)
 

@@ -252,7 +252,7 @@ export default function Page() {
               borderRadius: "var(--radius)",
             }}
           >
-            <span style={{ fontSize: 13.5 }}>Auto-rebalance within the Aave vault only</span>
+            <span style={{ fontSize: 13.5 }}>Auto-rebalance within the allowlisted vault only</span>
             <button className={"switch" + (on ? " on" : "")} onClick={() => setOn((v) => !v)} />
           </div>
         </div>

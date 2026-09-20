@@ -136,7 +136,7 @@ export default function Page() {
         </div>
         {vaultUnavailable ? (
           <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: "2px 0 10px", lineHeight: 1.5 }}>
-            <Icon name="info" size={13} /> These vault-level facts are read from the <b>Base-only</b> AI vault, which
+            <Icon name="info" size={13} /> These vault-level facts are read from the <b>AI yield vault</b>, which
             isn&rsquo;t part of the Robinhood mainnet beta yet. Your can/can&rsquo;t guarantees above still hold.
           </div>
         ) : null}

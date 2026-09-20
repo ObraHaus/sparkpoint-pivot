@@ -16,7 +16,7 @@ import { SparkLogo } from "@/components/ui/SparkLogo";
  *   pose 1  Starfield       → 01 Sparky proposes
  *   pose 2  Galaxy (new)    → 02 Guardrails check
  *   pose 3  Helix (DNA)     → 03 You sign
- *   pose 4  Wave (terrain)  → 04 The Aave Yield Vault
+ *   pose 4  Wave (terrain)  → 04 The Curated Vaults
  *   pose 5  Gather → burst  → 05 Fully self-custodial (white close)
  *
  * The whole engine lives in one mount-once useEffect, mirroring the prior
@@ -962,7 +962,7 @@ export default function NewEraLanding() {
               <span className="kicker">01 — Sparky proposes</span>
               <h1 className="head">An AI that reads the whole market for you.</h1>
               <p className="sub wide">
-                It watches Aave rates, your wallet, and your plan — then suggests the next move in plain language, with
+                It watches the live vaults, your wallet, and your plan — then suggests the next move in plain language, with
                 its reasoning and its sources. <b>Always a suggestion, never an order.</b>
               </p>
             </div>
@@ -972,17 +972,17 @@ export default function NewEraLanding() {
                   <span className="gdot"></span>Sparky<span className="gc-time">now</span>
                 </div>
                 <div className="gc-text">
-                  Aave USDC just moved to <b>4.3%</b>. Want to put your idle USDC to work?
+                  USDG just moved to <b>3.6%</b>. Want to put your idle USDG to work?
                 </div>
               </div>
               <div className="gcard float d2" style={{ bottom: 0, left: "30px", right: "8px", padding: "14px 15px" }}>
                 <span className="gc-badge">AI suggestion — you approve &amp; sign</span>
                 <div className="gc-rec">
-                  Move idle USDC → <b>Aave Vault</b>
+                  Move idle USDG → <b>Curated Vault</b>
                 </div>
                 <div className="gc-apyrow">
                   <div>
-                    <div className="gc-apy tnum">4.3%</div>
+                    <div className="gc-apy tnum">3.6%</div>
                     <div className="gc-apylbl">net APY · estimate</div>
                   </div>
                   <svg className="sparkline" viewBox="0 0 128 40" preserveAspectRatio="none">
@@ -1025,7 +1025,7 @@ export default function NewEraLanding() {
                         <path d="M5 13l4 4L19 7" />
                       </svg>
                     </span>
-                    Allowlisted protocol · Aave v3
+                    Allowlisted vault · curated board
                   </div>
                   <div className="grow">
                     <span className="gcheck">
@@ -1075,7 +1075,7 @@ export default function NewEraLanding() {
                   </svg>
                   Sign transaction
                 </div>
-                <div className="gc-sub">Deposit 2,150 USDC → Aave Vault</div>
+                <div className="gc-sub">Deposit 2,150 USDG → Curated Vault</div>
                 <svg className="sigpad" viewBox="0 0 200 62" preserveAspectRatio="none">
                   <path
                     className="sig"
@@ -1098,7 +1098,7 @@ export default function NewEraLanding() {
         <section className="panel right" id="vault">
           <div className="wrap">
             <div className="col">
-              <span className="kicker">04 — The Aave Yield Vault</span>
+              <span className="kicker">04 — The Curated Vaults</span>
               <h1 className="head">
                 Conservative yield, <span className="tail">capital-preservation-first.</span>
               </h1>
@@ -1106,7 +1106,7 @@ export default function NewEraLanding() {
               <ul className="stats">
                 <li>
                   <span className="sn" style={{ color: "var(--brand-cyan)" }}>
-                    4.3%
+                    3.6%
                   </span>
                   <span className="sl">net APY · estimate</span>
                 </li>
@@ -1118,17 +1118,17 @@ export default function NewEraLanding() {
                 </li>
                 <li>
                   <span className="sn">0%</span>
-                  <span className="sl">Sparky fee</span>
+                  <span className="sl">management fee</span>
                 </li>
               </ul>
             </div>
             <div className="gfx">
               <div className="gcard float" style={{ inset: "16px", padding: "18px" }}>
                 <div className="gc-head">
-                  Aave Yield Vault<span className="gc-time">Base</span>
+                  Curated USDG vault<span className="gc-time">Robinhood Chain</span>
                 </div>
                 <div className="gc-apy tnum" style={{ marginTop: "10px" }}>
-                  4.3%
+                  3.6%
                   <span style={{ fontSize: "13px", color: "var(--muted-foreground)", fontWeight: 500 }}> net APY</span>
                 </div>
                 <svg className="areachart" viewBox="0 0 240 92" preserveAspectRatio="none">
@@ -1269,7 +1269,7 @@ export default function NewEraLanding() {
         </div>
         <div className="fbot">
           <div className="fine">
-            Single Aave Yield Vault · Base only · alpha-gated. Not financial advice; capital at
+            Curated vaults · Robinhood Chain · alpha-gated. Not financial advice; capital at
             risk.
           </div>
           <div className="fcopy">© 2026 Sparky — AI-native onchain hedge fund.</div>
