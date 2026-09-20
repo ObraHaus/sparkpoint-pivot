@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "deposit-screen-and-fresh-builds",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Deposit screen fixes, clearer button labels, and fresh builds",
+      "body": "The Deposit screen now opens correctly for the wrapped curated vaults on Robinhood Chain (it previously showed a 'not part of the beta yet' notice), and the button now names the token — 'Deposit USDG' — instead of internal wording. The Portfolio note now points to the live curated vaults.\n\nWe also fixed app updates not showing up until a hard refresh: new builds now reach an open tab and the update banner can reload onto them cleanly.",
+      "published_at": "2026-09-20T09:46:37Z"
+    },
+    {
       "slug": "token-logos",
       "type": "changelog",
       "tag": "Improved",

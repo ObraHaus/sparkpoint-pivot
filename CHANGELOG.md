@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (051 follow-up — beta deposit route, CTA wording, fresh builds)
+
+- **The deposit/withdraw screen now works for curated wrappers on the beta.** The route-level “no vault on this build” notice (correct for the Base-only Aave vault) fired before the `?vault=` selection was read, so the Steakhouse wrapper’s deposit page showed “isn’t part of the Robinhood Chain beta yet”. The notice now renders only when no curated wrapper is selected, and the form shows **Deposit USDG** with the wrapper’s own asset.
+- **CTA wording:** “Deposit via SparkPoint wrapper” → **“Deposit USDG”** (the token). “SparkPoint wrapper” no longer appears in vault UI copy — docs/learn/trust keep the full term.
+- **Portfolio beta notice** now points at the live curated vaults instead of claiming the AI vault is absent on 4663.
+- **Auto-refresh on new deployments:** page HTML was served from Next’s full-route cache with `s-maxage=31536000`, so a reload kept the old build and the force-refresh banner looped to a manual Refresh. The root layout is now `dynamic = "force-dynamic"` — HTML is no-store, while `/_next/static` chunks keep immutable caching.
+
 ### Added (052 — token logos)
 
 - **Real token logos across the app.** The collected art is bundled locally in `apps/web/public/tokens/`: USDG (the official Global Dollar mark), ETH/WETH/USDC, and 11 of the 14 Robinhood Stock Tokens (full-colour official marks via Wikimedia Commons; CRCL monochrome via Simple Icons). `lib/logos.ts` now resolves **local-first** by chain + exact address or a verified symbol, then the Trust Wallet CDN, then the letter avatar — so the swap picker/header, the vault cards (feature + live) and the portfolio rows show real marks on 4663 instead of letters. The verified-only symbol rule and “decorative, never a trust signal” are unchanged. SPY, QQQ and GLD keep the avatar (no reliable public logo found).

@@ -27,6 +27,8 @@ export interface RailVault {
   wrapped: boolean;
   wrapperAddress: string | null;
   depositMode: "direct" | "wrapper";
+  /** 051 — the vault's asset symbol, for the "Deposit <TOKEN>" CTA (absent ⇒ "Deposit"). */
+  assetSymbol?: string;
 }
 
 /** An in-app vault the existing deposit flow already understands. */
@@ -85,10 +87,15 @@ export function wrapperFeeDisclosure(wrapperLabel: string): string {
 
 export function directFeeDisclosure(): string {
   return (
-    "No SparkPoint wrapper is attached to this vault — SparkPoint charges no fee. You deposit " +
-    "directly into the vault contract from your own wallet, and you can withdraw directly at any " +
-    "time."
+    "This vault is deposited directly — SparkPoint charges no fee. You deposit straight into the " +
+    "vault contract from your own wallet, and you can withdraw directly at any time."
   );
+}
+
+/** "Deposit USDG" / "Deposit" — the CTA names the token, never "SparkPoint wrapper" (051). */
+function depositLabel(vault: RailVault): string {
+  const symbol = vault.assetSymbol?.trim();
+  return symbol ? `Deposit ${symbol}` : "Deposit";
 }
 
 export function depositRail(
@@ -102,7 +109,7 @@ export function depositRail(
       return {
         kind: "wrapper",
         href: wrapper.depositHref,
-        label: "Deposit via SparkPoint wrapper",
+        label: depositLabel(vault),
         disclosure: wrapperFeeDisclosure(vault.label),
       };
     }
@@ -115,7 +122,7 @@ export function depositRail(
         kind: "wrapper-pending",
         label: "In-app deposit coming soon",
         note:
-          `The SparkPoint wrapper for this vault is deployed on-chain (${vault.wrapperAddress}), ` +
+          `The wrapper for this vault is deployed on-chain (${vault.wrapperAddress}), ` +
           "but in-app deposits aren't wired for it in this build yet. Nothing is deposit-ready in " +
           "the app here yet.",
       };
@@ -135,7 +142,7 @@ export function depositRail(
     return {
       kind: "direct",
       href: local.depositHref,
-      label: "Deposit direct",
+      label: depositLabel(vault),
       disclosure: directFeeDisclosure(),
     };
   }

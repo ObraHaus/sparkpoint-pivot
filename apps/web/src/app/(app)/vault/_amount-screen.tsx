@@ -109,6 +109,10 @@ export function AmountScreen({
   const selectedBoardVault = boardWrappers.find(
     (w) => w.address.toLowerCase() === (sel.vaultAddress ?? "").toLowerCase(),
   );
+  // 051 — a curated universal wrapper is depositable on this build even though the SparkPoint Aave
+  // vault is Base-only; the launch/default path keeps the honest "not part of the beta" notice.
+  const isUniversalWrapper = sel.kind === "universal_wrapper";
+  const assetSymbol = sel.symbol ?? (isUniversalWrapper ? "USDG" : "USDC");
   const backHref = toHref("vault") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
 
   // LIVE figures + gating + the REAL execution config (shared with the chat inline path). The selected
@@ -150,6 +154,31 @@ export function AmountScreen({
     return <ConfirmFlow intent={mode} mount="route" onchain={onchain} />;
   }
 
+  // Robinhood Chain beta without a curated wrapper selected: the SparkPoint Aave vault is Base-only.
+  if (!VAULT_CHAIN_AVAILABLE && !isUniversalWrapper) {
+    return (
+      <div className="page page-narrow">
+        <div className="pagehead">
+          <div>
+            <h1>{isDep ? "Deposit" : "Withdraw"}</h1>
+            <div className="sub">AI-managed yield vault</div>
+          </div>
+        </div>
+        <div
+          className="card card-pad"
+          style={{ marginTop: 8, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}
+        >
+          The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — there&rsquo;s nothing to{" "}
+          {mode} on this network right now. Curated vaults are live on the{" "}
+          <Link style={{ color: "var(--primary)" }} href={toHref("vault")}>
+            Vault page
+          </Link>
+          .
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page page-narrow">
       <Link className="qlink" style={{ display: "inline-flex", marginBottom: 14 }} href={backHref}>
@@ -157,11 +186,11 @@ export function AmountScreen({
       </Link>
       <div className="pagehead">
         <div>
-          <h1>{isDep ? "Deposit USDC" : "Withdraw"}</h1>
+          <h1>{isDep ? `Deposit ${assetSymbol}` : "Withdraw"}</h1>
           <div className="sub">
             {isDep
               ? isWrapper
-                ? `Into ${vaultName} · yield via Morpho · net APY ${netApyText}`
+                ? `Into ${vaultName} · net APY ${netApyText}`
                 : `Into the ${vaultName} · ${netApyText} net APY (estimate)`
               : "Withdraw anytime — even if Sparky is offline"}
           </div>
@@ -184,7 +213,7 @@ export function AmountScreen({
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
               />
-              <span style={{ fontSize: 18, fontWeight: 600, color: "var(--muted-foreground)" }}>USDC</span>
+              <span style={{ fontSize: 18, fontWeight: 600, color: "var(--muted-foreground)" }}>{assetSymbol}</span>
               <button className="btn btn-ghost btn-sm" id="maxbtn" onClick={onMax}>
                 Max
               </button>
@@ -282,23 +311,8 @@ function AmountScreenLive({ mode }: { mode: "deposit" | "withdraw" }) {
  * instead of blanking (and for the default, no `?vault`, the fallback and live render are identical).
  */
 export function AmountScreenRoute({ mode }: { mode: "deposit" | "withdraw" }) {
-  // No vault on this build's app chain (Robinhood Chain beta) ⇒ no deposit/withdraw UI.
-  if (!VAULT_CHAIN_AVAILABLE) {
-    return (
-      <div className="page page-narrow">
-        <div className="pagehead">
-          <div>
-            <h1>{mode === "deposit" ? "Deposit" : "Withdraw"}</h1>
-            <div className="sub">AI-managed yield vault</div>
-          </div>
-        </div>
-        <div className="card card-pad" style={{ marginTop: 8, fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-          The AI-managed yield vault isn&rsquo;t part of the Robinhood Chain beta yet — there&rsquo;s nothing to{" "}
-          {mode} on this network right now. It arrives in a later step.
-        </div>
-      </div>
-    );
-  }
+  // 051 — the "no vault on this build" notice moved INSIDE AmountScreen: a curated universal wrapper
+  // is depositable on the Robinhood Chain beta, while the launch Aave vault is Base-only.
   return (
     <Suspense fallback={<AmountScreen mode={mode} selectedParam={null} />}>
       <AmountScreenLive mode={mode} />

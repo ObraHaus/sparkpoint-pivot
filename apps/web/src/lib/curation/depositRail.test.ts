@@ -94,7 +94,7 @@ test("an unwrapped external vault opens its explorer page — a raw ERC-4626 dep
   assert.equal(rail.kind, "direct-external");
   if (rail.kind === "direct-external") {
     assert.match(rail.href, /0x1111111111111111111111111111111111111111/i);
-    assert.match(rail.disclosure, /directly into the vault contract/);
+    assert.match(rail.disclosure, /into the vault contract/);
   }
 });
 
@@ -117,4 +117,28 @@ test("both disclosures state the performance-fee-only model in the user's terms"
   assert.match(wrapperFeeDisclosure("the wrapper"), /performance fee/);
   assert.match(wrapperFeeDisclosure("the wrapper"), /losing position/);
   assert.match(directFeeDisclosure(), /withdraw directly/);
+});
+
+// 051 — the CTA names the token, never "SparkPoint wrapper".
+test("the wrapper CTA reads 'Deposit <TOKEN>' when the asset symbol is known", () => {
+  const rail = depositRail(
+    vault({ wrapped: true, wrapperAddress: WRAPPER, depositMode: "wrapper", assetSymbol: "USDG" }),
+    KNOWN,
+    explorer,
+  );
+  assert.equal(rail.kind, "wrapper");
+  if (rail.kind === "wrapper") {
+    assert.equal(rail.label, "Deposit USDG");
+    assert.doesNotMatch(rail.label, /wrapper/i);
+  }
+});
+
+test("the wrapper CTA falls back to a bare 'Deposit' without a symbol", () => {
+  const rail = depositRail(
+    vault({ wrapped: true, wrapperAddress: WRAPPER, depositMode: "wrapper" }),
+    KNOWN,
+    explorer,
+  );
+  assert.equal(rail.kind, "wrapper");
+  if (rail.kind === "wrapper") assert.equal(rail.label, "Deposit");
 });
