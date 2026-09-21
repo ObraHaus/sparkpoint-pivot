@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "ai-sees-your-beta-portfolio",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky now sees your beta portfolio",
+      "body": "When you ask about your portfolio or where to put your funds, Sparky reads the same balances the Portfolio page shows — your idle USDG and any curated vault positions you hold — so its suggestions start from what you actually have, not from a blank slate.",
+      "published_at": "2026-09-21T00:51:26Z"
+    },
+    {
       "slug": "portfolio-beta-live",
       "type": "changelog",
       "tag": "New",
