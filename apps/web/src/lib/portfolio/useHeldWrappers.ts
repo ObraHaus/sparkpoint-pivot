@@ -19,11 +19,15 @@
  */
 
 import { useMemo } from "react";
-import { useReadContracts } from "wagmi";
-import { erc20Abi, type Address } from "viem";
+import { useReadContract, useReadContracts } from "wagmi";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { useCuratedBoard } from "@/lib/curation/useCuratedBoard";
 import { getAddresses } from "@sparkpoint/shared/addresses";
+import { wagmiConfig } from "@/lib/wagmi";
 import type { WrapperPositionInput } from "./derive";
+
+/** Chain ids wagmi has a configured transport for (matches useVault's / useConfirmPreview's typing). */
+type ReadChainId = (typeof wagmiConfig)["chains"][number]["id"];
 
 /** The ERC-4626 reads a position needs beyond ERC-20 shares. */
 const ERC4626_ABI = [
@@ -152,4 +156,57 @@ export function useHeldWrappers({
   const isLoading = enabled && (sharesQ.isLoading || (holders.length > 0 && detailQ.isLoading));
 
   return { positions, isLoading, isError: sharesQ.isError || detailQ.isError };
+}
+
+
+/**
+ * 053 — one wallet's holding in ONE curated wrapper, for a card that already knows its address
+ * (the vault board). Two direct-RPC reads: `balanceOf` then `convertToAssets` for holders only.
+ *
+ * `valueUsd` assumes the wrapper's asset is USD-priced (the curated board is stablecoin vaults, and
+ * the deposit rail already requires the chain stable) — callers show it only when readable, and the
+ * share count alone is enough to offer Withdraw.
+ */
+export interface WrapperHolding {
+  readonly shares: bigint | undefined;
+  readonly valueUsd: number | undefined;
+  readonly isLoading: boolean;
+}
+
+export function useWrapperHolding({
+  chainId,
+  account,
+  wrapper,
+  assetDecimals = 6,
+}: {
+  chainId: number | undefined;
+  account: `0x${string}` | undefined;
+  wrapper: `0x${string}` | undefined;
+  assetDecimals?: number;
+}): WrapperHolding {
+  const enabled = !!account && !!wrapper && chainId !== undefined;
+  const sharesRead = useReadContract({
+    address: wrapper,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account as Address],
+    chainId: chainId as ReadChainId | undefined,
+    query: { enabled },
+  });
+  const shares = sharesRead.data as bigint | undefined;
+  const assetsRead = useReadContract({
+    address: wrapper,
+    abi: ERC4626_ABI,
+    functionName: "convertToAssets",
+    args: [shares ?? 0n],
+    chainId: chainId as ReadChainId | undefined,
+    query: { enabled: enabled && shares !== undefined && shares > 0n },
+  });
+  const underlying = assetsRead.data as bigint | undefined;
+  return {
+    shares,
+    valueUsd: underlying === undefined ? undefined : Number(formatUnits(underlying, assetDecimals)),
+    isLoading:
+      enabled && (sharesRead.isLoading || (shares !== undefined && shares > 0n && assetsRead.isLoading)),
+  };
 }

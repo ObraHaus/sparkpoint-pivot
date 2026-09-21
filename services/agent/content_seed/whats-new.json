@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "withdraw-from-vault-card",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Withdraw straight from a vault card",
+      "body": "If you hold a curated vault, its card on the Vault page now shows your position and a Withdraw action that takes you to the withdraw screen with that vault selected. Your Portfolio row links there too. Share amounts on the deposit and withdraw screens are also shown at the right scale, and the withdraw preview names the token you'll actually receive.",
+      "published_at": "2026-09-21T14:26:10Z"
+    },
+    {
       "slug": "deposit-ack-copy",
       "type": "changelog",
       "tag": "Fixed",

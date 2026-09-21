@@ -41,6 +41,7 @@ function makeView(o: Partial<VaultConfirmView> = {}): VaultConfirmView {
     usdcAddress: USDC,
     asset: USDC,
     assetDecimals: 6,
+    shareDecimals: 6,
     isConnected: true,
     isDeployed: true,
     paused: false,

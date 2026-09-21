@@ -115,10 +115,13 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
   // 053 — the DEPOSIT ASSET's symbol (USDG on Robinhood Chain, USDC elsewhere). The board passes
   // the wrapper asset's symbol; the launch default stays USDC. Never label USDG "USDC".
   const assetSymbol = input.assetSymbol?.trim() || "USDC";
+  // Shares use the SHARE token's own decimals: a V3 wrapper reads 9 share decimals over a 6-dp
+  // asset, so formatting them with the asset scale overstated every share count by 1000×.
+  const shareDec = v.shareDecimals ?? dec;
   // The share preview is `undefined` until `previewDeposit` resolves — render "…", never a
   // momentary "≈ 0.0 shares" that reads as a real (wrong) estimate.
   const sharesPending = isDep && wantUnits > 0n && v.previewDepositShares === undefined;
-  const sharesText = sharesPending ? "…" : fmt(toNum(m.depositShares, dec), 1);
+  const sharesText = sharesPending ? "…" : fmt(toNum(m.depositShares, shareDec), 4);
 
   // ── the REAL execution config handed to ConfirmFlow (meaningful only when `ready`). The rows/guards
   //    come from the pure model; only the amount-formatted (`fmt`/`money`) cells + the branded JSX
@@ -156,7 +159,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
         okBody: (
           <>
             Your {assetSymbol} is now earning in the {vaultName} — you deposited {fmt(toNum(wantUnits, dec))}{" "}
-            {assetSymbol} for ≈ {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
+            {assetSymbol} for ≈ {fmt(toNum(m.depositShares, shareDec), 4)} {shareSymbol}.
           </>
         ),
         // 024/T024 — the disclosure follows the VAULT's real fee mechanics. This is the string the
@@ -175,7 +178,7 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
           </>
         ),
         bc: [
-          [`${shareSymbol} redeemed`, `−${fmt(toNum(m.redeemShares, dec), 1)} ${shareSymbol}`, "--loss"],
+          [`${shareSymbol} redeemed`, `−${fmt(toNum(m.redeemShares, shareDec), 4)} ${shareSymbol}`, "--loss"],
           [`${assetSymbol} in`, `+${fmt(toNum(m.redeemAssetsOut, dec))} ${assetSymbol}`, "--gain"],
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this withdrawal", "0% — none", "--gain"],

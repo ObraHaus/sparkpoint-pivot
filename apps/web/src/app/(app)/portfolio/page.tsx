@@ -610,9 +610,18 @@ export default function Page() {
               <tbody>
                 {tableRows.map((p) => {
                   const pnl = pnlFor(p.key);
+                  // 053 — a held curated wrapper routes to its own withdraw screen (the same one the
+                  // vault card and Trust & Exit use); the launch vault keeps its detail page.
+                  const isWrapperRow = p.key.startsWith("ext:");
+                  const rowHref =
+                    p.key === "vault"
+                      ? toHref("portfolio/vault")
+                      : isWrapperRow
+                        ? `${toHref("vault/withdraw")}?vault=${p.key.slice(4)}`
+                        : undefined;
                   return (
-                    <tr key={p.key} style={p.key === "vault" ? { cursor: "pointer" } : undefined}
-                        onClick={p.key === "vault" ? () => router.push(toHref("portfolio/vault")) : undefined}>
+                    <tr key={p.key} style={rowHref ? { cursor: "pointer" } : undefined}
+                        onClick={rowHref ? () => router.push(rowHref) : undefined}>
                       <td>
                         <div style={{ fontWeight: 600 }}>{p.key === "idle" ? `Idle ${stableSymbolText}` : p.label}</div>
                         <div className="muted" style={{ fontSize: 12 }}>{p.key === "idle" ? "in your wallet · earning nothing" : p.sub}</div>
@@ -639,9 +648,23 @@ export default function Page() {
                         {p.key === "idle" ? (
                           <a
                             style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
-                            onClick={() => router.push(toHref("vault/deposit"))}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(toHref("vault/deposit"));
+                            }}
                           >
                             Put it to work
+                          </a>
+                        ) : null}
+                        {isWrapperRow ? (
+                          <a
+                            style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(rowHref!);
+                            }}
+                          >
+                            Withdraw
                           </a>
                         ) : null}
                       </td>

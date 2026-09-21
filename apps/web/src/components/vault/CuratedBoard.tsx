@@ -18,7 +18,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
 import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+import { toHref } from "@/lib/nav";
+import { money } from "@/lib/utils";
+import { useWrapperHolding } from "@/lib/portfolio/useHeldWrappers";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { TokenLogo } from "@/components/ui/TokenLogo";
 import { useSession } from "@/lib/auth/useSiwe";
@@ -141,6 +145,17 @@ function Badges({
 
 function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: KnownVault[] }) {
   const range = sparklineRange(pick.apyHistory);
+  const router = useRouter();
+  const { address: account } = useAccount();
+  // 053 — a holder gets a Withdraw action on the card itself (not only via Trust & Exit).
+  const holding = useWrapperHolding({
+    chainId: pick.chainId,
+    account,
+    wrapper: (pick.wrapperAddress as `0x${string}` | null) ?? undefined,
+    assetDecimals: pick.asset.decimals ?? 6,
+  });
+  const held = (holding.shares ?? 0n) > 0n;
+  const withdrawHref = `${toHref("vault/withdraw")}?vault=${pick.wrapperAddress ?? ""}`;
   return (
     <section className="vb-feature" aria-label="Sparky recommends">
       <div className="vb-feature-grid">
@@ -182,6 +197,19 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
           </div>
           <div className="vb-ctas">
             <RailCta vault={pick} knownVaults={knownVaults} className="btn btn-primary btn-md" />
+            {held && (
+              <button
+                className="btn vb-btn-on-feature btn-md"
+                onClick={() => router.push(withdrawHref)}
+                title={
+                  holding.valueUsd !== undefined
+                    ? `Withdraw your ${money(holding.valueUsd)} position`
+                    : "Withdraw your position"
+                }
+              >
+                Withdraw{holding.valueUsd !== undefined ? ` ${money(holding.valueUsd)}` : ""}
+              </button>
+            )}
             <Link className="btn vb-btn-on-feature btn-md" href={chatAskHref()}>
               Ask Sparky why
             </Link>
@@ -223,6 +251,16 @@ function VaultCard({
   isPick: boolean;
 }) {
   const range = sparklineRange(vault.apyHistory);
+  const router = useRouter();
+  const { address: account } = useAccount();
+  // 053 — a holder sees their position on the card and can withdraw straight from it.
+  const holding = useWrapperHolding({
+    chainId: vault.chainId,
+    account,
+    wrapper: (vault.wrapperAddress as `0x${string}` | null) ?? undefined,
+    assetDecimals: vault.asset.decimals ?? 6,
+  });
+  const held = (holding.shares ?? 0n) > 0n;
   return (
     <article className="vb-card" id={`vault-${vault.address}`}>
       <div className="vb-card-top">
@@ -236,6 +274,11 @@ function VaultCard({
           </div>
         </div>
         {isPick && <span className="vb-badge spark">✦ pick</span>}
+        {held && holding.valueUsd !== undefined && (
+          <span className="vb-badge" title="Your position in this vault (read on-chain)">
+            You hold {money(holding.valueUsd)}
+          </span>
+        )}
       </div>
       <div className="vb-apyrow">
         <div className="vb-apy tnum">
@@ -260,6 +303,14 @@ function VaultCard({
       {range && <div className="vb-card-range">30d range {range} · stored scans</div>}
       <div className="vb-card-cta">
         <RailCta vault={vault} knownVaults={knownVaults} className="btn btn-primary btn-sm btn-block" />
+        {held && (
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => router.push(`${toHref("vault/withdraw")}?vault=${vault.wrapperAddress ?? ""}`)}
+          >
+            Withdraw
+          </button>
+        )}
         <a
           className="btn btn-outline btn-sm"
           href={explorerAddressUrl(vault.chainId, vault.address)}
