@@ -363,3 +363,23 @@ test("universal wrapper withdraw is never provenance-gated (N2)", () => {
   assert.ok(m.redeemShares > 0n);
   assert.equal(m.label, "Review withdrawal");
 });
+
+// ── 053: the deposit asset's symbol in the blocked-balance label (USDG on 4663, USDC default) ──
+
+test("053: an over-balance deposit names the vault's real asset (USDG), not USDC", () => {
+  const m = deriveVaultConfirm(
+    makeView({ usdcBalance: 1_000_000n }),
+    { mode: "deposit", assets: 2_000_000n, assetSymbol: "USDG" },
+    CTX,
+  );
+  assert.equal(m.label, "Insufficient USDG balance");
+});
+
+test("053: without an assetSymbol the label keeps the launch default (USDC)", () => {
+  const m = deriveVaultConfirm(
+    makeView({ usdcBalance: 1_000_000n }),
+    { mode: "deposit", assets: 2_000_000n },
+    CTX,
+  );
+  assert.equal(m.label, "Insufficient USDC balance");
+});

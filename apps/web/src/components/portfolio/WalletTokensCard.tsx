@@ -22,7 +22,13 @@ import { erc20Abi, formatUnits, type Address } from "viem";
 import { TokenLogo } from "@/components/ui/TokenLogo";
 import { Icon } from "@/lib/icons";
 import { useAddedTokens, useWalletTokens } from "@/lib/portfolio/useWalletTokens";
-import { mergeTokens, parseTokenAddress, type KnownToken } from "@/lib/portfolio/knownTokens";
+import {
+  chainKnownTokens,
+  mergeTokens,
+  parseTokenAddress,
+  type KnownToken,
+} from "@/lib/portfolio/knownTokens";
+import { getAddresses } from "@sparkpoint/shared/addresses";
 
 /** Ethereum brand purple for the native row; ERC-20s get a deterministic color from their symbol. */
 const ETH_COLOR = "#627EEA";
@@ -154,10 +160,25 @@ export function WalletTokensCard({
 }) {
   const eth = useBalance({ address, query: { enabled: !!address } });
   const { added, add, remove } = useAddedTokens(chainId, address);
-  const known = useMemo(
-    () => mergeTokens(extraKnown ?? [], added.map((a): KnownToken => ({ address: a, symbol: "" }))),
-    [extraKnown, added],
-  );
+  // 053 — the chain's KNOWN tokens (stable + wrapped native) are the baseline; the curated wrapper
+  // shares arrive via `extraKnown`, and the user's added tokens are appended. Without this the
+  // card showed "No ERC-20 tokens" to a wallet holding USDG, because only the (empty) wrapper list
+  // was ever passed in.
+  const known = useMemo(() => {
+    let book: ReturnType<typeof getAddresses> | undefined;
+    if (chainId !== undefined) {
+      try {
+        book = getAddresses(chainId);
+      } catch {
+        book = undefined;
+      }
+    }
+    return mergeTokens(
+      chainKnownTokens(book, chainId === 4663 ? "USDG" : "USDC"),
+      extraKnown ?? [],
+      added.map((a): KnownToken => ({ address: a, symbol: "" })),
+    );
+  }, [chainId, extraKnown, added]);
   const { tokens, isLoading, isError, isSupported, refetch } = useWalletTokens(chainId, address, known);
   const ethAmount = eth.data ? Number(formatUnits(eth.data.value, eth.data.decimals)) : undefined;
   const addedSet = useMemo(() => new Set(added.map((a) => a.toLowerCase())), [added]);

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "beta-deposit-signable",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Deposits into curated vaults can be signed again",
+      "body": "The confirm screen was waiting on a check that only applies to SparkPoint's own vault, so the sign button never appeared for a curated vault on the beta. It now verifies the deposit directly on-chain and tells you plainly that the policy check doesn't apply to third-party vaults. The confirm copy also names the token you're actually depositing (USDG), and your wallet list now shows the tokens we know for the network.",
+      "published_at": "2026-09-21T07:15:14Z"
+    },
+    {
       "slug": "revenue-every-token",
       "type": "changelog",
       "tag": "Fixed",

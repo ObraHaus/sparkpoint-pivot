@@ -163,7 +163,8 @@ export function usePortfolioView(): PortfolioView | null {
     queryKey: ["agent", "portfolio", identity?.account, identity?.chainId],
     enabled: online,
     staleTime: 30_000,
-    retry: false,
+    // Retry a transient 401 (identity exists before the SIWE session cookie does on first mount).
+    retry: 2,
     queryFn: ({ signal }) => client!.request<PortfolioResponse>("/portfolio", { signal }),
   });
 
