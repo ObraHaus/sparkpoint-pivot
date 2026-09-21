@@ -114,7 +114,10 @@ export function AmountScreen({
   // 051 — a curated universal wrapper is depositable on this build even though the SparkPoint Aave
   // vault is Base-only; the launch/default path keeps the honest "not part of the beta" notice.
   const isUniversalWrapper = sel.kind === "universal_wrapper";
-  const assetSymbol = sel.symbol ?? (isUniversalWrapper ? "USDG" : "USDC");
+  // 053 — the ASSET's symbol (the amount + confirm copy are in asset units): a universal wrapper
+  // names its own asset (USDG), the launch vault is USDC. `sel.symbol` for the launch option is the
+  // SHARE symbol (spvUSDC), so it is only consulted for a universal wrapper.
+  const assetSymbol = isUniversalWrapper ? (sel.symbol ?? "USDG") : "USDC";
   const backHref = toHref("vault") + (sel.vaultAddress ? `?vault=${sel.vaultAddress}` : "");
 
   // LIVE figures + gating + the REAL execution config (shared with the chat inline path). The selected
@@ -140,6 +143,8 @@ export function AmountScreen({
     vaultAddress: sel.vaultAddress,
     kind: sel.kind,
     label: sel.label,
+    // 053 — the asset symbol (USDG on 4663) so the confirm copy names the real token.
+    assetSymbol,
     // 051 — curated provenance + the stored scan APY for a dynamically-deployed V3 wrapper.
     verified: sel.verified,
     curatedNetApyBps: selectedBoardVault?.netApyBps,

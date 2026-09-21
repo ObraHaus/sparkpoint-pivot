@@ -60,9 +60,22 @@ interface VaultSimulateLite {
   } | null;
 }
 
+export interface ConfirmPreviewOptions {
+  /**
+   * `false` ⇒ the agent quote/simulate surfaces are NOT APPLICABLE to this execution: the agent
+   * quotes/simulates the LAUNCH vault, and a curated third-party wrapper is not it (the agent
+   * fails closed with NOT_DEPLOYED on 4663). The gate then rests on the direct-RPC ERC-4626
+   * preview — which IS the read the transaction relies on — and the UI must not present the
+   * absent agent step as a failure. Defaults to true (the launch vault path, unchanged).
+   */
+  readonly agentQuote?: boolean;
+}
+
 export interface ConfirmPreview {
   /** Aggregate gate. `ok` ⇒ safe to enable Sign; `error` ⇒ FAIL CLOSED (hide Sign). */
   readonly status: PreviewStatus;
+  /** False when the agent quote/simulate steps do not apply to this execution (curated wrapper). */
+  readonly agentQuoteApplicable: boolean;
   /** Agent `/vault/quote/*` health. For withdraw this is informational (never gates). */
   readonly quoteStatus: PreviewStatus;
   /** Direct-RPC `previewDeposit`/`previewRedeem` health. */
@@ -99,9 +112,13 @@ function shortMessage(err: unknown, fallback: string): string {
  * is undefined — the hooks still mount (Rules of Hooks) but fire nothing, so a
  * caller can invoke this unconditionally.
  */
-export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
+export function useConfirmPreview(
+  exec: VaultExec | undefined,
+  opts?: ConfirmPreviewOptions,
+): ConfirmPreview {
   const { chainId: connectedChainId } = useAccount();
   const { client, online } = useAgentClient();
+  const agentQuote = opts?.agentQuote !== false;
 
   const isDeposit = exec?.kind === "deposit";
   const amountArg: bigint | undefined = exec
@@ -147,8 +164,8 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
             ? "ok"
             : "error";
 
-  // ── 2. agent quote via the same-origin BFF (§3.7) ──
-  const quoteEnabled = exec !== undefined && client !== null && online;
+  // ── 2. agent quote via the same-origin BFF (§3.7) — launch-vault only ──
+  const quoteEnabled = agentQuote && exec !== undefined && client !== null && online;
   const quoteQuery = useQuery({
     queryKey: [
       "agent",
@@ -244,6 +261,11 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
     // A network mismatch (or a not-yet-resolved chain) can't be verified → fail closed.
     status = previewStatus === "loading" ? "loading" : "error";
     if (status === "error") error = "Wrong network for this transaction — switch, then retry.";
+  } else if (isDeposit && !agentQuote) {
+    // CURATED WRAPPER (053): the agent quote/simulate target the launch vault, so they are not
+    // part of this gate. The direct-RPC ERC-4626 preview is the check, and the wrapper + factory
+    // enforce their own caps/provenance on-chain.
+    status = previewStatus === "ok" ? "ok" : previewStatus === "loading" ? "loading" : "error";
   } else if (isDeposit) {
     // DEPOSIT is gated on the quote + the preview (deposits are cap/pause-gated), PLUS a positive
     // pre-sign dry-run revert (§018/US2). A sim outage does NOT block (advisory) — but we wait for
@@ -274,6 +296,7 @@ export function useConfirmPreview(exec: VaultExec | undefined): ConfirmPreview {
 
   return {
     status,
+    agentQuoteApplicable: agentQuote,
     quoteStatus,
     previewStatus,
     simStatus,

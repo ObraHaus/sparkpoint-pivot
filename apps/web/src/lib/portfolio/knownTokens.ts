@@ -27,14 +27,23 @@ export interface KnownToken {
   readonly shares?: boolean;
 }
 
-/** The chain's stable + wrapped native from the address book (zero addresses excluded). */
-export function chainKnownTokens(book: {
-  usdc?: Address;
-  weth?: Address;
-} | undefined): KnownToken[] {
+/**
+ * The chain's stable + wrapped native from the address book (zero addresses excluded).
+ *
+ * `stableSymbol` names the chain's stable — USDG on Robinhood Chain 4663, USDC on Base — because
+ * the address book's generic `usdc` slot holds whichever stable the chain actually uses. The hint
+ * only shows before the live `symbol()` read lands; that read is the authority.
+ */
+export function chainKnownTokens(
+  book: {
+    usdc?: Address;
+    weth?: Address;
+  } | undefined,
+  stableSymbol: string = "USDC",
+): KnownToken[] {
   if (!book) return [];
   const out: KnownToken[] = [];
-  if (book.usdc && !isZeroAddress(book.usdc)) out.push({ address: book.usdc, symbol: "USDG" });
+  if (book.usdc && !isZeroAddress(book.usdc)) out.push({ address: book.usdc, symbol: stableSymbol });
   if (book.weth && !isZeroAddress(book.weth)) out.push({ address: book.weth, symbol: "WETH" });
   return out;
 }

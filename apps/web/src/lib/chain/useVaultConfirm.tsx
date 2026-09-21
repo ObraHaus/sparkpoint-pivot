@@ -111,6 +111,13 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
   // Live CapRegistry per-user cap (US1) for the confirm-guard label; policy-mirror fallback.
   const capRaw = v.perUserCap ?? perUserCapRaw(v.chainId);
   const { dec, vaultName, shareSymbol } = m;
+  // 053 — the DEPOSIT ASSET's symbol (USDG on Robinhood Chain, USDC elsewhere). The board passes
+  // the wrapper asset's symbol; the launch default stays USDC. Never label USDG "USDC".
+  const assetSymbol = input.assetSymbol?.trim() || "USDC";
+  // The share preview is `undefined` until `previewDeposit` resolves — render "…", never a
+  // momentary "≈ 0.0 shares" that reads as a real (wrong) estimate.
+  const sharesPending = isDep && wantUnits > 0n && v.previewDepositShares === undefined;
+  const sharesText = sharesPending ? "…" : fmt(toNum(m.depositShares, dec), 1);
 
   // ── the REAL execution config handed to ConfirmFlow (meaningful only when `ready`). The rows/guards
   //    come from the pure model; only the amount-formatted (`fmt`/`money`) cells + the branded JSX
@@ -118,16 +125,19 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
   const onchain: OnchainConfirm = isDep
     ? {
         exec: m.depositExec,
+        // 053 — a curated wrapper is NOT the agent's launch vault: skip the launch-bound quote/sim
+        // gate (the direct-RPC ERC-4626 preview still gates Sign; caps are enforced on-chain).
+        agentQuote: !m.isWrapper,
         sub: (
           <>
-            You&rsquo;re depositing {fmt(toNum(wantUnits, dec))} USDC into the {vaultName}. You&rsquo;ll receive ≈{" "}
-            {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
+            You&rsquo;re depositing {fmt(toNum(wantUnits, dec))} {assetSymbol} into the {vaultName}. You&rsquo;ll
+            receive ≈ {sharesText} {shareSymbol}.
             {m.subYieldNote}
           </>
         ),
         bc: [
-          ["USDC out", `−${fmt(toNum(wantUnits, dec))} USDC`, "--loss"],
-          [`${shareSymbol} in`, `+${fmt(toNum(m.depositShares, dec), 1)} ${shareSymbol}`, "--gain"],
+          [`${assetSymbol} out`, `−${fmt(toNum(wantUnits, dec))} ${assetSymbol}`, "--loss"],
+          [`${shareSymbol} in`, `+${sharesText} ${shareSymbol}`, "--gain"],
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this deposit", "0% — none", "--gain"],
           m.feeRow,
@@ -142,8 +152,8 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
         ],
         okBody: (
           <>
-            Your USDC is now earning in the {vaultName} — you deposited {fmt(toNum(wantUnits, dec))} USDC for ≈{" "}
-            {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
+            Your {assetSymbol} is now earning in the {vaultName} — you deposited {fmt(toNum(wantUnits, dec))}{" "}
+            {assetSymbol} for ≈ {fmt(toNum(m.depositShares, dec), 1)} {shareSymbol}.
           </>
         ),
         // 024/T024 — the disclosure follows the VAULT's real fee mechanics. This is the string the
@@ -152,14 +162,18 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
       }
     : {
         exec: m.withdrawExec,
+        // Withdraw's agent quote is informational only (N2); skipping it for a wrapper avoids a
+        // pointless launch-vault-bound fetch.
+        agentQuote: !m.isWrapper,
         sub: (
           <>
-            You&rsquo;re withdrawing {fmt(toNum(m.redeemAssetsOut, dec))} USDC from the {vaultName} to your wallet.
+            You&rsquo;re withdrawing {fmt(toNum(m.redeemAssetsOut, dec))} {assetSymbol} from the {vaultName} to
+            your wallet.
           </>
         ),
         bc: [
           [`${shareSymbol} redeemed`, `−${fmt(toNum(m.redeemShares, dec), 1)} ${shareSymbol}`, "--loss"],
-          ["USDC in", `+${fmt(toNum(m.redeemAssetsOut, dec))} USDC`, "--gain"],
+          [`${assetSymbol} in`, `+${fmt(toNum(m.redeemAssetsOut, dec))} ${assetSymbol}`, "--gain"],
           ["Network fee (gas)", "Paid in ETH at signing", ""],
           ["Fee on this withdrawal", "0% — none", "--gain"],
         ],

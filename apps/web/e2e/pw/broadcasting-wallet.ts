@@ -9,16 +9,24 @@
  */
 
 import type { Page } from "@playwright/test";
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia, robinhoodTestnet } from "viem/chains";
 
-const CHAINS = { 84532: baseSepolia, 46630: robinhoodTestnet } as const;
+/** Robinhood Chain mainnet (4663) — not in viem's registry; defined here for the beta e2e. */
+const robinhoodMainnet = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } },
+});
+
+const CHAINS = { 84532: baseSepolia, 46630: robinhoodTestnet, 4663: robinhoodMainnet } as const;
 
 export interface BroadcastingWalletOptions {
   privateKey: Hex;
-  /** 84532 (Base Sepolia) or 46630 (Robinhood testnet). */
-  chainId: 84532 | 46630;
+  /** 84532 (Base Sepolia), 46630 (Robinhood testnet) or 4663 (Robinhood Chain). */
+  chainId: 84532 | 46630 | 4663;
   /** The chain RPC the Node-side wallet/public clients use to estimate, sign, and broadcast. */
   rpcUrl: string;
 }

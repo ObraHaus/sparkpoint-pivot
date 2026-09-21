@@ -59,6 +59,11 @@ export interface VaultConfirmInput {
   /** Registry label override for the branded wrapper (else its on-chain `label()`). */
   readonly label?: string;
   /**
+   * 053 — the DEPOSIT ASSET's display symbol (USDG on Robinhood Chain, USDC elsewhere). Used for
+   * the honest blocked-balance label; absent ⇒ "USDC" (the launch default).
+   */
+  readonly assetSymbol?: string;
+  /**
    * RETIRED (024): SparkPoint no longer authorizes DEPOSITS into this vault. Fail-closes
    * `depositSignable`. Deliberately has NO effect on the withdraw path — N2 says only underlying
    * liquidity may block an exit, never a SparkPoint decision.
@@ -282,7 +287,7 @@ export function deriveVaultConfirm(
             : paused
               ? "Deposits are paused"
               : overBalance
-                ? "Insufficient USDC balance"
+                ? `Insufficient ${input.assetSymbol?.trim() || "USDC"} balance`
                 : overCap
                   ? `Above your ${ctx.capNoun}`
                   : "Review deposit";

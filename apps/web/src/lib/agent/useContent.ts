@@ -57,7 +57,9 @@ export function useChangelog(): ChangelogView {
     queryKey: ["agent", "changelog", identity?.account, identity?.chainId],
     enabled: online,
     staleTime: 60_000,
-    retry: false,
+    // A transient 401 can land when the shell mounts right after the wallet connects but before
+    // the SIWE session cookie exists; retry briefly so the first authenticated read wins.
+    retry: 2,
     queryFn: ({ signal }) =>
       client!.request<ChangelogResponse>("/content/changelog", { signal }),
   });
@@ -74,7 +76,9 @@ export function useAnnouncement(): ContentEntry | null {
     queryKey: ["agent", "announcement", identity?.account, identity?.chainId],
     enabled: online,
     staleTime: 60_000,
-    retry: false,
+    // A transient 401 can land when the shell mounts right after the wallet connects but before
+    // the SIWE session cookie exists; retry briefly so the first authenticated read wins.
+    retry: 2,
     queryFn: ({ signal }) =>
       client!.request<AnnouncementResponse>("/content/announcement", { signal }),
   });
@@ -89,7 +93,8 @@ export function useTips(): Tip[] {
     queryKey: ["agent", "tips", identity?.account, identity?.chainId],
     enabled: online,
     staleTime: 5 * 60_000,
-    retry: false,
+    // Same transient-401 retry as the other content reads.
+    retry: 2,
     queryFn: ({ signal }) => client!.request<TipsResponse>("/tips", { signal }),
   });
   return Array.isArray(query.data?.tips) ? query.data!.tips : [];

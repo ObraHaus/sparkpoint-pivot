@@ -560,7 +560,9 @@ export default function Page() {
                 <div style={{ position: "absolute", inset: 18, borderRadius: "50%", background: "var(--card)", display: "grid", placeItems: "center", textAlign: "center" }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 600 }} className="tnum">{donutTotalText}</div>
-                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>{segments.length} positions</div>
+                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
+                      {segments.length} position{segments.length === 1 ? "" : "s"}
+                    </div>
                   </div>
                 </div>
               </div>

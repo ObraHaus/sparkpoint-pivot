@@ -30,12 +30,17 @@ test("053: address shape accepts only 0x + 40 hex, and never the zero address", 
 });
 
 test("053: chainKnownTokens names the stable + wrapped native, excluding zero placeholders", () => {
-  const toks = chainKnownTokens({ usdc: A, weth: B });
+  const toks = chainKnownTokens({ usdc: A, weth: B }, "USDG");
   assert.deepEqual(
     toks.map((t) => t.symbol),
     ["USDG", "WETH"],
   );
-  const onlyStable = chainKnownTokens({ usdc: A, weth: ZERO });
+  // The stable's display name is chain-specific: USDG on 4663, USDC elsewhere (the default).
+  assert.deepEqual(
+    chainKnownTokens({ usdc: A }).map((t) => t.symbol),
+    ["USDC"],
+  );
+  const onlyStable = chainKnownTokens({ usdc: A, weth: ZERO }, "USDG");
   assert.equal(onlyStable.length, 1);
   assert.equal(chainKnownTokens(undefined).length, 0);
 });

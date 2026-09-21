@@ -61,6 +61,12 @@ export interface OnchainConfirm {
   readonly disclosure?: React.ReactNode;
   /** Accrued-performance-fee line — shown in the success receipt (withdraw). */
   readonly receiptFeeLine?: React.ReactNode;
+  /**
+   * 053 — false for a curated third-party wrapper: the agent quote/simulate target the LAUNCH
+   * vault, so those pre-sign rows do not apply (the direct-RPC ERC-4626 preview is the check).
+   * Default true (the launch vault path, unchanged).
+   */
+  readonly agentQuote?: boolean;
 }
 
 /** Shared chrome per intent (title / header badge / back + cancel routes). */
@@ -240,7 +246,7 @@ function OnchainConfirmFlow({
 
   // REAL execution controller + REAL pre-sign preview (agent quote + on-chain eth_call).
   const exec = useExecuteVaultTx(onchain.exec);
-  const preview = useConfirmPreview(onchain.exec);
+  const preview = useConfirmPreview(onchain.exec, { agentQuote: onchain.agentQuote });
 
   const txUrl = explorerTxUrl(onchain.exec.chainId, exec.txHash);
 
@@ -415,7 +421,7 @@ function OnchainConfirmFlow({
       <div className="cf-sec">
         <div className="cf-lbl">{copy.simLabel}</div>
         <div>
-          {intent === "deposit" && (
+          {intent === "deposit" && onchain.agentQuote !== false && (
             <PreviewStep
               status={depositQuoteStep}
               loading="Checking policy & caps with Sparky"
@@ -429,24 +435,40 @@ function OnchainConfirmFlow({
             done={intent === "deposit" ? "Simulated on-chain" : "Redemption simulated"}
             error="On-chain preview failed"
           />
-          <PreviewStep
-            status={dryRunStep}
-            loading={
-              preview.approvalRequired
-                ? "Approve first — we'll dry-run the deposit after approval"
-                : intent === "deposit"
-                  ? "Dry-running the deposit (eth_call)"
-                  : "Dry-running your redemption (eth_call)"
-            }
-            done={
-              intent === "deposit"
-                ? gasHuman
-                  ? `Deposit dry-run passed · ~${gasHuman} gas`
-                  : "Deposit dry-run passed"
-                : "Redemption dry-run passed"
-            }
-            error="This would revert on-chain — nothing to sign"
-          />
+          {onchain.agentQuote !== false ? (
+            <PreviewStep
+              status={dryRunStep}
+              loading={
+                preview.approvalRequired
+                  ? "Approve first — we'll dry-run the deposit after approval"
+                  : intent === "deposit"
+                    ? "Dry-running the deposit (eth_call)"
+                    : "Dry-running your redemption (eth_call)"
+              }
+              done={
+                intent === "deposit"
+                  ? gasHuman
+                    ? `Deposit dry-run passed · ~${gasHuman} gas`
+                    : "Deposit dry-run passed"
+                  : "Redemption dry-run passed"
+              }
+              error="This would revert on-chain — nothing to sign"
+            />
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                fontSize: 13,
+                color: "var(--muted-foreground)",
+                padding: "4px 0",
+              }}
+            >
+              <Icon name="info" size={13} />
+              <span>Curated vault — verified on-chain. Sparky&apos;s policy check applies to our own vault, not third-party ones.</span>
+            </div>
+          )}
           {showReveal && (
             <div className="simbar pass">
               <Icon name="check" size={16} /> Preview passed — verified on-chain.
