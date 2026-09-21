@@ -18,9 +18,9 @@
 
 ## Phase B — agent 4663 portfolio (PR 2)
 
-- [ ] **T908** 4663 branch in `GET /portfolio`: whitelisted wrapper positions + known wallet
+- [x] **T908** 4663 branch in `GET /portfolio`: whitelisted wrapper positions + known wallet
       tokens, stable at par, per-position ids; `stale:true` degradation with nulls.
-- [ ] **T909** Agent tests (shape, par, stale, no invented numbers) + suite green + changelogs.
+- [x] **T909** Agent tests (shape, par, stale, no invented numbers) + suite green + changelogs.
 
 ## Phase C — wrapper flow index (PR 3)
 

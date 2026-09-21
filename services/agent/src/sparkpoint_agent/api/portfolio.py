@@ -38,6 +38,7 @@ this service's invariants have to match what it does, or an auditor is reading f
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -60,6 +61,7 @@ from ..db.vault_flows import (
     replay_lots,
     replay_outcomes,
 )
+from ..db.wrapper_whitelist import DEPLOYED, PgWhitelistStore
 from .errors import ApiError, ErrorCode, ErrorReason
 from .recommendations import _network_id, get_agent_config
 from .security import AccountContext
@@ -76,6 +78,18 @@ def get_vault_flow_reader() -> VaultFlowReader:
     return VaultFlowReader(get_database())
 
 
+def get_wrapper_store() -> PgWhitelistStore | None:
+    """053 — the wrapper admission mirror (the curated-wrapper registry).
+
+    Returns ``None`` when the DB is unavailable (no DATABASE_URL / construction failure): the
+    portfolio then simply has no wrapper positions — an optional read surface must never break
+    the endpoint. Overridden with a fake in tests."""
+    try:
+        return PgWhitelistStore(get_database())
+    except Exception:
+        return None
+
+
 router = APIRouter(tags=["portfolio"], dependencies=[Depends(require_verified_chain)])
 
 # The single vault position is addressed by this stable id (one ERC-4626 position per
@@ -86,6 +100,12 @@ _VAULT_POSITION_ID = "vault"
 # not a derived/fabricated figure.
 _VAULT_RISK_TIER = "conservative"
 _VAULT_STRATEGY = "vault"
+# 053 — the wallet's idle stable + the curated-wrapper positions on a chain without the launch
+# vault. The keys are wire labels the app/chat render, not policy identifiers.
+_CASH_STRATEGY = "cash"
+_CASH_RISK_TIER = "cash"
+_WRAPPER_STRATEGY = "wrapper"
+_WRAPPER_RISK_TIER = "external"
 
 # §3.3 ``?include=`` sections.
 _ALL_SECTIONS: frozenset[str] = frozenset({"positions", "pnl", "allocation", "risk"})
@@ -94,6 +114,8 @@ _ALL_SECTIONS: frozenset[str] = frozenset({"positions", "pnl", "allocation", "ri
 # ``stale`` when the on-chain read degrades (custody balances still reconcile via the
 # frontend's direct RPC, §3.3).
 _DATA_SOURCE = "vault_rpc"
+# 053 — provenance for the curated-wrapper leg (admission mirror + direct RPC reads).
+_WRAPPER_DATA_SOURCE = "wrapper_rpc"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -411,6 +433,167 @@ def _risk(position: _VaultPosition) -> RiskSummary:
     return RiskSummary(score=None, concentrationBps=concentration, drift=None)
 
 
+# ── 053 — curated-wrapper positions + the wallet's idle stable (chains without the launch vault) ──
+
+
+@dataclass(frozen=True)
+class WrapperPosition:
+    """One curated wrapper the wallet provably holds (admission mirror + direct RPC).
+
+    053 — shared by the /portfolio route AND the chat portfolio provider, so the AI and the app
+    read the same positions from the same code."""
+
+    position_id: str
+    vault_address: str
+    label: str
+    shares: int
+    underlying: int  # wrapper-asset base units (convertToAssets)
+    asset_address: str
+    asset_decimals: int
+    share_decimals: int  # the wrapper's OWN ERC-20 share scale (V3: 9 over a 6-dp asset)
+    par: bool  # the wrapper's asset IS the chain stable ⇒ $1-par valuable
+
+
+async def read_wrapper_positions(
+    reader: VaultReader,
+    store: PgWhitelistStore | None,
+    chain_id: int,
+    owner: str,
+    stable_address: str | None,
+) -> tuple[list[WrapperPosition], bool, int]:
+    """The whitelisted wrappers this wallet holds on the request chain, read DIRECTLY over RPC.
+
+    The wrapper fleet is dynamic (049), so the agent's own admission mirror is the registry: every
+    DEPLOYED entry with a proxy address is a candidate, and only a non-zero ``balanceOf`` becomes a
+    position. A wrapper's value is folded into net worth at $1 par ONLY when its ``asset()`` IS the
+    chain stable (``config.stable_token_address``) — an unpriced asset is shown but never invented
+    into a USD figure.
+
+    Returns ``(positions, stale, block)``. ``stale`` is True when at least one candidate's read
+    failed (the figures may be incomplete — say so rather than under-report silently). A chain with
+    no deployed wrappers, or no store, returns ``([], False, block)``.
+    """
+    if store is None:
+        return [], False, 0
+    try:
+        entries = await store.list_entries(chain_id)
+    except Exception:
+        return [], False, 0
+    deployed = [e for e in entries if e.status == DEPLOYED and e.proxy_address]
+    if not deployed:
+        return [], False, 0
+
+    try:
+        block = await reader.block_number()
+    except Exception:
+        block = 0
+
+    stable = (stable_address or "").lower()
+    out: list[WrapperPosition] = []
+    failures = 0
+    for entry in deployed:
+        proxy = (entry.proxy_address or "").lower()
+        try:
+            shares = await reader.token_balance_of(proxy, owner)
+            if shares <= 0:
+                continue
+            underlying = await reader.convert_to_assets_at(proxy, shares)
+            asset = (await reader.asset_at(proxy)).lower()
+            decimals = await reader.decimals_at(asset)
+            share_decimals = await reader.decimals_at(proxy)
+            out.append(
+                WrapperPosition(
+                    position_id=f"wrapper:{proxy}",
+                    vault_address=proxy,
+                    label=entry.label or entry.name or "Curated vault",
+                    shares=shares,
+                    underlying=underlying,
+                    asset_address=asset,
+                    asset_decimals=decimals,
+                    share_decimals=share_decimals,
+                    par=bool(stable) and asset == stable,
+                )
+            )
+        except VaultUnavailable:
+            failures += 1
+    return out, failures > 0, block
+
+
+def _wrapper_detail(w: WrapperPosition) -> PositionDetail:
+    """Map a held wrapper position to the §3.3 shape. Cost basis/PnL stay null until the wrapper
+    flows are indexed (053 Phase C) — never fabricated. ``priceSource`` says whether the value is
+    the stable's $1 par or an unpriced asset (never a guessed price)."""
+    return PositionDetail(
+        positionId=w.position_id,
+        venue="wrapper",
+        asset=w.asset_address,
+        shares=str(w.shares),
+        underlying=str(w.underlying),
+        valueUsd=_usd_from_usdc(w.underlying) if w.par else "0.00",
+        priceSource="onchain" if w.par else "unpriced",
+        riskTier=None,
+    )
+
+
+def _combined_allocation(
+    position: _VaultPosition,
+    wrappers: list[WrapperPosition],
+    idle: int,
+    stable_address: str,
+) -> Allocation:
+    """§3.3 allocation across the launch vault, the held wrappers, and idle cash (053).
+
+    With no wrappers this is the launch-vault allocation unchanged (byte-identical for Base).
+    An unpriced wrapper contributes a zero-value bucket — it is never valued into a slice."""
+    if not wrappers:
+        return _allocation(position)
+    buckets: list[tuple[str, str, str, int]] = []  # (asset, strategy, tier, value)
+    if position.held:
+        buckets.append(
+            (position.asset_address, _VAULT_STRATEGY, _VAULT_RISK_TIER, position.underlying)
+        )
+    for w in wrappers:
+        buckets.append(
+            (w.asset_address, _WRAPPER_STRATEGY, _WRAPPER_RISK_TIER, w.underlying if w.par else 0)
+        )
+    buckets.append((stable_address, _CASH_STRATEGY, _CASH_RISK_TIER, idle))
+    total = sum(value for *_, value in buckets)
+
+    def slices(key_of: Callable[[tuple[str, str, str, int]], str]) -> list[AllocationSlice]:
+        merged: dict[str, int] = {}
+        for bucket in buckets:
+            if bucket[3] <= 0:
+                continue
+            key = key_of(bucket)
+            merged[key] = merged.get(key, 0) + bucket[3]
+        return [
+            AllocationSlice(key=key, valueUsd=_usd_from_usdc(value), bps=_bps_of(value, total))
+            for key, value in merged.items()
+        ]
+
+    return Allocation(
+        byAsset=slices(lambda b: b[0]),
+        byStrategy=slices(lambda b: b[1]),
+        byRiskTier=slices(lambda b: b[2]),
+    )
+
+
+def _combined_risk(
+    position: _VaultPosition, wrappers: list[WrapperPosition], idle: int
+) -> RiskSummary:
+    """§3.3 risk across the combined holdings: concentration = the largest single non-cash
+    holding's share. With no wrappers this is the launch-vault risk unchanged."""
+    if not wrappers:
+        return _risk(position)
+    total = (position.underlying if position.held else 0) + sum(
+        w.underlying for w in wrappers if w.par
+    ) + idle
+    concentration = max((w.underlying for w in wrappers if w.par), default=0)
+    if position.held:
+        concentration = max(concentration, position.underlying)
+    return RiskSummary(score=None, concentrationBps=_bps_of(concentration, total), drift=None)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -422,6 +605,7 @@ async def get_portfolio(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
+    wrapper_store: Annotated[PgWhitelistStore | None, Depends(get_wrapper_store)],
     include: Annotated[str | None, Query()] = None,
 ) -> PortfolioResponse:
     """Enriched, derived portfolio — stale-markable (agent-service-api.md §3.3).
@@ -430,9 +614,39 @@ async def get_portfolio(
     allocation/concentration from it. Cost basis + unrealized PnL come from the INDEXED on-chain
     Deposit/Withdraw flows (B2) when available, else null (never fabricated). A chain outage
     DEGRADES to ``200 + stale:true`` (the frontend reconciles custody balances via direct RPC).
+
+    053 — on a chain WITHOUT the launch vault (the Robinhood Chain beta) the portfolio is the
+    wallet's idle stable plus every whitelisted curated wrapper the wallet holds, read directly
+    over RPC. That chain is not "stale": it simply has no launch vault, and reporting one would
+    hide the user's real funds from the AI.
     """
     sections = _parse_include(include)
-    position = await _read_vault_position(reader, account)
+
+    # The launch vault is read only when this chain HAS one configured. Otherwise the position is
+    # an honest empty, not a degraded read — the beta's funds live in wrappers + the wallet.
+    if config.vault_address:
+        position = await _read_vault_position(reader, account)
+    else:
+        position = _VaultPosition(
+            shares=0,
+            underlying=0,
+            asset_address=config.stable_token_address or "",
+            block=0,
+            stale=False,
+        )
+
+    # 053 — curated-wrapper positions (the admission mirror is the registry) + the idle stable.
+    wrapper_positions, wrappers_stale, wrappers_block = await read_wrapper_positions(
+        reader, wrapper_store, account.chain_id, account.account, config.stable_token_address
+    )
+    idle = position.idle
+    stable_read_failed = False
+    if not config.vault_address and config.stable_token_address:
+        try:
+            idle = await reader.token_balance_of(config.stable_token_address, account.account)
+        except VaultUnavailable:
+            stable_read_failed = True
+            idle = 0
 
     # §B3 native coin balance — read via the request-chain RPC, INDEPENDENT of the vault so it
     # surfaces even where the vault isn't deployed (e.g. Robinhood 46630, vault is Base-only).
@@ -450,6 +664,7 @@ async def get_portfolio(
     # NB: the replay reconstructs cumulative shares/cost FROM ZERO, so it needs the COMPLETE history
     # (a truncated fetch dropping the oldest deposits would silently understate everything) — hence
     # the high bound (effectively all flows for any real user; one vault position per user).
+    # 053 — launch-vault only: wrapper flows are indexed separately (Phase C).
     basis: BasisResult | None = None
     value_series: list[PnlSeriesPoint] = []
     if not position.stale and position.held and config.vault_address:
@@ -469,36 +684,59 @@ async def get_portfolio(
     positions: list[PositionDetail] = []
     if "positions" in sections and position.held:
         positions.append(_position_detail(position, basis))
+    if "positions" in sections:
+        positions.extend(_wrapper_detail(w) for w in wrapper_positions)
 
-    # Net worth = vault value + idle wallet USDC (both USDC at $1 par). A degraded read → "0.00".
-    vault_value = position.underlying if position.held else 0
-    net_worth = "0.00" if position.stale else _usd_from_usdc(vault_value + position.idle)
-    idle_usdc = "0.00" if position.stale else _usd_from_usdc(position.idle)
-    status = "stale" if position.stale else "ok"
+    # Net worth = launch vault + par-valued wrappers + idle stable ($1 par each). A degraded read
+    # on any leg → stale, with the figures zeroed rather than partially trusted.
+    stale = position.stale or wrappers_stale or stable_read_failed
+    wrapper_value = sum(w.underlying for w in wrapper_positions if w.par)
+    total_units = (position.underlying if position.held else 0) + wrapper_value + idle
+    net_worth = "0.00" if stale else _usd_from_usdc(total_units)
+    idle_usdc = "0.00" if stale else _usd_from_usdc(idle)
+    status = "stale" if stale else "ok"
     _cost, unrealized, realized = _pnl_usd(position, basis) if position.held else (None, None, None)
+    as_of_block = position.block or wrappers_block
 
     return PortfolioResponse(
-        asOfBlock=position.block,
+        asOfBlock=as_of_block,
         asOf=_now_iso(),
-        stale=position.stale,
+        stale=stale,
         netWorthUsd=net_worth,
         idleUsdc=idle_usdc,
         nativeBalanceWei=native_wei,
         positions=positions,
-        allocation=_allocation(position) if "allocation" in sections else None,
+        allocation=(
+            _combined_allocation(
+                position, wrapper_positions, idle, config.stable_token_address or ""
+            )
+            if "allocation" in sections
+            else None
+        ),
         pnl=(
             Pnl(series=value_series, realizedUsd=realized, unrealizedUsd=unrealized)
             if "pnl" in sections
             else None
         ),
-        risk=_risk(position) if "risk" in sections else None,
+        risk=(
+            _combined_risk(position, wrapper_positions, idle) if "risk" in sections else None
+        ),
         dataSources=[
             DataSource(
                 source=_DATA_SOURCE,
                 status=status,
-                lastBlock=position.block if not position.stale else None,
+                lastBlock=position.block if not stale else None,
             )
-        ],
+        ]
+        + (
+            [
+                DataSource(
+                    source=_WRAPPER_DATA_SOURCE, status=status, lastBlock=wrappers_block or None
+                )
+            ]
+            if wrapper_positions
+            else []
+        ),
     )
 
 

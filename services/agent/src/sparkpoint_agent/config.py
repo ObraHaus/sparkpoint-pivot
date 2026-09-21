@@ -57,6 +57,28 @@ AAVE_POOL_ADDRESS_ENV = (
 AAVE_RESERVE_USDC_ADDRESS_ENV = (
     "AAVE_RESERVE_USDC_ADDRESS"  # 017 — the reserve asset for getReserveData (PUBLIC)
 )
+STABLE_ASSET_ADDRESS_ENV = (
+    "STABLE_ASSET_ADDRESS"  # 053 — the chain's USD stable (display/par valuation, PUBLIC)
+)
+
+# 053 — the chain's stablecoin, as the web address book records it (VERIFIED addresses; a
+# display-only read target for the beta portfolio's $1-par valuation, never a policy target).
+# Env `STABLE_TOKEN_ADDRESS` overrides the default for the configured chain.
+_STABLE_TOKEN_DEFAULTS: dict[int, str] = {
+    8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # Base — native Circle USDC
+    84532: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",  # Base Sepolia — test USDC
+    4663: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",  # Robinhood Chain — USDG (6 dp)
+    46630: "0xbf4479C07Dc6fdc6dAa764A0ccA06969e894275F",  # Robinhood Testnet — test USDC
+}
+
+
+def _stable_token_for(chain_id: int, source: Mapping[str, str] | None = None) -> str | None:
+    """The chain's stable token: the env override when set, else the verified per-chain default."""
+    src = source if source is not None else os.environ
+    raw = src.get(STABLE_ASSET_ADDRESS_ENV)
+    if raw:
+        return _normalize_address(raw, STABLE_ASSET_ADDRESS_ENV)
+    return _STABLE_TOKEN_DEFAULTS.get(chain_id)
 
 # §B3 — the keyless public Robinhood testnet RPC, used when ROBINHOOD_RPC_URL is unset. The chain
 # has no official Aave/USDC (vault stays Base-only); powers read-only chat + wallet balance only.
@@ -86,6 +108,7 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         ROBINHOOD_MAINNET_RPC_URL_ENV,
         AAVE_POOL_ADDRESS_ENV,
         AAVE_RESERVE_USDC_ADDRESS_ENV,
+        STABLE_ASSET_ADDRESS_ENV,
     }
 )
 
@@ -209,6 +232,10 @@ class AgentConfig:
     # view-only. Unset ⇒ the recommender's APY stays None (honest legacy behavior, no fabrication).
     aave_pool_address: str | None = None
     aave_reserve_usdc_address: str | None = None
+    # 053 — the chain's USD stable, for the portfolio's $1-par valuation of idle cash and
+    # USD-priced wrapper positions. PUBLIC, non-key, view-only; unset ⇒ no par valuation
+    # (positions still show, but their value stays unknown — never invented).
+    stable_token_address: str | None = None
 
     @property
     def vault_deployed(self) -> bool:
@@ -297,6 +324,7 @@ class AgentConfig:
             fee_wallet_address=fee_wallet_address,
             aave_pool_address=aave_pool_address,
             aave_reserve_usdc_address=aave_reserve_usdc_address,
+            stable_token_address=_stable_token_for(chain_id, source),
         )
 
     def for_chain(self, chain_id: int) -> AgentConfig:
@@ -315,4 +343,5 @@ class AgentConfig:
             chain_id=chain_id,
             rpc_url=_resolve_rpc_url(os.environ, chain_id),
             vault_address=None,
+            stable_token_address=_stable_token_for(chain_id),
         )

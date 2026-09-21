@@ -71,12 +71,14 @@ from ..db.executions import ExecutionStore
 from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
+from ..db.wrapper_whitelist import PgWhitelistStore
 from ..knowledge import KnowledgeRetriever, default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
 from ..persona import get_persona
 from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
+from .portfolio import get_wrapper_store, read_wrapper_positions
 from .quota import require_within_quota
 from .recommendations import (
     _build_chain_context,
@@ -227,12 +229,24 @@ class _VaultChatPortfolioProvider:
     the idle USDC in their wallet, straight from chain via :class:`VaultReader`. Fail-closed: a
     :class:`VaultUnavailable` degrades to an empty ``stale`` view, never a fabricated balance."""
 
-    def __init__(self, reader: VaultReader, config: AgentConfig) -> None:
+    def __init__(
+        self,
+        reader: VaultReader,
+        config: AgentConfig,
+        wrapper_store: PgWhitelistStore | None = None,
+    ) -> None:
         self._reader = reader
         self._config = config
+        self._wrapper_store = wrapper_store
 
     async def read(self, chain: ChainContext) -> PortfolioView:
         owner = chain.owner or chain.user_account
+        # 053 — a chain WITHOUT the launch vault (the Robinhood Chain beta) still has a real
+        # portfolio: the idle stable + every whitelisted curated wrapper the wallet holds. The
+        # launch read there would degrade to an empty stale view and hide the user's funds from
+        # the AI — exactly what "the AI can see it too" is for.
+        if not self._config.vault_address:
+            return await self._read_wrapper_portfolio(chain, owner)
         try:
             shares = await self._reader.balance_of(owner)
             vault_assets = await self._reader.convert_to_assets(shares) if shares else 0
@@ -284,6 +298,59 @@ class _VaultChatPortfolioProvider:
             net_worth_usd=net,
             idle_usdc=idle,
             stale=False,
+            native_wei=native_wei,
+            native_symbol=_native_symbol(chain.chain_id),
+            tokens=tokens,
+        )
+
+    async def _read_wrapper_portfolio(self, chain: ChainContext, owner: str) -> PortfolioView:
+        """053 — the beta portfolio: idle stable + held curated wrappers, read directly over RPC."""
+        stable = self._config.stable_token_address
+        idle = 0
+        stale = False
+        if stable:
+            try:
+                idle = await self._reader.token_balance_of(stable, owner)
+            except VaultUnavailable:
+                stale = True
+        wrappers, wrappers_stale, _block = await read_wrapper_positions(
+            self._reader, self._wrapper_store, chain.chain_id, owner, stable
+        )
+        symbol = _stable_symbol(chain.chain_id)
+        positions: list[PositionLite] = []
+        for w in wrappers:
+            positions.append(
+                PositionLite(
+                    venue=w.label,
+                    asset=symbol if w.par else w.asset_address,
+                    value_usd=_fmt_units(w.underlying, 6) if w.par else "0.00",
+                    shares=_fmt_units(w.shares, w.share_decimals),
+                    underlying=symbol if w.par else w.asset_address,
+                    price_source="ERC-4626 convertToAssets" if w.par else "unpriced",
+                )
+            )
+        if idle > 0:
+            positions.append(
+                PositionLite(
+                    venue="Wallet (idle)",
+                    asset=symbol,
+                    value_usd=_fmt_units(idle, 6),
+                    underlying=symbol,
+                    price_source="wallet balance",
+                )
+            )
+        net = _fmt_units(idle + sum(w.underlying for w in wrappers if w.par), 6)
+        native_wei: int | None = None
+        try:
+            native_wei = await self._reader.native_balance(owner)
+        except VaultUnavailable:
+            _warn_once("chat_native_balance_unavailable")
+        tokens = await self._notable_tokens(chain, owner)
+        return PortfolioView(
+            positions=tuple(positions),
+            net_worth_usd=net,
+            idle_usdc=idle,
+            stale=stale or wrappers_stale,
             native_wei=native_wei,
             native_symbol=_native_symbol(chain.chain_id),
             tokens=tokens,
@@ -394,6 +461,7 @@ def get_coordinator_dag(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
+    wrapper_store: Annotated[PgWhitelistStore | None, Depends(get_wrapper_store)],
 ) -> CoordinatorDag:
     """Build the deterministic advisory DAG from the process config (overridden in tests).
 
@@ -435,7 +503,7 @@ def get_coordinator_dag(
         # 048 — "what's the best vault?" reads the CURATED RECORD (the same row /vault renders).
         # Fail-open to an honest error; never a remembered vault or a model-supplied APY.
         curated=_curated_context,
-        portfolio_provider=_VaultChatPortfolioProvider(reader, config),
+        portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
         # answers FROM the second brain (with citations). Same instance as the citation retriever;
@@ -585,6 +653,11 @@ def _warn_once(key: str) -> None:
 #: Native coin symbol per chain — Base + Base Sepolia are ETH; Robinhood testnet 46630 is ETH too.
 #: A chain not listed falls back to "ETH" rather than inventing a ticker.
 _NATIVE_SYMBOLS: dict[int, str] = {8453: "ETH", 84532: "ETH", 46630: "ETH", 4663: "ETH"}
+
+
+def _stable_symbol(chain_id: int) -> str:
+    """The chain's stable display symbol (4663 USDG, elsewhere USDC) — display only."""
+    return "USDG" if chain_id == 4663 else "USDC"
 
 
 def _native_symbol(chain_id: int) -> str:

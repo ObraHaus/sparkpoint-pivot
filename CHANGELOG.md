@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (053 Phase B — the AI sees the beta portfolio)
+
+- **`GET /portfolio` reads the beta portfolio on Robinhood Chain.** When the request chain has no launch vault, the endpoint returns the wallet's idle stable plus every whitelisted curated wrapper it holds (shares, `convertToAssets`, asset), valued at $1 par only when the wrapper's asset IS the chain stable — an unpriced asset is shown but never invented into USD. The chain is no longer reported `stale` merely for lacking the launch vault; a real read failure still degrades to `200 + stale:true` with zeroed figures. `VaultReader` gained generic `convertToAssets`/`asset`/`decimals` reads at arbitrary addresses, and a per-chain `STABLE_ASSET_ADDRESS` (verified defaults, env-overridable) powers the par valuation.
+- **The chat portfolio provider reads the same positions** the app shows (idle stable + held curated wrappers), so recommendations start from what the user actually holds on 4663.
+
 ### Added (053 — the beta portfolio)
 
 - **The portfolio now shows the wallet's real funds on the Robinhood Chain beta.** Positions, allocation and net worth are composed from direct on-chain reads: the chain stablecoin (USDG, valued at $1 par — labelled), native ETH (kept separate, never priced), and every curated wrapper the wallet holds (read from the live board, not a static list). Before any deposit the idle balance is a position row with a "Put it to work" CTA instead of an empty state, and the "AI vault isn't in the beta yet" copy is gone.

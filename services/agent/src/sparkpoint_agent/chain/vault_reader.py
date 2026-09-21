@@ -520,6 +520,22 @@ class VaultReader:
             )
         )
 
+    async def convert_to_assets_at(self, vault: str, shares: int) -> int:
+        """``convertToAssets(shares)`` on an ARBITRARY ERC-4626 (053 — curated wrappers).
+
+        The portfolio's beta path reads whitelisted wrapper instances that are not the configured
+        launch vault, so the read must target the wrapper's own address. Fail-closed like every
+        other read; view-only, never custody."""
+        return int(await self._read_at(vault, "convertToAssets", [shares]))
+
+    async def asset_at(self, vault: str) -> str:
+        """``asset()`` on an ARBITRARY ERC-4626 (053) — the underlying token of a wrapper."""
+        return str(await self._read_at(vault, "asset", []))
+
+    async def decimals_at(self, token: str) -> int:
+        """``decimals()`` on an arbitrary ERC-20 (053) — the wrapper share/asset scale."""
+        return int(await self._read_at(token, "decimals", []))
+
     async def native_balance(self, owner: str) -> int:
         """eth_getBalance(owner) → the owner's NATIVE coin balance in wei (ETH on Base / Robinhood
         testnet). Powers the wallet's native holding on chains without a vault. Fail-closed
