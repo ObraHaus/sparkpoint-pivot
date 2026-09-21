@@ -21,7 +21,15 @@ import {
   BROKER_ENGINE_CHAIN,
   useBrokerTx,
 } from "@/lib/chain/useBrokerEngine";
-import { holdingsByBroker, nonzeroHoldings, type HoldingRow } from "@/lib/chain/revenueBeta";
+import {
+  holdingsByBroker,
+  NATIVE_ASSET,
+  nonzeroHoldings,
+  type AssetMeta,
+  type HoldingRow,
+} from "@/lib/chain/revenueBeta";
+
+const ZERO_ASSET = NATIVE_ASSET as Address;
 
 /** The splitter's immutable wiring, read live so the page never quotes a hardcoded split. */
 export interface SplitterWiring {
@@ -93,6 +101,147 @@ export function useEngineRounds(engine: Address | undefined): EngineRounds {
     currentRound: value<bigint>(2),
     isLoading,
   };
+}
+
+/** One asset amount sitting in the engine's pending pot. */
+export interface PotRow {
+  readonly asset: Address;
+  readonly amount: bigint;
+}
+
+export interface BrokerPots {
+  /**
+   * The native ETH row (always, once read) plus every registered ERC-20 with a non-zero pot.
+   * ⚠️ Multi-token is the architecture — an ETH-only pot would hide the fee router's ERC-20 leg.
+   */
+  readonly rows: readonly PotRow[];
+  /** Pot reads that failed — the page must not render them as zero. */
+  readonly unread: number;
+  readonly isLoading: boolean;
+  readonly refetch: () => void;
+}
+
+/**
+ * Everything waiting to be settled, per asset.
+ *
+ * Two phases, because the engine knows its asset registry and we do not: `assets()` first, then a
+ * `pendingPot(asset)` for native ETH and every registered ERC-20. The native row is kept even at
+ * zero so an empty pot reads as "0 ETH" rather than as a missing reading.
+ */
+export function useBrokerPots(engine: Address | undefined): BrokerPots {
+  const assetsRead = useReadContracts({
+    allowFailure: true,
+    contracts: engine ? ([{ address: engine, abi: brokerEngineAbi, functionName: "assets" }] as const) : [],
+    query: { enabled: Boolean(engine) },
+  });
+
+  const assets = useMemo<readonly Address[] | undefined>(() => {
+    const r = assetsRead.data?.[0];
+    return r?.status === "success" ? (r.result as readonly Address[]) : undefined;
+  }, [assetsRead.data]);
+
+  const potAssets = useMemo<readonly Address[]>(
+    () => [ZERO_ASSET, ...(assets ?? [])],
+    [assets],
+  );
+
+  const potsRead = useReadContracts({
+    allowFailure: true,
+    contracts: engine
+      ? potAssets.map(
+          (asset) =>
+            ({
+              address: engine,
+              abi: brokerEngineAbi,
+              functionName: "pendingPot" as const,
+              args: [asset],
+            }) as const,
+        )
+      : [],
+    query: { enabled: Boolean(engine) },
+  });
+
+  const { rows, unread } = useMemo(() => {
+    const out: PotRow[] = [];
+    let failed = 0;
+    potAssets.forEach((asset, i) => {
+      const r = potsRead.data?.[i];
+      if (r === undefined) return; // still loading
+      if (r.status !== "success") {
+        failed += 1;
+        return;
+      }
+      const amount = r.result as bigint;
+      if (asset.toLowerCase() === NATIVE_ASSET || amount > 0n) out.push({ asset, amount });
+    });
+    // A failed `assets()` read means the ERC-20 legs could not even be enumerated — say so.
+    if (assetsRead.data !== undefined && assetsRead.data[0]?.status !== "success") failed += 1;
+    return { rows: out, unread: failed };
+  }, [potAssets, potsRead.data, assetsRead.data]);
+
+  return {
+    rows,
+    unread,
+    isLoading: assetsRead.isLoading || potsRead.isLoading,
+    refetch: () => {
+      void assetsRead.refetch();
+      void potsRead.refetch();
+    },
+  };
+}
+
+/** Minimal ERC-20 metadata reads — the token names its own units. */
+const erc20MetaAbi = [
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+] as const;
+
+export interface AssetMetaMap {
+  /** Keyed by lowercased asset address; an absent key means the metadata could not be read. */
+  readonly byAsset: ReadonlyMap<string, AssetMeta>;
+  readonly isLoading: boolean;
+}
+
+/**
+ * Symbol + decimals for each ERC-20, read from the token itself (batched). Native ETH is implicit
+ * and never queried. A token whose reads fail is simply absent — the caller falls back to raw base
+ * units + the address rather than guessing a shift.
+ */
+export function useAssetMeta(assets: readonly Address[]): AssetMetaMap {
+  const erc20s = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Address[] = [];
+    for (const asset of assets) {
+      const key = asset.toLowerCase();
+      if (key === NATIVE_ASSET || seen.has(key)) continue;
+      seen.add(key);
+      out.push(asset);
+    }
+    return out;
+  }, [assets]);
+
+  const reads = useReadContracts({
+    allowFailure: true,
+    contracts: erc20s.flatMap((asset) => [
+      { address: asset, abi: erc20MetaAbi, functionName: "symbol" as const },
+      { address: asset, abi: erc20MetaAbi, functionName: "decimals" as const },
+    ]),
+    query: { enabled: erc20s.length > 0 },
+  });
+
+  const byAsset = useMemo(() => {
+    const out = new Map<string, AssetMeta>();
+    erc20s.forEach((asset, i) => {
+      const symbol = reads.data?.[i * 2];
+      const decimals = reads.data?.[i * 2 + 1];
+      if (symbol?.status !== "success" || decimals?.status !== "success") return;
+      if (typeof symbol.result !== "string" || typeof decimals.result !== "number") return;
+      out.set(asset.toLowerCase(), { symbol: symbol.result, decimals: decimals.result });
+    });
+    return out;
+  }, [erc20s, reads.data]);
+
+  return { byAsset, isLoading: reads.isLoading };
 }
 
 export interface VaultHoldings {

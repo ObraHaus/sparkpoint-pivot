@@ -80,3 +80,24 @@ export function formatBpsPercent(bps: number): string {
   const pct = bps / 100;
   return `${parseFloat(pct.toFixed(2))}%`;
 }
+
+/**
+ * A token amount for display, in the token's own decimals.
+ *
+ * ⚠️ Never renders a non-zero amount as `0`. The fee row used to show "0 ETH" for a real
+ * 0.0000002 ETH fee because `toLocaleString` capped the fraction at 6 digits — a disclosure that
+ * contradicts the charge. Anything below that cap falls back to its exact decimal string (trailing
+ * zeros trimmed), so the number on the confirm screen is the number the router takes.
+ */
+export function formatAmount(v: bigint | undefined, decimals: number, max = 6): string | undefined {
+  if (v === undefined) return undefined;
+  if (v === 0n) return "0";
+  const n = Number(v) / 10 ** decimals;
+  if (n !== 0 && Math.abs(n) < 10 ** -max) {
+    const base = 10n ** BigInt(decimals);
+    const whole = v / base;
+    const frac = (v % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+    return frac.length > 0 ? `${whole}.${frac}` : whole.toString();
+  }
+  return n.toLocaleString(undefined, { maximumFractionDigits: max });
+}

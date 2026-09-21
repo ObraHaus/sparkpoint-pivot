@@ -15,18 +15,20 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { formatEther, type Address } from "viem";
+import { type Address } from "viem";
 import { useAccount } from "wagmi";
 import { chainName } from "@sparkpoint/shared/chains";
 import {
   AS_IS_DISCLOSURE,
   ENGINE_UPGRADE_NOTE,
-  NATIVE_ASSET,
+  formatAssetAmount,
   REVENUE_ROUTE,
   VAULT_CUSTODY_NOTE,
   type RouteAddressKey,
 } from "@/lib/chain/revenueBeta";
 import {
+  useAssetMeta,
+  useBrokerPots,
   useBrokerWithdraw,
   useBrokerVaultHoldings,
   useEngineRounds,
@@ -35,7 +37,6 @@ import {
 import {
   BROKER_ENGINE_CHAIN,
   useBrokerDeployment,
-  useBrokerPot,
   useOwnedBrokers,
 } from "@/lib/chain/useBrokerEngine";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
@@ -44,21 +45,13 @@ import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-function formatAsset(asset: string, amount: bigint): string {
-  if (asset.toLowerCase() === NATIVE_ASSET) return `${formatEther(amount)} ETH`;
-  // The AS-IS model delivers any registered ERC-20 in its own units. We do not know its decimals
-  // here, so the honest rendering is the base-unit amount plus the token address — never a
-  // decimal-shifted number that looks like a real quantity.
-  return `${amount.toLocaleString("en-US")} units of ${short(asset)}`;
-}
-
 export function RevenueBeta() {
   const deployment = useBrokerDeployment();
   const { isConnected, chainId: walletChain } = useAccount();
   const walletReady = isConnected && walletChain === deployment.chainId;
   const { engine, vault, splitter } = deployment;
 
-  const pot = useBrokerPot(engine);
+  const pot = useBrokerPots(engine);
   const rounds = useEngineRounds(engine);
   const wiring = useSplitterWiring(splitter);
   const owned = useOwnedBrokers(deployment);
@@ -67,6 +60,23 @@ export function RevenueBeta() {
     vault,
   );
   const withdrawTx = useBrokerWithdraw(vault);
+
+  // Symbol + decimals for every ERC-20 the page may show (pot rows and vault holdings), read from
+  // the tokens themselves. An unread token falls back to raw base units — never a guessed shift.
+  const assetMeta = useAssetMeta(
+    useMemo(
+      () => [
+        ...pot.rows.map((r) => r.asset),
+        ...holdings.rows.map((r) => r.asset as Address),
+      ],
+      [pot.rows, holdings.rows],
+    ),
+  );
+  const formatAmount = useCallback(
+    (asset: string, amount: bigint) =>
+      formatAssetAmount(asset, amount, assetMeta.byAsset.get(asset.toLowerCase())),
+    [assetMeta.byAsset],
+  );
 
   const busy = withdrawTx.isSigning || withdrawTx.isMining;
   useHoldCriticalOp(busy, "locked");
@@ -81,7 +91,7 @@ export function RevenueBeta() {
   }, [owned, pot, holdings]);
 
   const onWithdrawn = useCallback(() => {
-    setNotice("Withdrawn. The ETH is in your wallet.");
+    setNotice("Withdrawn. The assets are in your wallet.");
     setActing(undefined);
     refresh();
   }, [refresh]);
@@ -96,14 +106,34 @@ export function RevenueBeta() {
     sink: deployment.sink,
   };
 
-  /** ETH a wallet's brokers can withdraw right now — the only total this page ever shows. */
+  /**
+   * What a wallet's brokers can withdraw right now, PER ASSET — the only totals this page ever
+   * shows. ⚠️ Summing only ETH would report "nothing to withdraw" over a real ERC-20 holding.
+   */
   const withdrawable = useMemo(() => {
-    let total = 0n;
+    const totals = new Map<string, { asset: Address; amount: bigint }>();
     for (const row of holdings.rows) {
-      if (row.asset.toLowerCase() === NATIVE_ASSET) total += row.amount;
+      const key = row.asset.toLowerCase();
+      const current = totals.get(key);
+      if (current) current.amount += row.amount;
+      else totals.set(key, { asset: row.asset as Address, amount: row.amount });
     }
-    return total;
+    return [...totals.values()];
   }, [holdings.rows]);
+
+  const withdrawableLabel = useMemo(
+    () =>
+      withdrawable.length === 0
+        ? "nothing to withdraw"
+        : `${withdrawable.map((t) => formatAmount(t.asset, t.amount)).join(" + ")} ready`,
+    [withdrawable, formatAmount],
+  );
+
+  const potLabel = useMemo(() => {
+    if (pot.isLoading) return "…";
+    if (pot.rows.length === 0) return "…"; // unread — the note below says so
+    return pot.rows.map((r) => formatAmount(r.asset, r.amount)).join(" · ");
+  }, [pot.isLoading, pot.rows, formatAmount]);
 
   return (
     <div className="page">
@@ -210,9 +240,7 @@ export function RevenueBeta() {
             </div>
             <div className="payrow">
               <span className="muted">Waiting to be settled</span>
-              <span className="tnum">
-                {pot.eth === undefined ? "…" : `${formatEther(pot.eth)} ETH`}
-              </span>
+              <span className="tnum">{potLabel}</span>
             </div>
             <div className="payrow">
               <span className="muted">Rounds settled</span>
@@ -228,9 +256,16 @@ export function RevenueBeta() {
                 lineHeight: 1.5,
               }}
             >
-              The pot is ETH that has arrived but not yet been booked to brokers. `settle()` is
-              permissionless — the runners call it at each round boundary, and so can you.
+              The pot is revenue that has arrived but not yet been booked to brokers — ETH and any
+              registered ERC-20, each in its own units. `settle()` is permissionless — the runners
+              call it at each round boundary, and so can you.
             </div>
+            {pot.unread > 0 && (
+              <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--loss)" }}>
+                Some pot readings failed — an asset may be missing above. Nothing is lost; it stays
+                in the engine until the next read.
+              </div>
+            )}
           </div>
 
           {/* ── what this wallet can withdraw ────────────────────────────────────── */}
@@ -239,9 +274,7 @@ export function RevenueBeta() {
               <span className="t">
                 Your brokers{owned.mine.length > 0 ? ` · ${owned.mine.length}` : ""}
               </span>
-              <span className="lbl">
-                {withdrawable === 0n ? "nothing to withdraw" : `${formatEther(withdrawable)} ETH ready`}
-              </span>
+              <span className="lbl">{withdrawableLabel}</span>
             </div>
 
             {!isConnected ? (
@@ -291,7 +324,7 @@ export function RevenueBeta() {
                       <span className="muted" style={{ fontSize: 11.5 }}>
                         {rows.length === 0
                           ? "nothing banked yet"
-                          : rows.map((r) => formatAsset(r.asset, r.amount)).join(" · ")}
+                          : rows.map((r) => formatAmount(r.asset, r.amount)).join(" · ")}
                       </span>
                       <span style={{ marginLeft: "auto" }}>
                         <button

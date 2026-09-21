@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, ROUTING_FEE_BIPS, afterFee, amountOutMinimum, clampProposedSlippageBps, formatBpsPercent, inputFee, netInput } from "./math.ts";
+import { POLICY_ABSOLUTE_SLIPPAGE_CEILING_BPS, ROUTING_FEE_BIPS, afterFee, amountOutMinimum, clampProposedSlippageBps, formatAmount, formatBpsPercent, inputFee, netInput } from "./math.ts";
 
 test("afterFee takes the routing fee (0.20%) as an exact integer floor", () => {
   assert.equal(ROUTING_FEE_BIPS, 20); // matches the /fees page 0.20%
@@ -67,6 +67,29 @@ test("formatBpsPercent renders whole + fractional percents", () => {
   assert.equal(formatBpsPercent(100), "1%");
   assert.equal(formatBpsPercent(300), "3%");
   assert.equal(formatBpsPercent(125), "1.25%");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The swap-confirm fee row must never render a real, non-zero fee as "0" —
+// `maximumFractionDigits: 6` hid the 0.2% of a small trade (0.0000002 ETH).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("formatAmount never renders a non-zero amount as 0", () => {
+  assert.equal(formatAmount(2n * 10n ** 11n, 18), "0.0000002"); // 0.2% of 0.0001 ETH
+  assert.equal(formatAmount(1n, 18), "0.000000000000000001"); // one wei is still not zero
+  assert.equal(formatAmount(100n, 6), "0.0001"); // 100 USDG units
+});
+
+test("formatAmount keeps the ordinary grouped/rounded display", () => {
+  assert.equal(formatAmount(1_000_000_000n, 6), "1,000");
+  assert.equal(formatAmount(250_646n, 6), "0.250646");
+  assert.equal(formatAmount(4n * 10n ** 17n, 18), "0.4");
+  assert.equal(formatAmount(97_200_000_000_000n, 18), "0.000097"); // display rounding, never zero
+});
+
+test("formatAmount distinguishes a real zero from an unread value", () => {
+  assert.equal(formatAmount(0n, 18), "0");
+  assert.equal(formatAmount(undefined, 18), undefined);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

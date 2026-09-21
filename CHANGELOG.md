@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (beta revenue — multi-token display, broker list, fee row)
+
+- **The revenue page shows every fee asset, in its own units.** The pot row was ETH-only and the per-broker holdings printed raw base units plus a truncated address (`810 units of 0x5fc5…d168` for a 0.00081 USDG balance). The page now reads the engine's registered assets, reads each token's own `symbol`/`decimals`, and renders the pot, each broker's holdings and the withdrawable header per asset (ETH + any registered ERC-20); a token whose metadata cannot be read still falls back to base units. The AS-IS disclosure and route copy now say ETH and ERC-20 rather than "ETH in, ETH out".
+- **The fallback broker scan no longer hides brokers behind a burned id.** It walked `1..totalSupply`; a fusion burns an absorbed broker, so with id 1 burned and id 10 minted (`totalSupply` 9) the smoke wallet's #10 was invisible (8 shown of 9 held). The scan now walks `1..min(maxSupply, 500)`, reads ownership in its own phase (8-read engine state only for ids the wallet holds), and uses `balanceOf` to say precisely when the list is short.
+- **The swap confirm's fee row can no longer render a real fee as "0".** `maximumFractionDigits: 6` showed `0 ETH` for a real 0.0000002 ETH fee; sub-1e-6 amounts now fall back to their exact decimal string via the shared `formatAmount`, used by both the swap page and the chat card.
+- **4663 reads batch through Multicall3** (canonical `0xcA11…CA11`, code verified on-chain), so a `useReadContracts` batch is one `eth_call` instead of N.
+
 ### Fixed (053 follow-up — flow-indexer cursor)
 
 - **The flow indexer's cursor is now chain-scoped.** All flow rows live under the agent's shared mirror network id, so two chains shared one watermark — indexing the higher-blocked chain could advance the other past its head and silently stop its history. The configured vault chain keeps the historical stream; every other chain gets its own. (Found while verifying 053 Phase C live.)

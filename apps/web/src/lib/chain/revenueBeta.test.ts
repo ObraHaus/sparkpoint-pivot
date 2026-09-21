@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   AS_IS_DISCLOSURE,
   ENGINE_UPGRADE_NOTE,
+  formatAssetAmount,
   holdingsByBroker,
   NATIVE_ASSET,
   nonzeroHoldings,
@@ -36,11 +37,13 @@ test("the route names the functions that perform each step, so it is checkable o
 });
 
 test("⚠️ the route never claims a conversion or a payout asset", () => {
-  // AS-IS is the architecture: fees arrive as ETH and are delivered as ETH. A "swapped to USDC"
-  // step would describe a system that does not exist — the one copy change that would mislead.
+  // AS-IS is the architecture: fees arrive as ETH and registered ERC-20s and are delivered in the
+  // same asset. A "swapped to USDC" step would describe a system that does not exist — the one copy
+  // change that would mislead.
   const text = REVENUE_ROUTE.map((s) => `${s.title} ${s.detail}`).join(" ");
   assert.doesNotMatch(text, /convert|swap(ped)? (in)?to|into USDC|payout asset/i);
   assert.match(text, /ETH/);
+  assert.match(text, /ERC-20/); // multi-token is the architecture, not an ETH-only route
 });
 
 // ── the disclosures ──────────────────────────────────────────────────────────────────────────
@@ -49,6 +52,9 @@ test("the AS-IS disclosure says ETH in, ETH out — and that nothing is projecte
   assert.match(AS_IS_DISCLOSURE, /ETH in, ETH out/);
   assert.match(AS_IS_DISCLOSURE, /no swap/);
   assert.match(AS_IS_DISCLOSURE, /nothing is projected/);
+  // The fee router's ERC-20 leg exists: an ETH-only disclosure would now be false.
+  assert.match(AS_IS_DISCLOSURE, /ERC-20/);
+  assert.match(AS_IS_DISCLOSURE, /same token/);
 });
 
 test("the vault custody note states the absence of every escape hatch", () => {
@@ -95,4 +101,24 @@ test("holdings group by broker and preserve order", () => {
 
 test("the zero address is the native-ETH convention, spelled out once", () => {
   assert.equal(NATIVE_ASSET, "0x0000000000000000000000000000000000000000");
+});
+
+// ── multi-token amounts ──────────────────────────────────────────────────────────────────────
+
+const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
+
+test("native ETH renders in ether, exactly (no float, trailing zeros trimmed)", () => {
+  assert.equal(formatAssetAmount(NATIVE_ASSET, 97_200_000_000_000n), "0.0000972 ETH");
+  assert.equal(formatAssetAmount(NATIVE_ASSET, 1_000_000_000_000_000_000n), "1 ETH");
+  assert.equal(formatAssetAmount(NATIVE_ASSET, 0n), "0 ETH");
+});
+
+test("a registered ERC-20 renders in ITS units — 810 base units of USDG is 0.00081", () => {
+  // The live bug: the page showed "810 units of 0x5fc5…d168" for a 0.00081 USDG holding.
+  assert.equal(formatAssetAmount(USDG, 810n, { symbol: "USDG", decimals: 6 }), "0.00081 USDG");
+  assert.equal(formatAssetAmount(USDG, 1_000_000n, { symbol: "USDG", decimals: 6 }), "1 USDG");
+});
+
+test("unread metadata falls back to base units + the address, never a guessed shift", () => {
+  assert.equal(formatAssetAmount(USDG, 810n), "810 units of 0x5fc5…d168");
 });
