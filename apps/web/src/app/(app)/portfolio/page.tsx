@@ -657,15 +657,25 @@ export default function Page() {
                           </a>
                         ) : null}
                         {isWrapperRow ? (
-                          <a
-                            style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
+                          // A real button (not a faux-link): keyboard-focusable, and it stops the
+                          // row's own click from firing the navigation twice.
+                          <button
+                            type="button"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: "var(--primary)",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(rowHref!);
                             }}
                           >
                             Withdraw
-                          </a>
+                          </button>
                         ) : null}
                       </td>
                     </tr>
