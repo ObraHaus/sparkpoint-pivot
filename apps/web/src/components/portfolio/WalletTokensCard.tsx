@@ -2,19 +2,27 @@
 
 /**
  * WalletTokensCard — a MetaMask-style holdings list for the connected wallet: native ETH (gas token)
- * + every ERC-20 the wallet holds, on ANY supported network — Base Sepolia, Base, and Robinhood
- * testnet (which has no vault, so this is the portfolio's real content there).
+ * + the ERC-20s we can name or discover.
  *
- * Native ETH is a direct-RPC wagmi `useBalance` read; the ERC-20s are enumerated from the chain's
- * public Blockscout explorer via {@link useWalletTokens} (pure RPC can't list unknown tokens).
- * Non-custodial + read-only. Testnet tokens have no market price, so amounts show WITHOUT a USD value
- * rather than a fabricated one.
+ * 053 — the ERC-20 rows now come from THREE honest sources:
+ *   • the chain's KNOWN tokens (stable + wrapped native + curated wrapper shares), read directly
+ *     over RPC — this is what makes the card work on Robinhood Chain 4663, whose explorer is behind
+ *     a Cloudflare challenge;
+ *   • the user's ADDED tokens, pasted by address (validated by a real probe read, persisted per
+ *     chain+wallet, removable) — display-only, never a policy target;
+ *   • explorer enumeration (Blockscout) where the chain has one.
+ *
+ * Native ETH is a direct-RPC wagmi `useBalance` read. Non-custodial + read-only. Tokens without a
+ * price feed are shown WITHOUT a USD value rather than a fabricated one.
  */
 
-import { useBalance } from "wagmi";
-import { formatUnits } from "viem";
+import { useMemo, useState } from "react";
+import { useBalance, useReadContracts } from "wagmi";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { TokenLogo } from "@/components/ui/TokenLogo";
-import { useWalletTokens } from "@/lib/portfolio/useWalletTokens";
+import { Icon } from "@/lib/icons";
+import { useAddedTokens, useWalletTokens } from "@/lib/portfolio/useWalletTokens";
+import { mergeTokens, parseTokenAddress, type KnownToken } from "@/lib/portfolio/knownTokens";
 
 /** Ethereum brand purple for the native row; ERC-20s get a deterministic color from their symbol. */
 const ETH_COLOR = "#627EEA";
@@ -63,6 +71,7 @@ function TokenRow({
   color,
   token,
   chainId,
+  onRemove,
 }: {
   symbol: string;
   name: string;
@@ -71,6 +80,8 @@ function TokenRow({
   /** 052 — when present, the row shows the token's real logo (local art first; avatar fallback). */
   token?: { symbol: string; address: string; isNative?: boolean; verified?: boolean };
   chainId?: number;
+  /** 053 — a user-added token can be removed (it was display-only anyway). */
+  onRemove?: () => void;
 }) {
   return (
     <div
@@ -95,6 +106,25 @@ function TokenRow({
       <div className="tnum" style={{ fontWeight: 600, fontSize: 13.5, textAlign: "right", flex: "none" }}>
         {right}
       </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${symbol}`}
+          title="Remove this added token"
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "var(--muted-foreground)",
+            cursor: "pointer",
+            padding: 2,
+            flex: "none",
+            lineHeight: 1,
+          }}
+        >
+          <Icon name="x" size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -114,14 +144,63 @@ export function WalletTokensCard({
   chainId,
   address,
   networkName,
+  extraKnown,
 }: {
   chainId?: number;
   address?: `0x${string}`;
   networkName: string;
+  /** 053 — the curated wrapper share tokens for this chain (from the board). */
+  extraKnown?: readonly KnownToken[];
 }) {
   const eth = useBalance({ address, query: { enabled: !!address } });
-  const { tokens, isLoading, isError, isSupported, refetch } = useWalletTokens(chainId, address);
+  const { added, add, remove } = useAddedTokens(chainId, address);
+  const known = useMemo(
+    () => mergeTokens(extraKnown ?? [], added.map((a): KnownToken => ({ address: a, symbol: "" }))),
+    [extraKnown, added],
+  );
+  const { tokens, isLoading, isError, isSupported, refetch } = useWalletTokens(chainId, address, known);
   const ethAmount = eth.data ? Number(formatUnits(eth.data.value, eth.data.decimals)) : undefined;
+  const addedSet = useMemo(() => new Set(added.map((a) => a.toLowerCase())), [added]);
+
+  // "Add token by address": shape validation is local; the PROBE read decides whether it is an
+  // ERC-20 (symbol/decimals/balanceOf). Nothing is persisted until the probe succeeds.
+  const [input, setInput] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const parsed = parseTokenAddress(input);
+  const probe = useReadContracts({
+    query: { enabled: !!parsed && !!address },
+    contracts: parsed
+      ? [
+          { address: parsed, abi: erc20Abi, functionName: "balanceOf", args: [address as Address] },
+          { address: parsed, abi: erc20Abi, functionName: "decimals" },
+          { address: parsed, abi: erc20Abi, functionName: "symbol" },
+        ]
+      : [],
+  });
+
+  function onAddToken(e: React.FormEvent) {
+    e.preventDefault();
+    if (!parsed) {
+      setAddError("That doesn't look like a token address — it should be 0x followed by 40 hex characters.");
+      return;
+    }
+    if (addedSet.has(parsed.toLowerCase())) {
+      setAddError("That token is already in your list.");
+      return;
+    }
+    if (probe.isFetching || probe.data === undefined) {
+      setAddError("Still reading that address — try again in a moment.");
+      return;
+    }
+    const failed = probe.isError || probe.data[0]?.status === "failure" || probe.data[0]?.result === undefined;
+    if (failed) {
+      setAddError("Couldn't read that address as an ERC-20 on this network.");
+      return;
+    }
+    add(parsed);
+    setInput("");
+    setAddError(null);
+  }
 
   return (
     <div className="card card-pad" style={{ marginTop: 14 }}>
@@ -141,12 +220,10 @@ export function WalletTokensCard({
           right={ethAmount !== undefined ? `${fmtAmount(ethAmount)} ETH` : "…"}
         />
 
-        {/* ERC-20s — enumerated from the chain's explorer. */}
-        {!isSupported ? (
-          <Muted>Token discovery isn&apos;t available on this network yet.</Muted>
-        ) : isLoading ? (
-          <Muted>Reading your tokens from the {networkName} explorer…</Muted>
-        ) : isError ? (
+        {/* ERC-20s — known/added read over RPC; explorer discovery where mapped. */}
+        {isLoading ? (
+          <Muted>Reading your tokens…</Muted>
+        ) : isError && tokens.length === 0 ? (
           <Muted>
             Couldn&apos;t load token balances just now.{" "}
             <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={refetch}>
@@ -166,21 +243,60 @@ export function WalletTokensCard({
               token={{ symbol: t.symbol, address: t.address, verified: false }}
               chainId={chainId}
               right={`${fmtAmount(t.amount)} ${t.symbol}`}
+              onRemove={addedSet.has(t.address.toLowerCase()) ? () => remove(t.address) : undefined}
             />
           ))
         )}
       </div>
 
+      {/* 053 — add any ERC-20 by address; the probe read is the authority, not the paste. */}
+      <form onSubmit={onAddToken} style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            if (addError) setAddError(null);
+          }}
+          placeholder="0x… token address"
+          aria-label="Token address"
+          spellCheck={false}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid var(--border-soft)",
+            background: "transparent",
+            color: "var(--foreground)",
+            fontSize: 12.5,
+            fontFamily: "var(--font-mono, monospace)",
+          }}
+        />
+        <button
+          type="submit"
+          className="btn btn-outline btn-sm"
+          disabled={!input.trim() || probe.isFetching}
+          style={{ flex: "none" }}
+        >
+          {probe.isFetching ? "Reading…" : "Add token"}
+        </button>
+      </form>
+      {addError && (
+        <div role="alert" style={{ marginTop: 6, fontSize: 11.5, color: "var(--loss)" }}>
+          {addError}
+        </div>
+      )}
+
       <div className="muted" style={{ marginTop: 12, fontSize: 11, lineHeight: 1.5 }}>
         {isSupported ? (
           <>
-            Balances read live from the {networkName} explorer — non-custodial, read-only. Tokens without a price feed
-            are shown without a USD value.
+            Balances read live on-chain and from the {networkName} explorer — non-custodial, read-only. Tokens
+            without a price feed are shown without a USD value.
           </>
         ) : (
           <>
-            Your native ETH is read live from {networkName} — non-custodial, read-only. Full ERC-20 discovery isn&apos;t
-            wired for this network yet, so other tokens may not be listed here.
+            Balances read live on {networkName} — non-custodial, read-only. This network has no explorer
+            enumeration, so the list shows the tokens we know plus any you add by address.
           </>
         )}
       </div>

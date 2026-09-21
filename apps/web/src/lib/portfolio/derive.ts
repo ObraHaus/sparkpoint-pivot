@@ -44,6 +44,12 @@ export interface WrapperPositionInput {
   /** The wrapper asset's on-chain decimals (read per vault; defaults to USDC 6-dp). */
   readonly decimals?: number;
   /**
+   * The wrapper's SHARE-token decimals (053). V3 wrappers read 9 share decimals over a 6-dp asset,
+   * so formatting a share amount with the asset scale would silently understate it. Absent ⇒
+   * `decimals` (the launch-style equal-decimals case).
+   */
+  readonly shareDecimals?: number;
+  /**
    * Whether the wrapper's asset is USD-priced (USDC) so its value folds into the USD net-worth total.
    * Defaults true (Phase-4 wrappers wrap USDC). An unknown-price asset (false) is shown in its own
    * unit and NEVER folded into the USD total (no oracle invented) — data-model §5.
@@ -66,16 +72,18 @@ export interface DerivedPortfolio {
 
 export function derivePortfolio(input: {
   underlying?: bigint; // convertToAssets(shares) — 6-dp USDC (launch vault)
-  usdcBalance?: bigint; // idle USDC — 6-dp
+  usdcBalance?: bigint; // idle stable — 6-dp by default (see `stableDecimals`)
   shares?: bigint; // spvUSDC — 6-dp (vault share decimals == the USDC asset's)
   ethWei?: bigint; // native ETH — 18-dp
+  /** The idle stable's on-chain decimals (053; USDG/USDC are 6-dp on every supported chain). */
+  stableDecimals?: number;
   /** The launch vault address, carried onto the `'vault'` position for multi-vault views. */
   vaultAddress?: `0x${string}`;
   /** Registered branded-wrapper positions to render alongside the launch vault (011 Phase 4). */
   wrappers?: readonly WrapperPositionInput[];
 }): DerivedPortfolio {
   const vaultValue = toNum(input.underlying, 6);
-  const idleUsdc = toNum(input.usdcBalance, 6);
+  const idleUsdc = toNum(input.usdcBalance, input.stableDecimals ?? 6);
   const sharesNum = toNum(input.shares, 6);
   const ethBalance = toNum(input.ethWei, 18);
 
@@ -86,7 +94,7 @@ export function derivePortfolio(input: {
     const dec = w.decimals ?? 6;
     const value = toNum(w.underlying, dec);
     const usdPriced = w.usdPriced ?? true;
-    const wShares = toNum(w.shares, dec);
+    const wShares = toNum(w.shares, w.shareDecimals ?? dec);
     return {
       key: `ext:${w.vaultAddress.toLowerCase()}`,
       label: w.label,
