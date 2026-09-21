@@ -126,6 +126,8 @@ export function toWrapperPositionInput(
     underlying?: bigint;
     shares?: bigint;
     decimals?: number;
+    /** The wrapper's share-token decimals (053) — 9 on V3 wrappers over a 6-dp asset. */
+    shareDecimals?: number;
     assetIsUsdc?: boolean;
   },
 ): WrapperPositionInput | null {
@@ -136,6 +138,7 @@ export function toWrapperPositionInput(
     underlying: read.underlying,
     shares: read.shares,
     decimals: read.decimals,
+    shareDecimals: read.shareDecimals,
     usdPriced: read.assetIsUsdc ?? true,
   };
 }

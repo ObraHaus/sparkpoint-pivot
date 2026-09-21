@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (053 — the beta portfolio)
+
+- **The portfolio now shows the wallet's real funds on the Robinhood Chain beta.** Positions, allocation and net worth are composed from direct on-chain reads: the chain stablecoin (USDG, valued at $1 par — labelled), native ETH (kept separate, never priced), and every curated wrapper the wallet holds (read from the live board, not a static list). Before any deposit the idle balance is a position row with a "Put it to work" CTA instead of an empty state, and the "AI vault isn't in the beta yet" copy is gone.
+- **Wallet tokens + add-by-address.** The token card lists the known tokens per chain (stable, wrapped native, curated wrapper shares) read over RPC — which works on 4663, where the explorer is Cloudflare-gated — and accepts an "add token by address" (probe-validated as an ERC-20, persisted per chain+wallet, removable, display-only).
+- **Honest history on the beta.** The value chart says "No history yet — it appears after your first deposit" instead of a network placeholder; PnL stays "pending" until the flow indexer covers wrapper deposits (053 Phase C).
+
 ### Changed (beta copy — the app speaks only to what is live)
 
 - **Copy pass across the beta surfaces.** The vault picker, deposit/withdraw notices, strategies, fees and portfolio copy now describe only the live curated-vault program — no references to unscheduled launches. The vault picker on the beta shows curated vaults only, and the default deposit selection is the first live vault.

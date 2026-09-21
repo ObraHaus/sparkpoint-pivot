@@ -11,10 +11,10 @@
  * (they need an indexer we don't have yet). We never mix a real and a fake number in one card.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
-import { erc20Abi, formatUnits, type Address } from "viem";
+import { erc20Abi, type Address } from "viem";
 import { Icon } from "@/lib/icons";
 import { data } from "@/lib/mock-data";
 import { money } from "@/lib/utils";
@@ -24,6 +24,7 @@ import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { VAULT_CHAIN_AVAILABLE } from "@/lib/chain/vaultChain";
 import { derivePortfolio } from "@/lib/portfolio/derive";
+import { useHeldWrappers } from "@/lib/portfolio/useHeldWrappers";
 import { toWrapperPositionInput } from "@/lib/chain/vaultOptions";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { usePortfolioView, useMandate, mandateDrift, driftLabel } from "@/lib/agent/useAgent";
@@ -81,22 +82,49 @@ export default function Page() {
   const [range, setRange] = useState("1M");
 
   const { isConnected, chainId } = useAccount();
+  // The chain to READ: the connected one, or the display chain before a wallet connects.
+  const readChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
-  // Single curated wrapper (011): ONE fixed top-level read (hooks-safe — a growing list would need a
-  // child-component-per-wrapper). A held wrapper renders as an `ext:<addr>` portfolio row; launch-only
-  // users (no wrapper shares) yield `wrappers: []` → derivePortfolio is byte-identical to before.
-  const wrapper0 = safeAddresses(isConnected ? chainId : DISPLAY_CHAIN_ID)?.sparkPointWrappers?.[0];
+  // 053 — the curated wrappers this wallet actually HOLDS, read over RPC. The fleet is dynamic
+  // (deployed on demand, served by the curated board), so the static `sparkPointWrappers` list can
+  // never be the source on 4663 — that was the bug that showed nothing to a wrapper depositor. The
+  // static read is kept for alpha parity (baseSepolia) and merged, de-duplicated by address.
+  const held = useHeldWrappers({ chainId: readChainId, account: isConnected ? v.account : undefined });
+  const wrapper0 = safeAddresses(readChainId)?.sparkPointWrappers?.[0];
   const w0 = useVault({
     chainId: isConnected ? undefined : DISPLAY_CHAIN_ID,
     vaultAddress: wrapper0?.address,
     kind: wrapper0 ? "morpho_wrapper" : "aave_launch",
   });
+  const staticWrapperRow = wrapper0
+    ? toWrapperPositionInput(wrapper0, {
+        underlying: w0.underlying,
+        shares: w0.shares,
+        decimals: w0.assetDecimals,
+        shareDecimals: w0.shareDecimals,
+        assetIsUsdc:
+          w0.asset !== undefined &&
+          w0.usdcAddress !== undefined &&
+          w0.asset.toLowerCase() === w0.usdcAddress.toLowerCase(),
+      })
+    : null;
+  const wrapperRows = useMemo(() => {
+    const rows = [...held.positions];
+    if (
+      staticWrapperRow &&
+      !rows.some((r) => r.vaultAddress.toLowerCase() === staticWrapperRow.vaultAddress.toLowerCase())
+    ) {
+      rows.unshift(staticWrapperRow);
+    }
+    return rows;
+  }, [held.positions, staticWrapperRow]);
+
   // Native ETH on the connected chain (useBalance defaults to the wallet's chain; disabled off-wallet).
   const eth = useBalance({ address: v.account, query: { enabled: isConnected && !!v.account } });
   // The connected chain's stablecoin (USDG on Robinhood Chain 4663, USDC on Base) — read directly via
   // balanceOf/decimals/symbol so a wallet's real idle stable shows even when there's no vault to route
   // it into (the 4663 beta). wagmi v3's useBalance no longer reads ERC-20s, so this is a batched read.
-  const stableAddr = safeAddresses(isConnected ? chainId : undefined)?.usdc as Address | undefined;
+  const stableAddr = safeAddresses(readChainId)?.usdc as Address | undefined;
   const stableEnabled = isConnected && !!v.account && !!stableAddr;
   const stableReads = useReadContracts({
     query: { enabled: stableEnabled },
@@ -112,39 +140,42 @@ export default function Page() {
   const stableRaw = stableReads.data?.[0]?.result as bigint | undefined;
   const stableDecimals = stableReads.data?.[1]?.result as number | undefined;
   const stableSymbol = stableReads.data?.[2]?.result as string | undefined;
-  const wrapperRow = wrapper0
-    ? toWrapperPositionInput(wrapper0, {
-        underlying: w0.underlying,
-        shares: w0.shares,
-        decimals: w0.assetDecimals,
-        assetIsUsdc:
-          w0.asset !== undefined &&
-          w0.usdcAddress !== undefined &&
-          w0.asset.toLowerCase() === w0.usdcAddress.toLowerCase(),
-      })
-    : null;
+  const stableSymbolText = stableSymbol ?? (readChainId === 4663 ? "USDG" : "USDC");
+
+  // 053 — the derivation composes the wallet's REAL holdings: the idle stable (direct read), the
+  // launch vault when present, and every held curated wrapper. Idle is fed straight in, so the
+  // portfolio is real BEFORE any deposit and on a chain with no SparkPoint vault at all.
   const d = derivePortfolio({
-    underlying: v.underlying, usdcBalance: v.usdcBalance, shares: v.shares, ethWei: eth.data?.value,
-    wrappers: wrapperRow ? [wrapperRow] : [],
+    underlying: VAULT_CHAIN_AVAILABLE ? v.underlying : undefined,
+    usdcBalance: stableRaw ?? v.usdcBalance,
+    shares: VAULT_CHAIN_AVAILABLE ? v.shares : undefined,
+    ethWei: eth.data?.value,
+    wrappers: wrapperRows,
+    stableDecimals,
   });
 
-  // Mode — what the user's LIVE state actually is. A CONNECTED-but-not-live state (loading /
-  // wrong-network / error) is DEGRADED → dashes + skeletons, never the mock figures. Only the
-  // disconnected PREVIEW shows illustrative mock (labelled on every card).
+  // Mode — what the user's LIVE state actually is. A CONNECTED-but-not-live state (reads still in
+  // flight / a read failed) is DEGRADED → dashes + skeletons, never the mock figures. Only the
+  // disconnected PREVIEW shows illustrative mock (labelled on every card) — and only on a build
+  // whose chain has the launch vault; the beta shows a connect prompt instead of an Aave mock.
   const wrongNetwork = isConnected && v.unavailable?.kind === "vault_not_deployed";
   // §B3: Robinhood testnet (46630) is a SUPPORTED chain with no vault (vault is Base-only). It's a
   // "wrong network" for the VAULT, but we acknowledge it honestly and still show the wallet's ETH.
   const robinhood = wrongNetwork && chainId === 46630;
-  // Neither Robinhood chain has a USD price oracle wired, so on a connected-but-no-vault Robinhood
-  // chain (testnet 46630 AND mainnet beta 4663) we keep USD net worth honestly dashed but surface the
-  // wallet's REAL native ETH + stablecoin balances — real value on 4663 was being hidden behind a bare
-  // dash (handled worse than 46630). Base chains keep USD pricing; this only widens the ETH branch.
-  const noUsdOracle = wrongNetwork && (chainId === 46630 || chainId === 4663);
-  const loading = isConnected && !wrongNetwork && (v.isLoading || (eth.isLoading && !!v.account));
-  const error = isConnected && !wrongNetwork && !loading && v.isError;
-  const live = isConnected && v.isDeployed && !loading && !error && !wrongNetwork;
+  const stableSettling = stableEnabled && stableReads.isLoading && stableRaw === undefined;
+  const ethSettling = isConnected && !!v.account && eth.isLoading;
+  const loading =
+    isConnected &&
+    !v.isError &&
+    !(stableEnabled && stableReads.isError) &&
+    (stableSettling || ethSettling || held.isLoading);
+  const error = isConnected && (v.isError || (stableEnabled && stableReads.isError));
+  // 053 — LIVE means "connected and this wallet's chain reads have settled", NOT "the launch vault
+  // is deployed". On 4663 there is no launch vault, yet the wallet's funds and wrapper positions are
+  // real and must be shown.
+  const live = isConnected && !loading && !error;
   const preview = !isConnected;
-  const degraded = isConnected && !live; // dashes/skeletons — never mock
+  const previewMock = preview && VAULT_CHAIN_AVAILABLE;
 
   // §B2 DERIVED (non-custody) figures — real cost basis + unrealized PnL from the agent's on-chain
   // flow index. Custody balances above stay on direct RPC; this only fills the PnL slots. Trusted
@@ -207,29 +238,80 @@ export default function Page() {
   // Draw the REAL series when indexed; the mock shape ONLY in the disconnected preview. In a
   // connected-degraded state (loading / wrong-network / error) draw NOTHING — never a faded,
   // unlabeled mock uptrend that could read as the user's real history.
-  const chartVals = realChart ? realPoints.map((p) => p.v) : preview ? data.series1M : null;
+  const chartVals = realChart ? realPoints.map((p) => p.v) : previewMock ? data.series1M : null;
   const chart = chartVals && chartVals.length >= 2 ? areaPath(chartVals, 560, 150) : null;
 
-  // Allocation split — live real, preview mock, degraded 0 (rendered as dashes).
+  // Allocation split — built from the SAME derived positions the table shows: every held vault
+  // (launch or curated wrapper) plus the idle stable. With no vault at all it is 100% cash, which is
+  // exactly what a pre-deposit wallet should see. Preview keeps the labelled illustrative split.
+  const POSITION_COLORS = ["var(--risk-1)", "var(--primary)", "var(--gain)", "var(--brand-cyan)"];
   const mockTotal = data.allocation.reduce((s, x) => s + x.v, 0);
   const mockVaultPct = (data.allocation[0].v / mockTotal) * 100;
-  const vaultPct = live ? d.vaultPct : preview ? mockVaultPct : 0;
-  const idlePct = live ? d.idlePct : preview ? 100 - mockVaultPct : 0;
-  const donut = degraded
-    ? "conic-gradient(var(--border-soft) 0 100%)"
-    : `conic-gradient(var(--risk-1) 0 ${vaultPct}%, var(--muted-foreground) ${vaultPct}% 100%)`;
-  const pctText = (p: number) => (live || preview ? `${p.toFixed(0)}%` : DASH);
-  const largest = live ? (d.vaultValue >= d.idleUsdc ? "Aave Yield Vault" : "Idle USDC") : preview && VAULT_CHAIN_AVAILABLE ? "Aave Yield Vault" : DASH;
-
-  const netWorthText = loading ? "…" : live ? money(d.totalUsd) : preview ? money(data.netWorth) : DASH;
-  const donutTotalText = loading ? "…" : live ? money(d.totalUsd, 0) : preview ? money(mockTotal, 0) : DASH;
-
-  const mockPositions = [
-    { key: "vault", label: "Aave Yield Vault", sub: "9,834.50 spvUSDC", valueUsd: data.allocation[0].v },
-    { key: "idle", label: "Idle USDC", sub: "in your wallet", valueUsd: data.allocation[1].v },
+  const livePositions = live
+    ? d.positions.filter(
+        (p) => (p.key !== "vault" || VAULT_CHAIN_AVAILABLE) && (p.key === "idle" || p.valueUsd > 0),
+      )
+    : [];
+  const hasFunds = live && d.hasPositions;
+  const hasVaultPosition = live && d.positions.some((p) => p.key !== "idle" && p.valueUsd > 0);
+  // The table's rows: the live derived positions, or the labelled illustrative pair for a preview.
+  const mockPositionRows = [
+    { key: "vault" as const, label: "Aave Yield Vault", sub: "9,834.50 spvUSDC", valueUsd: data.allocation[0].v },
+    { key: "idle" as const, label: "Idle USDC", sub: "in your wallet", valueUsd: data.allocation[1].v },
   ];
-  const positions = live ? d.positions : preview ? mockPositions : [];
-  const emptyLive = live && !d.hasPositions;
+  const tableRows = live ? livePositions : previewMock ? mockPositionRows : [];
+  const segments = live
+    ? livePositions
+        .filter((p) => p.valueUsd > 0)
+        .map((p, i) => ({
+          key: p.key,
+          label:
+            p.key === "idle"
+              ? `Idle ${stableSymbolText} · uninvested`
+              : p.external
+                ? p.label
+                : `${p.label} · Risk 1`,
+          pct: d.totalUsd > 0 ? (p.valueUsd / d.totalUsd) * 100 : 0,
+          color: p.key === "idle" ? "var(--muted-foreground)" : POSITION_COLORS[i % POSITION_COLORS.length],
+        }))
+    : previewMock
+      ? [
+          { key: "vault", label: "Aave Yield Vault · Risk 1", pct: mockVaultPct, color: "var(--risk-1)" },
+          { key: "idle", label: "Idle USDC · uninvested", pct: 100 - mockVaultPct, color: "var(--muted-foreground)" },
+        ]
+      : [];
+  const donut = segments.length
+    ? `conic-gradient(${segments
+        .map((s, i) => {
+          const from = segments.slice(0, i).reduce((a, x) => a + x.pct, 0);
+          return `${s.color} ${from.toFixed(2)}% ${(from + s.pct).toFixed(2)}%`;
+        })
+        .join(", ")})`
+    : "conic-gradient(var(--border-soft) 0 100%)";
+  const largestPos =
+    live && livePositions.length > 0
+      ? livePositions.reduce((a, b) => (b.valueUsd > a.valueUsd ? b : a))
+      : undefined;
+  const largest = live
+    ? largestPos
+      ? largestPos.key === "idle"
+        ? `Idle ${stableSymbolText}`
+        : largestPos.label
+      : DASH
+    : previewMock
+      ? "Aave Yield Vault"
+      : DASH;
+  const concentrationPct =
+    live && hasVaultPosition && d.totalUsd > 0
+      ? Math.max(
+          ...d.positions
+            .filter((p) => p.key !== "idle" && p.valueUsd > 0)
+            .map((p) => (p.valueUsd / d.totalUsd) * 100),
+        )
+      : undefined;
+
+  const netWorthText = loading ? "…" : live ? money(d.totalUsd) : previewMock ? money(data.netWorth) : DASH;
+  const donutTotalText = loading ? "…" : live ? money(d.totalUsd, 0) : previewMock ? money(mockTotal, 0) : DASH;
   const previewTag = <StatusTag variant="mock" title="Illustrative — connect your wallet for your real position (balances read on-chain)." />;
 
   return (
@@ -276,7 +358,7 @@ export default function Page() {
           <div className="card-hd">
             <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               Net worth
-              {preview && previewTag}
+              {previewMock && previewTag}
             </span>
             <div className="seg pf-range">
               {RANGES.map((r) => (
@@ -287,7 +369,9 @@ export default function Page() {
           <div className="pf-net tnum">{netWorthText}</div>
           {live ? (
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span className="muted" style={{ fontSize: 12.5 }}>USDC across vault + wallet</span>
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                {stableSymbolText} at $1 par{d.wrapperValue > 0 ? " · vault positions at asset value" : ""}
+              </span>
               {d.ethBalance > 0 && <span className="pill ghosty" style={{ fontSize: 11 }}>+ {d.ethBalance.toFixed(4)} ETH (not in USD)</span>}
               {netUnrealizedUsd !== undefined ? (
                 <span
@@ -313,31 +397,13 @@ export default function Page() {
                 </span>
               )}
             </div>
-          ) : preview ? (
+          ) : previewMock ? (
             <div className="delta up" style={{ marginTop: 8 }}>
               <Icon name="up" size={15} />+{money(data.pnl.abs)} (+{data.pnl.pct}%, {data.pnl.window})
             </div>
-          ) : noUsdOracle ? (
-            // §B3: no USD price oracle on either Robinhood chain, so keep USD net worth honestly
-            // dashed but surface the wallet's REAL native ETH + stablecoin as read-only figures
-            // rather than only a banner sentence (4663 was hiding real value behind a bare dash).
-            <div className="muted" style={{ marginTop: 8, fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span className="pill ghosty" style={{ fontSize: 11 }}>
-                {eth.data?.value !== undefined ? `${d.ethBalance.toFixed(4)} ETH` : "… ETH"} in your wallet
-              </span>
-              {stableRaw !== undefined && stableDecimals !== undefined && stableRaw > 0n && (
-                <span className="pill ghosty" style={{ fontSize: 11 }}>
-                  {Number(formatUnits(stableRaw, stableDecimals)).toLocaleString("en-US", {
-                    maximumFractionDigits: 2,
-                  })}{" "}
-                  {stableSymbol ?? "USDG"}
-                </span>
-              )}
-              <span>No USD price on this network — read-only here.</span>
-            </div>
           ) : (
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-              {loading ? "Reading your balances…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the Robinhood Chain beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your position." : "Live figures hidden — tap Retry above."}
+              {loading ? "Reading your balances…" : error ? "Live figures hidden — tap Retry above." : "Connect your wallet to see your portfolio."}
             </div>
           )}
           <div className="pf-spark-area" style={{ position: "relative", minHeight: 150 }}>
@@ -358,15 +424,14 @@ export default function Page() {
               <div className="muted" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 150, fontSize: 12.5 }}>
                 {live ? "No history yet — it appears after your first deposit."
                   : loading ? "Reading your history…"
-                  : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your history."
-                  : "History hidden."}
+                  : "Connect your wallet to see your history."}
               </div>
             )}
             {realChart ? (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
                 <StatusTag variant="live" title="Real position-value history, derived from your on-chain deposits/withdrawals (indexed). Times are approximate." />
               </span>
-            ) : preview ? (
+            ) : previewMock ? (
               <span style={{ position: "absolute", top: 6, right: 8 }}>
                 <Note text="Illustrative history" title="A placeholder shape — your real history appears once deposits/withdrawals are indexed." />
               </span>
@@ -378,16 +443,16 @@ export default function Page() {
           <div className="card-hd">
             <span className="lbl" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               Risk panel
-              {preview && previewTag}
+              {previewMock && previewTag}
             </span>
             {/* The tier chip + portfolio-risk score describe the vault position (tier 1). When
                 degraded (e.g. connected on the beta with no vault) there IS no position, so show
                 nothing rather than a fabricated "1/5", matching the DASH'd rows below. */}
-            {(live || preview) && <RiskChip tier={1} />}
+            {(hasVaultPosition || previewMock) && <RiskChip tier={1} />}
           </div>
           <div className="rp-row">
             <span className="muted">Portfolio risk</span>
-            {live || preview ? (
+            {hasVaultPosition || previewMock ? (
               <span style={{ fontWeight: 600 }}>Lower · 1/5 <Note text="from vault tier" title="The live vault is tier 1; a per-portfolio score needs your mandate + history." /></span>
             ) : (
               <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
@@ -426,7 +491,7 @@ export default function Page() {
           </div>
           <div className="rp-row">
             <span className="muted">Concentration</span>
-            <span style={{ fontWeight: 600 }}>{loading ? "…" : live || preview ? `${vaultPct.toFixed(0)}% single vault` : DASH}</span>
+            <span style={{ fontWeight: 600 }}>{loading ? "…" : concentrationPct !== undefined ? `${concentrationPct.toFixed(0)}% single vault` : DASH}</span>
           </div>
           <div className="rp-row">
             <span className="muted">Largest position</span>
@@ -456,7 +521,7 @@ export default function Page() {
               <span className="muted" style={{ fontWeight: 600 }}>{DASH}</span>
             )}
           </div>
-          {(live || preview) && (
+          {(hasVaultPosition || previewMock) && (
             <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
               Capital-preservation-first. The live vault is the lowest tier on our scale.{" "}
               <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("strategies"))}>Improve this</a>
@@ -469,47 +534,41 @@ export default function Page() {
         <div className="card card-pad">
           <div className="card-hd">
             <span className="t">Allocation by risk tier</span>
-            {preview && previewTag}
+            {previewMock && previewTag}
           </div>
-          {emptyLive ? (
+          {live && !hasFunds ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              No positions yet.{" "}
-              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault/deposit"))}>Deposit USDC</a> to get started.
+              No {stableSymbolText} or vault positions yet.{" "}
+              <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault/deposit"))}>Deposit {stableSymbolText}</a> to get started.
             </div>
-          ) : degraded || !VAULT_CHAIN_AVAILABLE ? (
-            // Mirror the Positions card: when there's no live vault position (e.g. connected on the
-            // beta, no vault), don't render the static "Aave Yield Vault / Idle USDC" donut legend —
-            // it reads as a real allocation for a vault/token that isn't on this network.
-            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your allocation…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your allocation." : "Couldn’t read your allocation — tap Retry above."}
-            </div>
-          ) : (
+          ) : segments.length ? (
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <div className="donut" style={{ background: donut, position: "relative" }}>
                 <div style={{ position: "absolute", inset: 18, borderRadius: "50%", background: "var(--card)", display: "grid", placeItems: "center", textAlign: "center" }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 600 }} className="tnum">{donutTotalText}</div>
-                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>{degraded ? "—" : `${positions.length} positions`}</div>
+                    <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>{segments.length} positions</div>
                   </div>
                 </div>
               </div>
               <div className="legend" style={{ flex: 1 }}>
-                <div className="legrow">
-                  <span className="sw" style={{ background: "var(--risk-1)" }} />
-                  <span className="lg">Aave Yield Vault · Risk 1</span>
-                  <span className="lv tnum">{pctText(vaultPct)}</span>
-                </div>
-                <div className="legrow">
-                  <span className="sw" style={{ background: "var(--muted-foreground)" }} />
-                  <span className="lg">Idle USDC · uninvested</span>
-                  <span className="lv tnum">{pctText(idlePct)}</span>
-                </div>
+                {segments.map((s) => (
+                  <div className="legrow" key={s.key}>
+                    <span className="sw" style={{ background: s.color }} />
+                    <span className="lg">{s.label}</span>
+                    <span className="lv tnum">{`${s.pct.toFixed(0)}%`}</span>
+                  </div>
+                ))}
                 <div className="divider" />
                 <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-                  Idle USDC earns nothing.{" "}
+                  Idle {stableSymbolText} earns nothing.{" "}
                   <a style={{ color: "var(--primary)", cursor: "pointer" }} onClick={() => router.push(toHref("vault/deposit"))}>Put it to work</a>
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
+              {loading ? "Reading your allocation…" : error ? "Couldn’t read your allocation — tap Retry above." : "Connect your wallet to see your allocation."}
             </div>
           )}
         </div>
@@ -517,15 +576,13 @@ export default function Page() {
         <div className="card card-pad">
           <div className="card-hd">
             <span className="t">Positions</span>
-            {preview ? previewTag : <span className="lbl">net of fees</span>}
+            {previewMock ? previewTag : <span className="lbl">net of fees</span>}
           </div>
-          {emptyLive ? (
-            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>No open positions.</div>
-          ) : degraded || !VAULT_CHAIN_AVAILABLE ? (
+          {live && !hasFunds ? (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your positions…" : !VAULT_CHAIN_AVAILABLE ? "The AI vault isn’t in the beta yet." : wrongNetwork ? "Switch to Base Sepolia to see your positions." : "Couldn’t read your positions — tap Retry above."}
+              No {stableSymbolText} or vault positions yet — nothing to show until your first deposit.
             </div>
-          ) : (
+          ) : tableRows.length ? (
             <table className="tbl">
               <thead>
                 <tr>
@@ -536,12 +593,12 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => (
+                {tableRows.map((p) => (
                   <tr key={p.key} style={p.key === "vault" ? { cursor: "pointer" } : undefined}
                       onClick={p.key === "vault" ? () => router.push(toHref("portfolio/vault")) : undefined}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{p.label}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
+                      <div style={{ fontWeight: 600 }}>{p.key === "idle" ? `Idle ${stableSymbolText}` : p.label}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{p.key === "idle" ? "in your wallet · earning nothing" : p.sub}</div>
                     </td>
                     <td className="num tnum">{money(p.valueUsd)}</td>
                     {p.key === "vault" && vaultPnlUsd !== undefined ? (
@@ -560,17 +617,31 @@ export default function Page() {
                         — <span style={{ fontSize: 10 }}>pending</span>
                       </td>
                     )}
-                    <td>{p.key === "vault" ? <Icon name="chevr" size={15} /> : null}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {p.key === "vault" ? <Icon name="chevr" size={15} /> : null}
+                      {p.key === "idle" ? (
+                        <a
+                          style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
+                          onClick={() => router.push(toHref("vault/deposit"))}
+                        >
+                          Put it to work
+                        </a>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          ) : (
+            <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
+              {loading ? "Reading your positions…" : error ? "Couldn’t read your positions — tap Retry above." : "Connect your wallet to see your positions."}
+            </div>
           )}
         </div>
       </div>
 
-      {/* MetaMask-style wallet holdings: native ETH + every ERC-20 the wallet holds, on ANY network
-          (incl. Robinhood testnet, which has no vault). Non-custodial, read-only. */}
+      {/* MetaMask-style wallet holdings: native ETH + the tokens we know or discover, on ANY network
+          (incl. Robinhood Chain, which has no SparkPoint vault). Non-custodial, read-only. */}
       {isConnected && v.account && (
         <WalletTokensCard
           chainId={chainId}
@@ -586,6 +657,12 @@ export default function Page() {
                     ? "Base Sepolia"
                     : "this network"
           }
+          extraKnown={wrapperRows.map((w) => ({
+            address: w.vaultAddress,
+            symbol: w.label,
+            name: w.label,
+            shares: true,
+          }))}
         />
       )}
     </div>
