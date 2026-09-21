@@ -152,6 +152,10 @@ export function AmountScreen({
     retired: sel.retired,
   });
 
+  // 053 — shares format with the SHARE token's decimals (V3 wrappers: 9 over a 6-dp asset), so a
+  // share count is never rendered at the asset scale (which overstated it 1000×).
+  const shareDec = v.shareDecimals ?? DECIMALS;
+
   const ctaLabel = label;
 
   const onMax = () =>
@@ -245,7 +249,11 @@ export function AmountScreen({
             <>
               <div className="preview-row">
                 <span className="muted">You&apos;ll receive ≈</span>
-                <span className="tnum">{fmt(toNum(depositShares, DECIMALS), 1)} {shareSymbol}</span>
+                <span className="tnum">
+                  {v.previewDepositShares === undefined && wantUnits > 0n
+                    ? "…"
+                    : `${fmt(toNum(depositShares, shareDec), 4)} ${shareSymbol}`}
+                </span>
               </div>
               <div className="preview-row">
                 <span className="muted">Net APY</span>
@@ -272,11 +280,11 @@ export function AmountScreen({
             <>
               <div className="preview-row">
                 <span className="muted">You&apos;ll redeem ≈</span>
-                <span className="tnum">{fmt(toNum(redeemShares, DECIMALS), 1)} {shareSymbol}</span>
+                <span className="tnum">{fmt(toNum(redeemShares, shareDec), 4)} {shareSymbol}</span>
               </div>
               <div className="preview-row">
                 <span className="muted">You&apos;ll receive</span>
-                <span className="tnum">≈ {fmt(toNum(redeemAssetsOut))} USDC</span>
+                <span className="tnum">≈ {fmt(toNum(redeemAssetsOut))} {assetSymbol}</span>
               </div>
               <div className="preview-row">
                 <span className="muted">Remaining position</span>

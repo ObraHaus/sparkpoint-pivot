@@ -80,20 +80,40 @@ test.describe("REAL beta portfolio e2e · chain 4663", () => {
     await expect(page.getByText("Wallet tokens")).toBeVisible();
     await expect(page.getByText(/USDG/).first()).toBeVisible();
 
+    // 053 follow-up — the held wrapper row routes to its withdraw screen.
+    await expect(page.getByRole("link", { name: /^Withdraw$/i }).first()).toBeVisible();
+
     if (consoleErrors.length) {
       console.log("CONSOLE ERRORS (" + consoleErrors.length + "):\n" + consoleErrors.slice(0, 20).join("\n"));
     }
   });
 
-  test("vault board renders the curated vault with a working deposit CTA", async ({ page }) => {
+  test("vault board offers deposit AND withdraw to a holder", async ({ page }) => {
     await installBroadcastingWallet(page, { privateKey: PRIV!, chainId: 4663, rpcUrl: RPC });
     await signIn(page);
     await page.goto("/vault", { waitUntil: "domcontentloaded" });
     await dismissWhatsNew(page);
+
+    // The deposit CTA still works.
     const cta = page.getByRole("button", { name: /^Deposit USDG$/i }).first();
     await expect(cta).toBeVisible({ timeout: 30_000 });
-    await cta.click();
-    await expect(page.getByText(/Amount to deposit/i)).toBeVisible({ timeout: 30_000 });
-    await page.screenshot({ path: "/tmp/opencode/e2e-vault-amount.png", fullPage: true });
+
+    // 053 follow-up — a holder sees a Withdraw action ON THE CARD (not only via Trust & Exit).
+    const withdrawBtn = page.getByRole("button", { name: /^Withdraw/i }).first();
+    await expect(withdrawBtn).toBeVisible({ timeout: 30_000 });
+    console.log("CARD WITHDRAW BUTTON:", await withdrawBtn.innerText());
+    await page.screenshot({ path: "/tmp/opencode/e2e-vault-board-holder.png", fullPage: true });
+    await withdrawBtn.click();
+
+    // …which lands on the withdraw screen with the wrapper selected and honest copy.
+    await expect(page.getByText(/Amount to withdraw/i)).toBeVisible({ timeout: 30_000 });
+    await page.locator('input[placeholder="0.00"]').first().fill("0.05");
+    const rows = await page.locator(".preview-row").allInnerTexts();
+    console.log("WITHDRAW PREVIEW ROWS:\n" + rows.join("\n"));
+    const receive = rows.find((r) => /You'll receive/i.test(r)) ?? "";
+    expect(receive).toMatch(/USDG/); // never "USDC" on a USDG chain
+    const redeem = rows.find((r) => /You'll redeem/i.test(r)) ?? "";
+    expect(redeem).not.toMatch(/0\.0$/); // small amounts must not round to zero
+    await page.screenshot({ path: "/tmp/opencode/e2e-withdraw-amount.png", fullPage: true });
   });
 });

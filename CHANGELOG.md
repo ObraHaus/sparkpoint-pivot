@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (withdraw from the vault card + the portfolio row)
+
+- **A holder can withdraw straight from the vault card.** When the connected wallet holds a curated wrapper, its card on `/vault` now shows a "You hold $X" chip and a **Withdraw** action (the feature card too), routing into the withdraw screen with that vault selected — no longer only via Trust & Exit. The portfolio's held-wrapper row is clickable to the same screen and carries a "Withdraw" link.
+
+### Fixed (share amounts + withdraw copy)
+
+- **Share amounts render at the share token's own scale.** A V3 wrapper reads 9 share decimals over a 6-dp asset, and the deposit/withdraw screens formatted shares with the asset scale — so a 0.4-share deposit displayed as "400.0 shares". They now use the vault's `shareDecimals`, and the deposit preview shows "…" until `previewDeposit` resolves.
+- **The withdraw preview names the real asset** ("≈ 0.05 USDG", not USDC), and small share amounts no longer round to "0.0".
+
 ### Fixed (deposit acknowledgement copy)
 
 - **The deposit acknowledgement names the real asset and the real amount.** It said "This uses your full idle balance, leaving no USDC buffer in your wallet" even for a small partial deposit on a chain whose stable is USDG. It now reads from the live figures: "This uses 45% of your idle USDG, leaving 0.47 USDG in your wallet." (or "full idle USDG balance" when it truly is the whole balance).
