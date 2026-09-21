@@ -115,6 +115,7 @@ export type VaultConfirmView = Pick<
   | "usdcAddress"
   | "asset"
   | "assetDecimals"
+  | "shareDecimals"
   | "isConnected"
   | "isDeployed"
   | "paused"
