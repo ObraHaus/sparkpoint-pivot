@@ -90,6 +90,9 @@ class VaultFlow:
     tx_hash: str  # 0x… (hex)
     log_index: int
     topic0: str
+    # 053 — the EMITTING contract (the launch vault OR a curated wrapper). Empty on rows decoded
+    # before this field existed; the store then falls back to its bound vault address.
+    contract: str = ""
 
 
 def _addr_from_topic(topic: str) -> str:
@@ -132,6 +135,7 @@ def decode_flow_log(log: dict[str, Any]) -> VaultFlow | None:
         tx_hash=str(log.get("transactionHash")),
         log_index=int(str(log.get("logIndex")), 16),
         topic0=topic0,
+        contract=str(log.get("address", "")).lower(),
     )
 
 
@@ -149,7 +153,11 @@ class VaultFlowIndexer:
 
     transport: LogsRpc
     store: VaultFlowStore
-    vault_address: str
+    # 053 — the contracts to watch. The launch vault when configured, PLUS every deployed curated
+    # wrapper (the fleet is dynamic, so the runner re-reads the admission mirror each tick). The
+    # legacy single `vault_address` is still honored when `addresses` is empty.
+    vault_address: str = ""
+    addresses: Sequence[str] = ()
     network_id: str = "base"
     start_block: int = 0  # first run floors the cursor here (avoids scanning from genesis)
     window: int = _WINDOW  # initial getLogs window; shrinks adaptively on provider range caps
@@ -161,9 +169,14 @@ class VaultFlowIndexer:
         return int(str(await self._rpc("eth_blockNumber", [])), 16)
 
     async def _get_logs(self, from_block: int, to_block: int) -> list[dict[str, Any]]:
+        watched = [a.lower() for a in self.addresses] or (
+            [self.vault_address.lower()] if self.vault_address else []
+        )
+        if not watched:
+            return []
         params = [
             {
-                "address": self.vault_address.lower(),
+                "address": watched,
                 "fromBlock": hex(from_block),
                 "toBlock": hex(to_block),
                 "topics": [[DEPOSIT_TOPIC0, WITHDRAW_TOPIC0]],

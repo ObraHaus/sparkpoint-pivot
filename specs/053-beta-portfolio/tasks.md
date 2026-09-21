@@ -24,9 +24,9 @@
 
 ## Phase C — wrapper flow index (PR 3)
 
-- [ ] **T910** Index wrapper Deposit/Withdraw on 4663 (idempotent, per-position keys).
-- [ ] **T911** Per-position replay (basis/PnL/series) + `/portfolio` exposure; honest empty state.
-- [ ] **T912** Tests (idempotency, replay, empty history) + suite green + changelogs.
+- [x] **T910** Index wrapper Deposit/Withdraw on 4663 (idempotent, per-position keys).
+- [x] **T911** Per-position replay (basis/PnL/series) + `/portfolio` exposure; honest empty state.
+- [x] **T912** Tests (idempotency, replay, empty history) + suite green + changelogs.
 
 ## Ops
 

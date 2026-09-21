@@ -19,13 +19,16 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import httpx
 from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+if TYPE_CHECKING:
+    from ..config import AgentConfig
 
 from ..chain import VaultUnavailable
 from ..db import get_database
@@ -348,10 +351,36 @@ async def _index_changelog(db: object) -> None:
 _INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
 
 
+async def _index_addresses(config: AgentConfig) -> list[str]:
+    """053 — the contracts whose Deposit/Withdraw the indexer watches on this chain.
+
+    The launch vault when configured, PLUS every DEPLOYED whitelisted curated wrapper (the fleet
+    is dynamic, so this is re-read each tick — a wrapper deployed five minutes ago starts being
+    indexed on the next pass, which is what makes the beta's PnL/history real). DB trouble
+    degrades to "just the launch vault", never an error.
+    """
+    out: list[str] = []
+    if config.vault_address:
+        out.append(config.vault_address.lower())
+    try:
+        from ..db.wrapper_whitelist import DEPLOYED, PgWhitelistStore
+
+        entries = await PgWhitelistStore(get_database()).list_entries(config.chain_id)
+    except Exception:
+        return out
+    for entry in entries:
+        if entry.status == DEPLOYED and entry.proxy_address:
+            address = entry.proxy_address.lower()
+            if address not in out:
+                out.append(address)
+    return out
+
+
 async def _index_vault_flows_loop() -> None:
-    """§B2 background indexer: catch up the vault's Deposit/Withdraw into ``onchain_events`` so
-    ``GET /portfolio`` can derive a real cost basis + PnL. Off the request path, fail-open, and
-    never on the withdraw/exit path (N2). No-op when the vault/RPC isn't configured.
+    """§B2 background indexer: catch up the vault's (and the curated wrappers') Deposit/Withdraw
+    into ``onchain_events`` so ``GET /portfolio`` can derive a real cost basis + PnL. Off the
+    request path, fail-open, and never on the withdraw/exit path (N2). No-op when no RPC is
+    configured or there is nothing to watch on this chain.
     """
     from ..config import AgentConfig
     from ..data.log_source import HttpxLogsRpc, VaultFlowIndexer
@@ -365,7 +394,7 @@ async def _index_vault_flows_loop() -> None:
     # getLogs-friendly RPC (e.g. https://sepolia.base.org, 2000-block cap) separate from the
     # eth_call RPC. Falls back to the main RPC (the adaptive window still copes with a tight cap).
     log_rpc = os.getenv("VAULT_INDEX_RPC_URL") or config.rpc_url
-    if not (config.vault_address and log_rpc):
+    if not log_rpc:
         return
     start_block = 0
     try:
@@ -379,23 +408,29 @@ async def _index_vault_flows_loop() -> None:
             kwargs["window"] = int(raw_window)
     except ValueError:
         pass
-    indexer = VaultFlowIndexer(
-        transport=HttpxLogsRpc(log_rpc),
-        store=PgVaultFlowStore(get_database(), config.vault_address),
-        vault_address=config.vault_address,
-        network_id="base",  # both Base chains map to the 'base' networks mirror id
-        start_block=start_block,
-        **kwargs,
-    )
     while True:
-        try:
-            written = await indexer.run_once()
-            if written:
-                logger.info("vault_flows_indexed added=%d", written)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.warning("vault_flow_index_error (degrading; PnL stays stale)")
+        # 053 — the watch list is refreshed each tick: the launch vault (when configured) plus the
+        # currently-deployed curated wrappers. A chain with neither is a no-op, not an error.
+        addresses = await _index_addresses(config)
+        if addresses:
+            indexer = VaultFlowIndexer(
+                transport=HttpxLogsRpc(log_rpc),
+                # The bound address is only the fallback stamp; each decoded flow carries its own.
+                store=PgVaultFlowStore(get_database(), addresses[0]),
+                vault_address=config.vault_address or "",
+                addresses=addresses,
+                network_id="base",  # the networks mirror id BOTH Base and 4663 reads use
+                start_block=start_block,
+                **kwargs,
+            )
+            try:
+                written = await indexer.run_once()
+                if written:
+                    logger.info("vault_flows_indexed added=%d", written)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("vault_flow_index_error (degrading; PnL stays stale)")
         try:
             await asyncio.sleep(_INDEX_INTERVAL_S)
         except asyncio.CancelledError:

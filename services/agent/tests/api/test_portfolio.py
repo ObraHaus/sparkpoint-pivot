@@ -684,9 +684,15 @@ class FakeBetaReader:
         return self._block
 
 
-def _use_beta(reader: object, *, wrapper_store: object = None, stable: str = STABLE_4663) -> None:
+def _use_beta(
+    reader: object,
+    *,
+    wrapper_store: object = None,
+    stable: str = STABLE_4663,
+    flows: list[FlowRow] | None = None,
+) -> None:
     app.dependency_overrides[get_vault_reader] = lambda: reader
-    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader()
+    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader(None, flows)
     app.dependency_overrides[get_rec_store] = lambda: _FakeRecStore()
     app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
         chain_id=4663,
@@ -774,3 +780,78 @@ def test_beta_portfolio_read_failure_is_stale_not_an_error(client: TestClient) -
     assert body["stale"] is True
     assert body["netWorthUsd"] == "0.00"
     assert body["positions"] == []
+
+
+# ── 053 Phase C — wrapper PnL/history from the wrapper's OWN indexed flows ──
+
+
+def test_beta_wrapper_pnl_from_indexed_flows(client: TestClient) -> None:
+    # Deposit 100 USDG for 100M shares (pps 1); pps rises to 1.2 → value 120, avg cost 100,
+    # unrealized +20. Reconstructed shares == the wrapper balance → reconciles.
+    reader = FakeBetaReader(
+        idle=0,
+        wrappers={
+            WRAPPER_4663: {
+                "shares": 100_000_000,
+                "underlying": 120_000_000,
+                "asset": STABLE_4663,
+            }
+        },
+    )
+    _use_beta(
+        reader,
+        wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]),
+        flows=[_dep(100_000_000, 100_000_000, 10)],
+    )
+    body = client.get("/portfolio", headers=BETA_HEADERS).json()
+
+    pos = body["positions"][0]
+    assert pos["positionId"] == f"wrapper:{WRAPPER_4663}"
+    assert pos["costBasisUsd"] == "100.00"
+    assert pos["unrealizedPnlUsd"] == "20.00"
+    assert pos["realizedPnlUsd"] == "0.00"
+    # A single held wrapper yields the REAL position-value series (flow marks + the live value).
+    series = body["pnl"]["series"]
+    assert len(series) >= 2
+    assert series[-1]["valueUsd"] == "120.00"
+    # …and the response totals sum the wrapper legs (a wrapper-only wallet gets honest totals).
+    assert body["pnl"]["unrealizedUsd"] == "20.00"
+    assert body["pnl"]["realizedUsd"] == "0.00"
+
+
+def test_beta_wrapper_position_endpoint_returns_events_and_pnl(client: TestClient) -> None:
+    reader = FakeBetaReader(
+        idle=0,
+        wrappers={
+            WRAPPER_4663: {
+                "shares": 100_000_000,
+                "underlying": 120_000_000,
+                "asset": STABLE_4663,
+            }
+        },
+    )
+    _use_beta(
+        reader,
+        wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]),
+        flows=[_dep(100_000_000, 100_000_000, 10)],
+    )
+    res = client.get(f"/portfolio/positions/wrapper:{WRAPPER_4663}", headers=BETA_HEADERS)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["position"]["positionId"] == f"wrapper:{WRAPPER_4663}"
+    assert body["position"]["costBasisUsd"] == "100.00"
+    assert body["position"]["unrealizedPnlUsd"] == "20.00"
+    assert len(body["onchainEvents"]) == 1
+    assert body["onchainEvents"][0]["kind"] == "deposit"
+
+
+def test_beta_wrapper_position_endpoint_rejects_unknown_address(client: TestClient) -> None:
+    _use_beta(
+        FakeBetaReader(idle=0),
+        wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]),
+    )
+    res = client.get(
+        "/portfolio/positions/wrapper:0x9999999999999999999999999999999999999999",
+        headers=BETA_HEADERS,
+    )
+    assert res.status_code == 404

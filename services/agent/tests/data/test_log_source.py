@@ -87,6 +87,7 @@ class _FakeTransport:
         self._head = head
         self._logs = logs_at
         self.windows: list[tuple[int, int]] = []
+        self.filters: list[Any] = []
 
     async def call(self, method: str, params: Any) -> Any:
         if method == "eth_blockNumber":
@@ -95,6 +96,7 @@ class _FakeTransport:
             frm = int(params[0]["fromBlock"], 16)
             to = int(params[0]["toBlock"], 16)
             self.windows.append((frm, to))
+            self.filters.append(params[0]["address"])
             return self._logs.get((frm, to), [])
         raise AssertionError(method)
 
@@ -183,3 +185,58 @@ async def test_indexer_shrinks_window_to_provider_cap_and_still_indexes() -> Non
     assert all(to - frm + 1 <= 10 for frm, to in transport.windows)  # served windows fit the cap
     assert store.cursor == 1030  # advanced to head
     assert store.flows[0].owner == OWNER
+
+
+# ── 053 — the wrapper fleet: multi-address watching + per-contract stamping ──
+
+
+def test_decode_stamps_the_emitting_contract() -> None:
+    log = {
+        "address": "0xAbC0000000000000000000000000000000000001",
+        "topics": [DEPOSIT_TOPIC0, _topic_addr(SENDER), _topic_addr(OWNER)],
+        "data": _data(1_000_000, 1_000_000),
+        "blockNumber": hex(10),
+        "transactionHash": "0x" + "ef" * 32,
+        "logIndex": hex(0),
+    }
+    flow = decode_flow_log(log)
+    assert flow is not None
+    assert flow.contract == "0xabc0000000000000000000000000000000000001"
+
+
+@pytest.mark.asyncio
+async def test_indexer_watches_every_address_and_stamps_each_contract() -> None:
+    start = 1_000
+    head = 1_100
+    vault = "0x00000000000000000000000000000000000000dd"
+    wrapper = "0x00000000000000000000000000000000000000cc"
+    dep = {
+        "address": wrapper,
+        "topics": [DEPOSIT_TOPIC0, _topic_addr(SENDER), _topic_addr(OWNER)],
+        "data": _data(100_000_000, 100_000_000),
+        "blockNumber": hex(1_050),
+        "transactionHash": "0x" + "11" * 32,
+        "logIndex": hex(2),
+    }
+    transport = _FakeTransport(head, {(start, head): [dep]})
+    store = _FakeStore()
+    idx = VaultFlowIndexer(
+        transport=transport,
+        store=store,
+        vault_address=vault,
+        addresses=[vault, wrapper],
+        network_id="base",
+        start_block=start,
+    )
+    assert await idx.run_once() == 1
+    assert transport.filters == [[vault, wrapper]]
+    assert store.flows[0].contract == wrapper
+
+
+@pytest.mark.asyncio
+async def test_indexer_with_nothing_to_watch_issues_no_getlogs() -> None:
+    transport = _FakeTransport(100, {})
+    store = _FakeStore()
+    idx = VaultFlowIndexer(transport=transport, store=store, start_block=0)
+    assert await idx.run_once() == 0
+    assert transport.filters == []

@@ -310,6 +310,19 @@ export default function Page() {
         )
       : undefined;
 
+  // 053 — wrapper PnL comes from the agent's per-position replay (keyed `wrapper:<addr>`); the
+  // web's own key for a held wrapper is `ext:<addr>`. Only trusted when the agent read is live.
+  const pnlFor = (key: string): { value: number; costBasis?: number } | undefined => {
+    if (!agentLive || !agent) return undefined;
+    if (key === "vault") {
+      return vaultPnlUsd === undefined ? undefined : { value: vaultPnlUsd, costBasis: vaultCostBasisUsd };
+    }
+    if (!key.startsWith("ext:")) return undefined;
+    const p = agent.positionPnl[`wrapper:${key.slice(4)}`];
+    if (!p || p.unrealizedPnlUsd === undefined) return undefined;
+    return { value: p.unrealizedPnlUsd, costBasis: p.costBasisUsd };
+  };
+
   const netWorthText = loading ? "…" : live ? money(d.totalUsd) : previewMock ? money(data.netWorth) : DASH;
   const donutTotalText = loading ? "…" : live ? money(d.totalUsd, 0) : previewMock ? money(mockTotal, 0) : DASH;
   const previewTag = <StatusTag variant="mock" title="Illustrative — connect your wallet for your real position (balances read on-chain)." />;
@@ -593,43 +606,46 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((p) => (
-                  <tr key={p.key} style={p.key === "vault" ? { cursor: "pointer" } : undefined}
-                      onClick={p.key === "vault" ? () => router.push(toHref("portfolio/vault")) : undefined}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.key === "idle" ? `Idle ${stableSymbolText}` : p.label}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>{p.key === "idle" ? "in your wallet · earning nothing" : p.sub}</div>
-                    </td>
-                    <td className="num tnum">{money(p.valueUsd)}</td>
-                    {p.key === "vault" && vaultPnlUsd !== undefined ? (
-                      <td
-                        className="num tnum"
-                        title={vaultCostBasisUsd !== undefined ? `Cost basis ${money(vaultCostBasisUsd)} (avg cost of held shares, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
-                      >
-                        {/* .delta is display:inline-flex — it must live in an inner <span>, NOT on the
-                            <td> (that would override display:table-cell and break the column grid). */}
-                        <span className={vaultPnlUsd > 0 ? "delta up" : vaultPnlUsd < 0 ? "delta down" : "delta flat"} style={{ display: "inline-flex", justifyContent: "flex-end" }}>
-                          {vaultPnlUsd >= 0 ? "+" : "−"}{money(Math.abs(vaultPnlUsd))}
-                        </span>
+                {tableRows.map((p) => {
+                  const pnl = pnlFor(p.key);
+                  return (
+                    <tr key={p.key} style={p.key === "vault" ? { cursor: "pointer" } : undefined}
+                        onClick={p.key === "vault" ? () => router.push(toHref("portfolio/vault")) : undefined}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{p.key === "idle" ? `Idle ${stableSymbolText}` : p.label}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{p.key === "idle" ? "in your wallet · earning nothing" : p.sub}</div>
                       </td>
-                    ) : (
-                      <td className="num muted" title="PnL needs a history indexer, not wired yet">
-                        — <span style={{ fontSize: 10 }}>pending</span>
-                      </td>
-                    )}
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      {p.key === "vault" ? <Icon name="chevr" size={15} /> : null}
-                      {p.key === "idle" ? (
-                        <a
-                          style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
-                          onClick={() => router.push(toHref("vault/deposit"))}
+                      <td className="num tnum">{money(p.valueUsd)}</td>
+                      {pnl ? (
+                        <td
+                          className="num tnum"
+                          title={pnl.costBasis !== undefined ? `Cost basis ${money(pnl.costBasis)} (avg cost of held shares, indexed on-chain)` : "Unrealized PnL, indexed on-chain"}
                         >
-                          Put it to work
-                        </a>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
+                          {/* .delta is display:inline-flex — it must live in an inner <span>, NOT on the
+                              <td> (that would override display:table-cell and break the column grid). */}
+                          <span className={pnl.value > 0 ? "delta up" : pnl.value < 0 ? "delta down" : "delta flat"} style={{ display: "inline-flex", justifyContent: "flex-end" }}>
+                            {pnl.value >= 0 ? "+" : "−"}{money(Math.abs(pnl.value))}
+                          </span>
+                        </td>
+                      ) : (
+                        <td className="num muted" title="PnL appears once the indexed history reconciles">
+                          — <span style={{ fontSize: 10 }}>pending</span>
+                        </td>
+                      )}
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        {p.key === "vault" ? <Icon name="chevr" size={15} /> : null}
+                        {p.key === "idle" ? (
+                          <a
+                            style={{ color: "var(--primary)", cursor: "pointer", fontSize: 12 }}
+                            onClick={() => router.push(toHref("vault/deposit"))}
+                          >
+                            Put it to work
+                          </a>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
