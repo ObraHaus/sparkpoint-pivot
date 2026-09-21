@@ -26,8 +26,9 @@ export interface RouteStep {
  * The real fee route on 4663, as deployed 2026-09-16. Every step names the function that performs
  * it so a holder can check the claim on-chain rather than take the page's word.
  *
- * ⚠️ There is no swap and no conversion anywhere in it: fees arrive as ETH and are delivered as
- * ETH. Writing a "converted to USDC" step here would describe a system that does not exist.
+ * ⚠️ There is no swap and no conversion anywhere in it: fees arrive as ETH (Pons creator fees and
+ * ETH-in swap fees) and as registered ERC-20s (USDG-in swap fees) and are delivered in the SAME
+ * asset. Writing a "converted to USDC" step here would describe a system that does not exist.
  */
 export const REVENUE_ROUTE: readonly RouteStep[] = [
   {
@@ -41,7 +42,7 @@ export const REVENUE_ROUTE: readonly RouteStep[] = [
     n: 2,
     title: "Anyone sweeps",
     detail:
-      "Anyone may call sweepCurve() on the splitter (or claim() the escrow) to pull the accrued ETH in. The runners do it every 5 minutes; a holder can do it too.",
+      "Anyone may call sweepCurve() on the splitter (or claim() the escrow) to pull the accrued fees in. The runners do it every 5 minutes; a holder can do it too.",
     address: "feeEscrow",
   },
   {
@@ -55,7 +56,7 @@ export const REVENUE_ROUTE: readonly RouteStep[] = [
     n: 4,
     title: "The engine books it",
     detail:
-      "The engine holds the ETH as pendingPot until settle() closes a round, then credits it to the brokers that were clocked in, in proportion to their recorded weight.",
+      "The engine holds each fee asset — ETH and any registered ERC-20 — as pendingPot until settle() closes a round, then credits it to the brokers that were clocked in, in proportion to their recorded weight.",
     address: "engine",
   },
   {
@@ -77,13 +78,15 @@ export const REVENUE_ROUTE: readonly RouteStep[] = [
 /**
  * The one-sentence version of the model, for the top of the page.
  *
- * ⚠️ "AS-IS" is the whole architecture: fees are delivered in the asset they arrived in. A page
- * that omitted this would leave a holder to assume a swap into a stablecoin that does not happen.
+ * ⚠️ "AS-IS" is the whole architecture: fees are delivered in the asset they arrived in — ETH, and
+ * any registered ERC-20 (today USDG from USDG-in swaps). A page that omitted this would leave a
+ * holder to assume a swap into a stablecoin that does not happen.
  */
 export const AS_IS_DISCLOSURE =
-  "Revenue is delivered exactly as it arrives — ETH in, ETH out. There is no swap, no conversion " +
-  "and no payout asset, and nothing is projected: this page only shows what the contracts hold and " +
-  "what your brokers can withdraw right now.";
+  "Revenue is delivered exactly as it arrives — ETH in, ETH out, and an ERC-20 fee (today USDG " +
+  "from USDG-in swaps) in that same token. There is no swap, no conversion and no payout asset, " +
+  "and nothing is projected: this page only shows what the contracts hold and what your brokers " +
+  "can withdraw right now.";
 
 /** What the vault cannot do, stated because a holder cannot verify the absence by looking. */
 export const VAULT_CUSTODY_NOTE =
@@ -127,3 +130,39 @@ export function holdingsByBroker<T extends HoldingRow>(rows: readonly T[]): Map<
 
 /** Does the zero address mean native ETH here? Yes — that is the engine's and vault's convention. */
 export const NATIVE_ASSET = "0x0000000000000000000000000000000000000000";
+
+/** An ERC-20's own units, read from the token — the page never guesses a symbol or a shift. */
+export interface AssetMeta {
+  readonly symbol: string;
+  readonly decimals: number;
+}
+
+/** `0x5fc5…d168` — for the honest fallback when a token's metadata could not be read. */
+export function shortAsset(asset: string): string {
+  return `${asset.slice(0, 6)}…${asset.slice(-4)}`;
+}
+
+/**
+ * Exact base units as a decimal string, trailing zeros trimmed (never a float, never a round).
+ * `exactUnits(810n, 6)` → `"0.00081"`.
+ */
+function exactUnits(amount: bigint, decimals: number): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = amount / base;
+  const frac = (amount % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return frac.length > 0 ? `${whole}.${frac}` : whole.toString();
+}
+
+/**
+ * One asset amount in the units a holder reads.
+ *
+ * ⚠️ Multi-token is the architecture (spec 047): the engine delivers each fee in the asset it
+ * arrived in. The zero address is native ETH; a registered ERC-20 renders with the metadata read
+ * from the token itself; an asset whose metadata could not be read falls back to base units plus
+ * the address — never a decimal-shifted number that looks like a real quantity.
+ */
+export function formatAssetAmount(asset: string, amount: bigint, meta?: AssetMeta): string {
+  if (asset.toLowerCase() === NATIVE_ASSET) return `${exactUnits(amount, 18)} ETH`;
+  if (meta !== undefined) return `${exactUnits(amount, meta.decimals)} ${meta.symbol}`;
+  return `${amount.toLocaleString("en-US")} units of ${shortAsset(asset)}`;
+}

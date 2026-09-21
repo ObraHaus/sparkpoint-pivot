@@ -33,6 +33,12 @@ export const robinhoodMainnet = defineChain({
   blockExplorers: {
     default: { name: "Robinhood Explorer", url: "https://explorer.mainnet.chain.robinhood.com" },
   },
+  // Multicall3 is deployed at the canonical address on 4663 (code verified 2026-09-21), so every
+  // `useReadContracts` batch — the broker ownership scan included — is one eth_call instead of N.
+  // Without it viem falls back to one call per contract, which is what made a 500-id scan expensive.
+  contracts: {
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+  },
 });
 
 /** Per-chain viem chain definition + the env var supplying its RPC url (public fallback). */

@@ -34,6 +34,8 @@ import {
   rankLabel,
   RANK_ASSOCIATE,
 } from "@/lib/chain/brokerEngine";
+import { formatAssetAmount } from "@/lib/chain/revenueBeta";
+import { useAssetMeta, useBrokerPots } from "@/lib/chain/useBrokerRevenue";
 import {
   BROKER_ENGINE_CHAIN,
   useApproveEngineNft,
@@ -43,7 +45,6 @@ import {
   useBrokerDeployment,
   useOwnedBrokers,
   OWNERSHIP_SCAN_LIMIT,
-  useBrokerPot,
   useBurnPosition,
   useClockIn,
   useFuse,
@@ -80,7 +81,9 @@ export function BetaBrokers() {
   const collection = useBrokerCollection(nft);
   const prices = useBrokerBurnPrices(engine);
   const position = useBurnPosition(deployment);
-  const pot = useBrokerPot(engine);
+  const pot = useBrokerPots(engine);
+  // The pot is multi-token (ETH + any registered ERC-20) — read each token's own units for the row.
+  const potMeta = useAssetMeta(useMemo(() => pot.rows.map((r) => r.asset), [pot.rows]));
 
   // Ownership: the indexer when it can answer (scales to 5,555), the bounded `1..totalSupply` scan
   // otherwise (survives an agent outage). Shared with the revenue surface.
@@ -244,7 +247,13 @@ export function BetaBrokers() {
             <div className="payrow">
               <span className="muted">Revenue waiting to settle</span>
               <span className="tnum">
-                {pot.eth === undefined ? "…" : `${formatEther(pot.eth)} ETH`}
+                {pot.isLoading || pot.rows.length === 0
+                  ? "…"
+                  : pot.rows
+                      .map((r) =>
+                        formatAssetAmount(r.asset, r.amount, potMeta.byAsset.get(r.asset.toLowerCase())),
+                      )
+                      .join(" · ")}
               </span>
             </div>
 

@@ -34,7 +34,7 @@ import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { TokenPicker } from "@/components/screens/swap/TokenPicker";
 import { TokenLogo } from "@/components/ui/TokenLogo";
-import { formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
+import { formatAmount, formatBpsPercent, HIGH_IMPACT_BPS, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
 const DASH = "—";
@@ -51,9 +51,7 @@ function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: S
 }
 
 function fmt(v: bigint | undefined, decimals: number, max = 6): string {
-  if (v === undefined) return DASH;
-  const n = Number(formatUnits(v, decimals));
-  return n.toLocaleString(undefined, { maximumFractionDigits: max });
+  return formatAmount(v, decimals, max) ?? DASH;
 }
 
 export default function Page() {

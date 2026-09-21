@@ -29,7 +29,7 @@ import { resolveErc20 } from "@/lib/swap/metadata";
 import { isVerifiedAddress, findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { TokenPicker } from "@/components/screens/swap/TokenPicker";
 import { TokenLogo } from "@/components/ui/TokenLogo";
-import { formatBpsPercent, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
+import { formatAmount, formatBpsPercent, ROUTING_FEE_BIPS, SLIPPAGE_PRESETS_BPS } from "@/lib/swap/math";
 
 const DASH = "—";
 const DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
@@ -47,9 +47,7 @@ function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: S
 }
 
 function fmt(v: bigint | undefined, decimals: number, max = 6): string {
-  if (v === undefined) return DASH;
-  const n = Number(formatUnits(v, decimals));
-  return n.toLocaleString(undefined, { maximumFractionDigits: max });
+  return formatAmount(v, decimals, max) ?? DASH;
 }
 
 function Row({ k, v, tone }: { k: string; v: string; tone?: "caution" }) {

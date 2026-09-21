@@ -8,6 +8,8 @@ import {
   FUSE_MIN_PARTS,
   fuseBurnFor,
   nextRanks,
+  ownershipScanCount,
+  ownershipScanTruncated,
   promoteBurnDue,
   rankLabel,
   RANK_ANALYST,
@@ -233,4 +235,34 @@ test("a ready two- and three-part fusion is allowed", () => {
   const three = deriveFuse({ ...READY, ids: [1, 2, 3], allOwned: true, anyAlreadyFused: false, nftApproved: true, burn: fuseBurnFor(3, BURNS) });
   assert.equal(three.canSubmit, true);
   assert.equal(three.needsNftApproval, false);
+});
+
+// ── the fallback ownership scan's bound (W.4 follow-up) ──────────────────────────────────────
+
+test("⚠️ the scan bound is the minted CAP, never totalSupply — a burned id must not hide mints", () => {
+  // The live case: 10 minted, id 1 burned by a fuse, totalSupply 9. Bounding by totalSupply walked
+  // 1..9 and missed id 10 (a real owned broker). The cap is the only safe bound.
+  assert.equal(ownershipScanCount(5_555n, 9n, 500), 500);
+  // A small collection scans its whole range; an unread cap scans nothing (never a guess).
+  assert.equal(ownershipScanCount(10n, 9n, 500), 10);
+  assert.equal(ownershipScanCount(undefined, undefined, 500), 0);
+});
+
+test("the scan bound falls back to totalSupply only while the cap is unread", () => {
+  assert.equal(ownershipScanCount(undefined, 9n, 500), 9);
+  assert.equal(ownershipScanCount(undefined, 900n, 500), 500);
+});
+
+test("⚠️ truncation is measured against balanceOf, not the cap alone", () => {
+  // Found every live broker the wallet holds → complete, even on a 5,555-cap collection.
+  assert.equal(ownershipScanTruncated(9, 9, 5_555n, 500), false);
+  // Found fewer than the wallet holds → the list is short and must say so.
+  assert.equal(ownershipScanTruncated(8, 9, 5_555n, 500), true);
+  assert.equal(ownershipScanTruncated(0, 1, 5_555n, 500), true);
+});
+
+test("an unread balanceOf falls back to the conservative cap check", () => {
+  assert.equal(ownershipScanTruncated(undefined, undefined, 5_555n, 500), true);
+  assert.equal(ownershipScanTruncated(undefined, undefined, 400n, 500), false);
+  assert.equal(ownershipScanTruncated(undefined, undefined, undefined, 500), false);
 });

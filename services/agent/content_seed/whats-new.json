@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "revenue-every-token",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Revenue: every token, in its real units",
+      "body": "A correctness pass on the broker revenue page and the swap confirm screen:\n\n• the revenue page now shows every fee asset, not just ETH — a USDG fee appears as 0.00081 USDG instead of “810 units of 0x5fc5…d168”, and the withdrawable total lists each asset;\n• the broker list no longer misses a broker when an earlier one was fused away — the scan now covers the whole minted range;\n• the swap confirm screen no longer shows “0” for a real, tiny fee — the exact amount is shown before you sign;\n• nothing about where the money goes changed, and the page still reads the same contracts.",
+      "published_at": "2026-09-21T03:45:00Z"
+    },
+    {
       "slug": "indexer-cursor-fix",
       "type": "changelog",
       "tag": "Fixed",
