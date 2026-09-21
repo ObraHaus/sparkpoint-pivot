@@ -11,16 +11,17 @@ that need the (unbuilt) cost-basis/event index are ``null``/``[]``, never fabric
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api.main import app
-from sparkpoint_agent.api.portfolio import get_rec_store, get_vault_flow_reader
+from sparkpoint_agent.api.portfolio import get_rec_store, get_vault_flow_reader, get_wrapper_store
 from sparkpoint_agent.api.recommendations import get_agent_config
 from sparkpoint_agent.api.vault import get_vault_reader
-from sparkpoint_agent.chain import VaultReader
+from sparkpoint_agent.chain import VaultReader, VaultUnavailable, VaultUnavailableReason
 from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.db.vault_flows import CostBasis, FlowRow
 
@@ -611,3 +612,165 @@ def test_outcomes_stale_vault_degrades_to_empty(client: TestClient) -> None:
 def test_outcomes_requires_auth(client: TestClient) -> None:
     _use(FakePortfolioReader(balance=50_000_000))
     assert client.get("/outcomes").status_code in (401, 403)
+
+
+# ── 053 — the beta portfolio: idle stable + curated wrappers on a chain WITHOUT the launch vault ──
+
+STABLE_4663 = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"  # USDG (6 dp)
+WRAPPER_4663 = "0xd43fc69f019d1c1fd509bd340b44e4abb6f77cfe"
+OTHER_ASSET = "0x9999999999999999999999999999999999999999"
+BETA_HEADERS = {**GOOD_HEADERS, "X-Chain-Id": "4663"}
+
+
+class FakeWrapperStore:
+    """The admission mirror, DB-free: entries as the API reads them."""
+
+    def __init__(self, entries: list[Any] | None = None) -> None:
+        self._entries = entries or []
+
+    async def list_entries(self, chain_id: int, *, limit: int = 200) -> list[Any]:
+        return [e for e in self._entries if e.chain_id == chain_id]
+
+
+def _wrapper_entry(
+    proxy: str, *, chain_id: int = 4663, status: str = "deployed", label: str = "Steakhouse USDG"
+) -> Any:
+    return SimpleNamespace(
+        chain_id=chain_id, status=status, proxy_address=proxy, label=label, name=label
+    )
+
+
+class FakeBetaReader:
+    """A chain with NO launch vault: per-token balances + generic ERC-4626 reads."""
+
+    def __init__(
+        self,
+        *,
+        idle: int = 0,
+        wrappers: dict[str, dict[str, Any]] | None = None,
+        block: int = 99,
+        native: int = 0,
+        fail: bool = False,
+    ) -> None:
+        self._idle = idle
+        self._wrappers = wrappers or {}
+        self._block = block
+        self._native = native
+        self._fail = fail
+
+    async def token_balance_of(self, token: str, owner: str) -> int:
+        if self._fail:
+            raise VaultUnavailable(VaultUnavailableReason.RPC_UNREACHABLE, "rpc down")
+        key = token.lower()
+        if key in self._wrappers:
+            return int(self._wrappers[key]["shares"])
+        if key == STABLE_4663:
+            return self._idle
+        return 0
+
+    async def convert_to_assets_at(self, vault: str, shares: int) -> int:
+        return int(self._wrappers[vault.lower()]["underlying"])
+
+    async def asset_at(self, vault: str) -> str:
+        return str(self._wrappers[vault.lower()]["asset"])
+
+    async def decimals_at(self, token: str) -> int:
+        return 6
+
+    async def native_balance(self, owner: str) -> int:
+        return self._native
+
+    async def block_number(self) -> int:
+        return self._block
+
+
+def _use_beta(reader: object, *, wrapper_store: object = None, stable: str = STABLE_4663) -> None:
+    app.dependency_overrides[get_vault_reader] = lambda: reader
+    app.dependency_overrides[get_vault_flow_reader] = lambda: _FakeFlowReader()
+    app.dependency_overrides[get_rec_store] = lambda: _FakeRecStore()
+    app.dependency_overrides[get_agent_config] = lambda: AgentConfig(
+        chain_id=4663,
+        rpc_url=None,
+        vault_address=None,
+        database_url=None,
+        stable_token_address=stable,
+    )
+    app.dependency_overrides[get_wrapper_store] = lambda: wrapper_store
+
+
+def test_beta_portfolio_wrapper_position_valued_at_par(client: TestClient) -> None:
+    reader = FakeBetaReader(
+        idle=2_150_000_000,  # 2,150 USDG idle (6 dp)
+        wrappers={
+            WRAPPER_4663: {
+                "shares": 99_900_000_000,
+                "underlying": 100_000_000,
+                "asset": STABLE_4663,
+            }
+        },
+    )
+    _use_beta(reader, wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]))
+    body = client.get("/portfolio", headers=BETA_HEADERS).json()
+
+    assert body["stale"] is False
+    assert body["idleUsdc"] == "2150.00"
+    assert body["netWorthUsd"] == "2250.00"  # idle + wrapper at $1 par
+    assert len(body["positions"]) == 1
+    pos = body["positions"][0]
+    assert pos["positionId"] == f"wrapper:{WRAPPER_4663}"
+    assert pos["venue"] == "wrapper"
+    assert pos["valueUsd"] == "100.00"
+    assert pos["priceSource"] == "onchain"
+    # The wrapper leg is disclosed in dataSources.
+    assert {s["source"] for s in body["dataSources"]} == {"vault_rpc", "wrapper_rpc"}
+    # Allocation: the wrapper (external) + idle cash both present.
+    tiers = {s["key"]: s["bps"] for s in body["allocation"]["byRiskTier"]}
+    assert tiers["external"] > 0 and tiers["cash"] > 0
+
+
+def test_beta_portfolio_idle_only_when_no_wrapper_shares(client: TestClient) -> None:
+    reader = FakeBetaReader(idle=500_000_000)  # 500 USDG
+    _use_beta(reader, wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]))
+    body = client.get("/portfolio", headers=BETA_HEADERS).json()
+
+    assert body["stale"] is False
+    assert body["positions"] == []
+    assert body["netWorthUsd"] == "500.00"
+    assert body["idleUsdc"] == "500.00"
+
+
+def test_beta_portfolio_works_without_a_wrapper_store(client: TestClient) -> None:
+    _use_beta(FakeBetaReader(idle=1_000_000), wrapper_store=None)
+    body = client.get("/portfolio", headers=BETA_HEADERS).json()
+    assert body["stale"] is False
+    assert body["netWorthUsd"] == "1.00"
+
+
+def test_beta_portfolio_unpriced_wrapper_is_shown_but_not_in_net_worth(client: TestClient) -> None:
+    reader = FakeBetaReader(
+        idle=0,
+        wrappers={
+            WRAPPER_4663: {"shares": 1_000_000, "underlying": 1_000_000, "asset": OTHER_ASSET}
+        },
+    )
+    _use_beta(reader, wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]))
+    body = client.get("/portfolio", headers=BETA_HEADERS).json()
+
+    assert body["stale"] is False
+    assert body["netWorthUsd"] == "0.00"  # never invented
+    pos = body["positions"][0]
+    assert pos["valueUsd"] == "0.00"
+    assert pos["priceSource"] == "unpriced"
+
+
+def test_beta_portfolio_read_failure_is_stale_not_an_error(client: TestClient) -> None:
+    _use_beta(
+        FakeBetaReader(idle=1_000_000, fail=True),
+        wrapper_store=FakeWrapperStore([_wrapper_entry(WRAPPER_4663)]),
+    )
+    res = client.get("/portfolio", headers=BETA_HEADERS)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["stale"] is True
+    assert body["netWorthUsd"] == "0.00"
+    assert body["positions"] == []

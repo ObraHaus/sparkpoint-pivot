@@ -210,7 +210,7 @@ def test_chat_dag_wires_the_persona_bearing_general_responder(
     cannot happen quietly.
     """
     monkeypatch.setenv(API_KEY_ENV, "sk-ant-test-not-a-real-key")
-    dag = get_coordinator_dag(_FakeReader(), _config(), _NoMandate())  # type: ignore[arg-type]
+    dag = get_coordinator_dag(_FakeReader(), _config(), _NoMandate(), None)  # type: ignore[arg-type]
     assert dag.sparky is not None, "the /chat DAG must wire the general/identity responder"
     assert dag.sparky.persona_provider is get_persona
     # …and it shares the SAME persona surface as the literacy agent (one voice, one source).
