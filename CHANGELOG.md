@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (portfolio withdraw control is a real button)
+
+- **The portfolio row's "Withdraw" is a keyboard-focusable button**, not an anchor without an href (which has no link role and cannot be tabbed to). The row remains clickable.
+
 ### Added (withdraw from the vault card + the portfolio row)
 
 - **A holder can withdraw straight from the vault card.** When the connected wallet holds a curated wrapper, its card on `/vault` now shows a "You hold $X" chip and a **Withdraw** action (the feature card too), routing into the withdraw screen with that vault selected — no longer only via Trust & Exit. The portfolio's held-wrapper row is clickable to the same screen and carries a "Withdraw" link.

@@ -81,7 +81,7 @@ test.describe("REAL beta portfolio e2e · chain 4663", () => {
     await expect(page.getByText(/USDG/).first()).toBeVisible();
 
     // 053 follow-up — the held wrapper row routes to its withdraw screen.
-    await expect(page.getByRole("link", { name: /^Withdraw$/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Withdraw$/i }).first()).toBeVisible();
 
     if (consoleErrors.length) {
       console.log("CONSOLE ERRORS (" + consoleErrors.length + "):\n" + consoleErrors.slice(0, 20).join("\n"));
