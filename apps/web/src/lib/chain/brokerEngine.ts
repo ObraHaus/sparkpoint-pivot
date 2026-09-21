@@ -66,6 +66,42 @@ export function promoteBurnDue(target: bigint, alreadyBurned: bigint): bigint {
   return target > alreadyBurned ? target - alreadyBurned : 0n;
 }
 
+/**
+ * How many candidate ids the fallback ownership scan may walk: the collection's MINTED CAP, bounded
+ * by the UI limit.
+ *
+ * ⚠️ Never `totalSupply`: that is the LIVE count, and a fusion burns an absorbed broker, so a burned
+ * low id makes `totalSupply` smaller than the highest minted id. Bounding by it hid live brokers
+ * (smoke wallet: 9 owned, 8 shown — id #10 was invisible because id 1 had been fused away).
+ */
+export function ownershipScanCount(
+  maxSupply: bigint | undefined,
+  totalSupply: bigint | undefined,
+  limit: number,
+): number {
+  const cap = maxSupply ?? totalSupply;
+  if (cap === undefined) return 0;
+  return Number(cap > BigInt(limit) ? BigInt(limit) : cap);
+}
+
+/**
+ * Is the fallback scan incomplete?
+ *
+ * The precise check: the wallet's `balanceOf` is how many live brokers it holds, so if the scan
+ * found fewer owned ids than that, some live id sits outside the scanned range (or a read failed)
+ * and the screen must say the list may be short. While `balanceOf` is unread, the honest fallback
+ * is "the collection's cap exceeds the scan bound, so ids above it may exist".
+ */
+export function ownershipScanTruncated(
+  found: number | undefined,
+  balance: number | undefined,
+  maxSupply: bigint | undefined,
+  limit: number,
+): boolean {
+  if (found !== undefined && balance !== undefined) return found < balance;
+  return maxSupply !== undefined && maxSupply > BigInt(limit);
+}
+
 /** The shape every verb verdict shares. */
 export interface BrokerVerbVerdict {
   readonly configured: boolean;

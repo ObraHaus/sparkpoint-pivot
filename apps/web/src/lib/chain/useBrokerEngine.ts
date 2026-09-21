@@ -39,6 +39,7 @@ import {
 import { brokerEngineAbi } from "@sparkpoint/shared/abis";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { CHAIN_IDS } from "@sparkpoint/shared/chains";
+import { ownershipScanCount, ownershipScanTruncated } from "@/lib/chain/brokerEngine";
 import { useIndexedBrokers } from "@/lib/chain/useIndexedBrokers";
 import type { WagmiChainId } from "@/lib/wagmi";
 
@@ -64,6 +65,13 @@ export const brokerCloneAbi = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
@@ -217,19 +225,6 @@ export function useBrokerBurnPrices(engine: Address | undefined): BrokerBurnPric
   }, [data, isLoading]);
 }
 
-/** The ETH revenue waiting to be settled into the accumulator (`pendingPot(address(0))`). */
-export function useBrokerPot(engine: Address | undefined) {
-  const { data, isLoading, refetch } = useReadContract({
-    address: engine,
-    abi: brokerEngineAbi,
-    functionName: "pendingPot",
-    args: [("0x0000000000000000000000000000000000000000" as Address)],
-    query: { enabled: Boolean(engine) },
-  });
-
-  return { eth: data as bigint | undefined, isLoading, refetch };
-}
-
 export interface BrokerCollection {
   /** The immutable drop size (`maxSupply`). */
   readonly maxSupply?: bigint;
@@ -367,15 +362,15 @@ export function useBrokerEngineStates(
   return { brokers, isLoading, refetch };
 }
 
-/** The scan bound: a browser walk of `1..totalSupply`, never unbounded. */
+/** The scan bound: a browser walk of `1..min(maxSupply, limit)`, never unbounded. */
 export const OWNERSHIP_SCAN_LIMIT = 500;
 
 export interface OwnedBrokers {
-  /** Every id the surface queried (its gallery candidates). */
+  /** The ids this wallet owns (the indexer's answer, or the bounded scan's) — engine state is next. */
   readonly ids: readonly bigint[];
   /** The subset this wallet holds, absent ids (burned by fusion) excluded. */
   readonly mine: readonly BetaBroker[];
-  /** The scan hit its cap: the list is incomplete and the screen must say so. */
+  /** The scan is provably short (or could be): the list may be incomplete and the screen says so. */
   readonly truncated: boolean;
   readonly isLoading: boolean;
   readonly refetch: () => void;
@@ -385,12 +380,18 @@ export interface OwnedBrokers {
  * Which brokers the connected wallet holds — the ONE implementation both broker surfaces use.
  *
  * Two ownership paths, deliberately: `GET /brokers/owned` walks `Transfer` logs and scales to the
- * full 5,555, while a bounded `1..totalSupply` browser scan survives an agent outage. The indexer
- * is preferred; it reports `available: false` (never an empty list) when it cannot read, which is
- * what makes the fallback honest rather than a silent "you own nothing".
+ * full 5,555, while a bounded browser scan survives an agent outage. The indexer is preferred; it
+ * reports `available: false` (never an empty list) when it cannot read, which is what makes the
+ * fallback honest rather than a silent "you own nothing".
  *
- * ⚠️ Walks `1..totalSupply` (the clone's live count), not `maxSupply`: ids above the minted range
- * do not exist, and asking for them would report every one as absorbed.
+ * ⚠️ The scan walks `1..min(maxSupply, OWNERSHIP_SCAN_LIMIT)` — the MINTED CAP, never
+ * `totalSupply`. A fusion burns an absorbed broker, so `totalSupply` is smaller than the highest
+ * minted id whenever a lower id was burned; bounding by it made live brokers invisible (id #10).
+ * The wallet's `balanceOf` then decides `truncated` precisely: fewer owned ids found than held
+ * means the list is short, whatever the cap says.
+ *
+ * Ownership is read in its own phase (one `ownerOf` per candidate, batched by multicall) so the
+ * 8-read engine state is only fetched for ids the wallet actually holds.
  */
 export function useOwnedBrokers(deployment: BrokerDeployment): OwnedBrokers {
   const { address, isConnected, chainId: walletChain } = useAccount();
@@ -398,22 +399,62 @@ export function useOwnedBrokers(deployment: BrokerDeployment): OwnedBrokers {
   const collection = useBrokerCollection(deployment.nft);
 
   const indexed = useIndexedBrokers(walletReady);
-  const scanIds = useMemo(() => {
-    if (collection.totalSupply === undefined) return [];
-    const count = Number(
-      collection.totalSupply > BigInt(OWNERSHIP_SCAN_LIMIT)
-        ? BigInt(OWNERSHIP_SCAN_LIMIT)
-        : collection.totalSupply,
-    );
-    return Array.from({ length: count }, (_, i) => BigInt(i + 1));
-  }, [collection.totalSupply]);
+  const scanCount = useMemo(
+    () => ownershipScanCount(collection.maxSupply, collection.totalSupply, OWNERSHIP_SCAN_LIMIT),
+    [collection.maxSupply, collection.totalSupply],
+  );
+  const scanIds = useMemo(
+    () => Array.from({ length: scanCount }, (_, i) => BigInt(i + 1)),
+    [scanCount],
+  );
 
-  const ids = useMemo(() => {
-    if (indexed.ids !== undefined) return indexed.ids.map((n) => BigInt(n));
-    return indexed.source === "scan" ? scanIds : [];
-  }, [indexed.ids, indexed.source, scanIds]);
+  // Phase 1 — ownership only. The indexer already answers it; otherwise one `ownerOf` per candidate.
+  const indexedIds = useMemo(
+    () => indexed.ids?.map((n) => BigInt(n)),
+    [indexed.ids],
+  );
+  const scanning = indexedIds === undefined && indexed.source === "scan";
+  const scanCandidates = useMemo(() => (scanning ? scanIds : []), [scanning, scanIds]);
 
-  const states = useBrokerEngineStates(ids, deployment);
+  const ownership = useReadContracts({
+    allowFailure: true,
+    contracts: deployment.nft
+      ? scanCandidates.map(
+          (id) =>
+            ({
+              address: deployment.nft,
+              abi: brokerCloneAbi,
+              functionName: "ownerOf" as const,
+              args: [id],
+            }) as const,
+        )
+      : [],
+    query: { enabled: Boolean(deployment.nft) && scanCandidates.length > 0 },
+  });
+
+  const ownedIds = useMemo(() => {
+    if (indexedIds !== undefined) return indexedIds;
+    if (!scanning || !address) return [];
+    const want = address.toLowerCase();
+    const out: bigint[] = [];
+    scanCandidates.forEach((id, i) => {
+      const r = ownership.data?.[i];
+      if (r?.status === "success" && (r.result as string).toLowerCase() === want) out.push(id);
+    });
+    return out;
+  }, [indexedIds, scanning, address, scanCandidates, ownership.data]);
+
+  // Phase 1b — the completeness check: how many live brokers the wallet actually holds.
+  const balance = useReadContract({
+    address: deployment.nft,
+    abi: brokerCloneAbi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(deployment.nft) && Boolean(address) && scanning },
+  });
+
+  // Phase 2 — engine state for the wallet's ids only.
+  const states = useBrokerEngineStates(ownedIds, deployment);
   const mine = useMemo(() => {
     if (!address) return [];
     const want = address.toLowerCase();
@@ -422,17 +463,39 @@ export function useOwnedBrokers(deployment: BrokerDeployment): OwnedBrokers {
     );
   }, [states.brokers, address]);
 
-  const truncated =
-    indexed.source === "scan" &&
-    collection.totalSupply !== undefined &&
-    collection.totalSupply > BigInt(OWNERSHIP_SCAN_LIMIT);
+  const truncated = useMemo(() => {
+    if (indexed.source !== "scan") return false;
+    if (ownership.isLoading || balance.isLoading) return false;
+    return ownershipScanTruncated(
+      ownership.data === undefined ? undefined : ownedIds.length,
+      balance.data === undefined ? undefined : Number(balance.data),
+      collection.maxSupply,
+      OWNERSHIP_SCAN_LIMIT,
+    );
+  }, [
+    indexed.source,
+    ownership.isLoading,
+    ownership.data,
+    ownedIds.length,
+    balance.isLoading,
+    balance.data,
+    collection.maxSupply,
+  ]);
 
   return {
-    ids,
+    ids: ownedIds,
     mine,
     truncated,
-    isLoading: indexed.source === "loading" || collection.isLoading || states.isLoading,
-    refetch: states.refetch,
+    isLoading:
+      indexed.source === "loading" ||
+      collection.isLoading ||
+      ownership.isLoading ||
+      states.isLoading,
+    refetch: () => {
+      void ownership.refetch();
+      void balance.refetch();
+      states.refetch();
+    },
   };
 }
 
