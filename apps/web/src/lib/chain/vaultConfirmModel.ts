@@ -30,6 +30,22 @@ import type { DepositExec, WithdrawExec } from "./useExecuteVaultTx";
 // TYPE-ONLY, per this module's leaf rule (it must stay resolvable under `node --experimental-strip-types`).
 import type { VaultFeeBasis } from "../policy/feeCopy";
 
+/**
+ * 053 — the deposit acknowledgement's copy, computed from the REAL amount vs the wallet's idle
+ * balance. The old static string claimed a "full idle balance … no USDC buffer" even for a small
+ * partial deposit, on a chain whose stable is USDG. Always true, names the real asset.
+ */
+export function depositAckText(assetSymbol: string, amount: bigint, idle: bigint | undefined): string {
+  const sym = assetSymbol.trim() || "USDC";
+  if (idle === undefined || idle <= 0n) return `This uses your idle ${sym} balance.`;
+  if (amount >= idle) {
+    return `This uses your full idle ${sym} balance, leaving no buffer in your wallet.`;
+  }
+  const pct = Number((amount * 100n) / idle);
+  const remaining = Number(toNum(idle - amount, 6).toFixed(2));
+  return `This uses ${pct}% of your idle ${sym}, leaving ${remaining} ${sym} in your wallet.`;
+}
+
 /** USDC / launch-share base-unit scale — the display default before a per-vault `decimals()` resolves. */
 const DECIMALS = 6;
 
