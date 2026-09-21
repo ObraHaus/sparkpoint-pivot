@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  depositAckText,
   deriveVaultConfirm,
   type VaultConfirmView,
   type VaultConfirmInput,
@@ -382,4 +383,30 @@ test("053: without an assetSymbol the label keeps the launch default (USDC)", ()
     CTX,
   );
   assert.equal(m.label, "Insufficient USDC balance");
+});
+
+// ── 053: the deposit acknowledgement names the real asset + the real share of idle balance ──
+
+test("053: depositAckText — a partial deposit states the percentage and what stays", () => {
+  // 0.4 of 0.87 → 45%
+  assert.equal(
+    depositAckText("USDG", 400_000n, 870_000n),
+    "This uses 45% of your idle USDG, leaving 0.47 USDG in your wallet.",
+  );
+});
+
+test("053: depositAckText — the full balance is named as such (and never USDC on a USDG chain)", () => {
+  assert.equal(
+    depositAckText("USDG", 870_000n, 870_000n),
+    "This uses your full idle USDG balance, leaving no buffer in your wallet.",
+  );
+  assert.equal(
+    depositAckText("USDG", 1_000_000n, 870_000n),
+    "This uses your full idle USDG balance, leaving no buffer in your wallet.",
+  );
+});
+
+test("053: depositAckText — an unknown idle balance degrades honestly", () => {
+  assert.equal(depositAckText("USDG", 400_000n, undefined), "This uses your idle USDG balance.");
+  assert.equal(depositAckText("", 400_000n, 0n), "This uses your idle USDC balance.");
 });
