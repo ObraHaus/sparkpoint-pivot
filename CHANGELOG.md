@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (053 follow-up — flow-indexer cursor)
+
+- **The flow indexer's cursor is now chain-scoped.** All flow rows live under the agent's shared mirror network id, so two chains shared one watermark — indexing the higher-blocked chain could advance the other past its head and silently stop its history. The configured vault chain keeps the historical stream; every other chain gets its own. (Found while verifying 053 Phase C live.)
+
 ### Added (053 Phase C — wrapper flows indexed, so PnL/history are real on the beta)
 
 - **The flow indexer now watches the curated wrappers too.** `VaultFlowIndexer` takes a list of addresses (one `eth_getLogs` filter), each decoded flow stamps its own emitting contract, and the background loop refreshes the watch list from the admission mirror every tick — a wrapper deployed minutes ago starts being indexed on the next pass. A chain with no launch vault is no longer skipped.
