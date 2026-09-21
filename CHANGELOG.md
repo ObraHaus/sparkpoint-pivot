@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (beta deposit gate + portfolio polish)
+
+- **Curated-vault deposits are signable again on the beta.** The confirm gate required the agent's launch-vault quote/simulate, which fail closed on a chain without the launch vault (503 NOT_DEPLOYED), so "Sign deposit" never appeared for a curated wrapper. For a curated wrapper the gate now rests on the direct-RPC ERC-4626 preview — the same read the transaction relies on — and the UI states honestly that Sparky's policy check applies to our own vault, not third-party ones.
+- **Confirm copy names the real asset** (USDG, not USDC) and shows "…" for the share estimate until `previewDeposit` resolves (no momentary "≈ 0.0 shares").
+- **The wallet-tokens card lists the chain's known tokens** (stable + wrapped native), so a wallet holding USDG no longer reads "No ERC-20 tokens in this wallet yet".
+- **Allocation center pluralizes** ("1 position").
+- Content + portfolio reads retry a transient 401 when the shell mounts before the SIWE session cookie exists.
+
 ### Fixed (beta revenue — multi-token display, broker list, fee row)
 
 - **The revenue page shows every fee asset, in its own units.** The pot row was ETH-only and the per-broker holdings printed raw base units plus a truncated address (`810 units of 0x5fc5…d168` for a 0.00081 USDG balance). The page now reads the engine's registered assets, reads each token's own `symbol`/`decimals`, and renders the pot, each broker's holdings and the withdrawable header per asset (ETH + any registered ERC-20); a token whose metadata cannot be read still falls back to base units. The AS-IS disclosure and route copy now say ETH and ERC-20 rather than "ETH in, ETH out".
