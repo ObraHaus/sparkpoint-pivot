@@ -84,7 +84,9 @@ class PgVaultFlowStore:
     """asyncpg-backed :class:`~sparkpoint_agent.data.log_source.VaultFlowStore`."""
 
     db: Database
-    vault_address: str  # the emitting contract stamped onto each onchain_events row
+    # 053 — the fallback contract for rows that carry none; each flow now stamps its OWN emitting
+    # address (the launch vault or a curated wrapper).
+    vault_address: str = ""
 
     async def get_cursor(self, network_id: str) -> int:
         v = await self.db.fetchval(_GET_CURSOR, network_id)
@@ -110,7 +112,7 @@ class PgVaultFlowStore:
                     network_id,
                     _hexb(f.tx_hash),
                     f.log_index,
-                    self.vault_address.lower(),
+                    (f.contract or self.vault_address).lower(),
                     _hexb(f.topic0),
                     decoded,
                     f.block_number,

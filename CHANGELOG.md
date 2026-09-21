@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (053 Phase C — wrapper flows indexed, so PnL/history are real on the beta)
+
+- **The flow indexer now watches the curated wrappers too.** `VaultFlowIndexer` takes a list of addresses (one `eth_getLogs` filter), each decoded flow stamps its own emitting contract, and the background loop refreshes the watch list from the admission mirror every tick — a wrapper deployed minutes ago starts being indexed on the next pass. A chain with no launch vault is no longer skipped.
+- **`GET /portfolio` returns real wrapper PnL.** Each held wrapper's cost basis / unrealized / realized come from its own indexed flows (surfaced only when the replay reconciles and the asset is USD-priced); a single held wrapper also yields the position-value series, and the response totals sum the wrapper legs. `GET /portfolio/positions/wrapper:<proxy>` resolves one wrapper's position + event history. Unindexed history stays `null`/`pending`, never guessed.
+- The web positions table shows wrapper PnL when the agent's replay is live (the key maps `ext:<addr>` → `wrapper:<addr>`).
+
 ### Added (053 Phase B — the AI sees the beta portfolio)
 
 - **`GET /portfolio` reads the beta portfolio on Robinhood Chain.** When the request chain has no launch vault, the endpoint returns the wallet's idle stable plus every whitelisted curated wrapper it holds (shares, `convertToAssets`, asset), valued at $1 par only when the wrapper's asset IS the chain stable — an unpriced asset is shown but never invented into USD. The chain is no longer reported `stale` merely for lacking the launch vault; a real read failure still degrades to `200 + stale:true` with zeroed figures. `VaultReader` gained generic `convertToAssets`/`asset`/`decimals` reads at arbitrary addresses, and a per-chain `STABLE_ASSET_ADDRESS` (verified defaults, env-overridable) powers the par valuation.
