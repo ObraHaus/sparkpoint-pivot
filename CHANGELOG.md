@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (deposit acknowledgement copy)
+
+- **The deposit acknowledgement names the real asset and the real amount.** It said "This uses your full idle balance, leaving no USDC buffer in your wallet" even for a small partial deposit on a chain whose stable is USDG. It now reads from the live figures: "This uses 45% of your idle USDG, leaving 0.47 USDG in your wallet." (or "full idle USDG balance" when it truly is the whole balance).
+
 ### Fixed (beta deposit gate + portfolio polish)
 
 - **Curated-vault deposits are signable again on the beta.** The confirm gate required the agent's launch-vault quote/simulate, which fail closed on a chain without the launch vault (503 NOT_DEPLOYED), so "Sign deposit" never appeared for a curated wrapper. For a curated wrapper the gate now rests on the direct-RPC ERC-4626 preview — the same read the transaction relies on — and the UI states honestly that Sparky's policy check applies to our own vault, not third-party ones.

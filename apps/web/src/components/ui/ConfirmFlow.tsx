@@ -67,6 +67,11 @@ export interface OnchainConfirm {
    * Default true (the launch vault path, unchanged).
    */
   readonly agentQuote?: boolean;
+  /**
+   * 053 — the acknowledgement copy for this exact deposit (asset symbol + real share of the idle
+   * balance). `undefined` ⇒ the intent's default copy; `null` ⇒ no acknowledgement required.
+   */
+  readonly ack?: string | null;
 }
 
 /** Shared chrome per intent (title / header badge / back + cancel routes). */
@@ -285,12 +290,15 @@ function OnchainConfirmFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exec.error]);
 
+  // The acknowledgement is amount-aware (053): the hook computes it from the real deposit vs the
+  // wallet's idle balance; the intent's static string is only the fallback.
+  const ackText = onchain.ack !== undefined ? onchain.ack : copy.ack;
   const previewOk = preview.status === "ok";
   const previewError = preview.status === "error";
   // Once a signature is in flight, keep the verified card + Sign stable so a
   // background preview refetch can't hide the button mid-transaction.
   const showReveal = previewOk || busy;
-  const ackBlocked = copy.ack ? !acked : false;
+  const ackBlocked = ackText ? !acked : false;
   const signDisabled = busy || !previewOk || ackBlocked;
 
   function onSign() {
@@ -511,7 +519,7 @@ function OnchainConfirmFlow({
                 <span className="gt">{g}</span>
               </div>
             ))}
-            {copy.ack && (
+            {ackText && (
               <div className="ackbox">
                 <div
                   className={"ackcheck" + (acked ? " on" : "")}
@@ -523,7 +531,7 @@ function OnchainConfirmFlow({
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>Requires your acknowledgement</div>
-                  <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 2 }}>{copy.ack}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", marginTop: 2 }}>{ackText}</div>
                   <div style={{ fontSize: 12, color: "var(--caution)", marginTop: 6, fontWeight: 600 }}>
                     I understand this is above my usual buffer.
                   </div>
@@ -570,7 +578,7 @@ function OnchainConfirmFlow({
       )}
 
       <div className="cf-sec cf-reveal" style={{ animationDelay: "360ms" }}>
-        {showReveal && copy.ack && (
+        {showReveal && ackText && (
           <div style={{ fontSize: 12, color: "var(--caution)", marginBottom: 10, display: acked ? "none" : "block" }}>
             <Icon name="alert" size={13} /> Acknowledge the item above to enable signing.
           </div>

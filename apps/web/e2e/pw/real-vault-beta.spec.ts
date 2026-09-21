@@ -87,8 +87,14 @@ test.describe("REAL beta vault e2e · chain 4663", () => {
     await test.step("sign deposit (approve + deposit broadcast)", async () => {
       await page.screenshot({ path: "/tmp/opencode/e2e-confirm.png", fullPage: true });
       console.log("CONFIRM TEXT:\n" + (await page.locator("body").innerText()).slice(0, 1800));
-      const ack = page.locator('input[type="checkbox"]');
-      if (await ack.count()) await ack.first().check().catch(() => {});
+      // The acknowledgement gate renders WITH the reveal section (once the preview resolves) and
+      // is a role="checkbox" control, not an <input>.
+      const ack = page.locator('[role="checkbox"]');
+      await ack.first().waitFor({ state: "visible", timeout: 90_000 });
+      if ((await ack.first().getAttribute("aria-checked")) !== "true") {
+        await ack.first().click();
+      }
+      await expect(ack.first()).toHaveAttribute("aria-checked", "true", { timeout: 5_000 });
       const sign = page.getByRole("button", { name: /Sign deposit/i });
       try {
         await expect(sign).toBeEnabled({ timeout: 60_000 });
@@ -97,7 +103,8 @@ test.describe("REAL beta vault e2e · chain 4663", () => {
         throw e;
       }
       await sign.click();
-      await expect(page.getByText(/Deposit confirmed/i)).toBeVisible({ timeout: 300_000 });
+      // Two matches once confirmed (the receipt title + the toast) — assert the first.
+      await expect(page.getByText(/Deposit confirmed/i).first()).toBeVisible({ timeout: 300_000 });
       const href = await page.getByRole("link", { name: /View transaction/i }).first().getAttribute("href");
       console.log("DEPOSIT TX:", href);
       await page.screenshot({ path: "/tmp/opencode/e2e-confirmed.png", fullPage: true });

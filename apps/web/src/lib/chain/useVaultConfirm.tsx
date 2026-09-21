@@ -26,6 +26,7 @@ import { useVault, type UseVaultResult } from "@/lib/chain/useVault";
 import { capNoun } from "@/lib/stage";
 import { useAaveSupplyApyBps } from "@/lib/chain/useAaveSupplyApy";
 import {
+  depositAckText,
   deriveVaultConfirm,
   toNum,
   type VaultConfirmInput,
@@ -128,6 +129,8 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
         // 053 — a curated wrapper is NOT the agent's launch vault: skip the launch-bound quote/sim
         // gate (the direct-RPC ERC-4626 preview still gates Sign; caps are enforced on-chain).
         agentQuote: !m.isWrapper,
+        // The acknowledgement names the REAL asset and the real share of the idle balance.
+        ack: depositAckText(assetSymbol, wantUnits, v.usdcBalance),
         sub: (
           <>
             You&rsquo;re depositing {fmt(toNum(wantUnits, dec))} {assetSymbol} into the {vaultName}. You&rsquo;ll
