@@ -38,6 +38,7 @@ this service's invariants have to match what it does, or an auditor is reading f
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -519,10 +520,22 @@ async def read_wrapper_positions(
     return out, failures > 0, block
 
 
-def _wrapper_detail(w: WrapperPosition) -> PositionDetail:
-    """Map a held wrapper position to the §3.3 shape. Cost basis/PnL stay null until the wrapper
-    flows are indexed (053 Phase C) — never fabricated. ``priceSource`` says whether the value is
-    the stable's $1 par or an unpriced asset (never a guessed price)."""
+def _wrapper_detail(w: WrapperPosition, basis: BasisResult | None = None) -> PositionDetail:
+    """Map a held wrapper position to the §3.3 shape.
+
+    Cost basis / realized / unrealized come from the wrapper's OWN indexed flows (053 Phase C)
+    when the history reconciles AND the asset is USD-priced — an unpriced asset's cost basis is
+    not a USD figure, so it stays null. Never fabricated, never a partial-history guess.
+    ``priceSource`` says whether the value is the stable's $1 par or an unpriced asset.
+    """
+    cost_basis_usd: str | None = None
+    unrealized_pnl_usd: str | None = None
+    realized_pnl_usd: str | None = None
+    if basis is not None and basis.reconciles and w.par:
+        cost = basis.remaining_cost_basis
+        cost_basis_usd = _usd_signed(cost)
+        unrealized_pnl_usd = _usd_signed(w.underlying - cost)
+        realized_pnl_usd = _usd_signed(basis.realized)
     return PositionDetail(
         positionId=w.position_id,
         venue="wrapper",
@@ -531,6 +544,9 @@ def _wrapper_detail(w: WrapperPosition) -> PositionDetail:
         underlying=str(w.underlying),
         valueUsd=_usd_from_usdc(w.underlying) if w.par else "0.00",
         priceSource="onchain" if w.par else "unpriced",
+        costBasisUsd=cost_basis_usd,
+        unrealizedPnlUsd=unrealized_pnl_usd,
+        realizedPnlUsd=realized_pnl_usd,
         riskTier=None,
     )
 
@@ -639,6 +655,22 @@ async def get_portfolio(
     wrapper_positions, wrappers_stale, wrappers_block = await read_wrapper_positions(
         reader, wrapper_store, account.chain_id, account.account, config.stable_token_address
     )
+    # …and each wrapper's OWN indexed flows, for its cost basis / PnL / value series. Fail-open:
+    # no rows (or an unreconciled history) ⇒ null figures, never a partial-history guess.
+    wrapper_flows: dict[str, list[FlowRow]] = {}
+    wrapper_basis: dict[str, BasisResult | None] = {}
+    for w in wrapper_positions:
+        try:
+            rows = await flows.list_flows(
+                _network_id(account.chain_id),
+                w.vault_address,
+                account.account,
+                limit=_SERIES_MAX_FLOWS,
+            )
+        except Exception:
+            rows = []
+        wrapper_flows[w.position_id] = rows
+        wrapper_basis[w.position_id] = replay_basis(rows, w.shares)
     idle = position.idle
     stable_read_failed = False
     if not config.vault_address and config.stable_token_address:
@@ -685,7 +717,9 @@ async def get_portfolio(
     if "positions" in sections and position.held:
         positions.append(_position_detail(position, basis))
     if "positions" in sections:
-        positions.extend(_wrapper_detail(w) for w in wrapper_positions)
+        positions.extend(
+            _wrapper_detail(w, wrapper_basis.get(w.position_id)) for w in wrapper_positions
+        )
 
     # Net worth = launch vault + par-valued wrappers + idle stable ($1 par each). A degraded read
     # on any leg → stale, with the figures zeroed rather than partially trusted.
@@ -695,8 +729,47 @@ async def get_portfolio(
     net_worth = "0.00" if stale else _usd_from_usdc(total_units)
     idle_usdc = "0.00" if stale else _usd_from_usdc(idle)
     status = "stale" if stale else "ok"
-    _cost, unrealized, realized = _pnl_usd(position, basis) if position.held else (None, None, None)
+    # PnL totals: the launch position's own replay when held; otherwise the SUM across the held
+    # wrappers (each reconciled + USD-priced) — a wallet whose only position is a wrapper still
+    # gets honest totals. Any unreconciled leg leaves the totals null rather than partial.
+    if position.held:
+        _cost, unrealized, realized = _pnl_usd(position, basis)
+    else:
+        unrealized_units = 0
+        realized_units = 0
+        any_reconciled = False
+        for w in wrapper_positions:
+            b = wrapper_basis.get(w.position_id)
+            if b is None or not b.reconciles or not w.par:
+                continue
+            any_reconciled = True
+            realized_units += b.realized
+            unrealized_units += w.underlying - b.remaining_cost_basis
+        unrealized = _usd_signed(unrealized_units) if any_reconciled else None
+        realized = _usd_signed(realized_units) if any_reconciled else None
     as_of_block = position.block or wrappers_block
+
+    # 053 — a single held wrapper on a chain without the launch vault gives a REAL position-value
+    # series from its own flows (the same mark-to-market construction as the launch vault). With
+    # several wrappers a combined timeline would be needed, so the series stays empty rather than
+    # plotting a partial portfolio — the chart then says "no history yet", which is honest.
+    if (
+        "pnl" in sections
+        and not value_series
+        and not config.vault_address
+        and len(wrapper_positions) == 1
+    ):
+        only = wrapper_positions[0]
+        value_series = _value_series(
+            wrapper_flows.get(only.position_id, []),
+            _VaultPosition(
+                shares=only.shares,
+                underlying=only.underlying,
+                asset_address=only.asset_address,
+                block=as_of_block,
+                stale=False,
+            ),
+        )
 
     return PortfolioResponse(
         asOfBlock=as_of_block,
@@ -1064,6 +1137,71 @@ async def get_outcome_detail(
     )
 
 
+async def _wrapper_position_response(
+    position_id: str,
+    account: AccountContext,
+    reader: VaultReader,
+    flows: VaultFlowReader,
+    config: AgentConfig,
+    store: PgWhitelistStore | None,
+) -> PositionEventsResponse:
+    """053 — one held curated wrapper's enriched position + its indexed event history.
+
+    The id must resolve to a DEPLOYED whitelisted wrapper AND a non-zero balance — an arbitrary
+    address is not a position, and a wrapper the user does not hold is NOT_FOUND. Figures come
+    from the wrapper's own flows; an unindexed history stays null rather than guessed.
+    """
+    address = position_id[len("wrapper:") :].strip().lower()
+    if not re.fullmatch(r"0x[0-9a-f]{40}", address):
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            f"No position {position_id!r}.",
+            reasons=[ErrorReason("NOT_FOUND", "malformed wrapper address")],
+        )
+    entries: list[Any] = []
+    if store is not None:
+        try:
+            entries = await store.list_entries(account.chain_id)
+        except Exception:
+            entries = []
+    known = any(
+        e.status == DEPLOYED and (e.proxy_address or "").lower() == address for e in entries
+    )
+    if not known:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            f"No position {position_id!r}.",
+            reasons=[ErrorReason("NOT_FOUND", "not a whitelisted wrapper on this chain")],
+        )
+    wrappers, _stale, block = await read_wrapper_positions(
+        reader, store, account.chain_id, account.account, config.stable_token_address
+    )
+    held = next((w for w in wrappers if w.vault_address == address), None)
+    if held is None:
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "You hold no position in that vault.",
+            reasons=[ErrorReason("NOT_FOUND", "zero wrapper shares")],
+        )
+    rows: list[FlowRow] = []
+    try:
+        rows = await flows.list_flows(
+            _network_id(account.chain_id), address, account.account, limit=_SERIES_MAX_FLOWS
+        )
+    except Exception:
+        rows = []
+    basis = replay_basis(rows, held.shares)
+    _TX_DISPLAY_LIMIT = 50  # preserve the launch endpoint's tx-list cap (newest-first)
+    return PositionEventsResponse(
+        asOfBlock=block,
+        asOf=_now_iso(),
+        stale=False,
+        position=_wrapper_detail(held, basis),
+        onchainEvents=[_to_event(f, block) for f in rows[:_TX_DISPLAY_LIMIT]],
+        # The per-position PnL time-series still needs a pps sampler → empty for now.
+        pnlSeries=[],
+    )
+
 @router.get("/portfolio/positions/{position_id}", response_model=PositionEventsResponse)
 async def get_position(
     position_id: str,
@@ -1071,6 +1209,7 @@ async def get_position(
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     flows: Annotated[VaultFlowReader, Depends(get_vault_flow_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
+    wrapper_store: Annotated[PgWhitelistStore | None, Depends(get_wrapper_store)],
 ) -> PositionEventsResponse:
     """One enriched position + its on-chain event history + per-position PnL series (§3.3).
 
@@ -1080,6 +1219,12 @@ async def get_position(
     come from the INDEXED on-chain flows (B2) when available; the raw event/PnL time-series
     still needs a per-block sampler → ``[]``.
     """
+    # 053 — curated-wrapper positions are addressed as `wrapper:<proxy>`.
+    if position_id.startswith("wrapper:"):
+        return await _wrapper_position_response(
+            position_id, account, reader, flows, config, wrapper_store
+        )
+
     if position_id != _VAULT_POSITION_ID:
         raise ApiError(
             ErrorCode.NOT_FOUND,
