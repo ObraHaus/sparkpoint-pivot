@@ -351,6 +351,18 @@ async def _index_changelog(db: object) -> None:
 _INDEX_INTERVAL_S = 300.0  # re-index vault flows every ~5 min (bounded catch-up each tick)
 
 
+def flow_cursor_stream(config: AgentConfig) -> str:
+    """053 — the cursor stream for THIS chain's flow indexer.
+
+    The rows all live under the shared ``"base"`` mirror network id, so the watermark must carry
+    the chain: the agent's configured vault chain keeps the historical ``vault_flows`` stream
+    (its cursor is years of Base history), and any other chain gets its own suffixed stream.
+    Two chains sharing one cursor would let the higher-blocked chain push the other past its
+    head — which is exactly how the first 4663 run froze the Base launch-vault index.
+    """
+    return "vault_flows" if config.vault_address else f"vault_flows_{config.chain_id}"
+
+
 async def _index_addresses(config: AgentConfig) -> list[str]:
     """053 — the contracts whose Deposit/Withdraw the indexer watches on this chain.
 
@@ -416,7 +428,9 @@ async def _index_vault_flows_loop() -> None:
             indexer = VaultFlowIndexer(
                 transport=HttpxLogsRpc(log_rpc),
                 # The bound address is only the fallback stamp; each decoded flow carries its own.
-                store=PgVaultFlowStore(get_database(), addresses[0]),
+                store=PgVaultFlowStore(
+                    get_database(), addresses[0], stream=flow_cursor_stream(config)
+                ),
                 vault_address=config.vault_address or "",
                 addresses=addresses,
                 network_id="base",  # the networks mirror id BOTH Base and 4663 reads use

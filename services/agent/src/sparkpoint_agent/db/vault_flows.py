@@ -16,13 +16,16 @@ from datetime import datetime
 from ..data.log_source import VaultFlow
 from .pool import Database
 
+# 053 — the cursor STREAM is per indexer, not one global name: two chains sharing the mirror
+# network id ("base") must NOT share a watermark, or the chain with the higher blocks would drag
+# the other's cursor past its head and silently stop indexing it.
 _GET_CURSOR = (
     "SELECT last_processed_block FROM indexer_cursors "
-    "WHERE network_id = $1 AND stream = 'vault_flows'"
+    "WHERE network_id = $1 AND stream = $2"
 )
 _SET_CURSOR = """
 INSERT INTO indexer_cursors (network_id, stream, last_processed_block)
-VALUES ($1, 'vault_flows', $2)
+VALUES ($1, $2, $3)
 ON CONFLICT (network_id, stream) DO UPDATE SET last_processed_block = EXCLUDED.last_processed_block,
     updated_at = now()
 """.strip()
@@ -87,13 +90,17 @@ class PgVaultFlowStore:
     # 053 — the fallback contract for rows that carry none; each flow now stamps its OWN emitting
     # address (the launch vault or a curated wrapper).
     vault_address: str = ""
+    #: The ``indexer_cursors.stream`` this store reads/writes. Defaults to the launch-vault
+    #: stream; a second chain (4663 wrappers under the shared "base" mirror id) MUST pass its own
+    #: stream so the two watermarks never collide.
+    stream: str = "vault_flows"
 
     async def get_cursor(self, network_id: str) -> int:
-        v = await self.db.fetchval(_GET_CURSOR, network_id)
+        v = await self.db.fetchval(_GET_CURSOR, network_id, self.stream)
         return int(v) if v is not None else 0
 
     async def set_cursor(self, network_id: str, block: int) -> None:
-        await self.db.execute(_SET_CURSOR, network_id, block)
+        await self.db.execute(_SET_CURSOR, network_id, self.stream, block)
 
     async def upsert_flows(self, network_id: str, flows: Sequence[VaultFlow]) -> int:
         written = 0
