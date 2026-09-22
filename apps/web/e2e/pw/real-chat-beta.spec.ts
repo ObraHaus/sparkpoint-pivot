@@ -11,7 +11,9 @@ import { installBroadcastingWallet } from "./broadcasting-wallet";
 const PRIV = process.env.PW_TEST_PRIVKEY as Hex | undefined;
 const RPC = process.env.PW_ROBINHOOD_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com";
 
-const QUESTIONS = [
+const QUESTIONS: string[] = process.env.PW_CHAT_QUESTIONS
+  ? process.env.PW_CHAT_QUESTIONS.split("|").map((q) => q.trim()).filter(Boolean)
+  : [
   "what are the vaults available right now?",
   "what's the best vault?",
   "what's in my wallet?",
@@ -87,13 +89,17 @@ test.describe("REAL beta chat e2e · chain 4663", () => {
       console.log(`\n===== Q: ${q}\n${answer}\n`);
     }
 
-    // The two bugs this suite was written for must stay fixed.
-    const vaultList = answers.get("what are the vaults available right now?") ?? "";
-    expect(vaultList).toMatch(/Steakhouse/i);
-    expect(vaultList).not.toMatch(/couldn't find a strategy/i);
-    const wallet = answers.get("what's in my wallet?") ?? "";
-    expect(wallet).toMatch(/USDG/);
-    expect(wallet).not.toMatch(/idle USDC/i);
+    // The two bugs this suite was written for must stay fixed (when those questions ran).
+    const vaultList = answers.get("what are the vaults available right now?");
+    if (vaultList !== undefined) {
+      expect(vaultList).toMatch(/Steakhouse/i);
+      expect(vaultList).not.toMatch(/couldn't find a strategy/i);
+    }
+    const wallet = answers.get("what's in my wallet?");
+    if (wallet !== undefined) {
+      expect(wallet).toMatch(/USDG/);
+      expect(wallet).not.toMatch(/idle USDC/i);
+    }
     await page.screenshot({ path: "/tmp/opencode/e2e-chat-thread.png", fullPage: true });
 
     if (consoleErrors.length) {

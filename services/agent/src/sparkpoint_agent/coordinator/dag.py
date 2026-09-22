@@ -81,9 +81,11 @@ from .chat_blocks import (
 from .curated import (
     BEST_VAULT_RE,
     CURATED_FAILURE,
+    VAULT_RATE_RE,
     CuratedContext,
     curated_answer,
     curated_list_answer,
+    curated_rate_answer,
     is_vaults_list_question,
 )
 
@@ -557,7 +559,10 @@ class CoordinatorDag:
         # is fail-open: a store outage says so (an error block, never persisted as an answer)
         # rather than naming a vault from memory.
         wants_list = is_vaults_list_question(message)
-        if (BEST_VAULT_RE.search(message) or wants_list) and self.curated is not None:
+        wants_rate = bool(VAULT_RATE_RE.search(message))
+        if (
+            BEST_VAULT_RE.search(message) or wants_list or wants_rate
+        ) and self.curated is not None:
             yield ToolStepBlock("Checking the curated vaults", "running")
             curated_record = await self.curated(chain.chain_id)
             yield ToolStepBlock("Checking the curated vaults", "done")
@@ -566,7 +571,9 @@ class CoordinatorDag:
                 return
             # A LIST question ("what vaults are available right now?") enumerates the board; a
             # BEST question names the pick. Both come from the same stored record.
-            if wants_list:
+            if wants_rate:
+                answer = curated_rate_answer(curated_record)
+            elif wants_list:
                 answer = curated_list_answer(curated_record)
             else:
                 answer = curated_answer(curated_record)

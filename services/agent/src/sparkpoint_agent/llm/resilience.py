@@ -96,7 +96,7 @@ def current_priority() -> int:
     return _PRIORITY.get()
 
 
-_MODULE_RNG = random.Random()  # noqa: S311 — jitter spread, not a cryptographic use
+_MODULE_RNG: random.Random = random.Random()  # noqa: S311 — jitter spread, not cryptographic
 
 
 class LlmBusyError(ClaudeError):
@@ -110,11 +110,17 @@ class LlmBusyError(ClaudeError):
 
 @dataclass(frozen=True)
 class RetryPolicy:
-    """Bounds for the 429/529 retry loop. ~3 attempts / ~60s total (work order (a))."""
+    """Bounds for the 429/529 retry loop.
 
-    max_attempts: int = 3
-    base_delay_s: float = 0.5
-    max_delay_s: float = 8.0
+    Patient by default: a shared / low-tier key rate-limits in bursts, and the old full-jitter
+    window could sleep as little as ~0.2s — useless against a per-minute quota, so a burst
+    surfaced to the user as "Something went wrong". 5 attempts with an EQUAL-jitter floor ride
+    out a short burst (≈0.5s → 10s between attempts) while the total budget still bounds the turn.
+    """
+
+    max_attempts: int = 5
+    base_delay_s: float = 1.0
+    max_delay_s: float = 10.0
     total_budget_s: float = 60.0
 
 
@@ -181,14 +187,16 @@ def backoff_delay(
     """The seconds to sleep before ``attempt``'s retry (``attempt`` is 1-based).
 
     ``Retry-After`` wins when the server sent one (we obey the server's own pacing, clamped
-    to the total budget). Otherwise FULL JITTER over the exponential window:
-    ``uniform(0, min(max_delay, base * 2**(attempt-1)))`` — the jitter spreads a fleet's
-    retries so they don't re-collide on the quota (AWS "full jitter").
+    to the total budget). Otherwise EQUAL JITTER over the exponential window:
+    ``window/2 + uniform(0, window/2)`` — half the window is a FLOOR (a sub-second "retry" never
+    clears a per-minute quota), half is random so a fleet's retries don't re-collide.
     """
     if retry_after is not None:
         return max(0.0, min(retry_after, policy.total_budget_s))
     window = min(policy.max_delay_s, policy.base_delay_s * (2 ** (attempt - 1)))
-    return (rng or _MODULE_RNG).uniform(0.0, window)
+    rng_ = rng or _MODULE_RNG
+    delay: float = window / 2 + rng_.uniform(0.0, window / 2)
+    return delay
 
 
 # ─────────────────────────────────────────────────────────────────────────────

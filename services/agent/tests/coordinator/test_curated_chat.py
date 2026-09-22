@@ -16,10 +16,12 @@ from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.coordinator.curated import (
     BEST_VAULT_RE,
+    VAULT_RATE_RE,
     CuratedContext,
     CuratedPick,
     curated_answer,
     curated_list_answer,
+    curated_rate_answer,
     is_vaults_list_question,
 )
 from sparkpoint_agent.coordinator.dag import (
@@ -279,3 +281,45 @@ async def test_run_chat_answers_a_vault_list_from_the_record_without_the_model()
     text = _text(wires)
     assert "Gauntlet USDC Prime" in text and "Steakhouse USDG" in text
     assert classifier.calls == 0, "a curated LIST question must not need the classifier"
+
+
+# ── 053: the RATE shape ("what's the vault paying now?") ──────────────────────────────────────────
+
+
+def test_the_rate_regex_owns_rate_questions_only() -> None:
+    for question in (
+        "what's the vault paying now?",
+        "what is the vault yielding?",
+        "what's the APY?",
+        "what rate is the vault paying?",
+    ):
+        assert VAULT_RATE_RE.search(question), question
+    for other in (
+        "what's the vault fee?",
+        "deposit 100 USDC into the vault",
+        "explain vault shares",
+        "what are the vaults available right now?",
+    ):
+        assert not VAULT_RATE_RE.search(other), other
+
+
+def test_the_rate_answer_uses_the_stored_figure_and_never_invents_one() -> None:
+    text = curated_rate_answer(CuratedContext(vault_count=1, pick=PICK))
+    assert "4.41%" in text
+    assert "as of 2026-09-18" in text
+    assert "/vault" in text
+
+    bare = replace(PICK, net_apy_bps=None)
+    unknown = curated_rate_answer(CuratedContext(vault_count=1, pick=bare))
+    assert "won't invent a rate" in unknown
+    assert "0.00%" not in unknown
+
+
+async def test_run_chat_answers_a_rate_question_without_the_model() -> None:
+    async def curated(_chain_id: int) -> CuratedContext:
+        return CuratedContext(vault_count=1, pick=PICK)
+
+    dag, classifier = _dag(curated)
+    wires = await _run(dag, "what's the vault paying now?")
+    assert "4.41%" in _text(wires)
+    assert classifier.calls == 0, "a rate question is answered from the stored record"
