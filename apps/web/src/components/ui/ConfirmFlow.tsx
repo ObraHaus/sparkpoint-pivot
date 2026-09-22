@@ -46,6 +46,16 @@ type Mount = "route" | "inline";
  * by {@link useVaultConfirm} from direct-RPC reads) — there is no static fallback, so
  * a fabricated number can never render on the signing path.
  */
+/**
+ * The figures actually SIGNED, snapshotted in the Sign handler. The success receipt must never be
+ * recomputed from live reads: a full withdrawal zeroes the position, so a receipt built from the
+ * live model read "$0.00 is back in your wallet".
+ */
+export interface ReceiptAmounts {
+  readonly assets: bigint;
+  readonly shares: bigint;
+}
+
 export interface OnchainConfirm {
   /** The resolved deposit/withdraw intent the user will sign. */
   readonly exec: VaultExec;
@@ -55,8 +65,10 @@ export interface OnchainConfirm {
   readonly bc: [label: React.ReactNode, value: React.ReactNode, color: string][];
   /** Live guardrail rows. */
   readonly guards: React.ReactNode[];
-  /** Live success-receipt body (shown only after a REAL on-chain confirmation). */
-  readonly okBody: React.ReactNode;
+  /** Success-receipt body, built from the SIGNED amounts (shown only after a real confirmation). */
+  readonly okBody: (signed: ReceiptAmounts) => React.ReactNode;
+  /** The live figures to snapshot when the user signs. Called in the Sign handler, never in render. */
+  readonly receiptAmounts: () => ReceiptAmounts;
   /** Verbatim canonical performance-fee disclosure — deposit-only; rendered in the confirm reveal. */
   readonly disclosure?: React.ReactNode;
   /** Accrued-performance-fee line — shown in the success receipt (withdraw). */
@@ -256,6 +268,7 @@ function OnchainConfirmFlow({
   const txUrl = explorerTxUrl(onchain.exec.chainId, exec.txHash);
 
   const [acked, setAcked] = useState(false);
+  const [signed, setSigned] = useState<ReceiptAmounts | null>(null);
   const [shake, setShake] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const doneToasted = useRef(false);
@@ -308,6 +321,7 @@ function OnchainConfirmFlow({
       window.setTimeout(() => setShake(false), 320);
       return;
     }
+    setSigned(onchain.receiptAmounts());
     exec.start();
   }
 
@@ -341,7 +355,7 @@ function OnchainConfirmFlow({
             margin: "0 auto 6px",
           }}
         >
-          {onchain.okBody}
+          {onchain.okBody(signed ?? onchain.receiptAmounts())}
         </div>
         {onchain.receiptFeeLine && (
           <div

@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (withdraw receipt + chat vault questions)
+
+- **The withdrawal receipt shows the amount you actually withdrew.** A full withdrawal zeroes the position, and the success body was rebuilt from the live model — so it read "$0.00 is back in your wallet". The receipt now snapshots the figures at Sign (`receiptAmounts()` → `okBody(signed)`) and renders what was signed.
+- **"What vaults are available right now?" is answered from the curated board.** The deterministic curated route only matched best/top-style questions, so a LIST question fell into the recommender and got "I couldn't find a strategy that clears your current guardrails" on a chain where the recommender has nothing to propose. A new list shape (`is_vaults_list_question`) enumerates every curated vault from the same stored record, marks the published pick, and links the Vault page — no model call, no invented vault. Best/top questions still name the pick; a command with an amount still builds an action.
+- **The chat's wallet line names the chain's stable** — "idle USDG" on Robinhood Chain, never a hardcoded "USDC".
+
 ### Fixed (portfolio withdraw control is a real button)
 
 - **The portfolio row's "Withdraw" is a keyboard-focusable button**, not an anchor without an href (which has no link role and cannot be tabbed to). The row remains clickable.

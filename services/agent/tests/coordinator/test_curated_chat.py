@@ -19,6 +19,8 @@ from sparkpoint_agent.coordinator.curated import (
     CuratedContext,
     CuratedPick,
     curated_answer,
+    curated_list_answer,
+    is_vaults_list_question,
 )
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
@@ -211,3 +213,69 @@ async def test_a_genuine_deposit_command_still_builds_instead_of_being_stolen() 
     await _run(dag, "deposit 100 USDC into the vault")
     assert calls == [], "a command is not a question about the curated list"
     assert classifier.calls == 1, "the command routes through the normal intent path"
+
+
+# ── 053: the LIST shape ("what vaults are available right now?") ──────────────────────────────────
+
+
+def test_the_list_regex_owns_list_questions_and_never_a_best_or_command_shape() -> None:
+    for question in (
+        "what are the vaults available right now?",
+        "which vaults are live?",
+        "list the vaults",
+        "show me the vaults",
+        "what can I deposit into?",
+        "where can I earn?",
+    ):
+        assert is_vaults_list_question(question), question
+    for other in (
+        "what's the best vault?",
+        "which vaults are best?",
+        "deposit 100 USDC into the vault",
+        "withdraw everything",
+        "explain vault shares",
+        "what's the vault fee?",
+    ):
+        assert not is_vaults_list_question(other), other
+
+
+def test_the_list_answer_enumerates_every_vault_and_marks_the_pick() -> None:
+    second = replace(
+        PICK,
+        address="0x1111111111111111111111111111111111111111",
+        label="Steakhouse USDG",
+        net_apy_bps=372,
+        tvl_usd=487_400_000.0,
+        curator="Steakhouse",
+        reason="second",
+    )
+    text = curated_list_answer(CuratedContext(vault_count=2, pick=PICK, vaults=(PICK, second)))
+    assert "2 curated vaults live" in text.replace("\n", " ")
+    assert "Gauntlet USDC Prime" in text and "Steakhouse USDG" in text
+    assert "4.41%" in text and "3.72%" in text
+    assert "the published pick" in text
+    assert "/vault" in text
+
+
+def test_the_list_answer_without_vaults_falls_back_to_the_honest_empty_copy() -> None:
+    text = curated_list_answer(CuratedContext(vault_count=0))
+    assert "no curated vaults" in text.lower()
+
+
+async def test_run_chat_answers_a_vault_list_from_the_record_without_the_model() -> None:
+    second = replace(
+        PICK,
+        address="0x1111111111111111111111111111111111111111",
+        label="Steakhouse USDG",
+        net_apy_bps=372,
+        tvl_usd=487_400_000.0,
+    )
+
+    async def curated(_chain_id: int) -> CuratedContext:
+        return CuratedContext(vault_count=2, pick=PICK, vaults=(PICK, second))
+
+    dag, classifier = _dag(curated)
+    wires = await _run(dag, "what are the vaults available right now?")
+    text = _text(wires)
+    assert "Gauntlet USDC Prime" in text and "Steakhouse USDG" in text
+    assert classifier.calls == 0, "a curated LIST question must not need the classifier"
