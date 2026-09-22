@@ -59,12 +59,22 @@ async function ask(page: Page, message: string): Promise<string> {
     .poll(async () => (await page.locator(".cturn.ai").count()) > before, { timeout: 300_000 })
     .toBe(true);
   const turn = page.locator(".cturn.ai").last();
-  await turn.locator(".think").waitFor({ state: "hidden", timeout: 300_000 }).catch(() => {});
+  // Wait for EVERY thinking indicator in the turn to clear (a turn can hold a tool-step row AND the
+  // thinking indicator; waiting on the first hidden one returned while the answer was still running).
+  await expect
+    .poll(async () => await turn.locator(".think:visible").count(), { timeout: 300_000 })
+    .toBe(0);
   await page.waitForTimeout(2_000);
 
   const texts = await turn.locator(".ctext").allInnerTexts();
   const cards = await turn.locator(".ccard").allInnerTexts();
-  return [...texts, ...cards.map((c) => `[CARD] ${c}`)].join("\n").slice(0, 1500);
+  const joined = [...texts, ...cards.map((c) => `[CARD] ${c}`)].join("\n").slice(0, 1500);
+  if (!joined.trim()) {
+    // Diagnose an EMPTY answer: dump the turn as the user sees it, plus its raw markup.
+    console.log("EMPTY TURN TEXT:", await turn.innerText());
+    console.log("EMPTY TURN HTML:", (await turn.innerHTML()).slice(0, 1200));
+  }
+  return joined;
 }
 
 test.describe("REAL beta chat e2e · chain 4663", () => {

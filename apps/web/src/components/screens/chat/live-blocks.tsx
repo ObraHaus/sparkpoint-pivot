@@ -471,7 +471,9 @@ function LiveBlock({
             <>
               <div className="cthesis">
                 {block.proposedAction.type === "aerodrome_swap"
-                  ? "Swap ETH ↔ USDC on Uniswap — review the live quote and sign right here."
+                  ? `Swap ${block.proposedAction.tokenIn?.symbol ?? "ETH"} ↔ ${
+                      block.proposedAction.tokenOut?.symbol ?? "USDC"
+                    } on Uniswap — review the live quote and sign right here.`
                   : "This action is ready — review every change and sign right here."}
               </div>
               <div className="cact">
