@@ -553,6 +553,16 @@ class CoordinatorDag:
             yield TextBlock(_HOW_TO_EXIT_ANSWER if _offers_vault(chain) else _HOW_TO_EXIT_NO_VAULT)
             return
 
+        # 053 — the SAFETY questions ("how do you keep my funds safe?", "can you withdraw my
+        # funds?", "what happens if you disappear?"). Answered deterministically: these are
+        # properties of the contracts, not prose a model should recollect — and they must keep
+        # working when the model provider is rate-limiting.
+        if _SAFETY_RE.search(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(_SAFETY_ANSWER)
+            return
+
         # 048 — "what's the best vault / where should I deposit?" is answered from the CURATED
         # RECORD: the same row `/vault` renders, with its stored as-of. Deterministic, because the
         # one number a user cannot sanity-check is an APY and a model must not supply one. The read
@@ -1211,6 +1221,40 @@ _HOW_TO_EXIT_ANSWER = (
     "contract, redeeming is a direct on-chain call: it works even if the SparkPoint app is "
     "offline, and nobody here can pause, delay or refuse it.\n\n"
     "Tell me an amount and I'll set it up for you to sign."
+)
+
+#: 053 — the SAFETY shape. "Can you move/withdraw my funds?" is a question about CUSTODY, and the
+#: answer is a property of the system (who holds keys, who can sign, what can be paused) — not
+#: something to route through a model. Deliberately narrow: an explicit command ("withdraw 100
+#: USDC") has no "can you/how do you" subject and still builds an action.
+_SAFETY_RE = re.compile(
+    r"\bhow (?:do|does|can|would) (?:you|sparky|this|it)\b[^.?!]{0,30}"
+    r"\b(?:keep|protect|secure|safeguard|hold|store)\b"
+    r"|\b(?:is|are) (?:my|our|the) (?:funds?|money|capital|assets?)\b[^.?!]{0,20}\bsafe\b"
+    r"|\bcan (?:you|sparky|anyone|somebody)\b[^.?!]{0,30}"
+    r"\b(?:move|take|touch|access|withdraw|steal|freeze|pause|block)\b[^.?!]{0,25}"
+    r"\b(?:my|our|the|your)\b[^.?!]{0,15}\b(?:funds?|money|capital|assets?|withdrawal)\b"
+    r"|\bwhat happens (?:if|when) (?:you|sparky|the app|this)\b[^.?!]{0,30}"
+    r"\b(?:disappear|vanish|go(?:es)? (?:away|offline|down)|shut ?down|is (?:gone|offline))\b"
+    r"|\bwho (?:can|could|else) (?:move|access|withdraw|control)\b",
+    re.IGNORECASE,
+)
+
+#: The safety answer. Code-authored: every claim is a property of the contracts and the custody
+#: model (N1/N2), so it cannot drift with a model's recollection. It names the residual risks too.
+_SAFETY_ANSWER = (
+    "Your funds never sit with us. They stay in your own wallet, or in the vault contract you "
+    "deposited into — and only you can move them.\n\n"
+    "- **You are the only signer.** Every deposit, swap and withdrawal is a transaction you "
+    "approve in your own wallet. Sparky can propose a move; it can never sign one.\n"
+    "- **Withdrawals are never gated.** The exit is a direct ERC-4626 call on the vault contract — "
+    "it works even if the SparkPoint app and AI are entirely offline, and nobody here can pause, "
+    "delay or refuse it.\n"
+    "- **No custody and no rehypothecation.** We never hold your assets, so we can't lend them "
+    "out, move them somewhere else, or withhold them.\n\n"
+    "What remains is market risk, not custody risk: smart-contract risk in the vault you chose, "
+    "and a yield that can fall. Nothing here is insured or guaranteed. The on-chain proof is under "
+    "Trust (/trust) whenever you want to check it."
 )
 
 #: No-vault chains (4663 beta, 46630 testnet): there's no SparkPoint vault deposited here to

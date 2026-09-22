@@ -478,3 +478,44 @@ async def test_vault_chain_answers_are_unchanged_by_the_no_vault_branch() -> Non
     assert "10% performance fee" in fees
     exit_text = _text(await _run(_dag(Intent(kind=IntentKind.PORTFOLIO)), "How do I withdraw?"))
     assert "withdraw at any time" in exit_text.lower()
+
+
+# ── 053: the SAFETY questions — custody is a property of the system, not prose ────────────────────
+
+
+def test_the_safety_regex_owns_custody_questions_and_never_a_command() -> None:
+    from sparkpoint_agent.coordinator.dag import _SAFETY_RE
+
+    for question in (
+        "how do you keep my funds safe?",
+        "can you withdraw my funds?",
+        "can you move my money?",
+        "is my money safe?",
+        "what happens if you disappear?",
+        "who can access my funds?",
+    ):
+        assert _SAFETY_RE.search(question), question
+    for other in (
+        "withdraw 100 USDC",
+        "how do I withdraw?",
+        "explain vault shares",
+        "what's the vault paying now?",
+        "what are the vaults available right now?",
+        "what's in my wallet?",
+    ):
+        assert not _SAFETY_RE.search(other), other
+
+
+async def test_safety_questions_are_answered_without_the_classifier() -> None:
+    # The classifier would route these to prose; the deterministic route must win (and it must
+    # keep working when the model provider is rate-limiting).
+    dag = _dag(Intent(kind=IntentKind.LEARN, topic="safety"))
+    for question in (
+        "how do you keep my funds safe?",
+        "can you withdraw my funds?",
+        "what happens if you disappear?",
+    ):
+        text = _text(await _run(dag, question))
+        assert "only signer" in text, question
+        assert "never gated" in text, question
+        assert "No custody" in text, question
