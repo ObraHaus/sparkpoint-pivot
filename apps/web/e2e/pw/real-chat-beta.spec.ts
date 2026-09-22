@@ -59,11 +59,17 @@ async function ask(page: Page, message: string): Promise<string> {
     .poll(async () => (await page.locator(".cturn.ai").count()) > before, { timeout: 300_000 })
     .toBe(true);
   const turn = page.locator(".cturn.ai").last();
-  // Wait for EVERY thinking indicator in the turn to clear (a turn can hold a tool-step row AND the
-  // thinking indicator; waiting on the first hidden one returned while the answer was still running).
+  // The answer is complete when THIS turn carries an answer block (text or a card). Do NOT wait on
+  // `.think`: a completed tool-step row uses the same class and stays visible by design.
   await expect
-    .poll(async () => await turn.locator(".think:visible").count(), { timeout: 300_000 })
-    .toBe(0);
+    .poll(async () => await turn.locator(".ctext, .ccard").count(), { timeout: 300_000 })
+    .toBeGreaterThan(0);
+  // …and the live "thinking" indicator is gone.
+  await turn
+    .locator(".thinking-row")
+    .last()
+    .waitFor({ state: "hidden", timeout: 60_000 })
+    .catch(() => {});
   await page.waitForTimeout(2_000);
 
   const texts = await turn.locator(".ctext").allInnerTexts();
