@@ -2,6 +2,22 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "chat-resilience-and-rate",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky handles busy moments better",
+      "body": "When the model provider is briefly rate-limiting, Sparky now waits and retries a few more times instead of giving up, so a busy moment is less likely to end in “something went wrong”. Asking what a vault is paying is also answered straight from the same stored figure the Vault board shows.",
+      "published_at": "2026-09-22T02:45:37Z"
+    },
+    {
+      "slug": "chat-vault-list-and-receipt",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Asking Sparky what vaults are available now works",
+      "body": "Asking “what are the vaults available right now?” used to get a generic “no strategy clears your guardrails” reply. Sparky now lists the curated vaults from the same board the Vault page shows, names the current pick, and links the board. The withdrawal receipt also shows the amount you actually withdrew instead of $0.00, and the wallet answer names the token you really hold (USDG on this network).",
+      "published_at": "2026-09-22T02:17:56Z"
+    },
+    {
       "slug": "portfolio-withdraw-a11y",
       "type": "changelog",
       "tag": "Fixed",

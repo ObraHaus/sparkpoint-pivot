@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (assistant resilience + the vault-rate answer)
+
+- **The assistant is more patient with provider rate limits.** A 429 burst used to exhaust three attempts in under 8s (full-jitter waits as short as 0.2s), surfacing "Something went wrong" for questions that a short wait would have answered. Five attempts with an equal-jitter floor (≈0.5s → 10s between tries, 60s total budget) ride out a burst.
+- **"What's the vault paying now?" is answered from the stored record** — the same figure the board renders, deterministically (no model call). With no stored rate it says "I won't invent a rate" rather than guessing.
+
+### Fixed (withdraw receipt + chat vault questions)
+
+- **The withdrawal receipt shows the amount you actually withdrew.** A full withdrawal zeroes the position, and the success body was rebuilt from the live model — so it read "$0.00 is back in your wallet". The receipt now snapshots the figures at Sign (`receiptAmounts()` → `okBody(signed)`) and renders what was signed.
+- **"What vaults are available right now?" is answered from the curated board.** The deterministic curated route only matched best/top-style questions, so a LIST question fell into the recommender and got "I couldn't find a strategy that clears your current guardrails" on a chain where the recommender has nothing to propose. A new list shape (`is_vaults_list_question`) enumerates every curated vault from the same stored record, marks the published pick, and links the Vault page — no model call, no invented vault. Best/top questions still name the pick; a command with an amount still builds an action.
+- **The chat's wallet line names the chain's stable** — "idle USDG" on Robinhood Chain, never a hardcoded "USDC".
+
 ### Fixed (portfolio withdraw control is a real button)
 
 - **The portfolio row's "Withdraw" is a keyboard-focusable button**, not an anchor without an href (which has no link role and cannot be tabbed to). The row remains clickable.

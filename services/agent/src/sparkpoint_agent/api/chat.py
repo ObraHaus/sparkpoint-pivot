@@ -414,25 +414,46 @@ async def _curated_context(chain_id: int) -> CuratedContext | None:
         _warn_once("chat_curated_unavailable")
         return None
 
+    # 053 — the LIST answer enumerates the board, so the context carries every displayed vault,
+    # not just the pick. Both are built by the same mapper (one shape, one source of truth).
+    raw_vaults = board.get("vaults")
+    listed: tuple[CuratedPick, ...] = ()
+    if isinstance(raw_vaults, list):
+        listed = tuple(
+            pick
+            for pick in (_curated_pick_from(raw) for raw in raw_vaults if isinstance(raw, dict))
+            if pick is not None
+        )
+
     raw_pick = board.get("pick")
     if not isinstance(raw_pick, dict):
-        return CuratedContext(vault_count=len(vaults))
-    net_apy = _curated_number(raw_pick, "netApyBps")
-    curator = raw_pick.get("curator")
-    as_of = raw_pick.get("asOf")
+        return CuratedContext(vault_count=len(vaults), vaults=listed)
     return CuratedContext(
         vault_count=len(vaults),
-        pick=CuratedPick(
-            address=str(raw_pick.get("address") or ""),
-            label=str(raw_pick.get("label") or "this vault"),
-            net_apy_bps=int(net_apy) if net_apy is not None else None,
-            tvl_usd=_curated_number(raw_pick, "tvlUsd"),
-            curator=str(curator) if curator else None,
-            curator_verified=bool(raw_pick.get("curatorVerified")),
-            reason=str(raw_pick.get("reason") or "it scored best in the latest screening."),
-            as_of=str(as_of) if as_of else None,
-            wrapped=bool(raw_pick.get("wrapped")),
-        ),
+        pick=_curated_pick_from(raw_pick),
+        vaults=listed,
+    )
+
+
+def _curated_pick_from(raw: dict[str, object]) -> CuratedPick | None:
+    """One board row → the chat-shaped pick. ``None`` when the row has no usable address/label."""
+    address = str(raw.get("address") or "")
+    label = str(raw.get("label") or "this vault")
+    if not address:
+        return None
+    net_apy = _curated_number(raw, "netApyBps")
+    curator = raw.get("curator")
+    as_of = raw.get("asOf")
+    return CuratedPick(
+        address=address,
+        label=label,
+        net_apy_bps=int(net_apy) if net_apy is not None else None,
+        tvl_usd=_curated_number(raw, "tvlUsd"),
+        curator=str(curator) if curator else None,
+        curator_verified=bool(raw.get("curatorVerified")),
+        reason=str(raw.get("reason") or "it scored best in the latest screening."),
+        as_of=str(as_of) if as_of else None,
+        wrapped=bool(raw.get("wrapped")),
     )
 
 
