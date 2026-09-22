@@ -73,6 +73,13 @@ test.describe("REAL beta withdraw e2e · chain 4663", () => {
       await expect(page.getByText(/Withdrawal confirmed/i).first()).toBeVisible({ timeout: 300_000 });
       const href = await page.getByRole("link", { name: /View transaction/i }).first().getAttribute("href");
       console.log("WITHDRAW TX:", href);
+      // The receipt must show the amount that was SIGNED — a full withdrawal zeroes the position,
+      // and a receipt rebuilt from the live model read "$0.00 is back in your wallet".
+      const receipt = await page.locator("body").innerText();
+      const back = receipt.match(/\$[0-9,]+\.[0-9]{2} is back in your wallet/)?.[0] ?? "";
+      console.log("RECEIPT:", back);
+      expect(back).not.toBe("");
+      expect(back).not.toMatch(/^\$0\.00 /);
     });
 
     await test.step("portfolio reflects the withdrawal", async () => {
