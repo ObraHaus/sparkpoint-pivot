@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "chat-safety-answers",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Safety answers that never wait on a model",
+      "body": "Questions about custody — “how do you keep my funds safe?”, “can you withdraw my funds?” — are now answered directly from the system's own guarantees, so they stay available even when the AI provider is busy. The chat's swap suggestion also names the pair you're actually swapping (ETH and USDG on this network).",
+      "published_at": "2026-09-22T04:22:29Z"
+    },
+    {
       "slug": "chat-resilience-and-rate",
       "type": "changelog",
       "tag": "Improved",

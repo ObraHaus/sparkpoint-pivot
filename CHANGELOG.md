@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (custody answers + swap-card copy)
+
+- **The custody/safety questions are answered deterministically** — "how do you keep my funds safe?", "can you withdraw my funds?", "what happens if you disappear?" now return the code-authored guarantees (only you sign; withdrawals are never gated; no custody or rehypothecation) without a model call, so they keep working when the provider is rate-limiting. An order with an amount ("withdraw 100 USDC") is still routed to the build path.
+- **The chat's swap card names the real pair** — it said "ETH ↔ USDC" on Robinhood Chain, where the stable is USDG; it now reads the proposed pair's own symbols.
+
 ### Fixed (assistant resilience + the vault-rate answer)
 
 - **The assistant is more patient with provider rate limits.** A 429 burst used to exhaust three attempts in under 8s (full-jitter waits as short as 0.2s), surfacing "Something went wrong" for questions that a short wait would have answered. Five attempts with an equal-jitter floor (≈0.5s → 10s between tries, 60s total budget) ride out a burst.
