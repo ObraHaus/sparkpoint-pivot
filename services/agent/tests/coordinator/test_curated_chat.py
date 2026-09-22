@@ -16,9 +16,13 @@ from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.coordinator.curated import (
     BEST_VAULT_RE,
+    VAULT_RATE_RE,
     CuratedContext,
     CuratedPick,
     curated_answer,
+    curated_list_answer,
+    curated_rate_answer,
+    is_vaults_list_question,
 )
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
@@ -211,3 +215,111 @@ async def test_a_genuine_deposit_command_still_builds_instead_of_being_stolen() 
     await _run(dag, "deposit 100 USDC into the vault")
     assert calls == [], "a command is not a question about the curated list"
     assert classifier.calls == 1, "the command routes through the normal intent path"
+
+
+# ── 053: the LIST shape ("what vaults are available right now?") ──────────────────────────────────
+
+
+def test_the_list_regex_owns_list_questions_and_never_a_best_or_command_shape() -> None:
+    for question in (
+        "what are the vaults available right now?",
+        "which vaults are live?",
+        "list the vaults",
+        "show me the vaults",
+        "what can I deposit into?",
+        "where can I earn?",
+    ):
+        assert is_vaults_list_question(question), question
+    for other in (
+        "what's the best vault?",
+        "which vaults are best?",
+        "deposit 100 USDC into the vault",
+        "withdraw everything",
+        "explain vault shares",
+        "what's the vault fee?",
+    ):
+        assert not is_vaults_list_question(other), other
+
+
+def test_the_list_answer_enumerates_every_vault_and_marks_the_pick() -> None:
+    second = replace(
+        PICK,
+        address="0x1111111111111111111111111111111111111111",
+        label="Steakhouse USDG",
+        net_apy_bps=372,
+        tvl_usd=487_400_000.0,
+        curator="Steakhouse",
+        reason="second",
+    )
+    text = curated_list_answer(CuratedContext(vault_count=2, pick=PICK, vaults=(PICK, second)))
+    assert "2 curated vaults live" in text.replace("\n", " ")
+    assert "Gauntlet USDC Prime" in text and "Steakhouse USDG" in text
+    assert "4.41%" in text and "3.72%" in text
+    assert "the published pick" in text
+    assert "/vault" in text
+
+
+def test_the_list_answer_without_vaults_falls_back_to_the_honest_empty_copy() -> None:
+    text = curated_list_answer(CuratedContext(vault_count=0))
+    assert "no curated vaults" in text.lower()
+
+
+async def test_run_chat_answers_a_vault_list_from_the_record_without_the_model() -> None:
+    second = replace(
+        PICK,
+        address="0x1111111111111111111111111111111111111111",
+        label="Steakhouse USDG",
+        net_apy_bps=372,
+        tvl_usd=487_400_000.0,
+    )
+
+    async def curated(_chain_id: int) -> CuratedContext:
+        return CuratedContext(vault_count=2, pick=PICK, vaults=(PICK, second))
+
+    dag, classifier = _dag(curated)
+    wires = await _run(dag, "what are the vaults available right now?")
+    text = _text(wires)
+    assert "Gauntlet USDC Prime" in text and "Steakhouse USDG" in text
+    assert classifier.calls == 0, "a curated LIST question must not need the classifier"
+
+
+# ── 053: the RATE shape ("what's the vault paying now?") ──────────────────────────────────────────
+
+
+def test_the_rate_regex_owns_rate_questions_only() -> None:
+    for question in (
+        "what's the vault paying now?",
+        "what is the vault yielding?",
+        "what's the APY?",
+        "what rate is the vault paying?",
+    ):
+        assert VAULT_RATE_RE.search(question), question
+    for other in (
+        "what's the vault fee?",
+        "deposit 100 USDC into the vault",
+        "explain vault shares",
+        "what are the vaults available right now?",
+    ):
+        assert not VAULT_RATE_RE.search(other), other
+
+
+def test_the_rate_answer_uses_the_stored_figure_and_never_invents_one() -> None:
+    text = curated_rate_answer(CuratedContext(vault_count=1, pick=PICK))
+    assert "4.41%" in text
+    assert "as of 2026-09-18" in text
+    assert "/vault" in text
+
+    bare = replace(PICK, net_apy_bps=None)
+    unknown = curated_rate_answer(CuratedContext(vault_count=1, pick=bare))
+    assert "won't invent a rate" in unknown
+    assert "0.00%" not in unknown
+
+
+async def test_run_chat_answers_a_rate_question_without_the_model() -> None:
+    async def curated(_chain_id: int) -> CuratedContext:
+        return CuratedContext(vault_count=1, pick=PICK)
+
+    dag, classifier = _dag(curated)
+    wires = await _run(dag, "what's the vault paying now?")
+    assert "4.41%" in _text(wires)
+    assert classifier.calls == 0, "a rate question is answered from the stored record"

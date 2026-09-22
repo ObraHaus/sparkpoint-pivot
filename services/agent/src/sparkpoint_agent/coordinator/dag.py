@@ -78,7 +78,16 @@ from .chat_blocks import (
     token_address,
     token_decimals,
 )
-from .curated import BEST_VAULT_RE, CURATED_FAILURE, CuratedContext, curated_answer
+from .curated import (
+    BEST_VAULT_RE,
+    CURATED_FAILURE,
+    VAULT_RATE_RE,
+    CuratedContext,
+    curated_answer,
+    curated_list_answer,
+    curated_rate_answer,
+    is_vaults_list_question,
+)
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -549,14 +558,26 @@ class CoordinatorDag:
         # one number a user cannot sanity-check is an APY and a model must not supply one. The read
         # is fail-open: a store outage says so (an error block, never persisted as an answer)
         # rather than naming a vault from memory.
-        if BEST_VAULT_RE.search(message) and self.curated is not None:
+        wants_list = is_vaults_list_question(message)
+        wants_rate = bool(VAULT_RATE_RE.search(message))
+        if (
+            BEST_VAULT_RE.search(message) or wants_list or wants_rate
+        ) and self.curated is not None:
             yield ToolStepBlock("Checking the curated vaults", "running")
             curated_record = await self.curated(chain.chain_id)
             yield ToolStepBlock("Checking the curated vaults", "done")
             if curated_record is None:
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", CURATED_FAILURE)
                 return
-            yield TextBlock(curated_answer(curated_record))
+            # A LIST question ("what vaults are available right now?") enumerates the board; a
+            # BEST question names the pick. Both come from the same stored record.
+            if wants_rate:
+                answer = curated_rate_answer(curated_record)
+            elif wants_list:
+                answer = curated_list_answer(curated_record)
+            else:
+                answer = curated_answer(curated_record)
+            yield TextBlock(answer)
             return
 
         direct = _direct_answer(message, chain)
@@ -771,7 +792,7 @@ class CoordinatorDag:
         noun = "position" if count == 1 else "positions"
         return (
             f"You're holding {count} {noun} worth about ${portfolio.net_worth_usd}"
-            f"{stale}.{_wallet_line(portfolio)}"
+            f"{stale}.{_wallet_line(portfolio, gathered.chain.chain_id)}"
         )
 
 
@@ -780,13 +801,14 @@ def _explicit_ready(intent: Intent) -> bool:
     return intent.action_type is not None and intent.asset is not None and intent.amount is not None
 
 
-def _wallet_line(portfolio: PortfolioView) -> str:
-    """The wallet sentence: native coin, notable tokens, and idle USDC (029/FR-004).
+def _wallet_line(portfolio: PortfolioView, chain_id: int) -> str:
+    """The wallet sentence: native coin, notable tokens, and the idle stable (029/FR-004).
 
     Answers "what's in my wallet?" with what is actually IN the wallet — deployed capital is
     the sentence before this one. Amounts only: ETH and SRK have no price feed here, and an
     invented USD figure is worse than none. Empty string when the wallet holds nothing notable,
-    so the summary never trails a dangling "In your wallet:".
+    so the summary never trails a dangling "In your wallet:". The idle line names the CHAIN's
+    stable (USDG on Robinhood Chain), never a hardcoded "USDC".
     """
     parts: list[str] = []
     if portfolio.native_wei:
@@ -795,7 +817,7 @@ def _wallet_line(portfolio: PortfolioView) -> str:
         if token.raw:
             parts.append(f"{_fmt_units(token.raw, token.decimals, max_dp=2)} {token.symbol}")
     if portfolio.idle_usdc:
-        parts.append(f"${_fmt_usdc6(portfolio.idle_usdc)} in idle USDC")
+        parts.append(f"${_fmt_usdc6(portfolio.idle_usdc)} in idle {_stable_symbol(chain_id)}")
     if not parts:
         return ""
     if len(parts) == 1:
@@ -871,10 +893,14 @@ _ACTION_NOUNS: dict[ActionType, str] = {
 _SWAP_PAGE_CHAINS: frozenset[int] = frozenset({84532, 8453, 46630, 4663})
 
 
-def _swap_stable_symbol(chain_id: int) -> str:
-    """The stablecoin the Swap page pairs against on this chain. Robinhood Chain (4663) uses USDG;
-    every other swap-page chain uses USDC. Keeps the assistant's swap copy chain-accurate."""
+def _stable_symbol(chain_id: int) -> str:
+    """The chain's stablecoin — USDG on Robinhood Chain (4663), USDC elsewhere. One source for the
+    swap copy AND the wallet sentence, so the assistant never calls USDG "USDC"."""
     return "USDG" if chain_id == 4663 else "USDC"
+
+
+#: Back-compat alias for the swap-specific call sites (same function, clearer name at each use).
+_swap_stable_symbol = _stable_symbol
 
 
 def _swap_page_message(chain_id: int) -> str:

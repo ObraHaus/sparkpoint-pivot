@@ -156,10 +156,13 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
           // fabricated "under your max 0.5%" check would present an unverified limit as passed.)
           m.venueGuard,
         ],
-        okBody: (
+        // Snapshotted at Sign: the receipt shows what was signed, not a post-tx re-read.
+        receiptAmounts: () => ({ assets: wantUnits, shares: m.depositShares }),
+        okBody: (signed) => (
           <>
-            Your {assetSymbol} is now earning in the {vaultName} — you deposited {fmt(toNum(wantUnits, dec))}{" "}
-            {assetSymbol} for ≈ {fmt(toNum(m.depositShares, shareDec), 4)} {shareSymbol}.
+            Your {assetSymbol} is now earning in the {vaultName} — you deposited{" "}
+            {fmt(toNum(signed.assets, dec))} {assetSymbol} for ≈{" "}
+            {fmt(toNum(signed.shares, shareDec), 4)} {shareSymbol}.
           </>
         ),
         // 024/T024 — the disclosure follows the VAULT's real fee mechanics. This is the string the
@@ -184,7 +187,10 @@ export function useVaultConfirm(input: VaultConfirmInput): VaultConfirmState {
           ["Fee on this withdrawal", "0% — none", "--gain"],
         ],
         guards: ["Redeemed to your own wallet", m.withdrawGuardN2],
-        okBody: <>{money(toNum(m.redeemAssetsOut, dec))} is back in your wallet.</>,
+        receiptAmounts: () => ({ assets: m.redeemAssetsOut, shares: m.redeemShares }),
+        okBody: (signed) => (
+          <>{money(toNum(signed.assets, dec))} is back in your wallet.</>
+        ),
         receiptFeeLine: m.withdrawFeeNote,
       };
 
