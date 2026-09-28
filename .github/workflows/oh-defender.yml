@@ -28,10 +28,7 @@ jobs:
           # `forge install` at scan time would not: that re-resolves from the
           # network and can pick up something the PR never pinned.
           submodules: recursive
-      # v1.8.0 — detects the Foundry project root (contracts/), so the repo-root shim is gone.
-      # v1.7.0 CANNOT: the shim was deleted with the v1.8.0 re-pin, so its slither/aderyn lanes
-      # fail to find the project and the whole scan degrades (no findings, but never green).
-      - uses: ObraHaus/obrahaus-defender/ci/scan-action@be05036feae07d9dd211f05d99e636dfcc507f0a # v1.8.0
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@de1ac9c5c15b934316bb5abb5b8cfead4521d9b3 # v1.7.0
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}
           defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
