@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SparkLogo } from "@/components/ui/SparkLogo";
+import { stageCopy } from "@/lib/stage";
 
 /**
  * New Era Landing — Sparky's landing rebuilt on a single Three.js particle
@@ -939,13 +940,15 @@ export default function NewEraLanding() {
               <button className="btn ghost" onClick={() => scrollToFraction(0.22)}>
                 See how it works
               </button>
-              {/* 045 — the alpha is gated, so "Connect wallet" is a wall for most visitors. This
+              {/* 045 — the app is gated, so "Connect wallet" is a wall for most visitors. This
                   is the door beside it. It NAVIGATES to /apply rather than scrolling: this page is
                   a scroll-driven WebGL sequence, so a programmatic jump to the end whips the whole
                   animation past at a speed nobody can read, and dumps the visitor somewhere they
-                  did not ask to be. A page transition is the honest way to change context. */}
+                  did not ask to be. A page transition is the honest way to change context.
+                  Stage copy is shared with the app: "alpha access" on the testnet build,
+                  "beta access" on the beta (feature: beta stage copy). */}
               <button className="btn ghost" onClick={goApply}>
-                Apply for alpha access
+                Apply for {stageCopy.adjective} access
               </button>
             </div>
           </div>
@@ -1263,14 +1266,14 @@ export default function NewEraLanding() {
             {/* No arrow: the circled arrow is styled only for `.fbtn.primary` (a light border for a
                 dark fill) and the hero's ghost buttons carry none either. */}
             <button className="fbtn ghost" onClick={goApply}>
-              Apply for alpha access
+              Apply for {stageCopy.adjective} access
             </button>
           </div>
         </div>
         <div className="fbot">
           <div className="fine">
-            Curated vaults · Robinhood Chain · alpha-gated. Not financial advice; capital at
-            risk.
+            Curated vaults · Robinhood Chain · {stageCopy.adjective}-gated. Not financial advice;
+            capital at risk.
           </div>
           <div className="fcopy">© 2026 Sparky — AI-native onchain hedge fund.</div>
         </div>

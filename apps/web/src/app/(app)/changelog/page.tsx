@@ -11,6 +11,7 @@
 import { StatusTag } from "@/components/ui/status-tag";
 import { EntryCard } from "@/components/content/EntryCard";
 import { useChangelog } from "@/lib/agent/useContent";
+import { stageCopy } from "@/lib/stage";
 
 export default function Page() {
   const { entries, online, loading } = useChangelog();
@@ -21,7 +22,7 @@ export default function Page() {
           <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
             What&apos;s new <StatusTag variant="live" />
           </h1>
-          <div className="sub">Every update we ship to the Alpha — newest first.</div>
+          <div className="sub">Every update we ship to the {stageCopy.label} — newest first.</div>
         </div>
       </div>
       {loading && (
