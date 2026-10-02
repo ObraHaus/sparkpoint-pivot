@@ -20,7 +20,9 @@ import "@/components/screens/public.css";
  * in `src/lib/copy/publicPaths.test.ts`.
  */
 export const metadata: Metadata = {
-  title: `Apply for ${stageCopy.adjective} access — Sparky`,
+  // The root layout's title template appends " — Sparky"; do not suffix it here or the tab
+  // reads "Apply for beta access — Sparky — Sparky".
+  title: `Apply for ${stageCopy.adjective} access`,
   description:
     `Request access to the Sparky ${stageCopy.adjective}. No wallet connection needed — enter the ` +
     "address you'd like whitelisted and an admin will review it by hand.",

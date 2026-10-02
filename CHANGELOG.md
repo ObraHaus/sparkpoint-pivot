@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (apply page title)
+
+- **The `/apply` browser-tab title no longer says “Sparky” twice** — the page title already carried a `— Sparky` suffix and the root layout template appends another. It now sets the bare title and lets the template do its job (`Apply for beta access — Sparky`).
+
 ### Security
 
 - **`next` 16.3.3 → 16.3.6**, patching `GHSA-vcvr-r3jv-pc5j` (critical: RCE in the Node.js `next/og` `ImageResponse`). Our `opengraph-image`/`apple-icon` routes render static content only — no attacker-controlled values reach the SVG — so the app was not exploitable, but the dependency gate blocks the release and the patched build is free. `eslint-config-next` tracks the same version.
