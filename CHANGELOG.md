@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (beta stage copy — the app and landing read their real stage)
+
+- **beta.sparkpoint.io no longer calls itself alpha.** The landing's apply CTA and closing fine print, the `/apply` page (title, metadata, form lede), the bridge "unavailable" copy, the `/changelog` subtitle, and the settings delivery note now read the single `NEXT_PUBLIC_APP_STAGE` source (`stageCopy`) instead of hardcoded "alpha": the beta build says **Beta** / "beta-gated" / "gated beta", and the testnet build keeps **Alpha**. Copy only — the server-anchored beta allowlist, the access gate, and every route are unchanged.
+
 ### Fixed (custody answers + swap-card copy)
 
 - **The custody/safety questions are answered deterministically** — "how do you keep my funds safe?", "can you withdraw my funds?", "what happens if you disappear?" now return the code-authored guarantees (only you sign; withdrawals are never gated; no custody or rehypothecation) without a model call, so they keep working when the provider is rate-limiting. An order with an amount ("withdraw 100 USDC") is still routed to the build path.

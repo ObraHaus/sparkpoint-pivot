@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Icon } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
+import { stageCopy } from "@/lib/stage";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { chainName } from "@sparkpoint/shared/chains";
 import { RiskChip } from "@/components/ui/risk-chip";
@@ -616,7 +617,7 @@ export default function Page() {
             ))}
             <div className="setrow">
               <div className="muted" style={{ fontSize: 12.5 }}>
-                Saved on this device. Delivery (email / push) isn’t live in alpha — these set what you’ll get once it is.
+                Saved on this device. Delivery (email / push) isn’t live in {stageCopy.adjective} — these set what you’ll get once it is.
               </div>
             </div>
           </>
