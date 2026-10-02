@@ -263,7 +263,7 @@ export default function Page() {
             Bridge
             <StatusTag variant="mock" label={`Unavailable during ${stageCopy.label}`} />
           </h1>
-          <div className="sub">Cross-network bridging (Base ↔ Sui) ships after Alpha. Sui is a fast-follow.</div>
+          <div className="sub">Cross-network bridging (Base ↔ Sui) ships after {stageCopy.label}. Sui is a fast-follow.</div>
         </div>
       </div>
 
@@ -282,7 +282,7 @@ export default function Page() {
           <Icon name="info" size={18} />
         </span>
         <div style={{ fontSize: 13, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
-          <b style={{ color: "var(--foreground)" }}>Bridging isn’t available during Alpha.</b> SparkPoint is
+          <b style={{ color: "var(--foreground)" }}>Bridging isn’t available during {stageCopy.label}.</b> SparkPoint is
           testnet-only right now (Base Sepolia). In the meantime, use the faucets below to fund a testnet wallet so
           you can try the vault. When bridging ships it will be fully self-custodial — you sign, funds land in your own
           wallet on the other side.
@@ -312,7 +312,7 @@ export default function Page() {
           <div className="card card-pad" style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
               You can also bring Sepolia ETH over via the canonical Arbitrum bridge (~10 min). There is no official Circle
-              USDC or Aave market on this testnet yet, so the vault stays Base-only during Alpha.
+              USDC or Aave market on this testnet yet, so the vault stays Base-only during {stageCopy.label}.
             </div>
             <SwapHint router={router} />
           </div>
