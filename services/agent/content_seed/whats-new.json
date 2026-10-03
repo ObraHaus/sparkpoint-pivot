@@ -2,14 +2,6 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
-      "slug": "brokers-art-cutout",
-      "type": "changelog",
-      "tag": "Fixed",
-      "title": "The broker art sits cleanly on the page now",
-      "body": "The Broker on the landing page used to carry the grey studio square from its render, so the corners showed against the background. It's now cut out and sits directly on the page — and when you preview the activated state, the gold frame outlines the broker itself.",
-      "published_at": "2026-10-03T10:57:23Z"
-    },
-    {
       "slug": "brokers-landing-section",
       "type": "changelog",
       "tag": "New",
