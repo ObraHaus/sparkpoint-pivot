@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Reverted (broker art cut-out, for now)
+
+- **The transparent broker cut-out is reverted.** The cut-out edges read as broken on the live page, so the original collection image (square, studio background) and the rectangular gold frame are back. The brokers section itself is unchanged. Mirrors the sparkpoint.io revert.
+
 ### Added (Sparky Brokers landing section)
 
 - **The landing has a Sparky Brokers stop between the hero and 01.** A new Three.js pose draws a gold picture-frame outline around the collection art (measured to the art's on-screen box, so it hugs it on desktop and the stacked mobile/reduced-motion layouts), then morphs into the starfield; the existing six poses shift one later and the scroll dots now track **7** sections. The panel carries the OpenSea collection profile image, an **unactivated → activated gold-frame** preview of the burn-SRK membership (Premium + a weight in every revenue payout; transfer clears activation), a 3-step flow, and a **View on OpenSea** CTA. Same section shipped to `sparkpoint.io` via `ObraHaus/sparkpoint-landing`.
