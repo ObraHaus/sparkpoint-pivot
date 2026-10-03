@@ -10,9 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Fixed (broker art cut-out)
+### Reverted (broker art cut-out, for now)
 
-- **The broker art now sits directly on the app background.** The OpenSea collection profile image shipped with its studio-grey square, so its corners were visible against the page. The mascot is cut out (transparent PNG, flood-fill + feathered alpha) and the activated state draws the gold frame around the silhouette with `drop-shadow` instead of a rectangular border. Same fix shipped to `sparkpoint.io`.
+- **The transparent broker cut-out is reverted.** The cut-out edges read as broken on the live page, so the original collection image (square, studio background) and the rectangular gold frame are back. The brokers section itself is unchanged. Mirrors the sparkpoint.io revert.
 
 ### Added (Sparky Brokers landing section)
 
