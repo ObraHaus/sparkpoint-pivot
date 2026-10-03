@@ -386,21 +386,22 @@ body:has(.new-era-root) {
   filter: blur(8px);
   pointer-events: none;
 }
+/* The art is a transparent cut-out of the collection profile image, so it sits
+   directly on the app background (no studio-grey square at the corners). The
+   activated state draws the gold frame around the SILHOUETTE via drop-shadows. */
 .new-era-root .broker-img {
   width: 100%;
   aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  box-shadow: 0 30px 80px -34px rgba(77, 131, 255, 0.55);
-  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  object-fit: contain;
+  filter: drop-shadow(0 30px 34px rgba(0, 0, 0, 0.55));
+  transition: filter 0.35s ease;
 }
 .new-era-root .broker-img.on {
-  border-color: rgba(245, 182, 46, 0.9);
-  box-shadow:
-    0 0 0 2px rgba(245, 182, 46, 0.8),
-    0 0 56px rgba(245, 182, 46, 0.32),
-    0 30px 80px -34px rgba(245, 182, 46, 0.55);
+  filter:
+    drop-shadow(0 0 2px rgba(245, 182, 46, 0.95))
+    drop-shadow(0 0 3px rgba(245, 182, 46, 0.85))
+    drop-shadow(0 0 20px rgba(245, 182, 46, 0.55))
+    drop-shadow(0 30px 34px rgba(0, 0, 0, 0.55));
 }
 .new-era-root .broker-toggle {
   display: inline-flex;
