@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "brokers-landing-section",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky Brokers now has its own stop on the landing page",
+      "body": "Scroll just past the hero and you'll meet the Brokers: 10,000 memberships whose two-pixel gold frame is the proof of activation. A short preview shows the unactivated → activated look, and the OpenSea link takes you straight to the collection.",
+      "published_at": "2026-10-03T07:15:37Z"
+    },
+    {
       "slug": "apply-title-suffix",
       "type": "changelog",
       "tag": "Fixed",
