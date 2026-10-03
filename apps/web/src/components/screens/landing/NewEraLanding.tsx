@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SparkLogo } from "@/components/ui/SparkLogo";
 import { stageCopy } from "@/lib/stage";
+import brokerProfile from "@/assets/brokers/opensea-profile.png";
 
 /**
  * New Era Landing — Sparky's landing rebuilt on a single Three.js particle
@@ -14,11 +15,12 @@ import { stageCopy } from "@/lib/stage";
  * 3D engine, the pose choreography, and the crossfade layout are new.
  *
  *   pose 0  Ring (corona)   → HERO
- *   pose 1  Starfield       → 01 Sparky proposes
- *   pose 2  Galaxy (new)    → 02 Guardrails check
- *   pose 3  Helix (DNA)     → 03 You sign
- *   pose 4  Wave (terrain)  → 04 The Curated Vaults
- *   pose 5  Gather → burst  → 05 Fully self-custodial (white close)
+ *   pose 1  Gold frame      → Sparky Brokers (spotlight outline of a frame)
+ *   pose 2  Starfield       → 01 Sparky proposes
+ *   pose 3  Galaxy (new)    → 02 Guardrails check
+ *   pose 4  Helix (DNA)     → 03 You sign
+ *   pose 5  Wave (terrain)  → 04 The Curated Vaults
+ *   pose 6  Gather → burst  → 05 Fully self-custodial (white close)
  *
  * The whole engine lives in one mount-once useEffect, mirroring the prior
  * landing's pattern. WebGL / reduced-motion both fall back to a stacked,
@@ -38,11 +40,12 @@ const RAMP: Array<[number, [number, number, number]]> = [
 
 // Scroll-progress dots: [label, target scroll fraction] per section.
 const DOT_SECTIONS: Array<[string, number]> = [
-  ["Welcome", 0.04],
-  ["Proposes", 0.22],
+  ["Welcome", 0.03],
+  ["Brokers", 0.14],
+  ["Proposes", 0.26],
   ["Guardrails", 0.41],
-  ["Sign", 0.59],
-  ["Vault", 0.76],
+  ["Sign", 0.585],
+  ["Vault", 0.735],
   ["Proof", 0.99],
 ];
 
@@ -104,6 +107,9 @@ export default function NewEraLanding() {
   // visitor opt into the full animation (motionOverrideRef flips the engine live).
   const [showMotion, setShowMotion] = useState(false);
   const motionOverrideRef = useRef(false);
+  // Sparky Brokers — the gold-frame toggle is a PREVIEW of the activation rule
+  // (the real burn happens in the app). Off by default: no frame until paid up.
+  const [brokerActivated, setBrokerActivated] = useState(false);
   // 3D handles, populated once the scene is built, so the toggle can retheme live.
   const sceneRef = useRef<{
     THREE: typeof import("three");
@@ -301,12 +307,14 @@ export default function NewEraLanding() {
       const N = LINES * PER; // ~5.6k mobile / ~16.9k desktop
 
       const aRing = new Float32Array(N * 3); // pose 0 — corona ring
-      const aStar = new Float32Array(N * 3); // pose 1 — starfield
-      const aGalaxy = new Float32Array(N * 3); // pose 2 — galaxy (new)
-      const aHelix = new Float32Array(N * 3); // pose 3 — DNA helix
-      const aWave = new Float32Array(N * 3); // pose 4 — terrain
-      const aGather = new Float32Array(N * 3); // pose 5 — central core
+      const aSpot = new Float32Array(N * 3); // pose 1 — gold frame outline + halo
+      const aStar = new Float32Array(N * 3); // pose 2 — starfield
+      const aGalaxy = new Float32Array(N * 3); // pose 3 — galaxy (new)
+      const aHelix = new Float32Array(N * 3); // pose 4 — DNA helix
+      const aWave = new Float32Array(N * 3); // pose 5 — terrain
+      const aGather = new Float32Array(N * 3); // pose 6 — central core
       const aRand = new Float32Array(N);
+      const aSpotGlow = new Float32Array(N); // 1 = frame rail, 0.5 = halo, 0.15 = fill
 
       const gw = isMobile ? 130 : 240; // wave grid columns
       const rows = Math.ceil(N / gw);
@@ -332,6 +340,61 @@ export default function NewEraLanding() {
         aRing[r3] = Math.cos(a) * rad;
         aRing[r3 + 1] = Math.sin(a) * rad;
         aRing[r3 + 2] = (Math.random() - 0.5) * 1.2;
+
+        // GOLD FRAME — the activation pose: a picture-frame outline (the
+        // entitlement, drawn) with corner brackets and a soft halo, sitting
+        // around the broker art in the left column (desktop) / above the copy
+        // (portrait).
+        {
+          // centred at the world origin; the loop offsets the group so the frame
+          // hugs the broker art wherever the responsive layout puts it.
+          const SF = 6.4; // frame half-size (scaled to the art by the loop)
+          const sx = 0;
+          const sy = 0;
+          const pick = Math.random();
+          if (pick < 0.55) {
+            // rails — walk the rectangle perimeter, thin rail thickness
+            const per = Math.random() * 4;
+            const e = Math.random() * 2 - 1;
+            let px = 0;
+            let py = 0;
+            if (per < 1) {
+              px = e * SF;
+              py = -SF;
+            } else if (per < 2) {
+              px = SF;
+              py = e * SF;
+            } else if (per < 3) {
+              px = -e * SF;
+              py = SF;
+            } else {
+              px = -SF;
+              py = e * SF;
+            }
+            aSpot[r3] = sx + px + (Math.random() - 0.5) * 0.22;
+            aSpot[r3 + 1] = sy + py + (Math.random() - 0.5) * 0.22;
+            aSpot[r3 + 2] = (Math.random() - 0.5) * 0.9;
+            aSpotGlow[i] = 1.0;
+          } else if (pick < 0.72) {
+            // corner brackets — denser arms at the four corners
+            const cx = (Math.random() < 0.5 ? -1 : 1) * SF;
+            const cy = (Math.random() < 0.5 ? -1 : 1) * SF;
+            const along = Math.random() * 1.6;
+            const horiz = Math.random() < 0.5;
+            aSpot[r3] = sx + cx + (horiz ? -Math.sign(cx) * along : (Math.random() - 0.5) * 0.3);
+            aSpot[r3 + 1] = sy + cy + (horiz ? (Math.random() - 0.5) * 0.3 : -Math.sign(cy) * along);
+            aSpot[r3 + 2] = (Math.random() - 0.5) * 0.7;
+            aSpotGlow[i] = 1.3;
+          } else {
+            // halo — an ellipse breathing around the frame
+            const sang = Math.random() * Math.PI * 2;
+            const rr = SF * 1.42 + (Math.random() - 0.5) * 2.4;
+            aSpot[r3] = sx + Math.cos(sang) * rr;
+            aSpot[r3 + 1] = sy + Math.sin(sang) * rr * 0.68;
+            aSpot[r3 + 2] = (Math.random() - 0.5) * 2.6;
+            aSpotGlow[i] = 0.45;
+          }
+        }
 
         // STARFIELD — wide volume + faint spiral arc
         if (i % 6 === 0) {
@@ -430,6 +493,8 @@ export default function NewEraLanding() {
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(aRing, 3)); // base = ring
+      geo.setAttribute("aSpot", new THREE.BufferAttribute(aSpot, 3));
+      geo.setAttribute("aSpotGlow", new THREE.BufferAttribute(aSpotGlow, 1));
       geo.setAttribute("aStar", new THREE.BufferAttribute(aStar, 3));
       geo.setAttribute("aGalaxy", new THREE.BufferAttribute(aGalaxy, 3));
       geo.setAttribute("aHelix", new THREE.BufferAttribute(aHelix, 3));
@@ -447,6 +512,7 @@ export default function NewEraLanding() {
           uDpr: { value: Math.min(devicePixelRatio, 2) },
           uSize: { value: isMobile ? 1.6 : 1.3 },
           wRing: { value: 1 },
+          wSpot: { value: 0 },
           wStar: { value: 0 },
           wGalaxy: { value: 0 },
           wHelix: { value: 0 },
@@ -459,9 +525,10 @@ export default function NewEraLanding() {
           uLight: { value: 0 }, // 0 = dark (additive glow), 1 = light (ink)
         },
         vertexShader: `
+          attribute vec3 aSpot; attribute float aSpotGlow;
           attribute vec3 aStar; attribute vec3 aGalaxy; attribute vec3 aHelix;
           attribute vec3 aWave; attribute vec3 aGather; attribute float aRand;
-          uniform float uTime,uDpr,uSize,wRing,wStar,wGalaxy,wHelix,wWave,wGather,uBurst,uWaveCol,uGalaxyCol,uShimmer;
+          uniform float uTime,uDpr,uSize,wRing,wSpot,wStar,wGalaxy,wHelix,wWave,wGather,uBurst,uWaveCol,uGalaxyCol,uShimmer;
           varying vec3 vCol; varying float vI;
           vec3 ramp(float t){
             vec3 c0=vec3(1.000,0.353,0.212), c1=vec3(1.000,0.541,0.298), c2=vec3(0.639,0.357,1.000),
@@ -474,7 +541,7 @@ export default function NewEraLanding() {
             return c;
           }
           void main(){
-            vec3 fp = position*wRing + aStar*wStar + aGalaxy*wGalaxy + aHelix*wHelix + aWave*wWave + aGather*wGather;
+            vec3 fp = position*wRing + aSpot*wSpot + aStar*wStar + aGalaxy*wGalaxy + aHelix*wHelix + aWave*wWave + aGather*wGather;
             // corona ring: rim undulates as a waveform travelling around the loop
             if(wRing>0.001){
               float ang = atan(fp.y, fp.x);
@@ -501,9 +568,10 @@ export default function NewEraLanding() {
             float tG = clamp(length(fp.xz)/16.0, 0.0, 1.0);
             float t = mix(tY, tX, uWaveCol);
             t = mix(t, tG, uGalaxyCol);
+            t = mix(t, 0.14, wSpot); // gold-frame pose
             vCol = ramp(t);
             float tw = 0.78 + 0.34*sin(uTime*2.0 + aRand*40.0);
-            vI = tw + uBurst*3.5 + uGalaxyCol*(1.0-tG)*0.9; // galaxy core glows
+            vI = tw + uBurst*3.5 + uGalaxyCol*(1.0-tG)*0.9 + wSpot*aSpotGlow*1.5; // galaxy core glows, frame rails sparkle
             vec4 mv = modelViewMatrix * vec4(fp,1.0);
             gl_PointSize = uSize*uDpr*(62.0/-mv.z)*(1.0+uBurst*1.4);
             gl_Position = projectionMatrix*mv;
@@ -555,12 +623,33 @@ export default function NewEraLanding() {
       };
       configureSceneTheme(themeRef.current);
 
+      // The brokers frame is a world-space pose; the art is DOM. Measure the
+      // art's on-screen centre + width and convert to world offsets at z=0, so
+      // the particle frame hugs the art on every viewport (desktop columns and
+      // the stacked mobile/`rm` layouts).
+      let spotCx = 0,
+        spotCy = 0,
+        spotScale = 1;
+      function measureSpot() {
+        const el = root!.querySelector("#brokers .broker-img") as HTMLElement | null;
+        if (!el || !el.getBoundingClientRect) return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0) return;
+        const halfH = Math.tan((camera.fov * Math.PI) / 360) * 29;
+        const halfW = halfH * camera.aspect;
+        spotCx = ((r.left + r.width / 2) / innerWidth - 0.5) * 2 * halfW;
+        spotCy = -((r.top + r.height / 2) / innerHeight - 0.5) * 2 * halfH;
+        const desiredHalf = ((r.width * 1.14) / 2 / innerWidth) * 2 * halfW;
+        spotScale = Math.min(1.7, Math.max(0.5, desiredHalf / 6.4));
+      }
+
       function onResize() {
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(innerWidth, innerHeight);
         composer.setSize(innerWidth, innerHeight);
         bloom.setSize(innerWidth, innerHeight);
+        measureSpot();
       }
       addEventListener("resize", onResize);
       onResize();
@@ -576,6 +665,7 @@ export default function NewEraLanding() {
 
       type Weights = {
         ring: number;
+        spot: number;
         star: number;
         galaxy: number;
         helix: number;
@@ -583,42 +673,47 @@ export default function NewEraLanding() {
         gather: number;
       };
       function stageWeights(p: number): { w: Weights; burst: number; white: number } {
-        const w: Weights = { ring: 0, star: 0, galaxy: 0, helix: 0, wave: 0, gather: 0 };
+        const w: Weights = { ring: 0, spot: 0, star: 0, galaxy: 0, helix: 0, wave: 0, gather: 0 };
         let burst = 0,
           white = 0;
-        if (p < 0.08) w.ring = 1;
-        else if (p < 0.18) {
-          const t = ss(0.08, 0.18, p);
+        if (p < 0.06) w.ring = 1;
+        else if (p < 0.13) {
+          const t = ss(0.06, 0.13, p);
           w.ring = 1 - t;
+          w.spot = t;
+        } else if (p < 0.19) w.spot = 1;
+        else if (p < 0.26) {
+          const t = ss(0.19, 0.26, p);
+          w.spot = 1 - t;
           w.star = t;
-        } else if (p < 0.27) w.star = 1;
-        else if (p < 0.37) {
-          const t = ss(0.27, 0.37, p);
+        } else if (p < 0.33) w.star = 1;
+        else if (p < 0.41) {
+          const t = ss(0.33, 0.41, p);
           w.star = 1 - t;
           w.galaxy = t;
-        } else if (p < 0.45) w.galaxy = 1;
-        else if (p < 0.55) {
-          const t = ss(0.45, 0.55, p);
+        } else if (p < 0.48) w.galaxy = 1;
+        else if (p < 0.56) {
+          const t = ss(0.48, 0.56, p);
           w.galaxy = 1 - t;
           w.helix = t;
         } else if (p < 0.63) w.helix = 1;
-        else if (p < 0.72) {
-          const t = ss(0.63, 0.72, p);
+        else if (p < 0.71) {
+          const t = ss(0.63, 0.71, p);
           w.helix = 1 - t;
           w.wave = t;
-        } else if (p < 0.8) w.wave = 1;
-        else if (p < 0.88) {
-          const t = ss(0.8, 0.88, p);
+        } else if (p < 0.78) w.wave = 1;
+        else if (p < 0.86) {
+          const t = ss(0.78, 0.86, p);
           w.wave = 1 - t;
           w.gather = t;
-        } else if (p < 0.93) w.gather = 1;
-        else if (p < 0.97) {
+        } else if (p < 0.91) w.gather = 1;
+        else if (p < 0.96) {
           w.gather = 1;
-          burst = ss(0.93, 0.97, p);
+          burst = ss(0.91, 0.96, p);
         } else {
           w.gather = 1;
           burst = 1;
-          white = ss(0.965, 1.0, p);
+          white = ss(0.95, 1.0, p);
         }
         return { w, burst, white };
       }
@@ -627,6 +722,7 @@ export default function NewEraLanding() {
       const $ = (sel: string) => root!.querySelector(sel) as HTMLElement | null;
       const panels = {
         hero: $("#hero"),
+        brokers: $("#brokers"),
         proposes: $("#proposes"),
         guardrails: $("#guardrails"),
         sign: $("#sign"),
@@ -655,6 +751,7 @@ export default function NewEraLanding() {
       let curZ = 30,
         curRX = 0,
         curX = 0,
+        curY = 0,
         smP = 0,
         lastSec = -1,
         raf = 0;
@@ -668,6 +765,7 @@ export default function NewEraLanding() {
         const u = material.uniforms;
         u.uTime.value = time;
         u.wRing.value = w.ring;
+        u.wSpot.value = w.spot;
         u.wStar.value = w.star;
         u.wGalaxy.value = w.galaxy;
         u.wHelix.value = w.helix;
@@ -683,34 +781,40 @@ export default function NewEraLanding() {
         const aspect = innerWidth / innerHeight;
         const fit = aspect < 1 ? Math.min(1.9, 0.85 / aspect) : 1;
         const tz =
-          (30 * w.ring + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather) * fit;
+          (30 * w.ring + 29 * w.spot + 14.5 * w.star + 22 * w.galaxy + 26 * w.helix + 30 * w.wave + 19 * w.gather) *
+          fit;
         const trx = w.galaxy * 0.95 + w.wave * 0.42 + w.star * 0.05;
         // nudge the galaxy left so its glowing core sits just right of the
         // guardrails card (left) and clear of the right-aligned copy
-        const tposx = -3 * w.galaxy;
+        // + slide the gold-frame pose onto the broker art's measured centre
+        const tposx = -3 * w.galaxy + spotCx * w.spot;
+        const tposy = spotCy * w.spot;
         curZ += (tz - curZ) * 0.06;
         curRX += (trx - curRX) * 0.06;
         curX += (tposx - curX) * 0.06;
+        curY += (tposy - curY) * 0.06;
         camera.position.z = curZ;
         group.rotation.x = curRX;
         group.position.x = curX;
+        group.position.y = curY;
 
         if (isAnimating()) {
           group.rotation.y += 0.0026 * w.helix + 0.0012 * w.galaxy;
           group.rotation.y *= 1 - 0.08 * w.ring - 0.04 * w.wave - 0.04 * w.gather;
           group.rotation.z = 0;
           const breathe = 1 + 0.014 * Math.sin(time * 0.8) * w.ring;
-          group.scale.setScalar(breathe);
+          group.scale.setScalar(breathe * (1 + (spotScale - 1) * w.spot));
         }
         dnaLines.material.opacity = w.helix * 0.5;
 
         // crossfade overlays — skipped when not animating (CSS owns the stacked layout)
         if (isAnimating()) {
-          setPanel(panels.hero, fade(smP, -0.1, 0.0, 0.07, 0.13), (0.1 - Math.min(smP, 0.13)) * -80);
-          setPanel(panels.proposes, fade(smP, 0.17, 0.2, 0.26, 0.3), (0.23 - clamp(smP, 0.17, 0.3)) * 120);
-          setPanel(panels.guardrails, fade(smP, 0.36, 0.39, 0.45, 0.48), (0.42 - clamp(smP, 0.36, 0.48)) * 120);
-          setPanel(panels.sign, fade(smP, 0.54, 0.57, 0.63, 0.66), (0.59 - clamp(smP, 0.54, 0.66)) * 120);
-          setPanel(panels.vault, fade(smP, 0.71, 0.74, 0.8, 0.83), (0.76 - clamp(smP, 0.71, 0.83)) * 120);
+          setPanel(panels.hero, fade(smP, -0.1, 0.0, 0.05, 0.1), (0.1 - Math.min(smP, 0.1)) * -80);
+          setPanel(panels.brokers, fade(smP, 0.06, 0.11, 0.16, 0.2), (0.13 - clamp(smP, 0.06, 0.2)) * 120);
+          setPanel(panels.proposes, fade(smP, 0.2, 0.25, 0.3, 0.35), (0.275 - clamp(smP, 0.2, 0.35)) * 120);
+          setPanel(panels.guardrails, fade(smP, 0.355, 0.4, 0.46, 0.51), (0.43 - clamp(smP, 0.355, 0.51)) * 120);
+          setPanel(panels.sign, fade(smP, 0.51, 0.56, 0.61, 0.66), (0.585 - clamp(smP, 0.51, 0.66)) * 120);
+          setPanel(panels.vault, fade(smP, 0.66, 0.71, 0.76, 0.81), (0.735 - clamp(smP, 0.66, 0.81)) * 120);
 
           if (whiteout) whiteout.style.opacity = white.toFixed(3);
           if (footer) {
@@ -728,9 +832,10 @@ export default function NewEraLanding() {
           canvas!.style.opacity = (1 - white * 0.9).toFixed(2);
         }
 
-        // active scroll-progress dot (which of the 6 sections is in view)
+        // active scroll-progress dot — switch at the midpoint of each panel
+        // hand-off, so the lit dot matches the panel actually on screen.
         const secIdx =
-          smP < 0.135 ? 0 : smP < 0.31 ? 1 : smP < 0.5 ? 2 : smP < 0.665 ? 3 : smP < 0.84 ? 4 : 5;
+          smP < 0.09 ? 0 : smP < 0.21 ? 1 : smP < 0.35 ? 2 : smP < 0.51 ? 3 : smP < 0.66 ? 4 : smP < 0.86 ? 5 : 6;
         if (secIdx !== lastSec) {
           lastSec = secIdx;
           dotButtons.forEach((b, i) => b.classList.toggle("on", i === secIdx));
@@ -937,7 +1042,7 @@ export default function NewEraLanding() {
                   <ArrowOut />
                 </span>
               </button>
-              <button className="btn ghost" onClick={() => scrollToFraction(0.22)}>
+              <button className="btn ghost" onClick={() => scrollToFraction(0.26)}>
                 See how it works
               </button>
               {/* 045 — the app is gated, so "Connect wallet" is a wall for most visitors. This
@@ -954,7 +1059,96 @@ export default function NewEraLanding() {
           </div>
         </section>
 
-        {/* 1 — PROPOSES (starfield) */}
+        {/* 1 — SPARKY BROKERS (gold frame pose) */}
+        <section className="panel brokers" id="brokers">
+          <div className="wrap">
+            <div className="broker-art">
+              <span className="broker-glow" aria-hidden />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className={`broker-img${brokerActivated ? " on" : ""}`}
+                src={brokerProfile.src}
+                alt="Sparky Broker — the collection profile image"
+                draggable={false}
+              />
+              <div className="broker-toggle" role="group" aria-label="Activation preview">
+                <button
+                  type="button"
+                  className={brokerActivated ? "" : "on"}
+                  onClick={() => setBrokerActivated(false)}
+                >
+                  Unactivated
+                </button>
+                <button
+                  type="button"
+                  className={brokerActivated ? "on" : ""}
+                  onClick={() => setBrokerActivated(true)}
+                >
+                  Activated · gold frame
+                </button>
+              </div>
+              <span className="broker-note">Preview — activation burns SRK in the app.</span>
+            </div>
+            <div className="col">
+              <span className="badge accent">
+                <SparkMark size={13} />
+                Membership · not just a collectible
+              </span>
+              <span className="kicker">Sparky Brokers</span>
+              <h1 className="head">
+                A broker is a <span className="tail">membership.</span>
+              </h1>
+              <p className="sub wide">
+                Activate it with SRK to unlock <b>SparkPoint Premium</b> and a{" "}
+                <b>weight in every revenue payout</b> — and it wears the proof as a two-pixel gold
+                frame. Activation belongs to the holder, not the token.
+              </p>
+              <ul className="checks">
+                <li>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--brand-cyan)" strokeWidth="3.5">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                  A two-pixel gold frame — the entitlement, drawn
+                </li>
+                <li>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--brand-cyan)" strokeWidth="3.5">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                  Sell it and the activation clears; the next owner burns their own SRK
+                </li>
+              </ul>
+              <div className="broker-flow">
+                <div>
+                  <b>1 · Hold</b>
+                  <span>A broker from the 10,000.</span>
+                </div>
+                <div>
+                  <b>2 · Burn SRK</b>
+                  <span>Premium + payout weight.</span>
+                </div>
+                <div>
+                  <b>3 · Transfer</b>
+                  <span>Activation clears.</span>
+                </div>
+              </div>
+              <div className="btns">
+                <a
+                  className="btn primary"
+                  href="https://opensea.io/collection/sparkybroker"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View on OpenSea
+                  <span className="arrow">
+                    <ArrowOut />
+                  </span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 2 — PROPOSES (starfield) */}
         <section className="panel left" id="proposes">
           <div className="wrap">
             <div className="col">

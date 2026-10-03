@@ -364,6 +364,95 @@ body:has(.new-era-root) {
   justify-content: center;
 }
 
+/* SPARKY BROKERS (gold-frame pose) — art left, copy right, matching the
+   engine's frame outline sitting around the art. */
+.new-era-root .panel.brokers .wrap {
+  justify-content: space-between;
+  gap: 48px;
+}
+.new-era-root .broker-art {
+  flex: 0 0 360px;
+  width: 360px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.new-era-root .broker-glow {
+  position: absolute;
+  inset: -16% -12% 10% -12%;
+  background: radial-gradient(closest-side, rgba(245, 182, 46, 0.16), transparent 72%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+.new-era-root .broker-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: 0 30px 80px -34px rgba(77, 131, 255, 0.55);
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+}
+.new-era-root .broker-img.on {
+  border-color: rgba(245, 182, 46, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(245, 182, 46, 0.8),
+    0 0 56px rgba(245, 182, 46, 0.32),
+    0 30px 80px -34px rgba(245, 182, 46, 0.55);
+}
+.new-era-root .broker-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(10, 10, 12, 0.72);
+}
+.new-era-root .broker-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.new-era-root .broker-toggle button.on {
+  background: rgba(245, 182, 46, 0.16);
+  color: #ffd980;
+}
+.new-era-root .broker-note {
+  font-size: 11.5px;
+  color: var(--tail);
+  text-shadow: 0 1px 18px rgba(2, 5, 12, 0.7);
+}
+.new-era-root .broker-flow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 18px 0 22px;
+  max-width: 500px;
+}
+.new-era-root .broker-flow > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(10, 10, 14, 0.6);
+}
+.new-era-root .broker-flow b {
+  display: block;
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+.new-era-root .broker-flow span {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  text-shadow: 0 1px 18px rgba(2, 5, 12, 0.7);
+}
+
 /* ---- shared text bits ---- */
 .new-era-root .badge {
   display: inline-flex;
@@ -405,6 +494,11 @@ body:has(.new-era-root) {
 .new-era-root .badge + .head,
 .new-era-root .kicker + .head {
   margin-top: 14px;
+}
+/* a badge followed by a kicker (e.g. Brokers, 01 Proposes) needs its own gap —
+   the kicker only carries a bottom margin, so without this the two touch */
+.new-era-root .badge + .kicker {
+  margin-top: 18px;
 }
 .new-era-root .head .tail {
   color: var(--tail);
@@ -998,6 +1092,34 @@ body:has(.new-era-root.light) {
   background: rgba(77, 131, 255, 0.1);
   border-color: rgba(77, 131, 255, 0.28);
 }
+/* brokers → light surfaces (the toggle/flow panels are dark-tinted by default) */
+.new-era-root.light .broker-toggle {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+.new-era-root.light .broker-toggle button {
+  color: var(--muted);
+}
+.new-era-root.light .broker-toggle button.on {
+  background: rgba(229, 154, 18, 0.18);
+  color: #7a5200;
+}
+.new-era-root.light .broker-flow > div {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.new-era-root.light .broker-flow b {
+  color: var(--fg);
+}
+.new-era-root.light .broker-note,
+.new-era-root.light .broker-flow span {
+  color: var(--muted);
+  text-shadow: 0 1px 14px rgba(238, 241, 247, 0.95), 0 0 6px rgba(238, 241, 247, 0.9);
+}
+/* the shared .checks li colour is near-white (dark-theme); darken it on light */
+.new-era-root.light .panel .checks li {
+  color: #3a4152;
+}
 /* ghost button on light */
 .new-era-root.light .btn.ghost {
   color: var(--fg);
@@ -1065,10 +1187,16 @@ body:has(.new-era-root.light) {
   position: relative;
 }
 .new-era-root.rm .panel.left .wrap,
-.new-era-root.rm .panel.right .wrap {
+.new-era-root.rm .panel.right .wrap,
+.new-era-root.rm .panel.brokers .wrap {
   flex-direction: column;
   justify-content: center;
   gap: 28px;
+}
+/* stacked (reduced-motion / no-webgl): the broker art keeps a fixed, readable size */
+.new-era-root.rm .broker-art {
+  flex: none;
+  width: min(340px, 70vw);
 }
 /* in a column, flex-basis is vertical — drop the 500px basis so the text
    column is content-height (otherwise the card gets pushed far below it) */
@@ -1132,6 +1260,16 @@ body:has(.new-era-root.light) {
   .new-era-root .panel .col {
     flex: 0 1 620px;
     max-width: 620px;
+  }
+  /* brokers: stack the art above the copy */
+  .new-era-root .panel.brokers .wrap {
+    flex-direction: column;
+    justify-content: center;
+    gap: 26px;
+  }
+  .new-era-root .broker-art {
+    flex: none;
+    width: min(320px, 66vw);
   }
 }
 @media (max-width: 860px) {
