@@ -1,8 +1,8 @@
 # ruff: noqa: S101, S105, S106  (pytest asserts; test-only fixture creds, never real secrets)
-"""OpenAI-compatible embedding backend (the operator's OpenWebUI provider) — no network.
+"""OpenAI-compatible embedding backend (OpenRouter's embeddings API) — no network.
 
 Exercises the P2 production backend with an httpx MockTransport so the real request/parse
-path (truncate 4096→pinned dim, L2-renormalize, order by `index`, fail-closed) is verified
+path (truncate 2048→pinned dim, L2-renormalize, order by `index`, fail-closed) is verified
 off-network. Also pins the composition seams: `openai_embedder` / `default_citation_retriever`
 return None when the provider isn't configured (CI/tests) so citations are simply absent —
 never fabricated or stub-ranked in production.
@@ -18,6 +18,7 @@ import pytest
 
 from sparkpoint_agent.knowledge import (
     EMBEDDING_DIM,
+    EMBEDDING_EXPECTED_MODEL,
     EMBEDDING_MODEL_VERSION,
     EmbeddingBackendError,
     OpenAIEmbeddingBackend,
@@ -25,7 +26,7 @@ from sparkpoint_agent.knowledge import (
     openai_embedder,
 )
 
-_NATIVE_DIM = 4096  # qwen/qwen3-embedding-8b native width (the provider ignores `dimensions`)
+_NATIVE_DIM = 2048  # nvidia/llama-nemotron-embed-vl-1b-v2:free native width (2048 → pinned 1024)
 _SECRET = "sk-test-DO-NOT-LEAK-123"
 
 
@@ -37,7 +38,7 @@ def _backend(handler: object) -> OpenAIEmbeddingBackend:
     return OpenAIEmbeddingBackend(
         api_url="http://embed.example/api/v1",
         api_key=_SECRET,
-        model="qwen/qwen3-embedding-8b",
+        model=EMBEDDING_EXPECTED_MODEL,
         client=_client(handler),
     )
 
@@ -55,7 +56,7 @@ def test_truncates_to_pinned_dim_and_normalizes() -> None:
     vecs = _backend(handler).embed(["alpha", "beta"])
     assert len(vecs) == 2
     for v in vecs:
-        assert len(v) == EMBEDDING_DIM  # truncated 4096 → pinned dim
+        assert len(v) == EMBEDDING_DIM  # truncated 2048 → pinned dim
         assert math.isclose(math.sqrt(sum(x * x for x in v)), 1.0, rel_tol=1e-6)  # L2-normalized
 
 
@@ -124,7 +125,7 @@ def test_openai_embedder_builds_when_configured() -> None:
         env={
             "EMBEDDING_OPENAI_API_URL": "http://embed.example/api/v1",
             "EMBEDDING_OPENAI_API_KEY": _SECRET,
-            "EMBEDDING_OPENAI_MODEL": "qwen/qwen3-embedding-8b",
+            "EMBEDDING_OPENAI_MODEL": EMBEDDING_EXPECTED_MODEL,
         }
     )
     assert emb is not None
@@ -134,7 +135,7 @@ def test_openai_embedder_builds_when_configured() -> None:
 
 def test_openai_embedder_rejects_a_foreign_model() -> None:
     # A foreign (non-pinned) model must be REJECTED at composition — not silently stamped with the
-    # qwen3 pin, which would write vectors into an incompatible space. Guards the pin's meaning.
+    # pin, which would write vectors into an incompatible space. Guards the pin's meaning.
     with pytest.raises(ValueError, match="re-embed event"):
         openai_embedder(
             env={
