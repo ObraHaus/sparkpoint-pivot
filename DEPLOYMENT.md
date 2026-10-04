@@ -94,6 +94,16 @@ The web app can auto-reload stale tabs onto a new deploy and greet users with wh
 
 **Rollback:** set `NEXT_PUBLIC_FORCE_REFRESH=false` (or delete the var) + redeploy → fully dark again, no code revert. The migration + seed are additive and can stay.
 
+### Open beta — `BETA_OPEN` (2026-10-04): how to open the gate
+
+The beta access gate (SIWE session + DB-backed `wallet_allowlist` beta role: middleware → `/verify` → `/apply`) is now switchable. With **`BETA_OPEN=true`** on the **web** app, every wallet that completes SIWE reaches the (app) shell — no allowlist, no application, no SRK auto-gate. Admin is never widened (`/admin` still requires an `admin` row; non-admins still get the invisible 404). `BETA_ALLOWLIST`/`ADMIN_ALLOWLIST` and `/apply` remain (alpha/develop, and future re-gating).
+
+- **Set it in the web app's build AND runtime env, then redeploy.** The edge middleware reads `process.env.BETA_OPEN` directly (build-time inlined into the edge bundle, exactly like `SITE_LOCKED`/`SESSION_SECRET`), so a deploy triggered before the env is set builds closed.
+- **FAIL-CLOSED.** Only the exact value `"true"` opens the beta; unset/`false`/typos keep the allowlist gate.
+- **Re-close:** set `BETA_OPEN=false` (or delete the var) + redeploy. No code revert; existing sessions that were minted open stay admitted until they expire (7 days) — their `beta` claim is `true`.
+- **Non-custody (N2):** this is an access switch only. `/exit`, `/trust`, and the on-chain withdraw path are never gated by it.
+- **As-deployed:** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`) runs it for beta.sparkpoint.io; `sparkpoint-web` (develop/alpha) leaves it unset (allowlist stays).
+
 ## Branch flow & PR gates
 
 ```

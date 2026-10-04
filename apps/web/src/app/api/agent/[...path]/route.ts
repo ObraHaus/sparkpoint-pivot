@@ -34,6 +34,7 @@
 // statically cached or prerendered.
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { BETA_OPEN } from "@/lib/auth/openBeta";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,8 +107,11 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // liveness/readiness probes are exempt (admin routes need beta too — admin implies beta, and the
   // agent additionally enforces admin). Honest 403, never a silent pass. Never gates /exit,/trust
   // (those don't route through here — direct RPC, N2).
+  // `BETA_OPEN=true` opens the beta to every signed-in wallet (2026-10-04): the beta gate above
+  // passes anyone with a valid session, exactly as the middleware does. Admin is unaffected — the
+  // agent still 404s non-admins on every /admin route.
   const head = path[0] ?? "";
-  if (!STATUS_PATHS.has(head) && !NON_BETA_PATHS.has(head) && !claims.beta) {
+  if (!STATUS_PATHS.has(head) && !NON_BETA_PATHS.has(head) && !claims.beta && !BETA_OPEN) {
     // Machine code stays BETA_NOT_ENABLED (stable API contract); only the human message tracks the
     // current stage wording — the app is in alpha, so don't tell a user they're "not in the beta".
     return envelope("BETA_NOT_ENABLED", 403, "Alpha access required — your wallet isn't in the alpha yet.", false);

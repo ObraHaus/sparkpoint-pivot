@@ -16,6 +16,11 @@ import { createSiweMessage } from "viem/siwe";
 const WEB = (process.env.WEB_URL || "").replace(/\/+$/, "");
 const CHAIN = Number(process.env.WEB_CHAIN_ID || 84532);
 const skip = WEB ? false : "set WEB_URL to run the live auth e2e";
+// 2026-10-04 — `BETA_OPEN=true` deployments admit EVERY signed-in wallet (the public beta). Set
+// BETA_OPEN_EXPECTED=true when running against one: the closed-beta denial assertions are skipped
+// and the open-beta admission assertions run instead. Default is the closed beta (unchanged).
+const BETA_OPEN = (process.env.BETA_OPEN_EXPECTED ?? "").toLowerCase() === "true";
+const closedSkip = skip || (BETA_OPEN ? "the deployment runs BETA_OPEN=true (public beta)" : false);
 
 function jarFrom(res, jar) {
   for (const c of res.headers.getSetCookie?.() ?? []) {
@@ -79,8 +84,8 @@ test("unauthenticated gate matrix", { skip }, async () => {
   }
 });
 
-// ── Non-beta wallet: authenticates but is denied ─────────────────────────────
-test("non-beta wallet: SIWE ok, but denied from app + assistant", { skip }, async () => {
+// ── Non-beta wallet: authenticates but is denied (closed beta only) ──────────
+test("non-beta wallet: SIWE ok, but denied from app + assistant", { skip: closedSkip }, async () => {
   const { status, body, jar } = await login(privateKeyToAccount(generatePrivateKey()));
   assert.equal(status, 200);
   assert.equal(body.beta, false);
@@ -96,7 +101,7 @@ test("non-beta wallet: SIWE ok, but denied from app + assistant", { skip }, asyn
 });
 
 // ── 026: a non-beta wallet is no longer a dead end — it may apply, and ONLY apply ────────────
-test("non-beta wallet may reach the access-application endpoint (and nothing else)", { skip }, async () => {
+test("non-beta wallet may reach the access-application endpoint (and nothing else)", { skip: closedSkip }, async () => {
   const { jar, body } = await login(privateKeyToAccount(generatePrivateKey()));
   assert.equal(body.beta, false, "a fresh random wallet must not be allowlisted");
 
@@ -111,6 +116,17 @@ test("non-beta wallet may reach the access-application endpoint (and nothing els
     headers: { "x-chain-id": String(CHAIN), cookie: cookie(jar) },
   });
   assert.equal(admin.status, 403, "the admin review surface is NOT part of the exemption");
+});
+
+// ── Open beta: a fresh wallet is admitted, admin still is not (BETA_OPEN_EXPECTED=true) ──────
+test("open beta: a fresh wallet reaches the app but not admin", { skip: skip || !BETA_OPEN }, async () => {
+  const { status, body, jar } = await login(privateKeyToAccount(generatePrivateKey()));
+  assert.equal(status, 200);
+  assert.equal(body.beta, true, "an open beta must admit a freshly generated wallet");
+  assert.equal(body.admin, false, "opening the beta must never grant admin");
+  assert.equal((await hit("/chat", jar)).status, 200, "an admitted wallet reaches /chat");
+  assert.equal((await hit("/admin", jar)).status, 404, "beta ≠ admin → /admin 404");
+  assert.notEqual((await chat(jar)).status, 403, "the assistant is no longer 403 for a fresh wallet");
 });
 
 // ── SIWE negative paths ──────────────────────────────────────────────────────
