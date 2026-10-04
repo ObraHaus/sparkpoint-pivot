@@ -4,11 +4,11 @@
 # the OpenRouter key; Hermes calls the gateway with a LiteLLM virtual key. Secrets resolve from
 # the process env via `os.environ/…` and are NEVER written into this file.
 #
-# RELIABILITY: OpenRouter's `:free` tier is aggressively rate-limited per upstream provider —
-# the operator's primary (gemma-4-31b:free, Google AI Studio) returned 429 on every probe. So
-# the alias is a GROUP: the operator's model is the primary (set via OPENROUTER_MODEL), plus a
-# verified-available same-family free fallback; the router retries the other deployment on a 429
-# and cools the throttled one down. Swap either to a paid model / BYOK key for hard reliability.
+# RELIABILITY: OpenRouter's `:free` tier is aggressively rate-limited per upstream provider, so
+# every alias is a GROUP: a primary plus a verified-available fallback; the router retries the
+# other deployment on a 429 and cools the throttled one down. Swap either to a paid model / BYOK
+# key for hard reliability. (Lineup switched 2026-10-04 — Ling 3.0 Sante + Qwen 3.8 free primary,
+# Ling 3.1 Flash + Apodex 1.1 Mini premium; all four were probed live before the switch.)
 #
 # The DATABASE_URL env (a dedicated, isolated Postgres — never the agent's DB) is auto-detected
 # by LiteLLM for virtual keys + per-user budgets.
@@ -16,52 +16,74 @@
 model_list:
   - model_name: sparkpoint-chat
     litellm_params:
-      # primary (operator-approved 2026-07-17): 120B MoE w/ ~12B active — probed live at ~2s/turn
-      # with clean JSON intent output while gemma-4-31b:free 429'd on every attempt. weight biases
-      # simple-shuffle 4:1 toward this deployment; the 26b fallback absorbs cooldowns.
-      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      # primary (operator-selected 2026-10-04): Ling 3.0 Flash Sante (free) — probed live with clean
+      # JSON intent output at ~$0. weight biases simple-shuffle 4:1 toward this deployment; the Qwen
+      # 3.8 27B fallback absorbs cooldowns.
+      model: openrouter/inclusionai/ling-3.0-flash-sante:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
   - model_name: sparkpoint-chat
     litellm_params:
       # verified-available free fallback (probed live) so the alias serves when the primary 429s.
-      model: openrouter/google/gemma-4-26b-a4b-it:free
+      model: openrouter/qwen/qwen3.8-27b:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
 
-  # Premium alias (feature 008, US4) — cheap PAID models for premium-tier turns, a clear step up from
-  # the free open models. Mirrors the free alias's primary+fallback shape: DeepSeek V4 Flash is the
-  # primary (weight 4; ~$0.094/$0.188 per Mtok, 1M ctx — sharp reasoning + clean JSON); Qwen 3.5
-  # Flash is the same-tier fallback (weight 1; ~$0.065/$0.26, 1M ctx) that absorbs cooldowns when the
-  # primary 429s. If the WHOLE premium group fails (e.g. the OpenRouter account is out of credit) the
-  # router FALLS BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so premium
-  # degrades to free quality instead of erroring. Both paid models need OpenRouter credit to serve.
+  # Premium alias (feature 008, US4) — the premium-tier alias, a clear step up from the free open
+  # models. Mirrors the free alias's primary+fallback shape: Ling 3.1 Flash is the primary (weight 4;
+  # 262k ctx — sharp reasoning + clean JSON); Apodex 1.1 Mini is the same-tier secondary (weight 1)
+  # that absorbs cooldowns when the primary 429s. If the WHOLE premium group fails the router FALLS
+  # BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so premium degrades to free
+  # quality instead of erroring. Both upstreams are currently $0 (2026-10-04) — costs are pinned to
+  # 0 so LiteLLM's spend accounting matches reality; keep in sync if upstream pricing moves.
   - model_name: sparkpoint-chat-premium
     litellm_params:
-      model: openrouter/deepseek/deepseek-v4-flash
+      model: openrouter/inclusionai/ling-3.1-flash
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
-      # ~$0.094 / $0.188 per 1M tok (in/out) — priced so LiteLLM tracks per-model spend + the admin
-      # Gateway → Config tab shows a real price (not $0). Actual billing still passes through from
-      # OpenRouter; this is LiteLLM's own cost accounting. Keep in sync if the upstream price moves.
-      input_cost_per_token: 0.000000094
-      output_cost_per_token: 0.000000188
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
       # Per-deployment request/min ceiling used by the router for load-based routing (primary carries
       # the bulk of premium traffic). The virtual key's global rpm is the real spend/abuse ceiling.
       rpm: 60
   - model_name: sparkpoint-chat-premium
     litellm_params:
-      model: openrouter/qwen/qwen3.5-flash-02-23
+      model: openrouter/apodex/apodex-1.1-mini:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
-      # ~$0.065 / $0.26 per 1M tok (in/out) — see the note above.
-      input_cost_per_token: 0.000000065
-      output_cost_per_token: 0.000000260
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
       # Fallback deployment — a smaller per-min ceiling (it only absorbs the primary's cooldowns).
+      rpm: 30
+
+  # Self-authoring alias (034) — Sparky's daily self-authored research job. SAME models as
+  # sparkpoint-chat-premium, but its OWN model_name so the gateway's Activity view can separate the
+  # job's traffic from users' chat traffic (the job must not compete with a user's pool). Added to
+  # this config on 2026-10-04 so it exists on BOTH gateways: it previously lived only in the alpha
+  # gateway's DB (added via the admin console), so beta self-authoring runs had no model at all.
+  # DELIBERATELY NO router fallback to the chat aliases — a failed run writes nothing and leaves the
+  # published documents untouched, which is the safe outcome; degrading onto users' pool is not.
+  - model_name: sparkpoint-selfauthor
+    litellm_params:
+      model: openrouter/inclusionai/ling-3.1-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 4
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
+      rpm: 60
+  - model_name: sparkpoint-selfauthor
+    litellm_params:
+      model: openrouter/apodex/apodex-1.1-mini:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 1
+      input_cost_per_token: 0.0
+      output_cost_per_token: 0.0
       rpm: 30
 
 litellm_settings:

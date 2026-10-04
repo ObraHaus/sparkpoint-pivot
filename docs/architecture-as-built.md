@@ -27,7 +27,7 @@ flowchart TB
   OR["OpenRouter"]
   PG[("spark-postgres\nmandates · memory_chunks (knowledge)\nwallet_allowlist · audit")]
   LPG[("litellm-db (isolated)\nvirtual keys · budgets")]
-  EMB["OpenWebUI embeddings\nqwen3-embedding:8b (MRL 1024)"]
+  EMB["OpenRouter embeddings\nllama-nemotron-embed-vl-1b-v2 (MRL 1024)"]
   RPC["Base Sepolia RPC (Alchemy)"]
   VAULT["SparkPointVault 84532\n+ CapRegistry + Timelock guardian"]
 
