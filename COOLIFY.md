@@ -156,8 +156,10 @@ Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standi
 >
 > **⚠️ Sync standard.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` MUST be identical on the agent + web apps. **Never edit them by hand on one app** — always write both in one shot with `scripts/sync-allowlist-env.sh "<beta_csv>" "<admin_csv>"` (needs `COOLIFY_API_TOKEN_RWD`), then redeploy both so the agent re-seeds. After boot, day-to-day membership is managed live in the **admin panel** (`/admin/allowlist`, audit-logged); the env is bootstrap + disaster-recovery only. ACCESS gate only — never gates `/exit`, `/trust`, or withdraw (N2). Migrations: `0005_allowlists` (see MIGRATIONS.md).
 >
-> **✅ OPEN BETA rollout (2026-10-04).** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`)
-> opens beta.sparkpoint.io to every wallet: once this change is on `main`, set `BETA_OPEN=true` on
-> that app and **redeploy** (build + runtime; the edge middleware reads it). Sign-in is still
-> required — it proves wallet control — and admin is unchanged. The allowlist + `/apply` remain for
-> the alpha/develop builds and for future re-gating (`BETA_OPEN=false`/unset + redeploy).
+> **✅ OPEN BETA — LIVE 2026-10-04.** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`,
+> build+runtime env `BETA_OPEN=true`) now serves beta.sparkpoint.io to **every wallet** — the
+> allowlist, `/apply`, and the 1M-SRK auto-gate no longer restrict entry (sign-in is still required:
+> it proves wallet control). Shipped via PRs #294/#295 (`main` @ `584a2ba`, `/api/version` matches);
+> verified live with a freshly generated wallet (SIWE `beta:true` → `/chat` 200, `/admin` 404).
+> Admin is unchanged. The allowlist + `/apply` remain for the alpha/develop builds and for future
+> re-gating (`BETA_OPEN=false`/unset + redeploy).
