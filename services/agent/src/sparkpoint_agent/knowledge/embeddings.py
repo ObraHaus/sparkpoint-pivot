@@ -38,13 +38,20 @@ Design
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import os
-from collections.abc import Mapping, Sequence
+import random
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
+
+_logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The pinned space (single source of truth). research.md §7.
@@ -259,7 +266,7 @@ def stub_embedder(dimension: int = EMBEDDING_DIM) -> Embedder:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Production backend — the operator's OpenAI-compatible OpenWebUI endpoint.
+# Production backend — OpenRouter's OpenAI-compatible embeddings API.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # The env the knowledge tier (NOT the keyless config.py) reads for the provider.
@@ -281,6 +288,86 @@ def _l2_normalize(vec: list[float]) -> list[float]:
     return [v / norm for v in vec]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Retry policy for the embeddings POST (the provider is a `:free` tier).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Transient statuses a retry could clear: 429 (rate limit) plus the gateway 5xx blips the
+# OpenRouter hop returns under load. Any other status — notably 400/401/404 — is a client error
+# and propagates immediately (never silently re-sent). Mirrors `llm.resilience.RETRYABLE_STATUS`
+# without importing that module (knowledge/ stays free of the LLM/SDK package).
+EMBEDDING_RETRYABLE_STATUS: frozenset[int] = frozenset({429, 502, 503, 504, 529})
+
+# Retry on transport errors too (timeouts / connect resets) — a dropped connection says nothing
+# about the request being wrong, unlike a 4xx.
+EMBEDDING_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (httpx.TransportError,)
+
+_MODULE_RNG: random.Random = random.Random()  # noqa: S311 — jitter spread, not cryptographic
+
+
+@dataclass(frozen=True)
+class EmbedRetryPolicy:
+    """Bounds for the embeddings retry loop. Same shape as the LLM path's policy.
+
+    Patient by default: the `:free` embedding tier rate-limits in bursts, and a single failed
+    embed silently skips an ingest (or a changelog entry at boot). Five attempts with an
+    EQUAL-jitter floor (≈0.5s → 10s between tries) ride out a short burst while the total budget
+    still bounds the run.
+    """
+
+    max_attempts: int = 5
+    base_delay_s: float = 1.0
+    max_delay_s: float = 10.0
+    total_budget_s: float = 60.0
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Parse the ``Retry-After`` response header, in seconds (delta-seconds or HTTP-date).
+
+    Returns a non-negative float, or ``None`` when absent/unparseable — the caller then uses
+    jittered backoff. Never raises.
+    """
+    raw = resp.headers.get("retry-after")
+    if raw is None or not str(raw).strip():
+        return None
+    text = str(raw).strip()
+    try:
+        return max(0.0, float(int(text)))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+def _backoff_delay(
+    attempt: int,
+    *,
+    retry_after: float | None,
+    policy: EmbedRetryPolicy,
+    rng: random.Random | None = None,
+) -> float:
+    """Seconds to sleep before ``attempt``'s retry (``attempt`` is 1-based).
+
+    ``Retry-After`` wins when the server sent one (clamped to the total budget). Otherwise EQUAL
+    JITTER over the exponential window: ``window/2 + uniform(0, window/2)`` — half the window is a
+    FLOOR (a sub-second retry never clears a per-minute quota), half is random so parallel
+    ingests don't re-collide.
+    """
+    if retry_after is not None:
+        return max(0.0, min(retry_after, policy.total_budget_s))
+    window = min(policy.max_delay_s, policy.base_delay_s * (2 ** (attempt - 1)))
+    rng_ = rng or _MODULE_RNG
+    delay: float = window / 2 + rng_.uniform(0.0, window / 2)
+    return delay
+
+
 class OpenAIEmbeddingBackend:
     """An OpenAI-compatible :class:`EmbeddingBackend` (OpenRouter's embeddings API).
 
@@ -294,6 +381,11 @@ class OpenAIEmbeddingBackend:
 
     SECRET: the API key is held in-instance and set ONLY on the outgoing ``Authorization``
     header; it is NEVER logged, embedded in an exception message, or shown in this repr.
+
+    RESILIENCE: the POST retries transient failures (429 / 502 / 503 / 504 / 529 and transport
+    errors) with jittered backoff, honoring ``Retry-After``, then fails CLOSED on exhaustion.
+    Non-retryable statuses propagate on the first response. Retry logs carry the status/backoff
+    only — never the URL or key.
     """
 
     def __init__(
@@ -306,6 +398,9 @@ class OpenAIEmbeddingBackend:
         model_version: str = EMBEDDING_MODEL_VERSION,
         timeout: float = 60.0,
         client: httpx.Client | None = None,
+        policy: EmbedRetryPolicy | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        rng: random.Random | None = None,
     ) -> None:
         self._url = api_url.rstrip("/") + "/embeddings"
         self._key = api_key  # secret — never logged
@@ -314,6 +409,9 @@ class OpenAIEmbeddingBackend:
         self._model_version = model_version
         self._timeout = timeout
         self._client = client  # injectable for tests (a MockTransport client)
+        self._policy = policy or EmbedRetryPolicy()
+        self._sleep = sleep  # injectable so tests never actually wait
+        self._rng = rng
 
     def __repr__(self) -> str:  # never leak the key via repr
         return f"OpenAIEmbeddingBackend(model={self._model!r}, dim={self._dimension})"
@@ -326,6 +424,63 @@ class OpenAIEmbeddingBackend:
     def dimension(self) -> int:
         return self._dimension
 
+    def _post(self, payload: dict[str, Any], headers: dict[str, str]) -> httpx.Response:
+        if self._client is not None:
+            return self._client.post(self._url, json=payload, headers=headers)
+        return httpx.post(self._url, json=payload, headers=headers, timeout=self._timeout)
+
+    def _post_with_retry(
+        self, payload: dict[str, Any], headers: dict[str, str]
+    ) -> httpx.Response:
+        """POST once, retrying transient failures; returns the final response (retryable or not).
+
+        On exhaustion the last response is returned (the caller's ``raise_for_status`` fails
+        closed) or the last transport error is re-raised. Never logs the URL or key.
+        """
+        policy = self._policy
+        start = time.monotonic()
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                resp = self._post(payload, headers)
+            except EMBEDDING_RETRYABLE_EXCEPTIONS as exc:
+                elapsed = time.monotonic() - start
+                if attempt >= policy.max_attempts or elapsed >= policy.total_budget_s:
+                    raise
+                delay = min(
+                    _backoff_delay(attempt, retry_after=None, policy=policy, rng=self._rng),
+                    max(0.0, policy.total_budget_s - elapsed),
+                )
+                _logger.warning(
+                    "embedding_retry transport=%s attempt=%d/%d backoff=%.2fs",
+                    type(exc).__name__,
+                    attempt,
+                    policy.max_attempts,
+                    delay,
+                )
+                self._sleep(delay)
+                continue
+            if resp.status_code not in EMBEDDING_RETRYABLE_STATUS:
+                return resp
+            elapsed = time.monotonic() - start
+            if attempt >= policy.max_attempts or elapsed >= policy.total_budget_s:
+                return resp
+            retry_after = _retry_after_seconds(resp)
+            delay = min(
+                _backoff_delay(attempt, retry_after=retry_after, policy=policy, rng=self._rng),
+                max(0.0, policy.total_budget_s - elapsed),
+            )
+            _logger.warning(
+                "embedding_rate_limited status=%d attempt=%d/%d retry_after=%s backoff=%.2fs",
+                resp.status_code,
+                attempt,
+                policy.max_attempts,
+                retry_after,
+                delay,
+            )
+            self._sleep(delay)
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         payload = {"model": self._model, "input": list(texts)}
         headers = {
@@ -333,10 +488,7 @@ class OpenAIEmbeddingBackend:
             "Content-Type": "application/json",
         }
         try:
-            if self._client is not None:
-                resp = self._client.post(self._url, json=payload, headers=headers)
-            else:
-                resp = httpx.post(self._url, json=payload, headers=headers, timeout=self._timeout)
+            resp = self._post_with_retry(payload, headers)
             resp.raise_for_status()
             data = resp.json()
         except httpx.HTTPError as exc:

@@ -1,4 +1,4 @@
-# ruff: noqa: S101, S105, S106  (pytest asserts; test-only fixture creds, never real secrets)
+# ruff: noqa: S101, S105, S106, S311  (pytest asserts; fixture creds; deterministic jitter rng)
 """OpenAI-compatible embedding backend (OpenRouter's embeddings API) — no network.
 
 Exercises the P2 production backend with an httpx MockTransport so the real request/parse
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 
 import httpx
 import pytest
@@ -25,6 +26,7 @@ from sparkpoint_agent.knowledge import (
     default_citation_retriever,
     openai_embedder,
 )
+from sparkpoint_agent.knowledge.embeddings import EmbedRetryPolicy, _backoff_delay
 
 _NATIVE_DIM = 2048  # nvidia/llama-nemotron-embed-vl-1b-v2:free native width (2048 → pinned 1024)
 _SECRET = "sk-test-DO-NOT-LEAK-123"
@@ -34,12 +36,16 @@ def _client(handler: object) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))  # type: ignore[arg-type]
 
 
-def _backend(handler: object) -> OpenAIEmbeddingBackend:
+def _backend(handler: object, **kwargs: object) -> OpenAIEmbeddingBackend:
+    # Tests never actually wait: the backoff sleep is recorded by the caller when it matters.
+    kwargs.setdefault("sleep", lambda _s: None)
+    kwargs.setdefault("rng", random.Random(0))
     return OpenAIEmbeddingBackend(
         api_url="http://embed.example/api/v1",
         api_key=_SECRET,
         model=EMBEDDING_EXPECTED_MODEL,
         client=_client(handler),
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -144,3 +150,78 @@ def test_openai_embedder_rejects_a_foreign_model() -> None:
                 "EMBEDDING_OPENAI_MODEL": "text-embedding-3-large",  # not the pinned model
             }
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Retry policy — transient failures must be ridden out, permanent ones fail fast.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_retries_429_then_succeeds_and_honors_retry_after() -> None:
+    calls = {"n": 0}
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "2"}, json={"error": "slow down"})
+        body = json.loads(request.content)
+        data = [{"index": i, "embedding": [1.0] * _NATIVE_DIM} for i in range(len(body["input"]))]
+        return httpx.Response(200, json={"data": data})
+
+    vecs = _backend(handler, sleep=sleeps.append).embed(["x"])
+    assert len(vecs) == 1 and len(vecs[0]) == EMBEDDING_DIM
+    assert calls["n"] == 2
+    assert sleeps == [2.0]  # the server's Retry-After wins over jitter
+
+
+def test_retries_transport_error_then_succeeds() -> None:
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectError("connection reset", request=request)
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0] * _NATIVE_DIM}]})
+
+    vecs = _backend(handler).embed(["x"])
+    assert len(vecs) == 1
+    assert calls["n"] == 2
+
+
+def test_non_retryable_status_is_not_retried() -> None:
+    calls = {"n": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(400, json={"error": "bad model"})
+
+    with pytest.raises(EmbeddingBackendError) as ei:
+        _backend(handler).embed(["x"])
+    assert calls["n"] == 1  # a client error is never silently re-sent
+    assert _SECRET not in str(ei.value)
+
+
+def test_retry_exhaustion_fails_closed_without_leaking_the_key() -> None:
+    calls = {"n": 0}
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(503, json={"error": "unavailable"})
+
+    b = _backend(handler, policy=EmbedRetryPolicy(max_attempts=3, total_budget_s=10.0))
+    with pytest.raises(EmbeddingBackendError) as ei:
+        b.embed(["x"])
+    assert calls["n"] == 3  # attempts capped by the policy
+    assert _SECRET not in str(ei.value)
+
+
+def test_backoff_honors_retry_after_and_equal_jitter() -> None:
+    p = EmbedRetryPolicy(base_delay_s=1.0, max_delay_s=8.0)
+    assert _backoff_delay(1, retry_after=3.5, policy=p, rng=random.Random(0)) == 3.5
+    # Equal jitter: half the window is a floor, half is random (window 1.0 on attempt 1).
+    d1 = _backoff_delay(1, retry_after=None, policy=p, rng=random.Random(0))
+    assert 0.5 <= d1 <= 1.0
+    # The exponential window is capped at max_delay_s (attempt 4 → window 8.0).
+    d4 = _backoff_delay(4, retry_after=None, policy=p, rng=random.Random(0))
+    assert 4.0 <= d4 <= 8.0
