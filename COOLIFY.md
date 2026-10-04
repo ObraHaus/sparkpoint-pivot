@@ -152,5 +152,12 @@ Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standi
 > | `SESSION_SECRET` | **web** | Secret — signs the httpOnly SIWE session cookie (Web-Crypto HMAC). FAIL-CLOSED: unset ⇒ no session mints/verifies ⇒ the (app) shell + `/admin` are unreachable (only landing/connect/verify/exit/trust). Build **and** runtime (the edge middleware verifies). `openssl rand -hex 32`. |
 > | `BETA_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into the (app) shell. The **agent** seeds `wallet_allowlist` from it on boot; the web copy is kept in parity. |
 > | `ADMIN_ALLOWLIST` | **agent + web** | Public csv of wallets allowed into `/admin` + admin APIs (admin implies beta). Same seed/parity model. |
+> | `BETA_OPEN` | **web** | **PUBLIC BETA switch (2026-10-04).** Exact `"true"` admits EVERY wallet that completes SIWE to the (app) shell — the allowlist/application/SRK gate no longer restricts entry. FAIL-CLOSED: unset/anything else keeps the allowlist. Never widens admin (that stays `ADMIN_ALLOWLIST`/DB). Build + runtime env — set it, then **redeploy the web app**. |
 >
 > **⚠️ Sync standard.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` MUST be identical on the agent + web apps. **Never edit them by hand on one app** — always write both in one shot with `scripts/sync-allowlist-env.sh "<beta_csv>" "<admin_csv>"` (needs `COOLIFY_API_TOKEN_RWD`), then redeploy both so the agent re-seeds. After boot, day-to-day membership is managed live in the **admin panel** (`/admin/allowlist`, audit-logged); the env is bootstrap + disaster-recovery only. ACCESS gate only — never gates `/exit`, `/trust`, or withdraw (N2). Migrations: `0005_allowlists` (see MIGRATIONS.md).
+>
+> **✅ OPEN BETA rollout (2026-10-04).** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`)
+> opens beta.sparkpoint.io to every wallet: once this change is on `main`, set `BETA_OPEN=true` on
+> that app and **redeploy** (build + runtime; the edge middleware reads it). Sign-in is still
+> required — it proves wallet control — and admin is unchanged. The allowlist + `/apply` remain for
+> the alpha/develop builds and for future re-gating (`BETA_OPEN=false`/unset + redeploy).
