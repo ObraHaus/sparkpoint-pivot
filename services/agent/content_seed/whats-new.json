@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "ai-model-upgrade-2026-10",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky runs on a new model lineup \u2014 and reads your product docs more sharply",
+      "body": "Sparky's chat now runs on a newer generation of models on both the Beta and the Alpha: quicker free models for everyday questions and a stronger premium model for deeper ones. Its knowledge search also moved to a new embedding system, and we re-indexed everything it reads \u2014 the product docs, the changelog, and the tips \u2014 so answers about how SparkPoint works stay grounded in the current text. The daily research Sparky does on its own (checking vaults and writing its findings) now runs on the premium model too, on both environments. Nothing about your wallet, your keys, or how you sign changed.",
+      "published_at": "2026-10-04T08:38:59Z"
+    },
+    {
       "slug": "beta-launch-robinhood-chain",
       "type": "changelog",
       "tag": "Announcement",
