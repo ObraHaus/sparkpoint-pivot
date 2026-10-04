@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .embeddings import (
     EMBEDDING_DIM,
+    EMBEDDING_EXPECTED_MODEL,
     EMBEDDING_MODEL_VERSION,
     Embedder,
     Embedding,
@@ -63,6 +64,7 @@ from .store import (
 __all__ = [
     "DEFAULT_K",
     "EMBEDDING_DIM",
+    "EMBEDDING_EXPECTED_MODEL",
     "EMBEDDING_MODEL_VERSION",
     "KNOWLEDGE_SOURCE_KIND",
     "TIP_SOURCE_KIND",
