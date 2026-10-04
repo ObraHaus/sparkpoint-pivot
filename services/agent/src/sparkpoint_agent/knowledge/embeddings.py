@@ -51,13 +51,13 @@ import httpx
 # ─────────────────────────────────────────────────────────────────────────────
 
 # The version-pinned embedding model id stamped onto every row of BOTH tiers.
-# The provider Gate decision (research.md §7) is RESOLVED: the operator's self-hosted,
-# Qwen3-Embedding-8B (MRL) over an OpenAI-compatible endpoint, truncated (MRL) to the pinned
-# 1024-dim. Provider is now OpenRouter (the prior self-hosted OpenWebUI dropped the model). It is
-# the SAME model + 1024-MRL space, so this version id is UNCHANGED (existing vectors stay
-# compatible — NO re-embed). The id encodes model + effective dim so a distance query won't cross a
-# boundary; bumping it remains a re-embed event (see module docstring).
-EMBEDDING_MODEL_VERSION = "qwen3-embedding-8b-mrl1024@2026.07.0"
+# The provider Gate decision (research.md §7) is RESOLVED: NVIDIA Llama Nemotron Embed VL 1B v2
+# over OpenRouter's OpenAI-compatible embeddings API, truncated (MRL) to the pinned 1024-dim.
+# This is a DIFFERENT model + space than the prior `qwen3-embedding-8b-mrl1024` pin, so this
+# version id IS bumped: switching it is a re-embed event (see module docstring) — every row must
+# be re-embedded before the new space is queried. The id encodes model + effective dim so a
+# distance query should never cross a boundary; bumping it remains a re-embed event.
+EMBEDDING_MODEL_VERSION = "nvidia-llama-nemotron-embed-vl-1b-v2-mrl1024@2026.10.0"
 
 # The vector dimension of the pinned space. MUST equal the pgvector
 # ``vector(N)`` column width in the memory_embeddings migration (data-model.md
@@ -66,11 +66,11 @@ EMBEDDING_DIM = 1024
 
 # The EXACT provider model the pin above represents. The env's EMBEDDING_OPENAI_MODEL must equal
 # this, else composition is REJECTED — otherwise any OpenAI-compatible endpoint (a foreign model
-# that merely returns ≥1024 dims) would be silently stamped with the qwen3 pin and write vectors
-# into an incompatible space. This is OpenRouter's id for Qwen3-Embedding-8B (same model +
-# 1024-MRL space as before). Switching to a DIFFERENT model = change BOTH this and
-# EMBEDDING_MODEL_VERSION and re-embed the corpus (a version boundary, by design).
-EMBEDDING_EXPECTED_MODEL = "qwen/qwen3-embedding-8b"
+# that merely returns ≥1024 dims) would be silently stamped with the pin and write vectors into an
+# incompatible space. This is OpenRouter's id for NVIDIA Llama Nemotron Embed VL 1B v2 (the `:free`
+# tier is the only endpoint OpenRouter currently exposes). Switching to a DIFFERENT model = change
+# BOTH this and EMBEDDING_MODEL_VERSION and re-embed the corpus (a version boundary, by design).
+EMBEDDING_EXPECTED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
 
 class EmbeddingDimensionError(ValueError):
@@ -285,10 +285,12 @@ class OpenAIEmbeddingBackend:
     """An OpenAI-compatible :class:`EmbeddingBackend` (OpenRouter's embeddings API).
 
     POSTs ``{model, input}`` to ``<api_url>/embeddings`` with a Bearer key and reads the OpenAI
-    ``data[].embedding`` shape (ordered by ``index``). The model (``qwen/qwen3-embedding-8b``) is
-    MRL-trained and returns 4096-dim vectors even when a ``dimensions`` hint is sent, so each
-    vector is TRUNCATED to the pinned :data:`EMBEDDING_DIM` (a valid Matryoshka sub-embedding)
-    and L2-renormalized — matching the pgvector column width with no re-migration.
+    ``data[].embedding`` shape (ordered by ``index``). The model
+    (``nvidia/llama-nemotron-embed-vl-1b-v2:free``) returns 2048-dim vectors natively; the
+    provider's own 1024-dim output was verified identical to truncating the 2048-dim vector to the
+    first 1024 and renormalizing (cosine ≥ 0.9999999), so each vector is TRUNCATED to the pinned
+    :data:`EMBEDDING_DIM` (a Matryoshka sub-embedding) and L2-renormalized — matching the pgvector
+    column width with no re-migration.
 
     SECRET: the API key is held in-instance and set ONLY on the outgoing ``Authorization``
     header; it is NEVER logged, embedded in an exception message, or shown in this repr.
@@ -355,7 +357,7 @@ class OpenAIEmbeddingBackend:
                 raise EmbeddingBackendError(
                     "embedding vector missing or shorter than the pinned dimension"
                 )
-            # MRL truncation to the pinned width + renormalize (valid for qwen3-embedding).
+            # MRL truncation to the pinned width + renormalize (validated for nemotron-embed-vl).
             out.append(_l2_normalize([float(x) for x in vec[: self._dimension]]))
         return out
 
@@ -376,7 +378,8 @@ def openai_embedder(env: Mapping[str, str] | None = None) -> Embedder | None:
         return None
     # NON-TAUTOLOGICAL pin check: the configured model must be the exact model the pin represents.
     # (`assert_backend_matches_pin` alone can't catch this — the backend reports the pin regardless
-    # of its model — so a foreign ≥1024-dim endpoint would otherwise be stamped qwen3 silently.)
+    # of its model — so a foreign ≥1024-dim endpoint would otherwise be stamped with the pin
+    # silently.)
     if model != EMBEDDING_EXPECTED_MODEL:
         raise ValueError(
             f"EMBEDDING_OPENAI_MODEL {model!r} != pinned {EMBEDDING_EXPECTED_MODEL!r} "
