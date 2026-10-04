@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "embedding-retry-2026-10",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky's knowledge updates ride out busy moments",
+      "body": "When the AI provider briefly rate-limits, the system that keeps Sparky's product knowledge up to date now waits and retries a few times instead of skipping that update. Nothing changes in how you use the app — answers just stay grounded in the latest docs more reliably.",
+      "published_at": "2026-10-04T09:40:00Z"
+    },
+    {
       "slug": "ai-model-upgrade-2026-10",
       "type": "changelog",
       "tag": "Improved",
