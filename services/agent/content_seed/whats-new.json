@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "open-beta",
+      "type": "changelog",
+      "tag": "New",
+      "title": "The beta is open — bring a wallet",
+      "body": "No more invite list: connect a wallet and sign the free message to prove it's yours, and you're in. Chat with Sparky, see your portfolio, swap ETH and USDG, and browse the vault board. SparkPoint never holds your funds — you sign every transaction yourself, and you can withdraw any time.",
+      "published_at": "2026-10-04T01:48:43Z"
+    },
+    {
       "slug": "brokers-landing-section",
       "type": "changelog",
       "tag": "New",

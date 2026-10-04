@@ -24,6 +24,7 @@ import { base, baseSepolia, robinhoodTestnet } from "viem/chains";
 import { robinhoodMainnet } from "@/lib/chain/clients";
 import { parseSiweMessage, verifySiweMessage } from "viem/siwe";
 import { fetchAllowlistStatus, runSrkMainnetGate } from "@/lib/auth/agent-status";
+import { BETA_OPEN } from "@/lib/auth/openBeta";
 import {
   NONCE_COOKIE,
   SESSION_COOKIE,
@@ -159,16 +160,25 @@ export async function POST(req: Request): Promise<NextResponse> {
   // `gateUnavailable` distinguishes "we read the balance and it was too low" from "we never got to
   // read it" — the form uses it to offer a retry instead of a dead end. It is PURELY advisory: it
   // never affects the roles minted below.
+  //
+  // BETA_OPEN (2026-10-04) — the public beta: every wallet that proves control walks in, so the
+  // allowlist result now governs only the ADMIN claim. When open, this auto-gate is skipped
+  // entirely — it exists to admit wallets the allowlist would otherwise bounce, which is already
+  // every wallet. Admin still comes from the DB; the open flag never widens it.
   let gateUnavailable = false;
-  if (!status.beta) {
+  if (!status.beta && !BETA_OPEN) {
     const gate = await runSrkMainnetGate(lower, chainId);
     gateUnavailable = gate.reason === "timed_out";
     if (gate.granted) status = (await fetchAllowlistStatus(lower, chainId)) ?? status;
   }
 
+  // Resolved AFTER the gate so a qualifying SRK holder's re-resolved `beta: true` is honoured on
+  // this login (and `BETA_OPEN` short-circuits the whole thing above).
+  const beta = status.beta || BETA_OPEN;
+
   const token = await signSession({
     address: lower,
-    beta: status.beta,
+    beta,
     admin: status.admin,
   });
   if (!token) return bad("session_unconfigured", 500);
@@ -176,7 +186,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const res = NextResponse.json({
     ok: true,
     address: lower,
-    beta: status.beta,
+    beta,
     admin: status.admin,
     gateUnavailable,
   });

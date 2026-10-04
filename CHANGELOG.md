@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (public beta — the whitelist gate is now a switch)
+
+- **beta.sparkpoint.io is open to everyone.** A new web env **`BETA_OPEN=true`** admits every wallet that completes SIWE to the (app) shell — the DB beta allowlist, the `/apply` form, and the 1M-SRK auto-gate no longer restrict entry while it is on. Admin is unchanged: `/admin` + the admin APIs still require an `admin` row (non-admins still get the invisible 404). **FAIL-CLOSED** — only an explicit `"true"` opens the beta; `false`/unset restores the closed beta with no code revert. Applied at all four server points (edge middleware, BFF beta gate, session read, SIWE verify), so sessions minted under the closed beta are admitted too, and the SRK gate is skipped. Access only — `/exit`, `/trust`, and withdraw are never gated (N2).
+
 ### Reverted (broker art cut-out, for now)
 
 - **The transparent broker cut-out is reverted.** The cut-out edges read as broken on the live page, so the original collection image (square, studio background) and the rectangular gold frame are back. The brokers section itself is unchanged. Mirrors the sparkpoint.io revert.

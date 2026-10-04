@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { betaGateOpen } from "@/lib/auth/openBeta";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate 1 — Construction gate (feature 003-landing-only-gate). UNCHANGED.
@@ -16,6 +17,12 @@ const LOCKED = (process.env.SITE_LOCKED ?? "").toLowerCase() !== "false";
 // not expose arbitrary runtime env). Passed into verifySession below. Same value the node routes
 // sign with, so signatures verify identically on both sides.
 const MW_SESSION_SECRET = process.env.SESSION_SECRET || process.env.AUTH_SECRET || undefined;
+
+// BETA_OPEN — the public-open switch (2026-10-04). When true, ANY wallet with a valid SIWE session
+// reaches the (app) shell; the admin surface is untouched (still `claims.admin`). Referenced
+// DIRECTLY here for the same edge-inlining reason as the secret above. FAIL-CLOSED: anything other
+// than an explicit "true" keeps the allowlist gate exactly as it was.
+const BETA_OPEN = betaGateOpen(process.env.BETA_OPEN);
 
 const ALLOW_EXACT = new Set([
   "/",
@@ -57,8 +64,9 @@ const ALLOW_PREFIX = [
 // ─────────────────────────────────────────────────────────────────────────────
 // Gate 2 — Phase B access gate (runs only when UNLOCKED / develop).
 //
-// Enforces the SIWE session: (app) shell routes need a beta session; /admin needs an admin session
-// (invisible 404 to everyone else). NEVER gated — the landing, the login flow (/connect,/verify),
+// Enforces the SIWE session: (app) shell routes need a beta session (or ANY session when
+// `BETA_OPEN=true` — the public beta); /admin needs an admin session (invisible 404 to everyone
+// else). NEVER gated — the landing, the login flow (/connect,/verify),
 // the escape hatches (/exit,/trust and their subpages, N2), static/infra, and /api/* (each API
 // route self-enforces: the BFF derives identity from the session, the auth routes are the login).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,14 +153,14 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     return claims?.admin ? NextResponse.next() : deny404(req);
   }
 
-  // App shell — requires a beta session.
+  // App shell — requires a beta session, or simply a session when the beta is open to all.
   if (!claims) {
     const url = req.nextUrl.clone();
     url.pathname = "/connect";
     url.search = "";
     return NextResponse.redirect(url, 307);
   }
-  if (!claims.beta) {
+  if (!claims.beta && !BETA_OPEN) {
     // Authenticated but not allowlisted → the honest "not in the beta yet" state on /verify
     // (which also points them at /exit to withdraw). Never a fake pass.
     const url = req.nextUrl.clone();
