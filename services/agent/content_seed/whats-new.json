@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "Sparky's knowledge updates ride out busy moments",
       "body": "When the AI provider briefly rate-limits, the system that keeps Sparky's product knowledge up to date now waits and retries a few times instead of skipping that update. Nothing changes in how you use the app — answers just stay grounded in the latest docs more reliably.",
-      "published_at": "2026-10-04T09:40:00Z"
+      "published_at": "2026-10-04T09:00:00Z"
     },
     {
       "slug": "ai-model-upgrade-2026-10",
