@@ -161,3 +161,16 @@ Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standi
 > that app and **redeploy** (build + runtime; the edge middleware reads it). Sign-in is still
 > required — it proves wallet control — and admin is unchanged. The allowlist + `/apply` remain for
 > the alpha/develop builds and for future re-gating (`BETA_OPEN=false`/unset + redeploy).
+>
+> **✅ SPARKY BROKER MINT WHITELIST — LIVE 2026-10-06.** `sparkpoint-web-beta`
+> (`y08wgs8wcsc8gk8kgkw8gc8k`) + `sparkpoint-agent-beta` (`k4cwosc0c8kkswcco0wg8cko`) deployed the
+> `/mint-whitelist` form + `mint_whitelist_applications` store (migration 0042) on `main` @
+> `378dbb61`, and `sparkpoint-landing` (`sgsswckkgkccggcs4cg004cc`) shipped the outbound CTA to
+> sparkpoint.io on `main` @ `9a96d303`. ⚠️ **The beta agent's DB is `sparkpoint-postgres-beta`
+> (`rco44kwc88k44o80ccoko4kk`, published `192.168.31.36:45432`, db `postgres`), NOT the
+> `.claude/.env` `DATABASE_URL`** (that one is the alpha DB at `192.168.31.26:5432/sparkpoint`).
+> Migration 0042 must be applied to the beta DB before the agent serves the form. Verified live:
+> beta.sparkpoint.io `/mint-whitelist` → 200, landing CTAs + "5,555" on both domains, and a real
+> `POST /api/access/apply` with `program=mint_whitelist` → `{"ok":true}` (test row removed after).
+> ⚠️ The landing deploy first reported `failed` on the healthcheck while already serving the new
+> build (the documented coolify-build badge/healthcheck quirk); a retry finished green.
