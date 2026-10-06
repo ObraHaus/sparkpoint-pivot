@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/lib/icons";
 import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+import { MintWhitelistPanel } from "./MintWhitelistPanel";
 
 type Role = "beta" | "admin";
 interface AuditEntry {
@@ -453,6 +454,10 @@ export function AllowlistPanel() {
       </div>
 
       <PendingApplications onDecided={refresh} />
+
+      {/* The Sparky Broker GTD/FCFS mint whitelist — a different queue for a different decision
+          (a SeaDrop allowlist spot, not the beta role). Read-only + CSV export. */}
+      <MintWhitelistPanel />
 
 
       <div className="chartcard" style={{ marginTop: 14 }}>

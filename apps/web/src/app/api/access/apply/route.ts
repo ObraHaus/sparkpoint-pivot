@@ -1,11 +1,19 @@
 /**
- * `POST /api/access/apply` — the PUBLIC alpha application (045). No session, no wallet, no
+ * `POST /api/access/apply` — the PUBLIC landing-page application. No session, no wallet, no
  * signature: the applicant types their address on the landing page.
+ *
+ * One endpoint, TWO programs (the form sends `program`):
+ *   - `beta_access` (default) → the agent's `/access/public-application`: the app's beta gate.
+ *   - `mint_whitelist` → the agent's `/access/mint-whitelist`: the Sparky Broker GTD/FCFS
+ *     mint allowlist (SeaDrop). Nothing about it grants app access, and vice versa.
+ * They share this route because every property below — no identity, rate limits, honeypot, one
+ * identical response — is exactly the same for both, and a second near-identical route would be a
+ * second place for those properties to drift.
  *
  * WHY IT IS NOT `/api/agent/access/application`. That path is the BFF catch-all, and the catch-all
  * requires a verified SIWE session before it forwards anything — by design, since it is the tier
- * that asserts identity to the agent. This route is its deliberate opposite: it forwards ONE fixed
- * agent path, asserts no identity at all, and carries the s2s bearer so the agent still knows the
+ * that asserts identity to the agent. This route is its deliberate opposite: it forwards fixed
+ * agent paths, asserts no identity at all, and carries the s2s bearer so the agent still knows the
  * call came from the web tier and not from the internet.
  *
  * Everything a public write needs, in one place:
@@ -65,6 +73,18 @@ const GLOBAL = new SlidingWindowLimiter(
 );
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * The public programs this one endpoint files. The body's `program` selects the agent path; an
+ * absent `program` is the beta application (every pre-existing caller). An UNKNOWN value is a 400
+ * rather than a silent fallback — filing a whitelist request into the beta queue because a typo
+ * defaulted it is exactly the kind of quiet misroute nobody would notice until the review.
+ */
+type Program = "beta_access" | "mint_whitelist";
+const AGENT_PATH: Record<Program, string> = {
+  beta_access: "/access/public-application",
+  mint_whitelist: "/access/mint-whitelist",
+};
 
 /** The single success body. Identical for a new application, a duplicate, and an existing one. */
 const RECEIVED = { ok: true } as const;
@@ -145,6 +165,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     return bad("That doesn't look like a wallet address — it should be 0x followed by 40 characters.");
   }
 
+  const rawProgram = body.program;
+  if (rawProgram !== undefined && rawProgram !== "beta_access" && rawProgram !== "mint_whitelist") {
+    return bad("Please check the details and try again.");
+  }
+  const program: Program = rawProgram === "mint_whitelist" ? "mint_whitelist" : "beta_access";
+
   const contact = field(body.contact, MAX_CONTACT, "A contact handle");
   if (contact instanceof NextResponse) return contact;
   const name = field(body.name, MAX_NAME, "A name or alias");
@@ -152,7 +178,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const reason = field(
     body.reason,
     MAX_REASON,
-    "A reason for access",
+    program === "mint_whitelist" ? "A reason for the whitelist" : "A reason for access",
     10,
     "Please tell us a little more — a sentence or two is plenty.",
   );
@@ -171,7 +197,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
     const upstream = await fetch(
-      `${AGENT_INTERNAL_URL.replace(/\/+$/, "")}/access/public-application`,
+      `${AGENT_INTERNAL_URL.replace(/\/+$/, "")}${AGENT_PATH[program]}`,
       {
         method: "POST",
         headers: {
