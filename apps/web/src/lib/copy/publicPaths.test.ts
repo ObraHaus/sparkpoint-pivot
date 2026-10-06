@@ -102,3 +102,18 @@ test("applying never requires a session under either gate", () => {
       "own entry",
   );
 });
+
+test("the mint whitelist page is public under BOTH gates", () => {
+  // The Sparky Broker whitelist form has the same applicant as /apply: no wallet, no session. It
+  // shares the one submission endpoint (`/api/access/apply`, already asserted above), so only the
+  // page itself needs listing here — in both gates, or it is public in one deploy shape only.
+  assert.ok(
+    entriesOf("ALLOW_EXACT").includes("/mint-whitelist"),
+    "a locked deploy would send /mint-whitelist to /coming-soon",
+  );
+  assert.ok(
+    entriesOf("PUBLIC_EXACT").includes("/mint-whitelist"),
+    "an unlocked deploy would 307 /mint-whitelist to /connect — applying for a mint spot would " +
+      "require being let in",
+  );
+});

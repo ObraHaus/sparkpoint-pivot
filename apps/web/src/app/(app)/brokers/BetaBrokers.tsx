@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import { formatEther, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { chainName } from "@sparkpoint/shared/chains";
@@ -208,6 +209,27 @@ export function BetaBrokers() {
             {formatBurn(prices.prices.clockIn, position.symbol)} through the
             engine, and a sale clears it: the next owner clocks their own.
           </div>
+        </div>
+      </div>
+
+      {/* The production collection mints on OpenSea in staged allowlists; this is the way in. It
+          is deliberately ABOVE the deployment gate below so the application stays reachable even
+          before the test contracts are wired on a given build. */}
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div className="card-hd">
+          <span className="t">Mint whitelist</span>
+          <span className="lbl">5,555 · Robinhood Chain</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          The Sparky Broker collection — <b>5,555</b> on Robinhood Chain — mints on OpenSea in
+          staged allowlists: <b>Treasury</b>, then <b>GTD</b>, then <b>FCFS</b>, then Public.
+          Whitelisted wallets mint first, at the allowlist price. Apply with the wallet you want
+          whitelisted — no wallet connection is needed to apply, and a spot is one per wallet.
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Link className="btn btn-primary btn-md" href="/mint-whitelist">
+            Apply for mint whitelist
+          </Link>
         </div>
       </div>
 

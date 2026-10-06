@@ -48,6 +48,10 @@ const ALLOW_EXACT = new Set([
   // the client reads as a failure. `/apply` is the same form on its own linkable address.
   "/apply",
   "/api/access/apply",
+  // The Sparky Broker mint whitelist application — same public shape as /apply (a standalone form
+  // address so it can be posted and linked) and the same shared submission endpoint, which is
+  // already listed above.
+  "/mint-whitelist",
 ]);
 const ALLOW_PREFIX = [
   "/_next/static",
@@ -81,6 +85,9 @@ const PUBLIC_EXACT = new Set([
   // ask about. (`/api/access/apply` needs no entry here: Gate 2 passes every `/api` path via
   // INFRA_PREFIX. It IS listed in ALLOW_EXACT above, which Gate 1 needs.)
   "/apply",
+  // The Sparky Broker mint whitelist application: the same rule. A visitor asking for a mint spot
+  // has no reason to hold app access, so gating this would be the same dead end.
+  "/mint-whitelist",
   "/coming-soon",
   "/geo-blocked",
   "/favicon.ico",
