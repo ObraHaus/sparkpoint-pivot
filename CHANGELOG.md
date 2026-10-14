@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (gateway model availability — restored chat)
+
+- **The retired OpenRouter `:free` slugs are replaced, restoring chat on beta.** OpenRouter retired the 2026-10-04 free lineup (`ling-3.0-flash-sante:free` and `apodex-1.1-mini:free` no longer exist; `qwen3.8-27b:free` is paid-only), so every `sparkpoint-chat` request failed at model lookup (404) regardless of the key. `services/litellm/config.yaml` now runs **Nemotron 3 Super 120B (free)** with a **Gemma 4 31B (free)** fallback for `sparkpoint-chat`; the premium/self-authoring fallback is now **Ling 3.0 Flash** (same family as the Ling 3.1 Flash primary). All replacements were probed live before the switch. The 0-cost pins are dropped — both premium upstreams are paid now, so LiteLLM's cost map drives spend accounting and per-user budgets honestly. The pinned RAG embedding model (`nvidia/llama-nemotron-embed-vl-1b-v2:free`) is unchanged ($0, still live).
+
 ### Added (Sparky Broker mint whitelist)
 
 - **The Sparky Broker GTD/FCFS mint whitelist has an application form.** `/mint-whitelist` (public under both middleware gates, like `/apply`) collects the wallet address, name/alias, contact, and why the applicant wants a Broker, and files it in a NEW `mint_whitelist_applications` table (migration 0042) with an append-only audit sibling. It is deliberately separate from `access_applications`: that queue decides app access (approval grants the `beta` role), while this one decides an on-chain SeaDrop allowlist spot — and one wallet may legitimately appear in both. The submission goes through the existing public `/api/access/apply` BFF route with `program: "mint_whitelist"` (same no-identity path, rate limits, honeypot, and one-identical-response rule as the beta application), forwarding to the agent's new `/access/mint-whitelist`. The public write is first-submission-wins (`ON CONFLICT DO NOTHING`) so a stranger cannot overwrite a real applicant's row, and it grants nothing by itself — never on the access or custody path (N2).
