@@ -2,14 +2,6 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
-      "slug": "chat-model-reliability-2026-10",
-      "type": "changelog",
-      "tag": "Fixed",
-      "title": "Sparky's replies stay up when a model provider is busy",
-      "body": "The model providers we were using retired the models behind Sparky's replies, which could make a chat turn come back with an error. Sparky now runs on a fresh set of newer models with an automatic fallback: when one provider is busy, another takes the turn, so replies keep coming. Nothing about your wallet, your funds, or your data changed — same Sparky, more reliable.",
-      "published_at": "2026-10-14T13:45:00Z"
-    },
-    {
       "slug": "broker-mint-whitelist-2026-10",
       "type": "changelog",
       "tag": "New",
