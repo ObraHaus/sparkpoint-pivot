@@ -181,22 +181,22 @@ async def refund(store: LimitsStore, owner: str, decision: LimitDecision) -> Non
     captured ``window_start`` is used rather than "now" so a failure crossing Manila midnight
     refunds the day that was charged. Fail-SAFE: any store error is logged and swallowed — a
     refund must never turn a degraded answer into a failed request.
+
+    062: this deliberately writes NO ``limits_event`` row. The 0015 CHECK only admits
+    ``allow``/``deny``/``throttle``, so a ``refund`` verdict raised a CheckViolation after the
+    counter UPDATE had already committed — a false ``quota_refund_failed`` alarm on every refund
+    that also left the refund unaudited. The structured log below is the audit trail; the counter
+    table stays unchanged (no migration).
     """
     if not decision.consumed or decision.window_start is None:
         return
     try:
         count = await store.refund(owner, decision.metric, decision.window_start)
-        record_event = getattr(store, "record_event", None)
-        if record_event is not None:
-            await record_event(
-                "refund",
-                decision.metric,
-                decision.tier,
-                subject=_mask(owner),
-                detail={"used": count, "reason": "upstream_unavailable"},
-            )
-    except Exception:
-        logger.warning("quota_refund_failed metric=%s", decision.metric)
+    except Exception as err:
+        # Class name only: never the message or the wallet (logs must stay address-free).
+        logger.warning("quota_refund_failed metric=%s err=%s", decision.metric, type(err).__name__)
+        return
+    logger.info("quota_refunded metric=%s used=%s", decision.metric, count)
 
 
 def require_within_quota(metric: Metric) -> Callable[..., Any]:
