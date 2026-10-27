@@ -17,6 +17,8 @@ import { useAgentClient } from "@/lib/agent/useAgent";
 
 export interface ContentEntry {
   id: number;
+  /** Stable seed slug (NULL for older/operator-authored rows) — 061 What's New release identity. */
+  slug?: string | null;
   type: "changelog" | "announcement";
   title: string;
   body: string;

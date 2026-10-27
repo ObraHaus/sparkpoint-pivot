@@ -112,7 +112,7 @@ function TestnetBrokers() {
   // The indexer walks Transfer logs and scales to the full 5,555. The scan below is the fallback
   // for when it cannot answer -- the browser can still read the chain directly even if the agent
   // is down, and a bounded scan is correct while the collection is small.
-  const indexed = useIndexedBrokers(onChain);
+  const indexed = useIndexedBrokers(onChain, BROKER_CHAIN);
   const useScan = indexed.source === "scan";
 
   const scanCount = !useScan || minted === undefined ? 0 : Math.min(Number(minted), OWNERSHIP_SCAN_LIMIT);

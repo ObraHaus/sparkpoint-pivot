@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 
 from sparkpoint_agent.api import brokers as brokers_api
 from sparkpoint_agent.api.security import AccountContext
-from sparkpoint_agent.api.vault import get_account
 
 WALLET = "0xAaAaAaAa00000000000000000000000000000001"
 
@@ -38,7 +37,7 @@ class FakeLedger:
 def client(monkeypatch: pytest.MonkeyPatch) -> Any:
     app = FastAPI()
     app.include_router(brokers_api.router)
-    app.dependency_overrides[get_account] = lambda: AccountContext(
+    app.dependency_overrides[brokers_api.get_optional_account] = lambda: AccountContext(
         account=WALLET, owner=WALLET, chain_id=46630
     )
     return TestClient(app)
@@ -99,6 +98,22 @@ def test_a_raising_ledger_degrades_instead_of_500ing(
     res = client.get("/brokers/owned")
     assert res.status_code == 200
     assert res.json()["available"] is False
+
+
+def test_no_identity_is_an_unavailable_read_not_a_400(
+    monkeypatch: pytest.MonkeyPatch, client: Any
+) -> None:
+    """061 A9 — an unsupported chain / missing identity asks a question this route CAN answer.
+
+    Authentication is unchanged (the middleware runs first); only the scoping parse is optional, and
+    `available: false` is deliberately not an empty list.
+    """
+    app = client.app
+    app.dependency_overrides[brokers_api.get_optional_account] = lambda: None
+    _use(monkeypatch, FakeLedger([]))
+    res = client.get("/brokers/owned")
+    assert res.status_code == 200
+    assert res.json() == {"available": False, "reason": "no-account", "tokenIds": []}
 
 
 def test_the_route_writes_nothing(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
