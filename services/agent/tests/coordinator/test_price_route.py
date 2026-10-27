@@ -11,6 +11,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
@@ -102,6 +104,9 @@ def _dag(
     prices: _FakePrices | None,
     intent: Intent | None = None,
     portfolio: _Portfolio | None = None,
+    *,
+    streaming: bool = False,
+    single_call: bool = False,
 ) -> tuple[CoordinatorDag, _CountingStructuredLlm]:
     classifier = _CountingStructuredLlm(intent)
     dag = CoordinatorDag(
@@ -111,6 +116,8 @@ def _dag(
         portfolio_provider=portfolio or _Portfolio(),
         mandate_provider=_Mandate(),
         prices=prices,  # type: ignore[arg-type]
+        streaming=streaming,
+        single_call=single_call,
     )
     return dag, classifier
 
@@ -146,6 +153,47 @@ def test_price_questions_are_recognised_and_other_shapes_are_not() -> None:
         "what is slippage?",
     ):
         assert not is_price_question(other), other
+
+
+_TRANSACTIONAL_PRICE_PHRASES = (
+    "buy ETH at the current price",
+    "sell ETH at the current price",
+    "trade ETH at the current price",
+    "purchase ETH at the current price",
+    "place an order for ETH at the current price",
+    "exchange ETH at the current price",
+    "convert ETH at the current price",
+    "bridge ETH at the current price",
+    "stake ETH at the current price",
+    "lend ETH at the current price",
+    "borrow ETH at the current price",
+    "long ETH at the current price",
+    "short ETH at the current price",
+    "set a limit order for ETH at the current price",
+    "place a market order for ETH at the current price",
+)
+
+_PRICE_QUESTION_PHRASES = (
+    "what is the ETH price",
+    "ETH price today",
+    "how much is BTC",
+    "price of ETH and SRK",
+    "What is the price of ETH today?",
+    "how much is ETH",
+    "what's BTC trading at?",
+    "how much does SOL cost",
+    "price of USDC",
+)
+
+
+@pytest.mark.parametrize("message", _TRANSACTIONAL_PRICE_PHRASES)
+def test_transactional_price_phrasings_are_not_spot_quotes(message: str) -> None:
+    assert not is_price_question(message), message
+
+
+@pytest.mark.parametrize("message", _PRICE_QUESTION_PHRASES)
+def test_pure_price_questions_still_route(message: str) -> None:
+    assert is_price_question(message), message
 
 
 def test_srk_is_detected_by_policy_before_the_feed() -> None:
@@ -287,6 +335,20 @@ async def test_a_swap_command_is_not_hijacked() -> None:
     await _run(dag, "swap 100 USDC for ETH")
 
     assert classifier.calls == 1, "an explicit order must reach the normal build path"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("single_call", [False, True])
+async def test_buy_eth_at_current_price_reaches_the_planner_on_every_flag_combo(
+    streaming: bool, single_call: bool
+) -> None:
+    prices = _FakePrices(PriceSnapshot(quotes={"ETH": _quote("ETH", 2500.0)}))
+    dag, classifier = _dag(prices, streaming=streaming, single_call=single_call)
+    wires = await _run(dag, "buy ETH at the current price")
+
+    assert classifier.calls == 1, "the order must reach the planner/swap path"
+    assert prices.calls == [], "an order is not a spot-quote request"
+    assert "2,500.00" not in _text(wires)
 
 
 def test_a_quote_with_a_note_can_be_replaced_without_mutating_the_cache() -> None:
