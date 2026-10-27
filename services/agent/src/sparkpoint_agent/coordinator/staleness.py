@@ -15,6 +15,7 @@ __all__ = [
     "STALE_AFTER_HOURS",
     "as_of_date",
     "as_of_suffix",
+    "as_of_time",
     "parse_as_of",
     "staleness_caveat",
 ]
@@ -48,6 +49,17 @@ def as_of_suffix(value: str | datetime | None, *, style: str = "paren") -> str:
     if date is None:
         return ""
     return f" (as of {date})" if style == "paren" else f" as of {date}"
+
+
+def as_of_time(value: str | datetime | None, *, now: datetime | None = None) -> datetime:
+    """The actual read time when the data carries one, else the injected clock (UTC)."""
+    parsed = parse_as_of(value)
+    if parsed is not None:
+        return parsed
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    return current.astimezone(UTC)
 
 
 def staleness_caveat(

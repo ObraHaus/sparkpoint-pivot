@@ -123,6 +123,32 @@ async def test_a_hard_timeout_returns_unavailable_without_raising() -> None:
     assert snapshot.unavailable == frozenset({"ETH"})
 
 
+async def test_a_second_caller_awaits_the_inflight_fetch_before_reporting_unavailable() -> None:
+    clock = _Clock()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow(_: httpx.Request) -> httpx.Response:
+        entered.set()
+        await release.wait()
+        return httpx.Response(200, json={"ethereum": {"usd": 2500.0}})
+
+    service = _service(slow, clock)  # type: ignore[arg-type]
+    first = asyncio.create_task(service.get(["ETH"]))
+    await entered.wait()
+
+    second = asyncio.create_task(service.get(["ETH"]))
+    await asyncio.sleep(0.01)  # let the second caller register on the in-flight fetch
+    release.set()
+
+    first_snapshot, second_snapshot = await asyncio.gather(first, second)
+    assert first_snapshot.quote("ETH") is not None
+    assert second_snapshot.quote("ETH") is not None, (
+        "the second caller must wait for the shared fetch, not answer from a no-op refresh"
+    )
+    assert second_snapshot.unavailable == frozenset()
+
+
 async def test_the_secondary_source_is_used_when_the_primary_fails() -> None:
     clock = _Clock()
 

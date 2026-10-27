@@ -37,7 +37,7 @@ import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Protocol
 
 from ..agents import guardrail
@@ -129,6 +129,7 @@ from .prices import (
     is_srk_price_question,
     requested_price_symbols,
 )
+from .staleness import as_of_time
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -658,12 +659,13 @@ class CoordinatorDag:
         # price) and before the portfolio/APY/curated routes can mistake it for their shape. SRK is
         # answered by policy: there is no oracle, so a USD figure would be invented.
         if is_price_question(message):
-            if is_srk_price_question(message):
+            asks_srk = is_srk_price_question(message)
+            symbols = requested_price_symbols(message)
+            if asks_srk and not symbols:
                 yield ToolStepBlock("Checking the price policy", "running")
                 yield ToolStepBlock("Checking the price policy", "done")
                 yield TextBlock(SRK_PRICE_ANSWER)
                 return
-            symbols = requested_price_symbols(message)
             yield ToolStepBlock("Checking live prices", "running")
             snapshot = PriceSnapshot(quotes={})
             if self.prices is not None:
@@ -674,7 +676,10 @@ class CoordinatorDag:
                 except Exception:  # noqa: BLE001 — a price feed must never break the stream
                     snapshot = PriceSnapshot(quotes={})
             yield ToolStepBlock("Checking live prices", "done")
-            yield TextBlock(format_price_answer(snapshot, symbols))
+            answer = format_price_answer(snapshot, symbols)
+            if asks_srk:
+                answer = f"{answer}\n\n{SRK_PRICE_ANSWER}"
+            yield TextBlock(answer)
             return
 
         # 057/B — "do it" / "yes, go ahead" acts on the last proposed action in this conversation
@@ -1506,7 +1511,7 @@ _AUTOMATION_NO_VAULT = (
 )
 
 
-def _apy_answer(chain: ChainContext) -> str:
+def _apy_answer(chain: ChainContext, *, now: datetime | None = None) -> str:
     """The live vault APY sentence — or an honest "I can't read it right now".
 
     Never explains what an APY is: a user asking for the CURRENT figure already knows. The
@@ -1531,7 +1536,8 @@ def _apy_answer(chain: ChainContext) -> str:
             "the current rate whenever the feed is up."
         )
     headline = net if net is not None else gross
-    stamp = datetime.now(UTC).strftime("%H:%M UTC")
+    read_at = as_of_time(getattr(market, "as_of", None) if market else None, now=now)
+    stamp = read_at.strftime("%H:%M UTC")
     parts = [
         f"The vault is currently showing about **{_fmt_bps(headline)}% APY** "
         f"(as of {stamp})"

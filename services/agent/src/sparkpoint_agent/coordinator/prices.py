@@ -132,6 +132,13 @@ def _fmt_usd(value: float) -> str:
     return f"${value:.4f}"
 
 
+def _join_symbols(symbols: list[str]) -> str:
+    """``BTC``, ``BTC and SOL``, or ``BTC, SOL and NEAR`` — stable, deduped order."""
+    if len(symbols) <= 2:
+        return " and ".join(symbols)
+    return f"{', '.join(symbols[:-1])} and {symbols[-1]}"
+
+
 def format_price_answer(snapshot: PriceSnapshot, symbols: tuple[str, ...]) -> str:
     """Compose the deterministic price answer — quote + source + UTC as-of + not-advice."""
     lines: list[str] = []
@@ -159,11 +166,12 @@ def format_price_answer(snapshot: PriceSnapshot, symbols: tuple[str, ...]) -> st
         lines.append(f"I couldn't fetch a live price for {names} just now, so I won't guess.")
 
     labels = [s for s in symbols if s in snapshot.quotes]
-    if any(s in _CONTEXT_ONLY for s in labels):
-        context = ", ".join(s for s in labels if s in _CONTEXT_ONLY)
+    context_only = [s for s in labels if s in _CONTEXT_ONLY]
+    if context_only:
+        context = _join_symbols(context_only)
         lines.append(
-            f"{context} {'is' if len(labels) == 1 else 'are'} shown for context only — SparkPoint "
-            "doesn't trade or hold it on this network."
+            f"{context} {'is' if len(context_only) == 1 else 'are'} shown for context only — "
+            "SparkPoint doesn't trade or hold it on this network."
         )
 
     lines.append("Prices move constantly; this is a reference quote, not financial advice.")

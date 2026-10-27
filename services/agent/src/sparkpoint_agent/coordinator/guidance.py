@@ -570,7 +570,7 @@ def _options_block(curated: CuratedContext | None) -> str:
     ]
     unique = [c for i, c in enumerate(caveats) if c and c not in caveats[:i]]
     if unique:
-        lines += ["", unique[0]]
+        lines += ["", *unique]
     return "\n".join(lines)
 
 

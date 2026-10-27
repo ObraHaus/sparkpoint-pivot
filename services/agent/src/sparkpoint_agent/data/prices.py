@@ -147,7 +147,10 @@ class PriceService:
         self._monotonic = monotonic
         self._now = now
         self._cache: dict[str, _CacheEntry] = {}
-        self._inflight: set[str] = set()
+        #: symbol → a future resolved when its in-flight fetch settles. A concurrent caller
+        #: awaits the SAME future instead of returning from a no-op refresh and reporting
+        #: "unavailable" while the fetch is about to land.
+        self._inflight: dict[str, asyncio.Future[None]] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._failures = 0
         self._open_until = 0.0
@@ -229,10 +232,38 @@ class PriceService:
         task.add_done_callback(self._tasks.discard)
 
     async def _refresh(self, symbols: Sequence[str]) -> None:
-        pending = [s for s in dict.fromkeys(symbols) if s not in self._inflight]
-        if not pending:
+        wanted = [s for s in dict.fromkeys(symbols) if s in ASSETS]
+        if not wanted:
             return
-        self._inflight.update(pending)
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._timeout_s
+        pending: list[str] = []
+        futures: dict[str, asyncio.Future[None]] = {}
+        for symbol in wanted:
+            future = self._inflight.get(symbol)
+            if future is None:
+                future = loop.create_future()
+                self._inflight[symbol] = future
+                pending.append(symbol)
+            futures[symbol] = future
+
+        if pending:
+            try:
+                await self._fetch_and_cache(pending)
+            finally:
+                for symbol in pending:
+                    future = self._inflight.pop(symbol, None)
+                    if future is not None and not future.done():
+                        future.set_result(None)
+
+        # A concurrent caller asked for symbols another fetch already owns: wait for those to
+        # settle (bounded, like the fetch itself) so the caller can re-read the cache afterwards.
+        waiting = [futures[s] for s in wanted if s not in pending]
+        if waiting:
+            await asyncio.wait(waiting, timeout=max(0.0, deadline - loop.time()))
+
+    async def _fetch_and_cache(self, pending: Sequence[str]) -> None:
         try:
             fetched = await asyncio.wait_for(
                 self._fetch_sources(pending), timeout=self._timeout_s
@@ -240,8 +271,6 @@ class PriceService:
         except Exception:  # noqa: BLE001 — any failure is "unavailable", never a crash
             self._record_failure()
             return
-        finally:
-            self._inflight.difference_update(pending)
 
         if not fetched:
             self._record_failure()
