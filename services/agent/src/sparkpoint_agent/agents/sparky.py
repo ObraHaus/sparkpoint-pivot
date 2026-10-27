@@ -258,8 +258,9 @@ class Sparky:
                 if chunk.delta:
                     parts.append(chunk.delta)
                     # Hold the opening back until it has passed the same action/meta guard the
-                    # full text will: a first attempt that is already unusable should never be
-                    # painted, even for the moment before the terminal block retracts it.
+                    # full text will: an attempt whose OPENING is already unusable is never
+                    # painted. A body that only turns unusable later may have painted; the
+                    # terminal block is authoritative and replaces it.
                     if not released and not blocked:
                         pending.append(chunk.delta)
                         pending_len += len(chunk.delta)

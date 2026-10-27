@@ -26,16 +26,19 @@ export const EMPTY_STREAM_TEXT: StreamTextState = { text: "" };
  *
  * A different `streamId` (or target) is a NEW attempt, so the buffer is replaced rather than
  * concatenated — otherwise a retried answer would read as attempt one followed by attempt two.
- * A missing `streamId` is treated as "same stream" for forward compatibility with an agent that
- * chooses not to send one.
+ * A missing/empty `streamId` cannot be proven to belong to the current attempt, so it is treated
+ * as a NEW stream too (reset): appending to an unidentifiable delta risks gluing a retry onto a
+ * discarded attempt.
  */
 export function reduceTextDelta(
   state: StreamTextState,
   delta: ChatTextDelta,
 ): StreamTextState {
   const sameStream =
+    delta.streamId !== undefined &&
+    delta.streamId !== "" &&
     state.target === delta.target &&
-    (delta.streamId === undefined || state.streamId === delta.streamId);
+    state.streamId === delta.streamId;
   return {
     text: sameStream ? `${state.text}${delta.delta}` : delta.delta,
     target: delta.target,

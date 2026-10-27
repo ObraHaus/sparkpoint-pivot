@@ -26,10 +26,23 @@ test("a target switch (text → tip) also resets", () => {
   assert.equal(tip.target, "tip");
 });
 
-test("a missing streamId is treated as the same stream (forward compatible)", () => {
+test("a missing streamId is a NEW stream, so it resets", () => {
   const one = reduceTextDelta(start, { kind: "text_delta", target: "text", delta: "a", streamId: "s1" });
   const two = reduceTextDelta(one, { kind: "text_delta", target: "text", delta: "b" });
-  assert.equal(two.text, "ab");
+  assert.equal(two.text, "b");
+  assert.equal(two.streamId, undefined);
+});
+
+test("an empty streamId is also a NEW stream, so it resets", () => {
+  const one = reduceTextDelta(start, { kind: "text_delta", target: "text", delta: "a", streamId: "s1" });
+  const two = reduceTextDelta(one, {
+    kind: "text_delta",
+    target: "text",
+    delta: "b",
+    streamId: "",
+  });
+  assert.equal(two.text, "b");
+  assert.equal(two.streamId, "");
 });
 
 test("the final block clears the provisional paint so it cannot outlive the answer", () => {

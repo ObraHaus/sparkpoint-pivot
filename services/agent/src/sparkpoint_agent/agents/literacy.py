@@ -224,7 +224,8 @@ class Literacy:
                     if chunk.delta:
                         parts.append(chunk.delta)
                         # Hold the opening until it passes the same guard the full body will, so
-                        # an attempt that is already action/meta-shaped is never painted.
+                        # an attempt whose opening is already action/meta-shaped is never painted.
+                        # A later-unusable body may paint; the terminal card replaces it.
                         if not released and not blocked:
                             pending.append(chunk.delta)
                             pending_len += len(chunk.delta)

@@ -46,8 +46,12 @@ portfolio read pays for a planner call even though the answer is deterministic.
 
 - All post-processing runs on the complete text: refusal check, `is_unusable`, clamp, retry,
   fallback.
+- The opening (~40 chars) is held until it passes the same action/meta guard as the full text, so
+  an attempt that is already unusable in its opening is never painted. A body that only becomes
+  unusable after the hold may have been painted; the authoritative final block then replaces it.
 - A guardrail rewrite/discard, clamp, retry or fallback must cause the final block to REPLACE the
-  streamed paint. A new attempt has a new `streamId`; the renderer resets on a new id.
+  streamed paint. A new attempt has a new `streamId`; the renderer resets on a new id, and on a
+  missing/empty id (it cannot be proven to belong to the current attempt).
 - If the turn fails, an `ERROR` block replaces the paint; no partial answer is persisted.
 
 ### R4 — Failure/refund semantics (056)
@@ -59,16 +63,24 @@ portfolio read pays for a planner call even though the answer is deterministic.
 
 ### R5 — Single-call fast route (behind `SPARKY_SINGLE_CALL`, default ON)
 
-- Widen the deterministic pre-classifier for OBVIOUS read-only shapes:
-  - portfolio ("show my portfolio", "what's in my wallet", "my holdings", …) → PORTFOLIO, 0 calls;
-  - concept ("what is …", "explain …", "how does … work", …) → LEARN, 1 prose call;
+- Widen the deterministic pre-classifier only for ALLOWLISTED, fully anchored read-only shapes.
+  Each candidate is normalised first (case, punctuation, whitespace, polite filler such as
+  "please", "can you", "hey sparky") and must then match a complete shape — no extra clause:
+  - portfolio snapshots ("what's in my wallet", "show (me) my portfolio/holdings/balance(s)",
+    "what do I hold/own/have", "my portfolio", "portfolio", "balance", "how much USDC/ETH/… do I
+    have") → PORTFOLIO, 0 calls;
+  - concept asks ("what is/what's/what are …", "explain …", "define …", "how does X work") with a
+    short topic noun phrase and no extra clause → LEARN, 1 prose call;
   - greeting/identity ("hi", "who are you", …) → OTHER, 1 prose call.
-- Consulted only after every 057 route and only when no forced intent exists. Any action verb or
-  command shape goes to the planner. The guard is fail-closed: the full command vocabulary and its
-  inflections, **any** standalone number/percentage (`100`, `1k`, `2.5m`, `5%`) and written-out
-  amounts ("five hundred", "half", "all of my") block the shortcut unless the number is clearly a
-  known token/standard/time window (`ERC-4626`, `ERC20`, `L2`, `24h`, `7d APY`, `30-day`). Blocking
-  only means the normal planner call runs.
+- Anything else goes to the planner: advice ("should I", "how should I", "what happens if",
+  "can I", "why"), hypotheticals, extra clauses, conjunctions ("and", "then", "also", "but"), any
+  action verb or any number. Consulted only after every 057 route and only when no forced intent
+  exists. The blocking guard is a fail-closed SECOND layer: the full command vocabulary and its
+  inflections (including fund, lose/lost, contribute, recover, fix, help me, should), **any**
+  standalone number/percentage (`100`, `1k`, `2.5m`, `5%`) and written-out amounts ("five hundred",
+  "half", "all of my") block the shortcut unless the number is clearly a known token/standard/time
+  window (`ERC-4626`, `ERC20`, `L2`, `24h`, `7d APY`, `30-day`). Blocking only means the normal
+  planner call runs.
 - With prior conversation turns, anaphora/deictic references ("it", "that", "this", "they", "them",
   "those", "these", "the above", "same", "one", "there", "what about") and very short follow-ups
   skip the shortcut; a pronoun/stopword can never become the LEARN topic (fall back to the planner).
@@ -76,8 +88,8 @@ portfolio read pays for a planner call even though the answer is deterministic.
 
 ### R6 — UI
 
-- Reducer: append same-stream deltas; reset on a new `streamId` or target; clear on the final block,
-  on error, and on turn completion.
+- Reducer: append same-stream deltas; reset on a new, missing or empty `streamId`, or a target
+  switch; clear on the final block, on error, and on turn completion.
 - Renderer: provisional text uses the answer typography and `data-streaming="true"`; the final card
   replaces it; the waiting spinner is suppressed once prose is painting. The provisional container
   is `aria-live="off"` + `aria-busy="true"`; only the final block is a polite live region, so a
