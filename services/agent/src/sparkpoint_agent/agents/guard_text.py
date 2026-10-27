@@ -72,7 +72,8 @@ def is_unusable(text: str) -> bool:
 #: 059 — how many opening characters a streamed prose turn buffers before the first paint. Enough
 #: to catch the live meta/action shapes ("reference notes", "The user asks", `"type":`) early,
 #: while adding no perceptible latency to an otherwise healthy stream. Long enough answers are
-#: therefore only ever painted after their opening has passed the same guard the full text will.
+#: therefore only painted after their OPENING passed the same guard the full text will. A body
+#: that only becomes unusable after this hold may have painted; the terminal block replaces it.
 STREAM_HOLD_CHARS = 40
 
 

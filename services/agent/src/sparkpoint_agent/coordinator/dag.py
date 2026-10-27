@@ -1716,16 +1716,47 @@ class _ProseResult:
     failed: bool
 
 
-#: 059/A3 — OBVIOUS read-only portfolio questions, answered from the fresh read with NO model
-#: call. Deliberately narrow and only consulted AFTER every 057 deterministic route, so guidance,
-#: refusals, swaps and proposals keep their exact current behaviour.
-_PORTFOLIO_FAST_RE = re.compile(
-    r"\b(?:my|our)\s+(?:portfolio|holdings|positions|balance|wallet|pnl)\b|"
-    r"\bwhat(?:'s|s| is| are)?\s+(?:in\s+)?(?:my|our)\s+(?:wallet|portfolio|account)\b|"
-    r"\bshow\s+(?:me\s+)?(?:my|our)\s+(?:portfolio|wallet|holdings|positions|balance)\b|"
-    r"\bhow\s+much\s+(?:do\s+i|have\s+i|usdc|money)\b|"
-    r"\bwhat\s+do\s+i\s+(?:own|have)\b",
-    re.IGNORECASE,
+#: 059/A3 — normalise a fast-route candidate before an ALLOWLIST match: lower-case, drop
+#: apostrophes/punctuation, collapse whitespace, and strip leading/trailing politeness
+#: ("hey sparky", "please", "can you"). The allowlist regexes are anchored ``^...$`` afterwards,
+#: so any leftover clause, conjunction, advice word, action verb or number cannot match.
+_FAST_POLITE_LEAD_RE = re.compile(
+    r"^(?:(?:hey|hi|hello|yo|ok|okay|so)\s+)?"
+    r"(?:sparky\s+)?"
+    r"(?:(?:please|kindly)\s+)?"
+    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?"
+)
+_FAST_POLITE_TAIL_RE = re.compile(r"\s+(?:please|thanks|thank you)$")
+
+
+def _normalise_fast_text(text: str) -> str:
+    """Lower-case/punctuation/whitespace-normalise a candidate and strip polite filler."""
+    normalised = text.lower().replace("'", "").replace("\u2019", "")
+    normalised = re.sub(r"[^a-z0-9\s]", " ", normalised)
+    normalised = re.sub(r"\s+", " ", normalised).strip()
+    previous = None
+    while normalised and normalised != previous:
+        previous = normalised
+        normalised = _FAST_POLITE_LEAD_RE.sub("", normalised).strip()
+        normalised = _FAST_POLITE_TAIL_RE.sub("", normalised).strip()
+    return normalised
+
+
+#: 059/A3 — the ONLY portfolio snapshot shapes allowed to skip the planner. Every alternative is a
+#: COMPLETE request and the ``^...$`` anchors mean any extra clause ("...and is it safe?"), advice
+#: word, action verb, conjunct or hypothetical falls through to the planner (the blocking guard
+#: below is the second layer). A bare "my wallet" is deliberately absent: it is not a snapshot ask.
+_PORTFOLIO_ALLOWLIST_RE = re.compile(
+    r"^(?:"
+    r"whats (?:in )?my (?:wallet|portfolio|account)|"
+    r"what is (?:in )?my (?:wallet|portfolio|account)|"
+    r"whats my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"what is my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"what do i (?:hold|own|have)(?: in my (?:wallet|portfolio|account))?|"
+    r"show (?:me )?my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"(?:my )?(?:portfolio|holdings|positions|balances?)|"
+    r"how much (?:[a-z0-9]{2,12} )?do i have"
+    r")$"
 )
 
 #: 059/A3 — ANY fast-path candidate carrying an action/command signal must fall through to the
@@ -1744,9 +1775,11 @@ _FAST_BLOCKING_ACTION_RE = re.compile(
     r"allocat(?:e|es|ed|ing)|lend(?:s|ing)?|lent|put(?:s|ting)?|claim(?:s|ed|ing)?|"
     r"exit(?:s|ed|ing)?|clos(?:e|es|ed|ing)|open(?:s|ed|ing)?|rebalanc(?:e|es|ed|ing)|"
     r"park(?:s|ed|ing)?|add(?:s|ed|ing)?|remov(?:e|es|ed|ing)|pull(?:s|ed|ing)?|"
-    r"purchas(?:e|es|ed|ing)"
+    r"purchas(?:e|es|ed|ing)|fund(?:s|ed|ing)?|los(?:e|es|ing)|lost|"
+    r"contribute(?:s|d|ing)?|contributions?|recover(?:s|ed|ing|y)?|fix(?:es|ed|ing)?"
     r")\b"
-    r"|\bdo\s+it\b|\bgo\s+ahead\b|\bproceed\b|\bexecute\b|\bconfirm\b|\bsign\s+it\b",
+    r"|\bdo\s+it\b|\bgo\s+ahead\b|\bproceed\b|\bexecute\b|\bconfirm\b|\bsign\s+it\b|"
+    r"\bhelp\s+me\b|\bshould(?:n'?t)?\b",
     re.IGNORECASE,
 )
 
@@ -1815,21 +1848,33 @@ def _fast_path_is_blocked(text: str) -> bool:
         or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
     )
 
-#: 059/A3 — question shapes whose answer is prose (concept/knowledge). The negative lookahead on
-#: "how do" keeps first-person commands ("how do I deposit?") on the planner path.
-_LEARN_FAST_RE = re.compile(
-    r"^(?:what\s+(?:is|are|'s|s)|explain|define|tell\s+me\s+about|how\s+does|"
-    r"how\s+do(?:es)?\s+(?!i\b|my\b|we\b)\w*(?:\s+\w+)*?\s+work|"
-    r"why\s+(?:is|are|does|do))\b",
-    re.IGNORECASE,
+#: 059/A3 — the ONLY concept shapes allowed to skip the planner. Fully anchored after
+#: normalisation, with a short topic phrase (≤6 words for "what is/explain", ≤5 before "work")
+#: and no extra clause. ``_FAST_CLAUSE_WORD_RE`` rejects conjunctions, pronouns/advice and
+#: first-person framing that the shape alone would let through.
+_FAST_TOPIC_WORD = r"[a-z0-9]+"
+_FAST_TOPIC_PHRASE = rf"{_FAST_TOPIC_WORD}(?: {_FAST_TOPIC_WORD}){{0,5}}"
+_LEARN_ALLOWLIST_RE = re.compile(
+    rf"^(?:"
+    rf"what (?:is|are) {_FAST_TOPIC_PHRASE}|"
+    rf"whats {_FAST_TOPIC_PHRASE}|"
+    rf"explain {_FAST_TOPIC_PHRASE}|"
+    rf"define {_FAST_TOPIC_PHRASE}|"
+    rf"tell me about {_FAST_TOPIC_PHRASE}|"
+    rf"how (?:does|do) {_FAST_TOPIC_WORD}(?: {_FAST_TOPIC_WORD}){{0,4}} work"
+    rf")$"
+)
+_FAST_CLAUSE_WORD_RE = re.compile(
+    r"\b(?:and|or|but|then|also|plus|so|because|if|when|while|should|shall|"
+    r"can|could|would|will|may|might|must|need|want|"
+    r"best|safest|better|recommend|suggest|worth|"
+    r"i|me|my|we|our|you|your)\b"
 )
 
 #: 059/A3 — short greetings/identity turns: Sparky can answer them directly (one prose call).
+#: Anchored allowlists for the same reason as the portfolio/learn matchers: no extra clause.
 _GREETING_FAST_RE = re.compile(
-    r"^(?:hi|hello|hey|hiya|yo|good\s+(?:morning|afternoon|evening)|who\s+are\s+you|"
-    r"what\s+are\s+you|what\s+can\s+you\s+do|what\s+do\s+you\s+do|how\s+can\s+you\s+help|"
-    r"help)\b[\s!?.,]*$",
-    re.IGNORECASE,
+    r"^(?:hi|hello|hey|hiya|yo|good (?:morning|afternoon|evening)|help)$"
 )
 
 #: 059/A3 — identity turns are OTHER prose, never a concept tip. The LEARN matcher's generic
@@ -1837,10 +1882,7 @@ _GREETING_FAST_RE = re.compile(
 #: knowledge card (058 golden ``audit-01-identity``). Deliberately narrow: a possessively
 #: qualified concept question ("What is Sparky's fee?") still reaches the planner.
 _IDENTITY_FAST_RE = re.compile(
-    r"\bwhat\s+can\s+you\s+do\b|\bwhat\s+do\s+you\s+do\b|"
-    r"\bwho\s+are\s+you\b|\bwhat\s+are\s+you\b|"
-    r"^what\s+is\s+sparky\s*[?.!]?$",
-    re.IGNORECASE,
+    r"^(?:what can you do|what do you do|who are you|what are you|what is sparky)$"
 )
 
 #: 059/A3 — live-quote shapes ("what is the price of ETH?") are NOT concept questions. They are
@@ -1916,21 +1958,30 @@ def _fast_readonly_intent(
         return None
     if _fast_path_is_blocked(text):
         return None
+    normalised = _normalise_fast_text(text)
+    if not normalised:
+        return None
     if history:
         if len(text.split()) < 4:
             return None
         if _FOLLOWUP_REFERENCE_RE.search(text) or _FOLLOWUP_LEAD_RE.match(text):
             return None
-    if _PORTFOLIO_FAST_RE.search(text):
+    # ALLOWLIST, not blocklist: only a complete, anchored snapshot request may skip the planner.
+    if _PORTFOLIO_ALLOWLIST_RE.match(normalised):
         return Intent(kind=IntentKind.PORTFOLIO)
-    if _IDENTITY_FAST_RE.search(text):
+    if _IDENTITY_FAST_RE.match(normalised):
         return Intent(kind=IntentKind.OTHER)
-    if _GREETING_FAST_RE.match(text):
+    if _GREETING_FAST_RE.match(normalised):
         return Intent(kind=IntentKind.OTHER)
     # A price/quote question is not a concept: fall through to the planner so it keeps its
     # pre-059 route instead of becoming a knowledge card.
-    if _LEARN_FAST_RE.match(text) and not _PRICE_FAST_RE.search(text) and len(text) <= 240:
-        topic = _topic_slug(text)
+    if (
+        _LEARN_ALLOWLIST_RE.match(normalised)
+        and not _PRICE_FAST_RE.search(normalised)
+        and not _FAST_CLAUSE_WORD_RE.search(normalised)
+        and len(text) <= 240
+    ):
+        topic = _topic_slug(normalised)
         if topic:
             return Intent(kind=IntentKind.LEARN, topic=topic)
     return None

@@ -273,6 +273,110 @@ def test_plain_concept_and_greeting_still_take_the_single_call_path() -> None:
     assert _fast_readonly_intent("what is the price of ETH today?") is None
 
 
+#: 059 Defender round 3 — the fast routes are ALLOWLIST-based, so every one of these must reach
+#: the planner. Includes the two reported examples (fund / lose) plus advice, hypotheticals,
+#: compounds, security questions and "looks like a snapshot but adds a clause" shapes.
+_FAST_ROUTE_NEGATIVES = (
+    "How should I fund my wallet?",
+    "What happens if I lose my wallet?",
+    "Should I deposit into the vault?",
+    "What should I do with my balance?",
+    "How should I rebalance my portfolio?",
+    "Can I withdraw tomorrow?",
+    "Why is my balance low?",
+    "What if I lose my keys?",
+    "What happens if my wallet is hacked?",
+    "If I deposit 100 USDC, what then?",
+    "What is a vault and should I use it?",
+    "Is my portfolio safe?",
+    "What does my portfolio mean for my taxes?",
+    "Show my portfolio and then swap ETH",
+    "My portfolio is down, what should I do?",
+    "What is my portfolio worth?",
+    "How much do I have after fees?",
+    "Portfolio advice please",
+    "Show me my portfolio performance",
+    "I lost my seed phrase",
+    "I lost my private key",
+    "How do I recover my wallet?",
+    "Help me fix my wallet",
+    "Someone stole my seed phrase",
+    "Contribute to the vault",
+    "How do I top up my wallet?",
+    "What is my wallet address?",
+    "What is my balance in USD?",
+    "Do I have any ETH?",
+    "What's happening in my wallet?",
+    "Can you help me understand my wallet?",
+    "What's my balance and how do I move it?",
+    "What is a vault? I want to deposit 500 USDC",
+    "What's in my wallet? Should I move it?",
+    "What is the best vault?",
+    "What is the safest way to earn?",
+    "Explain APY so I can deposit 100 USDC",
+    "What is my portfolio and what should I do?",
+)
+
+_PORTFOLIO_FAST_POSITIVES = (
+    "what's in my wallet",
+    "what is in my wallet",
+    "show me my portfolio",
+    "show my holdings",
+    "show me my balances",
+    "what do I hold",
+    "what do I own",
+    "what do I have",
+    "my portfolio",
+    "portfolio",
+    "balance",
+    "what's my balance",
+    "what is my balance",
+    "how much USDC do I have",
+    "how much ETH do I have",
+    "please show me my portfolio",
+    "hey sparky what's in my wallet",
+    "can you show me my balance",
+)
+
+_LEARN_FAST_POSITIVES = (
+    "what is a vault?",
+    "what's APY?",
+    "what are stablecoins?",
+    "explain APY",
+    "define slippage",
+    "how does a vault work?",
+    "how do vaults work?",
+    "please explain APY",
+    "can you explain APY",
+    "hey sparky what is a vault?",
+)
+
+
+def test_allowlist_fast_routes_never_answer_advice_hypotheticals_or_compounds() -> None:
+    assert len(_FAST_ROUTE_NEGATIVES) >= 25
+    for message in _FAST_ROUTE_NEGATIVES:
+        assert _fast_readonly_intent(message) is None, message
+
+
+def test_allowlist_fast_routes_still_match_explicit_snapshot_and_concept_shapes() -> None:
+    for message in _PORTFOLIO_FAST_POSITIVES:
+        assert _fast_readonly_intent(message) == Intent(kind=IntentKind.PORTFOLIO), message
+    for message in _LEARN_FAST_POSITIVES:
+        intent = _fast_readonly_intent(message)
+        assert intent is not None and intent.kind is IntentKind.LEARN, message
+
+
+async def test_allowlist_positives_keep_their_model_call_budget() -> None:
+    for message in _PORTFOLIO_FAST_POSITIVES:
+        llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+        await _collect(_dag(llm, streaming=True, single_call=True), message)
+        assert llm.llm_calls == 0, message
+    for message in (*_LEARN_FAST_POSITIVES, "hi"):
+        llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+        await _collect(_dag(llm, streaming=True, single_call=True), message)
+        assert llm.llm_calls == 1, message
+
+
 #: 059 Defender round 2 — compound messages whose action half must never be dropped.
 _ACTION_PHRASINGS = (
     "put 500 in the vault",
@@ -449,11 +553,13 @@ async def test_compound_concept_plus_action_reaches_the_planner() -> None:
         assert llm.structured_calls == 1, message  # the planner saw it; the fast route did not
 
 
-async def test_short_unusable_first_attempt_is_never_painted() -> None:
+async def test_short_unusable_first_attempt_opening_is_never_painted() -> None:
     """059 low note (2): the opening is held until it passes the full-text guard.
 
-    A meta-shaped first attempt must produce NO ``text-delta`` at all, not a paint that the
-    terminal retry then has to retract. The healthy retry still streams normally.
+    A first attempt that is ALREADY meta-shaped in its opening must produce NO ``text-delta`` at
+    all, not a paint that the terminal retry then has to retract. A body that only becomes
+    unusable after the ~40-char hold may be painted and is then replaced by the final block; the
+    healthy retry still streams normally.
     """
     llm = _ScriptedLlm([([META], META, None), (["I'm ", "Sparky."], "I'm Sparky.", None)])
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
