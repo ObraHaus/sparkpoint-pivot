@@ -69,4 +69,27 @@ def is_unusable(text: str) -> bool:
     return not stripped or looks_action_shaped(stripped) or looks_meta_shaped(stripped)
 
 
-__all__ = ["is_unusable", "looks_action_shaped", "looks_meta_shaped"]
+#: 059 — how many opening characters a streamed prose turn buffers before the first paint. Enough
+#: to catch the live meta/action shapes ("reference notes", "The user asks", `"type":`) early,
+#: while adding no perceptible latency to an otherwise healthy stream. Long enough answers are
+#: therefore only ever painted after their opening has passed the same guard the full text will.
+STREAM_HOLD_CHARS = 40
+
+
+def prefix_is_usable(text: str) -> bool:
+    """True when a buffered STREAM PREFIX carries no action/meta shape.
+
+    Same heuristics as :func:`is_unusable`, minus the empty check (the caller only runs this once
+    it has buffered data). A prefix can pass and the full answer still fail; the terminal block
+    remains authoritative and replaces any paint.
+    """
+    return not (looks_action_shaped(text) or looks_meta_shaped(text))
+
+
+__all__ = [
+    "STREAM_HOLD_CHARS",
+    "is_unusable",
+    "looks_action_shaped",
+    "looks_meta_shaped",
+    "prefix_is_usable",
+]

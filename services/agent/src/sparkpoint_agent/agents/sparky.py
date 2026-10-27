@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from ..llm import AsyncClaudeClient, Effort, LlmResult
 from ..memory import SPARKY_DIGEST_CHARS, render_digest
 from ..prompt_fencing import BACKGROUND_NOTE, UNTRUSTED_NOTE, fence
-from .guard_text import is_unusable
+from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
 
 EFFORT: Effort = "low"
 
@@ -241,7 +241,11 @@ class Sparky:
             message, context_hint=context_hint, memory_lines=memory_lines
         )
         parts: list[str] = []
+        pending: list[str] = []
+        pending_len = 0
         forwarded = 0
+        released = False
+        blocked = False
         result: LlmResult | None = None
         try:
             async for chunk in self.llm.stream_complete(
@@ -253,11 +257,34 @@ class Sparky:
             ):
                 if chunk.delta:
                     parts.append(chunk.delta)
-                    room = MAX_CHARS - forwarded
-                    if room > 0:
-                        piece = chunk.delta[:room]
-                        forwarded += len(piece)
-                        yield SparkyChunk(delta=piece)
+                    # Hold the opening back until it has passed the same action/meta guard the
+                    # full text will: a first attempt that is already unusable should never be
+                    # painted, even for the moment before the terminal block retracts it.
+                    if not released and not blocked:
+                        pending.append(chunk.delta)
+                        pending_len += len(chunk.delta)
+                        if pending_len < STREAM_HOLD_CHARS:
+                            continue
+                        if not prefix_is_usable("".join(pending)):
+                            blocked = True
+                            pending.clear()
+                            continue
+                        released = True
+                        for buffered in pending:
+                            room = MAX_CHARS - forwarded
+                            if room <= 0:
+                                break
+                            piece = buffered[:room]
+                            forwarded += len(piece)
+                            yield SparkyChunk(delta=piece)
+                        pending.clear()
+                        continue
+                    if not blocked:
+                        room = MAX_CHARS - forwarded
+                        if room > 0:
+                            piece = chunk.delta[:room]
+                            forwarded += len(piece)
+                            yield SparkyChunk(delta=piece)
                 elif chunk.result is not None:
                     result = chunk.result
         except Exception:
@@ -267,6 +294,16 @@ class Sparky:
         if result is None or result.refused or is_unusable(body):
             yield SparkyChunk(reply=SparkyReply(body="", fell_back=True))
             return
+        # A short (< hold) answer never crossed the release threshold; paint it now that the
+        # FULL text has passed the guard. A degraded terminal answer already returned above.
+        if not released and not blocked:
+            for buffered in pending:
+                room = MAX_CHARS - forwarded
+                if room <= 0:
+                    break
+                piece = buffered[:room]
+                forwarded += len(piece)
+                yield SparkyChunk(delta=piece)
         yield SparkyChunk(reply=SparkyReply(body=_clamp(body)))
 
     async def reply(

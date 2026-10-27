@@ -1728,12 +1728,54 @@ _PORTFOLIO_FAST_RE = re.compile(
     re.IGNORECASE,
 )
 
-#: A command/action verb means "let the planner decide" — never route it to a read-only answer.
+#: 059/A3 — ANY fast-path candidate carrying an action/command signal must fall through to the
+#: normal planner/057 routes. This is a latency optimisation, so the guard is deliberately
+#: conservative: a false negative (one extra model call) is fine; silently dropping the action
+#: half of a compound message is not. It applies to PORTFOLIO, LEARN and OTHER alike.
 _FAST_BLOCKING_ACTION_RE = re.compile(
-    r"\b(?:deposit|withdraw|redeem|swap|send|transfer|pay|buy|sell|stake|unstake|supply|borrow|"
-    r"bridge|invest|move)\b",
+    r"\b(?:deposit|withdraw|redeem|swap|send|transfer|pay|payment|buy|sell|stake|unstake|"
+    r"supply|borrow|repay|bridge|invest|move|convert|exchange|trade|cash\s?out|top\s?up|"
+    r"allocate|lend)\b"
+    r"|\bdo\s+it\b|\bgo\s+ahead\b|\bproceed\b|\bexecute\b|\bconfirm\b|\bsign\s+it\b",
     re.IGNORECASE,
 )
+
+#: Amounts carrying a currency marker, a pasted address, injection markers, or a NEAR/cross-chain
+#: mention are all signals that the turn is (or contains) an action or a sensitive request. None
+#: of them may be answered by a one-call read-only shortcut.
+_FAST_BLOCKING_AMOUNT_RE = re.compile(
+    r"\$\s*\d|\b\d[\d,]*(?:\.\d+)?\s*(?:k|m)?\s*"
+    r"(?:usdc|usdg|dollars?|bucks|stablecoins?|eth|weth|btc|wbtc|usdt|dai|sol|near)\b",
+    re.IGNORECASE,
+)
+_FAST_BLOCKING_ADDRESS_RE = re.compile(r"\b0x[0-9a-fA-F]{40}\b")
+_FAST_BLOCKING_INJECTION_RE = re.compile(
+    r"\b(?:ignore|disregard|forget|override|bypass|discard)\b[^.?!]{0,40}"
+    r"\b(?:previous|prior|above|earlier|all)\b[^.?!]{0,25}"
+    r"\b(?:instructions?|prompts?|rules?|directions?|guardrails?)\b"
+    r"|\bsystem\s+prompt\b|\bjailbreak\b|\bdeveloper\s+mode\b",
+    re.IGNORECASE,
+)
+_FAST_BLOCKING_CROSS_CHAIN_RE = re.compile(
+    r"(?-i:\bNEAR\b)|\bnear\s+(?:protocol|chain|network|token)\b|"
+    r"\brhea(?:\s+finance)?\b|\bcross[-\s]?chain\b|\bbridg(?:e|es|ed|ing)\b",
+    re.IGNORECASE,
+)
+
+
+def _fast_path_is_blocked(text: str) -> bool:
+    """True when a fast-path candidate carries a signal the planner must see.
+
+    Checked BEFORE any of the PORTFOLIO / LEARN / OTHER matchers, so the shortcut can never
+    answer only the concept half of "How do vaults work? I want to deposit 500 USDC".
+    """
+    return bool(
+        _FAST_BLOCKING_ACTION_RE.search(text)
+        or _FAST_BLOCKING_AMOUNT_RE.search(text)
+        or _FAST_BLOCKING_ADDRESS_RE.search(text)
+        or _FAST_BLOCKING_INJECTION_RE.search(text)
+        or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
+    )
 
 #: 059/A3 — question shapes whose answer is prose (concept/knowledge). The negative lookahead on
 #: "how do" keeps first-person commands ("how do I deposit?") on the planner path.
@@ -1794,14 +1836,15 @@ def _fast_readonly_intent(message: str) -> Intent | None:
     This is a latency widening of the pre-classifier, not a new authority: it can only ever return
     PORTFOLIO / LEARN / OTHER, and it runs AFTER every 057 deterministic route (unsafe refusal,
     unsupported swap, confirmations, bridge, what's-new, exit, safety, yield guidance, curated,
-    direct fees/APY, withdraw-all). A command shape, or any action verb, stays with the planner.
+    direct fees/APY, withdraw-all). A command shape, or any action/amount/address/injection/
+    cross-chain signal, stays with the planner — for EVERY fast path, not just portfolio reads.
     """
     text = message.strip()
     if not text:
         return None
+    if _fast_path_is_blocked(text):
+        return None
     if _PORTFOLIO_FAST_RE.search(text):
-        if _FAST_BLOCKING_ACTION_RE.search(text):
-            return None
         return Intent(kind=IntentKind.PORTFOLIO)
     if _IDENTITY_FAST_RE.search(text):
         return Intent(kind=IntentKind.OTHER)
