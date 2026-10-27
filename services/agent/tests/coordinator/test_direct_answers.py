@@ -18,6 +18,7 @@ question, a general "what's the vault fee?" corpus question, and a real order to
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sparkpoint_agent.agents.literacy import Literacy
@@ -29,6 +30,7 @@ from sparkpoint_agent.coordinator.dag import (
     MandateView,
     MarketData,
     PortfolioView,
+    _apy_answer,
 )
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom
@@ -171,6 +173,24 @@ async def test_live_apy_question_gives_the_figure_not_a_definition() -> None:
     assert "3.79% APY" in text, "the NET figure leads — that's what the user earns"
     assert "4.21%" in text, "gross is shown alongside so the fee is visible"
     assert "variable" in text.lower(), "a rate quote must carry its own caveat"
+
+
+def test_live_apy_stamp_uses_the_data_read_time_not_composition_time() -> None:
+    market = MarketData(
+        gross_apy_bps=421,
+        projected_apy_bps=379,
+        performance_fee_bps=1000,
+        as_of="2026-10-27T12:34:00+00:00",
+    )
+    text = _apy_answer(_chain(market=market), now=datetime(2026, 10, 27, 15, 0, tzinfo=UTC))
+    assert "as of 12:34 UTC" in text
+    assert "15:00 UTC" not in text
+
+
+def test_live_apy_stamp_falls_back_to_the_injected_clock_without_a_read_time() -> None:
+    market = MarketData(gross_apy_bps=421, projected_apy_bps=379, performance_fee_bps=1000)
+    text = _apy_answer(_chain(market=market), now=datetime(2026, 10, 27, 15, 0, tzinfo=UTC))
+    assert "as of 15:00 UTC" in text
 
 
 async def test_an_unreadable_rate_is_admitted_rather_than_guessed() -> None:

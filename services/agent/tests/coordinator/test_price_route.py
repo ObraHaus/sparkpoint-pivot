@@ -179,6 +179,27 @@ def test_context_only_assets_are_labelled() -> None:
     assert "context only" in text
 
 
+def test_context_only_wording_counts_only_the_context_assets() -> None:
+    snapshot = PriceSnapshot(
+        quotes={
+            "ETH": _quote("ETH", 2500.0),
+            "BTC": _quote("BTC", 90000.0),
+            "SOL": _quote("SOL", 150.0),
+        }
+    )
+    text = format_price_answer(snapshot, ("ETH", "BTC", "SOL"))
+    assert "BTC and SOL are shown for context only" in text
+
+
+def test_a_lone_context_asset_is_singular_even_beside_a_priceable_one() -> None:
+    snapshot = PriceSnapshot(
+        quotes={"ETH": _quote("ETH", 2500.0), "BTC": _quote("BTC", 90000.0)}
+    )
+    text = format_price_answer(snapshot, ("ETH", "BTC"))
+    assert "BTC is shown for context only" in text
+    assert "BTC are shown" not in text
+
+
 def test_a_stale_quote_says_it_is_cached() -> None:
     snapshot = PriceSnapshot(quotes={"ETH": _quote("ETH", 2500.0, stale=True)})
     text = format_price_answer(snapshot, ("ETH",))
@@ -213,6 +234,18 @@ async def test_srk_gets_the_no_price_policy_without_calling_the_feed() -> None:
     assert SRK_PRICE_ANSWER.splitlines()[0] in _text(wires)
     assert "doesn't quote a dollar price" in _text(wires)
     assert prices.calls == [], "SRK must never be sent to a price source"
+    assert classifier.calls == 0
+
+
+async def test_a_mixed_srk_and_priceable_question_quotes_the_priceable_symbol() -> None:
+    prices = _FakePrices(PriceSnapshot(quotes={"ETH": _quote("ETH", 2500.0)}))
+    dag, classifier = _dag(prices)
+    wires = await _run(dag, "what's the price of ETH and SRK?")
+
+    text = _text(wires)
+    assert "2,500.00" in text, "the priceable half must not be dropped"
+    assert SRK_PRICE_ANSWER.splitlines()[0] in text, "the SRK policy still applies"
+    assert prices.calls == [("ETH",)]
     assert classifier.calls == 0
 
 
