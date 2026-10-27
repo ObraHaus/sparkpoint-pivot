@@ -3,7 +3,7 @@
  * Closed wire shape ⇒ `.strict()` (unknown keys rejected, fail-closed render).
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { IsoDateTimeSchema } from "./primitives";
 
