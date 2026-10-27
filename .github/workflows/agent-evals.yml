@@ -10,12 +10,22 @@ on:
   schedule:
     - cron: "15 3 * * *" # nightly, UTC
   workflow_dispatch:
-  pull_request:
+  # No pull_request trigger: PR gating already happens in the agent CI job, which runs
+  # tests/evals/test_golden_offline.py with the rest of the agent suite. Keeping this
+  # workflow off pull_request means a PR (including from a fork) can never edit it and
+  # run that edit on the self-hosted runner. It re-runs after merge when chat-affecting
+  # code changes.
+  push:
     branches: [develop, main]
     paths:
       - "services/agent/persona_seed/**"
-      - "services/agent/src/sparkpoint_agent/agents/*.py"
+      - "services/agent/knowledge_seed/**"
+      - "services/agent/src/sparkpoint_agent/agents/**"
       - "services/agent/src/sparkpoint_agent/coordinator/**"
+      - "services/agent/src/sparkpoint_agent/llm/**"
+      - "services/agent/src/sparkpoint_agent/policy*"
+      - "services/agent/src/sparkpoint_agent/prompt_fencing*"
+      - "services/agent/src/sparkpoint_agent/persona*"
       - "services/litellm/config.yaml"
       - "services/agent/evals/**"
       - "services/agent/tests/evals/**"
@@ -30,7 +40,6 @@ concurrency:
 
 jobs:
   offline:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 15
     defaults: { run: { working-directory: services/agent } }
@@ -58,8 +67,8 @@ jobs:
           if-no-files-found: ignore
 
   live:
-    # Nightly/dispatch only: never on a PR, and never a required check.
-    if: github.event_name != 'pull_request'
+    # Nightly/dispatch only (not on push), and never a required check.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     continue-on-error: true
     needs: offline
     runs-on: [self-hosted, oh-ci]
