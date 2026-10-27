@@ -37,12 +37,12 @@ from ..coordinator.onboarding import (
     OnboardingStep,
     new_session_id,
 )
-from ..db import get_database
+from ..db import LimitsStore, get_database
 from ..db.mandates import MandateStore, MandateWrite, PgMandateStore
 from ..llm import AsyncClaudeClient
 from ..persona import get_persona
 from .errors import ApiError, ErrorCode
-from .quota import require_within_quota
+from .quota import LimitDecision, get_limits_store, refund, require_within_quota
 from .security import AccountContext
 
 router = APIRouter(tags=["mandate"])
@@ -259,10 +259,12 @@ def _sse(event: str, data: dict[str, Any]) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/onboarding/turn", dependencies=[Depends(require_within_quota("onboarding"))])
+@router.post("/onboarding/turn")
 async def onboarding_turn(
     body: OnboardingTurnRequest,
     account: Annotated[AccountContext, Depends(get_account)],
+    quota: Annotated[LimitDecision, Depends(require_within_quota("onboarding"))],
+    limits: Annotated[LimitsStore, Depends(get_limits_store)],
     machine: Annotated[OnboardingMachine, Depends(get_onboarding_machine)],
 ) -> StreamingResponse:
     """Drive one onboarding turn as an SSE stream of ChatBlocks (§3.1).
@@ -276,14 +278,21 @@ async def onboarding_turn(
 
     async def _events() -> AsyncIterator[bytes]:
         count = 0
-        async for block in machine.turn(
-            session_id=session_id,
-            step=body.step,
-            user_message=body.userMessage,
-            selections=body.selections,
-        ):
-            count += 1
-            yield _sse("block", block.to_wire())
+        try:
+            async for block in machine.turn(
+                session_id=session_id,
+                step=body.step,
+                user_message=body.userMessage,
+                selections=body.selections,
+            ):
+                count += 1
+                yield _sse("block", block.to_wire())
+        except Exception:
+            # A model/upstream failure (the deterministic step machine itself does not raise for
+            # user input) refunds the pre-charged turn; a cancelled request is BaseException and
+            # is never refunded. ``refund`` is fail-safe.
+            await refund(limits, account.owner, quota)
+            raise
         yield _sse("done", {"sessionId": session_id, "blockCount": count})
 
     return StreamingResponse(_events(), media_type="text/event-stream")
