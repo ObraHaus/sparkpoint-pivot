@@ -63,13 +63,11 @@ class Scripted:
     ``intent`` supplies the planner's structured answer when a case legitimately needs the
     classifier (portfolio / proposal / knowledge / general). Deterministic routes must fire
     BEFORE this, so a wrong route still fails loudly instead of being papered over.
-    ``prose`` is used by the literacy / Sparky doubles. ``ranking`` is the recommender's
-    canned JSON when a RECOMMEND turn reaches stage 3.
+    ``prose`` is used by the literacy / Sparky doubles.
     """
 
     intent: Mapping[str, Any] | None = None
     prose: str | None = None
-    ranking: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -145,7 +143,6 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
         offline=Scripted(
             intent=_mapping(offline_raw.get("intent")) or None,
             prose=offline_raw.get("prose"),
-            ranking=_mapping(offline_raw.get("ranking")) or None,
         ),
         offline_check_contains=bool(raw.get("offline_check_contains", True)),
         read_only=bool(raw.get("read_only", True)),

@@ -12,7 +12,7 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +27,7 @@ from .judge import JudgeResult, judge_case, judge_passes
 from .model import OUT_DIR, Case, Rubric, load_cases, load_rubric
 
 _INFRA_ERROR_CODE = "UPSTREAM_UNAVAILABLE"
+_BUDGET_EXHAUSTED = "wall-clock budget exhausted"
 
 
 class LiveNotConfigured(RuntimeError):
@@ -35,6 +36,30 @@ class LiveNotConfigured(RuntimeError):
 
 class HttpNotConfigured(RuntimeError):
     """EVAL_BASE_URL / EVAL_SESSION_COOKIE are absent — HTTP mode skips cleanly."""
+
+
+@dataclass(frozen=True)
+class _Budget:
+    """A single wall-clock deadline shared by every case in a live run.
+
+    A per-case timeout alone is not enough: with retries and a judge call, one unlucky case
+    can consume several minutes, so 72 cases can outlive the CI job. The deadline caps the
+    WHOLE run and lets the runner return partial results (and still write them) instead of
+    being killed by the job timeout.
+    """
+
+    deadline: float
+    clock: Callable[[], float]
+
+    @classmethod
+    def starting(cls, seconds: float, clock: Callable[[], float]) -> _Budget:
+        return cls(deadline=clock() + max(0.0, seconds), clock=clock)
+
+    def remaining(self) -> float:
+        return self.deadline - self.clock()
+
+    def expired(self) -> bool:
+        return self.remaining() <= 0.0
 
 
 @dataclass
@@ -202,29 +227,143 @@ async def _judge_with_retries(
     rubric: Rubric,
     *,
     timeout_s: float,
+    budget: _Budget,
 ) -> JudgeResult:
     last = JudgeResult(scores=None, error="judge not attempted")
     for attempt in range(2):
+        remaining = budget.remaining()
+        if remaining <= 0:
+            return JudgeResult(scores=None, error=_BUDGET_EXHAUSTED)
         try:
             last = await asyncio.wait_for(
-                judge_case(client, case, wires, rubric), timeout=timeout_s
+                judge_case(client, case, wires, rubric), timeout=min(timeout_s, remaining)
             )
         except TimeoutError:
             last = JudgeResult(scores=None, error="judge timeout")
         if last.ok:
             return last
         if attempt == 0:
+            if budget.remaining() <= 2.0:
+                return last
             await asyncio.sleep(2)
     return last
+
+
+def _budget_result(
+    case: Case,
+    *,
+    observed: str = "skipped",
+    latency: Mapping[str, float] | None = None,
+) -> CaseResult:
+    return _result(
+        case,
+        status="infra",
+        observed=observed,
+        failures=[f"infra: {_BUDGET_EXHAUSTED}"],
+        latency=latency,
+        infra_reason=_BUDGET_EXHAUSTED,
+    )
+
+
+async def _run_case_live(
+    case: Case,
+    client: AsyncClaudeClient,
+    rubric: Rubric,
+    *,
+    retries: int,
+    timeout_s: float,
+    judge_timeout_s: float,
+    budget: _Budget,
+) -> CaseResult:
+    last_infra: str | None = None
+    for attempt in range(retries + 1):
+        if budget.expired():
+            return _budget_result(case)
+        recording = RecordingClient(client)
+        try:
+            wires, latency = await asyncio.wait_for(
+                _execute_timed(case, recording), timeout=min(timeout_s, budget.remaining())
+            )
+            failure: str | None = None
+        except TimeoutError:
+            wires, latency, failure = [], None, "timeout"
+        except Exception as exc:  # noqa: BLE001 — transport failures are infra, not answers
+            wires, latency, failure = [], None, f"transport: {_error_label(exc)}"
+        infra = failure or _is_infra(wires, recording)
+        if infra is not None:
+            last_infra = infra
+            if attempt < retries:
+                backoff = 2 ** (attempt + 1)
+                if budget.remaining() <= backoff:
+                    return _budget_result(case, latency=latency)
+                await asyncio.sleep(backoff)
+                continue
+            return _result(
+                case,
+                status="infra",
+                observed="infra",
+                failures=[f"infra: {infra}"],
+                latency=latency,
+                infra_reason=infra,
+            )
+
+        failures = case_failures(case, wires, offline=False)
+        if budget.expired():
+            return _budget_result(case, observed=classify_route(wires), latency=latency)
+        judge = await _judge_with_retries(
+            client, case, wires, rubric, timeout_s=judge_timeout_s, budget=budget
+        )
+        observed = classify_route(wires)
+        if not judge.ok or judge.scores is None:
+            reason = judge.error or "no scores"
+            if reason == _BUDGET_EXHAUSTED:
+                return _budget_result(case, observed=observed, latency=latency)
+            return _result(
+                case,
+                status="infra",
+                observed=observed,
+                failures=[f"judge infra: {reason}"],
+                latency=latency,
+                infra_reason=f"judge: {reason}",
+            )
+        if not judge_passes(judge.scores, rubric):
+            failures.append(
+                "judge below threshold: "
+                + ", ".join(f"{key}={value}" for key, value in judge.scores.items())
+            )
+        return _result(
+            case,
+            status="fail" if failures else "pass",
+            observed=observed,
+            failures=failures,
+            scores=judge.scores,
+            notes=judge.notes,
+            latency=latency,
+        )
+    return _result(  # pragma: no cover - unreachable while retries >= 0
+        case,
+        status="infra",
+        observed="infra",
+        failures=[f"infra: {last_infra or 'exhausted retries'}"],
+        infra_reason=last_infra,
+    )
 
 
 async def run_live(
     cases: Sequence[Case] | None = None,
     *,
     retries: int = 2,
-    timeout_s: float = 60.0,
+    timeout_s: float = 30.0,
+    judge_timeout_s: float = 20.0,
+    budget_s: float = 2400.0,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Report:
-    """Replay the set through the real gateway, then score every reply with the LLM judge."""
+    """Replay the set through the real gateway, then score every reply with the LLM judge.
+
+    The whole run is bounded by ``budget_s`` (default 40 minutes, below the CI job's 45):
+    once the deadline passes, the current and remaining cases are marked ``infra`` and the
+    report is still returned, so results.json/summary.md are always written.
+    """
     if gateway_from_env() is None:
         raise LiveNotConfigured(
             "LITELLM_BASE_URL and LITELLM_API_KEY are not set; live mode skipped."
@@ -233,83 +372,19 @@ async def run_live(
     rubric = load_rubric()
     client = AsyncClaudeClient.from_env()
     gateway_model = (os.getenv("LITELLM_MODEL") or "").strip() or "sparkpoint-chat"
-    results: list[CaseResult] = []
-
-    for case in selected:
-        last_infra: str | None = None
-        for attempt in range(retries + 1):
-            recording = RecordingClient(client)
-            try:
-                wires, latency = await asyncio.wait_for(
-                    _execute_timed(case, recording), timeout=timeout_s
-                )
-                failure: str | None = None
-            except TimeoutError:
-                wires, latency, failure = [], None, "timeout"
-            except Exception as exc:  # noqa: BLE001 — transport failures are infra, not answers
-                wires, latency, failure = [], None, f"transport: {_error_label(exc)}"
-            infra = failure or _is_infra(wires, recording)
-            if infra and attempt < retries:
-                await asyncio.sleep(2 ** (attempt + 1))
-                last_infra = infra
-                continue
-            if infra:
-                results.append(
-                    _result(
-                        case,
-                        status="infra",
-                        observed="infra",
-                        failures=[f"infra: {infra}"],
-                        latency=latency,
-                        infra_reason=infra,
-                    )
-                )
-                break
-
-            failures = case_failures(case, wires, offline=False)
-            judge = await _judge_with_retries(
-                client, case, wires, rubric, timeout_s=timeout_s
-            )
-            observed = classify_route(wires)
-            if not judge.ok or judge.scores is None:
-                results.append(
-                    _result(
-                        case,
-                        status="infra",
-                        observed=observed,
-                        failures=[f"judge infra: {judge.error or 'no scores'}"],
-                        latency=latency,
-                        infra_reason=f"judge: {judge.error or 'no scores'}",
-                    )
-                )
-                break
-            if not judge_passes(judge.scores, rubric):
-                failures.append(
-                    "judge below threshold: "
-                    + ", ".join(f"{key}={value}" for key, value in judge.scores.items())
-                )
-            results.append(
-                _result(
-                    case,
-                    status="fail" if failures else "pass",
-                    observed=observed,
-                    failures=failures,
-                    scores=judge.scores,
-                    notes=judge.notes,
-                    latency=latency,
-                )
-            )
-            break
-        else:  # pragma: no cover - the loop always breaks or continues to retries
-            results.append(
-                _result(
-                    case,
-                    status="infra",
-                    observed="infra",
-                    failures=[f"infra: {last_infra or 'exhausted retries'}"],
-                    infra_reason=last_infra,
-                )
-            )
+    budget = _Budget.starting(budget_s, clock)
+    results = [
+        await _run_case_live(
+            case,
+            client,
+            rubric,
+            retries=retries,
+            timeout_s=timeout_s,
+            judge_timeout_s=judge_timeout_s,
+            budget=budget,
+        )
+        for case in selected
+    ]
     return Report(
         mode="live",
         results=results,

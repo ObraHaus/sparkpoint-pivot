@@ -69,6 +69,48 @@ _ENGLISH_STOPWORDS = frozenset(
     }
 )
 
+_SPANISH_MARKERS = (
+    "cuánto",
+    "cuanto",
+    "cómo",
+    "dónde",
+    "cuándo",
+    "qué",
+    "dinero",
+    "ganado",
+    "ganar",
+    "bóveda",
+    "boveda",
+    "semana",
+    "mejor",
+    "está",
+    "también",
+    "tambien",
+    "porque",
+    "mis",
+    "sus",
+    "los",
+    "las",
+    "una",
+    "pero",
+    "muy",
+    "más",
+)
+
+#: Minimum share of letter tokens that must be plain ASCII (catches accented Spanish/CJK).
+_ASCII_WORD_FLOOR = 0.85
+#: Minimum share of common English stopwords; calibrated against the golden English replies
+#: (lowest real reply ≈ 0.17) while Tagalog/Spanish samples sit at ≈ 0.11 and 0.0.
+_STOPWORD_FLOOR = 0.12
+
+
+def _has_marker(lowered: str, markers: Sequence[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(marker)}\b", lowered) for marker in markers)
+
+
+def _letter_words(text: str) -> list[str]:
+    return re.findall(r"[^\W\d_]+", text.lower(), re.UNICODE)
+
 
 def visible_text(wires: Sequence[Mapping[str, Any]]) -> str:
     """The user-visible prose: text + tip bodies + error messages + card narration."""
@@ -206,23 +248,25 @@ def _pattern_matches(pattern: str, text: str) -> bool:
 
 
 def is_english(text: str) -> bool:
-    """Heuristic English check — strong Tagalog markers plus an English stopword floor.
+    """Heuristic English check: mostly-ASCII letters AND a real English stopword rate.
 
-    Deliberately conservative: a false positive on a legitimate English answer would make
-    the suite noisy, while the two Taglish audit prompts are unambiguous.
+    Strong Tagalog/Spanish markers fail immediately. For longer replies the stopword floor
+    is what makes the check meaningful: English prose uses function words, while machine-ish
+    or non-English text (even transliterated) does not. Short replies are left alone so a
+    terse card ("Your balance is 250.00 USDC.") is never misflagged.
     """
     stripped = text.strip()
     if not stripped:
         return True
     lowered = stripped.lower()
-    for marker in _TAGALOG_MARKERS:
-        if re.search(rf"\b{re.escape(marker)}\b", lowered):
-            return False
-    words = re.findall(r"[a-z']+", lowered)
+    if _has_marker(lowered, _TAGALOG_MARKERS) or _has_marker(lowered, _SPANISH_MARKERS):
+        return False
+    words = _letter_words(lowered)
     if len(words) < 6:
         return True
-    hits = sum(1 for word in words if word in _ENGLISH_STOPWORDS)
-    return hits >= max(1, len(words) // 100)
+    ascii_ratio = sum(1 for word in words if word.isascii()) / len(words)
+    stopword_ratio = sum(1 for word in words if word in _ENGLISH_STOPWORDS) / len(words)
+    return ascii_ratio >= _ASCII_WORD_FLOOR and stopword_ratio >= _STOPWORD_FLOOR
 
 
 def case_failures(
@@ -254,9 +298,7 @@ def case_failures(
             failures.append(f"action missing: expected {want.type}")
         else:
             if str(action.get("type")) != want.type:
-                failures.append(
-                    f"action type: expected {want.type}, got {action.get('type')}"
-                )
+                failures.append(f"action type: expected {want.type}, got {action.get('type')}")
             if want.amount is not None and str(action.get("amount")) != want.amount:
                 failures.append(f"amount: expected {want.amount}, got {action.get('amount')}")
             if want.token_in is not None:
@@ -268,9 +310,7 @@ def case_failures(
                 if (got_out or "").upper() != want.token_out.upper():
                     failures.append(f"tokenOut: expected {want.token_out}, got {got_out}")
             if want.policy is not None and _policy_status(wires) != want.policy:
-                failures.append(
-                    f"policy: expected {want.policy}, got {_policy_status(wires)}"
-                )
+                failures.append(f"policy: expected {want.policy}, got {_policy_status(wires)}")
 
     text = visible_text(wires)
     for forbidden in expected.must_not_contain:

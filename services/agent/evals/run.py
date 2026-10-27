@@ -37,7 +37,13 @@ def _parser() -> argparse.ArgumentParser:
         help="only run this case id (repeatable)",
     )
     parser.add_argument("--retries", type=int, default=2, help="live retries for infra failures")
-    parser.add_argument("--timeout", type=float, default=60.0, help="per-case timeout (seconds)")
+    parser.add_argument("--timeout", type=float, default=30.0, help="per-call timeout (seconds)")
+    parser.add_argument(
+        "--budget-seconds",
+        type=float,
+        default=2400.0,
+        help="global wall-clock budget for the live run (default 2400s = 40 min)",
+    )
     return parser
 
 
@@ -53,7 +59,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.mode == "live":
-            report = asyncio.run(run_live(cases, retries=args.retries, timeout_s=args.timeout))
+            report = asyncio.run(
+                run_live(
+                    cases,
+                    retries=args.retries,
+                    timeout_s=args.timeout,
+                    budget_s=args.budget_seconds,
+                )
+            )
         elif args.mode == "http":
             report = asyncio.run(run_http(cases, request_timeout=args.timeout))
         else:

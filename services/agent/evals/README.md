@@ -52,7 +52,10 @@ If the two required vars are unset the command prints a one-line skip and exits 
 why the CI live job can be non-blocking and can never fail a PR for missing secrets.
 
 `--retries` (default 2) retries only **infra** failures with exponential backoff;
-`--timeout` (default 60s) bounds each case. A 429 / 5xx / timeout / empty stream /
+`--timeout` (default 30s) bounds each assistant/judge call. A single `--budget-seconds`
+(default 2400 = 40 min, below the CI job's 45 min) caps the **whole** live run: once it
+expires, the current and remaining cases are marked `infra`/`skipped` and
+`results.json` + `summary.md` are still written. A 429 / 5xx / timeout / empty stream /
 `UPSTREAM_UNAVAILABLE` is classified `infra`, never `fail`.
 
 ### HTTP mode environment
