@@ -64,3 +64,26 @@ suite runs anywhere. The test wallet must be on the agent's **beta** allowlist f
 
   Validated all four combos (Base Sepolia + Robinhood × /swap + chat) — each tx confirmed on-chain and
   collected the 0.20% routing fee to the recipient.
+
+## Chat streaming spec (feature 059)
+
+`chat-streaming.spec.ts` asserts that a streamed Sparky answer paints its first token in under
+2.5 s and that the final `text` block reconciles (removes) the provisional paint. It never calls
+the beta agent: a local SSE server stands in for the agent, and the session cookie is signed
+locally with the same `SESSION_SECRET` the app under test uses.
+
+```bash
+# 1. start the streaming mock agent (Node, no deps)
+PW_MOCK_AGENT_PORT=4319 node apps/web/e2e/pw/mock-agent-sse.mjs &
+
+# 2. build + run the app against it
+export SITE_LOCKED=false NEXT_PUBLIC_SITE_LOCKED=false
+export SESSION_SECRET=<any-test-secret>
+export AGENT_INTERNAL_URL=http://127.0.0.1:4319 AGENT_S2S_TOKEN=test
+export PW_TEST_PRIVKEY=<0x… throwaway key> PW_MOCK_AGENT=1
+pnpm --filter @sparkpoint/web build
+pnpm --filter @sparkpoint/web exec playwright test e2e/pw/chat-streaming.spec.ts
+```
+
+The spec skips unless `PW_TEST_PRIVKEY`, `SESSION_SECRET` and `PW_MOCK_AGENT=1` are set, so it can
+never accidentally hit beta.

@@ -60,6 +60,9 @@ AAVE_RESERVE_USDC_ADDRESS_ENV = (
 STABLE_ASSET_ADDRESS_ENV = (
     "STABLE_ASSET_ADDRESS"  # 053 — the chain's USD stable (display/par valuation, PUBLIC)
 )
+# 059 — chat latency switches (advisory-only; never a custody/authority toggle).
+SPARKY_STREAMING_ENV = "SPARKY_STREAMING"
+SPARKY_SINGLE_CALL_ENV = "SPARKY_SINGLE_CALL"
 
 # 053 — the chain's stablecoin, as the web address book records it (VERIFIED addresses; a
 # display-only read target for the beta portfolio's $1-par valuation, never a policy target).
@@ -109,6 +112,8 @@ ALLOWED_ENV_KEYS: frozenset[str] = frozenset(
         AAVE_POOL_ADDRESS_ENV,
         AAVE_RESERVE_USDC_ADDRESS_ENV,
         STABLE_ASSET_ADDRESS_ENV,
+        SPARKY_STREAMING_ENV,
+        SPARKY_SINGLE_CALL_ENV,
     }
 )
 
@@ -131,6 +136,20 @@ class ConfigError(RuntimeError):
     Distinct from ``chain.VaultUnavailable`` (an operational/expected outage). A
     ``ConfigError`` means the deploy is misconfigured and should fail loudly.
     """
+
+
+def env_flag(name: str, *, default: bool) -> bool:
+    """Parse a boolean feature flag from the environment, fail-safe to ``default``.
+
+    Unset / empty ⇒ ``default``. Recognises the usual off-spellings (``0``/``false``/``no``/
+    ``off``) case-insensitively; every other non-empty value is ON. Used by the chat latency
+    switches (059) so a deploy can disable streaming or the single-call fast route without a
+    code change — neither flag can affect the deterministic policy gate or signing.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _assert_no_key_material() -> None:

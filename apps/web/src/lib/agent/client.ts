@@ -92,6 +92,26 @@ export interface ChatStreamDone {
   blockCount?: number;
 }
 
+/**
+ * 059/A2 — one incremental prose frame (`event: text-delta`).
+ *
+ * ADDITIVE to the block contract: the final `text` / `tip` block still follows with the complete,
+ * post-processed answer and is the authoritative value. A delta is paint-only — it is never
+ * persisted and must never be treated as a card or a signable payload.
+ */
+export interface ChatTextDelta {
+  readonly kind: "text_delta";
+  /** Which provisional slot the text belongs to (`text` = Sparky prose, `tip` = a tip card). */
+  readonly target: "text" | "tip";
+  /** The chunk to append to the current stream. */
+  readonly delta: string;
+  /** Changes when a retry starts; the renderer must RESET the partial text on a new id. */
+  readonly streamId?: string;
+}
+
+/** A `/chat` SSE frame: either a validated-later ChatBlock JSON string, or a prose delta. */
+export type ChatStreamFrame = string | ChatTextDelta;
+
 /* ── typed errors (§1.5 / §1.6) ────────────────────────────────────────────── */
 
 /** Canonical error codes (§1.6). Kept open (`string`) for forward-compat. */
@@ -365,6 +385,23 @@ async function* readSse(
   }
 }
 
+/** Parse one `text-delta` payload, fail-closed to `null` (never throws into the stream). */
+function parseTextDelta(data: string): ChatTextDelta | null {
+  try {
+    const value = JSON.parse(data) as Record<string, unknown>;
+    const target = value.target === "tip" ? "tip" : value.target === "text" ? "text" : null;
+    if (target === null || typeof value.delta !== "string") return null;
+    return {
+      kind: "text_delta",
+      target,
+      delta: value.delta,
+      streamId: typeof value.streamId === "string" ? value.streamId : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /* ── the client ────────────────────────────────────────────────────────────── */
 
 export interface AgentClient {
@@ -377,15 +414,16 @@ export interface AgentClient {
   /**
    * Generic SSE helper for any streamed ChatBlock endpoint (e.g. `/chat`,
    * `/onboarding/turn` — §3.1/§3.2). Yields the raw `data` string of each block
-   * frame (validate fail-closed via `cards.ts`); the generator's RETURN value is
-   * the terminal `done` summary. Throws `AgentApiError` on a pre-stream non-2xx.
-   * Like `streamChat`, it only PROPOSES — `assertNoSignature` fail-closes the body.
+   * frame (validate fail-closed via `cards.ts`) — or a {@link ChatTextDelta} for
+   * `event: text-delta`; the generator's RETURN value is the terminal `done`
+   * summary. Throws `AgentApiError` on a pre-stream non-2xx. Like `streamChat`, it
+   * only PROPOSES — `assertNoSignature` fail-closes the body.
    */
   stream(
     path: string,
     body: unknown,
     options?: AgentStreamOptions,
-  ): AsyncGenerator<string, ChatStreamDone | undefined, void>;
+  ): AsyncGenerator<ChatStreamFrame, ChatStreamDone | undefined, void>;
   /**
    * SSE helper for `POST /chat` (§3.2). Yields the raw `data` string of each
    * ChatBlock frame (for `cards.ts` to validate fail-closed); the generator's
@@ -395,7 +433,7 @@ export interface AgentClient {
   streamChat(
     request: ChatTurnRequest,
     options?: AgentStreamOptions,
-  ): AsyncGenerator<string, ChatStreamDone | undefined, void>;
+  ): AsyncGenerator<ChatStreamFrame, ChatStreamDone | undefined, void>;
 }
 
 export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
@@ -439,7 +477,7 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
     path: string,
     body: unknown,
     options: AgentStreamOptions = {},
-  ): AsyncGenerator<string, ChatStreamDone | undefined, void> {
+  ): AsyncGenerator<ChatStreamFrame, ChatStreamDone | undefined, void> {
     const identity = await resolveIdentity(options.identity);
     assertNoSignature(body);
 
@@ -478,6 +516,12 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
           return undefined;
         }
       }
+      // 059/A2 — incremental prose paint (additive; the final block still follows).
+      if (frame.event === "text-delta") {
+        const parsed = parseTextDelta(frame.data);
+        if (parsed) yield parsed;
+        continue;
+      }
       // ChatBlock frames (§2.7): `event: block`, the SSE default `message`, or an
       // explicit `error` block. Anything else is ignored so no non-block payload
       // is ever fed to the renderer. `cards.ts` validates each string fail-closed.
@@ -491,7 +535,7 @@ export function createAgentClient(config: AgentClientConfig = {}): AgentClient {
   async function* streamChat(
     chatRequest: ChatTurnRequest,
     options: AgentStreamOptions = {},
-  ): AsyncGenerator<string, ChatStreamDone | undefined, void> {
+  ): AsyncGenerator<ChatStreamFrame, ChatStreamDone | undefined, void> {
     return yield* stream("/chat", chatRequest, options);
   }
 
