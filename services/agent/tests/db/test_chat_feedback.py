@@ -38,6 +38,7 @@ async def test_record_upserts_one_row_per_user_and_message() -> None:
     (sql, args) = db.calls[0]
     assert "ON CONFLICT (user_eoa, message_id)" in sql
     assert "DO UPDATE" in sql
+    assert "updated_at = now()" in sql  # last write wins, and the timestamp follows it
     assert args[:5] == (
         "0xabcdef0000000000000000000000000000000001",
         "cnv_1",
