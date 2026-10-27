@@ -37,3 +37,16 @@ supply as its base yield leg. A bare direct supply is offered as the raw,
 un-managed alternative to the vault. This note is advisory context only: it
 never sets a cap or gates a signature — the deterministic policy layer decides
 that from fresh on-chain reads.
+
+## How this sits beside the curated Morpho-based vaults
+
+Aave v3 supply is the yield leg of SparkPoint's own Aave Yield Vault on Base
+(see [[profit-only-vault]]). The curated `/vault` board also lists third-party
+ERC-4626 vaults, many of them **Morpho Vault V2** vaults run by professional
+curators. Those are a different risk shape: Morpho is a framework for isolated
+lending markets and curated vaults, so each one adds its curator's allocation
+choices and its own liquidity profile on top of market risk. SparkPoint screens
+and ranks them, shows the curator and the stored as-of, and may add a
+performance-fee wrapper where one is deployed. Curation never makes a vault
+safer by itself, and neither venue is insured. See [[beta-questions]] for the
+plain comparison.
