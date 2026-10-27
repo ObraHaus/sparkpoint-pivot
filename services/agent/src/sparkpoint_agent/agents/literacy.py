@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
-from .guard_text import is_unusable
+from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
 
 EFFORT: Effort = "low"
 
@@ -209,6 +209,10 @@ class Literacy:
         user_content = self._user_content(key, context_hint)
         for attempt in (1, 2):
             parts: list[str] = []
+            pending: list[str] = []
+            pending_len = 0
+            released = False
+            blocked = False
             result = None
             try:
                 async for chunk in self.llm.stream_complete(
@@ -219,7 +223,24 @@ class Literacy:
                 ):
                     if chunk.delta:
                         parts.append(chunk.delta)
-                        yield TipChunk(delta=chunk.delta, attempt=attempt)
+                        # Hold the opening until it passes the same guard the full body will, so
+                        # an attempt that is already action/meta-shaped is never painted.
+                        if not released and not blocked:
+                            pending.append(chunk.delta)
+                            pending_len += len(chunk.delta)
+                            if pending_len < STREAM_HOLD_CHARS:
+                                continue
+                            if not prefix_is_usable("".join(pending)):
+                                blocked = True
+                                pending.clear()
+                                continue
+                            released = True
+                            for buffered in pending:
+                                yield TipChunk(delta=buffered, attempt=attempt)
+                            pending.clear()
+                            continue
+                        if not blocked:
+                            yield TipChunk(delta=chunk.delta, attempt=attempt)
                     elif chunk.result is not None:
                         result = chunk.result
             except Exception:
@@ -227,6 +248,10 @@ class Literacy:
                 continue
             body = result.text.strip() if result is not None else ""
             if result is not None and not (result.refused or is_unusable(body)):
+                # A short (< hold) answer is painted only now that the FULL body passed the guard.
+                if not released and not blocked:
+                    for buffered in pending:
+                        yield TipChunk(delta=buffered, attempt=attempt)
                 yield TipChunk(card=TipCard(topic=key, body=body, fell_back=False), attempt=attempt)
                 return
             if attempt == 1:
