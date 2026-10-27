@@ -71,5 +71,5 @@ module = ["eth_utils", "eth_utils.*"]
 implicit_reexport = true
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
