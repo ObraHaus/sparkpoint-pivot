@@ -64,7 +64,7 @@ from ..coordinator import (
     RecommendationBlock,
     RecommendationsResult,
 )
-from ..db import RecommendationStore, get_database
+from ..db import LimitsStore, RecommendationStore, get_database
 from ..db.mandates import MandateStore
 from ..db.recommendations import RecInsert
 from ..knowledge import default_citation_retriever
@@ -73,7 +73,7 @@ from ..persona import get_persona
 from ..policy import CAPS, GOVERNANCE, CapHeadroom, RiskProfile
 from .errors import ApiError, ErrorCode, ErrorReason
 from .mandate import get_mandate_store
-from .quota import require_within_quota
+from .quota import LimitDecision, get_limits_store, refund, require_within_quota
 from .security import AccountContext
 from .vault import get_account, get_vault_reader
 
@@ -505,13 +505,11 @@ async def _compute(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.get(
-    "/recommendations",
-    response_model=RecommendationsResponse,
-    dependencies=[Depends(require_within_quota("recs"))],
-)
+@router.get("/recommendations", response_model=RecommendationsResponse)
 async def get_recommendations(
     account: Annotated[AccountContext, Depends(get_account)],
+    quota: Annotated[LimitDecision, Depends(require_within_quota("recs"))],
+    limits: Annotated[LimitsStore, Depends(get_limits_store)],
     reader: Annotated[VaultReader, Depends(get_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     llm: Annotated[AsyncClaudeClient, Depends(get_llm_client)],
@@ -529,7 +527,16 @@ async def get_recommendations(
     with no recommendations (FR-016 — the renderer shows nothing uncleared). Each cleared
     rec is persisted (US5 T010) so its ``recId`` is a durable UUID (fail-open to the ephemeral id).
     """
-    result, items = await _compute(account, reader, config, llm, mandate_provider, limit=limit)
+    try:
+        result, items = await _compute(
+            account, reader, config, llm, mandate_provider, limit=limit
+        )
+    except ApiError as exc:
+        # Only an upstream/LLM failure refunds the pre-charged turn; NOT_FOUND (no mandate),
+        # REFUSAL, and user errors are legitimate outcomes and keep their quota cost.
+        if exc.code == ErrorCode.UPSTREAM_UNAVAILABLE:
+            await refund(limits, account.owner, quota)
+        raise
     _raise_if_unavailable(result)
     await _persist_recids(rec_store, account, result, items)
     return RecommendationsResponse(

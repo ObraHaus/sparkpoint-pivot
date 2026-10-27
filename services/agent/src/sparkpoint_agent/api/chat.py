@@ -63,7 +63,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
-from ..db import get_database
+from ..db import LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
 from ..db.curated_vaults import APPROVED, PgCurationStore
@@ -79,7 +79,7 @@ from ..persona import get_persona
 from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
 from .portfolio import get_wrapper_store, read_wrapper_positions
-from .quota import require_within_quota
+from .quota import LimitDecision, get_limits_store, refund, require_within_quota
 from .recommendations import (
     _build_chain_context,
     _network_id,
@@ -864,6 +864,8 @@ async def _event_stream(
     owner_eoa: str,
     memory: _MemorySink,
     memory_lines: list[str],
+    quota: LimitDecision | None = None,
+    limits: LimitsStore | None = None,
 ) -> AsyncIterator[str]:
     """Drive one ``run_chat`` turn and frame each §2.7 block as an SSE ``block`` event.
 
@@ -897,6 +899,11 @@ async def _event_stream(
     except Exception:
         # Fail-closed: degrade to an inert block, never leak internals (BaseException — e.g.
         # a cancelled request — deliberately propagates untouched).
+        # The turn failed upstream after the quota dependency charged it, so return that unit to
+        # the SAME window. Fail-safe by construction: ``refund`` swallows its own errors. A client
+        # disconnect is a BaseException (not caught here) and is therefore never refunded.
+        if quota is not None and limits is not None:
+            await refund(limits, owner_eoa, quota)
         fallback: ChatBlock = ErrorBlock("UPSTREAM_UNAVAILABLE", _STREAM_FAILURE_MESSAGE)
         count += 1
         yield _sse(_EVENT_BLOCK, fallback.to_wire())
@@ -914,10 +921,12 @@ async def _event_stream(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/chat", dependencies=[Depends(require_within_quota("chat"))])
+@router.post("/chat")
 async def chat(
     body: ChatRequest,
     account: Annotated[AccountContext, Depends(get_account)],
+    quota: Annotated[LimitDecision, Depends(require_within_quota("chat"))],
+    limits: Annotated[LimitsStore, Depends(get_limits_store)],
     dag: Annotated[CoordinatorDag, Depends(get_coordinator_dag)],
     chain_provider: Annotated[ChatChainProvider, Depends(get_chain_provider)],
     sink: Annotated[_ConversationSink, Depends(get_conversation_sink)],
@@ -961,6 +970,8 @@ async def chat(
         owner_eoa=account.owner,
         memory=memory,
         memory_lines=memory_lines,
+        quota=quota,
+        limits=limits,
     )
     return StreamingResponse(
         stream,

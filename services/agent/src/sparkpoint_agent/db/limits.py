@@ -74,6 +74,12 @@ _INCR_SQL = (
 _USAGE_SQL = (
     "SELECT count FROM usage_counters WHERE address = $1 AND metric = $2 AND window_start = $3"
 )
+# Refund one consumed unit for a turn that failed upstream. GREATEST clamps the counter at zero so a
+# duplicate/racing refund can never make usage negative; a missing row is a no-op (returns NULL).
+_REFUND_SQL = (
+    "UPDATE usage_counters SET count = GREATEST(count - 1, 0) "
+    "WHERE address = $1 AND metric = $2 AND window_start = $3 RETURNING count"
+)
 
 _EVENT_SQL = (
     "INSERT INTO limits_event (verdict, metric, tier, subject, detail) "
@@ -343,6 +349,16 @@ class LimitsStore:
 
     async def get_usage(self, address: str, metric: str, window_start: datetime) -> int:
         count = await self.db.fetchval(_USAGE_SQL, _norm(address), metric, window_start)
+        return int(count or 0)
+
+    async def refund(self, address: str, metric: str, window_start: datetime) -> int:
+        """Return ONE unit to the same per-wallet/metric/window counter (clamped at zero).
+
+        The caller passes the window it captured at consume time, so a failure after Manila
+        midnight still refunds the day that was actually charged. Returns the resulting count
+        (0 when the row no longer exists). No migration: the counter table is unchanged.
+        """
+        count = await self.db.fetchval(_REFUND_SQL, _norm(address), metric, window_start)
         return int(count or 0)
 
     # -- monitoring event feed + audit read ----------------------------------
