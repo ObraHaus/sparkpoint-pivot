@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **Dependency CVE patch pass (055)** — `next` 16.3.6 → 16.4.3 patches two CRITICAL RCEs (`GHSA-2464-fhr4-w9xw` image-optimization SVG, `GHSA-673q-mjm6-r5xr` `use cache` typed arrays), HIGHs `CVE-2026-94482`/`CVE-2026-94483`, and five MEDIUMs (`CVE-2026-103004`, `-94484`, `-94485`, `-94543`, `-94544`); `eslint-config-next` tracks the same version. `sharp` 0.35.4 → 0.35.5 (`GHSA-wq5f-xc86-pv6w`) and `source-map-js` 1.2.1 → 1.2.2 (`CVE-2026-93749`) via root `pnpm.overrides`, and `certifi` 2026.6.17 → 2026.10.23 (`GHSA-6q48-6c7w-9gw2`) in `services/agent/uv.lock`. `zod` 3.25.76 → 4.6.7 (`CVE-2023-54404`) via both manifests plus a root `pnpm.overrides` selector `"zod@<4.6.6": ">=4.6.6 <5"` that rewrites only vulnerable zod requests (no plain `zod` key, so lockfile importer specifiers stay `"^4.6.7"` and match the manifests); all schemas import the `"zod/v3"` compatibility entry so the schema API is unchanged.
+
 ### Fixed (free chat restored + failed turns refunded)
 
 - **Free chat works again on beta.** The `sparkpoint-chat` group's 2026-10-14 pair was dead — OpenRouter's Nvidia provider returned **404** for `nvidia/nemotron-3-super-120b-a12b:free` (`status -5`) and Google AI Studio returned **429** for `google/gemma-4-31b-it:free` — so every free turn failed with `UPSTREAM_UNAVAILABLE`. `services/litellm/config.yaml` now serves three free deployments from three different providers: **Nemotron 3 Ultra 550B A55B** (primary, weight 4), **Cohere North Mini Code** (weight 3), and **Poolside Laguna S 2.1** (weight 1). All were probed live with the deployed key (HTTP status, latency, prose, Taglish, and the agent's real intent-JSON prompt) before the switch; no paid model was added to the free group and no free → paid fallback was introduced (cost changes need operator approval).

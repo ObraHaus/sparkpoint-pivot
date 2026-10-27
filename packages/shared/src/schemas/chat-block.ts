@@ -8,7 +8,7 @@
  * JSON (never partially streamed), so a half-streamed action can't be acted on.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { Protocol } from "../policy/enums";
 import { ProposedActionSchema } from "./action";

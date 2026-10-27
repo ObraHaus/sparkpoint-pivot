@@ -10,7 +10,7 @@
  * happens OUTBOUND at `/submit-signed-tx`, never on an IntentBundle from here.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { ActionTypeSchema } from "./action";
 import { CitationSchema } from "./citation";
