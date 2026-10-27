@@ -23,6 +23,7 @@ from sparkpoint_agent.coordinator import (
     TextBlock,
     ToolStepBlock,
 )
+from sparkpoint_agent.db.limits import EVENT_VERDICTS
 
 OWNER = "0xabc0000000000000000000000000000000000001"
 WS = datetime(2026, 10, 26, 16, 0, tzinfo=UTC)
@@ -62,8 +63,10 @@ class _Limits:
         self.refunds.append((owner, metric, window))
         return 0
 
-    async def record_event(self, *_: Any, **__: Any) -> None:
-        return None
+    async def record_event(self, verdict: str, *_: Any, **__: Any) -> None:
+        # Mirror the real store / 0015 CHECK so an invalid verdict fails in tests (062).
+        if verdict not in EVENT_VERDICTS:
+            raise ValueError(f"unknown limits_event verdict {verdict!r}")
 
 
 class _RecordingSink:

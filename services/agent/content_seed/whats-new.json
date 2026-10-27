@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "quota-refund-audit-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Behind the scenes: failed answers keep returning your question",
+      "body": "When an AI answer fails because the provider is briefly unavailable, the question is returned to you as before. We fixed an internal bookkeeping issue so that refund is now recorded reliably instead of logging a false failure on our side. Nothing changes in how you use Sparky, and no answer, allowance or signed action is affected.",
+      "published_at": "2026-10-27T04:58:00Z"
+    },
+    {
       "slug": "chat-intent-routing-2026-10",
       "type": "changelog",
       "tag": "Fixed",

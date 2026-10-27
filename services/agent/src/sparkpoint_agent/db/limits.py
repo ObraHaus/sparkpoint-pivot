@@ -27,6 +27,10 @@ DEFAULT_TIER = "free"
 #: that grant it cannot drift apart.
 PREMIUM_TIER = "premium"
 METRICS = ("chat", "recs", "onboarding")
+#: Mirrors the ``limits_event.verdict`` CHECK in ``migrations/0015_limits.sql``. Kept in code so a
+#: misuse fails loudly (``record_event`` raises before the INSERT) instead of surfacing in prod as
+#: an asyncpg CheckViolationError only after a caller's prior work has already committed (062).
+EVENT_VERDICTS = ("allow", "deny", "throttle")
 
 _TIERS_SQL = (
     "SELECT tier, display_name, chat_daily_limit, recs_daily_limit, onboarding_daily_limit, "
@@ -372,6 +376,10 @@ class LimitsStore:
         subject: str | None,
         detail: dict[str, Any] | None = None,
     ) -> None:
+        if verdict not in EVENT_VERDICTS:
+            raise ValueError(
+                f"unknown limits_event verdict {verdict!r}; expected one of {EVENT_VERDICTS}"
+            )
         await self.db.execute(
             _EVENT_SQL, verdict, metric, tier, subject, json.dumps(detail or {}, ensure_ascii=False)
         )
