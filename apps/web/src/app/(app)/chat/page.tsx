@@ -68,6 +68,7 @@ import {
   rememberConversation,
 } from "@/lib/chat/lastConversation";
 import { AgentApiError } from "@/lib/agent/client";
+import { reduceTextDelta } from "@/lib/chat/streamText";
 import { turnCanRetry } from "@/lib/agent/chatError";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
@@ -109,6 +110,11 @@ type Turn =
       error?: string;
       /** §1.6 code — lets the renderer recognise an internal envelope (029). */
       errorCode?: string;
+      /** 059/A2 — provisional prose painted by `text-delta`; the final block replaces it. */
+      deltaText?: string;
+      deltaTarget?: "text" | "tip";
+      /** Changes when a retry starts, so the buffer resets instead of concatenating attempts. */
+      deltaStreamId?: string;
       /**
        * The message this turn was sent with, so "Try again" can resend it verbatim.
        *
@@ -797,14 +803,54 @@ export default function ChatPage() {
             }
             break;
           }
+          // 059/A2 — incremental prose paint. The final text/tip block still arrives below and
+          // REPLACES this buffer (guardrail rewrite / clamp / retry / fallback), so the persisted
+          // block — not anything streamed — is what the thread keeps.
+          if (typeof res.value !== "string") {
+            const delta = res.value;
+            patch((x) => {
+              const next = reduceTextDelta(
+                { text: x.deltaText ?? "", target: x.deltaTarget, streamId: x.deltaStreamId },
+                delta,
+              );
+              return {
+                ...x,
+                deltaText: next.text,
+                deltaTarget: next.target,
+                deltaStreamId: next.streamId,
+              };
+            });
+            continue;
+          }
           // Each SSE block is validated fail-closed (invalid → inert, never actionable).
           const card = parseCard(res.value);
-          patch((x) => ({ ...x, cards: [...x.cards, card] }));
+          // Only the authoritative PROSE block (or a failure) ends the provisional paint. A
+          // trailing `tool_step(done)` / citation must not blink the text away before the final
+          // `text` / `tip` block arrives.
+          const endsPaint =
+            card.status === "inert" ||
+            (card.status === "valid" &&
+              (card.block.type === "text" ||
+                card.block.type === "tip" ||
+                card.block.type === "error"));
+          patch((x) => ({
+            ...x,
+            cards: [...x.cards, card],
+            deltaText: endsPaint ? undefined : x.deltaText,
+            deltaTarget: endsPaint ? undefined : x.deltaTarget,
+            deltaStreamId: endsPaint ? undefined : x.deltaStreamId,
+          }));
         }
         // The user has moved on: the answer is persisted server-side and will be there when they
         // reopen the thread, but nothing about it belongs on the screen they are looking at now.
         if (!current()) return true;
-        patch((x) => ({ ...x, streaming: false }));
+        patch((x) => ({
+          ...x,
+          streaming: false,
+          deltaText: undefined,
+          deltaTarget: undefined,
+          deltaStreamId: undefined,
+        }));
         // 037 — suggest what to do NEXT, from what actually just happened. The scripted demo paths
         // had done this all along; a real turn left the starter chips up, so after being told
         // what was in your wallet the thread still offered "What's in my wallet?".
@@ -827,7 +873,16 @@ export default function ChatPage() {
         // 029: keep the CODE and the original message. The renderer replaces internal envelopes
         // with honest copy, and "Try again" resends without the user retyping.
         const errorCode = e instanceof AgentApiError ? e.code : undefined;
-        patch((x) => ({ ...x, streaming: false, error: message, errorCode }));
+        patch((x) => ({
+          ...x,
+          streaming: false,
+          error: message,
+          errorCode,
+          // A mid-stream failure NEVER leaves partial prose looking like an answer (056/059).
+          deltaText: undefined,
+          deltaTarget: undefined,
+          deltaStreamId: undefined,
+        }));
         return false;
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
@@ -1262,6 +1317,8 @@ export default function ChatPage() {
                     <LiveBlocks
                       cards={turn.cards}
                       streaming={turn.streaming}
+                      deltaText={turn.deltaText}
+                      deltaTarget={turn.deltaTarget}
                       error={turn.error}
                       errorCode={turn.errorCode}
                       // 041b — offered on BOTH failures now: a request that threw, and a turn

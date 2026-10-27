@@ -29,7 +29,7 @@ import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport"
 import { chatErrorCopy } from "@/lib/agent/chatError";
 import { tipLabel } from "@/lib/agent/tipLabel";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { planTranscript, type TranscriptItem } from "@/lib/chat/steps";
+import { planTranscript, shouldShowThinking, type TranscriptItem } from "@/lib/chat/steps";
 import { parseRichText } from "@/lib/chat/richText";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
 
@@ -262,6 +262,9 @@ export interface TurnFeedbackTarget {
 export interface LiveBlocksProps {
   cards: ChatCard[];
   streaming: boolean;
+  /** 059/A2 — provisional prose painted by `text-delta`; the final block replaces it. */
+  deltaText?: string;
+  deltaTarget?: "text" | "tip";
   /** Set when the stream failed pre-/mid-flight — rendered as a distinct ERROR state (029),
    * never as assistant prose. */
   error?: string;
@@ -279,7 +282,6 @@ export interface LiveBlocksProps {
   feedback?: TurnFeedbackTarget;
 }
 
-
 /**
  * When the current turn started.
  *
@@ -296,7 +298,19 @@ function useTurnStart(streaming: boolean): number {
   return startedAt;
 }
 
-export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onReview, onSign, onCite, feedback }: LiveBlocksProps) {
+export function LiveBlocks({
+  cards,
+  streaming,
+  deltaText,
+  deltaTarget,
+  error,
+  errorCode,
+  onRetry,
+  onReview,
+  onSign,
+  onCite,
+  feedback,
+}: LiveBlocksProps) {
   // 036 — when this turn started, so the waiting row can show a clock. Captured on the first render
   // in which the turn is streaming and held until it stops, so the count is of THIS turn rather
   // than of however long the component has been mounted.
@@ -322,7 +336,16 @@ export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onRevi
           <StepGroup key={i} entry={entry} cards={cards} />
         ),
       )}
-      {streaming && <ThinkingIndicator cards={items} startedAt={startedAt} />}
+      {/* 059/A2 — the answer is already painting, so the waiting row would just push it down;
+          it returns only if no prose has arrived yet (tool steps / retrieval still running). */}
+      {streaming && deltaText && (
+        <AnswerText markdown={deltaText} streaming streamTarget={deltaTarget} />
+      )}
+      {/* 059 fix — never flash the waiting row back under a final block while the stream winds
+          down (or after a fast route that never prose-streamed). */}
+      {shouldShowThinking(items, { streaming, hasDelta: !!deltaText }) && (
+        <ThinkingIndicator cards={items} startedAt={startedAt} />
+      )}
       {error && <TurnError message={error} code={errorCode} onRetry={onRetry} />}
       {!streaming && !error && feedback && items.some((i) => i.type === "text" || i.type === "recommendation") && (
         <TurnFeedback feedback={feedback} />
@@ -396,11 +419,25 @@ function TurnFeedback({ feedback }: { feedback: TurnFeedbackTarget }) {
  * into data and mapped to elements here: no HTML is ever interpreted, so model-authored text
  * cannot inject markup.
  */
-function AnswerText({ markdown }: { markdown: string }) {
+function AnswerText({
+  markdown,
+  streaming,
+  streamTarget,
+}: {
+  markdown: string;
+  streaming?: boolean;
+  streamTarget?: "text" | "tip";
+}) {
   const paragraphs = parseRichText(markdown);
   if (paragraphs.length === 0) return null;
   return (
-    <div className="ctext">
+    <div
+      className="ctext"
+      data-streaming={streaming ? "true" : undefined}
+      data-stream-target={streaming ? (streamTarget ?? "text") : undefined}
+      aria-live={streaming ? "off" : "polite"}
+      aria-busy={streaming ? "true" : undefined}
+    >
       {paragraphs.map((para, i) => (
         <p key={i} style={{ margin: i === 0 ? 0 : "0.7em 0 0" }}>
           {para.map((seg, j) => (seg.bold ? <strong key={j}>{seg.text}</strong> : <span key={j}>{seg.text}</span>))}
