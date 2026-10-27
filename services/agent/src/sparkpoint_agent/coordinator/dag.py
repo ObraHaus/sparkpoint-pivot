@@ -39,10 +39,16 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..agents import guardrail
-from ..agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, default_tip
+from ..agents.literacy import (
+    DEFAULT_TIPS,
+    FALLBACK_TOPIC,
+    Literacy,
+    TipCard,
+    default_tip,
+)
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
-from ..agents.sparky import Sparky
+from ..agents.sparky import Sparky, SparkyReply
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -70,6 +76,7 @@ from .chat_blocks import (
     ErrorBlock,
     PortfolioSnapshotBlock,
     PositionLite,
+    ProseDelta,
     RecommendationBlock,
     TextBlock,
     TipBlock,
@@ -370,6 +377,14 @@ class CoordinatorDag:
     # passage text feeds ONLY the prose agents (literacy/explainer) — NEVER propose/build/policy
     # (knowledge ↛ policy; the LEARN/OTHER branches that use it return before any candidate stage).
     knowledge: KnowledgeGrounder | None = None
+    #: 059/A2 — forward the final prose responder's text deltas as SSE ``text-delta`` events.
+    #: Default OFF for direct construction (unit tests keep the whole-block path); the production
+    #: wiring (:func:`api.chat.get_coordinator_dag`) sets it from ``SPARKY_STREAMING`` (default ON).
+    streaming: bool = False
+    #: 059/A3 — skip the planner for OBVIOUS read-only turns (portfolio / concept / greeting) when
+    #: a narrow deterministic pre-classifier can route them. Default OFF for direct construction;
+    #: production sets it from ``SPARKY_SINGLE_CALL`` (default ON). Never touches the 057 routes.
+    single_call: bool = False
 
     # -- stage 1: understand (LLM, NL only) -----------------------------------
 
@@ -454,6 +469,65 @@ class CoordinatorDag:
                 _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
         return _GENERAL_FAILURE, False
 
+    async def _stream_general_answer(
+        self,
+        message: str,
+        passages: tuple[Passage, ...],
+        *,
+        user: str | None,
+        memory_lines: Sequence[str] | None = None,
+    ) -> AsyncIterator[ProseDelta | _ProseResult]:
+        """Streaming counterpart to :meth:`_general_answer` (059/A2).
+
+        Yields :class:`ProseDelta` events as Sparky writes, then exactly one terminal
+        :class:`_ProseResult`. Retry semantics are IDENTICAL to the non-streaming path (one retry,
+        then an honest failure): a retry starts a NEW ``stream_id`` so the renderer resets its
+        partial text instead of appending attempt two to attempt one. The terminal answer is the
+        one the caller wraps in the final ``text`` block, so guardrails/clamps still win.
+        """
+        assert self.sparky is not None  # noqa: S101 — caller narrows
+        context = _format_grounding(passages) if passages else None
+        for attempt in (1, 2):
+            reply: SparkyReply | None = None
+            async for chunk in self.sparky.stream_reply(
+                message, context_hint=context, user=user, memory_lines=memory_lines
+            ):
+                if chunk.delta:
+                    yield ProseDelta(
+                        target="text", delta=chunk.delta, stream_id=f"general-{attempt}"
+                    )
+                elif chunk.reply is not None:
+                    reply = chunk.reply
+            if reply is not None and not reply.fell_back and reply.body:
+                yield _ProseResult(answer=reply.body, grounded=True, failed=False)
+                return
+            if attempt == 1:
+                _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
+        yield _ProseResult(answer=_GENERAL_FAILURE, grounded=False, failed=True)
+
+    async def _stream_tip(
+        self,
+        topic: str | None,
+        *,
+        context_hint: str | None,
+        user: str | None,
+    ) -> AsyncIterator[ProseDelta | TipCard]:
+        """Streaming counterpart to ``Literacy.tip`` (059/A2) — deltas, then the terminal card.
+
+        ``Literacy.stream_tip`` owns the one-retry behaviour and tags each delta with its attempt
+        number, so a retry becomes a new ``stream_id`` (client resets, never concatenates).
+        """
+        assert self.literacy is not None  # noqa: S101
+        async for chunk in self.literacy.stream_tip(
+            topic, context_hint=context_hint, user=user
+        ):
+            if chunk.delta:
+                yield ProseDelta(
+                    target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}"
+                )
+            elif chunk.card is not None:
+                yield chunk.card
+
     # -- stage 2: gather (portfolio + mandate reads) --------------------------
 
     async def gather(self, chain: ChainContext) -> Gathered:
@@ -515,8 +589,12 @@ class CoordinatorDag:
         surface: str = "chat",
         history: Sequence[tuple[str, str]] | None = None,
         memory_lines: Sequence[str] | None = None,
-    ) -> AsyncIterator[ChatBlock]:
+    ) -> AsyncIterator[ChatBlock | ProseDelta]:
         """Drive one /chat turn as a stream of §2.7 ChatBlocks (never a signable bundle).
+
+        059: when ``streaming`` is on, the prose branches additionally yield :class:`ProseDelta`
+        events BETWEEN the ``tool_step`` frames and the final ``text`` / ``tip`` block. Deltas are
+        transport-only (never persisted, never counted) and the final block is authoritative.
 
         Emits code-authored ``tool_step`` labels (summarized trace, never raw CoT), routes on
         the classified intent, and — for a proposal — surfaces only policy-cleared blocks. A
@@ -728,9 +806,13 @@ class CoordinatorDag:
             )
 
         yield ToolStepBlock("Understanding your request", "running")
-        intent = forced_intent or await self.understand(
-            message, surface=surface, user=user, history=history, memory_lines=memory_lines
-        )
+        intent = forced_intent
+        if intent is None and self.single_call:
+            intent = _fast_readonly_intent(message)
+        if intent is None:
+            intent = await self.understand(
+                message, surface=surface, user=user, history=history, memory_lines=memory_lines
+            )
         yield ToolStepBlock("Understanding your request", "done")
 
         if intent.refused:
@@ -741,7 +823,18 @@ class CoordinatorDag:
             yield ToolStepBlock("Explaining that", "running")
             passages = await self._ground(message)
             context = _format_grounding(passages) if passages else None
-            card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
+            card: TipCard | None = None
+            if self.streaming and hasattr(self.literacy, "stream_tip"):
+                async for tip_item in self._stream_tip(
+                    intent.topic, context_hint=context, user=user
+                ):
+                    if isinstance(tip_item, ProseDelta):
+                        yield tip_item
+                    else:
+                        card = tip_item
+            else:
+                card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
+            assert card is not None  # noqa: S101 — both paths yield exactly one terminal card
             yield ToolStepBlock("Explaining that", "done")
             # 029/FR-003 — a tip that degraded to the GENERIC line is not an answer to the
             # question that was asked. "Is the Aave vault safe?" came back as "SparkPoint is a
@@ -777,22 +870,43 @@ class CoordinatorDag:
             passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
-            answer, grounded = await self._general_answer(
-                message, passages, user=user, memory_lines=memory_lines
-            )
+            prose_answer: str = _GENERAL_FAILURE
+            grounded = False
+            failed = True
+            if (
+                self.streaming
+                and self.sparky is not None
+                and hasattr(self.sparky, "stream_reply")
+            ):
+                async for prose_item in self._stream_general_answer(
+                    message, passages, user=user, memory_lines=memory_lines
+                ):
+                    if isinstance(prose_item, ProseDelta):
+                        yield prose_item
+                    else:
+                        prose_answer, grounded, failed = (
+                            prose_item.answer,
+                            prose_item.grounded,
+                            prose_item.failed,
+                        )
+            else:
+                prose_answer, grounded = await self._general_answer(
+                    message, passages, user=user, memory_lines=memory_lines
+                )
+                failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
-            if answer is _GENERAL_FAILURE:
+            if failed:
                 # 029/FR-003: a degraded turn must LOOK degraded. An ERROR block renders as the
                 # inline error state with a retry affordance, and (unlike a text block) is not
                 # persisted into the transcript — so a reopened conversation shows no phantom
                 # answer where the model never produced one.
-                yield ErrorBlock("UPSTREAM_UNAVAILABLE", answer)
+                yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            yield TextBlock(answer)
+            yield TextBlock(prose_answer)
             # Cite ONLY when the grounded answer actually came from the model AND actually
             # answered. A fallback is not grounded in those passages, and neither is a refusal
             # (029/FR-014) — citing either would claim a provenance the text does not have.
-            if passages and grounded and not _is_decline(answer):
+            if passages and grounded and not _is_decline(prose_answer):
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
@@ -1587,6 +1701,94 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
         "I couldn't build that action right now — it may not clear your guardrails, or a fresh "
         "read didn't line up. Try again in a moment, or ask me to explain the options."
     )
+
+
+@dataclass(frozen=True)
+class _ProseResult:
+    """059 — the terminal outcome of a streamed prose turn (deltas were already yielded).
+
+    ``failed`` mirrors the ``answer is _GENERAL_FAILURE`` signal: the caller emits an ERROR block
+    (never prose) and the partial text already sent is replaced/discarded by the client.
+    """
+
+    answer: str
+    grounded: bool
+    failed: bool
+
+
+#: 059/A3 — OBVIOUS read-only portfolio questions, answered from the fresh read with NO model
+#: call. Deliberately narrow and only consulted AFTER every 057 deterministic route, so guidance,
+#: refusals, swaps and proposals keep their exact current behaviour.
+_PORTFOLIO_FAST_RE = re.compile(
+    r"\b(?:my|our)\s+(?:portfolio|holdings|positions|balance|wallet|pnl)\b|"
+    r"\bwhat(?:'s|s| is| are)?\s+(?:in\s+)?(?:my|our)\s+(?:wallet|portfolio|account)\b|"
+    r"\bshow\s+(?:me\s+)?(?:my|our)\s+(?:portfolio|wallet|holdings|positions|balance)\b|"
+    r"\bhow\s+much\s+(?:do\s+i|have\s+i|usdc|money)\b|"
+    r"\bwhat\s+do\s+i\s+(?:own|have)\b",
+    re.IGNORECASE,
+)
+
+#: A command/action verb means "let the planner decide" — never route it to a read-only answer.
+_FAST_BLOCKING_ACTION_RE = re.compile(
+    r"\b(?:deposit|withdraw|redeem|swap|send|transfer|pay|buy|sell|stake|unstake|supply|borrow|"
+    r"bridge|invest|move)\b",
+    re.IGNORECASE,
+)
+
+#: 059/A3 — question shapes whose answer is prose (concept/knowledge). The negative lookahead on
+#: "how do" keeps first-person commands ("how do I deposit?") on the planner path.
+_LEARN_FAST_RE = re.compile(
+    r"^(?:what\s+(?:is|are|'s|s)|explain|define|tell\s+me\s+about|how\s+does|"
+    r"how\s+do(?:es)?\s+(?!i\b|my\b|we\b)\w*(?:\s+\w+)*?\s+work|"
+    r"why\s+(?:is|are|does|do))\b",
+    re.IGNORECASE,
+)
+
+#: 059/A3 — short greetings/identity turns: Sparky can answer them directly (one prose call).
+_GREETING_FAST_RE = re.compile(
+    r"^(?:hi|hello|hey|hiya|yo|good\s+(?:morning|afternoon|evening)|who\s+are\s+you|"
+    r"what\s+are\s+you|what\s+can\s+you\s+do|what\s+do\s+you\s+do|how\s+can\s+you\s+help|"
+    r"help)\b[\s!?.,]*$",
+    re.IGNORECASE,
+)
+
+
+def _topic_slug(text: str) -> str:
+    """A stable, human-readable topic key for a pre-classified concept question.
+
+    ``topic`` is a routing/display key (the web humanises it), not copy. Dropping the question
+    words keeps it close to the planner's own slugs ("what is APY?" → ``apy``), which also lets
+    :func:`default_tip` key its pre-written fallback correctly.
+    """
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    stop = {
+        "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
+        "about", "how", "does", "do", "why", "of", "to", "in", "work", "works",
+    }
+    kept = [w for w in words if w not in stop][:8]
+    return "_".join(kept) or FALLBACK_TOPIC
+
+
+def _fast_readonly_intent(message: str) -> Intent | None:
+    """059/A3 — a deterministic intent for an OBVIOUS read-only turn, else ``None``.
+
+    This is a latency widening of the pre-classifier, not a new authority: it can only ever return
+    PORTFOLIO / LEARN / OTHER, and it runs AFTER every 057 deterministic route (unsafe refusal,
+    unsupported swap, confirmations, bridge, what's-new, exit, safety, yield guidance, curated,
+    direct fees/APY, withdraw-all). A command shape, or any action verb, stays with the planner.
+    """
+    text = message.strip()
+    if not text:
+        return None
+    if _PORTFOLIO_FAST_RE.search(text):
+        if _FAST_BLOCKING_ACTION_RE.search(text):
+            return None
+        return Intent(kind=IntentKind.PORTFOLIO)
+    if _GREETING_FAST_RE.match(text):
+        return Intent(kind=IntentKind.OTHER)
+    if _LEARN_FAST_RE.match(text) and len(text) <= 240:
+        return Intent(kind=IntentKind.LEARN, topic=_topic_slug(text))
+    return None
 
 
 class _Refused(Exception):

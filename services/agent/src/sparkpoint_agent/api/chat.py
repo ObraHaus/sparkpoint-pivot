@@ -51,7 +51,12 @@ from ..agents.recommender import Recommender
 from ..agents.sparky import Sparky
 from ..chain import VaultReader, VaultUnavailable
 from ..chain.faucet_probe import FaucetProbe
-from ..config import AgentConfig
+from ..config import (
+    SPARKY_SINGLE_CALL_ENV,
+    SPARKY_STREAMING_ENV,
+    AgentConfig,
+    env_flag,
+)
 from ..coordinator import (
     ChainContext,
     ChatBlock,
@@ -60,6 +65,7 @@ from ..coordinator import (
     MandateProvider,
     PortfolioView,
     PositionLite,
+    ProseDelta,
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
@@ -93,10 +99,14 @@ from .vault import get_account, get_vault_reader
 
 router = APIRouter(tags=["chat"])
 
-# The §3.2 SSE content type + the two event names the frontend seam consumes.
+# The §3.2 SSE content type + the event names the frontend seam consumes.
 SSE_MEDIA_TYPE = "text/event-stream"
 _EVENT_BLOCK = "block"
 _EVENT_DONE = "done"
+#: 059/A2 — incremental prose deltas. ADDITIVE: the final ``block`` event still carries the whole
+#: ``text`` / ``tip`` block for compatibility + persistence, so a client that ignores this event
+#: (or a proxy that drops it) behaves exactly as before.
+_EVENT_TEXT_DELTA = "text-delta"
 
 # The surfaces the web tier may hint (§3.2). ``chat`` is the default; the hint only tunes
 # the planner's NL understanding — it never grants authority or changes the safety path.
@@ -530,6 +540,12 @@ def get_coordinator_dag(
         # answers FROM the second brain (with citations). Same instance as the citation retriever;
         # None ⇒ ungrounded prose. Passage text never reaches the policy/action path.
         knowledge=retriever,
+        # 059 — latency switches, default ON for the beta. Both are ADVISORY only: streaming can
+        # never create a sign path (deltas are plain text, the final block is still the only
+        # persisted answer), and the fast pre-classifier can only route read-only intents that
+        # were already answered without an action. Set to 0 to restore the exact pre-059 path.
+        streaming=env_flag(SPARKY_STREAMING_ENV, default=True),
+        single_call=env_flag(SPARKY_SINGLE_CALL_ENV, default=True),
     )
 
 
@@ -905,6 +921,14 @@ async def _event_stream(
         async for block in dag.run_chat(
             message, chain, surface=surface, history=history, memory_lines=memory_lines
         ):
+            if isinstance(block, ProseDelta):
+                # Transport-only paint: NOT counted, NOT persisted, NOT summarized. The final
+                # text/tip block that follows is authoritative and replaces whatever was painted.
+                yield _sse(
+                    _EVENT_TEXT_DELTA,
+                    {"target": block.target, "delta": block.delta, "streamId": block.stream_id},
+                )
+                continue
             count += 1
             wire = block.to_wire()
             block_type = wire.get("type")
@@ -1013,7 +1037,7 @@ async def chat(
         stream,
         media_type=SSE_MEDIA_TYPE,
         # Keep proxies/browsers from buffering or caching the token-by-token stream.
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
