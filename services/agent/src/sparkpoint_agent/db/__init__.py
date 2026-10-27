@@ -15,6 +15,7 @@ from .allowlist import (
     parse_allowlist_env,
 )
 from .analytics import AnalyticsStore, build_funnel, pseudonymize
+from .chat_feedback import ChatFeedbackStore
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .content_entries import ContentEntryStore
 from .executions import ExecutionRow, ExecutionStore
@@ -54,6 +55,7 @@ __all__ = [
     "AnalyticsStore",
     "BundleInsert",
     "BundleRow",
+    "ChatFeedbackStore",
     "ContentEntryStore",
     "Database",
     "ExecutionRow",

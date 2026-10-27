@@ -75,6 +75,25 @@ def test_unsupported_chain_rejected(client: TestClient) -> None:
     assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
 
 
+def test_brokers_owned_degrades_to_200_instead_of_400_without_identity(
+    client: TestClient,
+) -> None:
+    """061 A9 — an advisory gallery read answers "unavailable", it does not paint the console red.
+
+    Auth is still required (the token is present); only the optional identity parse is softened.
+    """
+    resp = client.get("/brokers/owned", headers={"Authorization": f"Bearer {TOKEN}"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["reason"] == "no-account"
+    assert body["tokenIds"] == []
+
+
+def test_brokers_owned_still_requires_auth(client: TestClient) -> None:
+    assert client.get("/brokers/owned").status_code == 401
+
+
 def test_valid_auth_passes_the_gate(client: TestClient) -> None:
     # No router mounted yet → a 404 from routing, NOT a 401/400 from the gate.
     resp = client.get("/api/v1/anything", headers=GOOD_HEADERS)

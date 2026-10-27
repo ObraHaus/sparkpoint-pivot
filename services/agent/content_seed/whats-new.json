@@ -10,20 +10,20 @@
       "published_at": "2026-10-27T16:00:00Z"
     },
     {
-      "slug": "chat-streaming-2026-10",
-      "type": "changelog",
-      "tag": "Improved",
-      "title": "Sparky now types its answers as it thinks",
-      "body": "Sparky now types its answers as it thinks, so replies start appearing in about a second instead of after the whole answer is ready. Questions about your portfolio, what's new, fees and the live vault rate are now answered without waiting on a second AI step, and the reply still arrives complete and checked before it is saved to your history. If a reply has to be replaced for safety, the replacement is what you see and what is kept. Nothing about signing or your funds changes: Sparky still only prepares moves for you to review and sign.",
-      "published_at": "2026-10-27T15:00:00Z"
-    },
-    {
       "slug": "sparky-quality-checks-2026-10",
       "type": "changelog",
       "tag": "Improved",
       "title": "Sparky gets a nightly quality check",
       "body": "Every night we now run Sparky through more than 70 real questions, including tricky and adversarial ones, and check that its answers stay accurate, grounded and safe. Changes to how Sparky thinks are checked against the same set before they ship, so fixes stay fixed.",
       "published_at": "2026-10-27T15:30:00Z"
+    },
+    {
+      "slug": "chat-streaming-2026-10",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky now types its answers as it thinks",
+      "body": "Sparky now types its answers as it thinks, so replies start appearing in about a second instead of after the whole answer is ready. Questions about your portfolio, what's new, fees and the live vault rate are now answered without waiting on a second AI step, and the reply still arrives complete and checked before it is saved to your history. If a reply has to be replaced for safety, the replacement is what you see and what is kept. Nothing about signing or your funds changes: Sparky still only prepares moves for you to review and sign.",
+      "published_at": "2026-10-27T15:00:00Z"
     },
     {
       "slug": "chat-dead-ends-2026-10",
@@ -56,6 +56,14 @@
       "title": "Sparky chat is back — and a failed answer no longer costs a question",
       "body": "Free chat is working again after the model provider retired the models Sparky was using. Sparky now has extra models on different providers behind the scenes, so if one is busy or unavailable it tries another before giving up. If a turn still fails because the AI provider is unavailable, it no longer counts against your daily chat, recommendations, or onboarding allowance — you keep the question. Successful turns work exactly as before.",
       "published_at": "2026-10-27T02:25:56Z"
+    },
+    {
+      "slug": "ux-quick-fixes-2026-10",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A calmer app: no pop-up blocking you, and helpful dead ends",
+      "body": "The What's New note no longer covers the app while you are trying to use it — it is now a small panel you can dismiss, and it only greets you once per release. The Strategies tab is hidden while there are no strategies to show, rather than leading to an empty page. On phones the header is tidier, and the trust banner can be dismissed for good. The vault page now refreshes every minute instead of constantly, so it uses much less data and battery. In chat, a slow answer now says Sparky is taking longer than usual, and a failed or rate-limited turn explains when your allowance resets and points you to the Vault, Swap and changelog, which keep working without Sparky. You can now rate a chat answer with a thumbs up or down; the rating is stored so it can improve answers. Signing in also no longer waits forever if the assistant is briefly unreachable — you continue straight to the app.",
+      "published_at": "2026-10-26T09:00:00Z"
     },
     {
       "slug": "embedding-retry-2026-10",
