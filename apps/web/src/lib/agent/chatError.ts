@@ -81,8 +81,15 @@ export function chatErrorCopy(
   code?: ChatErrorCode,
 ): ChatErrorView {
   if (code === "RATE_LIMITED") {
+    // 061 A9 — a bare "limit reached" is a dead end. Say when it clears and what still works
+    // WITHOUT the assistant: the vault, swap and changelog are ordinary app surfaces, not
+    // assistant calls, so they keep working while chat is paused.
+    const base = (message ?? "").trim() || "You've reached today's limit for the assistant.";
     return {
-      message: (message ?? "").trim() || "You've reached today's limit for the assistant.",
+      message:
+        `${base} Your allowance resets within 24 hours (midnight in Asia/Manila). ` +
+        "While you wait, you can still use the Vault and Swap pages, review your Portfolio, " +
+        "and read what changed at /changelog — none of those need Sparky.",
       retryable: false,
     };
   }
@@ -96,7 +103,8 @@ export function chatErrorCopy(
     return {
       message:
         "Something on our side stopped that message going through — nothing was signed or " +
-        "changed. Try again in a moment.",
+        "changed. Try again in a moment. The Vault, Swap and Portfolio pages keep working " +
+        "without Sparky, and any shipped changes are listed at /changelog.",
       retryable: true,
     };
   }

@@ -128,12 +128,18 @@ class _FakeChainProvider:
 
 class _RecordingSink:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[tuple[str, str, str, str | None]] = []
 
     async def record(
-        self, *, conversation_id: str, block_id: str, rating: str, account: AccountContext
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
     ) -> None:
-        self.calls.append((conversation_id, block_id, rating))
+        self.calls.append((conversation_id, block_id, rating, reason))
 
 
 def _seq_ids() -> Any:
@@ -458,7 +464,25 @@ def test_feedback_records_and_returns_204(client: TestClient) -> None:
     )
     assert resp.status_code == 204
     assert resp.content == b""
-    assert sink.calls == [("cnv_1", "rec_1", "up")]
+    assert sink.calls == [("cnv_1", "rec_1", "up", None)]
+
+
+def test_feedback_accepts_an_optional_reason(client: TestClient) -> None:
+    """061 A9 — the rating is the signal; a reason is optional and must round-trip intact."""
+    sink = _RecordingSink()
+    app.dependency_overrides[get_feedback_sink] = lambda: sink
+    resp = client.post(
+        "/chat/feedback",
+        json={
+            "conversationId": "cnv_1",
+            "blockId": "msg_7",
+            "rating": "down",
+            "reason": "too vague",
+        },
+        headers=GOOD_HEADERS,
+    )
+    assert resp.status_code == 204
+    assert sink.calls == [("cnv_1", "msg_7", "down", "too vague")]
 
 
 def test_feedback_bad_rating_is_validation_error(client: TestClient) -> None:

@@ -252,6 +252,13 @@ function ToolStepRow({ label, status }: { label: string; status: "running" | "do
   );
 }
 
+/** 061 A9 — the ids needed to persist a rating for THIS assistant turn. */
+export interface TurnFeedbackTarget {
+  conversationId: string;
+  messageId: string;
+  onRate: (rating: "up" | "down", reason?: string) => void;
+}
+
 export interface LiveBlocksProps {
   cards: ChatCard[];
   streaming: boolean;
@@ -268,6 +275,8 @@ export interface LiveBlocksProps {
   onSign: (action: ProposedAction) => void;
   /** Open the citation source sheet. */
   onCite: () => void;
+  /** Persist a thumbs rating on a finished answer (061 A9). Omitted when not signed in. */
+  feedback?: TurnFeedbackTarget;
 }
 
 
@@ -287,7 +296,7 @@ function useTurnStart(streaming: boolean): number {
   return startedAt;
 }
 
-export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onReview, onSign, onCite }: LiveBlocksProps) {
+export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onReview, onSign, onCite, feedback }: LiveBlocksProps) {
   // 036 — when this turn started, so the waiting row can show a clock. Captured on the first render
   // in which the turn is streaming and held until it stops, so the count is of THIS turn rather
   // than of however long the component has been mounted.
@@ -315,7 +324,66 @@ export function LiveBlocks({ cards, streaming, error, errorCode, onRetry, onRevi
       )}
       {streaming && <ThinkingIndicator cards={items} startedAt={startedAt} />}
       {error && <TurnError message={error} code={errorCode} onRetry={onRetry} />}
+      {!streaming && !error && feedback && items.some((i) => i.type === "text" || i.type === "recommendation") && (
+        <TurnFeedback feedback={feedback} />
+      )}
     </>
+  );
+}
+
+/**
+ * 061 A9 — thumbs on a finished answer.
+ *
+ * It used to exist only on the mock cards and kept its state in the page, so a real answer could
+ * not be rated at all. The rating is POSTed (idempotent per user+message server-side); the button
+ * state is optimistic and reverts if the write fails, because a lit thumb that was never recorded
+ * is the same lie as no button at all.
+ */
+function TurnFeedback({ feedback }: { feedback: TurnFeedbackTarget }) {
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function rate(next: "up" | "down") {
+    if (busy) return;
+    const previous = rating;
+    setRating(next);
+    setFailed(false);
+    setBusy(true);
+    try {
+      await feedback.onRate(next);
+    } catch {
+      setRating(previous);
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="feedback" data-testid="turn-feedback">
+      <button
+        className={"fbtn" + (rating === "up" ? " on" : "")}
+        aria-label="This answer was helpful"
+        aria-pressed={rating === "up"}
+        onClick={() => void rate("up")}
+        type="button"
+      >
+        <Icon name="up" size={15} />
+      </button>
+      <button
+        className={"fbtn" + (rating === "down" ? " on" : "")}
+        aria-label="This answer was not helpful"
+        aria-pressed={rating === "down"}
+        onClick={() => void rate("down")}
+        type="button"
+      >
+        <Icon name="down" size={15} />
+      </button>
+      <span style={{ fontSize: 11.5, color: "var(--muted-foreground)", alignSelf: "center" }}>
+        {failed ? "Couldn't save that rating — try again" : rating ? "Thanks — saved" : "Was this helpful?"}
+      </span>
+    </div>
   );
 }
 

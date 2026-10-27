@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed / Fixed (A9 UX quick fixes — 061)
+
+- **What's New no longer blocks the app.** It is a dismissible corner panel rather than a full-screen modal with a scrim, and "once per release" is keyed to the newest changelog entry's slug in localStorage (so it survives re-seeds that renumber rows). The stale 2026-10-06 broker-mint-whitelist seed entry is pruned by seed ingest (`services/agent/content_seed/whats-new.json`).
+- **`GET /brokers/owned` answers instead of 400ing.** A missing or unsupported chain identity now returns `200 {available:false, reason:"no-account"}` (auth unchanged; unreadable chain still says `chain-unreadable`, never an empty list), and the browser sends `X-Chain-Id` on the normal path.
+- **No recommendation 404s.** The web only asks for recommendations once a mandate exists (the agent correctly 404s without one), and a race/404 is treated as an empty state.
+- **`/vault` stops polling forever.** Vault reads poll every 60s (not every few seconds), never in a hidden tab, back off exponentially on failure, and stop after five consecutive failures; a manual refetch still works.
+- **Strategies is hidden when there is nothing to rank.** The desktop and mobile primary navs drop it only on a known-empty result; it stays deep-linkable and in ⌘K.
+- **Phone header and trust banner.** At phone widths the header keeps the mark, notifications and account (address/network/self-custody/stage collapse into the existing menus), and the trust banner can be dismissed permanently.
+- **Chat slow state, BFF deadline and retry.** With no first content after ~8s the waiting row says "Sparky is taking longer than usual…"; the BFF chat proxy closes a stalled turn at 60s with a clean `error` block; the existing Retry resends the message. Agent refund semantics mean a failed turn does not double-charge.
+- **Rate-limit/error copy is no longer a dead end.** It says when the allowance resets and points at Vault, Swap, Portfolio and `/changelog` — all of which work without Sparky.
+- **Thumbs feedback now persists.** Finished live answers offer up/down, POSTed to `/chat/feedback` with an optional reason. Migration `0043_chat_feedback` stores one row per user+message (idempotent upsert); the sink is fail-open.
+
 ### Fixed (chat dead-ends — beta audit, 057)
 
 - **An empty wallet asking how to earn gets a real answer, not the guardrails dead-end.** With no mandate and no positions, "What's the best way to earn with my USDC?", "I have 2,000 USDC and want moderate risk.", "hw mch can i earn w 10k usdc in 1 yr", "Compare that with just keeping it in Aave.", "What would I earn in 6 months?" and the "what if I only put half?" follow-up now answer from the curated board (stored net APY + as-of), give a clearly labelled estimate when an amount/duration is known (using the previous amount from conversation history when the turn omits it), compare against the underlying Aave rate, and point at funding the wallet, `/vault`, and an optional mandate. NEAR/Rhea yield is named as unsupported (NEAR support is coming). The old guardrails copy now appears only when a **real mandate** excludes every candidate, and it explains what to adjust; cap rejections get their own reason. (`coordinator/guidance.py`, `coordinator/dag.py`)

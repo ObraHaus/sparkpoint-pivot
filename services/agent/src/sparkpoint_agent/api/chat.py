@@ -63,7 +63,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
-from ..db import LimitsStore, get_database
+from ..db import ChatFeedbackStore, LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
 from ..db.curated_vaults import APPROVED, PgCurationStore
@@ -150,8 +150,11 @@ class FeedbackRequest(BaseModel):
     """§3.2 ``POST /chat/feedback`` body — a thumbs signal on one streamed block."""
 
     conversationId: str
+    #: 061 A9 — the stable id of the ANSWER being rated. Historically called ``blockId``; kept on
+    #: the wire for compatibility, but the client now sends one per assistant turn.
     blockId: str
     rating: Literal["up", "down"]
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -173,10 +176,16 @@ class ChatChainProvider(Protocol):
 
 
 class FeedbackSink(Protocol):
-    """Persists a thumbs signal (FR feedback). The default is a no-op until the DB is wired."""
+    """Persists a thumbs signal (FR feedback). The production sink is Pg-backed and fail-open."""
 
     async def record(
-        self, *, conversation_id: str, block_id: str, rating: str, account: AccountContext
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
     ) -> None: ...
 
 
@@ -205,12 +214,56 @@ class _VaultChatChainProvider:
 
 
 class _NoopFeedbackSink:
-    """Default :class:`FeedbackSink` — accepts + drops the signal until persistence is wired."""
+    """A :class:`FeedbackSink` that accepts + drops the signal (tests / explicitly disabled)."""
 
     async def record(
-        self, *, conversation_id: str, block_id: str, rating: str, account: AccountContext
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
     ) -> None:
         return None
+
+
+class _PgFeedbackSink:
+    """061 A9 — persist the rating on ``(owner, message)``, fail-open.
+
+    Feedback is product telemetry. A DB blip or an unapplied migration must never turn a thumbs tap
+    into a failed request, so the store's error is logged once and swallowed.
+    """
+
+    def __init__(self, store: ChatFeedbackStore) -> None:
+        self._store = store
+
+    async def record(
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
+    ) -> None:
+        try:
+            await self._store.record(
+                owner_eoa=account.owner,
+                conversation_id=conversation_id,
+                message_id=block_id,
+                rating=rating,
+                reason=reason,
+            )
+        except Exception:
+            global _warned_feedback_failure
+            if not _warned_feedback_failure:
+                _warned_feedback_failure = True
+                _logger.warning(
+                    "chat_feedback_write_failed: thumbs ratings are NOT being persisted "
+                    "(missing migration 0043, or a DB error). Fail-open — the tap still succeeds.",
+                    exc_info=True,
+                )
 
 
 def _fmt_units(raw: int, decimals: int) -> str:
@@ -542,9 +595,20 @@ def get_chain_provider(
     return _VaultChatChainProvider(reader, config)
 
 
+_warned_feedback_failure = False
+
+
 def get_feedback_sink() -> FeedbackSink:
-    """The thumbs-feedback persistence seam (overridden in tests)."""
-    return _NoopFeedbackSink()
+    """The thumbs-feedback persistence seam (Pg-backed, fail-open; overridden in tests).
+
+    Constructing the DB-backed store can itself fail when the database is not configured. That must
+    not turn into an error on the request (and FastAPI resolves dependencies before body
+    validation), so an unusable store degrades to the no-op sink.
+    """
+    try:
+        return _PgFeedbackSink(ChatFeedbackStore(get_database()))
+    except Exception:
+        return _NoopFeedbackSink()
 
 
 _logger = logging.getLogger(__name__)
@@ -1033,5 +1097,6 @@ async def chat_feedback(
         block_id=body.blockId,
         rating=body.rating,
         account=account,
+        reason=body.reason,
     )
     return Response(status_code=204)

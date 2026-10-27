@@ -20,11 +20,10 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from ..chain.broker_ledger import BrokerLedger, build_broker_ledger_from_env
 from .security import AccountContext
-from .vault import get_account
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +44,20 @@ def get_ledger() -> BrokerLedger | None:
     return _ledger
 
 
+def get_optional_account(request: Request) -> AccountContext | None:
+    """The caller's scoping identity, or ``None`` when it could not be parsed.
+
+    `/brokers/owned` is an advisory gallery read. Auth is still enforced by the middleware; this
+    only lets an unsupported chain or a missing chain header answer ``available: false`` instead
+    of a 400 that every broker surface would then log as a broken network call (061 A9).
+    """
+    account = getattr(request.state, "account", None)
+    return account if isinstance(account, AccountContext) else None
+
+
 @router.get("/brokers/owned")
 async def owned(
-    account: Annotated[AccountContext, Depends(get_account)],
+    account: Annotated[AccountContext | None, Depends(get_optional_account)],
 ) -> dict[str, Any]:
     """Token ids the CALLER holds. Scoped to the authenticated wallet — never a query parameter.
 
@@ -58,6 +68,10 @@ async def owned(
     ``broker_gate`` already key on. Using a different one here would let the gallery and the Premium
     badge disagree about the same holder.
     """
+    if account is None:
+        # No identity to scope by: never an empty list (that would read as "you own nothing").
+        return {"available": False, "reason": "no-account", "tokenIds": []}
+
     ledger = get_ledger()
     if ledger is None:
         return {"available": False, "reason": "unconfigured", "tokenIds": []}
