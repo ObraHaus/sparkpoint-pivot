@@ -28,10 +28,12 @@ logged — this module emits no logs and keeps the token inside the SDK object
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+import time
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -52,7 +54,15 @@ from .claude import (
     gateway_from_env,
     resolve_effort,
 )
-from .resilience import Limiter, RetryPolicy, call_with_resilience
+from .resilience import (
+    GLOBAL_LIMITER,
+    Limiter,
+    RetryPolicy,
+    backoff_delay,
+    call_with_resilience,
+    is_retryable,
+    retry_after_seconds,
+)
 
 # Async agents produce small structured/prose outputs, so the async path uses a
 # single non-streaming ``create`` (the large-output streaming path stays in the sync
@@ -216,6 +226,29 @@ class _OAIMessage:
     stop_details: Any = None
 
 
+@dataclass(frozen=True)
+class GatewayStreamPiece:
+    """One parsed OpenAI-compatible streaming chunk (transport-level, credential-free)."""
+
+    delta: str | None = None
+    finish_reason: str | None = None
+    usage: _OAIUsage | None = None
+
+
+@dataclass(frozen=True)
+class StreamChunk:
+    """One event from :meth:`AsyncClaudeClient.stream_complete`.
+
+    Exactly one of ``delta`` / ``result`` is set. Deltas are incremental prose the caller may
+    forward immediately; the terminal ``result`` carries the SAME full text, the stop reason and
+    usage, so the caller can run its post-processing (guardrails, clamps, refusal checks) on the
+    complete answer before persisting or rendering it as the authoritative block.
+    """
+
+    delta: str | None = None
+    result: LlmResult | None = None
+
+
 def _oai_messages(
     system: list[dict[str, Any]], messages: list[dict[str, Any]]
 ) -> list[dict[str, str]]:
@@ -257,6 +290,37 @@ class OpenAICompatTransport:
     timeout: float = 120.0
     client: httpx.AsyncClient | None = field(default=None, repr=False)  # injectable for tests
 
+    def _payload(
+        self,
+        *,
+        system: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        max_tokens: int,
+        user: str | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            # Per-request tier override (premium routing) if set, else the configured alias.
+            "model": current_model_alias() or self.model,
+            "messages": _oai_messages(system, messages),
+            "max_tokens": max_tokens,
+        }
+        if user:
+            payload["user"] = user
+        if stream:
+            payload["stream"] = True
+            # Ask the gateway for the terminal usage frame. Without it a streamed turn would
+            # report zero tokens (billing/observability drift); connectors that ignore the
+            # field simply omit it, and `stream_complete` tolerates a missing usage.
+            payload["stream_options"] = {"include_usage": True}
+        return payload
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    def _url(self) -> str:
+        return self.base_url.rstrip("/") + "/chat/completions"
+
     async def create(
         self,
         *,
@@ -268,16 +332,11 @@ class OpenAICompatTransport:
         extra_body: Mapping[str, Any],  # noqa: ARG002 — Anthropic thinking/effort dropped here
         user: str | None = None,
     ) -> Any:
-        payload: dict[str, Any] = {
-            # Per-request tier override (premium routing) if set, else the configured alias.
-            "model": current_model_alias() or self.model,
-            "messages": _oai_messages(system, messages),
-            "max_tokens": max_tokens,
-        }
-        if user:
-            payload["user"] = user
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        url = self.base_url.rstrip("/") + "/chat/completions"
+        payload = self._payload(
+            system=system, messages=messages, max_tokens=max_tokens, user=user, stream=False
+        )
+        headers = self._headers()
+        url = self._url()
         try:
             if self.client is not None:
                 resp = await self.client.post(url, json=payload, headers=headers)
@@ -302,6 +361,72 @@ class OpenAICompatTransport:
                 output_tokens=int(usage.get("completion_tokens") or 0),
             ),
         )
+
+    async def stream(
+        self,
+        *,
+        system: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        max_tokens: int,
+        user: str | None = None,
+    ) -> AsyncIterator[GatewayStreamPiece]:
+        """Open an SSE ``stream=true`` completion and yield text deltas as they arrive.
+
+        Only the OpenAI-compatible gateway path streams (the Anthropic transport falls back to a
+        whole-message ``create`` in :meth:`AsyncClaudeClient.stream_complete`). Errors map to the
+        same :class:`GatewayError` shapes as ``create`` so resilience/refund semantics are
+        identical; the virtual key never appears in an exception or a log line. A gateway that
+        rejects the stream request (e.g. an endpoint without SSE support) raises a non-retryable
+        4xx, and the client falls back to the non-streaming path rather than failing the turn.
+        """
+        payload = self._payload(
+            system=system, messages=messages, max_tokens=max_tokens, user=user, stream=True
+        )
+        headers = self._headers()
+        url = self._url()
+        client = self.client or httpx.AsyncClient(timeout=self.timeout)
+        owns_client = self.client is None
+        try:
+            async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    # Drain so the connection can close; never echo the body (may contain request).
+                    await resp.aread()
+                    raise GatewayError(resp.status_code)
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue  # blank keep-alives / `event:` lines
+                    data = line[len("data:") :].strip()
+                    if data == "[DONE]":
+                        break
+                    if not data:
+                        continue
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue  # a malformed keep-alive frame must not kill the stream
+                    usage_raw = event.get("usage")
+                    usage = (
+                        _OAIUsage(
+                            input_tokens=int(usage_raw.get("prompt_tokens") or 0),
+                            output_tokens=int(usage_raw.get("completion_tokens") or 0),
+                        )
+                        if isinstance(usage_raw, dict)
+                        else None
+                    )
+                    choice = (event.get("choices") or [{}])[0]
+                    delta = (choice.get("delta") or {}).get("content")
+                    finish = choice.get("finish_reason")
+                    if delta or finish or usage is not None:
+                        yield GatewayStreamPiece(
+                            delta=str(delta) if delta else None,
+                            finish_reason=str(finish) if finish else None,
+                            usage=usage,
+                        )
+        except httpx.HTTPError:
+            raise GatewayError(529, "network") from None
+        finally:
+            if owns_client:
+                await client.aclose()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -572,6 +697,127 @@ class AsyncClaudeClient:
             limiter=self.limiter,
         )
         return normalize_message(msg)
+
+    # -- public: one streamed prose turn (text deltas + terminal result) ------
+
+    async def stream_complete(
+        self,
+        *,
+        system: str,
+        messages: Sequence[Mapping[str, Any]],
+        role: AgentRole | None = None,
+        effort: Effort | None = None,
+        thinking: bool = True,
+        tools: Sequence[Mapping[str, Any]] | None = None,
+        max_tokens: int = DEFAULT_PROSE_MAX_TOKENS,
+        user: str | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Like :meth:`complete`, but yield text deltas as the model produces them.
+
+        Used ONLY by the final prose responders (Sparky / literacy) so the first sentence can reach
+        the user while the rest is still generating. The terminal :class:`StreamChunk` carries the
+        SAME full text as a normal :meth:`complete` result, so every caller-side post-processing
+        step (``is_unusable`` guard, ``MAX_CHARS`` clamp, refusal check, fallback) runs on the
+        COMPLETE text and its final block is authoritative — see ``agents/sparky.stream_reply``.
+
+        Failure semantics are deliberately split, because a half-emitted stream cannot be retried
+        without duplicating text:
+
+        * **Before the first delta** — retry 429/529 under the global limiter exactly like
+          ``call_with_resilience``; once retries are exhausted (or on a non-retryable error) fall
+          back ONCE to the whole-message :meth:`complete`, which keeps a gateway without SSE (or a
+          400 from an unknown ``stream_options``) working.
+        * **After the first delta** — propagate. The agent then retries its own prose turn (a NEW
+          stream id, so the client replaces rather than appends) and, if that fails too, emits an
+          honest error block. Nothing partial is ever persisted as an answer (the SSE deltas are
+          not ChatBlocks), and no quota is refunded twice (054/056 semantics are unchanged).
+        """
+        system_blocks = self._system_blocks(system)
+        request_messages = [dict(m) for m in messages]
+        stream_fn = getattr(self.transport, "stream", None)
+        if stream_fn is None:
+            result = await self.complete(
+                system=system,
+                messages=messages,
+                role=role,
+                effort=effort,
+                thinking=thinking,
+                tools=tools,
+                max_tokens=max_tokens,
+                user=user,
+            )
+            if result.text:
+                yield StreamChunk(delta=result.text)
+            yield StreamChunk(result=result)
+            return
+
+        policy = self.retry_policy
+        limiter = self.limiter or GLOBAL_LIMITER
+        started = time.monotonic()
+        attempt = 0
+        while True:
+            attempt += 1
+            emitted = False
+            try:
+                async with limiter.slot():
+                    parts: list[str] = []
+                    stop_reason = "end_turn"
+                    usage = _OAIUsage()
+                    async for piece in stream_fn(
+                        system=system_blocks,
+                        messages=request_messages,
+                        max_tokens=max_tokens,
+                        user=user,
+                    ):
+                        if piece.usage is not None:
+                            usage = piece.usage
+                        if piece.finish_reason:
+                            stop_reason = _FINISH_TO_STOP.get(piece.finish_reason, "end_turn")
+                        if piece.delta:
+                            emitted = True
+                            parts.append(piece.delta)
+                            yield StreamChunk(delta=piece.delta)
+                    result = normalize_message(
+                        _OAIMessage(
+                            content=[_OAITextBlock(text="".join(parts))],
+                            stop_reason=stop_reason,
+                            usage=usage,
+                        )
+                    )
+                    yield StreamChunk(result=result)
+                    return
+            except Exception as exc:  # noqa: BLE001 — classify, retry only PRE-delta
+                if emitted or not is_retryable(exc):
+                    if emitted:
+                        raise
+                    break
+                elapsed = time.monotonic() - started
+                if attempt >= policy.max_attempts or elapsed >= policy.total_budget_s:
+                    break
+                delay = min(
+                    backoff_delay(
+                        attempt,
+                        retry_after=retry_after_seconds(exc),
+                        policy=policy,
+                    ),
+                    max(0.0, policy.total_budget_s - elapsed),
+                )
+                await asyncio.sleep(delay)
+
+        # Pre-delta failover: one whole-message call. Its own resilience owns retries from here.
+        result = await self.complete(
+            system=system,
+            messages=messages,
+            role=role,
+            effort=effort,
+            thinking=thinking,
+            tools=tools,
+            max_tokens=max_tokens,
+            user=user,
+        )
+        if result.text:
+            yield StreamChunk(delta=result.text)
+        yield StreamChunk(result=result)
 
     # -- public: structured JSON, fail-closed ---------------------------------
 

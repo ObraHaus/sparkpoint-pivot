@@ -22,11 +22,11 @@ answer. The guard now lives in ``guard_text`` and BOTH paths import it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
-from .guard_text import is_unusable
+from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
 
 EFFORT: Effort = "low"
 
@@ -153,6 +153,20 @@ class TipCard:
     fell_back: bool = False
 
 
+@dataclass(frozen=True)
+class TipChunk:
+    """One event from :meth:`Literacy.stream_tip` — a text delta or the terminal card.
+
+    ``attempt`` is 1-based and lets the transport surface a NEW stream id when the first attempt
+    degraded and a retry starts, so the client replaces the partial text instead of appending a
+    second answer to it. The terminal card is authoritative.
+    """
+
+    delta: str | None = None
+    card: TipCard | None = None
+    attempt: int = 1
+
+
 @dataclass
 class Literacy:
     """The literacy stage runner — one prose LLM turn, fail-closed to a safe default."""
@@ -171,6 +185,80 @@ class Literacy:
         persona = self.persona_provider().strip()
         return f"{persona}\n\n{SYSTEM}" if persona else SYSTEM
 
+    def _user_content(self, key: str, context_hint: str | None) -> str:
+        """The user turn exactly as :meth:`tip` builds it (shared by the streaming path)."""
+        user_content = f"concept={key}"
+        if context_hint:
+            user_content = f"{user_content}\ncontext={context_hint}"
+        return user_content
+
+    async def stream_tip(
+        self, topic: str | None, *, context_hint: str | None = None, user: str | None = None
+    ) -> AsyncIterator[TipChunk]:
+        """Stream the tip body as deltas, then yield the SAME fail-closed :class:`TipCard`.
+
+        Mirrors :meth:`tip` (including the single retry) but emits deltas while the model writes.
+        The full body still passes the shared ``is_unusable`` guard, so a meta/action-shaped
+        generation is discarded and the caller's terminal card replaces the streamed text. A
+        retry is tagged with a new ``attempt`` so the client RESETS rather than concatenates.
+        """
+        key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
+        if not hasattr(self.llm, "stream_complete"):
+            yield TipChunk(card=await self.tip(topic, context_hint=context_hint, user=user))
+            return
+        user_content = self._user_content(key, context_hint)
+        for attempt in (1, 2):
+            parts: list[str] = []
+            pending: list[str] = []
+            pending_len = 0
+            released = False
+            blocked = False
+            result = None
+            try:
+                async for chunk in self.llm.stream_complete(
+                    system=self._system(),
+                    messages=[{"role": "user", "content": user_content}],
+                    effort=self.effort,
+                    user=user,
+                ):
+                    if chunk.delta:
+                        parts.append(chunk.delta)
+                        # Hold the opening until it passes the same guard the full body will, so
+                        # an attempt whose opening is already action/meta-shaped is never painted.
+                        # A later-unusable body may paint; the terminal card replaces it.
+                        if not released and not blocked:
+                            pending.append(chunk.delta)
+                            pending_len += len(chunk.delta)
+                            if pending_len < STREAM_HOLD_CHARS:
+                                continue
+                            if not prefix_is_usable("".join(pending)):
+                                blocked = True
+                                pending.clear()
+                                continue
+                            released = True
+                            for buffered in pending:
+                                yield TipChunk(delta=buffered, attempt=attempt)
+                            pending.clear()
+                            continue
+                        if not blocked:
+                            yield TipChunk(delta=chunk.delta, attempt=attempt)
+                    elif chunk.result is not None:
+                        result = chunk.result
+            except Exception:
+                _logger.info("literacy_upstream_error topic=%s attempt=%d", key, attempt)
+                continue
+            body = result.text.strip() if result is not None else ""
+            if result is not None and not (result.refused or is_unusable(body)):
+                # A short (< hold) answer is painted only now that the FULL body passed the guard.
+                if not released and not blocked:
+                    for buffered in pending:
+                        yield TipChunk(delta=buffered, attempt=attempt)
+                yield TipChunk(card=TipCard(topic=key, body=body, fell_back=False), attempt=attempt)
+                return
+            if attempt == 1:
+                _logger.info("literacy_retry: first tip attempt degraded for topic=%s", key)
+        yield TipChunk(card=TipCard(topic=key, body=default_tip(key), fell_back=True))
+
     async def tip(
         self, topic: str | None, *, context_hint: str | None = None, user: str | None = None
     ) -> TipCard:
@@ -188,9 +276,7 @@ class Literacy:
         that can do better (the DAG's LEARN branch) surface an honest error instead.
         """
         key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
-        user_content = f"concept={key}"
-        if context_hint:
-            user_content = f"{user_content}\ncontext={context_hint}"
+        user_content = self._user_content(key, context_hint)
         for attempt in (1, 2):
             try:
                 result = await self.llm.complete(
