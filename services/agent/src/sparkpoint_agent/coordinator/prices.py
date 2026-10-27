@@ -75,11 +75,19 @@ _PRICE_SHAPE_RE = re.compile(
 )
 
 #: Things that look adjacent to a price but belong to another route. "my" catches valuation of a
-#: holding ("how much is my ETH worth?"), which needs the wallet read, not a spot quote.
+#: holding ("how much is my ETH worth?"), which needs the wallet read, not a spot quote. The
+#: transactional verbs matter just as much: "buy ETH at the current price" is an order with a
+#: price clause, not a quote request, so it must reach the planner/swap path.
 _NEGATIVE_RE = re.compile(
     r"\b(?:portfolio|balance|wallet|position|positions|holding|holdings|my|"
     r"apy|apr|yield|yielding|vault|vaults|deposit|withdraw|swap|fee|fees|"
-    r"slippage|market\s*cap|supply|stake|staking|earn|earning|allocation)\b",
+    r"slippage|market\s*cap|market\s*order|supply|stake|staking|earn|earning|allocation|"
+    r"buy|buying|bought|sell|selling|sold|trade|purchase|purchasing|order|orders|"
+    r"exchange|convert|converting|bridge|bridging|lend|lending|borrow|borrowing|"
+    r"long|short|limit|send|sending|transfer|transferring|move|moving|invest|investing|"
+    r"rebalance|rebalancing|allocate|allocating|redeem|redeeming|claim|claiming|"
+    r"repay|repaying|unstake|unstaking|cash\s*out|top\s*up|add|remove|pull|park|"
+    r"open|close|exit)\b",
     re.IGNORECASE,
 )
 
