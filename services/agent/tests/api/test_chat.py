@@ -32,6 +32,7 @@ from sparkpoint_agent.api.chat import (
     _MemorySink,
     _NoopConversationSink,
     _NoopMemorySink,
+    feedback_limiter,
     get_chain_provider,
     get_conversation_sink,
     get_coordinator_dag,
@@ -39,6 +40,7 @@ from sparkpoint_agent.api.chat import (
     get_memory_sink,
 )
 from sparkpoint_agent.api.main import app
+from sparkpoint_agent.api.rate_limit import SlidingWindowLimiter
 from sparkpoint_agent.api.security import AccountContext
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
@@ -501,6 +503,35 @@ def test_feedback_requires_auth(client: TestClient) -> None:
     )
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+def test_feedback_is_capped_per_user_and_fails_the_ui_open(client: TestClient) -> None:
+    """061 A9 follow-up — a client-controlled message id cannot grow rows without bound."""
+    sink = _RecordingSink()
+    limiter = SlidingWindowLimiter(limit=1, window_s=3600)
+    app.dependency_overrides[get_feedback_sink] = lambda: sink
+    app.dependency_overrides[feedback_limiter] = lambda: limiter
+    payload = {"conversationId": "cnv_1", "blockId": "msg_1", "rating": "up"}
+
+    first = client.post("/chat/feedback", json=payload, headers=GOOD_HEADERS)
+    second = client.post("/chat/feedback", json=payload, headers=GOOD_HEADERS)
+
+    assert first.status_code == 204
+    assert second.status_code == 429
+    assert second.json()["error"]["code"] == "RATE_LIMITED"
+    assert second.headers["retry-after"] == "3600"
+    # The over-cap tap never reaches the sink.
+    assert sink.calls == [("cnv_1", "msg_1", "up", None)]
+
+
+def test_feedback_rejects_oversized_client_ids(client: TestClient) -> None:
+    resp = client.post(
+        "/chat/feedback",
+        json={"conversationId": "c" * 201, "blockId": "m" * 201, "rating": "up"},
+        headers=GOOD_HEADERS,
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 # ── 025 · Task 2: the streamed cards are PERSISTED, not just summarized ─────────

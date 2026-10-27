@@ -35,6 +35,7 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { BETA_OPEN } from "@/lib/auth/openBeta";
+import { CHAT_STALL_TIMEOUT_MS, withChatDeadline } from "@/lib/agent/chatStreamDeadline";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,65 +47,18 @@ const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
 /**
  * 061 A9 — a chat turn must not look alive forever.
  *
- * The proxy had no deadline at all: if the agent accepted the request and then stalled, the SSE
- * connection stayed open and the user got a spinner with no way forward. A turn gets this long to
- * finish; when it runs out we emit a normal `error` block on the open stream (the renderer already
- * understands it, and the chat offers Retry) and close cleanly. Overridable for tests/ops.
+ * The proxy originally armed ONE timer at stream construction, which capped the TOTAL stream time
+ * (60s) instead of how long the upstream could go SILENT; a legitimate slow answer was cut off
+ * even while chunks kept arriving. `withChatDeadline` is now an IDLE/stall deadline: it re-arms on
+ * every upstream chunk (including SSE keepalive/comment frames), keeps the time-to-first-byte
+ * bound, and has a separate 5-minute absolute ceiling as a backstop. When either fires we emit the
+ * normal `error` block on the open stream (the renderer understands it and the chat offers Retry),
+ * close cleanly, and do NOT cancel the agent turn — see the helper's comment on refund/Retry.
+ *
+ * The same stall bound also gives the initial response-headers wait its budget. Overridable for
+ * tests/ops via `AGENT_CHAT_TIMEOUT_MS` / `AGENT_CHAT_STREAM_CEILING_MS`.
  */
-const CHAT_TIMEOUT_MS = Number(process.env.AGENT_CHAT_TIMEOUT_MS ?? 60_000);
-
-/** A clean §2.7 error block as an already-framed SSE event. */
-function chatTimeoutEvent(): Uint8Array {
-  const block = JSON.stringify({
-    type: "error",
-    code: "UPSTREAM_UNAVAILABLE",
-    message: "Sparky took too long to answer. Nothing was signed or changed — you can try again.",
-  });
-  return new TextEncoder().encode(`event: block\ndata: ${block}\n\n`);
-}
-
-/** Close an SSE body with a clean error block after `ms`, rather than hanging the tab forever. */
-function withChatDeadline(body: ReadableStream<Uint8Array>, ms: number): ReadableStream<Uint8Array> {
-  const reader = body.getReader();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), ms);
-  });
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const readPromise = reader.read();
-      const result = await Promise.race([readPromise, deadline]);
-      if (result === "timeout") {
-        if (timer) clearTimeout(timer);
-        controller.enqueue(chatTimeoutEvent());
-        controller.close();
-        // KEEP DRAINING — do not cancel the agent's turn on the user's behalf. The quota was charged
-        // when the turn was admitted; the agent returns that unit itself when the turn fails
-        // (`_event_stream`'s refund path). A BFF-side cancel looks like a client disconnect, which
-        // the agent deliberately does NOT refund, so cancelling here would make Retry double-charge.
-        void (async () => {
-          try {
-            let next = await readPromise;
-            while (!next.done) next = await reader.read();
-          } catch {
-            /* the agent went away; nothing left to drain */
-          }
-        })();
-        return;
-      }
-      if (result.done) {
-        if (timer) clearTimeout(timer);
-        controller.close();
-        return;
-      }
-      controller.enqueue(result.value);
-    },
-    cancel(reason) {
-      if (timer) clearTimeout(timer);
-      return reader.cancel(reason);
-    },
-  });
-}
+const CHAT_TIMEOUT_MS = CHAT_STALL_TIMEOUT_MS;
 
 /**
  * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
@@ -197,8 +151,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;
 
-  // The chat proxy gets a bounded wait for RESPONSE HEADERS. The stream itself is bounded separately
-  // below (a long answer is legitimate; a stalled tab is not).
+  // The chat proxy gets a bounded wait for RESPONSE HEADERS. The stream is bounded separately below
+  // by STALL time, not total time (a slow answer is legitimate; a silent one is not).
   const connect = new AbortController();
   const connectTimer = setTimeout(() => connect.abort(), CHAT_TIMEOUT_MS);
   // Preserve client-disconnect propagation while adding the header deadline. The timer is cleared

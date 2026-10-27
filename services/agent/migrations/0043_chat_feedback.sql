@@ -24,9 +24,13 @@ CREATE TABLE IF NOT EXISTS chat_feedback (
     rating          TEXT         NOT NULL CHECK (rating IN ('up', 'down')),
     reason          TEXT         CHECK (reason IS NULL OR length(reason) <= 1000),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    -- Idempotent per user+message: a second tap, or a retry of the same request, updates this row.
-    CONSTRAINT chat_feedback_user_message_uniq UNIQUE (user_eoa, message_id)
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
+-- Idempotent per user+message: a second tap, or a retry of the same request, updates this row
+-- (last write wins). An explicit unique index keeps this statement purely additive, and the
+-- store's ON CONFLICT (user_eoa, message_id) infers it exactly as it would an inline constraint.
+CREATE UNIQUE INDEX IF NOT EXISTS chat_feedback_user_message_uniq
+    ON chat_feedback (user_eoa, message_id);
 
 CREATE INDEX IF NOT EXISTS chat_feedback_user_idx ON chat_feedback (user_eoa, updated_at DESC);
