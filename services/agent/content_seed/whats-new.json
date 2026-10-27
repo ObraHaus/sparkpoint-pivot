@@ -15,7 +15,7 @@
       "tag": "Fixed",
       "title": "Behind the scenes: cleaner bookkeeping when an answer fails",
       "body": "When an AI answer fails because the provider is briefly unavailable, that question still does not count against your daily allowance. We fixed an internal check that wrongly reported those refunds as failed. Nothing changes in how you use Sparky.",
-      "published_at": "2026-10-27T20:30:00Z"
+      "published_at": "2026-10-27T20:00:00Z"
     },
     {
       "slug": "chat-intent-routing-2026-10",
