@@ -4,7 +4,7 @@
  * `.strict()`.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 /** §2.5 — `pass` | `fail` | `warn`. */
 export const GuardrailStatusSchema = z.enum(["pass", "fail", "warn"]);
