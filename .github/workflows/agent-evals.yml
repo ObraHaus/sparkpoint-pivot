@@ -1,0 +1,100 @@
+name: agent-evals
+# Spec 058 — Sparky's golden eval set.
+#
+# The OFFLINE job is deterministic and blocking: it replays every case through the real
+# CoordinatorDag with a canned LLM, so routing/cards/guardrails are pinned on each PR that
+# can affect chat. The LIVE job is deliberately NON-BLOCKING (continue-on-error) because
+# the free gateway group is flaky and because the gateway secrets may be absent: it skips
+# cleanly when unset, uploads results, and writes the markdown summary to the job summary.
+on:
+  schedule:
+    - cron: "15 3 * * *" # nightly, UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "services/agent/persona_seed/**"
+      - "services/agent/src/sparkpoint_agent/agents/*.py"
+      - "services/agent/src/sparkpoint_agent/coordinator/**"
+      - "services/litellm/config.yaml"
+      - "services/agent/evals/**"
+      - "services/agent/tests/evals/**"
+      - ".github/workflows/agent-evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 15
+    defaults: { run: { working-directory: services/agent } }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: venv + deps (uv sync from the lockfile)
+        run: uv sync --frozen --python 3.12
+      - name: offline golden set (deterministic)
+        run: .venv/bin/python -m evals.run --mode offline --out evals/out
+      - name: pytest offline eval test (blocking agent CI parity)
+        run: .venv/bin/pytest -q tests/evals/test_golden_offline.py
+      - name: append offline summary
+        if: always()
+        run: |
+          if [ -f evals/out/summary.md ]; then cat evals/out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: agent-evals-offline
+          path: services/agent/evals/out
+          if-no-files-found: ignore
+
+  live:
+    # Nightly/dispatch only: never on a PR, and never a required check.
+    if: github.event_name != 'pull_request'
+    continue-on-error: true
+    needs: offline
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 45
+    defaults: { run: { working-directory: services/agent } }
+    env:
+      # Same env vars the app uses. Optional: if the two required ones are unset, the step
+      # below marks the run skipped instead of failing. Secrets are never echoed.
+      LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+      LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+      LITELLM_MODEL: ${{ secrets.LITELLM_MODEL }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: venv + deps (uv sync from the lockfile)
+        run: uv sync --frozen --python 3.12
+      - name: gateway configured?
+        id: gateway
+        env:
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+        run: |
+          if [ -z "${LITELLM_BASE_URL:-}" ] || [ -z "${LITELLM_API_KEY:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live evals skipped: set LITELLM_BASE_URL / LITELLM_API_KEY to enable."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: live golden set + LLM judge (non-blocking)
+        if: steps.gateway.outputs.configured == 'true'
+        run: .venv/bin/python -m evals.run --mode live --out evals/out
+      - name: append live summary
+        if: always() && steps.gateway.outputs.configured == 'true'
+        run: |
+          if [ -f evals/out/summary.md ]; then cat evals/out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && steps.gateway.outputs.configured == 'true'
+        with:
+          name: agent-evals-live
+          path: services/agent/evals/out
+          if-no-files-found: ignore
