@@ -11,7 +11,7 @@
  * enum (per instructions) but types `asset` as an address, not `Asset`.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { ActionType } from "../policy/enums";
 import { HexAddressSchema, UintAmountSchema } from "./primitives";

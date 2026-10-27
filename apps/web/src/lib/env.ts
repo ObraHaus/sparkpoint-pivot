@@ -18,7 +18,7 @@
  * read/persisted client-side); wagmi/chain seams that consume the RPC urls.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 /** Canonical public RPC endpoints — safe fallbacks when the env var is unset/invalid. */
 const BASE_RPC_FALLBACK = "https://mainnet.base.org";

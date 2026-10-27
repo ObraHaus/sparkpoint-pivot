@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **Dependency CVE patch pass (055)** — `next` 16.3.6 → 16.4.3 patches two CRITICAL RCEs (`GHSA-2464-fhr4-w9xw` image-optimization SVG, `GHSA-673q-mjm6-r5xr` `use cache` typed arrays), HIGHs `CVE-2026-94482`/`CVE-2026-94483`, and five MEDIUMs (`CVE-2026-103004`, `-94484`, `-94485`, `-94543`, `-94544`); `eslint-config-next` tracks the same version. `sharp` 0.35.4 → 0.35.5 (`GHSA-wq5f-xc86-pv6w`) and `source-map-js` 1.2.1 → 1.2.2 (`CVE-2026-93749`) via root `pnpm.overrides`, and `certifi` 2026.6.17 → 2026.10.23 (`GHSA-6q48-6c7w-9gw2`) in `services/agent/uv.lock`. `zod` 3.25.76 → 4.6.7 via the `zod/v3` compatibility entry point (the `CVE-2023-54404` fix landed in 4.6.6), pinned with a root `pnpm.overrides` selector `zod@<4.6.6` → `>=4.6.6 <5` (the selector form leaves each importer's `specifier` tracking its own manifest instead of rewriting it to the override range).
+
 ### Changed (AI model lineup — chat, self-authoring, embeddings)
 
 - **The gateway model lineup is switched on both environments.** `sparkpoint-chat` is now **Ling 3.0 Flash Sante (free)** with a **Qwen 3.8 27B (free)** fallback; `sparkpoint-chat-premium` is now **Ling 3.1 Flash** with an **Apodex 1.1 Mini (free)** fallback (both currently $0 upstream; costs pinned to 0 in the config so spend accounting stays honest). `sparkpoint-selfauthor` — Sparky's daily self-authored research job — is now defined in `services/litellm/config.yaml` with the same pair as premium, so it exists on **both** gateways; previously it lived only in the alpha gateway's LiteLLM DB, which is why beta self-authoring runs had no model. All four upstreams were probed live (clean JSON, 262k ctx) before the switch.

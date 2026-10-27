@@ -8,7 +8,7 @@
  * `capHeadroom` is deposit-side only ⇒ null for exits/swaps.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import {
   HexAddressSchema,
