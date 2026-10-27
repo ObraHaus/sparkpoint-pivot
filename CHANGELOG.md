@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (quota refund audit, 062)
+
+- **A refunded turn no longer logs a false `quota_refund_failed` alarm.** `quota.refund()` returned the counter in its own autocommitted `UPDATE usage_counters … GREATEST(count - 1, 0)` and only then wrote a `limits_event` row with verdict `refund` — but `migrations/0015_limits.sql` permits only `allow`/`deny`/`throttle`, so that INSERT always raised a CheckViolation which the bare `except` logged as a refund failure. The counter refund had already committed, so users were refunded, but no refund was audited and a genuine refund failure was indistinguishable. `refund()` now logs `quota_refunded metric=… used=…` on success and `quota_refund_failed metric=… err=<ExceptionClassName>` on failure (class name only — no message, no address), and writes **no** `limits_event` row; the structured log is the audit trail. `db/limits.py` exports `EVENT_VERDICTS` mirroring the 0015 CHECK and `record_event()` raises `ValueError` for any other verdict **before** touching the DB, so a future misuse fails loudly in tests. No migration; if DB-level refund auditing is wanted, a follow-up additive migration can widen the CHECK to include `refund`. (`services/agent/src/sparkpoint_agent/api/quota.py`, `db/limits.py`, tests)
+
 ### Changed / Fixed (A9 UX quick fixes — 061)
 
 - **What's New no longer blocks the app.** It is a dismissible corner panel rather than a full-screen modal with a scrim, and "once per release" is keyed to the newest changelog entry's slug in localStorage (so it survives re-seeds that renumber rows). The stale 2026-10-06 broker-mint-whitelist seed entry is pruned by seed ingest (`services/agent/content_seed/whats-new.json`).

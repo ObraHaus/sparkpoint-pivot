@@ -10,6 +10,14 @@
       "published_at": "2026-10-27T17:00:00Z"
     },
     {
+      "slug": "quota-refund-audit-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Behind the scenes: failed answers keep returning your question",
+      "body": "When an AI answer fails because the provider is briefly unavailable, the question is returned to you as before. We fixed an internal bookkeeping issue so that refund is now recorded reliably instead of logging a false failure on our side. Nothing changes in how you use Sparky, and no answer, allowance or signed action is affected.",
+      "published_at": "2026-10-27T04:58:00Z"
+    },
+    {
       "slug": "chat-intent-routing-2026-10",
       "type": "changelog",
       "tag": "Fixed",
