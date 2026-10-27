@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "price-vs-estimate-routing-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky tells a price question from an earnings estimate",
+      "body": "Ask for the current price of a coin and Sparky still answers with a live reference figure, its source and the time it was read. Ask what an amount could earn over time — for example \"how much is 10k USDC in 1 year?\" or \"what would $500 in ETH earn in 6 months?\" — and it now treats that as an estimate request instead of quoting a single spot price. If a live price cannot be fetched, Sparky says so instead of guessing.",
+      "published_at": "2026-10-27T17:00:00Z"
+    },
+    {
       "slug": "chat-intent-routing-2026-10",
       "type": "changelog",
       "tag": "Fixed",
@@ -56,6 +64,14 @@
       "title": "Sparky chat is back — and a failed answer no longer costs a question",
       "body": "Free chat is working again after the model provider retired the models Sparky was using. Sparky now has extra models on different providers behind the scenes, so if one is busy or unavailable it tries another before giving up. If a turn still fails because the AI provider is unavailable, it no longer counts against your daily chat, recommendations, or onboarding allowance — you keep the question. Successful turns work exactly as before.",
       "published_at": "2026-10-27T02:25:56Z"
+    },
+    {
+      "slug": "grounding-live-prices-as-of-2026-10",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sparky now answers price questions — and every APY shows how fresh it is",
+      "body": "Ask Sparky \"what is the price of ETH today?\" and you now get a live USD reference quote for ETH (plus BTC, SOL and NEAR for context), with the source and the time it was checked in UTC. Stablecoins are shown at about $1, and if a stable moves outside its usual band Sparky says so instead of hiding it. Prices move constantly, so the answer carries a reminder that a quote is not financial advice; if the price feed can't be reached, Sparky says it can't fetch one rather than guessing. SRK still has no dollar price, because there is no oracle and we won't invent one. Every stored vault APY now shows its as-of date too, and if the figure is more than about two days old Sparky tells you how old it is and points you to the Vault page for the live rate. Sparky's product knowledge was also expanded so questions about Morpho vs Aave, how APY and net APY work, slippage and the 0.20% swap fee, NEAR Intents (planned for the November build), self-custody and signing, daily question limits, and mandates get grounded answers.",
+      "published_at": "2026-10-26T09:30:00Z"
     },
     {
       "slug": "ux-quick-fixes-2026-10",

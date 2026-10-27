@@ -216,8 +216,14 @@ def build_dag(
     case: Case,
     client: Any,
     live: bool,
+    streaming: bool = False,
+    single_call: bool = False,
 ) -> CoordinatorDag:
-    """Build the real DAG around the canned/real LLM and fixed read fixtures."""
+    """Build the real DAG around the canned/real LLM and fixed read fixtures.
+
+    ``streaming`` / ``single_call`` mirror the 059 deployment flags; both default to OFF so the
+    offline golden run is the exact pre-059 path unless a caller explicitly exercises a combo.
+    """
     fixture = wallet_fixture(case.wallet)
     persona = get_persona if live else (lambda: "")
     return CoordinatorDag(
@@ -230,6 +236,8 @@ def build_dag(
         curated=_Curated(),
         changelog=_changelog,
         knowledge=None,
+        streaming=streaming,
+        single_call=single_call,
         id_factory=_id_factory(),
     )
 

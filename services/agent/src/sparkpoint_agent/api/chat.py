@@ -69,6 +69,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
+from ..data.prices import get_price_service
 from ..db import ChatFeedbackStore, LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
@@ -590,6 +591,9 @@ def get_coordinator_dag(
         # 048 — "what's the best vault?" reads the CURATED RECORD (the same row /vault renders).
         # Fail-open to an honest error; never a remembered vault or a model-supplied APY.
         curated=_curated_context,
+        # 060 — keyless USD reference prices for the deterministic price route. Display-only:
+        # the service is cached/bounded and never reaches propose/build/policy.
+        prices=get_price_service(),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky

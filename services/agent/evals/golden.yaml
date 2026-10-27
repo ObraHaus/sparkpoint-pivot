@@ -89,7 +89,10 @@ cases:
       route: general
       blocks_present: [text]
       blocks_absent: [action, recommendation]
-      must_not_contain: ['re:\$\s?\d']
+      # 060: a live reference figure is now the intended answer, with its source + as-of stamp.
+      # The offline fixtures have no price feed, so the honest "unavailable" copy is also valid.
+      must_contain:
+        - 're:(?:as of \d{2}:\d{2} UTC.*source:)|(?:couldn''t fetch a live price)'
       rubric: [accuracy, grounding, safety, tone]
     offline:
       intent: {kind: other}

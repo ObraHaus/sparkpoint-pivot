@@ -185,6 +185,8 @@ class ProposalContext:
     performance_fee_bps: int = 1000
     citations: tuple[Citation, ...] = ()
     suggested_amount: int | None = None
+    #: 060 — the as-of behind the injected APY figures (ISO). Display prose only; never policy.
+    as_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -546,12 +548,13 @@ class Recommender:
             if ctx.risk_profile is RiskProfile.CONSERVATIVE
             else f"More conservative than your {profile} mandate allows"
         )
+        stamp = f" as of {ctx.as_of[:10]}" if ctx.as_of else ""
         if ctx.gross_apy_bps is not None:
             gross = f"{ctx.gross_apy_bps / 100:.2f}% gross APY"
             if action_type is ActionType.VAULT_DEPOSIT and ctx.projected_apy_bps is not None:
                 net = f"~{ctx.projected_apy_bps / 100:.2f}% net of the profit-only fee"
-                return f"{fit}; {gross}, {net} (0% on principal)."
-            return f"{fit}; USDC yield at {gross}."
+                return f"{fit}; {gross}, {net} (0% on principal){stamp}."
+            return f"{fit}; USDC yield at {gross}{stamp}."
         return f"{fit}; USDC yield via the 0-management, profit-only vault."
 
     def _rank_prompt(
@@ -562,6 +565,7 @@ class Recommender:
             f"grossApyBps={ctx.gross_apy_bps}",
             f"projectedApyBps={ctx.projected_apy_bps}",
             f"performanceFeeBps={ctx.performance_fee_bps}",
+            f"asOf={ctx.as_of or 'unknown'}",
             "strategies:",
         ]
         for action_type, action in built:

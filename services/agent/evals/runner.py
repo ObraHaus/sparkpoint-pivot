@@ -115,8 +115,12 @@ async def _execute(
     client: Any,
     *,
     live: bool,
+    streaming: bool = False,
+    single_call: bool = False,
 ) -> list[dict[str, Any]]:
-    dag = build_dag(case=case, client=client, live=live)
+    dag = build_dag(
+        case=case, client=client, live=live, streaming=streaming, single_call=single_call
+    )
     history = [(turn.role, turn.content) for turn in case.history]
     return [
         block.to_wire()
@@ -167,14 +171,21 @@ def _result(
     )
 
 
-async def run_offline(cases: Sequence[Case] | None = None) -> Report:
+async def run_offline(
+    cases: Sequence[Case] | None = None,
+    *,
+    streaming: bool = False,
+    single_call: bool = False,
+) -> Report:
     """Deterministic in-process run — no network, no DB, no clock in the expectations."""
     selected = tuple(cases) if cases is not None else load_cases()
     results: list[CaseResult] = []
     for case in selected:
         client = _fake_client(case)
         try:
-            wires = await _execute(case, client, live=False)
+            wires = await _execute(
+                case, client, live=False, streaming=streaming, single_call=single_call
+            )
         except Exception as exc:  # noqa: BLE001 — one bad case must not abort the suite
             results.append(
                 _result(

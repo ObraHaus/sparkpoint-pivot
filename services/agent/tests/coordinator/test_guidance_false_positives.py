@@ -10,8 +10,11 @@ FROM).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
+from sparkpoint_agent.coordinator.curated import CuratedContext, CuratedPick
 from sparkpoint_agent.coordinator.guidance import (
     is_unsafe_request,
     is_withdraw_all,
@@ -168,3 +171,39 @@ def test_english_near_does_not_trigger_the_near_note(message: str) -> None:
 )
 def test_near_as_asset_still_triggers_the_near_note(message: str) -> None:
     assert "NEAR yield" in _yield_answer(message)
+
+
+def _stale_pick(label: str, address: str, days: int) -> CuratedPick:
+    return CuratedPick(
+        address=address,
+        label=label,
+        net_apy_bps=400,
+        tvl_usd=1_000_000.0,
+        curator="Gauntlet",
+        curator_verified=True,
+        reason="highest screen score",
+        as_of=(datetime.now(UTC) - timedelta(days=days)).isoformat(),
+        wrapped=False,
+    )
+
+
+def test_every_distinct_vault_caveat_is_rendered_and_deduped() -> None:
+    first = _stale_pick("Gauntlet USDC Prime", "0x" + "1" * 40, days=5)
+    second = _stale_pick("Steakhouse USDG", "0x" + "2" * 40, days=3)
+    duplicate = _stale_pick("Gauntlet USDC Prime", "0x" + "3" * 40, days=5)
+    text = yield_guidance_answer(
+        message="how can I earn with my USDC?",
+        history=None,
+        offers_vault=True,
+        curated=CuratedContext(vault_count=3, pick=first, vaults=(first, second, duplicate)),
+        has_positions=False,
+        idle_usdc=None,
+        mandate_risk=None,
+        projected_apy_bps=None,
+        gross_apy_bps=None,
+        performance_fee_bps=1000,
+        per_user_cap_base=None,
+    )
+    assert "Gauntlet USDC Prime's figure is 5 days old" in text
+    assert "Steakhouse USDG's figure is 3 days old" in text, "a second distinct caveat must render"
+    assert text.count("Gauntlet USDC Prime's figure") == 1, "identical caveats dedupe"
