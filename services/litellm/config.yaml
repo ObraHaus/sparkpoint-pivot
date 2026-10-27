@@ -5,10 +5,13 @@
 # the process env via `os.environ/…` and are NEVER written into this file.
 #
 # RELIABILITY: OpenRouter's `:free` tier is aggressively rate-limited per upstream provider, so
-# every alias is a GROUP: a primary plus a verified-available fallback; the router retries the
-# other deployment on a 429 and cools the throttled one down. Swap either to a paid model / BYOK
-# key for hard reliability. (Lineup switched 2026-10-04 — Ling 3.0 Sante + Qwen 3.8 free primary,
-# Ling 3.1 Flash + Apodex 1.1 Mini premium; all four were probed live before the switch.)
+# every alias is a GROUP: a primary plus verified-available fallbacks; the router retries across
+# deployments and cools the throttled one down. Swap a deployment to a paid model / BYOK key for
+# hard reliability. (Lineup restored 2026-10-27 — the 2026-10-14 free pair was dead: OpenRouter's
+# Nvidia provider returned 404 for Nemotron 3 Super 120B (`status -5`) and Google AI Studio
+# throttled Gemma 4 31B with 429s. Free is now Nemotron 3 Ultra 550B A55B + Cohere North Mini
+# Code + Poolside Laguna S 2.1, three different upstream providers; premium is unchanged (Ling 3.1
+# Flash + Ling 3.0 Flash). Every replacement was probed live before the switch.)
 #
 # The DATABASE_URL env (a dedicated, isolated Postgres — never the agent's DB) is auto-detected
 # by LiteLLM for virtual keys + per-user budgets.
@@ -16,47 +19,55 @@
 model_list:
   - model_name: sparkpoint-chat
     litellm_params:
-      # primary (operator-selected 2026-10-04): Ling 3.0 Flash Sante (free) — probed live with clean
-      # JSON intent output at ~$0. weight biases simple-shuffle 4:1 toward this deployment; the Qwen
-      # 3.8 27B fallback absorbs cooldowns.
-      model: openrouter/inclusionai/ling-3.0-flash-sante:free
+      # primary (2026-10-27): Nemotron 3 Ultra 550B A55B (free, 1M ctx; Nvidia). Probed 3/3 —
+      # clean prose (~5.4s), valid intent JSON, and a correct Taglish answer. It reasons before
+      # answering (62–163 reasoning tokens in-probe), so the prose agents keep max_tokens headroom.
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
   - model_name: sparkpoint-chat
     litellm_params:
-      # verified-available free fallback (probed live) so the alias serves when the primary 429s.
-      model: openrouter/qwen/qwen3.8-27b:free
+      # fallback 1 (2026-10-27): Cohere North Mini Code (free, 256k ctx; Cohere). Probed 3/3 with
+      # valid JSON; its reasoning budget is the largest of the three, which is why Sparky's prose
+      # cap carries extra headroom.
+      model: openrouter/cohere/north-mini-code:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      weight: 3
+  - model_name: sparkpoint-chat
+    litellm_params:
+      # fallback 2 (2026-10-27): Poolside Laguna S 2.1 (free, 262k ctx; Poolside). Fastest of the
+      # three with no reasoning spend, but its free endpoint returned 429 on the Taglish probe —
+      # last in the weight order; weighted failover retries the others in this group.
+      model: openrouter/poolside/laguna-s-2.1:free
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
 
   # Premium alias (feature 008, US4) — the premium-tier alias, a clear step up from the free open
   # models. Mirrors the free alias's primary+fallback shape: Ling 3.1 Flash is the primary (weight 4;
-  # 262k ctx — sharp reasoning + clean JSON); Apodex 1.1 Mini is the same-tier secondary (weight 1)
-  # that absorbs cooldowns when the primary 429s. If the WHOLE premium group fails the router FALLS
-  # BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so premium degrades to free
-  # quality instead of erroring. Both upstreams are currently $0 (2026-10-04) — costs are pinned to
-  # 0 so LiteLLM's spend accounting matches reality; keep in sync if upstream pricing moves.
+  # 262k ctx — sharp reasoning + clean JSON); Ling 3.0 Flash is the cheaper same-family secondary
+  # (weight 1; $0.021/$0.063 per M) that absorbs cooldowns when the primary 429s. If the WHOLE
+  # premium group fails the router FALLS BACK to the free `sparkpoint-chat` alias
+  # (router_settings.fallbacks) so premium degrades to free quality instead of erroring.
+  # Both upstreams are PAID (2026-10-14) — no cost pins; LiteLLM's model cost map prices them so
+  # spend accounting + per-user budgets see the real numbers.
   - model_name: sparkpoint-chat-premium
     litellm_params:
       model: openrouter/inclusionai/ling-3.1-flash
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
-      input_cost_per_token: 0.0
-      output_cost_per_token: 0.0
       # Per-deployment request/min ceiling used by the router for load-based routing (primary carries
       # the bulk of premium traffic). The virtual key's global rpm is the real spend/abuse ceiling.
       rpm: 60
   - model_name: sparkpoint-chat-premium
     litellm_params:
-      model: openrouter/apodex/apodex-1.1-mini:free
+      model: openrouter/inclusionai/ling-3.0-flash
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
-      input_cost_per_token: 0.0
-      output_cost_per_token: 0.0
       # Fallback deployment — a smaller per-min ceiling (it only absorbs the primary's cooldowns).
       rpm: 30
 
@@ -73,17 +84,13 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
-      input_cost_per_token: 0.0
-      output_cost_per_token: 0.0
       rpm: 60
   - model_name: sparkpoint-selfauthor
     litellm_params:
-      model: openrouter/apodex/apodex-1.1-mini:free
+      model: openrouter/inclusionai/ling-3.0-flash
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
-      input_cost_per_token: 0.0
-      output_cost_per_token: 0.0
       rpm: 30
 
 litellm_settings:
@@ -96,9 +103,16 @@ router_settings:
   routing_strategy: simple-shuffle
   num_retries: 3
   allowed_fails: 1
-  cooldown_time: 30          # park a 429'd deployment for 30s, serve from the other
+  cooldown_time: 30          # park a 429'd deployment for 30s, serve from the other two
+  # The pinned image (LiteLLM 1.92.0) treats NotFoundError as NON-retryable inside the same model
+  # group (`should_retry_this_error` raises on a 404 before the retry loop). `enable_weighted_failover`
+  # is the safe 1.92.0 knob that re-picks a weighted, still-healthy deployment in the SAME group
+  # while excluding the one that just failed — so one dead/free-provider 404 (or 429) fails over
+  # without a paid cross-group fallback. It is async-only, which is the proxy's path.
+  enable_weighted_failover: true
   # Premium degrades to the free alias on ANY failure of the paid model (e.g. out of credit) — so
-  # a premium user never gets an error just because the paid model is unavailable.
+  # a premium user never gets an error just because the paid model is unavailable. Deliberately NO
+  # free → paid fallback: adding one changes cost, which needs the operator's approval.
   fallbacks: [{"sparkpoint-chat-premium": ["sparkpoint-chat"]}]
 
 general_settings:

@@ -2,12 +2,28 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "chat-refund-degraded-answers-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "A degraded answer no longer costs a question",
+      "body": "Sometimes the AI provider is briefly unavailable and Sparky falls back to a short \"try again\" message instead of a real answer. That turn used to still count against your daily chat allowance. Now, if a reply degrades like that and no real answer was produced, the question is returned to you. Successful answers still cost one question, and closing the chat mid-reply never changes your allowance.",
+      "published_at": "2026-10-27T04:59:00Z"
+    },
+    {
       "slug": "security-patch-2026-10",
       "type": "changelog",
       "tag": "Improved",
       "title": "Behind the scenes: security refresh",
       "body": "We patched the web framework and the validation libraries against newly published vulnerabilities. Nothing changes in how the app looks or works — your wallet, your keys, and how you sign stay exactly the same.",
       "published_at": "2026-10-27T04:00:00Z"
+    },
+    {
+      "slug": "chat-restore-and-quota-refund-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky chat is back — and a failed answer no longer costs a question",
+      "body": "Free chat is working again after the model provider retired the models Sparky was using. Sparky now has extra models on different providers behind the scenes, so if one is busy or unavailable it tries another before giving up. If a turn still fails because the AI provider is unavailable, it no longer counts against your daily chat, recommendations, or onboarding allowance — you keep the question. Successful turns work exactly as before.",
+      "published_at": "2026-10-27T02:25:56Z"
     },
     {
       "slug": "embedding-retry-2026-10",

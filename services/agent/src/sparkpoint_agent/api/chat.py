@@ -63,7 +63,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
-from ..db import get_database
+from ..db import LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
 from ..db.curated_vaults import APPROVED, PgCurationStore
@@ -79,7 +79,7 @@ from ..persona import get_persona
 from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
 from .portfolio import get_wrapper_store, read_wrapper_positions
-from .quota import require_within_quota
+from .quota import LimitDecision, get_limits_store, refund, require_within_quota
 from .recommendations import (
     _build_chain_context,
     _network_id,
@@ -833,6 +833,13 @@ _PERSISTED_BLOCK_TYPES = frozenset(
     {"text", "tip", "recommendation", "action", "portfolio_snapshot", "outcome", "citation"}
 )
 
+# Blocks that represent CONTENT the model actually produced for the user (scaffolding such as
+# ``tool_step`` / ``citation`` excluded). Used by the 054 refund path to distinguish a degraded
+# turn that ended in ``UPSTREAM_UNAVAILABLE`` from one that already answered before failing.
+_ANSWER_BLOCK_TYPES = frozenset(
+    {"text", "tip", "recommendation", "action", "portfolio_snapshot", "outcome"}
+)
+
 
 def _assistant_summary(block_wire: dict[str, Any]) -> str:
     """A compact, content-only text fragment for a streamed block — the assistant-turn memory
@@ -864,6 +871,8 @@ async def _event_stream(
     owner_eoa: str,
     memory: _MemorySink,
     memory_lines: list[str],
+    quota: LimitDecision | None = None,
+    limits: LimitsStore | None = None,
 ) -> AsyncIterator[str]:
     """Drive one ``run_chat`` turn and frame each §2.7 block as an SSE ``block`` event.
 
@@ -880,23 +889,57 @@ async def _event_stream(
     count = 0
     summary_parts: list[str] = []
     block_wires: list[dict[str, Any]] = []
+    answered = False
+    refunded = False
+
+    async def refund_once() -> None:
+        """Return the pre-charged unit at most once per turn (054)."""
+        nonlocal refunded
+        if refunded:
+            return
+        refunded = True
+        if quota is not None and limits is not None:
+            await refund(limits, owner_eoa, quota)
+
     try:
         async for block in dag.run_chat(
             message, chain, surface=surface, history=history, memory_lines=memory_lines
         ):
             count += 1
             wire = block.to_wire()
+            block_type = wire.get("type")
+            # 054: the DAG degrades INTERNALLY in its prose branches — Sparky/literacy swallow
+            # the upstream error and return ``fell_back=True``, and the curated-store outage
+            # path returns normally — emitting ``ErrorBlock("UPSTREAM_UNAVAILABLE")`` instead of
+            # raising. The ``except`` below therefore never fires for those turns. Catch the
+            # emitted error at this single choke point and refund once, but only when no real
+            # answer block preceded it. The flag makes a turn refundable exactly once even if
+            # the stream later raises; a client disconnect stays a BaseException and is never
+            # refunded.
+            if block_type == "error" and wire.get("code") == "UPSTREAM_UNAVAILABLE":
+                if not answered:
+                    await refund_once()
+            elif block_type in _ANSWER_BLOCK_TYPES:
+                answered = True
             frag = _assistant_summary(wire)
             if frag:
                 summary_parts.append(frag)
             # 025: keep the card's own wire JSON alongside the lossy summary, so reopening the
             # conversation replays the CARD instead of "[proposed action: aerodrome_swap]".
-            if wire.get("type") in _PERSISTED_BLOCK_TYPES:
+            if block_type in _PERSISTED_BLOCK_TYPES:
                 block_wires.append(wire)
             yield _sse(_EVENT_BLOCK, wire)
     except Exception:
         # Fail-closed: degrade to an inert block, never leak internals (BaseException — e.g.
         # a cancelled request — deliberately propagates untouched).
+        # The turn failed upstream after the quota dependency charged it, so return that unit to
+        # the SAME window. Kept broader than ``/recommendations`` (which refunds only its typed
+        # ``UPSTREAM_UNAVAILABLE`` ApiError) because an unexpected mid-stream raise here is by
+        # definition a failed turn with no answer — narrowing it would risk leaving a charged
+        # unit on an unanticipated upstream error shape. ``refund_once`` prevents a second
+        # refund if an error block was already streamed. Fail-safe: ``refund`` swallows its own
+        # errors. A client disconnect is a BaseException (not caught here) and is never refunded.
+        await refund_once()
         fallback: ChatBlock = ErrorBlock("UPSTREAM_UNAVAILABLE", _STREAM_FAILURE_MESSAGE)
         count += 1
         yield _sse(_EVENT_BLOCK, fallback.to_wire())
@@ -914,10 +957,12 @@ async def _event_stream(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.post("/chat", dependencies=[Depends(require_within_quota("chat"))])
+@router.post("/chat")
 async def chat(
     body: ChatRequest,
     account: Annotated[AccountContext, Depends(get_account)],
+    quota: Annotated[LimitDecision, Depends(require_within_quota("chat"))],
+    limits: Annotated[LimitsStore, Depends(get_limits_store)],
     dag: Annotated[CoordinatorDag, Depends(get_coordinator_dag)],
     chain_provider: Annotated[ChatChainProvider, Depends(get_chain_provider)],
     sink: Annotated[_ConversationSink, Depends(get_conversation_sink)],
@@ -961,6 +1006,8 @@ async def chat(
         owner_eoa=account.owner,
         memory=memory,
         memory_lines=memory_lines,
+        quota=quota,
+        limits=limits,
     )
     return StreamingResponse(
         stream,
