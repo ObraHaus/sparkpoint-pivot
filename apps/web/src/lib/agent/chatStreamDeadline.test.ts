@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { withChatDeadline } from "./chatStreamDeadline.ts";
+import {
+  applyChatStreamDeadline,
+  isChatStreamPath,
+  withChatConnectDeadline,
+  withChatDeadline,
+} from "./chatStreamDeadline.ts";
 
 /**
  * Fake-timer tests for the BFF chat stream deadline.
@@ -63,12 +68,62 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
   }
 }
 
+/* ── path scoping (OH Defender MEDIUM) ─────────────────────────────────────── */
+
+test("only the exact /chat path is scoped — lookalikes are not", () => {
+  assert.equal(isChatStreamPath(["chat"]), true);
+  // Not by substring/prefix: an exact segment match only.
+  assert.equal(isChatStreamPath(["chat", "feedback"]), false);
+  assert.equal(isChatStreamPath(["onboarding", "turn"]), false);
+  assert.equal(isChatStreamPath(["admin", "chat"]), false);
+  assert.equal(isChatStreamPath(["chatter"]), false);
+  assert.equal(isChatStreamPath([]), false);
+});
+
+test("a non-chat route is not wrapped — a 90s slow response is not cut", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const src = source();
+  const relayed = applyChatStreamDeadline(["portfolio"], src.stream, IDLE_MS, CEILING_MS);
+  // Identity: the upstream body is relayed untouched, so no timer can fire.
+  assert.equal(relayed, src.stream);
+
+  const reading = readAll(relayed);
+  await flush();
+  // Longer than both the idle bound and the old response-headers deadline.
+  t.mock.timers.tick(90_000);
+  await flush();
+  src.push("late-but-fine");
+  src.close();
+  await flush();
+
+  assert.equal(await reading, "late-but-fine");
+  assert.equal(src.cancelled, false);
+});
+
+test("the response-headers/connect deadline is armed for /chat only", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const request = new AbortController();
+
+  const nonChat = withChatConnectDeadline(["portfolio"], request.signal, IDLE_MS);
+  t.mock.timers.tick(90_000);
+  assert.equal(nonChat.signal.aborted, false, "non-chat routes keep origin/main behaviour");
+  nonChat.clear();
+
+  const chat = withChatConnectDeadline(["chat"], request.signal, IDLE_MS);
+  t.mock.timers.tick(IDLE_MS + 1);
+  assert.equal(chat.signal.aborted, true, "chat still gets its first-byte/headers bound");
+  chat.clear();
+});
+
+/* ── the chat deadline behaviour ───────────────────────────────────────────── */
+
 test("a chunk every 20s for 120s completes — the deadline measures silence, not total time", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const src = source();
   const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
   const reading = readAll(wrapped);
 
+  await flush(); // first pull is in flight, idle clock running
   for (let i = 0; i < 6; i += 1) {
     t.mock.timers.tick(20_000);
     src.push(`chunk-${i}`);
@@ -87,6 +142,7 @@ test("a 61s silence after a first chunk errors with the honest UPSTREAM_UNAVAILA
   const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
   const reading = readAll(wrapped);
 
+  await flush();
   src.push("data: first-byte\n\n");
   await flush();
   t.mock.timers.tick(61_000);
@@ -106,6 +162,7 @@ test("the time-to-first-byte timeout still fires — no first chunk, no answer",
   const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
   const reading = readAll(wrapped);
 
+  await flush();
   t.mock.timers.tick(60_001);
   await flush();
 
@@ -120,6 +177,7 @@ test("the absolute ceiling cuts off a chatty stream that never finishes", async 
   const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
   const reading = readAll(wrapped);
 
+  await flush();
   // A keepalive every 20s never trips the idle deadline, so only the ceiling can stop it.
   for (let elapsed = 0; elapsed < CEILING_MS; elapsed += 20_000) {
     t.mock.timers.tick(20_000);
@@ -133,12 +191,58 @@ test("the absolute ceiling cuts off a chatty stream that never finishes", async 
   assert.match(out, /UPSTREAM_UNAVAILABLE/);
 });
 
+test("keepalives reset the idle deadline (a 50s gap each time is not a stall)", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const src = source();
+  const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
+  const reading = readAll(wrapped);
+
+  await flush();
+  for (let i = 0; i < 5; i += 1) {
+    t.mock.timers.tick(50_000);
+    src.push(": keepalive\n\n");
+    await flush();
+  }
+  src.close();
+  await flush();
+
+  const out = await reading;
+  assert.match(out, /keepalive/);
+  assert.doesNotMatch(out, /UPSTREAM_UNAVAILABLE/);
+});
+
+test("a consumer pausing 120s (backpressure) then resuming is NOT timed out", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const src = source();
+  const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
+  const reader = wrapped.getReader();
+  const decoder = new TextDecoder();
+
+  src.push("first");
+  await flush();
+  const first = await reader.read();
+  assert.equal(decoder.decode(first.value, { stream: true }), "first");
+
+  // Stop reading for two full idle windows: no `pull()` is in flight, so no stall clock runs.
+  t.mock.timers.tick(120_000);
+  await flush();
+
+  src.push("second");
+  const second = await reader.read();
+  assert.equal(decoder.decode(second.value, { stream: true }), "second");
+
+  src.close();
+  const done = await reader.read();
+  assert.equal(done.done, true);
+});
+
 test("the background drain is bounded and the reader is released at the cap", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const src = source();
   const wrapped = withChatDeadline(src.stream, IDLE_MS, CEILING_MS);
   const reading = readAll(wrapped);
 
+  await flush();
   t.mock.timers.tick(60_001);
   await flush();
   const out = await reading;
