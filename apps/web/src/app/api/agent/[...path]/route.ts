@@ -35,7 +35,10 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { BETA_OPEN } from "@/lib/auth/openBeta";
-import { CHAT_STALL_TIMEOUT_MS, withChatDeadline } from "@/lib/agent/chatStreamDeadline";
+import {
+  applyChatStreamDeadline,
+  withChatConnectDeadline,
+} from "@/lib/agent/chatStreamDeadline";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,8 +60,12 @@ const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
  *
  * The same stall bound also gives the initial response-headers wait its budget. Overridable for
  * tests/ops via `AGENT_CHAT_TIMEOUT_MS` / `AGENT_CHAT_STREAM_CEILING_MS`.
+ *
+ * SCOPE (OH Defender MEDIUM): ALL of it — the response-headers/connect deadline, the idle deadline
+ * and the ceiling — applies to the chat stream path ONLY (`/chat`, matched exactly by
+ * `isChatStreamPath`, never by substring/prefix). Every other proxied endpoint behaves exactly as
+ * origin/main: no new timer, no wrapped body, no 60s cut.
  */
-const CHAT_TIMEOUT_MS = CHAT_STALL_TIMEOUT_MS;
 
 /**
  * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
@@ -151,13 +158,11 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;
 
-  // The chat proxy gets a bounded wait for RESPONSE HEADERS. The stream is bounded separately below
-  // by STALL time, not total time (a slow answer is legitimate; a silent one is not).
-  const connect = new AbortController();
-  const connectTimer = setTimeout(() => connect.abort(), CHAT_TIMEOUT_MS);
-  // Preserve client-disconnect propagation while adding the header deadline. The timer is cleared
-  // as soon as headers arrive, so a legitimate long SSE body is not cut off here.
-  const connectSignal = AbortSignal.any([req.signal, connect.signal]);
+  // The chat proxy gets a bounded wait for RESPONSE HEADERS — chat only. Every other endpoint keeps
+  // the caller's signal verbatim, exactly as origin/main (no new deadline). The stream is bounded
+  // separately below by STALL time, not total time (a slow answer is legitimate; a silent one is
+  // not).
+  const connect = withChatConnectDeadline(path, req.signal);
   let upstream: Response;
   try {
     upstream = await fetch(target, {
@@ -167,13 +172,14 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
       // Never advertise the browser's cache; every call is per-identity + live.
       cache: "no-store",
       redirect: "manual",
-      signal: connectSignal,
+      signal: connect.signal,
     });
   } catch {
     // Agent unreachable (down / DNS / refused / timed out): graceful error card, still no crash.
     return envelope("UPSTREAM_UNAVAILABLE", 502, "The assistant is unavailable right now.", true);
   } finally {
-    clearTimeout(connectTimer);
+    // Cleared as soon as headers arrive, so a legitimate long SSE body is not cut off here.
+    connect.clear();
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
@@ -182,7 +188,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // render incrementally (/chat + /onboarding/turn). Only a 2xx SSE response takes
   // this path; a pre-stream error is JSON and falls through to the buffered branch.
   if (upstream.ok && upstream.body && contentType.includes("text/event-stream")) {
-    const stream = head === "chat" ? withChatDeadline(upstream.body, CHAT_TIMEOUT_MS) : upstream.body;
+    // Chat-only, exact-path scoped — every other SSE route stays exactly as origin/main.
+    const stream = applyChatStreamDeadline(path, upstream.body);
     return new Response(stream, {
       status: upstream.status,
       headers: {
