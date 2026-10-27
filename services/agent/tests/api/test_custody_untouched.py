@@ -27,14 +27,27 @@ def _iter_api_routes(routes: Any) -> Iterator[APIRoute]:
             yield from _iter_api_routes(original.routes)
 
 
+def _dependency_calls(dependant: Any) -> Iterator[Any]:
+    """Every callable in a route's dependency tree (route-level AND parameter-level).
+
+    Feature 054 injects the quota decision as a route parameter so the handler can refund a
+    failed turn; that moves the dependency off ``route.dependencies`` and under
+    ``route.dependant``. Walk the tree so the N2 guard keeps seeing it.
+    """
+    call = getattr(dependant, "call", None)
+    if call is not None:
+        yield call
+    for sub in getattr(dependant, "dependencies", None) or []:
+        yield from _dependency_calls(sub)
+
+
 def _quota_paths() -> set[str]:
-    """Paths whose route-level dependencies include ``require_within_quota``."""
+    """Paths whose route/parameter dependencies include ``require_within_quota``."""
     paths: set[str] = set()
     for route in _iter_api_routes(app.routes):
-        for dep in getattr(route, "dependencies", []):
-            call = getattr(dep, "dependency", None)
-            if call is not None and "require_within_quota" in getattr(call, "__qualname__", ""):
-                paths.add(route.path)
+        calls = _dependency_calls(getattr(route, "dependant", None))
+        if any("require_within_quota" in getattr(c, "__qualname__", "") for c in calls):
+            paths.add(route.path)
     return paths
 
 

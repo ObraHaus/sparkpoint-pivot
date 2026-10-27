@@ -117,6 +117,11 @@ class LimitDecision:
     metric: str
     used: int
     limit: int
+    #: The window this turn was charged to. Set only when ``consumed`` is True.
+    window_start: datetime | None = None
+    #: True only when the counter was actually incremented. Fail-open paths leave it False so a
+    #: later refund never decrements a counter that was never charged.
+    consumed: bool = False
 
     @property
     def remaining(self) -> int:
@@ -154,11 +159,44 @@ async def check_and_consume(store: LimitsStore, owner: str, metric: Metric) -> L
                 allowed=False, tier=tier, metric=metric, used=used_before, limit=limit
             )
         used = await store.increment(owner, metric, ws, tier_at_use=tier)
-        return LimitDecision(allowed=True, tier=tier, metric=metric, used=used, limit=limit)
+        return LimitDecision(
+            allowed=True,
+            tier=tier,
+            metric=metric,
+            used=used,
+            limit=limit,
+            window_start=ws,
+            consumed=True,
+        )
     except Exception:
         # Advisory gate: a limits failure must never block the assistant (never a funds path, N2).
         logger.warning("quota_check_failed_open metric=%s", metric)
         return LimitDecision(allowed=True, tier="unknown", metric=metric, used=0, limit=0)
+
+
+async def refund(store: LimitsStore, owner: str, decision: LimitDecision) -> None:
+    """Return one unit for a turn that failed upstream, in the window it was consumed in.
+
+    Only a decision that actually incremented the counter is refundable (``consumed``), and the
+    captured ``window_start`` is used rather than "now" so a failure crossing Manila midnight
+    refunds the day that was charged. Fail-SAFE: any store error is logged and swallowed — a
+    refund must never turn a degraded answer into a failed request.
+    """
+    if not decision.consumed or decision.window_start is None:
+        return
+    try:
+        count = await store.refund(owner, decision.metric, decision.window_start)
+        record_event = getattr(store, "record_event", None)
+        if record_event is not None:
+            await record_event(
+                "refund",
+                decision.metric,
+                decision.tier,
+                subject=_mask(owner),
+                detail={"used": count, "reason": "upstream_unavailable"},
+            )
+    except Exception:
+        logger.warning("quota_refund_failed metric=%s", decision.metric)
 
 
 def require_within_quota(metric: Metric) -> Callable[..., Any]:

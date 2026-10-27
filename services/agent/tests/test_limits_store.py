@@ -110,6 +110,17 @@ async def test_increment_is_atomic_upsert_and_returns_count() -> None:
     assert args[3] == "free"
 
 
+async def test_refund_decrements_the_same_window_and_clamps_at_zero() -> None:
+    db = _FakeDb()
+    db.incr_value = 0  # UPDATE ... RETURNING after GREATEST clamps a duplicate refund to 0
+    n = await _store(db).refund("0xABCdef", "chat", _WS)
+    assert n == 0
+    sql, args = db.calls[-1]
+    assert "GREATEST(count - 1, 0)" in sql
+    assert "RETURNING count" in sql
+    assert args == ("0xabcdef", "chat", _WS)  # lowercased; SAME captured window
+
+
 async def test_resolve_tier_returns_assigned() -> None:
     db = _FakeDb()
     db.resolve_value = "premium"

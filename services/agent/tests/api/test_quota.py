@@ -18,7 +18,13 @@ from typing import Any, cast
 import pytest
 
 from sparkpoint_agent.api.errors import ApiError, ErrorCode
-from sparkpoint_agent.api.quota import check_and_consume, require_within_quota, window_start
+from sparkpoint_agent.api.quota import (
+    LimitDecision,
+    check_and_consume,
+    refund,
+    require_within_quota,
+    window_start,
+)
 from sparkpoint_agent.api.security import AccountContext
 from sparkpoint_agent.db.limits import LimitsStore
 
@@ -43,7 +49,10 @@ class _FakeLimits:
         self.usage = usage
         self.raise_on = raise_on
         self.increments: list[tuple[str, str, str]] = []
+        self.refunds: list[tuple[str, str, datetime]] = []
         self.events: list[tuple[str, str, str, str | None]] = []
+        self.refund_value = 0
+        self.raise_on_refund = False
 
     async def resolve_tier(self, owner: str) -> str:
         if self.raise_on == "resolve":
@@ -67,6 +76,12 @@ class _FakeLimits:
         self.increments.append((owner, metric, tier_at_use))
         self.usage += 1
         return self.usage
+
+    async def refund(self, owner: str, metric: str, window: datetime) -> int:
+        if self.raise_on_refund:
+            raise RuntimeError("db down")
+        self.refunds.append((owner, metric, window))
+        return self.refund_value
 
     async def record_event(
         self, verdict: str, metric: str, tier: str, *, subject: str | None, detail: Any = None
@@ -134,3 +149,47 @@ def test_window_start_is_manila_midnight_as_utc() -> None:
     # (2026-07-21 00:00 +08:00) == 2026-07-20 16:00 UTC.
     ws = window_start(datetime(2026, 7, 21, 3, 0, tzinfo=UTC))
     assert ws == datetime(2026, 7, 20, 16, 0, tzinfo=UTC)
+
+
+# ── refund on upstream failure (feature 054) ────────────────────────────────────
+
+
+def _consumed(metric: str = "chat", ws: datetime | None = None) -> LimitDecision:
+    return LimitDecision(
+        allowed=True,
+        tier="free",
+        metric=metric,
+        used=1,
+        limit=3,
+        window_start=ws or datetime(2026, 7, 20, 16, 0, tzinfo=UTC),
+        consumed=True,
+    )
+
+
+async def test_refund_returns_the_same_metric_and_captured_window() -> None:
+    f = _FakeLimits(tier="free", tier_def=_DEF)
+    ws = datetime(2026, 7, 20, 16, 0, tzinfo=UTC)
+    await refund(_store(f), _ACCT.owner, _consumed(ws=ws))
+    assert f.refunds == [(_ACCT.owner, "chat", ws)]
+    assert f.events and f.events[0][0] == "refund"
+    assert "…" in (f.events[0][3] or "")  # masked subject, never the full wallet
+
+
+async def test_refund_is_noop_when_the_turn_was_not_charged() -> None:
+    f = _FakeLimits(tier="free", tier_def=_DEF)
+    # Fail-open decisions (limits outage / missing config) are not refundable.
+    await refund(_store(f), _ACCT.owner, LimitDecision(True, "unknown", "chat", 0, 0))
+    assert f.refunds == []
+
+
+async def test_refund_uses_store_result_and_clamps_at_zero() -> None:
+    f = _FakeLimits(tier="free", tier_def=_DEF)
+    f.refund_value = 0  # store clamped a duplicate refund at zero
+    await refund(_store(f), _ACCT.owner, _consumed())
+    assert f.refunds and f.refunds[0][0] == _ACCT.owner
+
+
+async def test_refund_error_is_swallowed() -> None:
+    f = _FakeLimits(tier="free", tier_def=_DEF)
+    f.raise_on_refund = True
+    await refund(_store(f), _ACCT.owner, _consumed())  # must not raise

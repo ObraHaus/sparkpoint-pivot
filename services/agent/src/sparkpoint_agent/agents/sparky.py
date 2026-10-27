@@ -47,7 +47,14 @@ EFFORT: Effort = "low"
 
 #: A conversational reply is a few sentences, so cap the generation hard. This bounds both
 #: latency (the free pool is 5–15s already) and the blast radius of a runaway generation.
-MAX_TOKENS = 320
+#:
+#: 2026-10-27: 640 rather than 320 because the free gateway group now includes reasoning models
+#: (Nemotron 3 Ultra, Cohere North Mini Code) that spend part of the budget thinking before they
+#: emit content. At 320 a normal prose answer could exhaust the cap during reasoning and arrive as
+#: an empty generation (``finish_reason=length``, ``content=null``), which this agent turns into a
+#: silent fallback. The extra headroom is OUTPUT BUDGET only — ``MAX_CHARS`` below still clamps the
+#: user-visible reply, so the answer does not get longer.
+MAX_TOKENS = 640
 
 #: Runaway guard on the FINAL text. The prompt asks for 2–4 sentences; this is the backstop for
 #: a model that ignores it. Deliberately a character budget cut at a sentence boundary rather
