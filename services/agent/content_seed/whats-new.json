@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "chat-dead-ends-2026-10",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Sparky answers the awkward questions instead of hitting a dead end",
+      "body": "Ask Sparky how to earn with an empty wallet and you now get the curated vault options with their current net APY and as-of date, a plain-language estimate when you give an amount and a time frame (clearly labelled as an estimate, not a promise), and a real comparison with simply keeping your money in Aave. It also remembers the amount from earlier in the conversation, so \"what if I only put half?\" works. Asking for the safest vault now prepares a move you can review and sign instead of just describing it, \"withdraw everything\" prepares the full withdrawal (or says there is nothing to withdraw), and a simple \"do it\" follows the last move Sparky proposed. Swaps into assets we don't support yet — like native BTC, SOL or NEAR — now say so honestly and point you at what is live today, and requests to send funds to a third party or ignore Sparky's safety rules get a clear refusal. Sparky never moves funds; you always review and sign.",
+      "published_at": "2026-10-27T11:00:00Z"
+    },
+    {
       "slug": "chat-refund-degraded-answers-2026-10",
       "type": "changelog",
       "tag": "Fixed",
