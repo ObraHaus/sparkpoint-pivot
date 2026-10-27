@@ -36,7 +36,7 @@ model pool, and the branch is latency-sensitive (it is what a user hits when the
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort, LlmResult
@@ -154,6 +154,19 @@ class SparkyReply:
     fell_back: bool = False
 
 
+@dataclass(frozen=True)
+class SparkyChunk:
+    """One event from :meth:`Sparky.stream_reply` — a text delta or the terminal reply.
+
+    Exactly one field is set. ``reply`` carries the SAME guarded/clamped outcome the non-streaming
+    :meth:`Sparky.reply` would return, so the coordinator's final ``text`` block is authoritative
+    and can replace anything already streamed (a retry, a clamp, or the static fallback).
+    """
+
+    delta: str | None = None
+    reply: SparkyReply | None = None
+
+
 @dataclass
 class Sparky:
     """The general/identity prose agent — one LLM turn in Sparky's voice, fail-soft.
@@ -175,6 +188,86 @@ class Sparky:
         closest to the user turn). Empty persona keeps the bare task SYSTEM."""
         persona = self.persona_provider().strip()
         return f"{persona}\n\n{SYSTEM}" if persona else SYSTEM
+
+    def _user_content(
+        self,
+        message: str,
+        *,
+        context_hint: str | None,
+        memory_lines: Sequence[str] | None,
+    ) -> str:
+        """The user turn exactly as :meth:`reply` builds it (shared by the streaming path)."""
+        user_content = fence("USER_MESSAGE", message.strip(), note=UNTRUSTED_NOTE)
+        memory = render_digest(memory_lines or (), max_chars=SPARKY_DIGEST_CHARS)
+        if memory:
+            user_content = (
+                f"{user_content}\n"
+                f"{fence('MEMORY', memory, note=BACKGROUND_NOTE, neutralise=False)}"
+            )
+        if context_hint:
+            user_content = f"{user_content}\n{context_hint}"
+        return user_content
+
+    async def stream_reply(
+        self,
+        message: str,
+        *,
+        context_hint: str | None = None,
+        user: str | None = None,
+        memory_lines: Sequence[str] | None = None,
+    ) -> AsyncIterator[SparkyChunk]:
+        """Stream Sparky's prose as deltas, then yield the SAME guarded reply :meth:`reply` returns.
+
+        The deltas are UNTRUSTED until the terminal chunk: the full text still goes through
+        ``is_unusable`` (action/meta-shaped discard), the refusal check and :func:`_clamp`, and the
+        caller must render the terminal reply as the authoritative block — replacing whatever was
+        streamed if a guard rewrote or rejected it. Forwarding stops at :data:`MAX_CHARS` so the
+        visible text can never exceed the clamp; the final block may still be shorter (the clamp
+        cuts at a sentence boundary), which is why the final replacement is mandatory.
+
+        Never raises: an upstream stream failure (even mid-way) ends with ``fell_back=True`` and an
+        empty body, exactly like :meth:`reply`, so the coordinator can retry once or fall back.
+        """
+        if not hasattr(self.llm, "stream_complete"):
+            # Older/simple test doubles only implement `complete` — behave exactly like streaming
+            # off: one whole answer, same guards, same terminal reply.
+            yield SparkyChunk(
+                reply=await self.reply(
+                    message, context_hint=context_hint, user=user, memory_lines=memory_lines
+                )
+            )
+            return
+        user_content = self._user_content(
+            message, context_hint=context_hint, memory_lines=memory_lines
+        )
+        parts: list[str] = []
+        forwarded = 0
+        result: LlmResult | None = None
+        try:
+            async for chunk in self.llm.stream_complete(
+                system=self._system(),
+                messages=[{"role": "user", "content": user_content}],
+                effort=self.effort,
+                max_tokens=self.max_tokens,
+                user=user,
+            ):
+                if chunk.delta:
+                    parts.append(chunk.delta)
+                    room = MAX_CHARS - forwarded
+                    if room > 0:
+                        piece = chunk.delta[:room]
+                        forwarded += len(piece)
+                        yield SparkyChunk(delta=piece)
+                elif chunk.result is not None:
+                    result = chunk.result
+        except Exception:
+            yield SparkyChunk(reply=SparkyReply(body="", fell_back=True))
+            return
+        body = result.text.strip() if result is not None else ""
+        if result is None or result.refused or is_unusable(body):
+            yield SparkyChunk(reply=SparkyReply(body="", fell_back=True))
+            return
+        yield SparkyChunk(reply=SparkyReply(body=_clamp(body)))
 
     async def reply(
         self,
@@ -204,15 +297,9 @@ class Sparky:
         the free pool), or any upstream LLM failure. It NEVER raises: the general
         branch must degrade to the caller's static help text, not to a broken chat turn.
         """
-        user_content = fence("USER_MESSAGE", message.strip(), note=UNTRUSTED_NOTE)
-        memory = render_digest(memory_lines or (), max_chars=SPARKY_DIGEST_CHARS)
-        if memory:
-            user_content = (
-                f"{user_content}\n"
-                f"{fence('MEMORY', memory, note=BACKGROUND_NOTE, neutralise=False)}"
-            )
-        if context_hint:
-            user_content = f"{user_content}\n{context_hint}"
+        user_content = self._user_content(
+            message, context_hint=context_hint, memory_lines=memory_lines
+        )
         try:
             result: LlmResult = await self.llm.complete(
                 system=self._system(),
