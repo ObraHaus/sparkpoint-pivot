@@ -529,6 +529,7 @@ export function useOnboarding(): OnboardingDriver {
         for (;;) {
           const res = await gen.next();
           if (res.done) break;
+          if (typeof res.value !== "string") continue; // 059 text-delta — not a block
           try {
             const parsed = JSON.parse(res.value) as { type?: string; mandate?: MandateDraft };
             if (parsed?.type === "mandate_draft" && parsed.mandate) serverDraft = parsed.mandate;

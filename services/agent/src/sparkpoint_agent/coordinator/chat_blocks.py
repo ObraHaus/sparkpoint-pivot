@@ -240,6 +240,26 @@ class TextBlock(ChatBlock):
 
 
 @dataclass(frozen=True)
+class ProseDelta:
+    """059 — an INCREMENTAL prose delta on the SSE surface (``event: text-delta``).
+
+    Deliberately NOT a :class:`ChatBlock`: it is never persisted, never counted in ``blockCount``,
+    and never validated as a card. It only paints text while the final ``text`` / ``tip`` block is
+    still generating. The final block is authoritative and replaces whatever deltas preceded it
+    (a guardrail rewrite, a clamp, a retry, or a fallback), which is what keeps the persisted
+    transcript and the wire contract exactly as they were before streaming.
+
+    ``target`` tells the renderer which slot the deltas belong to (``text`` for Sparky, ``tip``
+    for a literacy card); ``stream_id`` changes when a retry starts, so the client resets the
+    partial text instead of appending a second attempt to the first.
+    """
+
+    target: Literal["text", "tip"]
+    delta: str
+    stream_id: str
+
+
+@dataclass(frozen=True)
 class ToolStepBlock(ChatBlock):
     """§2.7 ``tool_step`` — the SUMMARIZED, code-authored reasoning trace (never raw CoT)."""
 

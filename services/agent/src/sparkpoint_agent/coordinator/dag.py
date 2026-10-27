@@ -39,10 +39,16 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..agents import guardrail
-from ..agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, default_tip
+from ..agents.literacy import (
+    DEFAULT_TIPS,
+    FALLBACK_TOPIC,
+    Literacy,
+    TipCard,
+    default_tip,
+)
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
-from ..agents.sparky import Sparky
+from ..agents.sparky import Sparky, SparkyReply
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -70,6 +76,7 @@ from .chat_blocks import (
     ErrorBlock,
     PortfolioSnapshotBlock,
     PositionLite,
+    ProseDelta,
     RecommendationBlock,
     TextBlock,
     TipBlock,
@@ -370,6 +377,14 @@ class CoordinatorDag:
     # passage text feeds ONLY the prose agents (literacy/explainer) — NEVER propose/build/policy
     # (knowledge ↛ policy; the LEARN/OTHER branches that use it return before any candidate stage).
     knowledge: KnowledgeGrounder | None = None
+    #: 059/A2 — forward the final prose responder's text deltas as SSE ``text-delta`` events.
+    #: Default OFF for direct construction (unit tests keep the whole-block path); the production
+    #: wiring (:func:`api.chat.get_coordinator_dag`) sets it from ``SPARKY_STREAMING`` (default ON).
+    streaming: bool = False
+    #: 059/A3 — skip the planner for OBVIOUS read-only turns (portfolio / concept / greeting) when
+    #: a narrow deterministic pre-classifier can route them. Default OFF for direct construction;
+    #: production sets it from ``SPARKY_SINGLE_CALL`` (default ON). Never touches the 057 routes.
+    single_call: bool = False
 
     # -- stage 1: understand (LLM, NL only) -----------------------------------
 
@@ -454,6 +469,65 @@ class CoordinatorDag:
                 _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
         return _GENERAL_FAILURE, False
 
+    async def _stream_general_answer(
+        self,
+        message: str,
+        passages: tuple[Passage, ...],
+        *,
+        user: str | None,
+        memory_lines: Sequence[str] | None = None,
+    ) -> AsyncIterator[ProseDelta | _ProseResult]:
+        """Streaming counterpart to :meth:`_general_answer` (059/A2).
+
+        Yields :class:`ProseDelta` events as Sparky writes, then exactly one terminal
+        :class:`_ProseResult`. Retry semantics are IDENTICAL to the non-streaming path (one retry,
+        then an honest failure): a retry starts a NEW ``stream_id`` so the renderer resets its
+        partial text instead of appending attempt two to attempt one. The terminal answer is the
+        one the caller wraps in the final ``text`` block, so guardrails/clamps still win.
+        """
+        assert self.sparky is not None  # noqa: S101 — caller narrows
+        context = _format_grounding(passages) if passages else None
+        for attempt in (1, 2):
+            reply: SparkyReply | None = None
+            async for chunk in self.sparky.stream_reply(
+                message, context_hint=context, user=user, memory_lines=memory_lines
+            ):
+                if chunk.delta:
+                    yield ProseDelta(
+                        target="text", delta=chunk.delta, stream_id=f"general-{attempt}"
+                    )
+                elif chunk.reply is not None:
+                    reply = chunk.reply
+            if reply is not None and not reply.fell_back and reply.body:
+                yield _ProseResult(answer=reply.body, grounded=True, failed=False)
+                return
+            if attempt == 1:
+                _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
+        yield _ProseResult(answer=_GENERAL_FAILURE, grounded=False, failed=True)
+
+    async def _stream_tip(
+        self,
+        topic: str | None,
+        *,
+        context_hint: str | None,
+        user: str | None,
+    ) -> AsyncIterator[ProseDelta | TipCard]:
+        """Streaming counterpart to ``Literacy.tip`` (059/A2) — deltas, then the terminal card.
+
+        ``Literacy.stream_tip`` owns the one-retry behaviour and tags each delta with its attempt
+        number, so a retry becomes a new ``stream_id`` (client resets, never concatenates).
+        """
+        assert self.literacy is not None  # noqa: S101
+        async for chunk in self.literacy.stream_tip(
+            topic, context_hint=context_hint, user=user
+        ):
+            if chunk.delta:
+                yield ProseDelta(
+                    target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}"
+                )
+            elif chunk.card is not None:
+                yield chunk.card
+
     # -- stage 2: gather (portfolio + mandate reads) --------------------------
 
     async def gather(self, chain: ChainContext) -> Gathered:
@@ -515,8 +589,12 @@ class CoordinatorDag:
         surface: str = "chat",
         history: Sequence[tuple[str, str]] | None = None,
         memory_lines: Sequence[str] | None = None,
-    ) -> AsyncIterator[ChatBlock]:
+    ) -> AsyncIterator[ChatBlock | ProseDelta]:
         """Drive one /chat turn as a stream of §2.7 ChatBlocks (never a signable bundle).
+
+        059: when ``streaming`` is on, the prose branches additionally yield :class:`ProseDelta`
+        events BETWEEN the ``tool_step`` frames and the final ``text`` / ``tip`` block. Deltas are
+        transport-only (never persisted, never counted) and the final block is authoritative.
 
         Emits code-authored ``tool_step`` labels (summarized trace, never raw CoT), routes on
         the classified intent, and — for a proposal — surfaces only policy-cleared blocks. A
@@ -728,9 +806,13 @@ class CoordinatorDag:
             )
 
         yield ToolStepBlock("Understanding your request", "running")
-        intent = forced_intent or await self.understand(
-            message, surface=surface, user=user, history=history, memory_lines=memory_lines
-        )
+        intent = forced_intent
+        if intent is None and self.single_call:
+            intent = _fast_readonly_intent(message, history=history)
+        if intent is None:
+            intent = await self.understand(
+                message, surface=surface, user=user, history=history, memory_lines=memory_lines
+            )
         yield ToolStepBlock("Understanding your request", "done")
 
         if intent.refused:
@@ -741,7 +823,18 @@ class CoordinatorDag:
             yield ToolStepBlock("Explaining that", "running")
             passages = await self._ground(message)
             context = _format_grounding(passages) if passages else None
-            card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
+            card: TipCard | None = None
+            if self.streaming and hasattr(self.literacy, "stream_tip"):
+                async for tip_item in self._stream_tip(
+                    intent.topic, context_hint=context, user=user
+                ):
+                    if isinstance(tip_item, ProseDelta):
+                        yield tip_item
+                    else:
+                        card = tip_item
+            else:
+                card = await self.literacy.tip(intent.topic, context_hint=context, user=user)
+            assert card is not None  # noqa: S101 — both paths yield exactly one terminal card
             yield ToolStepBlock("Explaining that", "done")
             # 029/FR-003 — a tip that degraded to the GENERIC line is not an answer to the
             # question that was asked. "Is the Aave vault safe?" came back as "SparkPoint is a
@@ -777,22 +870,43 @@ class CoordinatorDag:
             passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
-            answer, grounded = await self._general_answer(
-                message, passages, user=user, memory_lines=memory_lines
-            )
+            prose_answer: str = _GENERAL_FAILURE
+            grounded = False
+            failed = True
+            if (
+                self.streaming
+                and self.sparky is not None
+                and hasattr(self.sparky, "stream_reply")
+            ):
+                async for prose_item in self._stream_general_answer(
+                    message, passages, user=user, memory_lines=memory_lines
+                ):
+                    if isinstance(prose_item, ProseDelta):
+                        yield prose_item
+                    else:
+                        prose_answer, grounded, failed = (
+                            prose_item.answer,
+                            prose_item.grounded,
+                            prose_item.failed,
+                        )
+            else:
+                prose_answer, grounded = await self._general_answer(
+                    message, passages, user=user, memory_lines=memory_lines
+                )
+                failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
-            if answer is _GENERAL_FAILURE:
+            if failed:
                 # 029/FR-003: a degraded turn must LOOK degraded. An ERROR block renders as the
                 # inline error state with a retry affordance, and (unlike a text block) is not
                 # persisted into the transcript — so a reopened conversation shows no phantom
                 # answer where the model never produced one.
-                yield ErrorBlock("UPSTREAM_UNAVAILABLE", answer)
+                yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            yield TextBlock(answer)
+            yield TextBlock(prose_answer)
             # Cite ONLY when the grounded answer actually came from the model AND actually
             # answered. A fallback is not grounded in those passages, and neither is a refusal
             # (029/FR-014) — citing either would claim a provenance the text does not have.
-            if passages and grounded and not _is_decline(answer):
+            if passages and grounded and not _is_decline(prose_answer):
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
@@ -1587,6 +1701,290 @@ def _build_action_refusal(chain_id: int, action_type: ActionType | None) -> str:
         "I couldn't build that action right now — it may not clear your guardrails, or a fresh "
         "read didn't line up. Try again in a moment, or ask me to explain the options."
     )
+
+
+@dataclass(frozen=True)
+class _ProseResult:
+    """059 — the terminal outcome of a streamed prose turn (deltas were already yielded).
+
+    ``failed`` mirrors the ``answer is _GENERAL_FAILURE`` signal: the caller emits an ERROR block
+    (never prose) and the partial text already sent is replaced/discarded by the client.
+    """
+
+    answer: str
+    grounded: bool
+    failed: bool
+
+
+#: 059/A3 — normalise a fast-route candidate before an ALLOWLIST match: lower-case, drop
+#: apostrophes/punctuation, collapse whitespace, and strip leading/trailing politeness
+#: ("hey sparky", "please", "can you"). The allowlist regexes are anchored ``^...$`` afterwards,
+#: so any leftover clause, conjunction, advice word, action verb or number cannot match.
+_FAST_POLITE_LEAD_RE = re.compile(
+    r"^(?:(?:hey|hi|hello|yo|ok|okay|so)\s+)?"
+    r"(?:sparky\s+)?"
+    r"(?:(?:please|kindly)\s+)?"
+    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?"
+)
+_FAST_POLITE_TAIL_RE = re.compile(r"\s+(?:please|thanks|thank you)$")
+
+
+def _normalise_fast_text(text: str) -> str:
+    """Lower-case/punctuation/whitespace-normalise a candidate and strip polite filler."""
+    normalised = text.lower().replace("'", "").replace("\u2019", "")
+    normalised = re.sub(r"[^a-z0-9\s]", " ", normalised)
+    normalised = re.sub(r"\s+", " ", normalised).strip()
+    previous = None
+    while normalised and normalised != previous:
+        previous = normalised
+        normalised = _FAST_POLITE_LEAD_RE.sub("", normalised).strip()
+        normalised = _FAST_POLITE_TAIL_RE.sub("", normalised).strip()
+    return normalised
+
+
+#: 059/A3 — the ONLY portfolio snapshot shapes allowed to skip the planner. Every alternative is a
+#: COMPLETE request and the ``^...$`` anchors mean any extra clause ("...and is it safe?"), advice
+#: word, action verb, conjunct or hypothetical falls through to the planner (the blocking guard
+#: below is the second layer). A bare "my wallet" is deliberately absent: it is not a snapshot ask.
+_PORTFOLIO_ALLOWLIST_RE = re.compile(
+    r"^(?:"
+    r"whats (?:in )?my (?:wallet|portfolio|account)|"
+    r"what is (?:in )?my (?:wallet|portfolio|account)|"
+    r"whats my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"what is my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"what do i (?:hold|own|have)(?: in my (?:wallet|portfolio|account))?|"
+    r"show (?:me )?my (?:portfolio|holdings|positions|balances?|wallet)|"
+    r"(?:my )?(?:portfolio|holdings|positions|balances?)|"
+    r"how much (?:[a-z0-9]{2,12} )?do i have"
+    r")$"
+)
+
+#: 059/A3 — ANY fast-path candidate carrying an action/command signal must fall through to the
+#: normal planner/057 routes. This is a latency optimisation, so the guard is deliberately
+#: conservative: a false negative (one extra model call) is fine; silently dropping the action
+#: half of a compound message is not. It applies to PORTFOLIO, LEARN and OTHER alike.
+_FAST_BLOCKING_ACTION_RE = re.compile(
+    r"\b(?:"
+    r"deposit(?:s|ed|ing)?|withdraw(?:s|ing|n)?|withdrew|redeem(?:s|ed|ing)?|"
+    r"swap(?:s|ped|ping)?|send(?:s|ing)?|sent|transfer(?:s|red|ring)?|"
+    r"pay(?:s|ing)?|paid|payments?|buy(?:s|ing)?|bought|sell(?:s|ing)?|sold|"
+    r"stak(?:e|es|ed|ing)|unstak(?:e|es|ed|ing)|suppl(?:y|ies|ied|ying)|"
+    r"borrow(?:s|ed|ing)?|repay(?:s|ing)?|repaid|bridg(?:e|es|ed|ing)|"
+    r"invest(?:s|ed|ing|ment)?|mov(?:e|es|ed|ing)|convert(?:s|ed|ing)?|conversion|"
+    r"exchange(?:s|d|ing)?|trad(?:e|es|ed|ing)|cash[\s-]?out|top[\s-]?up|"
+    r"allocat(?:e|es|ed|ing)|lend(?:s|ing)?|lent|put(?:s|ting)?|claim(?:s|ed|ing)?|"
+    r"exit(?:s|ed|ing)?|clos(?:e|es|ed|ing)|open(?:s|ed|ing)?|rebalanc(?:e|es|ed|ing)|"
+    r"park(?:s|ed|ing)?|add(?:s|ed|ing)?|remov(?:e|es|ed|ing)|pull(?:s|ed|ing)?|"
+    r"purchas(?:e|es|ed|ing)|fund(?:s|ed|ing)?|los(?:e|es|ing)|lost|"
+    r"contribute(?:s|d|ing)?|contributions?|recover(?:s|ed|ing|y)?|fix(?:es|ed|ing)?"
+    r")\b"
+    r"|\bdo\s+it\b|\bgo\s+ahead\b|\bproceed\b|\bexecute\b|\bconfirm\b|\bsign\s+it\b|"
+    r"\bhelp\s+me\b|\bshould(?:n'?t)?\b",
+    re.IGNORECASE,
+)
+
+#: A number/percentage of ANY shape is an action signal (an amount the planner must extract)
+#: UNLESS it is clearly part of a well-known token/standard/time-window name. Everything else —
+#: bare digits, decimals, ``1k``/``2.5m``, ``5%`` — blocks the shortcut; the only cost is the
+#: normal planner call, while a missed amount silently drops the action half of a compound turn.
+_FAST_STANDARD_NUMBER_RE = re.compile(
+    r"\b(?:ERC|EIP)[-\s]?\d+\b|\bL[12]\b|\bv\d+\b|"
+    r"\b\d+(?:\.\d+)?\s*-?\s*"
+    r"(?:h|hr|hrs|hours?|d|day|days|w|wk|wks|weeks?|y|yr|yrs|years?|months?)\b",
+    re.IGNORECASE,
+)
+_FAST_ANY_NUMBER_RE = re.compile(r"\d")
+
+#: Written-out amounts ("five hundred", "half", "all of my", "everything") are amounts too.
+_FAST_BLOCKING_WRITTEN_AMOUNT_RE = re.compile(
+    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|"
+    r"half|quarter)\b"
+    r"|\ball\s+(?:of\s+)?my\b|\ball\s+(?:of\s+)?(?:it|them|this|that)\b|"
+    r"\beverything\b|\bmax(?:imum)?\b",
+    re.IGNORECASE,
+)
+
+#: Amounts carrying a currency marker, a pasted address, injection markers, or a NEAR/cross-chain
+#: mention are all signals that the turn is (or contains) an action or a sensitive request. None
+#: of them may be answered by a one-call read-only shortcut.
+_FAST_BLOCKING_AMOUNT_RE = re.compile(
+    r"\$\s*\d|\b\d[\d,]*(?:\.\d+)?\s*(?:k|m)?\s*"
+    r"(?:usdc|usdg|dollars?|bucks|stablecoins?|eth|weth|btc|wbtc|usdt|dai|sol|near)\b",
+    re.IGNORECASE,
+)
+_FAST_BLOCKING_ADDRESS_RE = re.compile(r"\b0x[0-9a-fA-F]{40}\b")
+_FAST_BLOCKING_INJECTION_RE = re.compile(
+    r"\b(?:ignore|disregard|forget|override|bypass|discard)\b[^.?!]{0,40}"
+    r"\b(?:previous|prior|above|earlier|all)\b[^.?!]{0,25}"
+    r"\b(?:instructions?|prompts?|rules?|directions?|guardrails?)\b"
+    r"|\bsystem\s+prompt\b|\bjailbreak\b|\bdeveloper\s+mode\b",
+    re.IGNORECASE,
+)
+_FAST_BLOCKING_CROSS_CHAIN_RE = re.compile(
+    r"(?-i:\bNEAR\b)|\bnear\s+(?:protocol|chain|network|token)\b|"
+    r"\brhea(?:\s+finance)?\b|\bcross[-\s]?chain\b|\bbridg(?:e|es|ed|ing)\b",
+    re.IGNORECASE,
+)
+
+
+def _fast_path_is_blocked(text: str) -> bool:
+    """True when a fast-path candidate carries a signal the planner must see.
+
+    Checked BEFORE any of the PORTFOLIO / LEARN / OTHER matchers, so the shortcut can never
+    answer only the concept half of "How do vaults work? I want to deposit 500 USDC". Any
+    standalone number counts as a possible amount unless it belongs to a known standard/window
+    (``ERC-4626``, ``L2``, ``7d APY``); blocking too much only costs the normal planner call.
+    """
+    without_standard_numbers = _FAST_STANDARD_NUMBER_RE.sub(" ", text)
+    return bool(
+        _FAST_BLOCKING_ACTION_RE.search(text)
+        or _FAST_BLOCKING_AMOUNT_RE.search(text)
+        or _FAST_ANY_NUMBER_RE.search(without_standard_numbers)
+        or _FAST_BLOCKING_WRITTEN_AMOUNT_RE.search(text)
+        or _FAST_BLOCKING_ADDRESS_RE.search(text)
+        or _FAST_BLOCKING_INJECTION_RE.search(text)
+        or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
+    )
+
+#: 059/A3 — the ONLY concept shapes allowed to skip the planner. Fully anchored after
+#: normalisation, with a short topic phrase (≤6 words for "what is/explain", ≤5 before "work")
+#: and no extra clause. ``_FAST_CLAUSE_WORD_RE`` rejects conjunctions, pronouns/advice and
+#: first-person framing that the shape alone would let through.
+_FAST_TOPIC_WORD = r"[a-z0-9]+"
+_FAST_TOPIC_PHRASE = rf"{_FAST_TOPIC_WORD}(?: {_FAST_TOPIC_WORD}){{0,5}}"
+_LEARN_ALLOWLIST_RE = re.compile(
+    rf"^(?:"
+    rf"what (?:is|are) {_FAST_TOPIC_PHRASE}|"
+    rf"whats {_FAST_TOPIC_PHRASE}|"
+    rf"explain {_FAST_TOPIC_PHRASE}|"
+    rf"define {_FAST_TOPIC_PHRASE}|"
+    rf"tell me about {_FAST_TOPIC_PHRASE}|"
+    rf"how (?:does|do) {_FAST_TOPIC_WORD}(?: {_FAST_TOPIC_WORD}){{0,4}} work"
+    rf")$"
+)
+_FAST_CLAUSE_WORD_RE = re.compile(
+    r"\b(?:and|or|but|then|also|plus|so|because|if|when|while|should|shall|"
+    r"can|could|would|will|may|might|must|need|want|"
+    r"best|safest|better|recommend|suggest|worth|"
+    r"i|me|my|we|our|you|your)\b"
+)
+
+#: 059/A3 — short greetings/identity turns: Sparky can answer them directly (one prose call).
+#: Anchored allowlists for the same reason as the portfolio/learn matchers: no extra clause.
+_GREETING_FAST_RE = re.compile(
+    r"^(?:hi|hello|hey|hiya|yo|good (?:morning|afternoon|evening)|help)$"
+)
+
+#: 059/A3 — identity turns are OTHER prose, never a concept tip. The LEARN matcher's generic
+#: "what is …" would otherwise answer "What is Sparky and what can you do for me?" with a
+#: knowledge card (058 golden ``audit-01-identity``). Deliberately narrow: a possessively
+#: qualified concept question ("What is Sparky's fee?") still reaches the planner.
+_IDENTITY_FAST_RE = re.compile(
+    r"^(?:what can you do|what do you do|who are you|what are you|what is sparky)$"
+)
+
+#: 059/A3 — live-quote shapes ("what is the price of ETH?") are NOT concept questions. They are
+#: left to the planner, which routes them to the general/OTHER prose branch: a deterministic
+#: matcher cannot know a price, and answering one from the knowledge corpus would turn a quote
+#: request into a tip (058 golden ``audit-07-eth-price``).
+_PRICE_FAST_RE = re.compile(
+    r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
+)
+
+#: 059/A3 follow-up safety — with prior turns in the conversation, a deictic/anaphoric reference
+#: ("how does it work?", "what about fees?") is only answerable in context. The deterministic
+#: pre-classifier has no conversation context beyond the topic slug, so it must not answer these
+#: decontextualised; the planner receives ``history`` and can disambiguate.
+_FOLLOWUP_REFERENCE_RE = re.compile(
+    r"\b(?:it|its|it's|that|this|these|those|they|them|their|theirs|there|same|"
+    r"above|aforementioned)\b|\bwhat\s+about\b|\bhow\s+about\b",
+    re.IGNORECASE,
+)
+_FOLLOWUP_LEAD_RE = re.compile(
+    r"^(?:and|also|then|so|but|plus|or|what\s+about|how\s+about|what\s+if|"
+    r"why|ok(?:ay)?|yes|yeah|no|more)\b",
+    re.IGNORECASE,
+)
+
+#: Words that describe the QUESTION rather than a subject. A concept topic made only of these
+#: ("how does it work?" → ``it``) is not a real topic and must fall back to the planner.
+_TOPIC_STOPWORDS = {
+    "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
+    "about", "how", "does", "do", "why", "of", "to", "in", "work", "works", "with", "for",
+    "from", "by", "on", "at", "can", "could", "would", "should", "it", "its", "that", "this",
+    "these", "those", "they", "them", "their", "theirs", "there", "one", "same", "above",
+    "and", "also", "then", "so", "but", "or", "more", "please",
+}
+
+
+def _topic_slug(text: str) -> str:
+    """A stable, human-readable topic key for a pre-classified concept question, or ``""``.
+
+    ``topic`` is a routing/display key (the web humanises it), not copy. Dropping the question
+    words keeps it close to the planner's own slugs ("what is APY?" → ``apy``), which also lets
+    :func:`default_tip` key its pre-written fallback correctly. A slug with no subject left
+    (a pronoun/stopword only) is empty: the caller must send it to the planner instead of
+    answering a decontextualised ``topic="it"`` tip.
+    """
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    kept = [w for w in words if w not in _TOPIC_STOPWORDS][:8]
+    if not kept:
+        return ""
+    # A topic that is nothing but digits is a reference to something in context, not a concept.
+    if all(re.fullmatch(r"\d+", word) for word in kept):
+        return ""
+    return "_".join(kept)
+
+
+def _fast_readonly_intent(
+    message: str, history: Sequence[tuple[str, str]] | None = None
+) -> Intent | None:
+    """059/A3 — a deterministic intent for an OBVIOUS read-only turn, else ``None``.
+
+    This is a latency widening of the pre-classifier, not a new authority: it can only ever return
+    PORTFOLIO / LEARN / OTHER, and it runs AFTER every 057 deterministic route (unsafe refusal,
+    unsupported swap, confirmations, bridge, what's-new, exit, safety, yield guidance, curated,
+    direct fees/APY, withdraw-all). A command shape, or any action/amount/address/injection/
+    cross-chain signal, stays with the planner — for EVERY fast path, not just portfolio reads.
+
+    With prior turns, anaphora/deictic references and very short follow-ups also stay with the
+    planner: the pre-classifier cannot decontextualise "how does it work?" or "what about fees?"
+    and answering one as a fresh concept is worse than one extra planner call.
+    """
+    text = message.strip()
+    if not text:
+        return None
+    if _fast_path_is_blocked(text):
+        return None
+    normalised = _normalise_fast_text(text)
+    if not normalised:
+        return None
+    if history:
+        if len(text.split()) < 4:
+            return None
+        if _FOLLOWUP_REFERENCE_RE.search(text) or _FOLLOWUP_LEAD_RE.match(text):
+            return None
+    # ALLOWLIST, not blocklist: only a complete, anchored snapshot request may skip the planner.
+    if _PORTFOLIO_ALLOWLIST_RE.match(normalised):
+        return Intent(kind=IntentKind.PORTFOLIO)
+    if _IDENTITY_FAST_RE.match(normalised):
+        return Intent(kind=IntentKind.OTHER)
+    if _GREETING_FAST_RE.match(normalised):
+        return Intent(kind=IntentKind.OTHER)
+    # A price/quote question is not a concept: fall through to the planner so it keeps its
+    # pre-059 route instead of becoming a knowledge card.
+    if (
+        _LEARN_ALLOWLIST_RE.match(normalised)
+        and not _PRICE_FAST_RE.search(normalised)
+        and not _FAST_CLAUSE_WORD_RE.search(normalised)
+        and len(text) <= 240
+    ):
+        topic = _topic_slug(normalised)
+        if topic:
+            return Intent(kind=IntentKind.LEARN, topic=topic)
+    return None
 
 
 class _Refused(Exception):

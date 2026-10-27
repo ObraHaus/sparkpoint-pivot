@@ -56,6 +56,26 @@ export function stepsSummary(count: number): string {
 }
 
 /**
+ * 059 fix — whether the "Sparky is working" row should render.
+ *
+ * The waiting row used to be `streaming && !deltaText`. When the authoritative final `text`/`tip`
+ * block lands, the provisional `deltaText` is cleared immediately, but `streaming` stays true until
+ * the SSE generator finishes — so for one frame the waiting row flashed back in *underneath* the
+ * finished answer. It also flashed on fast routes that prose-stream nothing at all.
+ *
+ * The row is only honest while the turn is live AND no answer (provisional or final) is on screen.
+ * Pure so the rule can be tested without a browser.
+ */
+export function shouldShowThinking(
+  items: readonly TranscriptItem[],
+  { streaming, hasDelta }: { streaming: boolean; hasDelta: boolean },
+): boolean {
+  if (!streaming) return false;
+  if (hasDelta) return false;
+  return !items.some((i) => i.type === "text" || i.type === "tip");
+}
+
+/**
  * How to render one turn's blocks.
  *
  * Order is preserved exactly: groups sit where their steps were, so a turn that thinks, answers,
