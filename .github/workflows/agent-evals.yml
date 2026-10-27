@@ -48,6 +48,7 @@ jobs:
         run: |
           if [ -f evals/out/summary.md ]; then cat evals/out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        continue-on-error: true # artifact storage quota must not fail evals
         if: always()
         with:
           name: agent-evals-offline
@@ -93,6 +94,7 @@ jobs:
         run: |
           if [ -f evals/out/summary.md ]; then cat evals/out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        continue-on-error: true # artifact storage quota must not fail evals
         if: always() && steps.gateway.outputs.configured == 'true'
         with:
           name: agent-evals-live
