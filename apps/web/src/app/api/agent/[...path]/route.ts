@@ -44,6 +44,57 @@ const AGENT_INTERNAL_URL = process.env.AGENT_INTERNAL_URL;
 const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
 
 /**
+ * 061 A9 — a chat turn must not look alive forever.
+ *
+ * The proxy had no deadline at all: if the agent accepted the request and then stalled, the SSE
+ * connection stayed open and the user got a spinner with no way forward. A turn gets this long to
+ * finish; when it runs out we emit a normal `error` block on the open stream (the renderer already
+ * understands it, and the chat offers Retry) and close cleanly. Overridable for tests/ops.
+ */
+const CHAT_TIMEOUT_MS = Number(process.env.AGENT_CHAT_TIMEOUT_MS ?? 60_000);
+
+/** A clean §2.7 error block as an already-framed SSE event. */
+function chatTimeoutEvent(): Uint8Array {
+  const block = JSON.stringify({
+    type: "error",
+    code: "UPSTREAM_UNAVAILABLE",
+    message: "Sparky took too long to answer. Nothing was signed or changed — you can try again.",
+  });
+  return new TextEncoder().encode(`event: block\ndata: ${block}\n\n`);
+}
+
+/** Close an SSE body with a clean error block after `ms`, rather than hanging the tab forever. */
+function withChatDeadline(body: ReadableStream<Uint8Array>, ms: number): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), ms);
+  });
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const result = await Promise.race([reader.read(), deadline]);
+      if (result === "timeout") {
+        if (timer) clearTimeout(timer);
+        controller.enqueue(chatTimeoutEvent());
+        controller.close();
+        void reader.cancel().catch(() => {});
+        return;
+      }
+      if (result.done) {
+        if (timer) clearTimeout(timer);
+        controller.close();
+        return;
+      }
+      controller.enqueue(result.value);
+    },
+    cancel(reason) {
+      if (timer) clearTimeout(timer);
+      return reader.cancel(reason);
+    },
+  });
+}
+
+/**
  * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
  * from the client — identity is derived server-side from the verified SIWE session (see `proxy`),
  * so a browser can no longer assert an arbitrary owner. Only network selection + content
@@ -134,6 +185,13 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;
 
+  // The chat proxy gets a bounded wait for RESPONSE HEADERS. The stream itself is bounded separately
+  // below (a long answer is legitimate; a stalled tab is not).
+  const connect = new AbortController();
+  const connectTimer = setTimeout(() => connect.abort(), CHAT_TIMEOUT_MS);
+  // Preserve client-disconnect propagation while adding the header deadline. The timer is cleared
+  // as soon as headers arrive, so a legitimate long SSE body is not cut off here.
+  const connectSignal = AbortSignal.any([req.signal, connect.signal]);
   let upstream: Response;
   try {
     upstream = await fetch(target, {
@@ -143,11 +201,13 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
       // Never advertise the browser's cache; every call is per-identity + live.
       cache: "no-store",
       redirect: "manual",
-      signal: req.signal,
+      signal: connectSignal,
     });
   } catch {
-    // Agent unreachable (down / DNS / refused): graceful error card, still no crash.
+    // Agent unreachable (down / DNS / refused / timed out): graceful error card, still no crash.
     return envelope("UPSTREAM_UNAVAILABLE", 502, "The assistant is unavailable right now.", true);
+  } finally {
+    clearTimeout(connectTimer);
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
@@ -156,7 +216,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // render incrementally (/chat + /onboarding/turn). Only a 2xx SSE response takes
   // this path; a pre-stream error is JSON and falls through to the buffered branch.
   if (upstream.ok && upstream.body && contentType.includes("text/event-stream")) {
-    return new Response(upstream.body, {
+    const stream = head === "chat" ? withChatDeadline(upstream.body, CHAT_TIMEOUT_MS) : upstream.body;
+    return new Response(stream, {
       status: upstream.status,
       headers: {
         "content-type": "text/event-stream",

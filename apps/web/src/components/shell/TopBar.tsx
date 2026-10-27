@@ -32,8 +32,8 @@ export function TopBar({ active }: { active: string }) {
       <PrimaryNav active={active} />
       <div className="grow" />
       <div className="rightcluster">
-        <StageBadge />
-        <span className="pill" title="What Sparky can & can't do" onClick={ov.openProveIt}>
+        <span className="stagePill"><StageBadge /></span>
+        <span className="pill trustPill" title="What Sparky can & can't do" onClick={ov.openProveIt}>
           <span className="led" />
           Fully self-custodial
         </span>

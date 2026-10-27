@@ -22,7 +22,13 @@ from starlette.responses import Response
 
 from .errors import ApiError, ErrorCode, new_request_id, render_api_error
 from .idempotency import IdempotencyScope, ScopedStore, StoredResponse, is_valid_key
-from .security import authenticate, is_exempt, parse_account_headers, requires_account_context
+from .security import (
+    authenticate,
+    has_optional_account_context,
+    is_exempt,
+    parse_account_headers,
+    requires_account_context,
+)
 
 _CallNext = Callable[[Request], Awaitable[Response]]
 
@@ -67,11 +73,17 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             # skipped, leaving `request.state.account` unset so `get_account` raises rather than
             # handing any route a fabricated owner.
             if requires_account_context(request.url.path):
-                request.state.account = parse_account_headers(
-                    request.headers.get("X-Account"),
-                    request.headers.get("X-Owner"),
-                    request.headers.get("X-Chain-Id"),
-                )
+                try:
+                    request.state.account = parse_account_headers(
+                        request.headers.get("X-Account"),
+                        request.headers.get("X-Owner"),
+                        request.headers.get("X-Chain-Id"),
+                    )
+                except ApiError:
+                    # 061 — a handful of advisory reads can answer "unavailable" without an
+                    # identity. Auth already passed; only the scoping parse is optional here.
+                    if not has_optional_account_context(request.url.path):
+                        raise
             key = self._validate_idempotency_key(request)
         except ApiError as exc:
             return render_api_error(exc, request_id)

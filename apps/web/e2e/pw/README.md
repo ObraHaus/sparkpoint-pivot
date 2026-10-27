@@ -10,6 +10,11 @@ session runs end-to-end without a wallet extension. Complements the Node gate-ma
 
 - **public-routes.spec.ts** (no wallet): landing renders; `/exit` + `/trust` are reachable without a
   wallet and never gated; a protected route bounces an unauthenticated visitor to `/connect`.
+- **f061-ux-quick-fixes.spec.ts** (injected wallet, agent mocked in-browser): What's New is a
+  non-blocking panel shown once per release (`PW_FORCE_REFRESH=1`); Strategies is absent when
+  there is nothing to rank; the 390px header does not overflow; the trust banner dismissal
+  persists; a slow chat turn says so and Retry resends; thumbs POST `/chat/feedback`. Never calls
+  beta or a live agent.
 - **connect-siwe.spec.ts** (injected wallet): the wallet auto-connects and `/connect` advances to
   `/verify`; the SIWE signature mints a session and admits a beta-allowlisted wallet ("You're in.",
   beta eligible); an authenticated wallet opens a protected app route (the live portfolio).
