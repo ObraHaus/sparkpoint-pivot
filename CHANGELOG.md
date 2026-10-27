@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **Dependency CVE patch pass (055)** — `next` 16.3.6 → 16.4.3 patches two CRITICAL RCEs (`GHSA-2464-fhr4-w9xw` image-optimization SVG, `GHSA-673q-mjm6-r5xr` `use cache` typed arrays), HIGHs `CVE-2026-94482`/`CVE-2026-94483`, and five MEDIUMs (`CVE-2026-103004`, `-94484`, `-94485`, `-94543`, `-94544`); `eslint-config-next` tracks the same version. `sharp` 0.35.4 → 0.35.5 (`GHSA-wq5f-xc86-pv6w`) and `source-map-js` 1.2.1 → 1.2.2 (`CVE-2026-93749`) via root `pnpm.overrides`, and `certifi` 2026.6.17 → 2026.10.23 (`GHSA-6q48-6c7w-9gw2`) in `services/agent/uv.lock`. `zod` 3.25.76 is still flagged by `CVE-2023-54404`; no patched 3.x exists (the fix landed in 4.6.6), so the major bump is pending an operator decision.
+
 ### Fixed (gateway model availability — restored chat)
 
 - **The retired OpenRouter `:free` slugs are replaced, restoring chat on beta.** OpenRouter retired the 2026-10-04 free lineup (`ling-3.0-flash-sante:free` and `apodex-1.1-mini:free` no longer exist; `qwen3.8-27b:free` is paid-only), so every `sparkpoint-chat` request failed at model lookup (404) regardless of the key. `services/litellm/config.yaml` now runs **Nemotron 3 Super 120B (free)** with a **Gemma 4 31B (free)** fallback for `sparkpoint-chat`; the premium/self-authoring fallback is now **Ling 3.0 Flash** (same family as the Ling 3.1 Flash primary). All replacements were probed live before the switch. The 0-cost pins are dropped — both premium upstreams are paid now, so LiteLLM's cost map drives spend accounting and per-user budgets honestly. The pinned RAG embedding model (`nvidia/llama-nemotron-embed-vl-1b-v2:free`) is unchanged ($0, still live).
