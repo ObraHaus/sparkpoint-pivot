@@ -24,6 +24,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from ..formatting import format_usd
 from .curated import CuratedContext, CuratedPick
+from .staleness import as_of_suffix, staleness_caveat
 
 __all__ = [
     "CONFIRMATION_RE",
@@ -561,8 +562,15 @@ def _options_block(curated: CuratedContext | None) -> str:
         )
     lines = ["Curated options on this network right now (the same board `/vault` shows):"]
     for vault in vaults[:3]:
-        as_of = f" (as of {vault.as_of[:10]})" if vault.as_of else ""
+        as_of = as_of_suffix(vault.as_of)
         lines.append(f"- **{vault.label}** — {_fmt_bps(vault.net_apy_bps)} net APY{as_of}")
+    caveats = [
+        staleness_caveat(vault.as_of, subject=f"{vault.label}'s figure")
+        for vault in vaults[:3]
+    ]
+    unique = [c for i, c in enumerate(caveats) if c and c not in caveats[:i]]
+    if unique:
+        lines += ["", unique[0]]
     return "\n".join(lines)
 
 
@@ -580,13 +588,15 @@ def _estimate_block(
     amount: int, months: int, apy_bps: int, as_of: str | None
 ) -> str:
     earned = amount * apy_bps * months // (10_000 * 12)
-    stamp = f" as of {as_of[:10]}" if as_of else ""
+    stamp = as_of_suffix(as_of, style="space")
+    caveat = staleness_caveat(as_of, subject="This rate")
+    caveat_line = f" {caveat}" if caveat else ""
     period = "1 year" if months == 12 else f"{months} months"
     return (
         f"At the current variable rate of **{_fmt_bps(apy_bps)}**{stamp}, "
         f"{format_usd(amount)} would earn roughly **{format_usd(earned)}** over {period}, before "
         "any fees. That's an illustrative estimate at today's rate, not a promise — the rate "
-        "moves with the market."
+        f"moves with the market.{caveat_line}"
     )
 
 
@@ -599,7 +609,7 @@ def _comparison_block(
     pick = curated.pick if curated is not None else None
     net_bps = pick.net_apy_bps if pick is not None else projected_bps
     label = pick.label if pick is not None else "the SparkPoint vault"
-    as_of = f" (as of {pick.as_of[:10]})" if pick is not None and pick.as_of else ""
+    as_of = as_of_suffix(pick.as_of) if pick is not None else ""
     if net_bps is None and gross_bps is None:
         return (
             "I don't have a live curated rate or Aave rate to compare right now, so I won't "
@@ -624,6 +634,10 @@ def _comparison_block(
         "Either way it's the same Aave lending market and the same smart-contract and "
         "variable-rate risk; the difference is the wrapper, its fee, and who manages the position."
     )
+    if pick is not None:
+        caveat = staleness_caveat(pick.as_of, subject=f"{pick.label}'s figure")
+        if caveat:
+            parts.append(caveat)
     return " ".join(parts)
 
 
@@ -694,10 +708,13 @@ def yield_guidance_answer(
     if amount is not None and months is not None and apy is not None:
         sections.append(_estimate_block(amount, months, apy, as_of))
     elif amount is not None and apy is not None:
+        stamp = as_of_suffix(as_of, style="space")
+        caveat = staleness_caveat(as_of, subject="This rate")
         sections.append(
-            f"At today's variable rate of about **{_fmt_bps(apy)}**, {format_usd(amount)} would "
-            "earn that rate over a year before fees — an estimate, not a promise. Tell me a "
+            f"At today's variable rate of about **{_fmt_bps(apy)}**{stamp}, {format_usd(amount)} "
+            "would earn that rate over a year before fees — an estimate, not a promise. Tell me a "
             "duration (for example 6 months) and I'll work out the figure."
+            + (f" {caveat}" if caveat else "")
         )
     elif amount is None and is_yield_guidance_question(message):
         sections.append(

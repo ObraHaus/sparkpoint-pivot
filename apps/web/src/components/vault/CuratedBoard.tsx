@@ -102,6 +102,12 @@ function RailCta({
   );
 }
 
+/** 060 — the stored APY's own as-of, from the freshest timestamp the row carries. */
+function asOfLabel(vault: CurationVault): string {
+  const stamp = vault.lastScanAt ?? vault.asOf ?? vault.updatedAt;
+  return stamp ? `as of ${fmtWhen(stamp)}` : "as stored";
+}
+
 function Sparkline({ points, big = false }: { points?: ApyPoint[]; big?: boolean }) {
   const path = sparklinePath(points, big ? 300 : 120, big ? 96 : 34);
   if (!path) return null;
@@ -178,7 +184,7 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
           <div className="vb-stats">
             <div className="vb-stat big">
               <div className="v tnum">{fmtApyBps(pick.netApyBps)}</div>
-              <div className="l">net APY · as stored</div>
+              <div className="l">net APY · {asOfLabel(pick)}</div>
             </div>
             <div className="vb-stat">
               <div className="v tnum">{fmtUsdCompact(pick.tvlUsd)}</div>
