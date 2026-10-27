@@ -172,3 +172,31 @@ async def test_mid_stream_failure_refunds_once_and_records_no_partial_answer() -
     assert assistant[1] == ""  # nothing partial persisted as a successful answer
     done = next(data for name, data in events if name == "done")
     assert done["blockCount"] == len(blocks)
+
+
+class _RetryDag:
+    """A turn whose first prose attempt paints and is replaced by a retry (new streamId)."""
+
+    async def run_chat(self, *_: Any, **__: Any) -> Any:
+        yield ProseDelta(target="text", delta="Attempt one.", stream_id="general-1")
+        yield ProseDelta(target="text", delta="Retried answer.", stream_id="general-2")
+        yield TextBlock("Retried answer.")
+
+
+async def test_retry_with_a_new_stream_id_refunds_nothing_and_persists_only_the_final() -> None:
+    """A DAG retry is ONE charged turn: a new ``streamId`` must not look like a second request.
+
+    The client resets its paint on ``general-2`` and the final ``text`` block replaces it; the
+    quota is neither charged twice nor refunded, and only the authoritative answer is persisted.
+    """
+    sink = _RecordingSink()
+    limits = _Limits()
+    events = await _collect(cast(Any, _RetryDag()), limits, sink)
+    deltas = [data for name, data in events if name == "text-delta"]
+    assert [d["streamId"] for d in deltas] == ["general-1", "general-2"]
+    blocks = [data for name, data in events if name == "block"]
+    assert [b["type"] for b in blocks] == ["text"]
+    assert limits.refunds == []
+    assistant = next(t for t in sink.turns if t[0] == "assistant")
+    assert assistant[1] == "Retried answer."
+    assert [b["type"] for b in (assistant[2] or [])] == ["text"]

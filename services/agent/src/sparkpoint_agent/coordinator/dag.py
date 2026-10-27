@@ -1752,6 +1752,25 @@ _GREETING_FAST_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: 059/A3 — identity turns are OTHER prose, never a concept tip. The LEARN matcher's generic
+#: "what is …" would otherwise answer "What is Sparky and what can you do for me?" with a
+#: knowledge card (058 golden ``audit-01-identity``). Deliberately narrow: a possessively
+#: qualified concept question ("What is Sparky's fee?") still reaches the planner.
+_IDENTITY_FAST_RE = re.compile(
+    r"\bwhat\s+can\s+you\s+do\b|\bwhat\s+do\s+you\s+do\b|"
+    r"\bwho\s+are\s+you\b|\bwhat\s+are\s+you\b|"
+    r"^what\s+is\s+sparky\s*[?.!]?$",
+    re.IGNORECASE,
+)
+
+#: 059/A3 — live-quote shapes ("what is the price of ETH?") are NOT concept questions. They are
+#: left to the planner, which routes them to the general/OTHER prose branch: a deterministic
+#: matcher cannot know a price, and answering one from the knowledge corpus would turn a quote
+#: request into a tip (058 golden ``audit-07-eth-price``).
+_PRICE_FAST_RE = re.compile(
+    r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
+)
+
 
 def _topic_slug(text: str) -> str:
     """A stable, human-readable topic key for a pre-classified concept question.
@@ -1784,9 +1803,13 @@ def _fast_readonly_intent(message: str) -> Intent | None:
         if _FAST_BLOCKING_ACTION_RE.search(text):
             return None
         return Intent(kind=IntentKind.PORTFOLIO)
+    if _IDENTITY_FAST_RE.search(text):
+        return Intent(kind=IntentKind.OTHER)
     if _GREETING_FAST_RE.match(text):
         return Intent(kind=IntentKind.OTHER)
-    if _LEARN_FAST_RE.match(text) and len(text) <= 240:
+    # A price/quote question is not a concept: fall through to the planner so it keeps its
+    # pre-059 route instead of becoming a knowledge card.
+    if _LEARN_FAST_RE.match(text) and not _PRICE_FAST_RE.search(text) and len(text) <= 240:
         return Intent(kind=IntentKind.LEARN, topic=_topic_slug(text))
     return None
 
