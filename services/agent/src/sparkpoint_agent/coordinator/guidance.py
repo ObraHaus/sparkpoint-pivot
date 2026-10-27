@@ -203,8 +203,24 @@ def last_proposal_message(history: Sequence[tuple[str, str]] | None) -> str | No
 _SWAP_VERB_RE = re.compile(
     r"\b(?:swap|swapping|convert|convert(?:ing)?|turn|exchange|trade|buy)\b", re.IGNORECASE
 )
+
+# TON is both a ticker and an ordinary English word ("a ton of ETH"), so it only counts when it
+# is unambiguously the chain/asset: "toncoin" (any case), or uppercase "TON" (which also covers
+# "TON chain/network/token"). An all-caps "TON OF …" is still the English quantifier.
+_TON_RE = re.compile(
+    r"\bTON\b(?!\s+(?i:of)\b)|(?i:\btoncoin\b|\bton\s+(?:chain|network|token)\b)"
+)
+
+# NEAR likewise: uppercase NEAR (which also covers "on/into/to/for NEAR" and
+# "NEAR protocol/chain/network/token"), or "Rhea". Lowercase "near-term", "near the top" and
+# "near zero" are ordinary English and must not be read as the asset.
+_NEAR_RE = re.compile(
+    r"\bNEAR\b|(?i:\bnear\s+(?:protocol|chain|network|token)\b|\brhea(?:\s+finance)?\b)"
+)
+
 _UNSUPPORTED_TARGETS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bnear\b|\brhea\b", re.IGNORECASE), "NEAR"),
+    (_NEAR_RE, "NEAR"),
+    (_TON_RE, "that chain"),
     (re.compile(r"\bsolana\b|\bsol\b", re.IGNORECASE), "SOL on Solana"),
     (
         re.compile(r"\bnative\s+btc\b|\bbitcoin\b|\bw?btc\b|\bcbbtc\b", re.IGNORECASE),
@@ -216,23 +232,39 @@ _UNSUPPORTED_TARGETS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bcardano\b|\bada\b", re.IGNORECASE), "Cardano (ADA)"),
     (re.compile(r"\bavalanche\b|\bavax\b", re.IGNORECASE), "AVAX"),
     (re.compile(r"\bpolygon\b|\bmatic\b", re.IGNORECASE), "MATIC/POL"),
-    (re.compile(r"\bsui\b|\baptos\b|\bton\b|\btron\b", re.IGNORECASE), "that chain"),
+    (re.compile(r"\bsui\b|\baptos\b|\btron\b", re.IGNORECASE), "that chain"),
     (
         re.compile(
-            r"\bon\s+(?:ethereum|arbitrum|optimism|polygon|avalanche|solana|near|bitcoin|bsc)\b",
+            r"\bon\s+(?:ethereum|arbitrum|optimism|polygon|avalanche|solana|bitcoin|bsc)\b",
             re.IGNORECASE,
         ),
         "that chain",
     ),
 )
 
+_RECEIVE_SIDE_RE = re.compile(
+    r"\b(?:into|to|for)\s+(?P<target>[^.?!\n]+)", re.IGNORECASE
+)
+
+
+def _receive_side(message: str) -> str:
+    """The part of a swap command naming what the user receives, when identifiable.
+
+    "swap my ETH to USDG" → "USDG"; "swap ETH for SOL" → "SOL". When there is no "into/to/for"
+    marker, the whole message is inspected (e.g. "buy NEAR"). This keeps a supported source
+    asset from being mistaken for the (unsupported) target.
+    """
+    match = _RECEIVE_SIDE_RE.search(message)
+    return match.group("target") if match else message
+
 
 def unsupported_swap_target(message: str) -> str | None:
     """The requested-but-unsupported receive asset/chain in a swap command, or ``None``."""
     if not _SWAP_VERB_RE.search(message):
         return None
+    target = _receive_side(message)
     for pattern, label in _UNSUPPORTED_TARGETS:
-        if pattern.search(message):
+        if pattern.search(target):
             return label
     return None
 
@@ -254,6 +286,12 @@ def unsupported_swap_answer(label: str, stable_symbol: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _ADDRESS_RE = re.compile(r"\b0x[0-9a-fA-F]{40}\b")
+_TO_ADDRESS_RE = re.compile(
+    r"\b(?:to|into|towards?)\s+(?:the\s+|a\s+)?0x[0-9a-fA-F]{40}\b", re.IGNORECASE
+)
+_FROM_ADDRESS_RE = re.compile(
+    r"\bfrom\b[^.?!\n]{0,40}?0x[0-9a-fA-F]{40}\b", re.IGNORECASE
+)
 _IGNORE_RE = re.compile(
     r"\b(?:ignore|disregard|forget|override|bypass|discard)\b[^.?!]{0,40}"
     r"\b(?:previous|prior|above|earlier|all)\b[^.?!]{0,25}"
@@ -286,11 +324,20 @@ UNSAFE_REFUSAL = (
 
 
 def is_unsafe_request(message: str) -> bool:
-    """True for prompt injection or a request to move funds to a third party."""
+    """True for prompt injection or a request to move funds to a third party.
+
+    A vault address is not automatically a third party: withdrawing FROM a vault address to the
+    user's own wallet is a normal vault action. An address is only treated as a destination when
+    it is the object of "to"/"into"; an address with no "from" source either is still treated as
+    a destination so "send 100 USDC 0x…" cannot slip through.
+    """
     if _IGNORE_RE.search(message):
         return True
     if _SEND_VERB_RE.search(message) and _ADDRESS_RE.search(message):
-        return True
+        if _TO_ADDRESS_RE.search(message):
+            return True
+        if not _FROM_ADDRESS_RE.search(message):
+            return True
     if (
         _SEND_VERB_RE.search(message)
         and _VALUE_RE.search(message)
@@ -316,7 +363,9 @@ _YIELD_RE = re.compile(
     re.IGNORECASE,
 )
 _MONEY_RE = re.compile(
-    r"\b(?:usdc|usdg|stablecoins?|dollars?|money|deposit|aave|near|rhea|rhea\s+finance)\b|"
+    r"\b(?:usdc|usdg|stablecoins?|dollars?|money|deposit|aave)\b|"
+    r"(?-i:\bNEAR\b)|\bnear\s+(?:protocol|chain|network|token)\b|"
+    r"\brhea(?:\s+finance)?\b|"
     r"\$\s*\d|\b\d[\d,]*\s*(?:k|m)?\s*(?:usdc|usdg|dollars?)\b",
     re.IGNORECASE,
 )
@@ -332,7 +381,6 @@ _RISK_RE = re.compile(
 _FOLLOWUP_RE = re.compile(
     r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE
 )
-_NEAR_RE = re.compile(r"\bnear\b|\brhea\b", re.IGNORECASE)
 
 
 def is_yield_guidance_question(message: str) -> bool:

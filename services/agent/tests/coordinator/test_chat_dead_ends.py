@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import (
@@ -418,6 +420,26 @@ async def test_a_supported_pair_still_yields_a_matching_swap_card() -> None:
     assert action["type"] == "aerodrome_swap"
     assert action["tokenIn"]["symbol"] == "USDC"
     assert action["tokenOut"]["symbol"] == "ETH"
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["swap 0.01 ETH to USDG", "swap 100 USDG for ETH", "Swap my ETH to USDG"],
+)
+async def test_supported_stable_swaps_are_not_mistaken_for_unsupported_targets(
+    message: str,
+) -> None:
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.USDC,
+        amount=100_000_000,
+    )
+    dag = _dag(intent=intent)
+    wires = await _run(dag, message)
+    assert _text(wires) != UNSAFE_REFUSAL
+    assert "aren't supported yet" not in _text(wires)
+    assert any(w["type"] == "action" for w in wires), message
 
 
 # ── D · injection / unsafe transfer ──────────────────────────────────────────
