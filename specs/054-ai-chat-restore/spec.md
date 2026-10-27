@@ -40,6 +40,23 @@ Separately, quota was charged **before** the route ran, so a turn that ended in
 
 Evidence table: `/home/hello/project/.oc-ai-fix/candidates.md`.
 
+### Follow-up 056 — refund internally-degraded turns
+
+The first refund lived only in `_event_stream`'s `except Exception`, so it missed the DAG's
+**normal** prose failures: Sparky (`sparky.reply`) and literacy (`literacy.tip`) absorb the upstream
+error and return `fell_back=True`, and the curated-store outage returns early. Those branches end
+the turn with `ErrorBlock("UPSTREAM_UNAVAILABLE")` at `coordinator/dag.py:580/623/659` — no
+exception is raised, so the charged unit stayed consumed.
+
+`_event_stream` now also watches the blocks it emits (the single transport choke point): an
+`UPSTREAM_UNAVAILABLE` error with no prior answer block refunds once, and a per-turn `refunded`
+flag guarantees exactly one refund even if the stream later raises. The exception path keeps its
+broad `Exception` refund (unlike `/recommendations`, which can narrow to its typed
+`UPSTREAM_UNAVAILABLE` `ApiError`): an unexpected mid-stream raise here is by definition a failed
+turn with no answer, and narrowing would risk leaving a unit charged on an unanticipated upstream
+error shape. `/onboarding/turn` is unchanged — its machine has no internal degrade-to-error branch
+(LLM failures propagate as exceptions), so its existing `except` refund already covers it.
+
 ## Acceptance
 
 - A real free-chat question on beta returns prose (no `UPSTREAM_UNAVAILABLE`) and an intent-shaped

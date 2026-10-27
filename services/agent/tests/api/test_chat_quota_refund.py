@@ -4,6 +4,8 @@
 Pins the load-bearing behaviour:
   * a turn that fails mid-stream (the ``UPSTREAM_UNAVAILABLE`` path) returns its quota unit for
     the SAME metric and the window captured at consume time;
+  * a turn whose DAG does NOT raise but degrades INTERNALLY to an ``UPSTREAM_UNAVAILABLE``
+    ``ErrorBlock`` (general/LEARN/curated-outage prose branches) is refunded exactly once;
   * a successful turn is not refunded;
   * a fail-open decision (nothing was charged) is never refunded;
   * a refund-store error is swallowed so the degraded response still completes.
@@ -14,9 +16,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, cast
 
+import pytest
+
 from sparkpoint_agent.api.chat import _event_stream, _NoopConversationSink, _NoopMemorySink
 from sparkpoint_agent.api.quota import LimitDecision
-from sparkpoint_agent.coordinator import TextBlock
+from sparkpoint_agent.coordinator import ErrorBlock, TextBlock, ToolStepBlock
 
 OWNER = "0xabc0000000000000000000000000000000000001"
 WS = datetime(2026, 10, 26, 16, 0, tzinfo=UTC)  # 2026-10-27 00:00 Asia/Manila
@@ -30,6 +34,22 @@ class _Dag:
         yield TextBlock("partial answer")
         if self._boom:
             raise RuntimeError("gateway exhausted")
+
+
+class _DegradedDag:
+    """The real failure shape: ``run_chat`` completes WITHOUT raising.
+
+    Sparky/literacy absorb the upstream error and return ``fell_back=True``; the curated-store
+    outage returns early. Both surface as a terminal ``ErrorBlock("UPSTREAM_UNAVAILABLE")``.
+    """
+
+    def __init__(self, *, errors: int = 1) -> None:
+        self._errors = errors
+
+    async def run_chat(self, *_: Any, **__: Any) -> Any:
+        yield ToolStepBlock("Thinking that through", "running")
+        for _ in range(self._errors):
+            yield ErrorBlock("UPSTREAM_UNAVAILABLE", "The assistant is unavailable right now.")
 
 
 class _Limits:
@@ -62,12 +82,18 @@ def _decision(*, consumed: bool = True) -> LimitDecision:
     )
 
 
-async def _collect(dag: _Dag, limits: _Limits, decision: LimitDecision) -> list[str]:
+async def _collect(
+    dag: Any,
+    limits: _Limits,
+    decision: LimitDecision,
+    *,
+    message: str = "where can I earn yield?",
+) -> list[str]:
     return [
         event
         async for event in _event_stream(
             cast(Any, dag),
-            "where can I earn yield?",
+            message,
             cast(Any, object()),
             surface="chat",
             conversation_id="cnv_test",
@@ -88,6 +114,32 @@ async def test_failed_turn_refunds_the_consumed_window() -> None:
     assert limits.refunds == [(OWNER, "chat", WS)]
     assert limits.events == [("refund", "chat", "free")]
     assert any("UPSTREAM_UNAVAILABLE" in e for e in events)
+    assert events[-1].startswith("event: done")
+
+
+@pytest.mark.parametrize(
+    ("branch", "message"),
+    [
+        ("general", "who are you?"),
+        ("learn", "what is impermanent loss?"),
+        ("curated_outage", "what's the best vault right now?"),
+    ],
+)
+async def test_internally_degraded_turn_refunds_exactly_once(branch: str, message: str) -> None:
+    # The DAG never raises; the UPSTREAM_UNAVAILABLE ErrorBlock is the only failure signal.
+    limits = _Limits()
+    events = await _collect(_DegradedDag(), limits, _decision(), message=message)
+    assert branch  # the three prose branches share this emitted-block shape
+    assert limits.refunds == [(OWNER, "chat", WS)]
+    assert limits.events == [("refund", "chat", "free")]
+    assert any('"code":"UPSTREAM_UNAVAILABLE"' in e for e in events)
+    assert events[-1].startswith("event: done")
+
+
+async def test_repeated_upstream_errors_refund_only_once() -> None:
+    limits = _Limits()
+    events = await _collect(_DegradedDag(errors=2), limits, _decision())
+    assert limits.refunds == [(OWNER, "chat", WS)]
     assert events[-1].startswith("event: done")
 
 
