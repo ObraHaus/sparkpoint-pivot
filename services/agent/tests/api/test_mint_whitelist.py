@@ -23,7 +23,7 @@ from sparkpoint_agent.api.allowlist import get_allowlist_store
 from sparkpoint_agent.api.main import app
 from sparkpoint_agent.db.mint_whitelist import MintWhitelistApplication
 
-TOKEN = "test-web-tier-token"
+TOKEN = "test-web-tier-token"  # noqa: S105  # test fixture, not a real secret
 APPLICANT = "0x1111111111111111111111111111111111111111"
 OTHER = "0x2222222222222222222222222222222222222222"
 ADMIN_WALLET = "0xA71e24359A6cb7A939aae2d62dD12b6256365c30"
@@ -66,7 +66,9 @@ class _FakeAllowlist:
     async def add(self, address: str, role: str, *, actor: str | None) -> None:  # pragma: no cover
         raise AssertionError("the mint whitelist must never touch the access allowlist")
 
-    async def remove(self, address: str, role: str, *, actor: str | None) -> None:  # pragma: no cover
+    async def remove(
+        self, address: str, role: str, *, actor: str | None
+    ) -> None:  # pragma: no cover
         raise AssertionError("the mint whitelist must never touch the access allowlist")
 
 
@@ -98,7 +100,9 @@ class _FakeMintWhitelist:
 
 
 @pytest.fixture
-def ctx(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, _FakeMintWhitelist, _FakeAllowlist]]:
+def ctx(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[TestClient, _FakeMintWhitelist, _FakeAllowlist]]:
     monkeypatch.setenv("AGENT_S2S_TOKEN", TOKEN)
     mint = _FakeMintWhitelist()
     allow = _FakeAllowlist()
@@ -150,7 +154,9 @@ def test_malformed_or_missing_addresses_are_refused(
         assert resp.status_code == 400, bad
     no_address = {k: v for k, v in GOOD.items() if k != "address"}
     assert (
-        client.post("/access/mint-whitelist", json=no_address, headers=_public_headers()).status_code
+        client.post(
+            "/access/mint-whitelist", json=no_address, headers=_public_headers()
+        ).status_code
         == 400
     )
     assert mint.rows == {}
