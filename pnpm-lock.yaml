@@ -12,7 +12,7 @@ overrides:
   browserslist: '>=4.28.7'
   baseline-browser-mapping: '>=2.11.0'
   ws: '>=8.21.0'
-  zod: '>=4.6.6 <5'
+  zod@<4.6.6: '>=4.6.6 <5'
 
 importers:
 
@@ -64,7 +64,7 @@ importers:
         specifier: ^3.6.17
         version: 3.7.1(@tanstack/query-core@5.101.2)(@tanstack/react-query@5.101.2(react@19.2.4))(@types/react@19.2.17)(react@19.2.4)(typescript@5.9.3)(viem@2.55.1(typescript@5.9.3)(zod@4.6.7))
       zod:
-        specifier: '>=4.6.6 <5'
+        specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
       '@playwright/test':
@@ -101,7 +101,7 @@ importers:
   packages/shared:
     dependencies:
       zod:
-        specifier: '>=4.6.6 <5'
+        specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
       typescript:
