@@ -64,7 +64,14 @@ portfolio read pays for a planner call even though the answer is deterministic.
   - concept ("what is …", "explain …", "how does … work", …) → LEARN, 1 prose call;
   - greeting/identity ("hi", "who are you", …) → OTHER, 1 prose call.
 - Consulted only after every 057 route and only when no forced intent exists. Any action verb or
-  command shape goes to the planner.
+  command shape goes to the planner. The guard is fail-closed: the full command vocabulary and its
+  inflections, **any** standalone number/percentage (`100`, `1k`, `2.5m`, `5%`) and written-out
+  amounts ("five hundred", "half", "all of my") block the shortcut unless the number is clearly a
+  known token/standard/time window (`ERC-4626`, `ERC20`, `L2`, `24h`, `7d APY`, `30-day`). Blocking
+  only means the normal planner call runs.
+- With prior conversation turns, anaphora/deictic references ("it", "that", "this", "they", "them",
+  "those", "these", "the above", "same", "one", "there", "what about") and very short follow-ups
+  skip the shortcut; a pronoun/stopword can never become the LEARN topic (fall back to the planner).
 - Deterministic 057 routes (guidance, unsafe refusal, unsupported swap, proposals) are unchanged.
 
 ### R6 — UI
@@ -72,7 +79,9 @@ portfolio read pays for a planner call even though the answer is deterministic.
 - Reducer: append same-stream deltas; reset on a new `streamId` or target; clear on the final block,
   on error, and on turn completion.
 - Renderer: provisional text uses the answer typography and `data-streaming="true"`; the final card
-  replaces it; the waiting spinner is suppressed once prose is painting.
+  replaces it; the waiting spinner is suppressed once prose is painting. The provisional container
+  is `aria-live="off"` + `aria-busy="true"`; only the final block is a polite live region, so a
+  screen reader announces the answer once instead of per chunk and again on replacement.
 
 ### R7 — Tests
 

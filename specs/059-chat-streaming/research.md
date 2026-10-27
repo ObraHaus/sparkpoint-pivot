@@ -103,10 +103,15 @@ replacement is mandatory.
 
 The only routing change is a narrow pre-classifier consulted AFTER every 057 deterministic guard
 and only when no forced intent exists. It can return PORTFOLIO, LEARN (concept) or OTHER
-(greeting/identity). It refuses any message containing an action verb. It never sees an action,
-amount, swap, withdraw or proposal path, and the planner still runs for every command-shaped turn.
-The existing deterministic routes are byte-for-byte untouched (tests pin zero LLM calls for
-safety, unsupported swap, injection/refusal and what's-new).
+(greeting/identity). It refuses any message carrying an action signal — the full command vocabulary
+and inflections, any standalone number/percentage or written-out amount (bar known standards/time
+windows such as `ERC-4626`, `L2`, `7d APY`), pasted addresses, injection markers and NEAR/cross-chain
+mentions. With conversation history it also refuses anaphora/deictic follow-ups ("how does it work?",
+"what about fees?") and very short turns, and a pronoun/stopword can never be a LEARN topic. A false
+negative only costs the normal planner call. It never sees an action, amount, swap, withdraw or
+proposal path, and the planner still runs for every command-shaped turn. The existing deterministic
+routes are byte-for-byte untouched (tests pin zero LLM calls for safety, unsupported swap,
+injection/refusal and what's-new).
 
 ## 8. Test baseline
 

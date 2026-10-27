@@ -808,7 +808,7 @@ class CoordinatorDag:
         yield ToolStepBlock("Understanding your request", "running")
         intent = forced_intent
         if intent is None and self.single_call:
-            intent = _fast_readonly_intent(message)
+            intent = _fast_readonly_intent(message, history=history)
         if intent is None:
             intent = await self.understand(
                 message, surface=surface, user=user, history=history, memory_lines=memory_lines
@@ -1733,10 +1733,43 @@ _PORTFOLIO_FAST_RE = re.compile(
 #: conservative: a false negative (one extra model call) is fine; silently dropping the action
 #: half of a compound message is not. It applies to PORTFOLIO, LEARN and OTHER alike.
 _FAST_BLOCKING_ACTION_RE = re.compile(
-    r"\b(?:deposit|withdraw|redeem|swap|send|transfer|pay|payment|buy|sell|stake|unstake|"
-    r"supply|borrow|repay|bridge|invest|move|convert|exchange|trade|cash\s?out|top\s?up|"
-    r"allocate|lend)\b"
+    r"\b(?:"
+    r"deposit(?:s|ed|ing)?|withdraw(?:s|ing|n)?|withdrew|redeem(?:s|ed|ing)?|"
+    r"swap(?:s|ped|ping)?|send(?:s|ing)?|sent|transfer(?:s|red|ring)?|"
+    r"pay(?:s|ing)?|paid|payments?|buy(?:s|ing)?|bought|sell(?:s|ing)?|sold|"
+    r"stak(?:e|es|ed|ing)|unstak(?:e|es|ed|ing)|suppl(?:y|ies|ied|ying)|"
+    r"borrow(?:s|ed|ing)?|repay(?:s|ing)?|repaid|bridg(?:e|es|ed|ing)|"
+    r"invest(?:s|ed|ing|ment)?|mov(?:e|es|ed|ing)|convert(?:s|ed|ing)?|conversion|"
+    r"exchange(?:s|d|ing)?|trad(?:e|es|ed|ing)|cash[\s-]?out|top[\s-]?up|"
+    r"allocat(?:e|es|ed|ing)|lend(?:s|ing)?|lent|put(?:s|ting)?|claim(?:s|ed|ing)?|"
+    r"exit(?:s|ed|ing)?|clos(?:e|es|ed|ing)|open(?:s|ed|ing)?|rebalanc(?:e|es|ed|ing)|"
+    r"park(?:s|ed|ing)?|add(?:s|ed|ing)?|remov(?:e|es|ed|ing)|pull(?:s|ed|ing)?|"
+    r"purchas(?:e|es|ed|ing)"
+    r")\b"
     r"|\bdo\s+it\b|\bgo\s+ahead\b|\bproceed\b|\bexecute\b|\bconfirm\b|\bsign\s+it\b",
+    re.IGNORECASE,
+)
+
+#: A number/percentage of ANY shape is an action signal (an amount the planner must extract)
+#: UNLESS it is clearly part of a well-known token/standard/time-window name. Everything else —
+#: bare digits, decimals, ``1k``/``2.5m``, ``5%`` — blocks the shortcut; the only cost is the
+#: normal planner call, while a missed amount silently drops the action half of a compound turn.
+_FAST_STANDARD_NUMBER_RE = re.compile(
+    r"\b(?:ERC|EIP)[-\s]?\d+\b|\bL[12]\b|\bv\d+\b|"
+    r"\b\d+(?:\.\d+)?\s*-?\s*"
+    r"(?:h|hr|hrs|hours?|d|day|days|w|wk|wks|weeks?|y|yr|yrs|years?|months?)\b",
+    re.IGNORECASE,
+)
+_FAST_ANY_NUMBER_RE = re.compile(r"\d")
+
+#: Written-out amounts ("five hundred", "half", "all of my", "everything") are amounts too.
+_FAST_BLOCKING_WRITTEN_AMOUNT_RE = re.compile(
+    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|"
+    r"half|quarter)\b"
+    r"|\ball\s+(?:of\s+)?my\b|\ball\s+(?:of\s+)?(?:it|them|this|that)\b|"
+    r"\beverything\b|\bmax(?:imum)?\b",
     re.IGNORECASE,
 )
 
@@ -1767,11 +1800,16 @@ def _fast_path_is_blocked(text: str) -> bool:
     """True when a fast-path candidate carries a signal the planner must see.
 
     Checked BEFORE any of the PORTFOLIO / LEARN / OTHER matchers, so the shortcut can never
-    answer only the concept half of "How do vaults work? I want to deposit 500 USDC".
+    answer only the concept half of "How do vaults work? I want to deposit 500 USDC". Any
+    standalone number counts as a possible amount unless it belongs to a known standard/window
+    (``ERC-4626``, ``L2``, ``7d APY``); blocking too much only costs the normal planner call.
     """
+    without_standard_numbers = _FAST_STANDARD_NUMBER_RE.sub(" ", text)
     return bool(
         _FAST_BLOCKING_ACTION_RE.search(text)
         or _FAST_BLOCKING_AMOUNT_RE.search(text)
+        or _FAST_ANY_NUMBER_RE.search(without_standard_numbers)
+        or _FAST_BLOCKING_WRITTEN_AMOUNT_RE.search(text)
         or _FAST_BLOCKING_ADDRESS_RE.search(text)
         or _FAST_BLOCKING_INJECTION_RE.search(text)
         or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
@@ -1813,24 +1851,54 @@ _PRICE_FAST_RE = re.compile(
     r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
 )
 
+#: 059/A3 follow-up safety — with prior turns in the conversation, a deictic/anaphoric reference
+#: ("how does it work?", "what about fees?") is only answerable in context. The deterministic
+#: pre-classifier has no conversation context beyond the topic slug, so it must not answer these
+#: decontextualised; the planner receives ``history`` and can disambiguate.
+_FOLLOWUP_REFERENCE_RE = re.compile(
+    r"\b(?:it|its|it's|that|this|these|those|they|them|their|theirs|there|same|"
+    r"above|aforementioned)\b|\bwhat\s+about\b|\bhow\s+about\b",
+    re.IGNORECASE,
+)
+_FOLLOWUP_LEAD_RE = re.compile(
+    r"^(?:and|also|then|so|but|plus|or|what\s+about|how\s+about|what\s+if|"
+    r"why|ok(?:ay)?|yes|yeah|no|more)\b",
+    re.IGNORECASE,
+)
+
+#: Words that describe the QUESTION rather than a subject. A concept topic made only of these
+#: ("how does it work?" → ``it``) is not a real topic and must fall back to the planner.
+_TOPIC_STOPWORDS = {
+    "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
+    "about", "how", "does", "do", "why", "of", "to", "in", "work", "works", "with", "for",
+    "from", "by", "on", "at", "can", "could", "would", "should", "it", "its", "that", "this",
+    "these", "those", "they", "them", "their", "theirs", "there", "one", "same", "above",
+    "and", "also", "then", "so", "but", "or", "more", "please",
+}
+
 
 def _topic_slug(text: str) -> str:
-    """A stable, human-readable topic key for a pre-classified concept question.
+    """A stable, human-readable topic key for a pre-classified concept question, or ``""``.
 
     ``topic`` is a routing/display key (the web humanises it), not copy. Dropping the question
     words keeps it close to the planner's own slugs ("what is APY?" → ``apy``), which also lets
-    :func:`default_tip` key its pre-written fallback correctly.
+    :func:`default_tip` key its pre-written fallback correctly. A slug with no subject left
+    (a pronoun/stopword only) is empty: the caller must send it to the planner instead of
+    answering a decontextualised ``topic="it"`` tip.
     """
     words = re.findall(r"[a-z0-9]+", text.lower())
-    stop = {
-        "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
-        "about", "how", "does", "do", "why", "of", "to", "in", "work", "works",
-    }
-    kept = [w for w in words if w not in stop][:8]
-    return "_".join(kept) or FALLBACK_TOPIC
+    kept = [w for w in words if w not in _TOPIC_STOPWORDS][:8]
+    if not kept:
+        return ""
+    # A topic that is nothing but digits is a reference to something in context, not a concept.
+    if all(re.fullmatch(r"\d+", word) for word in kept):
+        return ""
+    return "_".join(kept)
 
 
-def _fast_readonly_intent(message: str) -> Intent | None:
+def _fast_readonly_intent(
+    message: str, history: Sequence[tuple[str, str]] | None = None
+) -> Intent | None:
     """059/A3 — a deterministic intent for an OBVIOUS read-only turn, else ``None``.
 
     This is a latency widening of the pre-classifier, not a new authority: it can only ever return
@@ -1838,12 +1906,21 @@ def _fast_readonly_intent(message: str) -> Intent | None:
     unsupported swap, confirmations, bridge, what's-new, exit, safety, yield guidance, curated,
     direct fees/APY, withdraw-all). A command shape, or any action/amount/address/injection/
     cross-chain signal, stays with the planner — for EVERY fast path, not just portfolio reads.
+
+    With prior turns, anaphora/deictic references and very short follow-ups also stay with the
+    planner: the pre-classifier cannot decontextualise "how does it work?" or "what about fees?"
+    and answering one as a fresh concept is worse than one extra planner call.
     """
     text = message.strip()
     if not text:
         return None
     if _fast_path_is_blocked(text):
         return None
+    if history:
+        if len(text.split()) < 4:
+            return None
+        if _FOLLOWUP_REFERENCE_RE.search(text) or _FOLLOWUP_LEAD_RE.match(text):
+            return None
     if _PORTFOLIO_FAST_RE.search(text):
         return Intent(kind=IntentKind.PORTFOLIO)
     if _IDENTITY_FAST_RE.search(text):
@@ -1853,7 +1930,9 @@ def _fast_readonly_intent(message: str) -> Intent | None:
     # A price/quote question is not a concept: fall through to the planner so it keeps its
     # pre-059 route instead of becoming a knowledge card.
     if _LEARN_FAST_RE.match(text) and not _PRICE_FAST_RE.search(text) and len(text) <= 240:
-        return Intent(kind=IntentKind.LEARN, topic=_topic_slug(text))
+        topic = _topic_slug(text)
+        if topic:
+            return Intent(kind=IntentKind.LEARN, topic=topic)
     return None
 
 
