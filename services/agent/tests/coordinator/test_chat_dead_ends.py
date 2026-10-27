@@ -122,6 +122,28 @@ class _GrowthRecommender:
         )
 
 
+class _WithdrawRecommender:
+    """Returns a WITHDRAW candidate — an exit that must never be judged against idle balance."""
+
+    async def propose(
+        self, intent: Intent, ctx: Any, *, user: str | None = None
+    ) -> RecommendationResult:
+        action = build_action(
+            chain_id=ctx.chain_id,
+            action_type=ActionType.VAULT_WITHDRAW,
+            asset=Asset.USDC,
+            amount=500_000_000,
+            user_account=ctx.user_account,
+            resolved_targets=ctx.resolved_targets,
+            risk_profile=RiskProfile.CONSERVATIVE,
+            risk_class=RiskProfile.CONSERVATIVE,
+        )
+        assert action is not None
+        return RecommendationResult(
+            (Candidate(action=action, action_type=ActionType.VAULT_WITHDRAW, rank=1),)
+        )
+
+
 def _chain(chain_id: int = 8453) -> ChainContext:
     targets = {"sparkpoint_vault": VAULT} if chain_id == 8453 else {}
     return ChainContext(
@@ -368,6 +390,120 @@ async def test_do_it_with_no_proposal_asks_what_to_do() -> None:
     assert "deposit, withdraw or swap" in lower
 
 
+async def test_withdraw_everything_except_an_amount_leaves_the_residual() -> None:
+    portfolio = PortfolioView(
+        positions=(PositionLite(venue="SparkPoint Vault", asset="USDC", value_usd="250.00"),),
+        net_worth_usd="250.00",
+    )
+    dag = _dag(intent=Intent(kind=IntentKind.OTHER), portfolio=portfolio)
+    wires = await _run(dag, "Withdraw everything except $100 from my vault")
+    actions = [w for w in wires if w["type"] == "action"]
+    assert actions
+    assert actions[0]["proposedAction"]["amount"] == "150000000", "250 − 100, never the full 250"
+
+
+async def test_withdraw_everything_except_an_unparseable_amount_asks_instead_of_cashing_out() -> (
+    None
+):
+    portfolio = PortfolioView(
+        positions=(PositionLite(venue="SparkPoint Vault", asset="USDC", value_usd="250.00"),),
+        net_worth_usd="250.00",
+    )
+    dag = _dag(intent=Intent(kind=IntentKind.OTHER), portfolio=portfolio)
+    wires = await _run(dag, "Withdraw everything except a little bit")
+    assert not (_types(wires) & {"action", "recommendation"})
+    assert "leave in the vault" in _text(wires).lower()
+
+
+async def test_take_all_the_risk_is_not_a_withdrawal() -> None:
+    portfolio = PortfolioView(
+        positions=(PositionLite(venue="SparkPoint Vault", asset="USDC", value_usd="250.00"),),
+        net_worth_usd="250.00",
+    )
+    intent = Intent(kind=IntentKind.OTHER)
+    dag = _dag(intent=intent, portfolio=portfolio)
+    wires = await _run(dag, "take all the risk")
+    assert not (_types(wires) & {"action", "recommendation"})
+
+
+async def test_move_all_my_money_into_the_vault_is_not_a_withdrawal() -> None:
+    # "into the vault" is a DEPOSIT direction. Whatever else the turn does, it must never be
+    # rewritten into a full-position withdrawal from a vault position the user did not mention.
+    portfolio = PortfolioView(
+        positions=(PositionLite(venue="SparkPoint Vault", asset="USDC", value_usd="250.00"),),
+        net_worth_usd="250.00",
+    )
+    deposit = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.VAULT_DEPOSIT,
+        asset=Asset.USDC,
+        amount=250_000_000,
+    )
+    dag = _dag(intent=deposit, portfolio=portfolio)
+    wires = await _run(dag, "move all my money into the vault")
+    for wire in wires:
+        if wire["type"] in {"action", "recommendation"}:
+            assert wire["proposedAction"]["type"] != "vault_withdraw"
+
+
+async def test_recommend_withdraw_is_not_blocked_by_the_idle_balance_guard() -> None:
+    intent = Intent(
+        kind=IntentKind.RECOMMEND,
+        action_type=ActionType.VAULT_WITHDRAW,
+        asset=Asset.USDC,
+        amount=500_000_000,
+    )
+    dag = _dag(intent=intent, portfolio=_empty_wallet(), recommender=_WithdrawRecommender())
+    wires = await _run(dag, "withdraw 500 USDC")
+    text = _text(wires).lower()
+    assert "can't prepare that" not in text, "a withdraw must not be judged against idle balance"
+    assert "deposit yet" not in text
+    cards = [w for w in wires if w["type"] == "recommendation"]
+    assert cards, "a legitimate withdraw recommendation must still surface"
+    assert cards[0]["proposedAction"]["type"] == "vault_withdraw"
+
+
+async def test_cap_rejection_names_the_cap_that_actually_rejected_the_move() -> None:
+    from sparkpoint_agent.coordinator.dag import (
+        Gathered,
+        StampedCandidate,
+        _no_approved_answer,
+    )
+    from sparkpoint_agent.policy import PolicyVerdict, ReasonCode
+
+    chain = _chain()
+    action = build_action(
+        chain_id=chain.chain_id,
+        action_type=ActionType.VAULT_DEPOSIT,
+        asset=Asset.USDC,
+        amount=100_000_000,
+        user_account=chain.user_account,
+        resolved_targets=chain.resolved_targets,
+        risk_profile=RiskProfile.CONSERVATIVE,
+        risk_class=RiskProfile.CONSERVATIVE,
+    )
+    assert action is not None
+    gathered = Gathered(chain=chain, portfolio=_empty_wallet(), mandate=None)
+    for reason, expected in (
+        (ReasonCode.CAP_PER_USER_EXCEEDED, "per-user cap"),
+        (ReasonCode.CAP_TOTAL_EXCEEDED, "total deposit cap"),
+        (ReasonCode.CAP_VAULT_EXCEEDED, "vault cap"),
+    ):
+        stamped = [
+            StampedCandidate(
+                candidate=Candidate(action=action, action_type=ActionType.VAULT_DEPOSIT),
+                verdict=PolicyVerdict(
+                    status="rejected", reasons=(reason,), policy_version="test", trace=()
+                ),
+                rec_id="rec_test",
+            )
+        ]
+        text = _no_approved_answer(stamped, gathered).lower()
+        assert expected in text
+        if reason is not ReasonCode.CAP_PER_USER_EXCEEDED:
+            assert "per-user cap" not in text
+
+
 async def test_withdraw_with_an_explicit_amount_still_builds() -> None:
     intent = Intent(
         kind=IntentKind.BUILD_ACTION,
@@ -394,6 +530,24 @@ async def test_native_btc_swap_gets_no_swap_card_and_an_honest_answer() -> None:
     assert "native btc" in lower and "aren't supported yet" in lower
     assert "november" in lower
     assert "usdc ↔ eth" not in lower, "the wrong default card must not be described"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("swap my NEAR to USDC", "near"),
+        ("swap BTC to USDC", "native btc"),
+    ],
+)
+async def test_an_unsupported_source_asset_gets_no_swap_card(
+    message: str, expected: str
+) -> None:
+    dag = _dag(intent=_deposit_intent())
+    wires = await _run(dag, message)
+    assert not (_types(wires) & {"action", "recommendation"})
+    lower = _text(wires).lower()
+    assert expected in lower
+    assert "aren't supported yet" in lower
 
 
 async def test_sol_on_solana_gets_no_swap_card() -> None:
@@ -423,16 +577,20 @@ async def test_a_supported_pair_still_yields_a_matching_swap_card() -> None:
 
 
 @pytest.mark.parametrize(
-    "message",
-    ["swap 0.01 ETH to USDG", "swap 100 USDG for ETH", "Swap my ETH to USDG"],
+    ("message", "asset"),
+    [
+        ("swap 0.01 ETH to USDG", Asset.ETH),
+        ("swap 100 USDG for ETH", Asset.USDC),
+        ("Swap my ETH to USDG", Asset.ETH),
+    ],
 )
 async def test_supported_stable_swaps_are_not_mistaken_for_unsupported_targets(
-    message: str,
+    message: str, asset: Asset
 ) -> None:
     intent = Intent(
         kind=IntentKind.BUILD_ACTION,
         action_type=ActionType.AERODROME_SWAP,
-        asset=Asset.USDC,
+        asset=asset,
         amount=100_000_000,
     )
     dag = _dag(intent=intent)
@@ -440,6 +598,23 @@ async def test_supported_stable_swaps_are_not_mistaken_for_unsupported_targets(
     assert _text(wires) != UNSAFE_REFUSAL
     assert "aren't supported yet" not in _text(wires)
     assert any(w["type"] == "action" for w in wires), message
+
+
+async def test_a_swap_card_for_the_wrong_pair_is_replaced_with_an_honest_answer() -> None:
+    # Safety net: the planner yields a default ETH card even though the user named a stable → stable
+    # pair; the card must be replaced rather than shown for a pair they did not ask for.
+    intent = Intent(
+        kind=IntentKind.BUILD_ACTION,
+        action_type=ActionType.AERODROME_SWAP,
+        asset=Asset.ETH,
+        amount=100_000_000,
+    )
+    dag = _dag(intent=intent)
+    wires = await _run(dag, "swap 100 USDC for USDG")
+    assert not (_types(wires) & {"action", "recommendation"})
+    text = _text(wires).lower()
+    assert "couldn't prepare a swap" in text
+    assert "eth ↔ usdc" in text, "the honest answer names the pair that is actually supported"
 
 
 # ── D · injection / unsafe transfer ──────────────────────────────────────────

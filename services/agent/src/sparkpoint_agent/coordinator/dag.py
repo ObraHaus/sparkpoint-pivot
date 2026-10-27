@@ -43,6 +43,7 @@ from ..agents.literacy import DEFAULT_TIPS, FALLBACK_TOPIC, Literacy, default_ti
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky
+from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
     POLICY_VERSION,
@@ -97,11 +98,17 @@ from .guidance import (
     is_explicit_financial_command,
     is_unsafe_request,
     is_withdraw_all,
+    is_withdraw_request,
     is_yield_guidance_question,
     last_proposal_message,
+    mentions_withdraw_exception,
+    named_swap_pair,
+    swap_pair_matches,
+    swap_pair_unavailable_answer,
     unsupported_swap_answer,
     unsupported_swap_target,
     withdraw_all_amount,
+    withdraw_all_exception_amount,
     yield_guidance_answer,
 )
 
@@ -702,6 +709,17 @@ class CoordinatorDag:
                     else NOTHING_TO_WITHDRAW_NO_VAULT
                 )
                 return
+            # "withdraw everything except 100" is a residual, never the full position. If the
+            # amount to leave behind is missing or consumes the whole position, ask for it.
+            if mentions_withdraw_exception(message):
+                leave_behind = withdraw_all_exception_amount(message)
+                if leave_behind is None or leave_behind >= full_amount:
+                    yield TextBlock(
+                        "I can withdraw all but a set amount — tell me how much you'd like to "
+                        "leave in the vault, for example \"withdraw everything except $100\"."
+                    )
+                    return
+                full_amount -= leave_behind
             forced_intent = Intent(
                 kind=IntentKind.BUILD_ACTION,
                 action_type=ActionType.VAULT_WITHDRAW,
@@ -790,6 +808,7 @@ class CoordinatorDag:
         if (
             intent.kind is IntentKind.RECOMMEND
             and is_explicit_financial_command(message)
+            and not is_withdraw_request(message)
             and intent.amount is not None
             and gathered.portfolio.idle_usdc is not None
             and intent.amount > gathered.portfolio.idle_usdc
@@ -799,6 +818,7 @@ class CoordinatorDag:
                     intent.amount,
                     gathered.portfolio.idle_usdc,
                     _stable_symbol(chain.chain_id),
+                    verb="move",
                 )
             )
             return
@@ -826,8 +846,20 @@ class CoordinatorDag:
             # (user-signed), NOT this fork-only policy, so the stamp is honestly "rejected"; the web
             # renders "Review swap" for an aerodrome_swap block regardless.
             if is_swap and chain.chain_id in _SWAP_PAGE_CHAINS:
+                proposed = _swap_proposed_action(intent, chain.chain_id)
+                # Safety net: never show a card for a pair the user did not ask for. A planner
+                # that failed to extract one side must not fall back to the default USDG ↔ ETH
+                # card while the user named different assets.
+                if not swap_pair_matches(message, proposed):
+                    named_in, named_out = named_swap_pair(message)
+                    yield TextBlock(
+                        swap_pair_unavailable_answer(
+                            named_in, named_out, _swap_stable_symbol(chain.chain_id)
+                        )
+                    )
+                    return
                 yield ActionBlock(
-                    proposed_action=_swap_proposed_action(intent, chain.chain_id),
+                    proposed_action=proposed,
                     policy=ChatPolicyStamp(status="rejected", reason=_SWAP_ADVISORY_REASON),
                 )
                 return
@@ -950,13 +982,30 @@ def _explicit_ready(intent: Intent) -> bool:
     return intent.action_type is not None and intent.asset is not None and intent.amount is not None
 
 
-def _insufficient_balance_message(amount: int, idle: int, stable_symbol: str) -> str:
-    """057/B — the honest reason a deposit cannot be prepared from a known wallet balance."""
+def _insufficient_balance_message(
+    amount: int, idle: int, stable_symbol: str, *, verb: str = "deposit"
+) -> str:
+    """057/B — the honest reason a stable-denominated move cannot be prepared from the balance."""
     return (
-        f"I can't prepare that ${_fmt_usdc6(amount)} {stable_symbol} deposit yet: your wallet has "
-        f"${_fmt_usdc6(idle)} {stable_symbol} available, so it would fail at signing. Fund your "
+        f"I can't prepare that ${format_usd6(amount)} {stable_symbol} {verb} yet: your wallet has "
+        f"${format_usd6(idle)} {stable_symbol} available, so it would fail at signing. Fund your "
         "wallet first, then ask me again — I'll prepare the move for you to review and sign."
     )
+
+
+def _cap_name(reasons: set[ReasonCode]) -> str:
+    """The human name of the first deposit cap that rejected a candidate.
+
+    The three caps are independent (per-address, protocol-wide total, per-vault), so saying
+    "per-user cap" for all of them is wrong for two of the three.
+    """
+    if ReasonCode.CAP_PER_USER_EXCEEDED in reasons:
+        return "per-user cap"
+    if ReasonCode.CAP_TOTAL_EXCEEDED in reasons:
+        return "total deposit cap"
+    if ReasonCode.CAP_VAULT_EXCEEDED in reasons:
+        return "vault cap"
+    return "deposit cap"
 
 
 def _no_approved_answer(stamped: list[StampedCandidate], gathered: Gathered) -> str:
@@ -974,9 +1023,11 @@ def _no_approved_answer(stamped: list[StampedCandidate], gathered: Gathered) -> 
         ReasonCode.CAP_TOTAL_EXCEEDED,
         ReasonCode.CAP_VAULT_EXCEEDED,
     }:
+        # Name the cap that actually rejected the move — the per-user cap is only one of three.
+        cap_name = _cap_name(reasons)
         return (
-            "I couldn't build that within your deposit caps — the amount is above the current "
-            "per-user cap. Try a smaller amount, or ask me to explain the options."
+            f"I couldn't build that within your deposit caps — the amount is above the current "
+            f"{cap_name}. Try a smaller amount, or ask me to explain the options."
         )
     return (
         "I don't have a move I can build on this network right now. Ask me to explain the "
@@ -1000,7 +1051,7 @@ def _wallet_line(portfolio: PortfolioView, chain_id: int) -> str:
         if token.raw:
             parts.append(f"{_fmt_units(token.raw, token.decimals, max_dp=2)} {token.symbol}")
     if portfolio.idle_usdc:
-        parts.append(f"${_fmt_usdc6(portfolio.idle_usdc)} in idle {_stable_symbol(chain_id)}")
+        parts.append(f"${format_usd6(portfolio.idle_usdc)} in idle {_stable_symbol(chain_id)}")
     if not parts:
         return ""
     if len(parts) == 1:
@@ -1024,13 +1075,6 @@ def _fmt_units(raw: int, decimals: int, *, max_dp: int) -> str:
         if digits:
             text = f"{text}.{digits}"
     return text
-
-
-def _fmt_usdc6(raw: int) -> str:
-    """Format raw 6-dp USDC base units as a fixed-2-decimal string (exact, integer-only)."""
-    whole, frac = divmod(max(0, raw), 1_000_000)
-    cents = (frac * 100) // 1_000_000
-    return f"{whole:,}.{cents:02d}"
 
 
 _NETWORK_NAMES: dict[int, str] = {

@@ -22,6 +22,7 @@ import re
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 
+from ..formatting import format_usd
 from .curated import CuratedContext, CuratedPick
 
 __all__ = [
@@ -34,12 +35,18 @@ __all__ = [
     "is_explicit_financial_command",
     "is_unsafe_request",
     "is_withdraw_all",
+    "is_withdraw_request",
     "is_yield_guidance_question",
     "last_proposal_message",
+    "mentions_withdraw_exception",
+    "named_swap_pair",
     "previous_amount",
+    "swap_pair_matches",
+    "swap_pair_unavailable_answer",
     "unsupported_swap_answer",
     "unsupported_swap_target",
     "withdraw_all_amount",
+    "withdraw_all_exception_amount",
     "yield_guidance_answer",
 ]
 
@@ -142,9 +149,36 @@ _FINANCIAL_VERB_RE = re.compile(
     r"trade|buy|sell|transfer|send)\b",
     re.IGNORECASE,
 )
+#: A withdraw-all instruction needs an EXIT verb. "take all the risk" and "move all my money
+#: into the vault" are not withdrawals: the latter is a deposit, the former is not an action at
+#: all. Bare take/pull/move only count when paired with "out", where they really mean an exit.
 _WITHDRAW_ALL_RE = re.compile(
-    r"\b(?:withdraw|redeem|cash\s?out|take|pull|move)\b[^.?!]{0,50}"
-    r"\b(?:everything|all|max(?:imum)?|full|entire)\b",
+    r"(?:\b(?:withdraw|redeem|cash\s?out)\b[^.?!]{0,60}"
+    r"\b(?:everything|all|max(?:imum)?|full|entire)\b)"
+    r"|(?:\b(?:take|pull|move|get|remove|close)\b[^.?!]{0,60}\bout\b[^.?!]{0,40}"
+    r"\b(?:everything|all|max(?:imum)?|full|entire)\b)"
+    r"|(?:\b(?:take|pull|move|get|remove|close)\b[^.?!]{0,40}"
+    r"\b(?:everything|all|max(?:imum)?|full|entire)\b[^.?!]{0,40}\bout\b)",
+    re.IGNORECASE,
+)
+
+#: Any explicit exit request (with or without an "all" marker) — used to keep the deposit-balance
+#: guard from blocking a legitimate withdraw command.
+_WITHDRAW_REQUEST_RE = re.compile(
+    r"\b(?:withdraw|redeem|cash\s?out)\b"
+    r"|\b(?:take|pull|move|get|remove|close)\b[^.?!]{0,40}\bout\b",
+    re.IGNORECASE,
+)
+
+#: "withdraw everything except 100" must leave a residual, never the whole position. The amount
+#: may carry a currency marker or not, because "except 100" is ordinary phrasing.
+_WITHDRAW_EXCEPTION_RE = re.compile(
+    r"\b(?:except|excluding|minus|less|other\s+than|but\s+not|leaving|leave|keep)\b"
+    r"[^.?!]{0,30}?\$?\s*(\d[\d,]*(?:\.\d+)?)\s*(k|m)?",
+    re.IGNORECASE,
+)
+_WITHDRAW_EXCEPTION_WORD_RE = re.compile(
+    r"\b(?:except|excluding|minus|less|other\s+than|but\s+not|leaving|leave|keep)\b",
     re.IGNORECASE,
 )
 
@@ -168,6 +202,24 @@ def is_withdraw_all(message: str) -> bool:
     if re.search(r"\bhow\b", message, re.IGNORECASE):
         return False
     return bool(_WITHDRAW_ALL_RE.search(message))
+
+
+def is_withdraw_request(message: str) -> bool:
+    """True when the turn is an explicit exit request (withdraw/redeem/cash out/take out)."""
+    return bool(_WITHDRAW_REQUEST_RE.search(message))
+
+
+def mentions_withdraw_exception(message: str) -> bool:
+    """True when a withdraw-all instruction carves an amount out ("except 100", "keep 50")."""
+    return bool(_WITHDRAW_EXCEPTION_WORD_RE.search(message))
+
+
+def withdraw_all_exception_amount(message: str) -> int | None:
+    """The amount to LEAVE BEHIND in "withdraw everything except 100", in base units."""
+    match = _WITHDRAW_EXCEPTION_RE.search(message)
+    if match is None:
+        return None
+    return _to_base_units(match.group(1), match.group(2))
 
 
 def is_explicit_financial_command(message: str) -> bool:
@@ -247,26 +299,101 @@ _RECEIVE_SIDE_RE = re.compile(
 )
 
 
-def _receive_side(message: str) -> str:
-    """The part of a swap command naming what the user receives, when identifiable.
+def _swap_sides(message: str) -> tuple[str, str]:
+    """Split a swap command into (source text, target text).
 
-    "swap my ETH to USDG" → "USDG"; "swap ETH for SOL" → "SOL". When there is no "into/to/for"
-    marker, the whole message is inspected (e.g. "buy NEAR"). This keeps a supported source
-    asset from being mistaken for the (unsupported) target.
+    "swap my NEAR to USDC" → ("swap my NEAR ", "USDC"); "swap ETH for SOL" → (…, "SOL").
+    With no into/to/for marker the whole message is the source side (e.g. "buy NEAR"), which
+    lets a bare asset still be found without inventing a target.
     """
     match = _RECEIVE_SIDE_RE.search(message)
-    return match.group("target") if match else message
+    if match is None:
+        return message, ""
+    return message[: match.start()], match.group("target")
 
 
 def unsupported_swap_target(message: str) -> str | None:
-    """The requested-but-unsupported receive asset/chain in a swap command, or ``None``."""
+    """The requested-but-unsupported asset/chain on EITHER side of a swap, or ``None``.
+
+    Both sides matter: "swap my NEAR to USDC" is just as unsupported as "swap ETH to NEAR", and
+    letting the source side fall through reproduced the wrong default USDG ↔ ETH card. The
+    receive side is checked first so an unsupported target is the label we report.
+    """
     if not _SWAP_VERB_RE.search(message):
         return None
-    target = _receive_side(message)
+    source, target = _swap_sides(message)
     for pattern, label in _UNSUPPORTED_TARGETS:
         if pattern.search(target):
             return label
+    for pattern, label in _UNSUPPORTED_TARGETS:
+        if pattern.search(source):
+            return label
     return None
+
+
+#: The assets this product can actually swap. USDC and USDG are both the chain-local stable, so
+#: they normalise to one symbol for comparison (the card names whichever is real on the chain).
+_SWAP_SYMBOL_RE = re.compile(r"\b(eth|usdc|usdg)\b", re.IGNORECASE)
+
+
+def _normalise_symbol(symbol: str | None) -> str | None:
+    if symbol is None:
+        return None
+    value = symbol.strip().upper()
+    if value in {"USDC", "USDG"}:
+        return "STABLE"
+    return "ETH" if value == "ETH" else value
+
+
+def _first_swap_symbol(text: str) -> str | None:
+    match = _SWAP_SYMBOL_RE.search(text)
+    return _normalise_symbol(match.group(1)) if match is not None else None
+
+
+def named_swap_pair(message: str) -> tuple[str | None, str | None]:
+    """The (from, to) symbols the user actually named, normalised (USDC/USDG → STABLE)."""
+    source, target = _swap_sides(message)
+    return _first_swap_symbol(source), _first_swap_symbol(target)
+
+
+def swap_pair_matches(message: str, proposed_action: dict[str, object]) -> bool:
+    """True unless the card's pair contradicts the assets the user explicitly named.
+
+    Safety net for a planner that yields a plausible-looking default card for a different pair:
+    a chip that says USDG ↔ ETH must never be shown to someone who asked for another asset.
+    Only the sides the user actually named are compared, so a pasted custom token (no symbol)
+    and a one-sided request are not blocked.
+    """
+    named_in, named_out = named_swap_pair(message)
+    token_in = proposed_action.get("tokenIn")
+    token_out = proposed_action.get("tokenOut")
+    in_symbol = token_in.get("symbol") if isinstance(token_in, dict) else None
+    out_symbol = token_out.get("symbol") if isinstance(token_out, dict) else None
+    if named_in is not None and _normalise_symbol(in_symbol) != named_in:
+        return False
+    if (
+        named_out is not None
+        and out_symbol is not None
+        and _normalise_symbol(out_symbol) != named_out
+    ):
+        return False
+    return True
+
+
+def swap_pair_unavailable_answer(
+    named_in: str | None, named_out: str | None, stable_symbol: str
+) -> str:
+    """Honest answer when the prepared swap pair does not match what the user asked for."""
+    pair = (
+        f"{named_in} → {named_out}"
+        if named_in is not None and named_out is not None
+        else "that pair"
+    )
+    return (
+        f"I couldn't prepare a swap for {pair}. On this network the assistant only prepares "
+        f"ETH ↔ {stable_symbol} swaps, so I won't show a card for a different pair. Open the "
+        "**Swap** page to check the live pair, review the quote, and sign from your own wallet."
+    )
 
 
 def unsupported_swap_answer(label: str, stable_symbol: str) -> str:
@@ -417,12 +544,6 @@ def _fmt_bps(bps: int | None) -> str:
     return f"{whole}.{frac:02d}%" if frac else f"{whole}%"
 
 
-def _fmt_usd(base_units: int) -> str:
-    whole, frac = divmod(max(0, base_units), 1_000_000)
-    cents = (frac * 100) // 1_000_000
-    return f"${whole:,}.{cents:02d}" if cents else f"${whole:,}"
-
-
 def _curated_vaults(curated: CuratedContext | None) -> tuple[CuratedPick, ...]:
     if curated is None:
         return ()
@@ -463,7 +584,7 @@ def _estimate_block(
     period = "1 year" if months == 12 else f"{months} months"
     return (
         f"At the current variable rate of **{_fmt_bps(apy_bps)}**{stamp}, "
-        f"{_fmt_usd(amount)} would earn roughly **{_fmt_usd(earned)}** over {period}, before "
+        f"{format_usd(amount)} would earn roughly **{format_usd(earned)}** over {period}, before "
         "any fees. That's an illustrative estimate at today's rate, not a promise — the rate "
         "moves with the market."
     )
@@ -574,7 +695,7 @@ def yield_guidance_answer(
         sections.append(_estimate_block(amount, months, apy, as_of))
     elif amount is not None and apy is not None:
         sections.append(
-            f"At today's variable rate of about **{_fmt_bps(apy)}**, {_fmt_usd(amount)} would "
+            f"At today's variable rate of about **{_fmt_bps(apy)}**, {format_usd(amount)} would "
             "earn that rate over a year before fees — an estimate, not a promise. Tell me a "
             "duration (for example 6 months) and I'll work out the figure."
         )
@@ -600,10 +721,10 @@ def yield_guidance_answer(
         and per_user_cap_base is not None
         and amount > per_user_cap_base
     ):
+        cap = format_usd(per_user_cap_base)
         sections.append(
-            f"One thing to know: a single deposit above {_fmt_usd(per_user_cap_base)} exceeds "
-            f"the current per-user cap, so I can only prepare up to {_fmt_usd(per_user_cap_base)} "
-            "in one move."
+            f"One thing to know: a single deposit above {cap} exceeds the current per-user cap, "
+            f"so I can only prepare up to {cap} in one move."
         )
 
     if mandate_risk is None:
