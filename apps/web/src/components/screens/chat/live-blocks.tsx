@@ -363,7 +363,8 @@ function AnswerText({
       className="ctext"
       data-streaming={streaming ? "true" : undefined}
       data-stream-target={streaming ? (streamTarget ?? "text") : undefined}
-      aria-live={streaming ? "polite" : undefined}
+      aria-live={streaming ? "off" : "polite"}
+      aria-busy={streaming ? "true" : undefined}
     >
       {paragraphs.map((para, i) => (
         <p key={i} style={{ margin: i === 0 ? 0 : "0.7em 0 0" }}>

@@ -138,8 +138,10 @@ def _dag(llm: Any, *, streaming: bool, single_call: bool) -> CoordinatorDag:
     )
 
 
-async def _collect(dag: CoordinatorDag, message: str) -> list[Any]:
-    return [block async for block in dag.run_chat(message, _chain())]
+async def _collect(
+    dag: CoordinatorDag, message: str, *, history: Sequence[tuple[str, str]] | None = None
+) -> list[Any]:
+    return [block async for block in dag.run_chat(message, _chain(), history=history)]
 
 
 async def test_other_prose_streams_deltas_then_one_authoritative_text_block() -> None:
@@ -269,6 +271,172 @@ def test_plain_concept_and_greeting_still_take_the_single_call_path() -> None:
     assert _fast_readonly_intent("show my portfolio") == Intent(kind=IntentKind.PORTFOLIO)
     # A live price is not a concept even when the wording is a "what is" question.
     assert _fast_readonly_intent("what is the price of ETH today?") is None
+
+
+#: 059 Defender round 2 — compound messages whose action half must never be dropped.
+_ACTION_PHRASINGS = (
+    "put 500 in the vault",
+    "How do vaults work? put 500 in the vault",
+    "move 100 USDC",
+    "invest 5k",
+    "stake 2 ETH",
+    "unstake everything",
+    "lend 100",
+    "borrow 500",
+    "repay 500",
+    "allocate 1000 to the vault",
+    "transfer 5 USDC",
+    "send 2.5m",
+    "bridge 100 USDC",
+    "buy 10 USDC of ETH",
+    "sell 1 ETH",
+    "swap 1 ETH to USDC",
+    "trade 100",
+    "deposit 500",
+    "withdraw 500",
+    "redeem 100",
+    "claim rewards",
+    "exit the vault",
+    "close my position",
+    "open a position",
+    "convert 100 USDC to ETH",
+    "rebalance my portfolio",
+    "park 500 in the vault",
+    "add 100 USDC",
+    "remove 100 USDC",
+    "pull 50 out",
+    "cash out 500",
+    "cash-out now",
+    "top up 100",
+    "purchase 20 USDC",
+    "what is a vault? put 500 in it",
+    "explain APY and move 100",
+    "what is APY? 5%",
+    "what is a vault? 42",
+    "what is a vault? 1k",
+    "what is a vault? 2.5m",
+    "what is a vault? all of my funds",
+    "what is a vault? half",
+    "what is a vault? five hundred",
+    "what is ERC-4626? deposit 1",
+    "I deposited yesterday",
+    "she is withdrawing now",
+    "they swapped it",
+    "I bought some",
+    "we sold it",
+    "staking is live",
+    "he staked it",
+    "lending markets",
+    "they borrowed",
+    "I repaid",
+    "she claims rewards",
+    "I closed it",
+    "we opened it",
+    "it was converted",
+    "she rebalanced",
+    "I parked it",
+    "he added funds",
+    "we removed funds",
+    "they pulled funds",
+    "I sent it",
+    "she transferred it",
+)
+
+
+def test_compound_action_phrasings_always_reach_the_planner() -> None:
+    """OH Defender MEDIUM: broaden the fail-closed guard, not just the verbs it knew.
+
+    Every one of these carries an action verb or an amount; the fast route must decline so the
+    planner gets the FULL message (the bug dropped "put 500 in the vault" and planned only the
+    question half).
+    """
+    for message in _ACTION_PHRASINGS:
+        assert _fast_readonly_intent(message) is None, message
+
+
+def test_standalone_numbers_block_unless_they_are_a_known_name_or_window() -> None:
+    for message in (
+        "what is a vault? 100",
+        "what is a vault? 1000",
+        "what is a vault? 12.5",
+        "what is a vault? 1k",
+        "what is a vault? 2.5m",
+        "what is a vault? 5%",
+        "what is a vault? 2 of 3",
+    ):
+        assert _fast_readonly_intent(message) is None, message
+    # Known token/standard names and time windows are not amounts.
+    for message in (
+        "what is ERC-4626?",
+        "explain ERC20",
+        "what is EIP-1559?",
+        "what is an L2?",
+        "what is 24h volume?",
+        "what is a 7d APY window?",
+        "explain the 30-day APY",
+        "what is Uniswap v3?",
+    ):
+        assert _fast_readonly_intent(message) is not None, message
+
+
+_HISTORY: list[tuple[str, str]] = [
+    ("user", "What is a vault?"),
+    ("assistant", "A vault pools deposits into a strategy."),
+]
+
+
+def test_history_followups_with_anaphora_or_short_forms_go_to_the_planner() -> None:
+    """OH Defender MEDIUM: a follow-up must not be answered as a fresh ``topic="it"`` tip."""
+    for message in (
+        "how does it work?",
+        "what about the risks?",
+        "what does this mean?",
+        "and the risks?",
+        "also explain APY",
+        "then what happens?",
+        "why is that?",
+        "same for ETH?",
+        "how do they work?",
+        "the above sounds good",
+        "yes",
+        "why?",
+        "explain APY",
+    ):
+        assert _fast_readonly_intent(message, _HISTORY) is None, message
+    # A complete, self-contained question is still safe to answer from the corpus.
+    assert _fast_readonly_intent("what is a vault?", _HISTORY) == Intent(
+        kind=IntentKind.LEARN, topic="vault"
+    )
+
+
+def test_learn_topic_is_never_a_pronoun_or_stopword() -> None:
+    for message in (
+        "how does it work?",
+        "what is this?",
+        "what are they?",
+        "what is it?",
+        "what is above?",
+    ):
+        assert _fast_readonly_intent(message) is None, message
+
+
+async def test_history_followups_and_compound_actions_reach_the_planner() -> None:
+    for message in (
+        "how does it work?",
+        "what does this mean?",
+        "and the risks?",
+        "how does it work? put 500 in the vault",
+    ):
+        llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+        await _collect(_dag(llm, streaming=True, single_call=True), message, history=_HISTORY)
+        assert llm.structured_calls == 1, message
+
+    llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+    await _collect(
+        _dag(llm, streaming=True, single_call=True), "what is a vault?", history=_HISTORY
+    )
+    assert llm.structured_calls == 0  # self-contained concept still takes the fast path
+
 
 
 async def test_compound_concept_plus_action_reaches_the_planner() -> None:

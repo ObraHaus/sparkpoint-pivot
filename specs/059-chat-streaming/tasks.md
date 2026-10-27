@@ -24,6 +24,9 @@
       and only when there is no forced intent.
 - [x] T12 Behind `SPARKY_SINGLE_CALL` (default ON in production wiring, OFF for direct DAG tests).
 - [x] T13 Call-count tests: portfolio 0, concept 1, greeting 1; 057 routes still 0 / unchanged.
+      Round 2: table-driven compound/action phrasings (full verb vocabulary + any standalone number
+      / written-out amount, known-standard exemptions) and history follow-ups (anaphora, short
+      turns, pronoun topics) must reach the planner.
 - [ ] T14 Classification cache for repeated identical messages — deliberately NOT implemented:
       the DAG has no conversation identity, and the deterministic fast route already removes the
       planner for the repeat-heavy read-only shapes. Revisit if beta traces show repeated prose
@@ -33,7 +36,8 @@
 
 - [x] T15 `tests/llm/test_client_streaming.py` — SSE parse, fallback, mid-stream propagation.
 - [x] T16 `tests/coordinator/test_streaming_and_single_call.py` — deltas + final reconciliation,
-      guardrail retry reset, mid-stream retry/failure, flag off path, call counts.
+      guardrail retry reset, mid-stream retry/failure, flag off path, call counts, broadened
+      fail-closed action/amount guard, and history-aware follow-up routing.
 - [x] T17 `tests/api/test_chat_streaming.py` — text-delta framing, not counted/persisted, refund
       once + ErrorBlock on mid-stream failure, no partial persistence.
 - [x] T18 `apps/web/src/lib/chat/streamText.test.ts` — append/reset/clear reducer.

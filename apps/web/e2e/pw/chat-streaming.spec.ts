@@ -87,11 +87,15 @@ test.describe("059 chat streaming", () => {
 
     const streaming = page.locator('[data-streaming="true"]').last();
     await expect(streaming).toBeVisible({ timeout: 2_500 });
+    // The provisional paint is silent: only the final block is a polite live region.
+    await expect(streaming).toHaveAttribute("aria-live", "off");
+    await expect(streaming).toHaveAttribute("aria-busy", "true");
     const firstTokenMs = Date.now() - started;
     expect(firstTokenMs).toBeLessThan(2_500);
 
     // The final authoritative block replaces the provisional paint.
     await expect(page.locator(".cturn.ai").last()).toContainText(STREAM_TEXT, { timeout: 10_000 });
     await expect(page.locator('[data-streaming="true"]')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator(".cturn.ai .ctext").last()).toHaveAttribute("aria-live", "polite");
   });
 });
