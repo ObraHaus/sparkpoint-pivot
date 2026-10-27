@@ -54,6 +54,7 @@ from ..policy import (
     MandateContext,
     PolicyContext,
     PolicyVerdict,
+    ReasonCode,
     RiskProfile,
     SessionState,
     SimulationInput,
@@ -87,6 +88,21 @@ from .curated import (
     curated_list_answer,
     curated_rate_answer,
     is_vaults_list_question,
+)
+from .guidance import (
+    NOTHING_TO_WITHDRAW,
+    NOTHING_TO_WITHDRAW_NO_VAULT,
+    UNSAFE_REFUSAL,
+    is_confirmation,
+    is_explicit_financial_command,
+    is_unsafe_request,
+    is_withdraw_all,
+    is_yield_guidance_question,
+    last_proposal_message,
+    unsupported_swap_answer,
+    unsupported_swap_target,
+    withdraw_all_amount,
+    yield_guidance_answer,
 )
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
@@ -516,6 +532,40 @@ class CoordinatorDag:
         # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
         user = chain.owner
 
+        # 057/D — unsafe-transfer and prompt-injection requests never reach the model. The policy
+        # gate still runs on every proposal; this is the explicit refusal the audit asked for.
+        if is_unsafe_request(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(UNSAFE_REFUSAL)
+            return
+
+        # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default
+        # USDG ↔ ETH card. Answer honestly and emit no action block.
+        unsupported_target = unsupported_swap_target(message)
+        if unsupported_target is not None:
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(
+                unsupported_swap_answer(unsupported_target, _swap_stable_symbol(chain.chain_id))
+            )
+            return
+
+        # 057/B — "do it" / "yes, go ahead" acts on the last proposed action in this conversation
+        # when there is one. Replaying the user request that produced the proposal keeps the
+        # amount/asset the user already stated; with no proposal there is nothing to act on.
+        if is_confirmation(message):
+            previous = last_proposal_message(history)
+            if previous is None:
+                yield ToolStepBlock("Understanding your request", "running")
+                yield ToolStepBlock("Understanding your request", "done")
+                yield TextBlock(
+                    "I don't have a move to act on yet. Tell me what you'd like to do — deposit, "
+                    "withdraw or swap — and the amount, and I'll prepare it for you to review."
+                )
+                return
+            message = previous
+
         # Bridging to another chain isn't an advisory action here — answer it honestly and
         # deterministically (no model call, no "how much?"), rather than misclassifying it.
         if _BRIDGE_RE.search(message):
@@ -563,6 +613,41 @@ class CoordinatorDag:
             yield TextBlock(_SAFETY_ANSWER)
             return
 
+        # 057/A — an empty wallet with no mandate asking how to earn (or "what would I earn?")
+        # gets the curated options, a labelled estimate, and a next step, not the guardrails
+        # dead-end. Membership is deliberately narrow: no mandate + no positions + a yield-shape
+        # question. Funded wallets keep the recommendation cards.
+        if is_yield_guidance_question(message):
+            guidance_gathered = await self.gather(chain)
+            if guidance_gathered.mandate is None and not guidance_gathered.portfolio.positions:
+                yield ToolStepBlock("Reading your portfolio", "running")
+                yield ToolStepBlock("Reading your portfolio", "done")
+                yield ToolStepBlock("Checking the curated vaults", "running")
+                guidance_curated = (
+                    await self.curated(chain.chain_id) if self.curated is not None else None
+                )
+                yield ToolStepBlock("Checking the curated vaults", "done")
+                try:
+                    cap = get_policy_constants(chain.chain_id).caps.per_user_tvl.amount
+                except Exception:  # noqa: BLE001 — a missing constants bundle is not fatal here
+                    cap = None
+                yield TextBlock(
+                    yield_guidance_answer(
+                        message=message,
+                        history=history,
+                        offers_vault=_offers_vault(chain),
+                        curated=guidance_curated,
+                        has_positions=False,
+                        idle_usdc=guidance_gathered.portfolio.idle_usdc,
+                        mandate_risk=None,
+                        projected_apy_bps=chain.market.projected_apy_bps,
+                        gross_apy_bps=chain.market.gross_apy_bps,
+                        performance_fee_bps=chain.market.performance_fee_bps,
+                        per_user_cap_base=cap,
+                    )
+                )
+                return
+
         # 048 — "what's the best vault / where should I deposit?" is answered from the CURATED
         # RECORD: the same row `/vault` renders, with its stored as-of. Deterministic, because the
         # one number a user cannot sanity-check is an APY and a model must not supply one. The read
@@ -570,8 +655,12 @@ class CoordinatorDag:
         # rather than naming a vault from memory.
         wants_list = is_vaults_list_question(message)
         wants_rate = bool(VAULT_RATE_RE.search(message))
+        # 057/B — "Deposit 500 USDC into the safest vault" is a COMMAND with an amount, not a
+        # question about the curated board. It must reach the planner/proposal path with the
+        # user's amount instead of being answered with a vault description.
+        is_command = is_explicit_financial_command(message)
         if (
-            BEST_VAULT_RE.search(message) or wants_list or wants_rate
+            (BEST_VAULT_RE.search(message) or wants_list or wants_rate) and not is_command
         ) and self.curated is not None:
             yield ToolStepBlock("Checking the curated vaults", "running")
             curated_record = await self.curated(chain.chain_id)
@@ -597,8 +686,31 @@ class CoordinatorDag:
             yield TextBlock(direct)
             return
 
+        # 057/B — "withdraw everything" means the full vault position. The amount comes from the
+        # fresh portfolio read; no position (or no vault on this chain) is answered plainly. The
+        # synthesised intent still goes through propose + the deterministic policy gate.
+        forced_intent: Intent | None = None
+        if is_withdraw_all(message):
+            yield ToolStepBlock("Reading your portfolio", "running")
+            withdraw_gathered = await self.gather(chain)
+            yield ToolStepBlock("Reading your portfolio", "done")
+            full_amount = withdraw_all_amount(withdraw_gathered.portfolio.positions)
+            if full_amount is None:
+                yield TextBlock(
+                    NOTHING_TO_WITHDRAW
+                    if _offers_vault(chain)
+                    else NOTHING_TO_WITHDRAW_NO_VAULT
+                )
+                return
+            forced_intent = Intent(
+                kind=IntentKind.BUILD_ACTION,
+                action_type=ActionType.VAULT_WITHDRAW,
+                asset=Asset.USDC,
+                amount=full_amount,
+            )
+
         yield ToolStepBlock("Understanding your request", "running")
-        intent = await self.understand(
+        intent = forced_intent or await self.understand(
             message, surface=surface, user=user, history=history, memory_lines=memory_lines
         )
         yield ToolStepBlock("Understanding your request", "done")
@@ -675,7 +787,39 @@ class CoordinatorDag:
             yield TextBlock(self._portfolio_summary(gathered))
             return
 
+        if (
+            intent.kind is IntentKind.RECOMMEND
+            and is_explicit_financial_command(message)
+            and intent.amount is not None
+            and gathered.portfolio.idle_usdc is not None
+            and intent.amount > gathered.portfolio.idle_usdc
+        ):
+            yield TextBlock(
+                _insufficient_balance_message(
+                    intent.amount,
+                    gathered.portfolio.idle_usdc,
+                    _stable_symbol(chain.chain_id),
+                )
+            )
+            return
+
         if intent.kind is IntentKind.BUILD_ACTION:
+            # 057/B — a deposit larger than the wallet's known idle stable cannot be signed even
+            # if the policy's cap checks pass. Say why plainly instead of showing a doomed card.
+            if (
+                intent.action_type is ActionType.VAULT_DEPOSIT
+                and intent.amount is not None
+                and gathered.portfolio.idle_usdc is not None
+                and intent.amount > gathered.portfolio.idle_usdc
+            ):
+                yield TextBlock(
+                    _insufficient_balance_message(
+                        intent.amount,
+                        gathered.portfolio.idle_usdc,
+                        _stable_symbol(chain.chain_id),
+                    )
+                )
+                return
             is_swap = intent.action_type is ActionType.AERODROME_SWAP
             # Swaps aren't built by the agent (Aerodrome fork-only) — surface the web's functional
             # inline swap card via an `action` block. It executes on the web's own Uniswap path
@@ -758,12 +902,7 @@ class CoordinatorDag:
         # RECOMMEND — surface only policy-cleared candidates (FR-016), ranked dense.
         approved = [s for s in stamped if s.signable]
         if not approved:
-            return [
-                TextBlock(
-                    "I couldn't find a strategy that clears your current guardrails. You can "
-                    "adjust your mandate or ask me to explain the options."
-                )
-            ]
+            return [TextBlock(_no_approved_answer(stamped, gathered))]
         blocks: list[ChatBlock] = [
             self._recommendation_block(s, chain, rank=index + 1) for index, s in enumerate(approved)
         ]
@@ -809,6 +948,40 @@ class CoordinatorDag:
 def _explicit_ready(intent: Intent) -> bool:
     """True iff a directly-commanded action has all of action/asset/amount (else clarify)."""
     return intent.action_type is not None and intent.asset is not None and intent.amount is not None
+
+
+def _insufficient_balance_message(amount: int, idle: int, stable_symbol: str) -> str:
+    """057/B — the honest reason a deposit cannot be prepared from a known wallet balance."""
+    return (
+        f"I can't prepare that ${_fmt_usdc6(amount)} {stable_symbol} deposit yet: your wallet has "
+        f"${_fmt_usdc6(idle)} {stable_symbol} available, so it would fail at signing. Fund your "
+        "wallet first, then ask me again — I'll prepare the move for you to review and sign."
+    )
+
+
+def _no_approved_answer(stamped: list[StampedCandidate], gathered: Gathered) -> str:
+    """057/A — cause-specific copy; the guardrails sentence is reserved for a real mandate block."""
+    reasons = {reason for item in stamped for reason in item.verdict.reasons}
+    mandate = gathered.mandate
+    if mandate is not None and ReasonCode.MANDATE_RISK_EXCEEDED in reasons:
+        return (
+            "I couldn't find a strategy that clears your current guardrails — your mandate is set "
+            f"to {mandate.risk_profile.value}, which excludes every option I can offer here. You "
+            "can widen it in Settings → Mandate, or ask me to explain the options."
+        )
+    if reasons & {
+        ReasonCode.CAP_PER_USER_EXCEEDED,
+        ReasonCode.CAP_TOTAL_EXCEEDED,
+        ReasonCode.CAP_VAULT_EXCEEDED,
+    }:
+        return (
+            "I couldn't build that within your deposit caps — the amount is above the current "
+            "per-user cap. Try a smaller amount, or ask me to explain the options."
+        )
+    return (
+        "I don't have a move I can build on this network right now. Ask me to explain the "
+        "options, or open the **Vault** page (/vault) to see what's available."
+    )
 
 
 def _wallet_line(portfolio: PortfolioView, chain_id: int) -> str:

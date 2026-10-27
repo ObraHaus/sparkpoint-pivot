@@ -138,11 +138,13 @@ def strategy_meta(action_type: ActionType, risk_class: RiskProfile) -> tuple[int
 #: the pre-030 behaviour — so no path becomes MORE permissive by omission.
 _STRATEGY_RISK_CLASS: dict[ActionType, RiskProfile] = {
     ActionType.VAULT_DEPOSIT: RiskProfile.CONSERVATIVE,
+    ActionType.VAULT_WITHDRAW: RiskProfile.CONSERVATIVE,
     ActionType.AAVE_SUPPLY: RiskProfile.CONSERVATIVE,
 }
 
 _DEFAULT_TITLE: dict[ActionType, str] = {
     ActionType.VAULT_DEPOSIT: "Deposit USDC into the profit-only Aave Yield Vault",
+    ActionType.VAULT_WITHDRAW: "Withdraw your USDC from the SparkPoint vault",
     ActionType.AAVE_SUPPLY: "Supply USDC directly to Aave v3",
     ActionType.AERODROME_SWAP: "Swap on Aerodrome",
 }
