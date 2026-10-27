@@ -72,12 +72,24 @@ function withChatDeadline(body: ReadableStream<Uint8Array>, ms: number): Readabl
   });
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const result = await Promise.race([reader.read(), deadline]);
+      const readPromise = reader.read();
+      const result = await Promise.race([readPromise, deadline]);
       if (result === "timeout") {
         if (timer) clearTimeout(timer);
         controller.enqueue(chatTimeoutEvent());
         controller.close();
-        void reader.cancel().catch(() => {});
+        // KEEP DRAINING — do not cancel the agent's turn on the user's behalf. The quota was charged
+        // when the turn was admitted; the agent returns that unit itself when the turn fails
+        // (`_event_stream`'s refund path). A BFF-side cancel looks like a client disconnect, which
+        // the agent deliberately does NOT refund, so cancelling here would make Retry double-charge.
+        void (async () => {
+          try {
+            let next = await readPromise;
+            while (!next.done) next = await reader.read();
+          } catch {
+            /* the agent went away; nothing left to drain */
+          }
+        })();
         return;
       }
       if (result.done) {
