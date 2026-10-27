@@ -13,9 +13,9 @@
       "slug": "quota-refund-audit-2026-10",
       "type": "changelog",
       "tag": "Fixed",
-      "title": "Behind the scenes: failed answers keep returning your question",
-      "body": "When an AI answer fails because the provider is briefly unavailable, the question is returned to you as before. We fixed an internal bookkeeping issue so that refund is now recorded reliably instead of logging a false failure on our side. Nothing changes in how you use Sparky, and no answer, allowance or signed action is affected.",
-      "published_at": "2026-10-27T04:58:00Z"
+      "title": "Behind the scenes: cleaner bookkeeping when an answer fails",
+      "body": "When an AI answer fails because the provider is briefly unavailable, that question still does not count against your daily allowance. We fixed an internal check that wrongly reported those refunds as failed. Nothing changes in how you use Sparky.",
+      "published_at": "2026-10-27T20:30:00Z"
     },
     {
       "slug": "chat-intent-routing-2026-10",
