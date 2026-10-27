@@ -5,7 +5,7 @@
  * (§2.4); the `reasons[]` are surfaced to the user. Closed wire ⇒ `.strict()`.
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { ReasonCode } from "../policy/enums";
 import { ProposedActionSchema } from "./action";
