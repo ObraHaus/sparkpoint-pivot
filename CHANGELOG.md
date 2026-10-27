@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed (grounding — live prices, as-of APY — 060)
 
+- **A quantity or a time horizon no longer gets a spot price.** "how much is 10k USDC in 1 year", "What is the price of 10 ETH?", "What is ETH worth after 1 year?" and "How much would $500 in ETH earn in 6 months?" now stand down from the spot route and reach the same pre-060 route they did before (yield guidance or general), instead of quoting a single price for a quantity. Pure spot questions ("what is the ETH price", "ETH price today", "how much is BTC", "what's SOL trading at?") still answer with a source and as-of stamp. A 120-row table pins the 26 beta prompts, the golden/eval corpus, the beta-questions knowledge corpus and the collision regressions; golden audit-07 now accepts the live figure with its source/as-of (or the honest unavailable message). (`coordinator/prices.py`, `tests/coordinator/test_price_route.py`, `evals/golden.yaml`)
 - **Price and APY grounding edge cases are corrected.** A mixed "price of ETH and SRK" question now quotes ETH and appends the SRK no-price policy (a pure SRK question still returns only the policy); context-only wording counts the context-only symbols ("BTC and SOL are…", "BTC is…"); a concurrent lookup waits for the in-flight fetch before reporting unavailable; the live APY stamp uses the data's actual read time; and every distinct curated-vault staleness caveat is shown once.
 
 ### Fixed (chat dead-ends — beta audit, 057)

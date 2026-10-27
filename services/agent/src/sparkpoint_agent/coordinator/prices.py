@@ -91,6 +91,36 @@ _NEGATIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: Estimation shapes belong to the guidance route, never a spot quote. "how much is 10k USDC in
+#: 1 year?" is a projection, not a price; "ETH price today" still is a spot question.
+_ESTIMATE_RE = re.compile(
+    r"\b(?:in|over|per|after|for)\s+"
+    r"(?:\d+(?:\.\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
+    r"(?:days?|weeks?|months?|years?|yrs?|mos?)\b"
+    r"|\b(?:annually|monthly|yearly|daily|weekly|quarterly)\b"
+    r"|\bper\s+(?:day|week|month|year|annum)\b"
+    r"|\b(?:a|one|1)\s+year\b"
+    r"|\bnext\s+(?:day|week|month|year)s?\b"
+    r"|\bby\s+next\b"
+    r"|\bif\s+i\s+(?:deposit|put|invest|stake|lend|supply)\b"
+    r"|\b(?:earn|earning|earnings|yield|yielding|returns?|interest|apy|apr|"
+    r"grow(?:s|ing|th)?|estimate[ds]?|project(?:ed|ion)?|forecast(?:ed)?|predict(?:ed|ion)?)\b"
+    r"|\bworth\s+(?:in|after)\b",
+    re.IGNORECASE,
+)
+
+#: A quantity the user attaches to an asset ("10k USDC", "$500 of ETH", "1.5 SOL") is a
+#: valuation/estimate request, not a spot quote. A number elsewhere ("in 2026") is not enough.
+_AMOUNT_RE = re.compile(
+    r"(?<![\w.])(?:\$\s*)?\d[\d,]*(?:\.\d+)?\s*"
+    r"(?:k|m|mm|b|bn|thousand|million|billion)?(?![\w.])",
+    re.IGNORECASE,
+)
+_AMOUNT_SYMBOL_FILLER_RE = re.compile(
+    r"^\s*(?:(?:of|in|into|for|worth|is|at|about|approx(?:imately)?|usd|dollars?)\s*)*$",
+    re.IGNORECASE,
+)
+
 SRK_PRICE_ANSWER = (
     "SparkPoint doesn't quote a dollar price for SRK. There's no oracle for it, so any USD figure "
     "would be invented — and we won't do that.\n\n"
@@ -104,6 +134,26 @@ PRICE_UNAVAILABLE_ANSWER = (
     "unreachable from this deployment or briefly rate-limited — try again in a moment.\n\n"
     "Nothing was signed or changed."
 )
+
+
+def _amount_attached_to_asset(message: str) -> bool:
+    """True when a quantity sits directly on an asset ("10k USDC", "$500 of ETH", "1.5 SOL")."""
+    amounts = [(match.start(), match.end()) for match in _AMOUNT_RE.finditer(message)]
+    if not amounts:
+        return False
+    symbols = [
+        (match.start(), match.end())
+        for patterns in _ALIASES.values()
+        for pattern in patterns
+        for match in pattern.finditer(message)
+    ]
+    symbols.extend((match.start(), match.end()) for match in _SRK_RE.finditer(message))
+    return any(
+        amount_end <= symbol_start
+        and _AMOUNT_SYMBOL_FILLER_RE.match(message[amount_end:symbol_start])
+        for _, amount_end in amounts
+        for symbol_start, _ in symbols
+    )
 
 
 def is_srk_price_question(message: str) -> bool:
@@ -122,12 +172,19 @@ def requested_price_symbols(message: str) -> tuple[str, ...]:
 
 
 def is_price_question(message: str) -> bool:
-    """True for a supported-asset price question that no other route owns."""
+    """True for a supported-asset SPOT price question that no other route owns.
+
+    A quantity attached to the asset ("10k USDC", "$500 of ETH") or a projection/estimate phrase
+    ("in 1 year", "monthly", "yield", "APY") is a guidance question even when it is shaped like
+    "how much is …". Those shapes must reach their pre-060 route instead of being quoted as spot.
+    """
+    if _NEGATIVE_RE.search(message) or _ESTIMATE_RE.search(message):
+        return False
+    if _amount_attached_to_asset(message):
+        return False
     if is_srk_price_question(message):
         return True
     if not requested_price_symbols(message):
-        return False
-    if _NEGATIVE_RE.search(message):
         return False
     return bool(_PRICE_SHAPE_RE.search(message))
 
