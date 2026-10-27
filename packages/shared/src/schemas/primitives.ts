@@ -14,7 +14,7 @@
  *    float-drift breaks reconstructability (§1.4, N5).
  */
 
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { CHAIN_ID, POLICY_VERSION } from "../policy/constants";
 
