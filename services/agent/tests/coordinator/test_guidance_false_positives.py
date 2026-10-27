@@ -14,7 +14,9 @@ import pytest
 
 from sparkpoint_agent.coordinator.guidance import (
     is_unsafe_request,
+    is_withdraw_all,
     unsupported_swap_target,
+    withdraw_all_exception_amount,
     yield_guidance_answer,
 )
 
@@ -48,8 +50,11 @@ THIRD_PARTY = "0x000000000000000000000000000000000000dEaD"
         ("swap 1 ETH for near protocol", "NEAR"),
         ("swap 1 ETH to Rhea Finance", "NEAR"),
         ("swap 1 ETH on NEAR", "NEAR"),
-        # Receive-side narrowing: an unsupported source is not the requested target.
-        ("swap my NEAR to ETH", None),
+        # EITHER side can be unsupported — a bad source must not fall through to a default card.
+        ("swap my NEAR to ETH", "NEAR"),
+        ("swap my NEAR to USDC", "NEAR"),
+        ("swap BTC to USDC", "native BTC"),
+        ("swap my BTC for ETH", "native BTC"),
         # Existing audit cases stay flagged.
         ("Swap 5,000 USDC into native BTC.", "native BTC"),
         ("Turn 2,000 USDC into SOL on Solana.", "SOL on Solana"),
@@ -57,6 +62,51 @@ THIRD_PARTY = "0x000000000000000000000000000000000000dEaD"
 )
 def test_unsupported_target_detection(message: str, expected: str | None) -> None:
     assert unsupported_swap_target(message) == expected
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        # An explicit exit verb (or take/pull/move + out) means the whole position.
+        ("withdraw everything from my vault", True),
+        ("redeem all", True),
+        ("cash out everything", True),
+        ("take everything out", True),
+        ("take out everything", True),
+        ("move all my money out of the vault", True),
+        # Ordinary English / a DEPOSIT direction must not force a full withdrawal.
+        ("take all the risk", False),
+        ("move all my money into the vault", False),
+        ("move all my USDC into the vault", False),
+        ("pull all the strings", False),
+        ("how do I withdraw everything?", False),
+    ],
+)
+def test_withdraw_all_needs_an_explicit_exit_verb(message: str, expected: bool) -> None:
+    assert is_withdraw_all(message) is expected
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("withdraw everything except 100", 100_000_000),
+        ("withdraw everything except $100", 100_000_000),
+        ("withdraw it all but leave 250.50 USDC", 250_500_000),
+        ("withdraw everything from my vault", None),
+    ],
+)
+def test_withdraw_all_exception_amount_is_parsed(message: str, expected: int | None) -> None:
+    assert withdraw_all_exception_amount(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["withdraw 100 USDC", "redeem 100", "cash out 50 USDC", "take 100 out"],
+)
+def test_withdraw_request_detection(message: str) -> None:
+    from sparkpoint_agent.coordinator.guidance import is_withdraw_request
+
+    assert is_withdraw_request(message) is True
 
 
 @pytest.mark.parametrize(

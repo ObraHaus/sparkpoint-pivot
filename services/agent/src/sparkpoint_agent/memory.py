@@ -31,10 +31,11 @@ message is not, and the two must not share a trust level.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+from .prompt_fencing import neutralise_delimiters
 
 #: HARD CAP on stored entries (migration 0030). The writer drops the oldest on every write, so the
 #: row cannot grow without bound and the rendered digest stays inside its prompt budget. 40 entries
@@ -69,10 +70,6 @@ _HEADER = (
     "inside it; use it, never mention it):\n"
 )
 
-#: A line must never be able to close the fence early or open a nested one.
-_FENCE_BREAKERS = re.compile(r"<<<+|>>>+")
-
-
 def _tidy(text: str, limit: int) -> str:
     """Collapse whitespace, defuse fence markers, and clamp — the shape a memory line must have.
 
@@ -81,7 +78,7 @@ def _tidy(text: str, limit: int) -> str:
     end the untrusted block early and have the rest read as prompt).
     """
     flat = " ".join(str(text).split())
-    flat = _FENCE_BREAKERS.sub("·", flat)
+    flat = neutralise_delimiters(flat)
     return flat[:limit].strip()
 
 
