@@ -156,21 +156,10 @@ Abilities: `read` · `read:sensitive` · `write` · `deploy` · `root`. **Standi
 >
 > **⚠️ Sync standard.** `BETA_ALLOWLIST` / `ADMIN_ALLOWLIST` MUST be identical on the agent + web apps. **Never edit them by hand on one app** — always write both in one shot with `scripts/sync-allowlist-env.sh "<beta_csv>" "<admin_csv>"` (needs `COOLIFY_API_TOKEN_RWD`), then redeploy both so the agent re-seeds. After boot, day-to-day membership is managed live in the **admin panel** (`/admin/allowlist`, audit-logged); the env is bootstrap + disaster-recovery only. ACCESS gate only — never gates `/exit`, `/trust`, or withdraw (N2). Migrations: `0005_allowlists` (see MIGRATIONS.md).
 >
-> **✅ OPEN BETA rollout (2026-10-04).** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`)
-> opens beta.sparkpoint.io to every wallet: once this change is on `main`, set `BETA_OPEN=true` on
-> that app and **redeploy** (build + runtime; the edge middleware reads it). Sign-in is still
-> required — it proves wallet control — and admin is unchanged. The allowlist + `/apply` remain for
-> the alpha/develop builds and for future re-gating (`BETA_OPEN=false`/unset + redeploy).
->
-> **✅ SPARKY BROKER MINT WHITELIST — LIVE 2026-10-06.** `sparkpoint-web-beta`
-> (`y08wgs8wcsc8gk8kgkw8gc8k`) + `sparkpoint-agent-beta` (`k4cwosc0c8kkswcco0wg8cko`) deployed the
-> `/mint-whitelist` form + `mint_whitelist_applications` store (migration 0042) on `main` @
-> `378dbb61`, and `sparkpoint-landing` (`sgsswckkgkccggcs4cg004cc`) shipped the outbound CTA to
-> sparkpoint.io on `main` @ `9a96d303`. ⚠️ **The beta agent's DB is `sparkpoint-postgres-beta`
-> (`rco44kwc88k44o80ccoko4kk`, published `192.168.31.36:45432`, db `postgres`), NOT the
-> `.claude/.env` `DATABASE_URL`** (that one is the alpha DB at `192.168.31.26:5432/sparkpoint`).
-> Migration 0042 must be applied to the beta DB before the agent serves the form. Verified live:
-> beta.sparkpoint.io `/mint-whitelist` → 200, landing CTAs + "5,555" on both domains, and a real
-> `POST /api/access/apply` with `program=mint_whitelist` → `{"ok":true}` (test row removed after).
-> ⚠️ The landing deploy first reported `failed` on the healthcheck while already serving the new
-> build (the documented coolify-build badge/healthcheck quirk); a retry finished green.
+> **✅ OPEN BETA — LIVE 2026-10-04.** `sparkpoint-web-beta` (`y08wgs8wcsc8gk8kgkw8gc8k`, `main`,
+> build+runtime env `BETA_OPEN=true`) now serves beta.sparkpoint.io to **every wallet** — the
+> allowlist, `/apply`, and the 1M-SRK auto-gate no longer restrict entry (sign-in is still required:
+> it proves wallet control). Shipped via PRs #294/#295 (`main` @ `584a2ba`, `/api/version` matches);
+> verified live with a freshly generated wallet (SIWE `beta:true` → `/chat` 200, `/admin` 404).
+> Admin is unchanged. The allowlist + `/apply` remain for the alpha/develop builds and for future
+> re-gating (`BETA_OPEN=false`/unset + redeploy).

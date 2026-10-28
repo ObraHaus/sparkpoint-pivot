@@ -12,6 +12,7 @@ Pins the load-bearing enforcement invariants:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -26,7 +27,7 @@ from sparkpoint_agent.api.quota import (
     window_start,
 )
 from sparkpoint_agent.api.security import AccountContext
-from sparkpoint_agent.db.limits import LimitsStore
+from sparkpoint_agent.db.limits import EVENT_VERDICTS, LimitsStore
 
 _DEF = {"chatDailyLimit": 3, "recsDailyLimit": 2, "onboardingDailyLimit": 5}
 _OWNER = "0xabc0000000000000000000000000000000000001"
@@ -86,6 +87,9 @@ class _FakeLimits:
     async def record_event(
         self, verdict: str, metric: str, tier: str, *, subject: str | None, detail: Any = None
     ) -> None:
+        # Mirror the real store (and the 0015 CHECK) so a verdict outside the set fails in tests.
+        if verdict not in EVENT_VERDICTS:
+            raise ValueError(f"unknown limits_event verdict {verdict!r}")
         self.events.append((verdict, metric, tier, subject))
 
 
@@ -171,8 +175,21 @@ async def test_refund_returns_the_same_metric_and_captured_window() -> None:
     ws = datetime(2026, 7, 20, 16, 0, tzinfo=UTC)
     await refund(_store(f), _ACCT.owner, _consumed(ws=ws))
     assert f.refunds == [(_ACCT.owner, "chat", ws)]
-    assert f.events and f.events[0][0] == "refund"
-    assert "…" in (f.events[0][3] or "")  # masked subject, never the full wallet
+    # 062: refund no longer writes a limits_event row (a `refund` verdict is outside the 0015
+    # CHECK, so the INSERT raised after the counter had already been returned).
+    assert f.events == []
+
+
+async def test_refund_logs_quota_refunded_and_not_failed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    f = _FakeLimits(tier="free", tier_def=_DEF)
+    f.refund_value = 2
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.api.quota"):
+        await refund(_store(f), _ACCT.owner, _consumed())
+    assert "quota_refunded metric=chat used=2" in caplog.text
+    assert "quota_refund_failed" not in caplog.text
+    assert _ACCT.owner not in caplog.text  # logs never carry the wallet
 
 
 async def test_refund_is_noop_when_the_turn_was_not_charged() -> None:
@@ -189,7 +206,13 @@ async def test_refund_uses_store_result_and_clamps_at_zero() -> None:
     assert f.refunds and f.refunds[0][0] == _ACCT.owner
 
 
-async def test_refund_error_is_swallowed() -> None:
+async def test_refund_error_is_swallowed_and_logs_only_the_class_name(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     f = _FakeLimits(tier="free", tier_def=_DEF)
     f.raise_on_refund = True
-    await refund(_store(f), _ACCT.owner, _consumed())  # must not raise
+    with caplog.at_level(logging.WARNING, logger="sparkpoint_agent.api.quota"):
+        await refund(_store(f), _ACCT.owner, _consumed())  # must not raise
+    assert "quota_refund_failed metric=chat err=RuntimeError" in caplog.text
+    assert "db down" not in caplog.text  # exception message is never logged
+    assert _ACCT.owner not in caplog.text  # and neither is the wallet

@@ -398,7 +398,7 @@ export function useOwnedBrokers(deployment: BrokerDeployment): OwnedBrokers {
   const walletReady = isConnected && walletChain === deployment.chainId;
   const collection = useBrokerCollection(deployment.nft);
 
-  const indexed = useIndexedBrokers(walletReady);
+  const indexed = useIndexedBrokers(walletReady, deployment.chainId);
   const scanCount = useMemo(
     () => ownershipScanCount(collection.maxSupply, collection.totalSupply, OWNERSHIP_SCAN_LIMIT),
     [collection.maxSupply, collection.totalSupply],

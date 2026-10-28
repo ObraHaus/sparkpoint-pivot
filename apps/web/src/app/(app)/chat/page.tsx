@@ -1338,6 +1338,27 @@ export default function ChatPage() {
                       onReview={pushInline}
                       onSign={pushSign}
                       onCite={openCite}
+                      // 061 A9 — persist a thumbs rating on a finished answer. The message id is
+                      // per conversation+turn, so a repeat tap updates the same row (idempotent).
+                      feedback={
+                        agentClient && convRef.current
+                          ? {
+                              conversationId: convRef.current,
+                              messageId: `msg_${convRef.current}_${turn.id}`,
+                              onRate: async (rating, reason) => {
+                                await agentClient.request("/chat/feedback", {
+                                  method: "POST",
+                                  body: {
+                                    conversationId: convRef.current,
+                                    blockId: `msg_${convRef.current}_${turn.id}`,
+                                    rating,
+                                    reason,
+                                  },
+                                });
+                              },
+                            }
+                          : undefined
+                      }
                     />
                   </AiFrame>
                 );
