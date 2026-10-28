@@ -104,6 +104,7 @@ from .guidance import (
     NOTHING_TO_WITHDRAW,
     NOTHING_TO_WITHDRAW_NO_VAULT,
     UNSAFE_REFUSAL,
+    has_financial_action_verb,
     is_comparative_question,
     is_confirmation,
     is_explicit_financial_command,
@@ -653,12 +654,11 @@ class CoordinatorDag:
         # 063 — a comparative question ("Is Morpho safer than Aave?", "compare that with just
         # keeping it in Aave") is a KNOWLEDGE question, not a yield/mandate question and never
         # an action. Route it to the grounded Sparky prose branch before the deterministic
-        # guidance/curated routes can answer it with canned copy. A comparative that is ALSO an
-        # explicit command ("compare them, then deposit 500 USDC") keeps the normal planner path
-        # so the action half is never dropped.
-        comparative = is_comparative_question(message) and not is_explicit_financial_command(
-            message
-        )
+        # guidance/curated routes can answer it with canned copy. Any comparative turn that
+        # names a financial ACTION verb ("deposit my entire balance into whichever is safer than
+        # Aave", "compare them, then deposit 500 USDC") keeps the normal planner path even when
+        # no amount parses, so a requested action is never silently dropped.
+        comparative = is_comparative_question(message) and not has_financial_action_verb(message)
 
         # 057/D — unsafe-transfer and prompt-injection requests never reach the model. The policy
         # gate still runs on every proposal; this is the explicit refusal the audit asked for.
