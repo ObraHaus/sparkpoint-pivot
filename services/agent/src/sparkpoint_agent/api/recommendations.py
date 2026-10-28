@@ -347,7 +347,11 @@ def _build_chain_context(
         # Live Aave USDC supply APY (gross) net-of-perf-fee (projected); both None when the feed is
         # unconfigured/unreadable (honest, never fabricated). Profit-only fee is read from chain.
         market=MarketData(
-            gross_apy_bps=gross_bps, projected_apy_bps=projected, performance_fee_bps=fee_bps
+            gross_apy_bps=gross_bps,
+            projected_apy_bps=projected,
+            performance_fee_bps=fee_bps,
+            # 060 — these are live reads made for THIS turn; the prose rationale can say when.
+            as_of=datetime.now(UTC).isoformat(),
         ),
     )
 

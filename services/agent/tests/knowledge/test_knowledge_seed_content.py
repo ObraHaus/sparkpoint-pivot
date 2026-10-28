@@ -117,3 +117,63 @@ def test_the_new_documents_link_to_each_other_so_retrieval_can_follow_them() -> 
     corpus = _corpus()
     for source in NEW_SOURCES:
         assert "[[" in corpus[source], f"{source} should reference a sibling document"
+
+
+# ── 060: the consolidated beta FAQ ────────────────────────────────────────────
+
+
+def test_the_beta_faq_exists_and_is_substantial() -> None:
+    text = _corpus().get("beta-questions", "")
+    assert text, "beta-questions.md is missing from the shipped seed"
+    assert len(text.strip()) > 1_000, "the FAQ must be deep enough to ground real questions"
+
+
+def test_the_beta_faq_compares_morpho_and_aave_honestly() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "morpho" in text and "aave" in text
+    assert "curator" in text, "the extra Morpho risk is curator risk"
+    assert "high-water mark" in text
+    assert "neither is automatically safer" in text or "neither venue is insured" in text
+
+
+def test_the_beta_faq_explains_apy_net_apy_and_variation() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "net apy" in text
+    assert "utilization" in text
+    assert "spot reading" in text
+    assert "as-of" in text or "as of" in text
+
+
+def test_the_beta_faq_explains_slippage_and_the_swap_fee() -> None:
+    text = _corpus()["beta-questions"]
+    assert "0.20%" in text
+    assert "slippage" in text.lower()
+    assert "separate" in text.lower()
+
+
+def test_the_beta_faq_places_near_intents_in_the_november_build() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "near intents" in text
+    assert "november build" in text
+    assert "not live" in text
+
+
+def test_the_beta_faq_states_non_custody_and_signing_precisely() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "holds no private keys" in text
+    assert "unsigned" in text
+    assert "erc-4626" in text and "withdraw" in text
+
+
+def test_the_beta_faq_names_the_daily_allowance_and_the_mandate() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "40 chat turns" in text
+    assert "400" in text
+    assert "mandate" in text
+    assert "advisory framing" in text
+
+
+def test_the_beta_faq_keeps_the_srk_no_price_policy() -> None:
+    text = _corpus()["beta-questions"].lower()
+    assert "does sparkpoint quote an srk price" in text
+    assert "no oracle" in text

@@ -31,11 +31,13 @@ Stage contract (what each endpoint calls):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 from ..agents import guardrail
@@ -49,6 +51,7 @@ from ..agents.literacy import (
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky, SparkyReply
+from ..data.prices import PriceService, PriceSnapshot
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -118,6 +121,15 @@ from .guidance import (
     withdraw_all_exception_amount,
     yield_guidance_answer,
 )
+from .prices import (
+    PRICE_LOOKUP_TIMEOUT_S,
+    SRK_PRICE_ANSWER,
+    format_price_answer,
+    is_price_question,
+    is_srk_price_question,
+    requested_price_symbols,
+)
+from .staleness import as_of_time
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -196,6 +208,8 @@ class MarketData:
     projected_apy_bps: int | None = None
     performance_fee_bps: int = 1000
     citations: tuple[Citation, ...] = ()
+    #: 060 — when the figures were read (ISO). Prose only; never a policy input.
+    as_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -370,6 +384,9 @@ class CoordinatorDag:
     #: with no pick), or ``None`` when the read failed — which the "best vault" route renders as an
     #: honest error, never a remembered vault. Advisory/display only: its output is a text block.
     curated: Callable[[int], Awaitable[CuratedContext | None]] | None = None
+    #: 060 — display-only keyless USD reference prices. ``None`` ⇒ the price route says it cannot
+    #: fetch a live price; it never guesses, and never reaches propose/build/policy.
+    prices: PriceService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -564,6 +581,7 @@ class CoordinatorDag:
             performance_fee_bps=market.performance_fee_bps,
             citations=market.citations,
             suggested_amount=gathered.portfolio.idle_usdc,
+            as_of=market.as_of,
         )
 
     # -- stage 4: policy gate (DETERMINISTIC, LLM-FREE) -----------------------
@@ -634,6 +652,34 @@ class CoordinatorDag:
             yield TextBlock(
                 unsupported_swap_answer(unsupported_target, _swap_stable_symbol(chain.chain_id))
             )
+            return
+
+        # 060 — a price question is a reference figure, not an advisory action. Answered in code
+        # before the planner (which routed it to the prose branch, whose SYSTEM forbids quoting a
+        # price) and before the portfolio/APY/curated routes can mistake it for their shape. SRK is
+        # answered by policy: there is no oracle, so a USD figure would be invented.
+        if is_price_question(message):
+            asks_srk = is_srk_price_question(message)
+            symbols = requested_price_symbols(message)
+            if asks_srk and not symbols:
+                yield ToolStepBlock("Checking the price policy", "running")
+                yield ToolStepBlock("Checking the price policy", "done")
+                yield TextBlock(SRK_PRICE_ANSWER)
+                return
+            yield ToolStepBlock("Checking live prices", "running")
+            snapshot = PriceSnapshot(quotes={})
+            if self.prices is not None:
+                try:
+                    snapshot = await asyncio.wait_for(
+                        self.prices.get(symbols), timeout=PRICE_LOOKUP_TIMEOUT_S
+                    )
+                except Exception:  # noqa: BLE001 — a price feed must never break the stream
+                    snapshot = PriceSnapshot(quotes={})
+            yield ToolStepBlock("Checking live prices", "done")
+            answer = format_price_answer(snapshot, symbols)
+            if asks_srk:
+                answer = f"{answer}\n\n{SRK_PRICE_ANSWER}"
+            yield TextBlock(answer)
             return
 
         # 057/B — "do it" / "yes, go ahead" acts on the last proposed action in this conversation
@@ -1465,7 +1511,7 @@ _AUTOMATION_NO_VAULT = (
 )
 
 
-def _apy_answer(chain: ChainContext) -> str:
+def _apy_answer(chain: ChainContext, *, now: datetime | None = None) -> str:
     """The live vault APY sentence — or an honest "I can't read it right now".
 
     Never explains what an APY is: a user asking for the CURRENT figure already knows. The
@@ -1490,7 +1536,12 @@ def _apy_answer(chain: ChainContext) -> str:
             "the current rate whenever the feed is up."
         )
     headline = net if net is not None else gross
-    parts = [f"The vault is currently showing about **{_fmt_bps(headline)}% APY**"]
+    read_at = as_of_time(getattr(market, "as_of", None) if market else None, now=now)
+    stamp = read_at.strftime("%H:%M UTC")
+    parts = [
+        f"The vault is currently showing about **{_fmt_bps(headline)}% APY** "
+        f"(as of {stamp})"
+    ]
     if net is not None and gross is not None and gross != net:
         fee = f" after the {_fmt_bps(fee_bps)}% performance fee" if fee_bps else " after fees"
         parts.append(f" net{fee} (gross {_fmt_bps(gross)}%)")

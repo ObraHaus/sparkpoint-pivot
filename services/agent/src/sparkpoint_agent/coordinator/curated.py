@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .staleness import as_of_suffix, parse_as_of, staleness_caveat
+
 __all__ = [
     "BEST_VAULT_RE",
     "CURATED_FAILURE",
@@ -126,6 +128,15 @@ def _fmt_usd(value: float | None) -> str:
     return f"${value:.0f}"
 
 
+def _oldest_staleness_note(vaults: tuple[CuratedPick, ...]) -> str:
+    """One caveat naming the oldest stored row, so a long list does not repeat it per vault."""
+    dated = [(parsed, vault) for vault in vaults if (parsed := parse_as_of(vault.as_of))]
+    if not dated:
+        return ""
+    _, oldest = min(dated, key=lambda item: item[0])
+    return staleness_caveat(oldest.as_of, subject=f"{oldest.label}'s figure")
+
+
 def _fee_note(wrapped: bool) -> str:
     if wrapped:
         return (
@@ -153,11 +164,14 @@ def curated_rate_answer(context: CuratedContext) -> str:
             "produced one I'd stand behind. The **Vault** page (/vault) shows the board's own "
             "figures. I won't invent a rate."
         )
-    as_of = f" as of {pick.as_of[:10]}" if pick.as_of else ""
+    as_of = as_of_suffix(pick.as_of, style="space")
+    caveat = staleness_caveat(pick.as_of)
+    caveat_line = f"\n\n{caveat}" if caveat else ""
     return (
         f"**{pick.label}** is showing **{_fmt_apy(pick.net_apy_bps)} net APY**{as_of} — the stored "
         "figure the Vault board renders. Rates float with the underlying market, so treat it as an "
-        "estimate, not a promise.\n\nThe **Vault** page (/vault) shows every curated vault's rate."
+        f"estimate, not a promise.{caveat_line}\n\n"
+        "The **Vault** page (/vault) shows every curated vault's rate."
     )
 
 
@@ -180,10 +194,14 @@ def curated_list_answer(context: CuratedContext) -> str:
     for vault in vaults:
         is_pick = bool(pick_address) and vault.address.lower() == pick_address
         tag = " · the published pick" if is_pick else ""
+        as_of = as_of_suffix(vault.as_of)
         lines.append(
             f"- **{vault.label}** — {_fmt_apy(vault.net_apy_bps)} net APY, "
-            f"{_fmt_usd(vault.tvl_usd)} TVL{tag}"
+            f"{_fmt_usd(vault.tvl_usd)} TVL{as_of}{tag}"
         )
+    caveat = _oldest_staleness_note(vaults)
+    if caveat:
+        lines += ["", caveat]
     lines += [
         "",
         "The full board — with each vault's own screening notes — is on the **Vault** page "
@@ -214,12 +232,15 @@ def curated_answer(context: CuratedContext) -> str:
         )
 
     lines = [f"I'd point you at **{pick.label}** — {pick.reason}", ""]
-    as_of = f" (as of {pick.as_of[:10]})" if pick.as_of else ""
+    as_of = as_of_suffix(pick.as_of)
     lines.append(f"- Net APY: {_fmt_apy(pick.net_apy_bps)}{as_of}")
     lines.append(f"- TVL: {_fmt_usd(pick.tvl_usd)}")
     if pick.curator:
         curator = f"{pick.curator} (verified)" if pick.curator_verified else pick.curator
         lines.append(f"- Curator: {curator}")
+    caveat = staleness_caveat(pick.as_of)
+    if caveat:
+        lines += ["", caveat]
     lines += [
         "",
         _fee_note(pick.wrapped),
