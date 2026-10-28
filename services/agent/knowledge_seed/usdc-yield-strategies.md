@@ -34,3 +34,13 @@ concentrated-liquidity exposure. Quoted APYs are spot readings, never promises,
 and every candidate is bound by the deterministic caps and slippage floor before
 it can ever be signed. See [[risk-profiles]] for the tier definitions. This note
 is advisory context only — it never sets a cap or gates a signature.
+
+## Third-party curated vaults
+
+Beyond SparkPoint's own Aave vault, the curated board can list screened
+third-party ERC-4626 vaults, including Morpho Vault V2 vaults run by curators
+such as Steakhouse. They can offer a different net APY, but they add curator and
+isolated-market risk that a single Aave supply position does not have. The board
+discloses the curator, the stored as-of and whether a SparkPoint fee wrapper is
+attached; a vault without a wrapper is deposited directly and carries no
+SparkPoint fee. See [[beta-questions]] for the honest risk comparison.
