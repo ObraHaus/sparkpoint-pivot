@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
+import pytest
+
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
@@ -32,8 +34,10 @@ from sparkpoint_agent.coordinator.dag import (
     PortfolioView,
     _fast_readonly_intent,
 )
+from sparkpoint_agent.knowledge import Passage
 from sparkpoint_agent.llm import LlmResult, StreamChunk, StructuredResult
 from sparkpoint_agent.policy import CapHeadroom
+from sparkpoint_agent.wire import Citation
 
 USER = "0x2222222222222222222222222222222222222222"
 OWNER = "0x3333333333333333333333333333333333333333"
@@ -99,6 +103,49 @@ class _CountingLlm:
         return self.structured_calls + self.complete_calls + self.stream_calls
 
 
+class _RecordingLlm(_CountingLlm):
+    """``_CountingLlm`` that also keeps every prose prompt's user content."""
+
+    def __init__(self, intent: Intent | None = None) -> None:
+        super().__init__(intent)
+        self.user_contents: list[str] = []
+
+    def _remember(self, kwargs: dict[str, Any]) -> None:
+        messages = kwargs.get("messages") or []
+        if messages:
+            self.user_contents.append(str(messages[-1].get("content", "")))
+
+    async def complete(self, **kwargs: Any) -> LlmResult:
+        self._remember(kwargs)
+        return await super().complete(**kwargs)
+
+    async def stream_complete(self, **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        self._remember(kwargs)
+        async for chunk in super().stream_complete(**kwargs):
+            yield chunk
+
+
+class _Grounder:
+    """A knowledge grounder that always returns one sentinel passage."""
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        return (
+            Passage(
+                content="GROUNDING-SENTINEL: Morpho and Aave differ in how risk is curated.",
+                citation=Citation(
+                    provider="docs",
+                    endpoint="morpho-vs-aave",
+                    field="risk",
+                    value="curated",
+                    as_of="2026-10-27",
+                    stale=False,
+                ),
+            ),
+        )
+
+
 class _Portfolio:
     async def read(self, chain: ChainContext) -> PortfolioView:
         return PortfolioView()
@@ -124,7 +171,13 @@ async def _recent_changelog() -> list[dict[str, Any]]:
     return []
 
 
-def _dag(llm: Any, *, streaming: bool, single_call: bool) -> CoordinatorDag:
+def _dag(
+    llm: Any,
+    *,
+    streaming: bool,
+    single_call: bool,
+    knowledge: Any = None,
+) -> CoordinatorDag:
     return CoordinatorDag(
         planner=Planner(llm=llm),
         recommender=Recommender(llm=llm),
@@ -133,6 +186,7 @@ def _dag(llm: Any, *, streaming: bool, single_call: bool) -> CoordinatorDag:
         portfolio_provider=_Portfolio(),
         mandate_provider=_Mandate(),
         changelog=_recent_changelog,
+        knowledge=knowledge,
         streaming=streaming,
         single_call=single_call,
     )
@@ -579,21 +633,60 @@ def test_single_call_never_touches_the_057_deterministic_routes() -> None:
         assert _llm_calls(_dag(llm, streaming=True, single_call=True), message, llm) == 0
 
 
-async def test_fast_route_keeps_identity_and_price_turns_general_not_knowledge() -> None:
-    """058 golden regression: audit-01 identity and audit-07 ETH price must stay OTHER/general.
+async def test_fast_route_keeps_identity_general_and_price_deterministic() -> None:
+    """058 golden: audit-01 identity stays OTHER/general; 060 makes audit-07 price deterministic.
 
     The generic LEARN matcher ("what is …") would otherwise stream a concept tip for both, which
     is exactly what the 058 golden set pins against. An identity turn is answered fast as OTHER;
-    a price/quote turn falls through to the planner (which routes it to the same general prose).
+    a price/quote turn is now answered by the 060 keyless-price route (no model call) instead of
+    falling through to the planner's prose, so it still never becomes a knowledge tip.
     """
-    for message in (
+    llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+    blocks = await _collect(
+        _dag(llm, streaming=True, single_call=True),
         "What is Sparky and what can you do for me?",
+    )
+    assert not any(isinstance(b, TipBlock) for b in blocks)
+    assert next(b for b in blocks if isinstance(b, TextBlock)).markdown == GOOD
+
+    price_llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
+    price_blocks = await _collect(
+        _dag(price_llm, streaming=True, single_call=True),
         "What is the price of ETH today?",
-    ):
-        llm = _CountingLlm(Intent(kind=IntentKind.OTHER))
-        blocks = await _collect(_dag(llm, streaming=True, single_call=True), message)
-        assert not any(isinstance(b, TipBlock) for b in blocks), message
-        assert next(b for b in blocks if isinstance(b, TextBlock)).markdown == GOOD
+    )
+    assert not any(isinstance(b, TipBlock) for b in price_blocks)
+    price_text = next(b for b in price_blocks if isinstance(b, TextBlock)).markdown
+    assert "couldn't fetch a live price" in price_text
+    assert price_llm.llm_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("message", "intent"),
+    [
+        ("what is a vault?", Intent(kind=IntentKind.LEARN, topic="vault")),
+        ("what can you do", Intent(kind=IntentKind.OTHER)),
+    ],
+)
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("single_call", [False, True])
+async def test_grounding_reaches_the_prose_prompt_on_every_flag_combo(
+    message: str, intent: Intent, streaming: bool, single_call: bool
+) -> None:
+    """060 grounding must reach BOTH prose paths under every 059 flag combination.
+
+    The single-call fast route (flags on) and the legacy planner route (flags off) both hand the
+    retrieved passages to the same prose prompt, streamed or not. A regression that wired grounding
+    only into the planner path, or only into the non-streaming path, would drop it for beta.
+    """
+    llm = _RecordingLlm(intent)
+    blocks = await _collect(
+        _dag(llm, streaming=streaming, single_call=single_call, knowledge=_Grounder()),
+        message,
+    )
+    assert llm.user_contents, f"expected a prose call for {message!r}"
+    assert all("GROUNDING-SENTINEL" in content for content in llm.user_contents)
+    assert llm.structured_calls == (0 if single_call else 1)
+    assert any(isinstance(b, (TextBlock, TipBlock)) for b in blocks)
 
 
 async def test_refusal_routes_never_stream_prose_before_the_deterministic_refusal() -> None:

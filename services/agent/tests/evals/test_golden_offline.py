@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 
+import pytest
 from evals.model import load_cases
 from evals.runner import run_offline
 
@@ -27,6 +28,29 @@ async def test_golden_offline_suite_passes() -> None:
     assert report.infra == 0
     assert report.passed == report.total
     assert elapsed < 60, f"offline suite took {elapsed:.1f}s (budget 60s)"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("single_call", [False, True])
+async def test_golden_routes_are_identical_for_every_flag_combo(
+    streaming: bool, single_call: bool
+) -> None:
+    """059 flags are a latency widening — they must never change a golden route or card.
+
+    Same 72-case set, same canned LLM/reads, all four ``SPARKY_STREAMING`` x ``SPARKY_SINGLE_CALL``
+    combos: the route, the blocks and every must(-not)-contain rule must match the pre-059 path.
+    """
+    report = await run_offline(streaming=streaming, single_call=single_call)
+    failures = [
+        f"{result.id}: {'; '.join(result.failures)}"
+        for result in report.results
+        if result.status != "pass"
+    ]
+    assert not failures, (
+        f"streaming={streaming} single_call={single_call}\n" + "\n".join(failures)
+    )
+    assert report.infra == 0
+    assert report.passed == report.total
 
 
 def test_golden_set_shape() -> None:

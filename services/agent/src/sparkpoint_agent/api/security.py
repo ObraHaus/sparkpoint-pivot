@@ -56,10 +56,24 @@ NO_ACCOUNT_PATHS: frozenset[str] = frozenset(
     {"/access/public-application", "/access/mint-whitelist"}
 )
 
+# Routes where a missing/invalid identity is an ANSWER, not an error.
+#
+# `/brokers/owned` is a read-only gallery lookup. A wallet on an unsupported chain, or a client
+# that has not sent a chain header yet, genuinely cannot be scoped — and the honest answer is
+# "unavailable", not a 400 that paints the network console red on every broker surface (061 A9).
+# Authentication is unchanged: the s2s bearer is still required. Only the identity parse is
+# softened, and the route itself reports `{available: false}`.
+OPTIONAL_ACCOUNT_PATHS: frozenset[str] = frozenset({"/brokers/owned"})
+
 
 def requires_account_context(path: str) -> bool:
     """False for s2s-authenticated routes that legitimately have no user to scope to."""
     return path not in NO_ACCOUNT_PATHS
+
+
+def has_optional_account_context(path: str) -> bool:
+    """True when a bad/missing identity should degrade to an unavailable read, not a 400."""
+    return path in OPTIONAL_ACCOUNT_PATHS
 
 
 @dataclass(frozen=True)

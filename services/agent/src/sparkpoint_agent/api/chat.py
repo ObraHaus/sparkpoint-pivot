@@ -69,7 +69,8 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
-from ..db import LimitsStore, get_database
+from ..data.prices import get_price_service
+from ..db import ChatFeedbackStore, LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
 from ..db.conversations import ConversationStore
 from ..db.curated_vaults import APPROVED, PgCurationStore
@@ -86,6 +87,7 @@ from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
 from .portfolio import get_wrapper_store, read_wrapper_positions
 from .quota import LimitDecision, get_limits_store, refund, require_within_quota
+from .rate_limit import FEEDBACK_RATE_LIMIT_PER_HOUR, SlidingWindowLimiter, feedback_limiter
 from .recommendations import (
     _build_chain_context,
     _network_id,
@@ -159,9 +161,14 @@ class ChatRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     """§3.2 ``POST /chat/feedback`` body — a thumbs signal on one streamed block."""
 
-    conversationId: str
-    blockId: str
+    # Both ids are client-controlled and only ever used as bounded telemetry keys, so cap them
+    # on the wire too (the store also truncates defensively).
+    conversationId: str = Field(min_length=1, max_length=200)
+    #: 061 A9 — the stable id of the ANSWER being rated. Historically called ``blockId``; kept on
+    #: the wire for compatibility, but the client now sends one per assistant turn.
+    blockId: str = Field(min_length=1, max_length=200)
     rating: Literal["up", "down"]
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,10 +190,16 @@ class ChatChainProvider(Protocol):
 
 
 class FeedbackSink(Protocol):
-    """Persists a thumbs signal (FR feedback). The default is a no-op until the DB is wired."""
+    """Persists a thumbs signal (FR feedback). The production sink is Pg-backed and fail-open."""
 
     async def record(
-        self, *, conversation_id: str, block_id: str, rating: str, account: AccountContext
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
     ) -> None: ...
 
 
@@ -215,12 +228,56 @@ class _VaultChatChainProvider:
 
 
 class _NoopFeedbackSink:
-    """Default :class:`FeedbackSink` — accepts + drops the signal until persistence is wired."""
+    """A :class:`FeedbackSink` that accepts + drops the signal (tests / explicitly disabled)."""
 
     async def record(
-        self, *, conversation_id: str, block_id: str, rating: str, account: AccountContext
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
     ) -> None:
         return None
+
+
+class _PgFeedbackSink:
+    """061 A9 — persist the rating on ``(owner, message)``, fail-open.
+
+    Feedback is product telemetry. A DB blip or an unapplied migration must never turn a thumbs tap
+    into a failed request, so the store's error is logged once and swallowed.
+    """
+
+    def __init__(self, store: ChatFeedbackStore) -> None:
+        self._store = store
+
+    async def record(
+        self,
+        *,
+        conversation_id: str,
+        block_id: str,
+        rating: str,
+        account: AccountContext,
+        reason: str | None = None,
+    ) -> None:
+        try:
+            await self._store.record(
+                owner_eoa=account.owner,
+                conversation_id=conversation_id,
+                message_id=block_id,
+                rating=rating,
+                reason=reason,
+            )
+        except Exception:
+            global _warned_feedback_failure
+            if not _warned_feedback_failure:
+                _warned_feedback_failure = True
+                _logger.warning(
+                    "chat_feedback_write_failed: thumbs ratings are NOT being persisted "
+                    "(missing migration 0043, or a DB error). Fail-open — the tap still succeeds.",
+                    exc_info=True,
+                )
 
 
 def _fmt_units(raw: int, decimals: int) -> str:
@@ -534,6 +591,9 @@ def get_coordinator_dag(
         # 048 — "what's the best vault?" reads the CURATED RECORD (the same row /vault renders).
         # Fail-open to an honest error; never a remembered vault or a model-supplied APY.
         curated=_curated_context,
+        # 060 — keyless USD reference prices for the deterministic price route. Display-only:
+        # the service is cached/bounded and never reaches propose/build/policy.
+        prices=get_price_service(),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
@@ -558,9 +618,20 @@ def get_chain_provider(
     return _VaultChatChainProvider(reader, config)
 
 
+_warned_feedback_failure = False
+
+
 def get_feedback_sink() -> FeedbackSink:
-    """The thumbs-feedback persistence seam (overridden in tests)."""
-    return _NoopFeedbackSink()
+    """The thumbs-feedback persistence seam (Pg-backed, fail-open; overridden in tests).
+
+    Constructing the DB-backed store can itself fail when the database is not configured. That must
+    not turn into an error on the request (and FastAPI resolves dependencies before body
+    validation), so an unusable store degrades to the no-op sink.
+    """
+    try:
+        return _PgFeedbackSink(ChatFeedbackStore(get_database()))
+    except Exception:
+        return _NoopFeedbackSink()
 
 
 _logger = logging.getLogger(__name__)
@@ -1046,16 +1117,27 @@ async def chat_feedback(
     body: FeedbackRequest,
     account: Annotated[AccountContext, Depends(get_account)],
     sink: Annotated[FeedbackSink, Depends(get_feedback_sink)],
+    limiter: Annotated[SlidingWindowLimiter, Depends(feedback_limiter)],
 ) -> Response:
     """Record a thumbs signal on a streamed block (agent-service-api.md §3.2). Returns 204.
 
     A feedback signal is advisory telemetry only — it carries no authority and never
-    mutates a proposal or its policy stamp.
+    mutates a proposal or its policy stamp. It is idempotent per ``(owner, message)`` (the store
+    upserts, last write wins) and capped per owner per hour so a client-controlled ``message_id``
+    cannot grow the row set without bound. The limiter fails OPEN; an over-cap tap gets the
+    canonical 429 envelope, which the UI treats as a non-fatal "couldn't save" state.
     """
+    if not limiter.allow(account.owner):
+        raise ApiError(
+            ErrorCode.RATE_LIMITED,
+            "Too many feedback updates — please try again later.",
+            headers={"Retry-After": str(FEEDBACK_RATE_LIMIT_PER_HOUR * 60)},
+        )
     await sink.record(
         conversation_id=body.conversationId,
         block_id=body.blockId,
         rating=body.rating,
         account=account,
+        reason=body.reason,
     )
     return Response(status_code=204)

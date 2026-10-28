@@ -29,6 +29,7 @@ import { createAgentClient, AgentApiError, type AgentClient, type AgentIdentity 
 import { mandateView, mandateSummary, mandateDrift, driftLabel, type MandateView, type MandateWire, type DriftStatus } from "@/lib/agent/mandate";
 import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/mandateSave";
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
+import { strategiesNavVisible } from "@/lib/strategies/navVisibility";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
 import { resolveChainId } from "@/lib/agent/identity";
 import {
@@ -411,21 +412,67 @@ export function useRecommendationsView(): RecView[] | null {
   // 030 — the card's fit line is derived from the user's SAVED plan, not asserted. Before this
   // it was a hardcoded string, so a growth mandate was told "Fits your plan: lower risk".
   const mandate = useMandate();
+  // 061 A9 — WITHOUT A MANDATE THE AGENT CORRECTLY ANSWERS 404 ("prompt onboarding"). The
+  // strategies screen asked anyway on every visit, so beta's network console filled with 404s
+  // and the page fell back to mock cards. Ask only when there is a plan to rank against; a
+  // missing plan is the honest empty state, not a request that cannot succeed.
+  const mandateReady = mandate.status === "ready";
   const query = useQuery({
     queryKey: ["agent", "recommendations", identity?.account, identity?.chainId],
-    enabled: online,
-    staleTime: 30_000,
+    enabled: online && mandateReady,
+    staleTime: 60_000,
     retry: false,
-    queryFn: ({ signal }) =>
-      client!.request<RecommendationsResponse>("/recommendations?limit=5", { signal }),
+    queryFn: async ({ signal }) => {
+      try {
+        return await client!.request<RecommendationsResponse>("/recommendations?limit=5", { signal });
+      } catch (e) {
+        // Belt-and-braces: a race between the mandate read and this request can still surface a
+        // 404. Treat it as "nothing ranked yet" (an empty state), never as a broken live surface.
+        if (e instanceof AgentApiError && (e.httpStatus === 404 || e.code === "NOT_FOUND")) {
+          return { recommendations: [] };
+        }
+        throw e;
+      }
+    },
   });
 
   if (!online) return null;
+  if (mandate.status === "empty") return [];
   const recs = query.data?.recommendations;
   if (!Array.isArray(recs)) return null;
 
   const mandateTier = mandate.status === "ready" ? mandate.mandate.tier : undefined;
   return recs.map((r, i) => toRecView(r, i, mandateTier));
+}
+
+/**
+ * 061 A9 — whether the Strategies destination has anything to show.
+ *
+ * Hiding a nav entry is only safe when the answer is KNOWN (N2: never bury a reachable page).
+ * So this hides only on a positive empty result — a plan that ranks zero strategies. Offline,
+ * loading, or an errored mandate/recommendation read all keep the entry visible; the page itself
+ * explains the state. The ⌘K palette still lists it either way.
+ */
+export function useStrategiesVisible(): boolean {
+  const { online, identity } = useAgentClient();
+  const mandate = useMandate();
+  const queryClient = useQueryClient();
+  if (mandate.status === "empty") return false;
+  if (!online || mandate.status !== "ready") return true;
+  // READ THE CACHE, NEVER FETCH. This runs in the nav on every app page, and `/recommendations`
+  // is a metered LLM call — asking it globally would burn a recommendation quota to decide whether
+  // to draw a tab. The Strategies page populates this same query key when it loads; until then the
+  // answer is "unknown", and unknown keeps the entry visible (N2).
+  const cached = queryClient.getQueryData<RecommendationsResponse>([
+    "agent",
+    "recommendations",
+    identity?.account,
+    identity?.chainId,
+  ]);
+  return strategiesNavVisible({
+    mandateStatus: mandate.status,
+    recommendations: cached?.recommendations ?? null,
+  });
 }
 
 /* ── POST /onboarding/turn + POST /mandate (§3.1) ──────────────────────────── */

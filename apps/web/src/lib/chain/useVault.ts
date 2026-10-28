@@ -35,6 +35,7 @@ import { vaultAddressFor } from "@/lib/chain/exit";
 import type { VaultFeeBasis } from "@/lib/policy/feeCopy";
 import { morphoVaultV2Abi, wadToBpsCeil } from "@/lib/chain/morphoVaultV2Abi";
 import { wagmiConfig } from "@/lib/wagmi";
+import { vaultQuery } from "@/lib/chain/vaultPolling";
 
 /**
  * Which vault this hook is reading. The conservative launch Aave vault is the DEFAULT (calling with
@@ -444,7 +445,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { ...vaultBase, functionName: "totalAssets" },
       { ...vaultBase, functionName: "asset" },
     ],
-    query: { enabled: enabledGlobal },
+    query: vaultQuery(enabledGlobal),
   });
   const totalAssets = globalReads.data?.[0]?.result as bigint | undefined;
   const assetLive = globalReads.data?.[1]?.result as Address | undefined;
@@ -466,7 +467,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { ...vaultBase, functionName: "highWaterMark" },
       { ...vaultBase, functionName: "feeRecipient" },
     ],
-    query: { enabled: enabledGlobal && !isFeeWrapper },
+    query: vaultQuery(enabledGlobal && !isFeeWrapper),
   });
 
   // ── V2-ONLY reads. Fees here are WAD-scaled (1e18 == 100%), never bps. ──────────────────────────
@@ -477,7 +478,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { ...v2Base, functionName: "managementFee" },
       { ...v2Base, functionName: "performanceFeeRecipient" },
     ],
-    query: { enabled: enabledGlobal && isFeeWrapper },
+    query: vaultQuery(enabledGlobal && isFeeWrapper),
   });
 
   /**
@@ -557,7 +558,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { address: capRegistryAddress as Address, abi: capRegistryAbi, chainId: readChainId, functionName: "totalCap" },
       { address: capRegistryAddress as Address, abi: capRegistryAbi, chainId: readChainId, functionName: "vaultCap" },
     ],
-    query: { enabled: enabledGlobal && capRegistryAddress !== undefined },
+    query: vaultQuery(enabledGlobal && capRegistryAddress !== undefined),
   });
   const perUserCap = capReads.data?.[0]?.result as bigint | undefined;
   const totalCap = capReads.data?.[1]?.result as bigint | undefined;
@@ -567,7 +568,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
   const accountReads = useReadContracts({
     allowFailure: true,
     contracts: [{ ...vaultBase, functionName: "balanceOf", args: [account as Address] }],
-    query: { enabled: enabledAccount },
+    query: vaultQuery(enabledAccount),
   });
 
   // ── the max* limits, LAUNCH-ONLY and gated OFF against a V2 ─────────────────────────────────────
@@ -583,7 +584,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { ...vaultBase, functionName: "maxWithdraw", args: [account as Address] },
       { ...vaultBase, functionName: "maxRedeem", args: [account as Address] },
     ],
-    query: { enabled: enabledAccount && !isFeeWrapper },
+    query: vaultQuery(enabledAccount && !isFeeWrapper),
   });
 
   const shares = accountReads.data?.[0]?.result as bigint | undefined;
@@ -596,7 +597,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     ...vaultBase,
     functionName: "convertToAssets",
     args: [shares ?? 0n],
-    query: { enabled: enabledGlobal && shares !== undefined && shares > 0n },
+    query: vaultQuery(enabledGlobal && shares !== undefined && shares > 0n),
   });
   const underlying = shares === 0n ? 0n : (underlyingRead.data as bigint | undefined);
 
@@ -613,7 +614,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
         args: [account as Address, vault as Address],
       },
     ],
-    query: { enabled: enabledAccount && depositToken !== undefined },
+    query: vaultQuery(enabledAccount && depositToken !== undefined),
   });
   const usdcBalance = usdcReads.data?.[0]?.result as bigint | undefined;
   const usdcAllowance = usdcReads.data?.[1]?.result as bigint | undefined;
@@ -638,7 +639,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     abi: erc20Abi,
     chainId: readChainId,
     functionName: "decimals",
-    query: { enabled: enabledGlobal },
+    query: vaultQuery(enabledGlobal),
   });
   const decimalsLive = decimalsRead.data as number | undefined;
 
@@ -658,9 +659,9 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     // 024/051 — any vault that sets a decimals offset (a Morpho Vault V2, and the V3
     // SparkPointUniversalVault at offset 1e3) reads share decimals ≠ asset decimals, so the
     // ASSET's own decimals must be read separately. Launch + SparkPointMorphoVault: 6 == 6.
-    query: {
-      enabled: enabledGlobal && (isFeeWrapper || isUniversalWrapper) && asset !== undefined,
-    },
+    query: vaultQuery(
+      enabledGlobal && (isFeeWrapper || isUniversalWrapper) && asset !== undefined,
+    ),
   });
   const assetDecimals = isFeeWrapper
     ? ((assetDecimalsRead.data as number | undefined) ?? feeWrapperEntry?.assetDecimals ?? USDC_DECIMALS)
@@ -681,7 +682,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
       { address: vault as Address, abi: morphoWrapperViewsAbi, chainId: readChainId, functionName: "label" },
       { address: vault as Address, abi: morphoWrapperViewsAbi, chainId: readChainId, functionName: "morphoVault" },
     ],
-    query: { enabled: enabledGlobal && isWrapper },
+    query: vaultQuery(enabledGlobal && isWrapper),
   });
   const wrapperLabel = wrapperReads.data?.[0]?.result as string | undefined;
   const morphoVault = wrapperReads.data?.[1]?.result as Address | undefined;
@@ -698,7 +699,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     chainId: readChainId,
     functionName: "isSparkPointVault",
     args: [vault as Address],
-    query: { enabled: enabledGlobal && isWrapper && factoryAddress !== undefined },
+    query: vaultQuery(enabledGlobal && isWrapper && factoryAddress !== undefined),
   });
   const factoryVerified = isWrapper ? (provenanceRead.data as boolean | undefined) : undefined;
 
@@ -716,7 +717,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     ...vaultBase,
     functionName: "previewDeposit",
     args: [depositAssets ?? 0n],
-    query: { enabled: enabledGlobal && depositAssets !== undefined && depositAssets > 0n },
+    query: vaultQuery(enabledGlobal && depositAssets !== undefined && depositAssets > 0n),
   });
   const previewDepositShares =
     depositAssets === undefined || depositAssets === 0n ? 0n : (previewDepositRead.data as bigint | undefined);
@@ -726,7 +727,7 @@ export function useVault(options: UseVaultOptions = {}): UseVaultResult {
     ...vaultBase,
     functionName: "previewRedeem",
     args: [redeemShares ?? 0n],
-    query: { enabled: enabledGlobal && redeemShares !== undefined && redeemShares > 0n },
+    query: vaultQuery(enabledGlobal && redeemShares !== undefined && redeemShares > 0n),
   });
   const previewRedeemAssets =
     redeemShares === undefined || redeemShares === 0n ? 0n : (previewRedeemRead.data as bigint | undefined);
