@@ -215,6 +215,34 @@ async def test_comparative_that_is_also_a_command_still_reaches_the_planner() ->
 @pytest.mark.parametrize(
     "message",
     [
+        "deposit my entire balance into whichever is safer than Aave",
+        "move everything to whatever is better than Aave",
+        "withdraw from Aave if Morpho is safer",
+    ],
+)
+async def test_comparative_with_an_action_verb_but_no_amount_is_never_prose_only(
+    message: str,
+) -> None:
+    """Defender medium: an unparseable amount must not silently drop the requested action."""
+    llm = _RecordingLlm(Intent(kind=IntentKind.OTHER))
+    grounder = _Grounder()
+    blocks = await _collect(_dag(llm, grounder), message)
+    assert not _is_prose_only_comparison(llm, grounder)
+    if llm.structured_calls:
+        assert llm.structured_calls == 1, "the planner/action path owns the turn"
+    else:
+        text = "\n".join(block.markdown for block in blocks if isinstance(block, TextBlock))
+        assert "not a financial adviser" in text, "the deterministic allocation boundary answers"
+        assert "mandate" in text, "the boundary offers the clarifying next step"
+
+
+def _is_prose_only_comparison(llm: _RecordingLlm, grounder: _Grounder) -> bool:
+    return bool(grounder.queries) and not llm.structured_calls
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "what is Aave?",
         "how does Morpho work?",
         "withdraw 100 USDC from my vault",
@@ -235,10 +263,15 @@ def test_ordinary_questions_are_not_comparative(message: str) -> None:
         "Aave versus Morpho",
         "which is riskier, Aave or Morpho?",
         "is Aave more risky than Morpho?",
+        "Is Morpho better than Aave?",
     ],
 )
 def test_comparison_shapes_are_recognised(message: str) -> None:
     assert is_comparative_question(message) is True
+
+
+def test_bare_better_than_in_an_action_turn_is_not_a_comparative_question() -> None:
+    assert is_comparative_question("move everything to whatever is better than Aave") is False
 
 
 def test_comparisons_are_not_yield_guidance_even_with_aave_and_history() -> None:
