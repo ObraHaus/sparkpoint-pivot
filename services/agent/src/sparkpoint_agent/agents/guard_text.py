@@ -69,12 +69,12 @@ def is_unusable(text: str) -> bool:
     return not stripped or looks_action_shaped(stripped) or looks_meta_shaped(stripped)
 
 
-#: 059 — how many opening characters a streamed prose turn buffers before the first paint. Enough
-#: to catch the live meta/action shapes ("reference notes", "The user asks", `"type":`) early,
-#: while adding no perceptible latency to an otherwise healthy stream. Long enough answers are
-#: therefore only painted after their OPENING passed the same guard the full text will. A body
-#: that only becomes unusable after this hold may have painted; the terminal block replaces it.
-STREAM_HOLD_CHARS = 40
+#: 063 — a streamed prose turn checks its opening as soon as the first chunk exists and paints
+#: it if :func:`prefix_is_usable` passes. 059 buffered a fixed 40-char window first, which meant a
+#: short answer (or a slow first token) painted nothing until the model had finished — the exact
+#: "first text ≈ done" symptom. The terminal block remains authoritative: a body that only turns
+#: unusable AFTER the first chunk may have painted, and is replaced (or retried under a new stream
+#: id) exactly as before.
 
 
 def prefix_is_usable(text: str) -> bool:
@@ -88,7 +88,6 @@ def prefix_is_usable(text: str) -> bool:
 
 
 __all__ = [
-    "STREAM_HOLD_CHARS",
     "is_unusable",
     "looks_action_shaped",
     "looks_meta_shaped",

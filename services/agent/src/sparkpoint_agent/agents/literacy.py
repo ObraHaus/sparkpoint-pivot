@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
-from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
+from .guard_text import is_unusable, prefix_is_usable
 
 EFFORT: Effort = "low"
 
@@ -210,7 +210,6 @@ class Literacy:
         for attempt in (1, 2):
             parts: list[str] = []
             pending: list[str] = []
-            pending_len = 0
             released = False
             blocked = False
             result = None
@@ -228,9 +227,9 @@ class Literacy:
                         # A later-unusable body may paint; the terminal card replaces it.
                         if not released and not blocked:
                             pending.append(chunk.delta)
-                            pending_len += len(chunk.delta)
-                            if pending_len < STREAM_HOLD_CHARS:
-                                continue
+                            # 063 — release the opening as soon as it exists and passes the
+                            # guard. The 059 char-count hold buffered a short/slow answer until
+                            # the model finished; the terminal card still replaces any paint.
                             if not prefix_is_usable("".join(pending)):
                                 blocked = True
                                 pending.clear()

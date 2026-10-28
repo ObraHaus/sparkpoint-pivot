@@ -236,8 +236,10 @@ async def test_mid_stream_failure_retries_once_then_answers() -> None:
     )
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
     deltas = [b for b in blocks if isinstance(b, ProseDelta)]
-    # Attempt 1 died inside the hold window, so none of its partial text was painted.
-    assert {d.stream_id for d in deltas} == {"general-2"}
+    # 063: the first usable chunk paints immediately, so attempt 1's "half" can reach the wire;
+    # the retry uses a NEW stream id and the authoritative final text replaces it.
+    assert {"general-1", "general-2"} <= {d.stream_id for d in deltas}
+    assert {d.stream_id for d in deltas if d.delta not in {"half"}} == {"general-2"}
     text = next(b for b in blocks if isinstance(b, TextBlock))
     assert text.markdown == GOOD
     assert llm.stream_calls == 2

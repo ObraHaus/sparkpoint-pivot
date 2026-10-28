@@ -24,6 +24,7 @@ from sparkpoint_agent.agents.recommender import (
     Recommender,
     build_action,
 )
+from sparkpoint_agent.agents.sparky import Sparky
 from sparkpoint_agent.coordinator.chat_blocks import PositionLite
 from sparkpoint_agent.coordinator.curated import CuratedContext, CuratedPick
 from sparkpoint_agent.coordinator.dag import (
@@ -163,12 +164,14 @@ def _dag(
     mandate: MandateView | None = None,
     curated: _Curated | None = None,
     recommender: Any = None,
+    sparky: Any = None,
 ) -> CoordinatorDag:
     classifier = _StructuredLlm(intent or Intent(kind=IntentKind.OTHER))
     return CoordinatorDag(
         planner=Planner(llm=classifier),
         recommender=recommender or Recommender(llm=classifier),
         literacy=Literacy(llm=_CompleteLlm()),
+        sparky=sparky or Sparky(llm=_CompleteLlm()),
         portfolio_provider=_Portfolio(portfolio),
         mandate_provider=_Mandate(mandate),
         curated=curated or _Curated(),
@@ -249,14 +252,25 @@ async def test_half_followup_uses_the_previous_amount() -> None:
     assert "$2,000" not in text
 
 
-async def test_compare_with_aave_is_a_real_comparison() -> None:
+async def test_comparative_question_uses_sparky_not_the_yield_composer() -> None:
+    """063 — "compare that with just keeping it in Aave" is a knowledge comparison, so it goes to
+    the grounded general branch. It must never get the empty-wallet yield/mandate copy (the old
+    "nothing for a mandate to apply to" answer) and must never propose an action."""
     dag = _dag(portfolio=_empty_wallet())
-    text = _text(await _run(dag, "Compare that with just keeping it in Aave."))
+    history = [
+        ("user", "How does the Aave USDC yield work?"),
+        ("assistant", "Aave is a shared lending pool; suppliers earn the variable supply rate."),
+    ]
+    wires = await _run(
+        dag, "Compare that with just keeping it in Aave.", history=history
+    )
+    text = _text(wires)
     lower = text.lower()
-    assert "aave" in lower
-    assert "4.41%" in text, "the curated net rate"
-    assert "4.21%" in text, "the underlying gross lending rate"
-    assert "performance fee" in lower
+    assert "nothing for a mandate" not in lower
+    assert "you don't have a position yet" not in lower
+    assert "4.41%" not in text
+    assert not (_types(wires) & {"action", "recommendation", "tip"})
+    assert text.strip() == "prose", "the comparative answer comes from Sparky"
 
 
 async def test_six_month_earnings_question_answers_the_estimate_not_a_portfolio_summary() -> None:

@@ -32,6 +32,7 @@ __all__ = [
     "UNSAFE_REFUSAL",
     "amount_from_text",
     "duration_months",
+    "is_comparative_question",
     "is_confirmation",
     "is_explicit_financial_command",
     "is_unsafe_request",
@@ -506,6 +507,28 @@ _COMPARE_AAVE_RE = re.compile(
 _RISK_RE = re.compile(
     r"\b(?:moderate|balanced|conservative|growth|aggressive|risk|riskier)\b", re.IGNORECASE
 )
+#: 063 — comparison shapes ("X vs Y", "safer than", "compare … with …"). These are KNOWLEDGE
+#: questions: the answer must compare risk/yield/protocol facts from grounding, never the
+#: yield/mandate composer's canned copy and never an action. Kept deliberately broad on the
+#: comparison VERB and narrow enough that an ordinary action command does not match; the DAG
+#: additionally requires that the turn is not an explicit financial command.
+_COMPARATIVE_RE = re.compile(
+    r"\b(?:vs\.?|versus)\b"
+    r"|\bcompar(?:e|es|ed|ing|ison)\b"
+    r"|\bsafer\s+than\b"
+    r"|\b(?:more|less)\s+(?:safe|risky)\s+than\b"
+    r"|\briskier\s+than\b"
+    r"|\b(?:better|worse)\s+than\b"
+    r"|\bwhich\s+(?:one\s+)?(?:is\s+)?(?:safer|better|riskier)\b",
+    re.IGNORECASE,
+)
+
+
+def is_comparative_question(message: str) -> bool:
+    """True for an "X vs Y" / "safer than" / "compare … with …" knowledge question (063)."""
+    return bool(_COMPARATIVE_RE.search(message))
+
+
 _FOLLOWUP_RE = re.compile(
     r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE
 )
@@ -520,6 +543,11 @@ def is_yield_guidance_question(message: str) -> bool:
     if _VAULT_SPECIFIC_RE.search(message):
         return False
     if _APY_DEFINITION_RE.search(message):
+        return False
+    # 063 — a comparison is a knowledge question, not a yield/mandate estimate. Route it to the
+    # grounded prose branch; the yield composer's "nothing for a mandate to apply to" is not an
+    # answer to "Is Morpho safer than Aave?".
+    if is_comparative_question(message):
         return False
     if is_explicit_financial_command(message):
         return False
