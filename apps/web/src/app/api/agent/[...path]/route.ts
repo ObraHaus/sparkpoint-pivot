@@ -35,6 +35,10 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { BETA_OPEN } from "@/lib/auth/openBeta";
+import {
+  applyChatStreamDeadline,
+  withChatConnectDeadline,
+} from "@/lib/agent/chatStreamDeadline";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +46,26 @@ export const dynamic = "force-dynamic";
 /** SERVER-only config (NOT `NEXT_PUBLIC_*` — must never reach the client bundle). */
 const AGENT_INTERNAL_URL = process.env.AGENT_INTERNAL_URL;
 const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
+
+/**
+ * 061 A9 — a chat turn must not look alive forever.
+ *
+ * The proxy originally armed ONE timer at stream construction, which capped the TOTAL stream time
+ * (60s) instead of how long the upstream could go SILENT; a legitimate slow answer was cut off
+ * even while chunks kept arriving. `withChatDeadline` is now an IDLE/stall deadline: it re-arms on
+ * every upstream chunk (including SSE keepalive/comment frames), keeps the time-to-first-byte
+ * bound, and has a separate 5-minute absolute ceiling as a backstop. When either fires we emit the
+ * normal `error` block on the open stream (the renderer understands it and the chat offers Retry),
+ * close cleanly, and do NOT cancel the agent turn — see the helper's comment on refund/Retry.
+ *
+ * The same stall bound also gives the initial response-headers wait its budget. Overridable for
+ * tests/ops via `AGENT_CHAT_TIMEOUT_MS` / `AGENT_CHAT_STREAM_CEILING_MS`.
+ *
+ * SCOPE (OH Defender MEDIUM): ALL of it — the response-headers/connect deadline, the idle deadline
+ * and the ceiling — applies to the chat stream path ONLY (`/chat`, matched exactly by
+ * `isChatStreamPath`, never by substring/prefix). Every other proxied endpoint behaves exactly as
+ * origin/main: no new timer, no wrapped body, no 60s cut.
+ */
 
 /**
  * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
@@ -134,6 +158,11 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;
 
+  // The chat proxy gets a bounded wait for RESPONSE HEADERS — chat only. Every other endpoint keeps
+  // the caller's signal verbatim, exactly as origin/main (no new deadline). The stream is bounded
+  // separately below by STALL time, not total time (a slow answer is legitimate; a silent one is
+  // not).
+  const connect = withChatConnectDeadline(path, req.signal);
   let upstream: Response;
   try {
     upstream = await fetch(target, {
@@ -143,11 +172,14 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
       // Never advertise the browser's cache; every call is per-identity + live.
       cache: "no-store",
       redirect: "manual",
-      signal: req.signal,
+      signal: connect.signal,
     });
   } catch {
-    // Agent unreachable (down / DNS / refused): graceful error card, still no crash.
+    // Agent unreachable (down / DNS / refused / timed out): graceful error card, still no crash.
     return envelope("UPSTREAM_UNAVAILABLE", 502, "The assistant is unavailable right now.", true);
+  } finally {
+    // Cleared as soon as headers arrive, so a legitimate long SSE body is not cut off here.
+    connect.clear();
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
@@ -156,7 +188,9 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // render incrementally (/chat + /onboarding/turn). Only a 2xx SSE response takes
   // this path; a pre-stream error is JSON and falls through to the buffered branch.
   if (upstream.ok && upstream.body && contentType.includes("text/event-stream")) {
-    return new Response(upstream.body, {
+    // Chat-only, exact-path scoped — every other SSE route stays exactly as origin/main.
+    const stream = applyChatStreamDeadline(path, upstream.body);
+    return new Response(stream, {
       status: upstream.status,
       headers: {
         "content-type": "text/event-stream",

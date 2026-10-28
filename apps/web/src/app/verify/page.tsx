@@ -88,6 +88,9 @@ export default function VerifyPage() {
         if (live) setProbe({ key: probeKey, onboarded: hasSavedMandate(body) });
       } catch {
         // Fail open — an unreachable/failing agent must never turn the access gate into a dead end.
+        // Record the settled "unknown" as not-onboarded so the anti-flicker gate below releases; a
+        // probe that never resolves left the page on "Checking your access…" forever (061 e2e).
+        if (live) setProbe({ key: probeKey, onboarded: false });
       }
     })();
     return () => {

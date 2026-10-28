@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { planTranscript, stepsSummary, type TranscriptItem } from "./steps.ts";
+import { planTranscript, shouldShowThinking, stepsSummary, type TranscriptItem } from "./steps.ts";
 
 const step = (label: string, status: "running" | "done" | "error"): TranscriptItem => ({
   type: "tool_step",
@@ -146,4 +146,37 @@ test("036 — a finished turn's trace is unchanged", () => {
   const steps = plan.find((p) => p.kind === "steps") as { indices: readonly number[]; collapsed: boolean };
   assert.deepEqual([...steps.indices], [0, 1]);
   assert.equal(steps.collapsed, true);
+});
+
+/* 059 regression — the waiting row must not flash back under a finished answer. */
+
+test("059 — the waiting row shows while streaming with no prose yet", () => {
+  assert.equal(
+    shouldShowThinking([step("Understanding your request", "running")], {
+      streaming: true,
+      hasDelta: false,
+    }),
+    true,
+  );
+});
+
+test("059 — no waiting row once provisional prose is painting", () => {
+  assert.equal(shouldShowThinking([text()], { streaming: true, hasDelta: true }), false);
+});
+
+test("059 — no waiting row under the authoritative final text block", () => {
+  // The failure this pins: the final block clears `deltaText` but `streaming` is still true until
+  // the generator ends, so the old `streaming && !deltaText` flashed the indicator under the answer.
+  assert.equal(shouldShowThinking([text()], { streaming: true, hasDelta: false }), false);
+});
+
+test("059 — no waiting row under a final tip block", () => {
+  assert.equal(
+    shouldShowThinking([{ type: "tip" }], { streaming: true, hasDelta: false }),
+    false,
+  );
+});
+
+test("059 — no waiting row once the turn has stopped", () => {
+  assert.equal(shouldShowThinking([], { streaming: false, hasDelta: false }), false);
 });

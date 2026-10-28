@@ -13,9 +13,13 @@ import {
   toHref,
 } from "@/lib/nav";
 import { NavTree } from "./NavTree";
+import { useStrategiesVisible } from "@/lib/agent/useAgent";
 
 export function MobileTabBar({ active }: { active: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  // 061 A9 — same rule as the desktop nav: a provably empty destination is not offered.
+  const strategiesVisible = useStrategiesVisible();
+  const primary = PRIMARY.filter((n) => n.route !== "strategies" || strategiesVisible);
   // Group children count too — being inside a collapsed group must not lose the "More" active state.
   const moreActive = containsRoute(SECONDARY, active);
   const close = () => setMoreOpen(false);
@@ -23,7 +27,7 @@ export function MobileTabBar({ active }: { active: string }) {
   return (
     <>
       <nav className="tabbar">
-        {PRIMARY.map((n) => (
+        {primary.map((n) => (
           <Link key={n.route} href={toHref(n.route)} className={active === n.route ? "active" : ""}>
             <Icon name={n.icon} size={21} />
             <span>{n.label}</span>

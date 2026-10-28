@@ -86,6 +86,6 @@ test("a short wait needs no excuse", () => {
 test("a long wait says so, and a very long wait says more", () => {
   // Silence past ten seconds starts to read as a stall. Naming the wait is what separates "slow"
   // from "stuck".
-  assert.ok(reassurance(LONG_WAIT_MS)?.includes("Still going"));
+  assert.ok(reassurance(LONG_WAIT_MS)?.includes("taking longer than usual"));
   assert.ok(reassurance(45_000)?.includes("nothing is lost"));
 });

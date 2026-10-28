@@ -64,10 +64,10 @@ export function thinkingLabel(step: string | null): string {
  * Under ten seconds a turn feels responsive and needs no excuse. Past that, silence starts to read
  * as a stall, and naming the wait — however briefly — is what separates "slow" from "stuck".
  */
-export const LONG_WAIT_MS = 10_000;
+export const LONG_WAIT_MS = 8_000;
 
 export function reassurance(ms: number): string | null {
   if (ms < LONG_WAIT_MS) return null;
-  if (ms < 30_000) return "Still going — longer answers take a moment.";
-  return "Still going. You can keep this open; nothing is lost if you wait.";
+  if (ms < 30_000) return "Sparky is taking longer than usual — still working on it.";
+  return "Sparky is taking longer than usual. You can keep this open; nothing is lost if you wait.";
 }
