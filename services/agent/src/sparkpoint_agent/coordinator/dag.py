@@ -304,26 +304,92 @@ _COMPARATIVE_CLAUSE_SPLIT_RE = re.compile(
 )
 
 #: A clause that only says the SPEAKER lacks material/data — honest, but not a comparison.
-#: Deliberately anchored to the speaker/corpus (``I``/``we``/``SparkPoint``/impersonal "there
-#: is"). An unanchored "no ... coverage" used to match a protocol property too ("Morpho has no
-#: verified coverage by an insurance fund"), which dropped a genuine risk clause from the
-#: comparison and could turn a real answer into a pure-decline fallback.
-_NO_COMPARATIVE_DATA_RE = re.compile(
-    r"\b(?:i|we)\s+(?:do\s+not|don['’]?t)\s+have\s+"
-    r"(?:any\s+|current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
-    r"(?:data|material|information|details|coverage)\b"
-    r"|\b(?:i|we)\s+(?:have|['’]ve)\s+no\s+"
-    r"(?:current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
-    r"(?:data|material|information|details|coverage)\b"
-    r"|\bsparkpoint\s+(?:does\s+not|doesn['’]?t|doesnt|has\s+no)\s+(?:have\s+)?"
-    r"(?:any\s+|current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
-    r"(?:data|material|information|details|coverage)\b"
-    r"|\bthere(?:['’]s|\s+is)\s+(?:not\s+enough|no)\s+"
-    r"(?:sparkpoint[- ]verified\s+|verified\s+)?(?:data|material|information|details|coverage)\b"
-    r"|\b(?:not\s+enough|insufficient)\s+(?:sparkpoint[- ]verified\s+|verified\s+)?"
-    r"(?:data|material|information|details)\b",
-    re.IGNORECASE,
+#: Built from three small, explicit parts (speaker, information noun, negated possession/
+#: availability/verification verb) rather than one "no <noun>" regex, so a protocol property
+#: ("Aave has no verified coverage by an insurance fund", "Morpho has insufficient liquidity")
+#: is never mistaken for the speaker's own missing material. The fixed qualifier list covers the
+#: observed "verified", "SparkPoint-verified", "current", "enough" fashions; apostrophes are
+#: ASCII or curly throughout.
+_APOS = "['\u2019]"
+_VERIFIED_INFO_QUALIFIERS = (
+    r"(?:(?:sparkpoint[- ])?verified\s+|current\s+|recent\s+|updated\s+|"
+    r"any\s+|enough\s+|sufficient\s+)*"
 )
+_INFO_NOUN = r"(?:data|material|information|details|notes|sources|coverage)"
+_REFERENCE_SUBJECT = r"(?:reference\s+)?(?:notes|information|data)"
+
+_SPEAKER_NO_DATA_PATTERNS = (
+    # I / we do not have (any|verified|enough) material.
+    rf"\b(?:i|we)\s+(?:do\s+not|don{_APOS}t|can(?:not|{_APOS}t))\s+have\s+"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # I have no ... / I've no ... (the contraction is adjacent to the pronoun, no space).
+    rf"\b(?:i|we)(?:\s+have|{_APOS}ve)\s+no\s+"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # I haven't got ...
+    rf"\b(?:i|we)\s+(?:have\s+not|haven{_APOS}t|hasn{_APOS}t)\s+got\s+"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # I've got nothing verified ...
+    rf"\b(?:i|we)(?:{_APOS}ve|\s+have)\s+got\s+nothing(?:\s+verified)?\b",
+    # I / we lack ...
+    rf"\b(?:i|we)\s+(?:also\s+)?lack\s+{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # I couldn't find ...
+    rf"\b(?:i|we)\s+(?:could\s+not|couldn{_APOS}t)\s+(?:find|locate)\s+"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # I'm / I was unable to verify|confirm ...
+    rf"\b(?:i|we)(?:\s+(?:am|was|were|are)|{_APOS}(?:m|re))?\s+"
+    rf"(?:unable|not\s+able)\s+to\s+(?:verify|confirm)\b",
+    # SparkPoint itself does not have / has no ...
+    rf"\bsparkpoint\s+(?:does\s+not|doesn{_APOS}t|doesnt|has\s+no)\s+(?:have\s+)?"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # SparkPoint's notes/data/... do not cover ...
+    rf"\bsparkpoint{_APOS}s\s+{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\s+"
+    rf"(?:does\s+not|doesn{_APOS}t|doesnt|do\s+not|don{_APOS}t)\s+"
+    rf"(?:cover|mention|include|address|contain|have)\b",
+    # The (reference) notes/information/data do not cover ...
+    rf"\bthe\s+{_REFERENCE_SUBJECT}\s+"
+    rf"(?:does\s+not|doesn{_APOS}t|doesnt|do\s+not|don{_APOS}t|can(?:not|{_APOS}t))\s+"
+    rf"(?:cover|mention|include|address|contain|have|establish)\b",
+    # The (reference) notes/information/data is/are insufficient / not enough.
+    rf"\bthe\s+{_REFERENCE_SUBJECT}\s+(?:is|are)\s+"
+    rf"(?:not\s+enough|insufficient|incomplete|missing)\b",
+    # There is no / not enough / insufficient material.
+    rf"\bthere(?:\s+is|\s+are|{_APOS}s|{_APOS}re)\s+"
+    rf"(?:not\s+enough\s+|no\s+|insufficient\s+)"
+    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+    # There isn't / there is not (enough) material.
+    rf"\bthere(?:\s+is|\s+are)(?:n{_APOS}t|\s+not)\s+"
+    rf"(?:(?:not\s+)?enough\s+|no\s+|any\s+)?{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
+)
+_SPEAKER_NO_DATA_RE = re.compile("|".join(_SPEAKER_NO_DATA_PATTERNS), re.IGNORECASE)
+
+#: Tokens that carry no comparison content on their own. A clause kept by the substance test
+#: must retain at least one token outside this set and outside the subject names it merely
+#: mentions; that replaces the old four-word floor, which discarded terse but genuine
+#: comparisons such as "Aave is older; Morpho is newer and isolated."
+_CLAUSE_STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+        "and", "or", "but", "so", "than", "then", "that", "this", "these",
+        "those", "it", "its", "as", "to", "of", "in", "on", "for", "with",
+        "by", "from", "at", "has", "have", "had", "does", "do", "did", "can",
+        "could", "would", "should", "may", "might", "will", "shall", "not", "no",
+        "nor", "both", "either", "neither", "also", "very", "more", "most", "less",
+        "one", "they", "them", "their", "we", "i", "you", "he", "she", "his",
+        "her", "our", "your",
+    }
+)
+_CLAUSE_WORD_RE = re.compile(r"[a-z0-9][a-z0-9'\u2019_-]*")
+
+
+def _clause_has_substantive_content(text: str, hits: set[str]) -> bool:
+    """True when a clause says something beyond merely naming a subject."""
+    subject_tokens = {
+        token for name in hits for token in _CLAUSE_WORD_RE.findall(name.lower())
+    }
+    return any(
+        token not in _CLAUSE_STOPWORDS and token not in subject_tokens
+        for token in _CLAUSE_WORD_RE.findall(text.lower())
+    )
 
 
 def _comparative_substantive_clauses(
@@ -345,11 +411,11 @@ def _comparative_substantive_clauses(
         if not text:
             continue
         hits = {name for name in names if text_mentions_subject(text, name)}
-        if _is_decline(text) or _NO_COMPARATIVE_DATA_RE.search(text):
+        if _is_decline_clause(text) or _SPEAKER_NO_DATA_RE.search(text):
             continue
         if names and not hits:
             continue
-        if len(text.split()) < 4:
+        if not _clause_has_substantive_content(text, hits):
             continue
         substantive += 1
         mentioned |= hits
@@ -409,7 +475,7 @@ def _is_comparative_non_answer(answer: str, names: Sequence[str] = ()) -> bool:
     say which is safer. Aave is one shared pool; Morpho uses isolated markets…"``) is a real
     answer and must be served. Classification is by substance, not length or a marker list.
     """
-    if not _is_decline(answer):
+    if not _is_decline(answer) and not _SPEAKER_NO_DATA_RE.search(answer):
         return False
     return not _comparative_has_substance(answer, names)
 
@@ -1450,12 +1516,11 @@ class CoordinatorDag:
             # emitted (streaming may already have painted it; the terminal block is
             # authoritative), and never attach a citation to it. 067 classifies by SUBSTANCE: a
             # declining opening that then compares the grounded sides is served.
-            comparative_names = subjects or covered
-            if comparative and _is_comparative_non_answer(prose_answer, comparative_names):
+            if comparative and _is_comparative_non_answer(prose_answer, subjects):
                 _log_comparative_outcome(
                     subjects,
                     covered,
-                    reason=_comparative_non_answer_reason(prose_answer, comparative_names),
+                    reason=_comparative_non_answer_reason(prose_answer, subjects),
                     cited=False,
                 )
                 yield TextBlock(
@@ -2101,18 +2166,31 @@ def _fmt_bps(bps: int | None) -> str:
 #: "Sources" block to it claims a provenance it does not have. The battery saw ERC-4626
 #: documentation cited beneath "I can't move your funds", which reads either as a non-sequitur or,
 #: worse, as though the refusal were something the docs say. Anchored to the opening clause, so an
-#: answer that merely contains "I can't" partway through still cites what it used.
-_DECLINE_RE = re.compile(
-    r"^\W*(?:i(?:['’]m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:['’]t|not)\b|"
+#: answer that merely contains "I can't" partway through still cites what it used. A leading
+#: contrastive connective is skipped, so "However, I can't compare them" still reads as a decline.
+_DECLINE_PHRASE = (
+    r"(?:i(?:['’]m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:['’]t|not)\b|"
     r"i\s+don['’]?t\s+(?:have|hold|know)|that['’]s\s+not\s+something|"
-    r"unfortunately\b|no,\s)",
-    re.IGNORECASE,
+    r"unfortunately\b|no,\s)"
 )
+_LEADING_CONNECTIVE = (
+    r"(?:(?:however|that\s+said|but|still|yet|nevertheless|nonetheless|even\s+so|"
+    r"in\s+any\s+case)\b[\s,:;—–-]*)*"
+)
+_DECLINE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _DECLINE_PHRASE, re.IGNORECASE)
+#: Clause-level declines are searched, not anchored: after splitting, a connective or a subject
+#: may precede "I can't…" inside the same clause.
+_DECLINE_CLAUSE_RE = re.compile(_DECLINE_PHRASE, re.IGNORECASE)
 
 
 def _is_decline(answer: str) -> bool:
     """True when the answer opens by declining — so it must not carry citations."""
     return bool(_DECLINE_RE.search(answer.strip()))
+
+
+def _is_decline_clause(clause: str) -> bool:
+    """True when a single clause declines, wherever in the clause the refusal starts."""
+    return bool(_DECLINE_CLAUSE_RE.search(clause))
 
 
 #: 031 — HOW DO I WITHDRAW. A question, not a command: "withdraw 100 USDC" must still build an
