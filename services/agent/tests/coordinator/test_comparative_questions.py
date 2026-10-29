@@ -930,6 +930,53 @@ async def test_refusal_openers_are_replaced_and_uncited(
 
 
 @pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_not_something_refusal_falls_back_and_is_uncited(
+    streaming: bool,
+) -> None:
+    """A deictic "That's not something I can compare." is a refusal even with no named subjects,
+    so it must fall back and never cite the whole-message passages.
+    """
+    answer = "That's not something I can compare."
+    llm = _AnswerLlm(answer)
+    history = [
+        ("user", "Is Morpho safer than Aave?"),
+        ("assistant", "Aave is one shared pool; Morpho uses isolated markets."),
+    ]
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "compare those two",
+        history=history,
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_not_something_refusal_with_named_subjects_falls_back_uncited(
+    streaming: bool,
+) -> None:
+    """The short refusal list does not contain "that's not something", but _is_decline does: a
+    deictic refusal that names both subjects is still a refusal, not a comparison.
+    """
+    answer = "That's not something I can compare for Morpho and Aave."
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
 async def test_substantive_first_sentence_with_second_sentence_decline_is_served(
     streaming: bool,
 ) -> None:
@@ -1037,14 +1084,14 @@ def test_only_the_first_sentence_is_judged_for_refusal() -> None:
     assert _is_whole_answer_refusal("Aave is one pool, while I can't rank them.") is True
 
 
-def test_no_data_without_a_speaker_refusal_is_not_a_decline() -> None:
-    """Minor: a leading "No,"/"Unfortunately," is only a SKIP — a speaker refusal must follow, so
-    a third-person no-data sentence is not a decline merely because of its opener.
+def test_no_and_unfortunately_openers_are_declines() -> None:
+    """A leading "No,"/"Unfortunately," is enough to flag a decline, so a no-data sentence that
+    opens that way must not carry citations.
     """
     from sparkpoint_agent.coordinator.dag import _is_decline
 
-    assert _is_decline("No, that data is not available.") is False
-    assert _is_decline("Unfortunately, the data is not available.") is False
+    assert _is_decline("No, that data is not available.") is True
+    assert _is_decline("Unfortunately, the data is not available.") is True
     assert _is_decline("No, I can't compare them.") is True
     assert _is_decline("Unfortunately, I cannot compare them.") is True
 
