@@ -736,13 +736,12 @@ class CoordinatorDag:
         kept only when they name at least one subject, so release notes cannot be cited as
         protocol material.
 
-        Returns ``(passages, covered_subjects)``. ``covered`` is computed from the per-subject
-        hits, in the message's subject order, and drives the prompt's coverage hint and the
-        citation gate.
+        Returns ``(passages, covered_subjects)``. ``covered`` is computed from the passages that
+        actually survive the :data:`_COMPARATIVE_MAX_PASSAGES` cap, in the message's subject
+        order, and drives the prompt's coverage hint and the citation gate.
         """
         merged: list[Passage] = []
         seen: set[tuple[str, str, str]] = set()
-        covered: list[str] = []
 
         def add(passage: Passage) -> None:
             citation = passage.citation
@@ -760,8 +759,6 @@ class CoordinatorDag:
                 if passage_mentions_subject(passage, subject)
                 and not _is_release_note(passage)
             )
-            if kept:
-                covered.append(subject)
             for passage in kept:
                 add(passage)
 
@@ -776,19 +773,19 @@ class CoordinatorDag:
         for passage in whole_hits:
             add(passage)
 
-        # 067 — a whole-message hit that genuinely names a subject is also coverage. Before this,
-        # coverage came only from the per-subject query, so a subject whose named query missed but
-        # whose note arrived with the whole message was falsely reported as "no verified material".
-        covered_set = set(covered)
-        if subjects:
-            for subject in subjects:
-                if subject in covered_set:
-                    continue
-                if any(passage_mentions_subject(passage, subject) for passage in whole_hits):
-                    covered_set.add(subject)
-            covered = [subject for subject in subjects if subject in covered_set]
+        # 067 — coverage includes a whole-message hit that genuinely names a subject (before this,
+        # a subject whose named query missed but whose note arrived with the whole message was
+        # falsely reported as "no verified material"). Coverage is computed AFTER the passage cap:
+        # a subject whose only passage was truncated away is not covered, so the hint never claims
+        # material that did not ship and the citation gate cannot cite dropped passages.
+        capped = merged[:_COMPARATIVE_MAX_PASSAGES]
+        covered = [
+            subject
+            for subject in subjects
+            if any(passage_mentions_subject(passage, subject) for passage in capped)
+        ]
 
-        return tuple(merged[:_COMPARATIVE_MAX_PASSAGES]), tuple(covered)
+        return tuple(capped), tuple(covered)
 
     async def _general_answer(
         self,
