@@ -299,7 +299,7 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
 #: the other's. Splitting is deliberately lexical: the test is whether substantive clauses exist,
 #: not whether the answer is long enough or contains one magic phrase.
 _COMPARATIVE_CLAUSE_SPLIT_RE = re.compile(
-    r"(?<=[.!?;:])\s+|\s+(?:but|however|whereas|while|although|though)\s+",
+    r"(?<=[.!?;:,])\s+|\s+(?:but|however|whereas|while|although|though)\s+",
     re.IGNORECASE,
 )
 
@@ -315,7 +315,18 @@ _VERIFIED_INFO_QUALIFIERS = (
     r"(?:(?:sparkpoint[- ])?verified\s+|current\s+|recent\s+|updated\s+|"
     r"any\s+|enough\s+|sufficient\s+)*"
 )
-_INFO_NOUN = r"(?:data|material|information|details|notes|sources|coverage)"
+#: "no material" is only a speaker no-data claim when it means reference material. The finance
+#: idiom "no material risk/difference/change/impact" is a real comparison, so a following property
+#: noun vetoes the match instead of turning the clause into a decline.
+_MATERIAL_PROPERTY_NOUNS = (
+    r"(?:risk|differences?|changes?|impacts?|effects?|benefits?|advantages?|reasons?|doubts?|"
+    r"evidence|harms?|concerns?|issues?|problems?|needs?|gains?|losses?|costs?|improvements?|"
+    r"gaps?)"
+)
+_INFO_NOUN = (
+    rf"(?:data|material(?!\s+{_MATERIAL_PROPERTY_NOUNS}\b)|information|details|notes|"
+    r"sources|coverage)"
+)
 _REFERENCE_SUBJECT = r"(?:reference\s+)?(?:notes|information|data)"
 
 _SPEAKER_NO_DATA_PATTERNS = (
@@ -361,6 +372,34 @@ _SPEAKER_NO_DATA_PATTERNS = (
     rf"(?:(?:not\s+)?enough\s+|no\s+|any\s+)?{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
 )
 _SPEAKER_NO_DATA_RE = re.compile("|".join(_SPEAKER_NO_DATA_PATTERNS), re.IGNORECASE)
+
+#: A PASSIVE DEFLECTION says the ranking/comparison itself is impossible without a first-person
+#: refusal opener or a no-data phrase. It is just as non-substantive: naming both sides inside
+#: "Neither Morpho nor Aave can be ranked with the available material" is not a comparison.
+_IMPOSSIBLE_PREDICATE = (
+    r"(?:rank(?:ed|ing)?|compar(?:e|ed|ing|ison)|assess(?:ed|ment)?|"
+    r"determin(?:e|ed)|evaluat(?:e|ed)|said|say)"
+)
+_PASSIVE_DEFLECTION_RE = re.compile(
+    r"(?:"
+    # Negated ability / possibility: "can't be compared", "it's not possible to rank",
+    # "there's no way to compare", "isn't possible to say".
+    r"\b(?:can(?:['\u2019]t|not|\s+not)|could(?:['\u2019]t|not|\s+not)?|"
+    r"is(?:n['\u2019]?t|\s+not)|are(?:n['\u2019]?t|\s+not)|"
+    r"it(?:['\u2019]s|\s+is)\s+not|"
+    r"there(?:['\u2019]s|\s+is|\s+are)(?:\s+no|n['\u2019]?t|\s+not)|"
+    r"not\s+possible|no\s+way)\b"
+    r"[^.;!?]{0,60}?\b(?:(?:be|to)\s+)?" + _IMPOSSIBLE_PREDICATE + r"\b"
+    r"|"
+    # "Neither X nor Y can be ranked" — affirmative modal, inherently exhaustive impossibility.
+    r"\bneither\b[^.;!?]{0,80}?\bcan\s+be\s+" + _IMPOSSIBLE_PREDICATE + r"\b"
+    r"|"
+    # "can be ranked ... with the available/current material" — an availability-limited ranking.
+    r"\b(?:can|could)\s+be\s+" + _IMPOSSIBLE_PREDICATE + r"\b[^.;!?]{0,50}?\b"
+    r"(?:available|current|existing|verified|reference)\b"
+    r")",
+    re.IGNORECASE,
+)
 
 #: Tokens that carry no comparison content on their own. A clause kept by the substance test
 #: must retain at least one token outside this set and outside the subject names it merely
@@ -411,7 +450,11 @@ def _comparative_substantive_clauses(
         if not text:
             continue
         hits = {name for name in names if text_mentions_subject(text, name)}
-        if _is_decline_clause(text) or _SPEAKER_NO_DATA_RE.search(text):
+        if (
+            _is_decline_clause(text)
+            or _SPEAKER_NO_DATA_RE.search(text)
+            or _PASSIVE_DEFLECTION_RE.search(text)
+        ):
             continue
         if names and not hits:
             continue
@@ -475,7 +518,11 @@ def _is_comparative_non_answer(answer: str, names: Sequence[str] = ()) -> bool:
     say which is safer. Aave is one shared pool; Morpho uses isolated markets…"``) is a real
     answer and must be served. Classification is by substance, not length or a marker list.
     """
-    if not _is_decline(answer) and not _SPEAKER_NO_DATA_RE.search(answer):
+    if not (
+        _is_decline(answer)
+        or _SPEAKER_NO_DATA_RE.search(answer)
+        or _PASSIVE_DEFLECTION_RE.search(answer)
+    ):
         return False
     return not _comparative_has_substance(answer, names)
 
@@ -851,31 +898,23 @@ class CoordinatorDag:
         kept only when they name at least one subject, so release notes cannot be cited as
         protocol material.
 
-        Returns ``(passages, covered_subjects)``. ``covered`` is computed from the passages that
-        actually survive the :data:`_COMPARATIVE_MAX_PASSAGES` cap, in the message's subject
+        Returns ``(passages, covered_subjects)``. The cap is allocated round-robin across the
+        named subjects before any whole-message remainder, so a subject whose query returned many
+        hits cannot truncate a later subject to zero. ``covered`` is computed from the passages
+        that actually survive the :data:`_COMPARATIVE_MAX_PASSAGES` cap, in the message's subject
         order, and drives the prompt's coverage hint and the citation gate.
         """
-        merged: list[Passage] = []
-        seen: set[tuple[str, str, str]] = set()
-
-        def add(passage: Passage) -> None:
-            citation = passage.citation
-            key = (citation.endpoint, citation.field, passage.content.strip())
-            if key in seen:
-                return
-            seen.add(key)
-            merged.append(passage)
-
+        buckets: list[list[Passage]] = []
         for subject in subjects:
             entity_hits = await self._ground(subject, k=_ENTITY_GROUND_K, min_score=0.0)
-            kept = tuple(
-                passage
-                for passage in entity_hits
-                if passage_mentions_subject(passage, subject)
-                and not _is_release_note(passage)
+            buckets.append(
+                [
+                    passage
+                    for passage in entity_hits
+                    if passage_mentions_subject(passage, subject)
+                    and not _is_release_note(passage)
+                ]
             )
-            for passage in kept:
-                add(passage)
 
         whole_hits = await self._ground(message, k=_GROUND_K, min_score=_OTHER_MIN_SCORE)
         if subjects:
@@ -885,7 +924,41 @@ class CoordinatorDag:
                 if any(passage_mentions_subject(passage, subject) for subject in subjects)
                 and not _is_release_note(passage)
             )
+
+        selected: list[Passage] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        def add(passage: Passage) -> bool:
+            citation = passage.citation
+            key = (citation.endpoint, citation.field, passage.content.strip())
+            if key in seen or len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                return False
+            seen.add(key)
+            selected.append(passage)
+            return True
+
+        # Round-robin: each subject with hits gets a slot before any subject gets a second one.
+        # This guarantees every represented subject at least floor(cap/n) passages (or all of its
+        # hits when it has fewer), instead of letting an early subject exhaust the cap.
+        positions = [0] * len(buckets)
+        while len(selected) < _COMPARATIVE_MAX_PASSAGES:
+            progressed = False
+            for index, bucket in enumerate(buckets):
+                if len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                    break
+                while positions[index] < len(bucket):
+                    passage = bucket[positions[index]]
+                    positions[index] += 1
+                    if add(passage):
+                        progressed = True
+                        break
+            if not progressed:
+                break
+
+        # Whole-message hits fill only the remainder after every subject got its fair share.
         for passage in whole_hits:
+            if len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                break
             add(passage)
 
         # 067 — coverage includes a whole-message hit that genuinely names a subject (before this,
@@ -893,7 +966,7 @@ class CoordinatorDag:
         # falsely reported as "no verified material"). Coverage is computed AFTER the passage cap:
         # a subject whose only passage was truncated away is not covered, so the hint never claims
         # material that did not ship and the citation gate cannot cite dropped passages.
-        capped = merged[:_COMPARATIVE_MAX_PASSAGES]
+        capped = selected[:_COMPARATIVE_MAX_PASSAGES]
         covered = [
             subject
             for subject in subjects
@@ -2168,19 +2241,35 @@ def _fmt_bps(bps: int | None) -> str:
 #: worse, as though the refusal were something the docs say. Anchored to the opening clause, so an
 #: answer that merely contains "I can't" partway through still cites what it used. A leading
 #: contrastive connective is skipped, so "However, I can't compare them" still reads as a decline.
-_DECLINE_PHRASE = (
-    r"(?:i(?:['’]m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:['’]t|not)\b|"
-    r"i\s+don['’]?t\s+(?:have|hold|know)|that['’]s\s+not\s+something|"
-    r"unfortunately\b|no,\s)"
+#: A speaker refusal/inability. Deliberately first-person (or SparkPoint's own voice): a
+#: protocol property such as "Morpho cannot be ranked" is not the speaker declining.
+_SPEAKER_REFUSAL = (
+    r"(?:"
+    r"i(?:\s+(?:am|was)|['’]m)\s+(?:not\s+able|unable|sorry|afraid)\b|"
+    r"i\s+can(?:['’]t|not|\s+not)\b|"
+    r"i\s+(?:will\s+not|won['’]?t)\b|"
+    r"i\s+(?:do\s+not|don['’]?t)\s+(?:have|hold|know)\b|"
+    r"we(?:\s+(?:are|were)|['’]re)\s+(?:not\s+able|unable)\b|"
+    r"we\s+can(?:['’]t|not|\s+not)\b|"
+    r"we\s+(?:will\s+not|won['’]?t)\b|"
+    r"we\s+(?:do\s+not|don['’]?t)\s+(?:have|hold|know)\b|"
+    r"sparkpoint\s+(?:can(?:['’]t|not|\s+not)|does\s+not|doesn['’]?t|is\s+not\s+able)\b|"
+    r"that['’]s\s+not\s+something\b"
+    r")"
 )
+#: Leading connectives/softeners are skipped, never treated as the decline themselves. In
+#: particular "Unfortunately, Morpho …" and "No, Aave …" are substantive clauses.
 _LEADING_CONNECTIVE = (
     r"(?:(?:however|that\s+said|but|still|yet|nevertheless|nonetheless|even\s+so|"
-    r"in\s+any\s+case)\b[\s,:;—–-]*)*"
+    r"in\s+any\s+case|unfortunately|sadly|honestly|to\s+be\s+clear|and|so)\b"
+    r"[\s,:;—–-]*|no\s*[,:;—–-]+\s*)*"
 )
+_DECLINE_PHRASE = _SPEAKER_REFUSAL
 _DECLINE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _DECLINE_PHRASE, re.IGNORECASE)
-#: Clause-level declines are searched, not anchored: after splitting, a connective or a subject
-#: may precede "I can't…" inside the same clause.
-_DECLINE_CLAUSE_RE = re.compile(_DECLINE_PHRASE, re.IGNORECASE)
+#: Clause-level declines are anchored after connectives too: a refusal phrase mid-clause (for
+#: example "if I can't" inside a conditional, or "unfortunately" before protocol content) is not
+#: the clause declining.
+_DECLINE_CLAUSE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _DECLINE_PHRASE, re.IGNORECASE)
 
 
 def _is_decline(answer: str) -> bool:
@@ -2189,8 +2278,8 @@ def _is_decline(answer: str) -> bool:
 
 
 def _is_decline_clause(clause: str) -> bool:
-    """True when a single clause declines, wherever in the clause the refusal starts."""
-    return bool(_DECLINE_CLAUSE_RE.search(clause))
+    """True when a single clause STARTS with a speaker refusal (after leading softeners)."""
+    return bool(_DECLINE_CLAUSE_RE.search(clause.strip()))
 
 
 #: 031 — HOW DO I WITHDRAW. A question, not a command: "withdraw 100 USDC" must still build an
