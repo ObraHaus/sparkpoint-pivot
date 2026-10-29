@@ -366,3 +366,51 @@ async def test_short_meta_answer_paints_nothing() -> None:
     chunks = await _stream(["The user asks about Aave."])
     assert [chunk.delta for chunk in chunks if chunk.delta] == []
     assert chunks[-1].reply == SparkyReply(body="", fell_back=True)
+
+
+# ── 065 · WHY a turn degraded (content rejection vs upstream failure) ──────────
+
+
+async def test_failure_reason_is_upstream_only_for_a_real_llm_exception() -> None:
+    reply = await Sparky(llm=_ExplodingLlm()).reply("who are you?")
+    assert reply.fell_back is True
+    assert reply.failure == "upstream"
+
+
+async def test_failure_reason_names_a_meta_rejection() -> None:
+    reply = await Sparky(
+        llm=_ok(
+            "I don’t have details on Morpho or Aave safety in my reference notes, so I can’t "
+            "compare them."
+        )
+    ).reply("Is Morpho safer than Aave?")
+    assert reply.fell_back is True
+    assert reply.failure == "meta", "the DAG must not report this as an upstream outage"
+
+
+async def test_failure_reason_names_an_action_rejection() -> None:
+    reply = await Sparky(llm=_ok('{"type": "vault_deposit"}')).reply("who are you?")
+    assert reply.failure == "action"
+
+
+async def test_failure_reason_names_refusal_and_empty() -> None:
+    refused = await Sparky(
+        llm=_FakeLlm(LlmResult(text="", stop_reason="refusal", refused=True))
+    ).reply("who are you?")
+    assert refused.failure == "refused"
+    empty = await Sparky(llm=_ok("   ")).reply("who are you?")
+    assert empty.failure == "empty"
+
+
+async def test_success_has_no_failure_reason() -> None:
+    reply = await Sparky(llm=_ok("An answer.")).reply("hi")
+    assert reply.failure is None
+
+
+async def test_streamed_meta_rejection_reports_meta_not_upstream() -> None:
+    text = (
+        "I don’t have details on Morpho or Aave safety in my reference notes, so I can’t compare."
+    )
+    chunks = await _stream([text])
+    assert chunks[-1].reply is not None
+    assert chunks[-1].reply.failure == "meta"

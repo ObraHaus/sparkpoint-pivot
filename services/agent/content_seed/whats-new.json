@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "comparative-answers-065-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Comparison questions get a real answer instead of a retry error",
+      "body": "Asking Sparky to compare two options — for example \"Is Morpho safer than Aave?\" — could end in a \"try again\" error even after the answer had started to appear. That is fixed: Sparky now finishes a comparison with a useful, honest answer (how the risks differ, how the yield is produced and what the fees look like), or says plainly when it cannot verify a detail, instead of reporting a model problem that did not happen. A genuine provider outage still shows the normal retry message. Nothing about reviewing, signing or your funds changes.",
+      "published_at": "2026-10-29T10:00:00Z"
+    },
+    {
       "slug": "thumbs-feedback-204-fix-2026-10",
       "type": "changelog",
       "tag": "Fixed",

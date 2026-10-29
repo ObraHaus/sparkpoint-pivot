@@ -12,6 +12,7 @@ from sparkpoint_agent.agents.guard_text import (
     is_unusable,
     looks_action_shaped,
     looks_meta_shaped,
+    unusable_reason,
 )
 
 # Verbatim from the incidents (028 general branch, 029 literacy/tip path).
@@ -74,6 +75,34 @@ def test_an_address_is_not_calldata() -> None:
 def test_empty_or_whitespace_is_unusable() -> None:
     assert is_unusable("")
     assert is_unusable("   \n  ")
+
+
+# ── 065 · the reason must be named, not just "unusable" ────────────────────────
+
+
+def test_unusable_reason_names_the_guard_that_fired() -> None:
+    # The beta failure (065): a legitimate-looking deflection that mentions the model's own
+    # reference notes is a META rejection, not an empty or action-shaped one.
+    assert (
+        unusable_reason(
+            "I don’t have details on Morpho or Aave safety in my reference notes, so I can’t "
+            "compare their risk profiles."
+        )
+        == "meta"
+    )
+    assert unusable_reason('{"type": "vault_deposit"}') == "action"
+    assert unusable_reason("   ") == "empty"
+
+
+def test_a_legitimate_comparison_is_not_a_meta_leak() -> None:
+    # Guard must stay precise: an answer that NAMES both protocols and gives the risk trade-off
+    # (without narrating notes/prompt/context) is exactly what 063 wanted.
+    good = (
+        "Aave is one shared lending market, while a Morpho-based curated vault adds curator and "
+        "isolated-market risk; neither is automatically safer and neither is insured."
+    )
+    assert unusable_reason(good) is None
+    assert not is_unusable(good)
 
 
 # ── 029 · the literacy path must be guarded by the SAME rule ───────────────────

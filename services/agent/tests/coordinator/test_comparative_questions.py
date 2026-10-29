@@ -127,7 +127,7 @@ def _chain() -> ChainContext:
     )
 
 
-def _dag(llm: Any, knowledge: Any) -> CoordinatorDag:
+def _dag(llm: Any, knowledge: Any, *, streaming: bool = True) -> CoordinatorDag:
     return CoordinatorDag(
         planner=Planner(llm=llm),
         recommender=Recommender(llm=llm),
@@ -136,7 +136,7 @@ def _dag(llm: Any, knowledge: Any) -> CoordinatorDag:
         portfolio_provider=_Portfolio(),
         mandate_provider=_Mandate(),
         knowledge=knowledge,
-        streaming=True,
+        streaming=streaming,
         single_call=True,
     )
 
@@ -200,6 +200,94 @@ async def test_comparative_followup_gets_the_recent_conversation_and_grounds_on_
     assert "Aave USDC yield" in prompt, "the follow-up can resolve what 'that' refers to"
     assert "Aave USDC yield" in grounder.queries[-1], "retrieval is deictic-aware"
     assert any(isinstance(block, TextBlock) for block in blocks)
+
+
+DEFLECTION = (
+    "I don’t have details on Morpho or Aave safety in my reference notes, so I can’t compare "
+    "their risk profiles or fee structures directly."
+)
+
+
+class _DeflectingLlm:
+    """The beta failure (065): a valid model turn that narrates its own notes.
+
+    It is rejected by the shared META guard, which used to be reported to the user as
+    ``UPSTREAM_UNAVAILABLE``. Counts prose calls so the regression also pins that a comparative
+    content rejection is NOT retried (the honest fallback is immediate), for streaming AND off.
+    """
+
+    def __init__(self) -> None:
+        self.structured_calls = 0
+        self.complete_calls = 0
+        self.stream_calls = 0
+
+    async def structured(self, **_: Any) -> StructuredResult[Any]:
+        self.structured_calls += 1
+        return StructuredResult(ok=True, value=Intent(kind=IntentKind.LEARN, topic="x"))
+
+    async def complete(self, **_: Any) -> LlmResult:
+        self.complete_calls += 1
+        return LlmResult(text=DEFLECTION, stop_reason="end_turn")
+
+    async def stream_complete(self, **_: Any) -> AsyncIterator[StreamChunk]:
+        self.stream_calls += 1
+        yield StreamChunk(delta=DEFLECTION[:48])
+        yield StreamChunk(delta=DEFLECTION[48:])
+        yield StreamChunk(result=LlmResult(text=DEFLECTION, stop_reason="end_turn"))
+
+
+class _ExplodingProseLlm:
+    def __init__(self) -> None:
+        self.structured_calls = 0
+        self.calls = 0
+
+    async def structured(self, **_: Any) -> StructuredResult[Any]:
+        self.structured_calls += 1
+        return StructuredResult(ok=True, value=Intent(kind=IntentKind.OTHER))
+
+    async def complete(self, **_: Any) -> LlmResult:
+        self.calls += 1
+        raise RuntimeError("gateway down")
+
+    async def stream_complete(self, **_: Any) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        raise RuntimeError("gateway down")
+        yield StreamChunk()  # pragma: no cover — unreachable, keeps this an async generator
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_meta_shaped_comparative_answer_gets_honest_prose_not_upstream_error(
+    streaming: bool,
+) -> None:
+    llm = _DeflectingLlm()
+    blocks = await _collect(
+        _dag(llm, _Grounder(), streaming=streaming),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    wires = [b.to_wire() for b in blocks if not isinstance(b, ProseDelta)]
+    assert not [w for w in wires if w["type"] == "error"], (
+        "a content-guard rejection is not an upstream outage"
+    )
+    text = next(w for w in wires if w["type"] == "text")["markdown"]
+    assert "Morpho" in text and "Aave" in text
+    assert "reference notes" not in text.lower()
+    assert "couldn't reach my model" not in text.lower()
+    prose_calls = llm.stream_calls if streaming else llm.complete_calls
+    assert prose_calls == 1, "a deterministic content rejection must not be retried"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_a_true_upstream_failure_on_a_comparative_turn_is_still_upstream_unavailable(
+    streaming: bool,
+) -> None:
+    llm = _ExplodingProseLlm()
+    blocks = await _collect(
+        _dag(llm, _Grounder(), streaming=streaming),
+        "Is Morpho safer than Aave?",
+    )
+    wires = [b.to_wire() for b in blocks if not isinstance(b, ProseDelta)]
+    errors = [w for w in wires if w["type"] == "error"]
+    assert len(errors) == 1 and errors[0]["code"] == "UPSTREAM_UNAVAILABLE"
 
 
 async def test_comparative_that_is_also_a_command_still_reaches_the_planner() -> None:
