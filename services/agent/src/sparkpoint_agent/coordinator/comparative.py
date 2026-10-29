@@ -56,9 +56,13 @@ _KNOWN: tuple[_KnownSubject, ...] = (
 )
 
 
-#: Capitalised words that are part of the question's grammar, not a protocol name.
+#: Capitalised words that are part of the question's grammar, not a protocol name. Matched
+#: case-insensitively, so the all-caps conjunction/interrogative forms ("AND", "OR", "NOT", "VS",
+#: "DOES", "SHOULD", "WOULD", "CAN", "HAS", "WHEN", "WHICH", "WHAT", "IS", "ARE", "HOW") are
+#: dropped too — the capitalised-token fallback used to return them as subjects.
 _NOT_A_SUBJECT = frozenset(
-    {
+    word.lower()
+    for word in (
         "Compare",
         "Comparing",
         "Comparison",
@@ -66,13 +70,28 @@ _NOT_A_SUBJECT = frozenset(
         "What",
         "Whats",
         "How",
+        "When",
+        "Where",
+        "Why",
+        "Who",
         "Is",
         "Are",
         "Was",
-        "For",
+        "Were",
+        "Does",
+        "Do",
+        "Did",
+        "Should",
+        "Would",
+        "Could",
+        "Can",
+        "Has",
+        "Have",
+        "Had",
         "The",
         "And",
         "Or",
+        "Not",
         "Than",
         "Versus",
         "Vs",
@@ -94,7 +113,7 @@ _NOT_A_SUBJECT = frozenset(
         "APY",
         "TVL",
         "ERC",
-    }
+    )
 )
 
 _CAP_TOKEN_RE = re.compile(r"\b([A-Z][A-Za-z0-9]{2,})\b")
@@ -137,7 +156,7 @@ def _generic_subjects(message: str, *, found: int) -> tuple[str, ...]:
     seen: list[str] = []
     for match in _CAP_TOKEN_RE.finditer(masked):
         token = match.group(1)
-        if token in _NOT_A_SUBJECT or token in seen:
+        if token.lower() in _NOT_A_SUBJECT or token in seen:
             continue
         seen.append(token)
     return tuple(seen)
