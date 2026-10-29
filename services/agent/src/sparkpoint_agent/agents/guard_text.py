@@ -69,12 +69,16 @@ def is_unusable(text: str) -> bool:
     return not stripped or looks_action_shaped(stripped) or looks_meta_shaped(stripped)
 
 
-#: 063 — a streamed prose turn checks its opening as soon as the first chunk exists and paints
-#: it if :func:`prefix_is_usable` passes. 059 buffered a fixed 40-char window first, which meant a
-#: short answer (or a slow first token) painted nothing until the model had finished — the exact
-#: "first text ≈ done" symptom. The terminal block remains authoritative: a body that only turns
-#: unusable AFTER the first chunk may have painted, and is replaced (or retried under a new stream
-#: id) exactly as before.
+#: How many opening characters a streamed prose turn buffers before the first paint (059, restored
+#: in 063 after a Defender review). The window must be measured in CHARACTERS of accumulated text,
+#: never in chunks: a token-sized first delta ("We") passes the guard on its own, but a response
+#: that opens into meta narration ("reference notes", "The user asks") or an action shape
+#: (`"type":`, raw calldata) within the first 40 characters must never be painted. Once the window
+#: is reached (or the stream ends) the whole buffered prefix is checked, then painted as one delta
+#: and every later chunk streams live. The terminal block remains authoritative: a body that only
+#: turns unusable AFTER the window may have painted, and is replaced (or retried under a new
+#: stream id) exactly as before.
+STREAM_HOLD_CHARS = 40
 
 
 def prefix_is_usable(text: str) -> bool:
@@ -88,6 +92,7 @@ def prefix_is_usable(text: str) -> bool:
 
 
 __all__ = [
+    "STREAM_HOLD_CHARS",
     "is_unusable",
     "looks_action_shaped",
     "looks_meta_shaped",

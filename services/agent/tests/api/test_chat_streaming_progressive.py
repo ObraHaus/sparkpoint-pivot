@@ -51,8 +51,16 @@ USER = "0x2222222222222222222222222222222222222222"
 VAULT = "0x1111111111111111111111111111111111111111"
 TOKEN = "063-test-token"
 BIG = 10**15
-GENERAL_TEXT = "The Aave pool pays yield."
-TIP_TEXT = "APY is the yearly return on a deposit."
+GENERAL_TEXT = (
+    "The Aave pool pays yield to suppliers while borrowers pay interest on their loans. Rates "
+    "move with utilization, and the protocol routes a share of the fees back to the treasury over "
+    "time, so suppliers earn a variable return that reflects real borrowing demand."
+)
+TIP_TEXT = (
+    "APY is the yearly return on a deposit, and it compounds when rewards are reinvested. It lets "
+    "you compare products with different payout schedules, but it is an estimate rather than a "
+    "promise, and it can move as utilization and reward rates change."
+)
 PRICE_TEXT = "ETH is about $2,500 as of 12:00 UTC."
 
 DELAY_S = 0.15
@@ -75,12 +83,14 @@ class _SlowLlm:
 
     async def stream_complete(self, *, system: str = "", **_: Any) -> AsyncIterator[StreamChunk]:
         text = TIP_TEXT if "financial-literacy tutor" in system else GENERAL_TEXT
-        words = text.split(" ")
-        step = max(1, len(words) // CHUNKS)
-        pieces = [" ".join(words[i : i + step]) for i in range(0, len(words), step)][:CHUNKS]
-        for index, piece in enumerate(pieces):
+        # Split into CHUNKS near-equal character pieces. Each piece is wider than the 40-character
+        # opening hold, so the first paint lands on the first generated chunk (the timing this test
+        # pins) while a normal short answer is covered by the agent-layer streaming tests.
+        size = (len(text) + CHUNKS - 1) // CHUNKS
+        pieces = [text[i : i + size] for i in range(0, len(text), size)][:CHUNKS]
+        for piece in pieces:
             await asyncio.sleep(DELAY_S)
-            yield StreamChunk(delta=piece if index == len(pieces) - 1 else piece + " ")
+            yield StreamChunk(delta=piece)
         yield StreamChunk(result=LlmResult(text=text, stop_reason="end_turn"))
 
 
