@@ -50,6 +50,35 @@ _META_SHAPED: tuple[re.Pattern[str], ...] = (
         r"\b(?:context|passages?|documents?|corpus) (?:provided|supplied|given)\b", re.IGNORECASE
     ),
     re.compile(r"\bmy (?:instructions|context window|training data)\b", re.IGNORECASE),
+    # 066 — the beta deflection shipped as "the **reference information** doesn't include
+    # details on either protocol's risk" and slipped past `\breference notes?\b`. These patterns
+    # name the SCAFFOLDING, not the topic: "reference rate" and "documentation on the Vault page"
+    # are ordinary answers and must still pass (pinned both ways in test_guard_text.py).
+    re.compile(r"\breference (?:information|material)\b", re.IGNORECASE),
+    re.compile(
+        r"\bthe information (?:provided|available|given|supplied) (?:to me|here)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bthe information (?:provided|available|given|supplied) "
+        r"(?:doesn't|does not|didn't|did not)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bthe information (?:i (?:have|was given|can draw on|can use))\b", re.IGNORECASE
+    ),
+    re.compile(
+        r"\b(?:the )?(?:context|documents?|passages?|sources?|material)"
+        r"(?: (?:provided|supplied|given|available(?: to me)?|i have|i was given|"
+        r"i can draw on|i can use))?"
+        r" (?:doesn't|does not|don't|do not|didn't|did not)"
+        r" (?:include|contain|cover|mention)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bmy (?:sources?|documents?|passages?)\b", re.IGNORECASE),
+    re.compile(
+        r"\breference material (?:i (?:have|can draw on)|available)\b", re.IGNORECASE
+    ),
 )
 
 
