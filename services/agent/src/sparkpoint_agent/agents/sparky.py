@@ -108,9 +108,12 @@ COMPARATIVE_RULE = (
     "how the YIELD is produced, and the FEES/structure of each option, using the background "
     "facts provided. Name both subjects and state where they differ and where they are the "
     "same. Use only figures that appear in the background; if a figure is missing, say so "
-    "plainly instead of inventing one. Do not give buy/sell or allocation advice and do not "
-    "declare a personal winner — lay out the trade-off and let the user decide. Never output "
-    "a transaction, action payload, or tool call."
+    "plainly instead of inventing one. If one side has no SparkPoint-verified material, say "
+    "that plainly in one clause and still give the well-known structural differences for it, "
+    "with no figures. Never mention notes, reference material, context, documents, or what you "
+    "do or do not have access to. Do not give buy/sell or allocation advice and do not declare "
+    "a personal winner — lay out the trade-off and let the user decide. Never output a "
+    "transaction, action payload, or tool call."
 )
 
 

@@ -177,3 +177,21 @@ def test_the_beta_faq_keeps_the_srk_no_price_policy() -> None:
     text = _corpus()["beta-questions"].lower()
     assert "does sparkpoint quote an srk price" in text
     assert "no oracle" in text
+
+
+# ── 066: structural protocol notes for the comparisons users actually ask ─────
+
+
+def test_protocol_basics_covers_the_five_compared_protocols() -> None:
+    text = _corpus().get("protocol-basics", "")
+    assert text, "protocol-basics.md is missing from the shipped seed"
+    lowered = text.lower()
+    for protocol in ("aave", "compound", "morpho", "lido", "rocket pool"):
+        assert protocol in lowered, protocol
+
+
+def test_protocol_basics_has_no_invented_figures_and_is_explicitly_uninsured() -> None:
+    text = _corpus()["protocol-basics"]
+    assert re.search(r"\d+(?:\.\d+)?\s*%", text) is None, "no yield/APY figures in structural notes"
+    assert "not insured" in text.lower() or "neither venue is insured" in text.lower()
+    assert "curator" in text.lower(), "the Morpho risk layer must be named"

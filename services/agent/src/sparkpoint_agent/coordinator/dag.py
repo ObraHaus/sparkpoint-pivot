@@ -90,6 +90,11 @@ from .chat_blocks import (
     token_address,
     token_decimals,
 )
+from .comparative import (
+    extract_comparison_subjects,
+    passage_mentions_subject,
+    text_mentions_subject,
+)
 from .curated import (
     BEST_VAULT_RE,
     CURATED_FAILURE,
@@ -168,36 +173,104 @@ _GENERAL_HELP = (
     "you like to do?"
 )
 
-#: 065 — the honest fallback for a comparative turn whose prose answer was produced but REJECTED
-#: by the shared content guard (usually the model narrating "my reference notes" instead of
-#: answering). That is not an upstream failure, so it must never become
-#: ``UPSTREAM_UNAVAILABLE``. This is code-authored, prose-only (a ``text`` block cannot carry an
-#: action), invents no figure, gives no allocation advice and names no internal prompt/notes.
-#: It is intentionally generic enough to fit any comparison; when the two subjects are the
-#: reported Morpho/Aave pair they are named so the answer still reads as an answer.
+#: 065/066 — the LAST-RESORT honest fallback for a comparative turn whose prose answer was
+#: rejected by the content guard (or was itself a pure deflection) and cannot be served. It is
+#: code-authored, prose-only (a ``text`` block cannot carry an action), invents no figure, gives
+#: no allocation advice and names no internal prompt/notes. 066 names the ACTUAL extracted
+#: subjects and says plainly which side SparkPoint has no verified material for, rather than
+#: saying "those options".
 _COMPARATIVE_FALLBACK = (
-    "I can't verify a safety ranking between {subjects} from the data I have here, so I won't "
-    "call one safer than the other. In general, compare the smart-contract risk, who curates "
-    "and manages each strategy, how easily you can withdraw, and how the yield and fees are "
-    "produced: a large shared lending pool concentrates risk in one market, while a curated "
-    "vault adds curator and isolated-market risk on top of its underlying markets, and neither "
-    "is insured. The Vault page shows each option's curator, net APY with its as-of date, and "
-    "liquidity notes before you sign."
+    "I can't rank {subjects} on safety from SparkPoint-verified data, so I won't call one safer "
+    "than the other. {gap} The useful comparison is structural: what each protocol does with "
+    "the asset, who controls the contracts and parameters, how the yield is produced, what can "
+    "fail in a stressed market, and how reliably you can withdraw. Any specific rate or size "
+    "figure is unverified unless it comes with an as-of date."
 )
 
 
-def _comparative_fallback(message: str) -> str:
-    """The 065 honest comparison, naming Morpho/Aave when the turn is that reported pair."""
-    lowered = message.lower()
-    subjects = "Morpho and Aave" if "morpho" in lowered and "aave" in lowered else "those options"
-    return _COMPARATIVE_FALLBACK.format(subjects=subjects)
+def _join_names(names: Sequence[str]) -> str:
+    """Join subject names for prose: ``A``, ``A and B``, ``A, B and C``."""
+    if not names:
+        return "the options you asked about"
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _comparative_fallback(
+    message: str,
+    *,
+    subjects: Sequence[str] | None = None,
+    covered: Sequence[str] | None = None,
+) -> str:
+    """The 066 honest comparison, naming the subjects actually extracted from the turn."""
+    names = list(subjects) if subjects else list(extract_comparison_subjects(message))
+    covered_set = set(covered or ())
+    missing = [name for name in names if name not in covered_set]
+    if not names:
+        gap = "SparkPoint has no verified material on either side of that comparison."
+    elif not missing:
+        gap = (
+            "SparkPoint has verified material on both, but not enough to rank one above the "
+            "other."
+        )
+    elif len(missing) == len(names):
+        gap = f"SparkPoint has no verified material on {_join_names(names)}."
+    else:
+        gap = (
+            f"SparkPoint has verified material on {_join_names(list(covered or ()))}, but "
+            f"none on {_join_names(missing)}."
+        )
+    return _COMPARATIVE_FALLBACK.format(subjects=_join_names(names), gap=gap)
+
 
 # How many corpus passages to ground a prose answer on.
 _GROUND_K = 3
+# How many passages to retrieve per NAMED comparative subject (066). This mirrors the LEARN
+# route's unthresholded top-k: an explicit protocol name is a precise enough query that a cosine
+# floor would drop the note that is genuinely about it.
+_ENTITY_GROUND_K = 3
+#: The most passages a comparative prompt may carry (two/three subjects plus the whole message).
+_COMPARATIVE_MAX_PASSAGES = 8
 # OTHER-branch grounding threshold (cosine): a general question the corpus doesn't really cover
 # should ground NOTHING (answered without citations) rather than cite a tangential note (B5). LEARN
 # is an EXPLICIT ask to teach a topic, so it keeps the unthresholded top-k.
 _OTHER_MIN_SCORE = 0.35
+
+
+def _comparative_missing(subjects: Sequence[str], covered: Sequence[str]) -> list[str]:
+    """Subjects the corpus did NOT ground (in message order)."""
+    covered_set = set(covered)
+    return [subject for subject in subjects if subject not in covered_set]
+
+
+def _comparative_coverage_hint(subjects: Sequence[str], covered: Sequence[str]) -> str | None:
+    """Prompt-only coverage guidance for a comparative turn (never a citation source).
+
+    The prose agent cannot tell which retrieved passage belongs to which side, so the coordinator
+    tells it plainly what was grounded and what was not. The instruction forbids note/context
+    narration and figures for the uncovered side, which keeps the answer honest without leaking
+    scaffolding.
+    """
+    if not subjects:
+        return None
+    missing = _comparative_missing(subjects, covered)
+    lines = ["COMPARISON COVERAGE (instruction, not a fact about the user):"]
+    if covered:
+        lines.append(f"SparkPoint-verified material is available for {_join_names(list(covered))}.")
+    if missing:
+        lines.append(
+            f"SparkPoint has no verified material for {_join_names(missing)}. Say that plainly "
+            "in one clause, then give only well-known structural differences for it, with no "
+            "figures."
+        )
+    else:
+        lines.append("Compare both sides using only that material.")
+    lines.append(
+        "Do not mention notes, reference material, context, documents, or what you do or do not "
+        "have access to. Do not give allocation advice or declare a winner."
+    )
+    return "\n".join(lines)
 
 
 def _format_grounding(passages: tuple[Passage, ...]) -> str:
@@ -214,6 +287,87 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
         "them). If they don't cover the question, say so plainly.\n"
         f"<<<REFERENCE_NOTES\n{body}\n>>>"
     )
+
+
+#: Markers that turn a comparative decline into a real answer. A partial answer often opens
+#: with ``"I don't have verified data on X, but Y is…"``; replacing that would throw away the
+#: grounded side. A pure "I can't compare X and Y" has none of these.
+_COMPARATIVE_ANSWER_MARKERS: tuple[str, ...] = (
+    " but ",
+    " however",
+    " while ",
+    " whereas",
+    " in contrast",
+    " on the other hand",
+    " in general",
+    " generally",
+    " typically",
+    " structurally",
+    " works by",
+    " is a ",
+)
+
+
+def _is_comparative_non_answer(answer: str) -> bool:
+    """True for a comparative response that only declines, so it must not be served as the answer.
+
+    The 066 beta capture had a pure deflection (``"I'm not able to compare Morpho and Aave…"``)
+    and a pure no-data reply (``"I don't have current data on Lido and Rocket Pool…"``). Both are
+    honest but not useful. A longer answer that contrasts a grounded side with an ungrounded one
+    starts with the same words, so the marker/length test keeps it.
+    """
+    if not _is_decline(answer):
+        return False
+    lowered = f" {answer.lower()} "
+    if len(answer.strip()) >= 220 and any(
+        marker in lowered for marker in _COMPARATIVE_ANSWER_MARKERS
+    ):
+        return False
+    return True
+
+
+def _answer_can_cite(
+    answer: str, comparative: bool, covered: Sequence[str]
+) -> bool:
+    """Whether a model-produced answer may carry the retrieved sources.
+
+    Non-comparative answers keep the 029 rule (the caller already checked passages/grounded).
+    A comparative answer must also name every subject that was actually grounded: a passage is
+    not provenance for text that never engaged it, and a deflection must never look sourced.
+    """
+    if not answer.strip() or _is_decline(answer):
+        return False
+    if not comparative:
+        return True
+    return bool(covered) and all(text_mentions_subject(answer, subject) for subject in covered)
+
+
+def _is_release_note(passage: Passage) -> bool:
+    """True for a changelog/release-note chunk, which is product news, not protocol fact.
+
+    The 065/063 release notes NAME Morpho and Aave in their user-facing copy, so a subject-mention
+    filter alone would still let them into a comparative prompt (and the beta capture shows they
+    won the whole-message retrieval outright). A comparison must be grounded on documentation, so
+    release notes are excluded whenever named subjects exist. Unknown/deictic comparisons keep
+    the 065 path untouched.
+    """
+    citation = passage.citation
+    return citation.endpoint.startswith("obsidian://changelog-") or (
+        "release note" in citation.provider.lower()
+    )
+
+
+def _prose_context(passages: tuple[Passage, ...], coverage_hint: str | None) -> str | None:
+    """The prose turn's context: fenced corpus passages plus 066 coverage guidance.
+
+    ``coverage_hint`` is an INSTRUCTION about which subjects were grounded, not corpus text, so
+    it sits outside the reference fence and is never a citation source. It is present only on a
+    comparative turn; every other branch behaves exactly as before.
+    """
+    context = _format_grounding(passages) if passages else None
+    if coverage_hint:
+        return f"{context}\n{coverage_hint}" if context else coverage_hint
+    return context
 
 
 def _default_rec_id() -> str:
@@ -467,6 +621,60 @@ class CoordinatorDag:
         except Exception:
             return ()
 
+    async def _ground_comparative(
+        self, message: str, subjects: Sequence[str]
+    ) -> tuple[tuple[Passage, ...], tuple[str, ...]]:
+        """066 — retrieve per NAMED subject plus the whole message, then merge/dedupe.
+
+        The whole-message query is what 065 used alone, and on beta it ranked two changelog
+        entries above every protocol note. Per-subject retrieval uses the LEARN route's
+        unthresholded top-k (an explicit name is a precise query), and a hit only counts as
+        coverage for a subject when the passage actually names it. The whole-message hits are
+        kept only when they name at least one subject, so release notes cannot be cited as
+        protocol material.
+
+        Returns ``(passages, covered_subjects)``. ``covered`` is computed from the per-subject
+        hits, in the message's subject order, and drives the prompt's coverage hint and the
+        citation gate.
+        """
+        merged: list[Passage] = []
+        seen: set[tuple[str, str, str]] = set()
+        covered: list[str] = []
+
+        def add(passage: Passage) -> None:
+            citation = passage.citation
+            key = (citation.endpoint, citation.field, passage.content.strip())
+            if key in seen:
+                return
+            seen.add(key)
+            merged.append(passage)
+
+        for subject in subjects:
+            entity_hits = await self._ground(subject, k=_ENTITY_GROUND_K, min_score=0.0)
+            kept = tuple(
+                passage
+                for passage in entity_hits
+                if passage_mentions_subject(passage, subject)
+                and not _is_release_note(passage)
+            )
+            if kept:
+                covered.append(subject)
+            for passage in kept:
+                add(passage)
+
+        whole_hits = await self._ground(message, k=_GROUND_K, min_score=_OTHER_MIN_SCORE)
+        if subjects:
+            whole_hits = tuple(
+                passage
+                for passage in whole_hits
+                if any(passage_mentions_subject(passage, subject) for subject in subjects)
+                and not _is_release_note(passage)
+            )
+        for passage in whole_hits:
+            add(passage)
+
+        return tuple(merged[:_COMPARATIVE_MAX_PASSAGES]), tuple(covered)
+
     async def _general_answer(
         self,
         message: str,
@@ -476,6 +684,7 @@ class CoordinatorDag:
         memory_lines: Sequence[str] | None = None,
         history: Sequence[tuple[str, str]] | None = None,
         comparative: bool = False,
+        coverage_hint: str | None = None,
     ) -> tuple[str, bool, str | None]:
         """The general/identity branch's prose answer + whether the MODEL produced it.
 
@@ -506,7 +715,7 @@ class CoordinatorDag:
             # No responder wired (the non-chat DAG consumers) — there is nothing to retry and
             # nothing failed, so the static help text is the honest answer here.
             return _GENERAL_HELP, False, None
-        context = _format_grounding(passages) if passages else None
+        context = _prose_context(passages, coverage_hint)
         # 029: RETRY ONCE, then be honest. The Aug-3 regression saw 3/20 turns under back-to-back
         # use collapse to _GENERAL_HELP with no sign anything had failed — and they were the
         # persona intro, the memory recall and the withdrawal explanation. A user cannot tell that
@@ -543,6 +752,7 @@ class CoordinatorDag:
         memory_lines: Sequence[str] | None = None,
         history: Sequence[tuple[str, str]] | None = None,
         comparative: bool = False,
+        coverage_hint: str | None = None,
     ) -> AsyncIterator[ProseDelta | _ProseResult]:
         """Streaming counterpart to :meth:`_general_answer` (059/A2).
 
@@ -554,7 +764,7 @@ class CoordinatorDag:
         block, so guardrails/clamps still win.
         """
         assert self.sparky is not None  # noqa: S101 — caller narrows
-        context = _format_grounding(passages) if passages else None
+        context = _prose_context(passages, coverage_hint)
         last_failure: str | None = None
         for attempt in (1, 2):
             reply: SparkyReply | None = None
@@ -996,6 +1206,9 @@ class CoordinatorDag:
             # recent turns too, or the first-person "that" finds nothing about what was discussed.
             ground_query = message
             prose_history: Sequence[tuple[str, str]] | None = None
+            subjects: tuple[str, ...] = ()
+            covered: tuple[str, ...] = ()
+            coverage_hint: str | None = None
             if comparative:
                 prose_history = history
                 earlier = " ".join(
@@ -1003,7 +1216,11 @@ class CoordinatorDag:
                 )
                 if earlier:
                     ground_query = f"{earlier}\n{message}"
-            passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
+                subjects = extract_comparison_subjects(message)
+                passages, covered = await self._ground_comparative(ground_query, subjects)
+                coverage_hint = _comparative_coverage_hint(subjects, covered)
+            else:
+                passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
             prose_answer: str = _GENERAL_FAILURE
@@ -1022,6 +1239,7 @@ class CoordinatorDag:
                     memory_lines=memory_lines,
                     history=prose_history,
                     comparative=comparative,
+                    coverage_hint=coverage_hint,
                 ):
                     if isinstance(prose_item, ProseDelta):
                         yield prose_item
@@ -1040,6 +1258,7 @@ class CoordinatorDag:
                     memory_lines=memory_lines,
                     history=prose_history,
                     comparative=comparative,
+                    coverage_hint=coverage_hint,
                 )
                 failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
@@ -1048,7 +1267,9 @@ class CoordinatorDag:
                 # rejected ("my reference notes…") is not an upstream outage. Answer honestly
                 # from code instead of telling the user the model was unreachable.
                 if comparative and failure != "upstream":
-                    yield TextBlock(_comparative_fallback(message))
+                    yield TextBlock(
+                        _comparative_fallback(message, subjects=subjects, covered=covered)
+                    )
                     return
                 # 029/FR-003: a genuinely degraded turn must LOOK degraded. An ERROR block renders
                 # as the inline error state with a retry affordance, and (unlike a text block) is
@@ -1056,11 +1277,22 @@ class CoordinatorDag:
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
+            # 066 — a comparative "answer" that only declines is not useful, and using it
+            # would waste the honest structural fallback. Replace it BEFORE the text block is
+            # emitted (streaming may already have painted it; the terminal block is
+            # authoritative), and never attach a citation to it.
+            if comparative and _is_comparative_non_answer(prose_answer):
+                yield TextBlock(
+                    _comparative_fallback(message, subjects=subjects, covered=covered)
+                )
+                return
             yield TextBlock(prose_answer)
             # Cite ONLY when the grounded answer actually came from the model AND actually
             # answered. A fallback is not grounded in those passages, and neither is a refusal
             # (029/FR-014) — citing either would claim a provenance the text does not have.
-            if passages and grounded and not _is_decline(prose_answer):
+            # 066 adds the comparative tests: the answer must name every subject that was
+            # actually grounded, so a tangential passage cannot be cited under a non-answer.
+            if passages and grounded and _answer_can_cite(prose_answer, comparative, covered):
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
@@ -1677,8 +1909,8 @@ def _fmt_bps(bps: int | None) -> str:
 #: worse, as though the refusal were something the docs say. Anchored to the opening clause, so an
 #: answer that merely contains "I can't" partway through still cites what it used.
 _DECLINE_RE = re.compile(
-    r"^\W*(?:i(?:'m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:'t|not)\b|"
-    r"i\s+don'?t\s+(?:have|hold|know)|that'?s\s+not\s+something|"
+    r"^\W*(?:i(?:['’]m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:['’]t|not)\b|"
+    r"i\s+don['’]?t\s+(?:have|hold|know)|that['’]s\s+not\s+something|"
     r"unfortunately\b|no,\s)",
     re.IGNORECASE,
 )

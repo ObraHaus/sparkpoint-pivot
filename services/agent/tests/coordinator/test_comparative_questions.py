@@ -19,7 +19,12 @@ from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.agents.sparky import Sparky
-from sparkpoint_agent.coordinator.chat_blocks import ProseDelta, TextBlock, TipBlock
+from sparkpoint_agent.coordinator.chat_blocks import (
+    CitationBlock,
+    ProseDelta,
+    TextBlock,
+    TipBlock,
+)
 from sparkpoint_agent.coordinator.dag import (
     ChainContext,
     CoordinatorDag,
@@ -372,3 +377,268 @@ def test_comparisons_are_not_yield_guidance_even_with_aave_and_history() -> None
     ):
         assert is_comparative_question(message) is True
         assert is_yield_guidance_question(message) is False
+
+
+# ── 066 · per-entity grounding, honest partial coverage, no citation on a non-answer ──────
+
+
+class _AnswerLlm:
+    """Returns one fixed prose answer (streaming or not) and records the prompt."""
+
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+        self.systems: list[str] = []
+        self.user_contents: list[str] = []
+        self.complete_calls = 0
+        self.stream_calls = 0
+
+    async def structured(self, **_: Any) -> StructuredResult[Any]:
+        raise AssertionError("a comparative turn must not call the planner")
+
+    async def complete(self, **kwargs: Any) -> LlmResult:
+        self.complete_calls += 1
+        self._remember(kwargs)
+        return LlmResult(text=self.answer, stop_reason="end_turn")
+
+    async def stream_complete(self, **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        self.stream_calls += 1
+        self._remember(kwargs)
+        yield StreamChunk(delta=self.answer[:48])
+        yield StreamChunk(delta=self.answer[48:])
+        yield StreamChunk(result=LlmResult(text=self.answer, stop_reason="end_turn"))
+
+    def _remember(self, kwargs: dict[str, Any]) -> None:
+        self.systems.append(str(kwargs.get("system") or ""))
+        messages = kwargs.get("messages") or []
+        if messages:
+            self.user_contents.append(str(messages[-1].get("content") or ""))
+
+
+class _SubjectGrounder:
+    """A fake corpus keyed by protocol: only a query that NAMES a protocol retrieves its note."""
+
+    def __init__(self, docs: dict[str, str]) -> None:
+        self.docs = docs
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        lowered = query.lower()
+        return tuple(
+            Passage(
+                content=text,
+                citation=Citation(
+                    provider=name,
+                    endpoint=f"obsidian://{name.lower()}",
+                    field="risk",
+                    value=name,
+                    as_of="2026-10-29T00:00:00Z",
+                    stale=False,
+                ),
+            )
+            for name, text in self.docs.items()
+            if name.lower() in lowered
+        )
+
+
+AAVE_DOC = (
+    "AAVE-GROUNDING: Aave is a shared lending pool. Suppliers earn a variable rate driven by "
+    "utilisation; risk is concentrated in one market and the contracts, and it is not insured."
+)
+MORPHO_DOC = (
+    "MORPHO-GROUNDING: Morpho is a framework of isolated markets and curated vaults. A curator "
+    "adds allocation and liquidity risk on top of the market risk; it is not insured."
+)
+COMPOUND_DOC = (
+    "COMPOUND-GROUNDING: Compound is a shared-pool lending protocol governed by its token "
+    "holders. It carries contract, governance and market risk, and it is not insured."
+)
+LIDO_DOC = (
+    "LIDO-GROUNDING: Lido is liquid staking for Ethereum; the liquid staking token can trade "
+    "below the value of the underlying ETH and the position is not insured."
+)
+
+
+def _citations(blocks: Sequence[Any]) -> list[dict[str, Any]]:
+    return [b.to_wire() for b in blocks if isinstance(b, CitationBlock)]
+
+
+def _text(blocks: Sequence[Any]) -> str:
+    return next(
+        b.markdown for b in blocks if isinstance(b, TextBlock)
+    )
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_comparative_retrieves_each_named_subject_separately(streaming: bool) -> None:
+    llm = _AnswerLlm(ANSWER)
+    grounder = _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC})
+    blocks = await _collect(
+        _dag(llm, grounder, streaming=streaming),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    prompt = llm.user_contents[-1]
+    assert "AAVE-GROUNDING" in prompt and "MORPHO-GROUNDING" in prompt
+    assert "SparkPoint-verified material is available for Morpho and Aave" in prompt
+    assert "Morpho" in grounder.queries and "Aave" in grounder.queries
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    providers = {source["provider"] for source in cited[0]["sources"]}
+    assert providers == {"Aave", "Morpho"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_one_sided_coverage_names_the_missing_side_and_cites_only_the_grounded_one(
+    streaming: bool,
+) -> None:
+    partial = (
+        "SparkPoint has no verified data on Compound, but Aave is a shared lending pool whose "
+        "supply rate moves with utilisation. Compound is also a lending protocol, so compare "
+        "the smart-contract and governance risk of each rather than a single rate, and remember "
+        "that neither is insured."
+    )
+    llm = _AnswerLlm(partial)
+    grounder = _SubjectGrounder({"Aave": AAVE_DOC})
+    blocks = await _collect(
+        _dag(llm, grounder, streaming=streaming),
+        "Compare Compound and Aave for a beginner.",
+    )
+    prompt = llm.user_contents[-1]
+    assert "AAVE-GROUNDING" in prompt
+    assert "COMPOUND-GROUNDING" not in prompt
+    assert "SparkPoint has no verified material for Compound" in prompt
+    text = _text(blocks)
+    assert "Compound" in text and "Aave" in text
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_neither_side_grounded_is_useful_and_uncited(streaming: bool) -> None:
+    useful = (
+        "I don't have SparkPoint-verified data on Lido or Rocket Pool, so I won't call one "
+        "safer. Both are liquid-staking protocols for Ethereum: Lido relies on a set of "
+        "professional validators, while Rocket Pool uses independent node operators, so compare "
+        "validator and operator risk, withdrawal liquidity, and smart-contract risk. Neither is "
+        "insured."
+    )
+    llm = _AnswerLlm(useful)
+    blocks = await _collect(
+        _dag(llm, _SubjectGrounder({}), streaming=streaming),
+        "Which is riskier, Lido or Rocket Pool?",
+    )
+    prompt = llm.user_contents[-1]
+    assert "SparkPoint has no verified material for Lido and Rocket Pool" in prompt
+    text = _text(blocks)
+    assert "Lido" in text and "Rocket Pool" in text
+    assert _citations(blocks) == [], "a no-data answer must not look sourced"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_fallback_names_the_actual_subjects_not_those_options(streaming: bool) -> None:
+    deflection = (
+        "I’m not able to compare Compound and Aave because the reference information doesn’t "
+        "include details on either protocol’s risk, yield, or fees."
+    )
+    llm = _AnswerLlm(deflection)
+    blocks = await _collect(
+        _dag(llm, _SubjectGrounder({"Aave": AAVE_DOC}), streaming=streaming),
+        "Compare Compound and Aave for a beginner.",
+    )
+    text = _text(blocks)
+    assert "Compound" in text and "Aave" in text
+    assert "those options" not in text.lower()
+    assert "reference information" not in text.lower()
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_a_pure_decline_with_a_curly_apostrophe_is_not_cited(streaming: bool) -> None:
+    decline = "I’m not able to compare Morpho and Aave from the data I have."
+    llm = _AnswerLlm(decline)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert "Morpho" in text and "Aave" in text
+    assert _citations(blocks) == []
+
+
+def test_subject_extraction_is_word_bounded_and_preserves_message_order() -> None:
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects("Which is riskier, Lido or Rocket Pool?") == (
+        "Lido",
+        "Rocket Pool",
+    )
+    assert extract_comparison_subjects("Compare Compound and Aave for a beginner.") == (
+        "Compound",
+        "Aave",
+    )
+    assert extract_comparison_subjects("Is Morpho safer than Aave?") == ("Morpho", "Aave")
+    # "auto-compounds" is a verb, not the Compound protocol.
+    assert extract_comparison_subjects("How does the vault auto-compound?") == ()
+
+
+def test_unknown_protocols_fall_back_to_proper_nouns() -> None:
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects("Compare Yearn and Beefy for a beginner.") == (
+        "Yearn",
+        "Beefy",
+    )
+
+
+class _ReleaseNoteGrounder:
+    """Returns release-note chunks that NAME the protocols — the exact 065 failure shape."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        return (
+            Passage(
+                content=(
+                    "Comparison questions get a real answer instead of a retry error. Asking "
+                    "Sparky to compare two options — for example \"Is Morpho safer than Aave?\" — "
+                    "…"
+                ),
+                citation=Citation(
+                    provider="Comparison questions get a real answer · SparkPoint release note",
+                    endpoint="obsidian://changelog-comparative-answers-065-2026-10",
+                    field="Comparison questions get a real answer instead of a retry error",
+                    value="release note",
+                    as_of="2026-10-29T00:00:00Z",
+                    stale=False,
+                ),
+            ),
+        )
+
+
+async def test_release_notes_that_name_the_protocols_are_not_protocol_grounding() -> None:
+    useful = (
+        "I don't have SparkPoint-verified data on Morpho or Aave, so I won't call one safer. "
+        "Structurally, Aave is a shared lending pool, while Morpho is a framework of isolated "
+        "markets and curated vaults, so compare curator risk, market isolation and withdrawal "
+        "liquidity as well as smart-contract risk. Neither is insured."
+    )
+    llm = _AnswerLlm(useful)
+    blocks = await _collect(
+        _dag(llm, _ReleaseNoteGrounder()),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    prompt = llm.user_contents[-1]
+    assert "SparkPoint has no verified material for Morpho and Aave" in prompt
+    assert "release note" not in prompt.lower()
+    assert _citations(blocks) == []
