@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security — mint-whitelist CSV export (2026-10-29)
+
+- **Spreadsheet formulas in the admin mint-whitelist export are neutralized.** `name`, `contact` and `reason` come from an unauthenticated public form, so a value beginning with `=`, `+`, `-`, `@`, TAB or CR (including after leading whitespace) could execute as a formula when an operator opened the downloaded CSV. Every cell now gets an OWASP-style leading `'` before the existing RFC-4180 quoting, and the escaping lives in a tested pure helper. Server-side form handling is unchanged. (`apps/web/src/lib/csv.ts`, `apps/web/src/components/admin/MintWhitelistPanel.tsx`)
+
 ### Fixed (BFF null-body passthrough — 064)
 
 - **Thumbs feedback no longer reports a 500.** `POST /chat/feedback` stores the rating and correctly answers `204 No Content`, but the BFF rebuilt that response as `new Response(arrayBuffer, { status: 204 })`. The Fetch `Response` constructor rejects any body for a null-body status (`TypeError: Invalid response status code 204`), so the route threw after the write had succeeded and the browser saw a 500. The proxy now returns `new Response(null, { status, headers })` for every null-body status (101, 103, 204, 205, 304), dropping `content-length` (and `content-type` for 204/205); all other JSON responses and the `/chat` SSE stream are unchanged. `AgentClient.request` already returned `undefined` for 204/205 without parsing and is now pinned by a test. (`apps/web/src/lib/agent/proxyResponse.ts`, `apps/web/src/app/api/agent/[...path]/route.ts`)
