@@ -61,7 +61,7 @@ _META_SHAPED: tuple[re.Pattern[str], ...] = (
     ),
     re.compile(
         r"\bthe information (?:provided|available|given|supplied) "
-        r"(?:doesn't|does not|didn't|did not)\b",
+        r"(?:doesn['’]t|does not|didn['’]t|did not)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -71,7 +71,7 @@ _META_SHAPED: tuple[re.Pattern[str], ...] = (
         r"\b(?:the )?(?:context|documents?|passages?|sources?|material)"
         r"(?: (?:provided|supplied|given|available(?: to me)?|i have|i was given|"
         r"i can draw on|i can use))?"
-        r" (?:doesn't|does not|don't|do not|didn't|did not)"
+        r" (?:doesn['’]t|does not|don['’]t|do not|didn['’]t|did not)"
         r" (?:include|contain|cover|mention)\b",
         re.IGNORECASE,
     ),
