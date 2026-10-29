@@ -28,6 +28,18 @@ LIVE_LEAKS = [
     "<<<USER_MEMORY appears empty>>>",
     "From the provided notes, premium costs 10,000 SRK.",
     "The passages provided don't mention SRK.",
+    # 066 — the beta deflection and the phrasings it mutates into. These name the scaffolding
+    # ("reference information", "reference material I can draw from") rather than the topic.
+    "I’m not able to compare Morpho and Aave because the reference information doesn’t include "
+    "details on either protocol’s risk, yield, or fees.",
+    "I don't have verified details on Morpho versus Aave in the reference material I can draw "
+    "from, so I can't give you a grounded comparison.",
+    "The information provided to me doesn't include fees.",
+    "The information available does not cover Lido.",
+    "The context available to me does not cover Rocket Pool.",
+    "The documents provided don't mention Compound.",
+    "The passages available don't cover Morpho.",
+    "My sources don't include that.",
 ]
 
 # Real answers Sparky should be allowed to give (second person, no self-narration).
@@ -40,6 +52,12 @@ GOOD_ANSWERS = [
     "You can get test USDC and test ETH from the faucets on the Bridge page.",
     "I can't give personal financial advice, but I can help you set guardrails.",
     "Your notes app isn't something I can read — I only see this conversation.",
+    # 066 — these mention ordinary concepts/furniture and must NOT be mistaken for scaffolding.
+    "The reference rate for the vault is set by its curator.",
+    "You can find the documentation on the Vault page.",
+    "The documentation on the Vault page explains the fee and the as-of date.",
+    "The information provided on the Vault page shows the curator and the stored rate.",
+    "According to the protocol's documentation, Aave uses a shared liquidity pool.",
 ]
 
 

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "grounded-comparative-answers-066-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Comparisons now come with real, grounded answers",
+      "body": "When you ask Sparky to compare two protocols, it now looks up each one by name instead of searching the whole sentence once. So \"Is Morpho safer than Aave?\" gets the Morpho and Aave material it needs, rather than a general release note. If SparkPoint has verified material for only one side, Sparky says that plainly and still explains the well-known structural differences for the other side — without inventing rates or figures, giving allocation advice or suggesting a transaction. A comparison that Sparky cannot ground is no longer shown with a \"Sources\" block, so a non-answer can never look like a sourced answer. Nothing about reviewing, signing or your funds changes.",
+      "published_at": "2026-10-29T13:20:00Z"
+    },
+    {
       "slug": "comparative-answers-065-2026-10",
       "type": "changelog",
       "tag": "Fixed",
