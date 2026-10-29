@@ -294,276 +294,70 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
     )
 
 
-#: Clause boundaries used to judge whether a declining OPENING still contains a real comparison.
-#: Sentence punctuation plus the contrast connectives that separate one side's description from
-#: the other's. Splitting is deliberately lexical: the test is whether substantive clauses exist,
-#: not whether the answer is long enough or contains one magic phrase.
-_COMPARATIVE_CLAUSE_SPLIT_RE = re.compile(
-    r"(?<=[.!?;:,])\s+|\s+(?:but|however|whereas|while|although|though)\s+",
-    re.IGNORECASE,
+#: First-person refusal openers. A comparative answer that OPENS with one of these is a
+#: whole-answer refusal, not a comparison, so the honest code-authored fallback replaces it.
+#: Every phrase requires "I": a third-party sentence such as "the oracle is unable to verify
+#: prices" is not the speaker declining. Matched only at the START of the answer (after leading
+#: whitespace), case-insensitively, with ASCII and curly apostrophes normalised.
+_REFUSAL_OPENERS = (
+    "i can't",
+    "i cannot",
+    "i'm not able to",
+    "i am not able to",
+    "i'm unable to",
+    "i am unable to",
+    "i don't have",
+    "i do not have",
+    "i won't",
 )
 
-#: A clause that only says the SPEAKER lacks material/data — honest, but not a comparison.
-#: Built from three small, explicit parts (speaker, information noun, negated possession/
-#: availability/verification verb) rather than one "no <noun>" regex, so a protocol property
-#: ("Aave has no verified coverage by an insurance fund", "Morpho has insufficient liquidity")
-#: is never mistaken for the speaker's own missing material. The fixed qualifier list covers the
-#: observed "verified", "SparkPoint-verified", "current", "enough" fashions; apostrophes are
-#: ASCII or curly throughout.
-_APOS = "['\u2019]"
-_VERIFIED_INFO_QUALIFIERS = (
-    r"(?:(?:sparkpoint[- ])?verified\s+|current\s+|recent\s+|updated\s+|"
-    r"any\s+|enough\s+|sufficient\s+)*"
-)
-#: "no material" is only a speaker no-data claim when it means reference material. The finance
-#: idiom "no material risk/difference/change/impact" is a real comparison, so a following property
-#: noun vetoes the match instead of turning the clause into a decline.
-_MATERIAL_PROPERTY_NOUNS = (
-    r"(?:risk|differences?|changes?|impacts?|effects?|benefits?|advantages?|reasons?|doubts?|"
-    r"evidence|harms?|concerns?|issues?|problems?|needs?|gains?|losses?|costs?|improvements?|"
-    r"gaps?)"
-)
-_INFO_NOUN = (
-    rf"(?:data|material(?!\s+{_MATERIAL_PROPERTY_NOUNS}\b)|information|details|notes|"
-    r"sources|coverage)"
-)
-_REFERENCE_SUBJECT = r"(?:reference\s+)?(?:notes|information|data)"
 
-_SPEAKER_NO_DATA_PATTERNS = (
-    # I / we do not have (any|verified|enough) material.
-    rf"\b(?:i|we)\s+(?:do\s+not|don{_APOS}t|can(?:not|{_APOS}t))\s+have\s+"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # I have no ... / I've no ... (the contraction is adjacent to the pronoun, no space).
-    rf"\b(?:i|we)(?:\s+have|{_APOS}ve)\s+no\s+"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # I haven't got ...
-    rf"\b(?:i|we)\s+(?:have\s+not|haven{_APOS}t|hasn{_APOS}t)\s+got\s+"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # I've got nothing verified ...
-    rf"\b(?:i|we)(?:{_APOS}ve|\s+have)\s+got\s+nothing(?:\s+verified)?\b",
-    # I / we lack ...
-    rf"\b(?:i|we)\s+(?:also\s+)?lack\s+{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # I couldn't find ...
-    rf"\b(?:i|we)\s+(?:could\s+not|couldn{_APOS}t)\s+(?:find|locate)\s+"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # I'm / I was unable to verify|confirm ...
-    rf"\b(?:i|we)(?:\s+(?:am|was|were|are)|{_APOS}(?:m|re))?\s+"
-    rf"(?:unable|not\s+able)\s+to\s+(?:verify|confirm)\b",
-    # SparkPoint itself does not have / has no ...
-    rf"\bsparkpoint\s+(?:does\s+not|doesn{_APOS}t|doesnt|has\s+no)\s+(?:have\s+)?"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # SparkPoint's notes/data/... do not cover ...
-    rf"\bsparkpoint{_APOS}s\s+{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\s+"
-    rf"(?:does\s+not|doesn{_APOS}t|doesnt|do\s+not|don{_APOS}t)\s+"
-    rf"(?:cover|mention|include|address|contain|have)\b",
-    # The (reference) notes/information/data do not cover ...
-    rf"\bthe\s+{_REFERENCE_SUBJECT}\s+"
-    rf"(?:does\s+not|doesn{_APOS}t|doesnt|do\s+not|don{_APOS}t|can(?:not|{_APOS}t))\s+"
-    rf"(?:cover|mention|include|address|contain|have|establish)\b",
-    # The (reference) notes/information/data is/are insufficient / not enough.
-    rf"\bthe\s+{_REFERENCE_SUBJECT}\s+(?:is|are)\s+"
-    rf"(?:not\s+enough|insufficient|incomplete|missing)\b",
-    # There is no / not enough / insufficient material.
-    rf"\bthere(?:\s+is|\s+are|{_APOS}s|{_APOS}re)\s+"
-    rf"(?:not\s+enough\s+|no\s+|insufficient\s+)"
-    rf"{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-    # There isn't / there is not (enough) material.
-    rf"\bthere(?:\s+is|\s+are)(?:n{_APOS}t|\s+not)\s+"
-    rf"(?:(?:not\s+)?enough\s+|no\s+|any\s+)?{_VERIFIED_INFO_QUALIFIERS}{_INFO_NOUN}\b",
-)
-_SPEAKER_NO_DATA_RE = re.compile("|".join(_SPEAKER_NO_DATA_PATTERNS), re.IGNORECASE)
-
-#: A PASSIVE DEFLECTION says the ranking/comparison itself is impossible without a first-person
-#: refusal opener or a no-data phrase. It is just as non-substantive: naming both sides inside
-#: "Neither Morpho nor Aave can be ranked with the available material" is not a comparison.
-_IMPOSSIBLE_PREDICATE = (
-    r"(?:rank(?:ed|ing)?|compar(?:e|ed|ing|ison)|assess(?:ed|ment)?|"
-    r"determin(?:e|ed)|evaluat(?:e|ed)|said|say)"
-)
-_PASSIVE_DEFLECTION_RE = re.compile(
-    r"(?:"
-    # Negated ability / possibility: "can't be compared", "it's not possible to rank",
-    # "there's no way to compare", "isn't possible to say".
-    r"\b(?:can(?:['\u2019]t|not|\s+not)|could(?:['\u2019]t|not|\s+not)?|"
-    r"is(?:n['\u2019]?t|\s+not)|are(?:n['\u2019]?t|\s+not)|"
-    r"it(?:['\u2019]s|\s+is)\s+not|"
-    r"there(?:['\u2019]s|\s+is|\s+are)(?:\s+no|n['\u2019]?t|\s+not)|"
-    r"not\s+possible|no\s+way)\b"
-    r"[^.;!?]{0,60}?\b(?:(?:be|to)\s+)?" + _IMPOSSIBLE_PREDICATE + r"\b"
-    r"|"
-    # "Neither X nor Y can be ranked" — affirmative modal, inherently exhaustive impossibility.
-    r"\bneither\b[^.;!?]{0,80}?\bcan\s+be\s+" + _IMPOSSIBLE_PREDICATE + r"\b"
-    r"|"
-    # "can be ranked ... with the available/current material" — an availability-limited ranking.
-    r"\b(?:can|could)\s+be\s+" + _IMPOSSIBLE_PREDICATE + r"\b[^.;!?]{0,50}?\b"
-    r"(?:available|current|existing|verified|reference)\b"
-    r")",
-    re.IGNORECASE,
-)
-
-#: Tokens that carry no comparison content on their own. A clause kept by the substance test
-#: must retain at least one token outside this set and outside the subject names it merely
-#: mentions; that replaces the old four-word floor, which discarded terse but genuine
-#: comparisons such as "Aave is older; Morpho is newer and isolated."
-_CLAUSE_STOPWORDS = frozenset(
-    {
-        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-        "and", "or", "but", "so", "than", "then", "that", "this", "these",
-        "those", "it", "its", "as", "to", "of", "in", "on", "for", "with",
-        "by", "from", "at", "has", "have", "had", "does", "do", "did", "can",
-        "could", "would", "should", "may", "might", "will", "shall", "not", "no",
-        "nor", "both", "either", "neither", "also", "very", "more", "most", "less",
-        "one", "they", "them", "their", "we", "i", "you", "he", "she", "his",
-        "her", "our", "your",
-    }
-)
-_CLAUSE_WORD_RE = re.compile(r"[a-z0-9][a-z0-9'\u2019_-]*")
+def _normalise_apostrophes(text: str) -> str:
+    """Fold curly apostrophes to ASCII so refusal matching is spelling-insensitive."""
+    return text.replace("\u2018", "'").replace("\u2019", "'")
 
 
-def _clause_has_substantive_content(text: str, hits: set[str]) -> bool:
-    """True when a clause says something beyond merely naming a subject."""
-    subject_tokens = {
-        token for name in hits for token in _CLAUSE_WORD_RE.findall(name.lower())
-    }
-    return any(
-        token not in _CLAUSE_STOPWORDS and token not in subject_tokens
-        for token in _CLAUSE_WORD_RE.findall(text.lower())
-    )
+def _is_whole_answer_refusal(answer: str) -> bool:
+    """Rule 1b: True when the answer OPENS with an explicit first-person refusal.
 
-
-def _comparative_substantive_clauses(
-    answer: str, names: Sequence[str]
-) -> tuple[int, set[str]]:
-    """How many clauses make a real comparison, and which named subjects they DISCUSS.
-
-    ``names`` are the subjects the coordinator extracted (or, for a deictic turn, the grounded
-    ones). A clause counts only when it is not itself a decline/no-data clause and says enough
-    about a named side. Only a SUBSTANTIVE clause contributes its subject mentions: a generic
-    decline that merely restates both names ("I can't say which is safer between Morpho and
-    Aave") must not lend those names to the one-sided clause that follows, or it would make the
-    answer look two-sided and let it cite a passage it never engaged.
+    Only the leading phrase counts: there is no mid-text matching, no clause splitting and no
+    passive/third-party detection.
     """
-    substantive = 0
-    mentioned: set[str] = set()
-    for clause in _COMPARATIVE_CLAUSE_SPLIT_RE.split(answer):
-        text = clause.strip()
-        if not text:
-            continue
-        hits = {name for name in names if text_mentions_subject(text, name)}
-        if (
-            _is_decline_clause(text)
-            or _SPEAKER_NO_DATA_RE.search(text)
-            or _PASSIVE_DEFLECTION_RE.search(text)
-        ):
-            continue
-        if names and not hits:
-            continue
-        if not _clause_has_substantive_content(text, hits):
-            continue
-        substantive += 1
-        mentioned |= hits
-    return substantive, mentioned
+    opening = _normalise_apostrophes(answer.lstrip()).lower()
+    return opening.startswith(_REFUSAL_OPENERS)
 
 
-def _comparative_has_substance(answer: str, names: Sequence[str]) -> bool:
-    """True when a declining opening goes on to make a substantive comparison.
-
-    This replaces the 066 length-plus-literal-marker heuristic. A 2–4 sentence answer (which is
-    what the prose system prompt asks for) is frequently shorter than 220 characters, and a
-    concise comparison can use sentence punctuation instead of " but " / " is a ". The substance
-    test asks two things instead: at least one non-decline clause that talks about a named side,
-    and both sides represented by those SUBSTANTIVE clauses. Deictic turns (no extracted names)
-    need two substantive clauses, because there is no name to anchor the comparison.
+def _is_comparative_servable(answer: str, subjects: Sequence[str]) -> bool:
+    """Rule 1: serve a comparison only when every named subject is mentioned and it is not a
+    whole-answer refusal. A deictic turn (no extracted subjects) has nothing to check.
     """
-    substantive, mentioned = _comparative_substantive_clauses(answer, names)
-    if not names:
-        return substantive >= 2
-    return substantive >= 1 and len(mentioned) >= min(2, len(names))
+    if _is_whole_answer_refusal(answer):
+        return False
+    return all(text_mentions_subject(answer, subject) for subject in subjects)
 
 
 def _comparative_citable_passages(
-    answer: str,
     subjects: Sequence[str],
-    covered: Sequence[str],
     passages: Sequence[Passage],
 ) -> tuple[Passage, ...]:
-    """The passages a comparative answer may cite: only those a substantive clause discusses.
+    """Rule 2: cite only a COMPLETE per-subject set, never a partial one.
 
-    A passage is provenance for the side it actually names, and only when the answer engaged
-    that side in a non-decline, non-no-data clause. A generic decline naming both subjects no
-    longer unlocks a citation for either. Deictic turns (no extracted subjects) keep the 065
-    whole-message behaviour: every retrieved passage remains citable.
+    When subjects are named, every subject must have at least one capped passage that mentions
+    it; otherwise nothing is citable and the answer is served uncited. A deictic turn (no named
+    subjects) keeps the 065 whole-message citation behaviour.
     """
-    if not subjects or not covered:
+    if not subjects:
         return tuple(passages)
-    discussed = _comparative_substantive_clauses(answer, subjects)[1]
-    if not discussed:
+    if not all(
+        any(passage_mentions_subject(passage, subject) for passage in passages)
+        for subject in subjects
+    ):
         return ()
     return tuple(
         passage
         for passage in passages
-        if any(
-            subject in discussed and passage_mentions_subject(passage, subject)
-            for subject in covered
-        )
+        if any(passage_mentions_subject(passage, subject) for subject in subjects)
     )
-
-
-def _is_comparative_non_answer(answer: str, names: Sequence[str] = ()) -> bool:
-    """True for a comparative response that only declines, so it must not be served as the answer.
-
-    The 066 beta capture had a pure deflection (``"I'm not able to compare Morpho and Aave…"``)
-    and a pure no-data reply (``"I don't have current data on Lido and Rocket Pool…"``) — both are
-    honest but not useful. A declining OPENING that then compares the grounded sides (``"I can't
-    say which is safer. Aave is one shared pool; Morpho uses isolated markets…"``) is a real
-    answer and must be served. Classification is by substance, not length or a marker list.
-    """
-    if not (
-        _is_decline(answer)
-        or _SPEAKER_NO_DATA_RE.search(answer)
-        or _PASSIVE_DEFLECTION_RE.search(answer)
-    ):
-        return False
-    return not _comparative_has_substance(answer, names)
-
-
-def _comparative_non_answer_reason(answer: str, names: Sequence[str]) -> str:
-    """Log-only classification of a replaced comparative answer: ``decline`` or ``non_answer``.
-
-    ``decline`` is a bare refusal that names no subject; ``non_answer`` is a subject-aware
-    deflection that still contains no substantive comparison clause.
-    """
-    mentioned = {name for name in names if text_mentions_subject(answer, name)}
-    return "non_answer" if mentioned else "decline"
-
-
-def _answer_can_cite(
-    answer: str,
-    comparative: bool,
-    covered: Sequence[str],
-    subjects: Sequence[str] = (),
-) -> bool:
-    """Whether a model-produced answer may carry the retrieved sources.
-
-    Non-comparative answers keep the 029 rule (the caller already checked passages/grounded).
-    A comparative answer must not be a pure decline, and it may carry sources only when at least
-    one grounded subject is discussed by a SUBSTANTIVE clause — a name that appears only inside
-    a generic decline is not provenance for a passage the answer never engaged, and a deflection
-    must never look sourced. The caller then narrows the emitted citations per subject with
-    :func:`_comparative_citable_passages`. A declining OPENING that then compares substantively
-    is citable. A deictic turn (``"compare them"``) has no extracted subjects, so it keeps the
-    065 behaviour: a grounded, non-declining model answer may cite the whole-message passages.
-    """
-    if not answer.strip():
-        return False
-    if not comparative:
-        return not _is_decline(answer)
-    if _is_comparative_non_answer(answer, subjects):
-        return False
-    if not covered:
-        return True
-    discussed = _comparative_substantive_clauses(answer, subjects)[1]
-    return any(subject in discussed for subject in covered)
 
 
 #: ``SparkyReply.failure`` → the content-free reason string in ``comparative_outcome``.
@@ -580,8 +374,14 @@ _COMPARATIVE_FAILURE_REASONS = {
 
 
 def _comparative_failure_reason(failure: str | None) -> str:
-    """Map a prose failure kind onto the logged comparative-outcome reason set."""
-    return _COMPARATIVE_FAILURE_REASONS.get(failure or "", "non_answer")
+    """Map a prose failure kind onto the logged comparative-outcome reason set.
+
+    A missing or unknown kind maps explicitly to ``non_answer``; ``unusable`` keeps its own
+    reason because it is a content-guard discard, not a deflection.
+    """
+    if not failure:
+        return "non_answer"
+    return _COMPARATIVE_FAILURE_REASONS.get(failure, "non_answer")
 
 
 def _log_comparative_outcome(
@@ -595,8 +395,7 @@ def _log_comparative_outcome(
 
     Never includes the user message, the model text, a wallet or a citation endpoint. ``reason``
     is one of ``served``, ``guard_meta``, ``guard_action``, ``refused``, ``empty``,
-    ``unusable``, ``non_answer``, ``decline`` or ``upstream``; ``cited`` says whether a citation
-    block shipped.
+    ``unusable``, ``non_answer`` or ``upstream``; ``cited`` says whether a citation block shipped.
     """
     _logger.info(
         "comparative_outcome subjects=%d covered=%d reason=%s cited=%s",
@@ -1584,46 +1383,36 @@ class CoordinatorDag:
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            # 066/067 — a comparative "answer" that only declines is not useful, and using it
-            # would waste the honest structural fallback. Replace it BEFORE the text block is
-            # emitted (streaming may already have painted it; the terminal block is
-            # authoritative), and never attach a citation to it. 067 classifies by SUBSTANCE: a
-            # declining opening that then compares the grounded sides is served.
-            if comparative and _is_comparative_non_answer(prose_answer, subjects):
-                _log_comparative_outcome(
-                    subjects,
-                    covered,
-                    reason=_comparative_non_answer_reason(prose_answer, subjects),
-                    cited=False,
-                )
-                yield TextBlock(
-                    _comparative_fallback(message, subjects=subjects, covered=covered)
-                )
-                return
-            # 067 — cite only the passages whose subject a SUBSTANTIVE clause actually discusses.
-            # A generic decline that names both sides must not make both passages look sourced
-            # (or let a one-sided answer claim both), so the emitted set is narrowed per subject.
-            citable = _comparative_citable_passages(
-                prose_answer, subjects, covered, passages
-            )
-            cited = bool(
-                passages
-                and grounded
-                and _answer_can_cite(prose_answer, comparative, covered, subjects)
-                and citable
-            )
             if comparative:
+                # 067 — serve a comparison only when every named subject is mentioned and the
+                # answer is not a whole-answer refusal; otherwise use the honest code-authored
+                # fallback (uncited). Replace it BEFORE the text block is emitted (streaming may
+                # already have painted it; the terminal block is authoritative).
+                if not _is_comparative_servable(prose_answer, subjects):
+                    _log_comparative_outcome(
+                        subjects, covered, reason="non_answer", cited=False
+                    )
+                    yield TextBlock(
+                        _comparative_fallback(message, subjects=subjects, covered=covered)
+                    )
+                    return
+                # Cite only a COMPLETE per-subject set; a partial one is served uncited.
+                citable = _comparative_citable_passages(subjects, passages)
+                cited = bool(passages and grounded and citable)
                 _log_comparative_outcome(
                     subjects, covered, reason="served", cited=cited
                 )
+            else:
+                # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
+                # is not grounded in the retrieved passages, so it must not carry sources.
+                citable = tuple(passages)
+                cited = bool(
+                    passages
+                    and grounded
+                    and prose_answer.strip()
+                    and not _is_decline(prose_answer)
+                )
             yield TextBlock(prose_answer)
-            # Cite ONLY when the grounded answer actually came from the model AND actually
-            # answered. A fallback is not grounded in those passages, and neither is a refusal
-            # (029/FR-014) — citing either would claim a provenance the text does not have.
-            # 066/067 adds the comparative tests: a passage is citable only for a subject a
-            # substantive clause discusses, so a tangential passage cannot be cited under a
-            # non-answer; a declining opening that compares substantively may cite the sides it
-            # discusses; a deictic turn keeps 065.
             if cited:
                 yield CitationBlock(sources=tuple(p.citation for p in citable))
             return
@@ -2264,22 +2053,12 @@ _LEADING_CONNECTIVE = (
     r"in\s+any\s+case|unfortunately|sadly|honestly|to\s+be\s+clear|and|so)\b"
     r"[\s,:;—–-]*|no\s*[,:;—–-]+\s*)*"
 )
-_DECLINE_PHRASE = _SPEAKER_REFUSAL
-_DECLINE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _DECLINE_PHRASE, re.IGNORECASE)
-#: Clause-level declines are anchored after connectives too: a refusal phrase mid-clause (for
-#: example "if I can't" inside a conditional, or "unfortunately" before protocol content) is not
-#: the clause declining.
-_DECLINE_CLAUSE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _DECLINE_PHRASE, re.IGNORECASE)
+_DECLINE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _SPEAKER_REFUSAL, re.IGNORECASE)
 
 
 def _is_decline(answer: str) -> bool:
     """True when the answer opens by declining — so it must not carry citations."""
     return bool(_DECLINE_RE.search(answer.strip()))
-
-
-def _is_decline_clause(clause: str) -> bool:
-    """True when a single clause STARTS with a speaker refusal (after leading softeners)."""
-    return bool(_DECLINE_CLAUSE_RE.search(clause.strip()))
 
 
 #: 031 — HOW DO I WITHDRAW. A question, not a command: "withdraw 100 USDC" must still build an

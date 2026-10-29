@@ -5,8 +5,8 @@
       "slug": "comparative-followup-067-2026-10",
       "type": "changelog",
       "tag": "Fixed",
-      "title": "A \"which is safer\" comparison now gets the full comparison",
-      "body": "When you ask Sparky which of two protocols is safer, it can now say plainly that it will not rank one above the other and still go on to compare them properly — using the verified material for both sides, with its sources shown. Before, an honest opening like \"I can't say which is safer\" could cause the whole comparison to be swapped for a generic summary, or leave a real comparison without its sources. A pure refusal is still replaced by the honest summary, and the safety checks that keep internal notes or action-shaped text out of answers are unchanged. Behind the scenes, the agent now records why a comparison was replaced or left uncited — counts and reasons only, never your message or the answer text. Nothing about reviewing, signing or your funds changes.",
+      "title": "Comparisons answer only when they actually compare",
+      "body": "When you ask Sparky to compare two protocols, it now answers only when the reply actually names both options and does not open with a flat refusal. When SparkPoint has verified material for every option, the answer includes its sources; if material is missing for any one of them, the comparison is still shown but without a partial \"Sources\" block. If the reply is just a refusal, Sparky replaces it with its honest structural summary. Behind the scenes, the agent records why a comparison was replaced or left uncited — counts and reasons only, never your message or the answer text. Nothing about reviewing, signing or your funds changes.",
       "published_at": "2026-10-29T14:00:00Z"
     },
     {
