@@ -63,10 +63,29 @@ def looks_meta_shaped(text: str) -> bool:
     return any(pattern.search(text) for pattern in _META_SHAPED)
 
 
+def unusable_reason(text: str) -> str | None:
+    """WHY a generated answer must not be served (065), or ``None`` when it is usable.
+
+    The coordinator needs the distinction: an action/meta discard is a CONTENT problem (the model
+    answered, but the answer cannot be shown), while an upstream exception is a model/provider
+    failure. Before 065 both were collapsed into ``fell_back=True`` and the DAG turned either into
+    ``UPSTREAM_UNAVAILABLE`` — which told the user "I couldn't reach my model" about a response the
+    model had just produced. The reasons are deliberately the same high-precision classes as
+    :func:`is_unusable`; this only names them.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return "empty"
+    if looks_action_shaped(stripped):
+        return "action"
+    if looks_meta_shaped(stripped):
+        return "meta"
+    return None
+
+
 def is_unusable(text: str) -> bool:
     """One call for the common case: empty, action-shaped, or meta-shaped ⇒ do not serve it."""
-    stripped = text.strip()
-    return not stripped or looks_action_shaped(stripped) or looks_meta_shaped(stripped)
+    return unusable_reason(text) is not None
 
 
 #: How many opening characters a streamed prose turn buffers before the first paint (059, restored
@@ -97,4 +116,5 @@ __all__ = [
     "looks_action_shaped",
     "looks_meta_shaped",
     "prefix_is_usable",
+    "unusable_reason",
 ]

@@ -234,7 +234,8 @@ async def put_document(
         else:
             await unpublish_document(updated.slug)
 
-    _logger.info("self_authoring_document_edited slug=%s by=%s", slug, admin.owner)
+    # Address-free logs (065): the audit table records WHO acted; the line does not need the wallet.
+    _logger.info("self_authoring_document_edited slug=%s", slug)
     return {"ok": True, "slug": slug, "status": updated.status if updated else None}
 
 
@@ -249,9 +250,7 @@ async def delete_document(
     store = _store()
     await unpublish_document(slug)
     removed = await store.delete_document(slug)
-    _logger.info(
-        "self_authoring_document_deleted slug=%s by=%s removed=%s", slug, admin.owner, removed
-    )
+    _logger.info("self_authoring_document_deleted slug=%s removed=%s", slug, removed)
     return {"ok": True, "removed": removed}
 
 
@@ -273,7 +272,5 @@ async def resolve_finding(
     ok = await store.resolve_finding(finding_id, status=body.status, actor=admin.owner)
     if not ok:
         raise ApiError(ErrorCode.NOT_FOUND, "No such finding.")
-    _logger.info(
-        "self_authoring_finding_%s id=%d by=%s", body.status, finding_id, admin.owner
-    )
+    _logger.info("self_authoring_finding_%s id=%d", body.status, finding_id)
     return {"ok": True, "id": finding_id, "status": body.status}

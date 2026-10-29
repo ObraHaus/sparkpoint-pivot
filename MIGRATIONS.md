@@ -12,7 +12,7 @@ Tracks which migrations have been applied to each environment (**Postgres + pgve
 | Environment | DB | Migration level | As of |
 |---|---|---|---|
 | **Production** (client infra — TBD) | Postgres + pgvector (TBD) | **none** | — |
-| **Develop** (OH Coolify) | `sparkpoint-postgres-beta` (pgvector) | **0040** (admission mirror applied 2026-09-20) · **0041 PENDING** (APY history — apply before the agent redeploy) | 2026-09-20 |
+| **Develop** (OH Coolify) | `sparkpoint-postgres-beta` (pgvector) | **0043** (0043_chat_feedback applied on beta 2026-10-28) | 2026-10-28 |
 
 > **`0033_mandate_goal_and_limits` is PENDING** (feature 030) — see the table below. Apply with `PGCLIENTENCODING=UTF8` BEFORE redeploying the agent; the fallback exists as a safety net, not as the plan.
 >
