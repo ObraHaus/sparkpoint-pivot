@@ -36,6 +36,7 @@ from sparkpoint_agent.coordinator.dag import (
     PortfolioView,
     _answer_can_cite,
     _comparative_coverage_hint,
+    _comparative_failure_reason,
     _is_comparative_non_answer,
 )
 from sparkpoint_agent.coordinator.guidance import (
@@ -868,6 +869,114 @@ async def test_pure_decline_naming_both_subjects_is_still_replaced_and_uncited(
     assert text != decline
     assert "I can't rank" in text
     assert _citations(blocks) == []
+
+
+GENERIC_DECLINE_ONE_SIDED = (
+    "I can't say which is safer between Morpho and Aave. Morpho uses isolated markets and adds "
+    "curator risk."
+)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_generic_decline_does_not_lend_both_names_to_a_one_sided_answer(
+    streaming: bool,
+) -> None:
+    """OH Defender (medium): the decline clause named both subjects, so it satisfied the
+    both-sides-mentioned check and a one-sided answer was served and cited with BOTH sources.
+
+    Intended outcome: only SUBSTANTIVE clauses count subject mentions, so this answer discusses
+    just Morpho. A comparison that engaged one side is not served as a sourced comparison — it
+    is replaced by the honest structural fallback and stays uncited.
+    """
+    llm = _AnswerLlm(GENERIC_DECLINE_ONE_SIDED)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != GENERIC_DECLINE_ONE_SIDED, (
+        "a one-sided answer must not be served as a comparison"
+    )
+    assert "I can't rank" in text
+    assert _citations(blocks) == [], "the decline's Aave mention is not provenance for Aave"
+
+
+INSURANCE_FUND_SUBSTANTIVE = (
+    "I can't say which is safer. Aave is one shared lending pool with market-wide risk, while "
+    "Morpho has no verified coverage by an insurance fund and adds curator risk, so the two "
+    "risk profiles differ."
+)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_protocol_insurance_coverage_clause_stays_substantive(streaming: bool) -> None:
+    """OH Defender advisory: ``_NO_COMPARATIVE_DATA_RE`` swallowed "has no verified coverage by
+    an insurance fund", a real risk clause. The tightened matcher only recognises the speaker's
+    own lack of material, so this comparison is served and both grounded sides are cited.
+    """
+    assert _is_comparative_non_answer(
+        INSURANCE_FUND_SUBSTANTIVE, ("Morpho", "Aave")
+    ) is False
+    llm = _AnswerLlm(INSURANCE_FUND_SUBSTANTIVE)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == INSURANCE_FUND_SUBSTANTIVE
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+THREE_SUBJECT_ANSWER = (
+    "I can't say which is safest. Aave is one shared lending pool, while Morpho uses isolated "
+    "markets and adds curator risk. I don't have verified data on Compound."
+)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_citations_are_filtered_to_subjects_a_substantive_clause_discusses(
+    streaming: bool,
+) -> None:
+    """A subject that appears only in a decline/no-data clause is not cited, even when the
+    answer is substantive enough to be served because other sides were genuinely compared.
+    """
+    assert _is_comparative_non_answer(
+        THREE_SUBJECT_ANSWER, ("Aave", "Morpho", "Compound")
+    ) is False
+    llm = _AnswerLlm(THREE_SUBJECT_ANSWER)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder(
+                {"Aave": AAVE_DOC, "Morpho": MORPHO_DOC, "Compound": COMPOUND_DOC}
+            ),
+            streaming=streaming,
+        ),
+        "Compare Aave, Morpho and Compound for a cautious user.",
+    )
+    assert _text(blocks) == THREE_SUBJECT_ANSWER
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+    assert "Compound" not in {source["provider"] for source in cited[0]["sources"]}
+
+
+def test_unusable_failure_maps_to_its_own_outcome_reason() -> None:
+    """OH Defender advisory: an unmapped failure kind logged as ``non_answer``. ``unusable`` is
+    a content-guard discard (the model did answer), so it now has its own reason; a genuinely
+    unknown value still falls back to ``non_answer``.
+    """
+    assert _comparative_failure_reason("unusable") == "unusable"
+    assert _comparative_failure_reason("something-else") == "non_answer"
 
 
 @pytest.mark.parametrize("streaming", [False, True])

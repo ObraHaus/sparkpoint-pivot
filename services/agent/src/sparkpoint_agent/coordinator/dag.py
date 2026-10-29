@@ -303,13 +303,25 @@ _COMPARATIVE_CLAUSE_SPLIT_RE = re.compile(
     re.IGNORECASE,
 )
 
-#: A clause that only says the corpus lacks material/coverage — honest, but not a comparison.
+#: A clause that only says the SPEAKER lacks material/data — honest, but not a comparison.
+#: Deliberately anchored to the speaker/corpus (``I``/``we``/``SparkPoint``/impersonal "there
+#: is"). An unanchored "no ... coverage" used to match a protocol property too ("Morpho has no
+#: verified coverage by an insurance fund"), which dropped a genuine risk clause from the
+#: comparison and could turn a real answer into a pure-decline fallback.
 _NO_COMPARATIVE_DATA_RE = re.compile(
-    r"\b(?:no|without|lack(?:s|ing)?\s+of)\s+(?:sparkpoint[- ]verified\s+)?(?:verified\s+)?"
+    r"\b(?:i|we)\s+(?:do\s+not|don['’]?t)\s+have\s+"
+    r"(?:any\s+|current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
     r"(?:data|material|information|details|coverage)\b"
-    r"|\bnot\s+enough\s+(?:sparkpoint[- ]verified\s+)?(?:verified\s+)?"
-    r"(?:data|material|information|details)\b"
-    r"|\binsufficient\s+(?:verified\s+)?(?:data|material|information|details)\b",
+    r"|\b(?:i|we)\s+(?:have|['’]ve)\s+no\s+"
+    r"(?:current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
+    r"(?:data|material|information|details|coverage)\b"
+    r"|\bsparkpoint\s+(?:does\s+not|doesn['’]?t|doesnt|has\s+no)\s+(?:have\s+)?"
+    r"(?:any\s+|current\s+|recent\s+|updated\s+|sparkpoint[- ]verified\s+|verified\s+)*"
+    r"(?:data|material|information|details|coverage)\b"
+    r"|\bthere(?:['’]s|\s+is)\s+(?:not\s+enough|no)\s+"
+    r"(?:sparkpoint[- ]verified\s+|verified\s+)?(?:data|material|information|details|coverage)\b"
+    r"|\b(?:not\s+enough|insufficient)\s+(?:sparkpoint[- ]verified\s+|verified\s+)?"
+    r"(?:data|material|information|details)\b",
     re.IGNORECASE,
 )
 
@@ -317,12 +329,14 @@ _NO_COMPARATIVE_DATA_RE = re.compile(
 def _comparative_substantive_clauses(
     answer: str, names: Sequence[str]
 ) -> tuple[int, set[str]]:
-    """How many clauses make a real comparison, and which named subjects they mention.
+    """How many clauses make a real comparison, and which named subjects they DISCUSS.
 
     ``names`` are the subjects the coordinator extracted (or, for a deictic turn, the grounded
     ones). A clause counts only when it is not itself a decline/no-data clause and says enough
-    about a named side. Mention collection includes the decline clause so a partial answer that
-    explicitly names the ungrounded side ("no data on Compound, but Aave is…") still counts both.
+    about a named side. Only a SUBSTANTIVE clause contributes its subject mentions: a generic
+    decline that merely restates both names ("I can't say which is safer between Morpho and
+    Aave") must not lend those names to the one-sided clause that follows, or it would make the
+    answer look two-sided and let it cite a passage it never engaged.
     """
     substantive = 0
     mentioned: set[str] = set()
@@ -331,7 +345,6 @@ def _comparative_substantive_clauses(
         if not text:
             continue
         hits = {name for name in names if text_mentions_subject(text, name)}
-        mentioned |= hits
         if _is_decline(text) or _NO_COMPARATIVE_DATA_RE.search(text):
             continue
         if names and not hits:
@@ -339,6 +352,7 @@ def _comparative_substantive_clauses(
         if len(text.split()) < 4:
             continue
         substantive += 1
+        mentioned |= hits
     return substantive, mentioned
 
 
@@ -349,13 +363,41 @@ def _comparative_has_substance(answer: str, names: Sequence[str]) -> bool:
     what the prose system prompt asks for) is frequently shorter than 220 characters, and a
     concise comparison can use sentence punctuation instead of " but " / " is a ". The substance
     test asks two things instead: at least one non-decline clause that talks about a named side,
-    and both sides represented across the answer. Deictic turns (no extracted names) need two
-    substantive clauses, because there is no name to anchor the comparison.
+    and both sides represented by those SUBSTANTIVE clauses. Deictic turns (no extracted names)
+    need two substantive clauses, because there is no name to anchor the comparison.
     """
     substantive, mentioned = _comparative_substantive_clauses(answer, names)
     if not names:
         return substantive >= 2
     return substantive >= 1 and len(mentioned) >= min(2, len(names))
+
+
+def _comparative_citable_passages(
+    answer: str,
+    subjects: Sequence[str],
+    covered: Sequence[str],
+    passages: Sequence[Passage],
+) -> tuple[Passage, ...]:
+    """The passages a comparative answer may cite: only those a substantive clause discusses.
+
+    A passage is provenance for the side it actually names, and only when the answer engaged
+    that side in a non-decline, non-no-data clause. A generic decline naming both subjects no
+    longer unlocks a citation for either. Deictic turns (no extracted subjects) keep the 065
+    whole-message behaviour: every retrieved passage remains citable.
+    """
+    if not subjects or not covered:
+        return tuple(passages)
+    discussed = _comparative_substantive_clauses(answer, subjects)[1]
+    if not discussed:
+        return ()
+    return tuple(
+        passage
+        for passage in passages
+        if any(
+            subject in discussed and passage_mentions_subject(passage, subject)
+            for subject in covered
+        )
+    )
 
 
 def _is_comparative_non_answer(answer: str, names: Sequence[str] = ()) -> bool:
@@ -391,11 +433,13 @@ def _answer_can_cite(
     """Whether a model-produced answer may carry the retrieved sources.
 
     Non-comparative answers keep the 029 rule (the caller already checked passages/grounded).
-    A comparative answer must not be a pure decline, and it must name every subject that was
-    actually grounded: a passage is not provenance for text that never engaged it, and a
-    deflection must never look sourced. A declining OPENING that then compares substantively is
-    citable. A deictic turn (``"compare them"``) has no extracted subjects, so it keeps the 065
-    behaviour: a grounded, non-declining model answer may cite the whole-message passages.
+    A comparative answer must not be a pure decline, and it may carry sources only when at least
+    one grounded subject is discussed by a SUBSTANTIVE clause — a name that appears only inside
+    a generic decline is not provenance for a passage the answer never engaged, and a deflection
+    must never look sourced. The caller then narrows the emitted citations per subject with
+    :func:`_comparative_citable_passages`. A declining OPENING that then compares substantively
+    is citable. A deictic turn (``"compare them"``) has no extracted subjects, so it keeps the
+    065 behaviour: a grounded, non-declining model answer may cite the whole-message passages.
     """
     if not answer.strip():
         return False
@@ -405,7 +449,8 @@ def _answer_can_cite(
         return False
     if not covered:
         return True
-    return all(text_mentions_subject(answer, subject) for subject in covered)
+    discussed = _comparative_substantive_clauses(answer, subjects)[1]
+    return any(subject in discussed for subject in covered)
 
 
 #: ``SparkyReply.failure`` → the content-free reason string in ``comparative_outcome``.
@@ -415,6 +460,9 @@ _COMPARATIVE_FAILURE_REASONS = {
     "refused": "refused",
     "empty": "empty",
     "upstream": "upstream",
+    # ``Sparky`` uses "unusable" when no more specific guard reason is available; it is a
+    # CONTENT rejection, not a non-answer/deflection, so it gets its own logged reason.
+    "unusable": "unusable",
 }
 
 
@@ -434,7 +482,8 @@ def _log_comparative_outcome(
 
     Never includes the user message, the model text, a wallet or a citation endpoint. ``reason``
     is one of ``served``, ``guard_meta``, ``guard_action``, ``refused``, ``empty``,
-    ``non_answer``, ``decline`` or ``upstream``; ``cited`` says whether a citation block shipped.
+    ``unusable``, ``non_answer``, ``decline`` or ``upstream``; ``cited`` says whether a citation
+    block shipped.
     """
     _logger.info(
         "comparative_outcome subjects=%d covered=%d reason=%s cited=%s",
@@ -1413,10 +1462,17 @@ class CoordinatorDag:
                     _comparative_fallback(message, subjects=subjects, covered=covered)
                 )
                 return
+            # 067 — cite only the passages whose subject a SUBSTANTIVE clause actually discusses.
+            # A generic decline that names both sides must not make both passages look sourced
+            # (or let a one-sided answer claim both), so the emitted set is narrowed per subject.
+            citable = _comparative_citable_passages(
+                prose_answer, subjects, covered, passages
+            )
             cited = bool(
                 passages
                 and grounded
                 and _answer_can_cite(prose_answer, comparative, covered, subjects)
+                and citable
             )
             if comparative:
                 _log_comparative_outcome(
@@ -1426,11 +1482,12 @@ class CoordinatorDag:
             # Cite ONLY when the grounded answer actually came from the model AND actually
             # answered. A fallback is not grounded in those passages, and neither is a refusal
             # (029/FR-014) — citing either would claim a provenance the text does not have.
-            # 066/067 adds the comparative tests: the answer must name every subject that was
-            # actually grounded, so a tangential passage cannot be cited under a non-answer; a
-            # declining opening that compares substantively may cite; a deictic turn keeps 065.
+            # 066/067 adds the comparative tests: a passage is citable only for a subject a
+            # substantive clause discusses, so a tangential passage cannot be cited under a
+            # non-answer; a declining opening that compares substantively may cite the sides it
+            # discusses; a deictic turn keeps 065.
             if cited:
-                yield CitationBlock(sources=tuple(p.citation for p in passages))
+                yield CitationBlock(sources=tuple(p.citation for p in citable))
             return
 
         yield ToolStepBlock("Reading your portfolio", "running")
