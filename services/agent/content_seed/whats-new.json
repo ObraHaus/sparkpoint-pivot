@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "thumbs-feedback-204-fix-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Rating an answer now confirms cleanly",
+      "body": "When you rate a Sparky answer with a thumbs up or down, the rating was being saved but the app could still show an error, as if the tap had failed. That is fixed: the confirmation now comes back cleanly, so you can see your feedback was recorded. Nothing else about chat, signing or your funds changed.",
+      "published_at": "2026-10-28T09:00:00Z"
+    },
+    {
       "slug": "quota-refund-audit-2026-10",
       "type": "changelog",
       "tag": "Fixed",

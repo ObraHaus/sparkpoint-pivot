@@ -17,7 +17,9 @@
  *     Content-Type, which also routes a pre-stream error envelope (JSON) down the
  *     buffered path with its real status — exactly what the client's
  *     `parseErrorEnvelope` expects.
- *   - all other endpoints return the upstream JSON body + status verbatim.
+ *   - all other endpoints return the upstream JSON body + status verbatim. A null-body status
+ *     (204/205/304, …) is returned with `null` — the Fetch `Response` constructor rejects ANY body
+ *     for those, which used to turn `POST /chat/feedback`'s successful 204 into a 500.
  *
  * GRACEFUL OFFLINE (non-custody law): a missing `AGENT_INTERNAL_URL`, or any
  * network failure reaching the agent, returns a clean §1.5 error envelope that the
@@ -39,6 +41,7 @@ import {
   applyChatStreamDeadline,
   withChatConnectDeadline,
 } from "@/lib/agent/chatStreamDeadline";
+import { bufferedUpstreamResponse, sseUpstreamResponse } from "@/lib/agent/proxyResponse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -190,46 +193,19 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   if (upstream.ok && upstream.body && contentType.includes("text/event-stream")) {
     // Chat-only, exact-path scoped — every other SSE route stays exactly as origin/main.
     const stream = applyChatStreamDeadline(path, upstream.body);
-    return new Response(stream, {
-      status: upstream.status,
-      headers: {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache, no-transform",
-        connection: "keep-alive",
-        // Defeat proxy/response buffering so events flush as they arrive.
-        "x-accel-buffering": "no",
-        // 036 — AND declare the body already encoded, which is what actually stops it.
-        //
-        // `no-transform` and `x-accel-buffering` were both already set, and the stream was STILL
-        // being buffered end-to-end for every browser. Measured against the live deployment on the
-        // same question:
-        //
-        //     plain request                       tool_step 2.7s · 10.1s · 17.8s · answer 17.8s
-        //     Accept-Encoding: gzip, deflate, br  EVERYTHING at 21.2s
-        //
-        // A browser always sends that header, so no user had ever seen this stream arrive
-        // incrementally: the compressor held every event until the response closed. It was
-        // invisible because the old waiting state was the single static word "Working…", which
-        // looks identical whether anything is streaming or not — the progress trace only appeared
-        // once the turn was already over, which is precisely when it is of no use.
-        //
-        // `identity` says the body is already in its final encoding, so nothing downstream may
-        // re-encode (and therefore buffer) it. Compression stays on for every other response.
-        "content-encoding": "identity",
-      },
-    });
+    return sseUpstreamResponse(stream, upstream.status);
   }
 
   // Everything else: relay the JSON body + the upstream status verbatim (§1.5 error
   // envelopes included, so the client keys off the real code/status). We copy only
   // a minimal, safe header allowlist — never the token or any upstream auth header.
-  const outHeaders = new Headers();
-  if (contentType) outHeaders.set("content-type", contentType);
-  const retryAfter = upstream.headers.get("retry-after");
-  if (retryAfter !== null) outHeaders.set("retry-after", retryAfter);
-
   const buffered = await upstream.arrayBuffer();
-  return new Response(buffered, { status: upstream.status, headers: outHeaders });
+  return bufferedUpstreamResponse({
+    status: upstream.status,
+    body: buffered,
+    contentType,
+    retryAfter: upstream.headers.get("retry-after"),
+  });
 }
 
 export function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }): Promise<Response> {
