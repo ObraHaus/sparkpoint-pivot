@@ -10,6 +10,14 @@
       "published_at": "2026-10-28T09:00:00Z"
     },
     {
+      "slug": "true-streaming-and-comparisons-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky's answers now stream as they are written — and comparisons get a real answer",
+      "body": "Sparky's replies now start appearing in the chat as they are written instead of arriving all at once when the answer is finished. A behind-the-scenes gateway was holding every word until the end; it now passes each word through immediately, so a normal answer starts painting in a fraction of a second while the rest is still being written. The complete, checked answer still replaces what you saw, is the only version saved to your history, and nothing about reviewing or signing changes. Comparative questions also get a proper answer now: ask \"Is Morpho safer than Aave?\" or \"Compare that with just keeping it in Aave\" and Sparky compares the risks, how the yield is produced and the fees from its grounded product knowledge — instead of returning a generic empty-wallet message, and without preparing any transaction.",
+      "published_at": "2026-10-28T03:00:00Z"
+    },
+    {
       "slug": "quota-refund-audit-2026-10",
       "type": "changelog",
       "tag": "Fixed",

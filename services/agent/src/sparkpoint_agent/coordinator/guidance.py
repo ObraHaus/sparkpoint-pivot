@@ -32,6 +32,8 @@ __all__ = [
     "UNSAFE_REFUSAL",
     "amount_from_text",
     "duration_months",
+    "has_financial_action_verb",
+    "is_comparative_question",
     "is_confirmation",
     "is_explicit_financial_command",
     "is_unsafe_request",
@@ -228,6 +230,23 @@ def is_explicit_financial_command(message: str) -> bool:
     if not _FINANCIAL_VERB_RE.search(message):
         return False
     return amount_from_text(message) is not None or is_withdraw_all(message)
+
+
+#: 063 Defender — the action verbs that make a turn an instruction even when no amount parses.
+#: This is a SUPERSET of ``_FINANCIAL_VERB_RE``: the explicit-command guard keeps its narrower
+#: list (so a sized "which vault should I put 1,000 USDC in?" stays a curated question), while
+#: the comparative guard must never swallow a turn that asks for an action. Amount is NOT
+#: required here: "deposit my entire balance into whichever is safer than Aave" acts.
+_ACTION_VERB_RE = re.compile(
+    r"\b(?:deposit|supply|stake|withdraw|redeem|cash\s?out|unstake|swap|exchange|convert|"
+    r"trade|buy|sell|transfer|send|move|put|invest|allocate|rebalance|lend|borrow)\b",
+    re.IGNORECASE,
+)
+
+
+def has_financial_action_verb(message: str) -> bool:
+    """True when the turn names a financial ACTION verb (an amount is NOT required)."""
+    return bool(_ACTION_VERB_RE.search(message))
 
 
 def last_proposal_message(history: Sequence[tuple[str, str]] | None) -> str | None:
@@ -506,6 +525,38 @@ _COMPARE_AAVE_RE = re.compile(
 _RISK_RE = re.compile(
     r"\b(?:moderate|balanced|conservative|growth|aggressive|risk|riskier)\b", re.IGNORECASE
 )
+#: 063 — comparison shapes ("X vs Y", "safer than", "compare … with …"). These are KNOWLEDGE
+#: questions: the answer must compare risk/yield/protocol facts from grounding, never the
+#: yield/mandate composer's canned copy and never an action. Kept deliberately broad on the
+#: comparison VERB and narrow enough that an ordinary action command does not match; the DAG
+#: additionally requires that the turn carries no financial action verb at all.
+_COMPARATIVE_RE = re.compile(
+    r"\b(?:vs\.?|versus)\b"
+    r"|\bcompar(?:e|es|ed|ing|ison)\b"
+    r"|\bsafer\s+than\b"
+    r"|\b(?:more|less)\s+(?:safe|risky)\s+than\b"
+    r"|\briskier\s+than\b"
+    r"|\bwhich\s+(?:one\s+)?(?:is\s+)?(?:safer|better|riskier)\b",
+    re.IGNORECASE,
+)
+#: A bare "better/worse than" is ordinary English ("move it wherever is better than Aave"), so
+#: it only marks a knowledge comparison when the whole turn is shaped like a question.
+_BETTER_WORSE_THAN_RE = re.compile(r"\b(?:better|worse)\s+than\b", re.IGNORECASE)
+_COMPARATIVE_QUESTION_SHAPE_RE = re.compile(
+    r"^\s*(?:is|are|which|what|how|compare|does|do|should)\b|\?\s*$", re.IGNORECASE
+)
+
+
+def is_comparative_question(message: str) -> bool:
+    """True for an "X vs Y" / "safer than" / "compare … with …" knowledge question (063)."""
+    if _COMPARATIVE_RE.search(message):
+        return True
+    return bool(
+        _BETTER_WORSE_THAN_RE.search(message)
+        and _COMPARATIVE_QUESTION_SHAPE_RE.search(message)
+    )
+
+
 _FOLLOWUP_RE = re.compile(
     r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE
 )
@@ -520,6 +571,11 @@ def is_yield_guidance_question(message: str) -> bool:
     if _VAULT_SPECIFIC_RE.search(message):
         return False
     if _APY_DEFINITION_RE.search(message):
+        return False
+    # 063 — a comparison is a knowledge question, not a yield/mandate estimate. Route it to the
+    # grounded prose branch; the yield composer's "nothing for a mandate to apply to" is not an
+    # answer to "Is Morpho safer than Aave?".
+    if is_comparative_question(message):
         return False
     if is_explicit_financial_command(message):
         return False

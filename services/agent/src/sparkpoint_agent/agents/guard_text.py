@@ -69,11 +69,15 @@ def is_unusable(text: str) -> bool:
     return not stripped or looks_action_shaped(stripped) or looks_meta_shaped(stripped)
 
 
-#: 059 — how many opening characters a streamed prose turn buffers before the first paint. Enough
-#: to catch the live meta/action shapes ("reference notes", "The user asks", `"type":`) early,
-#: while adding no perceptible latency to an otherwise healthy stream. Long enough answers are
-#: therefore only painted after their OPENING passed the same guard the full text will. A body
-#: that only becomes unusable after this hold may have painted; the terminal block replaces it.
+#: How many opening characters a streamed prose turn buffers before the first paint (059, restored
+#: in 063 after a Defender review). The window must be measured in CHARACTERS of accumulated text,
+#: never in chunks: a token-sized first delta ("We") passes the guard on its own, but a response
+#: that opens into meta narration ("reference notes", "The user asks") or an action shape
+#: (`"type":`, raw calldata) within the first 40 characters must never be painted. Once the window
+#: is reached (or the stream ends) the whole buffered prefix is checked, then painted as one delta
+#: and every later chunk streams live. The terminal block remains authoritative: a body that only
+#: turns unusable AFTER the window may have painted, and is replaced (or retried under a new
+#: stream id) exactly as before.
 STREAM_HOLD_CHARS = 40
 
 

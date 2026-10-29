@@ -199,14 +199,18 @@ async def _collect(
 
 
 async def test_other_prose_streams_deltas_then_one_authoritative_text_block() -> None:
-    llm = _ScriptedLlm([(["I'm ", "Sparky."], "I'm Sparky.", None)])
+    deltas = [GOOD[i : i + 10] for i in range(0, len(GOOD), 10)]
+    llm = _ScriptedLlm([(deltas, GOOD, None)])
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
-    deltas = [b for b in blocks if isinstance(b, ProseDelta)]
-    assert [d.delta for d in deltas] == ["I'm ", "Sparky."]
-    assert {d.target for d in deltas} == {"text"}
-    assert len({d.stream_id for d in deltas}) == 1
+    painted = [b for b in blocks if isinstance(b, ProseDelta)]
+    # 063 guard: the opening is held until 40 characters accumulate, then painted as one delta
+    # and every later chunk streams live.
+    assert len(painted) > 1
+    assert painted[0].delta == GOOD[:40]
+    assert {d.target for d in painted} == {"text"}
+    assert len({d.stream_id for d in painted}) == 1
     text = next(b for b in blocks if isinstance(b, TextBlock))
-    assert text.markdown == "".join(d.delta for d in deltas)  # final reconciles with the paint
+    assert text.markdown == "".join(d.delta for d in painted)  # final reconciles with the paint
     assert llm.structured_calls == 0  # 059/A3 — the greeting skipped the planner
 
 
@@ -230,14 +234,17 @@ async def test_guardrail_retry_resets_the_stream_and_serves_the_final_tip() -> N
 async def test_mid_stream_failure_retries_once_then_answers() -> None:
     llm = _ScriptedLlm(
         [
-            (["half", "never"], "half", 1),  # dies after the first delta
+            # Paints its opening, then dies after the first two deltas.
+            ([GOOD[:40], "half", "never"], "ignored", 2),
             ([GOOD], GOOD, None),
         ]
     )
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
     deltas = [b for b in blocks if isinstance(b, ProseDelta)]
-    # Attempt 1 died inside the hold window, so none of its partial text was painted.
-    assert {d.stream_id for d in deltas} == {"general-2"}
+    # 063 guard: attempt 1's usable opening paints, then the retry uses a NEW stream id so the
+    # client resets instead of appending; the authoritative final text replaces the partial paint.
+    assert {"general-1", "general-2"} <= {d.stream_id for d in deltas}
+    assert "".join(d.delta for d in deltas if d.stream_id == "general-2") == GOOD
     text = next(b for b in blocks if isinstance(b, TextBlock))
     assert text.markdown == GOOD
     assert llm.stream_calls == 2

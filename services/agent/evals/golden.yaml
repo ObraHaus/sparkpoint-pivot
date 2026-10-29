@@ -331,12 +331,14 @@ cases:
     prompt: "Compare that with just keeping it in Aave."
     wallet: empty
     expected:
-      route: yield_guidance
+      # 063 — comparative questions are grounded Sparky answers, never the yield/mandate composer.
+      route: general
       blocks_present: [text]
       blocks_absent: [action, recommendation]
-      must_contain: ["aave", "4.41%", "4.21%", "performance fee"]
+      must_contain: ["aave"]
     offline:
       intent: {kind: build_action, actionType: aerodrome_swap, asset: USDC, amount: 100000000}
+    offline_check_contains: false
 
   # ── NEAR / cross-chain intents ───────────────────────────────────────────────
   - id: near-27-swap-usdc-to-near
@@ -544,12 +546,14 @@ cases:
     prompt: "Compare that with just keeping it in Aave."
     wallet: empty
     expected:
-      route: yield_guidance
+      # 063 — as above: no history still gets a Sparky comparison, not the yield composer.
+      route: general
       blocks_present: [text]
       blocks_absent: [action, recommendation]
-      must_contain: ["comparison"]
+      must_contain: ["aave"]
     offline:
       intent: {kind: other}
+    offline_check_contains: false
 
   # ── Knowledge / risk / token questions ──────────────────────────────────────
   - id: knowledge-44-what-is-apy

@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
+import { toCsv } from "@/lib/csv";
 
 interface MintWhitelistRow {
   address: string;
@@ -26,21 +27,18 @@ interface MintWhitelistRow {
 
 const CHAIN_HEADERS = { "x-chain-id": APP_CHAIN_ID_HEADER };
 
-/** RFC-4180-ish CSV: quote every field and double embedded quotes. Addresses are hex; the rest is
- *  free text an applicant typed, so it is always quoted. */
-function toCsv(rows: MintWhitelistRow[]): string {
-  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  const lines = [
-    ["address", "name", "contact", "reason", "submittedAt"].join(","),
-    ...rows.map((r) =>
-      [r.address, r.name, r.contact, r.reason, r.submittedAt].map(escape).join(","),
-    ),
-  ];
-  return `${lines.join("\n")}\n`;
+/** RFC-4180-ish CSV: quote every field, double embedded quotes and neutralize spreadsheet
+ *  formulas. Addresses are hex; the rest is free text an applicant typed (unauthenticated), so it
+ *  must never be interpreted as a formula by a spreadsheet. */
+function rowsToCsv(rows: MintWhitelistRow[]): string {
+  return toCsv([
+    ["address", "name", "contact", "reason", "submittedAt"],
+    ...rows.map((r) => [r.address, r.name, r.contact, r.reason, r.submittedAt]),
+  ]);
 }
 
 function downloadCsv(rows: MintWhitelistRow[]): void {
-  const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([rowsToCsv(rows)], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

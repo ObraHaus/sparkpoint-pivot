@@ -104,6 +104,8 @@ from .guidance import (
     NOTHING_TO_WITHDRAW,
     NOTHING_TO_WITHDRAW_NO_VAULT,
     UNSAFE_REFUSAL,
+    has_financial_action_verb,
+    is_comparative_question,
     is_confirmation,
     is_explicit_financial_command,
     is_unsafe_request,
@@ -448,6 +450,8 @@ class CoordinatorDag:
         *,
         user: str | None,
         memory_lines: Sequence[str] | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+        comparative: bool = False,
     ) -> tuple[str, bool]:
         """The general/identity branch's prose answer + whether the MODEL produced it.
 
@@ -478,7 +482,12 @@ class CoordinatorDag:
         # transient (queue timeout when turns arrive quickly); a second failure is surfaced.
         for attempt in (1, 2):
             reply = await self.sparky.reply(
-                message, context_hint=context, user=user, memory_lines=memory_lines
+                message,
+                context_hint=context,
+                user=user,
+                memory_lines=memory_lines,
+                history=history,
+                comparative=comparative,
             )
             if not reply.fell_back and reply.body:
                 return reply.body, True
@@ -493,6 +502,8 @@ class CoordinatorDag:
         *,
         user: str | None,
         memory_lines: Sequence[str] | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+        comparative: bool = False,
     ) -> AsyncIterator[ProseDelta | _ProseResult]:
         """Streaming counterpart to :meth:`_general_answer` (059/A2).
 
@@ -507,7 +518,12 @@ class CoordinatorDag:
         for attempt in (1, 2):
             reply: SparkyReply | None = None
             async for chunk in self.sparky.stream_reply(
-                message, context_hint=context, user=user, memory_lines=memory_lines
+                message,
+                context_hint=context,
+                user=user,
+                memory_lines=memory_lines,
+                history=history,
+                comparative=comparative,
             ):
                 if chunk.delta:
                     yield ProseDelta(
@@ -635,6 +651,15 @@ class CoordinatorDag:
         # Identity only: the policy gate, not this value, decides what can be built (N1/N3).
         user = chain.owner
 
+        # 063 — a comparative question ("Is Morpho safer than Aave?", "compare that with just
+        # keeping it in Aave") is a KNOWLEDGE question, not a yield/mandate question and never
+        # an action. Route it to the grounded Sparky prose branch before the deterministic
+        # guidance/curated routes can answer it with canned copy. Any comparative turn that
+        # names a financial ACTION verb ("deposit my entire balance into whichever is safer than
+        # Aave", "compare them, then deposit 500 USDC") keeps the normal planner path even when
+        # no amount parses, so a requested action is never silently dropped.
+        comparative = is_comparative_question(message) and not has_financial_action_verb(message)
+
         # 057/D — unsafe-transfer and prompt-injection requests never reach the model. The policy
         # gate still runs on every proposal; this is the explicit refusal the audit asked for.
         if is_unsafe_request(message):
@@ -748,7 +773,7 @@ class CoordinatorDag:
         # gets the curated options, a labelled estimate, and a next step, not the guardrails
         # dead-end. Membership is deliberately narrow: no mandate + no positions + a yield-shape
         # question. Funded wallets keep the recommendation cards.
-        if is_yield_guidance_question(message):
+        if is_yield_guidance_question(message) and not comparative:
             guidance_gathered = await self.gather(chain)
             if guidance_gathered.mandate is None and not guidance_gathered.portfolio.positions:
                 yield ToolStepBlock("Reading your portfolio", "running")
@@ -791,7 +816,9 @@ class CoordinatorDag:
         # user's amount instead of being answered with a vault description.
         is_command = is_explicit_financial_command(message)
         if (
-            (BEST_VAULT_RE.search(message) or wants_list or wants_rate) and not is_command
+            (BEST_VAULT_RE.search(message) or wants_list or wants_rate)
+            and not is_command
+            and not comparative
         ) and self.curated is not None:
             yield ToolStepBlock("Checking the curated vaults", "running")
             curated_record = await self.curated(chain.chain_id)
@@ -853,6 +880,10 @@ class CoordinatorDag:
 
         yield ToolStepBlock("Understanding your request", "running")
         intent = forced_intent
+        if intent is None and comparative:
+            # No planner for a comparison: it can only turn into advice/action noise, and the
+            # answer must come from grounded protocol facts. Prose-only (text block) below.
+            intent = Intent(kind=IntentKind.OTHER)
         if intent is None and self.single_call:
             intent = _fast_readonly_intent(message, history=history)
         if intent is None:
@@ -913,7 +944,18 @@ class CoordinatorDag:
             # Prose-only by construction: whatever comes back is wrapped in a `text` block, which
             # has no proposedAction and no policy stamp — this branch cannot emit anything
             # signable. It also returns BEFORE the gather/propose/gate stages ever run.
-            passages = await self._ground(message, min_score=_OTHER_MIN_SCORE)
+            # A comparative follow-up ("compare that with…") is deictic; retrieve against the
+            # recent turns too, or the first-person "that" finds nothing about what was discussed.
+            ground_query = message
+            prose_history: Sequence[tuple[str, str]] | None = None
+            if comparative:
+                prose_history = history
+                earlier = " ".join(
+                    str(text).strip() for _, text in (history or ())[-2:] if str(text).strip()
+                )
+                if earlier:
+                    ground_query = f"{earlier}\n{message}"
+            passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
             prose_answer: str = _GENERAL_FAILURE
@@ -925,7 +967,12 @@ class CoordinatorDag:
                 and hasattr(self.sparky, "stream_reply")
             ):
                 async for prose_item in self._stream_general_answer(
-                    message, passages, user=user, memory_lines=memory_lines
+                    message,
+                    passages,
+                    user=user,
+                    memory_lines=memory_lines,
+                    history=prose_history,
+                    comparative=comparative,
                 ):
                     if isinstance(prose_item, ProseDelta):
                         yield prose_item
@@ -937,7 +984,12 @@ class CoordinatorDag:
                         )
             else:
                 prose_answer, grounded = await self._general_answer(
-                    message, passages, user=user, memory_lines=memory_lines
+                    message,
+                    passages,
+                    user=user,
+                    memory_lines=memory_lines,
+                    history=prose_history,
+                    comparative=comparative,
                 )
                 failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")

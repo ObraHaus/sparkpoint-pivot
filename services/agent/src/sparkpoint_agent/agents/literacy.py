@@ -225,20 +225,21 @@ class Literacy:
                         parts.append(chunk.delta)
                         # Hold the opening until it passes the same guard the full body will, so
                         # an attempt whose opening is already action/meta-shaped is never painted.
-                        # A later-unusable body may paint; the terminal card replaces it.
+                        # The hold counts CHARACTERS of accumulated text, never chunks: a
+                        # token-sized first delta must not release the opening. A later-unusable
+                        # body may paint; the terminal card replaces it.
                         if not released and not blocked:
                             pending.append(chunk.delta)
                             pending_len += len(chunk.delta)
                             if pending_len < STREAM_HOLD_CHARS:
                                 continue
-                            if not prefix_is_usable("".join(pending)):
+                            held = "".join(pending)
+                            pending.clear()
+                            if not prefix_is_usable(held):
                                 blocked = True
-                                pending.clear()
                                 continue
                             released = True
-                            for buffered in pending:
-                                yield TipChunk(delta=buffered, attempt=attempt)
-                            pending.clear()
+                            yield TipChunk(delta=held, attempt=attempt)
                             continue
                         if not blocked:
                             yield TipChunk(delta=chunk.delta, attempt=attempt)
@@ -249,10 +250,13 @@ class Literacy:
                 continue
             body = result.text.strip() if result is not None else ""
             if result is not None and not (result.refused or is_unusable(body)):
-                # A short (< hold) answer is painted only now that the FULL body passed the guard.
+                # The stream ended before the hold window filled: run the prefix guard on whatever
+                # was buffered, then paint it now that the FULL body has passed the guard.
                 if not released and not blocked:
-                    for buffered in pending:
-                        yield TipChunk(delta=buffered, attempt=attempt)
+                    held = "".join(pending)
+                    pending.clear()
+                    if held and prefix_is_usable(held):
+                        yield TipChunk(delta=held, attempt=attempt)
                 yield TipChunk(card=TipCard(topic=key, body=body, fell_back=False), attempt=attempt)
                 return
             if attempt == 1:
