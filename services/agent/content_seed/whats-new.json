@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "comparative-followup-067-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "A \"which is safer\" comparison now gets the full comparison",
+      "body": "When you ask Sparky which of two protocols is safer, it can now say plainly that it will not rank one above the other and still go on to compare them properly — using the verified material for both sides, with its sources shown. Before, an honest opening like \"I can't say which is safer\" could cause the whole comparison to be swapped for a generic summary, or leave a real comparison without its sources. A pure refusal is still replaced by the honest summary, and the safety checks that keep internal notes or action-shaped text out of answers are unchanged. Behind the scenes, the agent now records why a comparison was replaced or left uncited — counts and reasons only, never your message or the answer text. Nothing about reviewing, signing or your funds changes.",
+      "published_at": "2026-10-29T14:00:00Z"
+    },
+    {
       "slug": "grounded-comparative-answers-066-2026-10",
       "type": "changelog",
       "tag": "Fixed",
