@@ -39,6 +39,7 @@ from sparkpoint_agent.coordinator.dag import (
     _comparative_failure_reason,
     _comparative_substantive_clauses,
     _is_comparative_non_answer,
+    _is_decline_clause,
 )
 from sparkpoint_agent.coordinator.guidance import (
     is_comparative_question,
@@ -950,6 +951,8 @@ NO_DATA_DECLINES = (
     "SparkPoint’s notes don’t cover Aave",
     "there isn't enough verified data on Aave",
     "there isn’t enough verified data on Aave",
+    "There is no material on Aave",
+    "There’s no material on Aave",
     "However, I can't compare them",
     "However, I can’t compare them",
 )
@@ -1024,6 +1027,104 @@ async def test_terse_two_sided_comparison_is_served_and_cited(streaming: bool) -
     assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
 
 
+UNFORTUNATELY_TWO_SIDED = (
+    "Aave is one shared pool; unfortunately, Morpho's isolated markets add curator risk."
+)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_unfortunately_mid_comparison_stays_two_sided_and_cited(
+    streaming: bool,
+) -> None:
+    """OH Defender (medium): "unfortunately" mid-clause is a softener, not a decline; the Morpho
+    clause after the semicolon is substantive and both sides stay cited.
+    """
+    assert _is_comparative_non_answer(
+        UNFORTUNATELY_TWO_SIDED, ("Aave", "Morpho")
+    ) is False
+    llm = _AnswerLlm(UNFORTUNATELY_TWO_SIDED)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == UNFORTUNATELY_TWO_SIDED
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+#: "no material" is a finance idiom here, not the speaker lacking notes; both clauses stay
+#: substantive and the comparison is served.
+NO_MATERIAL_IDIOM = (
+    "There is no material difference in risk between Aave and Morpho; Aave is one shared pool, "
+    "while Morpho uses isolated markets and adds curator risk."
+)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        NO_MATERIAL_IDIOM,
+        "There is no material risk difference; Aave is one shared pool and Morpho is isolated.",
+    ],
+)
+def test_no_material_idiom_stays_substantive(answer: str) -> None:
+    substantive, mentioned = _comparative_substantive_clauses(answer, ("Aave", "Morpho"))
+    assert substantive >= 1
+    assert mentioned == {"Aave", "Morpho"}
+    assert _is_comparative_non_answer(answer, ("Aave", "Morpho")) is False
+
+
+def test_decline_phrase_with_substantive_content_after_a_comma_is_split() -> None:
+    """A clause is judged per sub-clause, so a decline opener cannot swallow the comparison that
+    follows it after a comma.
+    """
+    answer = (
+        "I can't say which is safer, Aave is one shared pool; Morpho uses isolated markets and "
+        "adds curator risk."
+    )
+    substantive, mentioned = _comparative_substantive_clauses(answer, ("Aave", "Morpho"))
+    assert substantive >= 2
+    assert mentioned == {"Aave", "Morpho"}
+    assert _is_comparative_non_answer(answer, ("Aave", "Morpho")) is False
+
+
+def test_if_i_cant_mid_clause_is_not_a_decline() -> None:
+    """A conditional refusal phrase mid-clause must not discard independent protocol content."""
+    clause = "if I can't verify a rate, Morpho's isolated markets still add curator risk"
+    assert _is_decline_clause(clause) is False
+
+
+PASSIVE_DEFLECTIONS = (
+    "Neither Morpho nor Aave can be ranked with the available material.",
+    "It's not possible to say which of Morpho and Aave is safer.",
+    "There's no way to rank Morpho against Aave with the available data.",
+)
+
+
+@pytest.mark.parametrize("answer", PASSIVE_DEFLECTIONS)
+async def test_passive_deflections_are_replaced_and_uncited(answer: str) -> None:
+    """OH Defender (medium): a passive ranking-deflection is a non-answer even without a
+    first-person decline opener or a no-data phrase; it must not be served or cited.
+    """
+    assert _is_comparative_non_answer(answer, ("Morpho", "Aave")) is True
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=False,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) != answer
+    assert _citations(blocks) == []
+
+
 THREE_SUBJECT_ANSWER = (
     "I can't say which is safest. Aave is one shared lending pool, while Morpho uses isolated "
     "markets and adds curator risk. I don't have verified data on Compound."
@@ -1093,18 +1194,61 @@ async def test_whole_message_hit_that_names_a_subject_counts_as_coverage(
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_coverage_is_computed_after_the_passage_cap(streaming: bool) -> None:
-    """Advisory: the coverage hint must not claim a subject whose only passage was truncated."""
+async def test_cap_is_allocated_round_robin_so_no_subject_is_truncated(streaming: bool) -> None:
+    """OH Defender (medium): one subject's overflow used to truncate the later subject to zero
+    and then report it as "no verified material". The cap now gives every subject with hits a
+    slot before filling the remainder, so Morpho stays represented and covered.
+    """
     llm = _AnswerLlm(DECLINING_SUBSTANTIVE)
     dag = _dag(llm, _CapOverflowGrounder(), streaming=streaming)
     passages, covered = await dag._ground_comparative(
         "Compare Aave and Morpho", ("Aave", "Morpho")
     )
     assert len(passages) == _COMPARATIVE_MAX_PASSAGES
-    assert covered == ("Aave",), "Morpho's only passage was dropped by the cap"
+    assert covered == ("Aave", "Morpho"), "both subjects must survive the cap"
+    assert any("MORPHO-GROUNDING" in passage.content for passage in passages)
     hint = _comparative_coverage_hint(("Aave", "Morpho"), covered)
     assert hint is not None
-    assert "no verified material for Morpho" in hint
+    assert "no verified material for" not in hint
+
+
+class _ThreeSubjectOverflowGrounder:
+    """Three named subjects each produce enough hits to overflow the passage cap together."""
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        lowered = query.lower()
+        names = [name for name in ("Aave", "Morpho", "Compound") if name.lower() in lowered]
+        if len(names) != 1:
+            return ()
+        name = names[0]
+        return tuple(
+            _capped_passage(
+                f"{name.upper()}-GROUNDING {index}: {name} carries a distinct risk profile.",
+                name.lower(),
+                index,
+            )
+            for index in range(3)
+        )
+
+
+async def test_three_subject_cap_keeps_every_subject_with_hits_represented() -> None:
+    """OH Defender (medium): with 3 subjects (3x3 hits vs cap 8), the last subject used to be
+    wholly truncated. Round-robin allocation must keep every covered subject represented.
+    """
+    llm = _AnswerLlm(DECLINING_SUBSTANTIVE)
+    dag = _dag(llm, _ThreeSubjectOverflowGrounder(), streaming=False)
+    subjects = ("Aave", "Morpho", "Compound")
+    passages, covered = await dag._ground_comparative("Compare Aave, Morpho and Compound", subjects)
+    assert len(passages) == _COMPARATIVE_MAX_PASSAGES
+    assert covered == subjects
+    counts = {
+        subject: sum(1 for passage in passages if subject.lower() in passage.content.lower())
+        for subject in subjects
+    }
+    assert all(count >= 1 for count in counts.values()), counts
+    assert all(count >= _COMPARATIVE_MAX_PASSAGES // len(subjects) for count in counts.values())
 
 
 @pytest.mark.parametrize("streaming", [False, True])
