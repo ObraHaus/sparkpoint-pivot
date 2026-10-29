@@ -20,6 +20,7 @@ from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.agents.sparky import Sparky
+from sparkpoint_agent.coordinator import comparative
 from sparkpoint_agent.coordinator.chat_blocks import (
     CitationBlock,
     ProseDelta,
@@ -27,11 +28,14 @@ from sparkpoint_agent.coordinator.chat_blocks import (
     TipBlock,
 )
 from sparkpoint_agent.coordinator.dag import (
+    _COMPARATIVE_MAX_PASSAGES,
     ChainContext,
     CoordinatorDag,
     MandateView,
     MarketData,
     PortfolioView,
+    _answer_can_cite,
+    _comparative_coverage_hint,
     _is_comparative_non_answer,
 )
 from sparkpoint_agent.coordinator.guidance import (
@@ -599,6 +603,55 @@ def test_unknown_protocols_fall_back_to_proper_nouns() -> None:
     )
 
 
+def test_function_word_sentence_opener_is_not_extracted_as_a_subject() -> None:
+    """OH Defender (medium): "For" was dropped from the stoplist in the lowercased refactor, so
+    "Curve" arrived via the fallback and "For" became a bogus third subject.
+    """
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects(
+        "For a cautious user, is Aerodrome safer than Curve?"
+    ) == ("Aerodrome", "Curve")
+
+
+@pytest.mark.parametrize("word", sorted(comparative._NOT_A_SUBJECT))
+def test_every_stoplist_word_is_dropped_by_the_proper_noun_fallback(word: str) -> None:
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    subjects = extract_comparison_subjects(f"Compare {word.title()} with something.")
+    assert word.lower() not in {subject.lower() for subject in subjects}
+
+
+def test_stoplist_fallback_subject_cannot_claim_coverage_or_unlock_the_cite_gate() -> None:
+    """A fallback-only function word must never match plain lowercase prose, so it cannot count
+    as coverage, satisfy the substance test, or make a passage citable.
+    """
+    from sparkpoint_agent.coordinator.comparative import (
+        passage_mentions_subject,
+        text_mentions_subject,
+    )
+
+    answer = (
+        "For a cautious user, Aerodrome is safer than Curve because Aerodrome concentrates "
+        "liquidity while Curve is a stableswap pool; neither is insured."
+    )
+    passage = Passage(
+        content="For a cautious user, read the docs; this is not protocol material.",
+        citation=Citation(
+            provider="docs",
+            endpoint="obsidian://caution",
+            field="caution",
+            value="note",
+            as_of="2026-10-29T00:00:00Z",
+            stale=False,
+        ),
+    )
+    assert text_mentions_subject(answer, "For") is False
+    assert passage_mentions_subject(passage, "For") is False
+    # Even if a bug put the bogus subject into ``covered``, the cite gate must reject the claim.
+    assert _answer_can_cite(answer, True, ("For",), ("Aerodrome", "Curve", "For")) is False
+
+
 class _ReleaseNoteGrounder:
     """Returns release-note chunks that NAME the protocols — the exact 065 failure shape."""
 
@@ -710,6 +763,45 @@ class _EveryQueryGrounder:
         )
 
 
+def _capped_passage(content: str, name: str, index: int) -> Passage:
+    return Passage(
+        content=content,
+        citation=Citation(
+            provider=name,
+            endpoint=f"obsidian://{name}-{index}",
+            field="risk",
+            value=name,
+            as_of="2026-10-29T00:00:00Z",
+            stale=False,
+        ),
+    )
+
+
+class _CapOverflowGrounder:
+    """Per-subject retrieval overflows the passage cap, truncating the second subject away."""
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        lowered = query.lower()
+        if "morpho" in lowered and "aave" not in lowered:
+            return (
+                _capped_passage(
+                    "MORPHO-GROUNDING: Morpho uses isolated markets and curated vaults.",
+                    "morpho",
+                    0,
+                ),
+            )
+        return tuple(
+            _capped_passage(
+                f"AAVE-GROUNDING {index}: Aave is one shared lending pool.",
+                "aave",
+                index,
+            )
+            for index in range(_COMPARATIVE_MAX_PASSAGES)
+        )
+
+
 def _log_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [
         record.getMessage()
@@ -801,6 +893,21 @@ async def test_whole_message_hit_that_names_a_subject_counts_as_coverage(
     assert {source["endpoint"] for source in cited[0]["sources"]} == {
         "obsidian://protocol-basics"
     }
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_coverage_is_computed_after_the_passage_cap(streaming: bool) -> None:
+    """Advisory: the coverage hint must not claim a subject whose only passage was truncated."""
+    llm = _AnswerLlm(DECLINING_SUBSTANTIVE)
+    dag = _dag(llm, _CapOverflowGrounder(), streaming=streaming)
+    passages, covered = await dag._ground_comparative(
+        "Compare Aave and Morpho", ("Aave", "Morpho")
+    )
+    assert len(passages) == _COMPARATIVE_MAX_PASSAGES
+    assert covered == ("Aave",), "Morpho's only passage was dropped by the cap"
+    hint = _comparative_coverage_hint(("Aave", "Morpho"), covered)
+    assert hint is not None
+    assert "no verified material for Morpho" in hint
 
 
 @pytest.mark.parametrize("streaming", [False, True])
