@@ -13,6 +13,7 @@ Pins the load-bearing behaviour:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -21,6 +22,7 @@ import pytest
 from sparkpoint_agent.api.chat import _event_stream, _NoopConversationSink, _NoopMemorySink
 from sparkpoint_agent.api.quota import LimitDecision
 from sparkpoint_agent.coordinator import ErrorBlock, TextBlock, ToolStepBlock
+from sparkpoint_agent.db.limits import EVENT_VERDICTS
 
 OWNER = "0xabc0000000000000000000000000000000000001"
 WS = datetime(2026, 10, 26, 16, 0, tzinfo=UTC)  # 2026-10-27 00:00 Asia/Manila
@@ -67,6 +69,9 @@ class _Limits:
     async def record_event(
         self, verdict: str, metric: str, tier: str, *, subject: str | None, detail: Any = None
     ) -> None:
+        # Mirror the real store / 0015 CHECK: a verdict outside the set must fail in tests.
+        if verdict not in EVENT_VERDICTS:
+            raise ValueError(f"unknown limits_event verdict {verdict!r}")
         self.events.append((verdict, metric, tier))
 
 
@@ -112,7 +117,8 @@ async def test_failed_turn_refunds_the_consumed_window() -> None:
     limits = _Limits()
     events = await _collect(_Dag(boom=True), limits, _decision())
     assert limits.refunds == [(OWNER, "chat", WS)]
-    assert limits.events == [("refund", "chat", "free")]
+    # 062: refund is logged, not written as a limits_event (a `refund` verdict is outside 0015).
+    assert limits.events == []
     assert any("UPSTREAM_UNAVAILABLE" in e for e in events)
     assert events[-1].startswith("event: done")
 
@@ -131,7 +137,7 @@ async def test_internally_degraded_turn_refunds_exactly_once(branch: str, messag
     events = await _collect(_DegradedDag(), limits, _decision(), message=message)
     assert branch  # the three prose branches share this emitted-block shape
     assert limits.refunds == [(OWNER, "chat", WS)]
-    assert limits.events == [("refund", "chat", "free")]
+    assert limits.events == []
     assert any('"code":"UPSTREAM_UNAVAILABLE"' in e for e in events)
     assert events[-1].startswith("event: done")
 
@@ -140,6 +146,33 @@ async def test_repeated_upstream_errors_refund_only_once() -> None:
     limits = _Limits()
     events = await _collect(_DegradedDag(errors=2), limits, _decision())
     assert limits.refunds == [(OWNER, "chat", WS)]
+    assert events[-1].startswith("event: done")
+
+
+class _Exhausted429Dag:
+    """The beta failure shape: LLM retries exhaust a 429 mid-turn and the turn raises."""
+
+    async def run_chat(self, *_: Any, **__: Any) -> Any:
+        yield ToolStepBlock("Thinking that through", "running")
+        raise RuntimeError("llm_retry_exhausted status=429")
+
+
+async def test_429_exhausted_turn_refunds_once_without_a_false_alarm(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression for the beta `quota_refund_failed` false alarm (062).
+
+    The counter refund committed, then the `refund` limits_event INSERT raised a CHECK violation,
+    so every 429-exhausted turn logged `quota_refund_failed` with no traceback. The fake enforces
+    the same verdict set as the DB, so reintroducing the event write makes this test fail loudly.
+    """
+    limits = _Limits()
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.api.quota"):
+        events = await _collect(_Exhausted429Dag(), limits, _decision())
+    assert limits.refunds == [(OWNER, "chat", WS)]  # exactly one refund
+    assert sum('"code":"UPSTREAM_UNAVAILABLE"' in e for e in events) == 1
+    assert "quota_refunded metric=chat" in caplog.text
+    assert "quota_refund_failed" not in caplog.text
     assert events[-1].startswith("event: done")
 
 

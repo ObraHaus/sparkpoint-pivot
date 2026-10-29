@@ -17,7 +17,9 @@
  *     Content-Type, which also routes a pre-stream error envelope (JSON) down the
  *     buffered path with its real status — exactly what the client's
  *     `parseErrorEnvelope` expects.
- *   - all other endpoints return the upstream JSON body + status verbatim.
+ *   - all other endpoints return the upstream JSON body + status verbatim. A null-body status
+ *     (204/205/304, …) is returned with `null` — the Fetch `Response` constructor rejects ANY body
+ *     for those, which used to turn `POST /chat/feedback`'s successful 204 into a 500.
  *
  * GRACEFUL OFFLINE (non-custody law): a missing `AGENT_INTERNAL_URL`, or any
  * network failure reaching the agent, returns a clean §1.5 error envelope that the
@@ -35,6 +37,11 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { BETA_OPEN } from "@/lib/auth/openBeta";
+import {
+  applyChatStreamDeadline,
+  withChatConnectDeadline,
+} from "@/lib/agent/chatStreamDeadline";
+import { bufferedUpstreamResponse, sseUpstreamResponse } from "@/lib/agent/proxyResponse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +49,26 @@ export const dynamic = "force-dynamic";
 /** SERVER-only config (NOT `NEXT_PUBLIC_*` — must never reach the client bundle). */
 const AGENT_INTERNAL_URL = process.env.AGENT_INTERNAL_URL;
 const AGENT_S2S_TOKEN = process.env.AGENT_S2S_TOKEN;
+
+/**
+ * 061 A9 — a chat turn must not look alive forever.
+ *
+ * The proxy originally armed ONE timer at stream construction, which capped the TOTAL stream time
+ * (60s) instead of how long the upstream could go SILENT; a legitimate slow answer was cut off
+ * even while chunks kept arriving. `withChatDeadline` is now an IDLE/stall deadline: it re-arms on
+ * every upstream chunk (including SSE keepalive/comment frames), keeps the time-to-first-byte
+ * bound, and has a separate 5-minute absolute ceiling as a backstop. When either fires we emit the
+ * normal `error` block on the open stream (the renderer understands it and the chat offers Retry),
+ * close cleanly, and do NOT cancel the agent turn — see the helper's comment on refund/Retry.
+ *
+ * The same stall bound also gives the initial response-headers wait its budget. Overridable for
+ * tests/ops via `AGENT_CHAT_TIMEOUT_MS` / `AGENT_CHAT_STREAM_CEILING_MS`.
+ *
+ * SCOPE (OH Defender MEDIUM): ALL of it — the response-headers/connect deadline, the idle deadline
+ * and the ceiling — applies to the chat stream path ONLY (`/chat`, matched exactly by
+ * `isChatStreamPath`, never by substring/prefix). Every other proxied endpoint behaves exactly as
+ * origin/main: no new timer, no wrapped body, no 60s cut.
+ */
 
 /**
  * Request headers we relay to the agent. Phase B: `x-account`/`x-owner` are NO LONGER accepted
@@ -134,6 +161,11 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;
 
+  // The chat proxy gets a bounded wait for RESPONSE HEADERS — chat only. Every other endpoint keeps
+  // the caller's signal verbatim, exactly as origin/main (no new deadline). The stream is bounded
+  // separately below by STALL time, not total time (a slow answer is legitimate; a silent one is
+  // not).
+  const connect = withChatConnectDeadline(path, req.signal);
   let upstream: Response;
   try {
     upstream = await fetch(target, {
@@ -143,11 +175,14 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
       // Never advertise the browser's cache; every call is per-identity + live.
       cache: "no-store",
       redirect: "manual",
-      signal: req.signal,
+      signal: connect.signal,
     });
   } catch {
-    // Agent unreachable (down / DNS / refused): graceful error card, still no crash.
+    // Agent unreachable (down / DNS / refused / timed out): graceful error card, still no crash.
     return envelope("UPSTREAM_UNAVAILABLE", 502, "The assistant is unavailable right now.", true);
+  } finally {
+    // Cleared as soon as headers arrive, so a legitimate long SSE body is not cut off here.
+    connect.clear();
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
@@ -156,46 +191,21 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // render incrementally (/chat + /onboarding/turn). Only a 2xx SSE response takes
   // this path; a pre-stream error is JSON and falls through to the buffered branch.
   if (upstream.ok && upstream.body && contentType.includes("text/event-stream")) {
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache, no-transform",
-        connection: "keep-alive",
-        // Defeat proxy/response buffering so events flush as they arrive.
-        "x-accel-buffering": "no",
-        // 036 — AND declare the body already encoded, which is what actually stops it.
-        //
-        // `no-transform` and `x-accel-buffering` were both already set, and the stream was STILL
-        // being buffered end-to-end for every browser. Measured against the live deployment on the
-        // same question:
-        //
-        //     plain request                       tool_step 2.7s · 10.1s · 17.8s · answer 17.8s
-        //     Accept-Encoding: gzip, deflate, br  EVERYTHING at 21.2s
-        //
-        // A browser always sends that header, so no user had ever seen this stream arrive
-        // incrementally: the compressor held every event until the response closed. It was
-        // invisible because the old waiting state was the single static word "Working…", which
-        // looks identical whether anything is streaming or not — the progress trace only appeared
-        // once the turn was already over, which is precisely when it is of no use.
-        //
-        // `identity` says the body is already in its final encoding, so nothing downstream may
-        // re-encode (and therefore buffer) it. Compression stays on for every other response.
-        "content-encoding": "identity",
-      },
-    });
+    // Chat-only, exact-path scoped — every other SSE route stays exactly as origin/main.
+    const stream = applyChatStreamDeadline(path, upstream.body);
+    return sseUpstreamResponse(stream, upstream.status);
   }
 
   // Everything else: relay the JSON body + the upstream status verbatim (§1.5 error
   // envelopes included, so the client keys off the real code/status). We copy only
   // a minimal, safe header allowlist — never the token or any upstream auth header.
-  const outHeaders = new Headers();
-  if (contentType) outHeaders.set("content-type", contentType);
-  const retryAfter = upstream.headers.get("retry-after");
-  if (retryAfter !== null) outHeaders.set("retry-after", retryAfter);
-
   const buffered = await upstream.arrayBuffer();
-  return new Response(buffered, { status: upstream.status, headers: outHeaders });
+  return bufferedUpstreamResponse({
+    status: upstream.status,
+    body: buffered,
+    contentType,
+    retryAfter: upstream.headers.get("retry-after"),
+  });
 }
 
 export function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }): Promise<Response> {

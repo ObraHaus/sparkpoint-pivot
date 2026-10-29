@@ -25,7 +25,7 @@ export interface OwnedResult {
   readonly source: OwnedSource;
 }
 
-export function useIndexedBrokers(enabled: boolean): OwnedResult {
+export function useIndexedBrokers(enabled: boolean, chainId?: number): OwnedResult {
   const [state, setState] = useState<OwnedResult>({ source: "loading" });
 
   useEffect(() => {
@@ -33,7 +33,13 @@ export function useIndexedBrokers(enabled: boolean): OwnedResult {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/agent/brokers/owned", { credentials: "include" });
+        // 061 — the agent scopes the read by X-Chain-Id. Without it the request was a 400
+        // (ACCOUNT_HEADERS_INVALID) on every broker surface before it could even answer; the
+        // chain the caller is already reading is the honest value to send.
+        const res = await fetch("/api/agent/brokers/owned", {
+          credentials: "include",
+          headers: chainId === undefined ? undefined : { "X-Chain-Id": String(chainId) },
+        });
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { available?: boolean; tokenIds?: number[] };
         if (cancelled) return;
@@ -51,7 +57,7 @@ export function useIndexedBrokers(enabled: boolean): OwnedResult {
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, chainId]);
 
   // Derived rather than written from the effect: with no wallet on the right chain there is
   // nothing to ask the indexer, and setting that synchronously inside the effect is both a lint

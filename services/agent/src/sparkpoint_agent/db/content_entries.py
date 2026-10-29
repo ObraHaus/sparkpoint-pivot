@@ -31,7 +31,8 @@ def _parse_ts(value: str | None) -> datetime | None:
 # Full column lists spelled out in each query (no f-string interpolation — keeps the SQL static so
 # ruff's S608 never fires; matches db/knowledge_notes.py style).
 _CHANGELOG_SQL = (
-    "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at "
+    "SELECT id, slug, type, title, body, tag, cta_label, cta_href, is_active, published_at, "
+    "updated_at "
     "FROM content_entries "
     # ``id DESC`` is a STABLE tiebreak (id = bigserial = insertion order). Same-day entries share a
     # ``published_at`` (a date-only value ties a whole day at midnight), so the tiebreak makes the
@@ -39,17 +40,18 @@ _CHANGELOG_SQL = (
     "WHERE type = 'changelog' AND is_active = true ORDER BY published_at DESC, id DESC LIMIT $1"
 )
 _ANNOUNCEMENT_SQL = (
-    "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at "
+    "SELECT id, slug, type, title, body, tag, cta_label, cta_href, is_active, published_at, "
+    "updated_at "
     "FROM content_entries "
     "WHERE type = 'announcement' AND is_active = true ORDER BY published_at DESC, id DESC LIMIT 1"
 )
 _LIST_SQL = (
-    "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at, "
-    "author FROM content_entries ORDER BY published_at DESC, id DESC LIMIT $1"
+    "SELECT id, slug, type, title, body, tag, cta_label, cta_href, is_active, published_at, "
+    "updated_at, author FROM content_entries ORDER BY published_at DESC, id DESC LIMIT $1"
 )
 _GET_SQL = (
-    "SELECT id, type, title, body, tag, cta_label, cta_href, is_active, published_at, updated_at, "
-    "author FROM content_entries WHERE id = $1"
+    "SELECT id, slug, type, title, body, tag, cta_label, cta_href, is_active, published_at, "
+    "updated_at, author FROM content_entries WHERE id = $1"
 )
 _INSERT_SQL = (
     "INSERT INTO content_entries "
@@ -295,6 +297,9 @@ def _row(r: Any, *, with_author: bool = False) -> dict[str, Any]:
     """Normalise a ``content_entries`` row into the JSON shape the web hooks consume (camelCase)."""
     out: dict[str, Any] = {
         "id": int(r["id"]),
+        # 061 — the stable release identity, used by What's New to remember "seen this release"
+        # without depending on a re-seedable row id. NULL for pre-slug/operator rows.
+        "slug": (str(r["slug"]) if r.get("slug") else None),
         "type": str(r["type"]),
         "title": str(r["title"]),
         "body": str(r["body"]),

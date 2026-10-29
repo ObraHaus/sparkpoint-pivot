@@ -34,8 +34,11 @@ test("other plumbing shapes are caught too", () => {
 
 test("messages WRITTEN for users pass through untouched", () => {
   const quota = "You've reached today's free limit for the AI assistant. It resets tomorrow.";
-  assert.equal(chatErrorCopy(quota, "RATE_LIMITED").message, quota);
-  assert.equal(chatErrorCopy(quota, "RATE_LIMITED").retryable, false);
+  const view = chatErrorCopy(quota, "RATE_LIMITED");
+  assert.ok(view.message.startsWith(quota), "the agent's user-facing sentence is kept");
+  assert.ok(/Vault and Swap/i.test(view.message), "says what still works without Sparky");
+  assert.ok(/\/changelog/.test(view.message), "points somewhere for updates");
+  assert.equal(view.retryable, false);
 
   const auth = "Sign in with your wallet to use the assistant.";
   assert.equal(chatErrorCopy(auth, "UNAUTHENTICATED").message, auth);
@@ -49,6 +52,13 @@ test("an empty upstream failure still says something honest and retryable", () =
   assert.ok(view.message.length > 0);
   assert.equal(view.retryable, true);
   assert.ok(!/error|exception/i.test(view.message), "plain language, not error-speak");
+});
+
+test("a bare quota error is never a dead end", () => {
+  const view = chatErrorCopy("", "RATE_LIMITED");
+  assert.ok(/resets within 24 hours/i.test(view.message));
+  assert.ok(/Vault and Swap/i.test(view.message));
+  assert.equal(view.retryable, false);
 });
 
 test("no copy blames the user for our defect", () => {

@@ -121,6 +121,14 @@ async def test_refund_decrements_the_same_window_and_clamps_at_zero() -> None:
     assert args == ("0xabcdef", "chat", _WS)  # lowercased; SAME captured window
 
 
+async def test_record_event_rejects_an_unknown_verdict_before_the_db() -> None:
+    # 062: fail loudly in code rather than as an asyncpg CheckViolation in prod.
+    db = _FakeDb()
+    with pytest.raises(ValueError, match="verdict"):
+        await _store(db).record_event("refund", "chat", "free", subject="0xabc…0001")
+    assert db.calls == []  # the INSERT was never attempted
+
+
 async def test_resolve_tier_returns_assigned() -> None:
     db = _FakeDb()
     db.resolve_value = "premium"

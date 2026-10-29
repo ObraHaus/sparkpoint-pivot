@@ -216,6 +216,9 @@ button{font-family:inherit;}
   border:1px solid color-mix(in srgb,var(--primary) 28%,transparent);background:var(--spark-subtle);font-size:11.5px;white-space:nowrap;}
 .disclaimer .links a:hover{background:var(--spark-subtle-2);}
 .disclaimer .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.disclaimer .dismiss{margin-left:6px;flex:none;background:transparent;border:0;color:var(--muted-foreground);
+  cursor:pointer;padding:4px;border-radius:7px;display:grid;place-items:center;}
+.disclaimer .dismiss:hover{background:var(--muted);color:var(--foreground);}
 
 /* ---------------- body layout ---------------- */
 .layout{flex:1;display:flex;min-height:0;}
@@ -414,6 +417,12 @@ button{font-family:inherit;}
   .disclaimer{padding:7px 14px;flex-wrap:wrap;align-items:flex-start;row-gap:7px;}
   .disclaimer .txt{font-size:11px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45;}
   .disclaimer .links{margin-left:0;flex-wrap:wrap;width:100%;}
+  /* 061 A9 — at phone widths the header keeps only what cannot live in the avatar menu:
+     the mark, notifications and account. The address is already in the menu, and the
+     self-custody/stage pills are repeated in-app (and on /trust). */
+  .topbar{padding:0 10px;}
+  .topbar .brand{font-size:0;gap:0;}
+  .trustPill,.stagePill{display:none;}
   .page{padding:18px 16px 96px;}
   .main{padding-bottom:0;}
   .pagehead{align-items:flex-start;}
