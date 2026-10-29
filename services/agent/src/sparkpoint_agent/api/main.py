@@ -35,6 +35,7 @@ from ..db import get_database
 from ..db.allowlist import AllowlistStore, parse_allowlist_env
 from ..db.limits import LimitsStore
 from ..db.persona_notes import PersonaNoteStore
+from ..logging_config import configure_logging
 from ..persona import warm_persona
 from ..policy import POLICY_VERSION
 from .access import router as access_router
@@ -714,6 +715,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     data layer is a derived accelerator only — never on the withdraw/exit path (N2), so a DB
     outage cannot trap funds.
     """
+    # 065 — the agent's own loggers defaulted to the root WARNING level, so every INFO line the
+    # service already emits (retries, refunds, indexing, quota audit) was dropped in production.
+    # Configure them once here, honouring LOG_LEVEL (default INFO), without touching uvicorn.
+    configure_logging()
     db = None
     index_task: asyncio.Task[None] | None = None
     vault_fee_task: asyncio.Task[None] | None = None
