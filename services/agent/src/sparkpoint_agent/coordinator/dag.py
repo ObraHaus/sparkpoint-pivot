@@ -266,6 +266,11 @@ def _comparative_coverage_hint(subjects: Sequence[str], covered: Sequence[str]) 
         )
     else:
         lines.append("Compare both sides using only that material.")
+        lines.append(
+            "If the question asks which is safer or better and the material does not establish a "
+            "ranking, say so in one short clause and then compare the specific risk factors side "
+            "by side. Do not stop at the refusal."
+        )
     lines.append(
         "Do not mention notes, reference material, context, documents, or what you do or do not "
         "have access to. Do not give allocation advice or declare a winner."
@@ -289,57 +294,147 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
     )
 
 
-#: Markers that turn a comparative decline into a real answer. A partial answer often opens
-#: with ``"I don't have verified data on X, but Y is…"``; replacing that would throw away the
-#: grounded side. A pure "I can't compare X and Y" has none of these.
-_COMPARATIVE_ANSWER_MARKERS: tuple[str, ...] = (
-    " but ",
-    " however",
-    " while ",
-    " whereas",
-    " in contrast",
-    " on the other hand",
-    " in general",
-    " generally",
-    " typically",
-    " structurally",
-    " works by",
-    " is a ",
+#: First-person refusal phrases. An answer whose FIRST SENTENCE contains one is a whole-answer
+#: refusal, not a comparison, so the honest code-authored fallback replaces it. Every phrase
+#: requires "I": a third-person sentence such as "the oracle is unable to verify prices" is not
+#: the speaker declining. This is deliberately a short explicit tuple — there is no clause
+#: splitting and no passive/third-party detection (false fallbacks are acceptable here).
+_REFUSAL_PHRASES = (
+    "i can't",
+    "i cannot",
+    "i can not",
+    "i'm not able",
+    "i am not able",
+    "i'm unable",
+    "i am unable",
+    "i don't have",
+    "i do not have",
+    "i won't",
+    "i will not",
+    "i'm afraid i",
+    "i'd rather not",
+    "i shouldn't",
 )
 
+#: Word-bounded so "i can't" never matches inside a longer word. Built once from the tuple above.
+_REFUSAL_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(phrase) for phrase in _REFUSAL_PHRASES) + r")\b",
+    re.IGNORECASE,
+)
 
-def _is_comparative_non_answer(answer: str) -> bool:
-    """True for a comparative response that only declines, so it must not be served as the answer.
+#: Leading markdown / punctuation / underscores are cosmetic: "**I can't rank…**" declines just
+#: like "I can't rank…". Underscores are word characters, so they are stripped explicitly.
+_LEADING_MARKUP_RE = re.compile(r"^[\W_]+")
+#: A first sentence ends at the first sentence punctuation or newline. Only that opening is
+#: judged — a refusal phrase in a later sentence does not make an otherwise substantive answer a
+#: refusal.
+_FIRST_SENTENCE_RE = re.compile(r"[.!?\n]")
+_FIRST_SENTENCE_MAX = 200
 
-    The 066 beta capture had a pure deflection (``"I'm not able to compare Morpho and Aave…"``)
-    and a pure no-data reply (``"I don't have current data on Lido and Rocket Pool…"``). Both are
-    honest but not useful. A longer answer that contrasts a grounded side with an ungrounded one
-    starts with the same words, so the marker/length test keeps it.
+
+def _normalise_apostrophes(text: str) -> str:
+    """Fold curly apostrophes to ASCII so refusal matching is spelling-insensitive."""
+    return text.replace("\u2018", "'").replace("\u2019", "'")
+
+
+def _first_sentence(answer: str) -> str:
+    """Lowercased first sentence, with leading markdown/punctuation stripped and length capped."""
+    normalised = _LEADING_MARKUP_RE.sub("", _normalise_apostrophes(answer).lower())
+    return _FIRST_SENTENCE_RE.split(normalised, maxsplit=1)[0][:_FIRST_SENTENCE_MAX]
+
+
+def _is_whole_answer_refusal(answer: str) -> bool:
+    """Rule 1b: True when the FIRST SENTENCE contains an explicit first-person refusal.
+
+    Matching is containment within the first sentence, not just a startswith, so connectives
+    ("But", "However", "Unfortunately") and markdown wrappers do not hide a refusal. A sentence
+    that opens "Sorry"/"Apologies" is also a refusal. There is no clause splitting and a
+    third-party property ("the oracle is unable to verify prices") is never the speaker declining.
     """
-    if not _is_decline(answer):
-        return False
-    lowered = f" {answer.lower()} "
-    if len(answer.strip()) >= 220 and any(
-        marker in lowered for marker in _COMPARATIVE_ANSWER_MARKERS
-    ):
-        return False
-    return True
-
-
-def _answer_can_cite(
-    answer: str, comparative: bool, covered: Sequence[str]
-) -> bool:
-    """Whether a model-produced answer may carry the retrieved sources.
-
-    Non-comparative answers keep the 029 rule (the caller already checked passages/grounded).
-    A comparative answer must also name every subject that was actually grounded: a passage is
-    not provenance for text that never engaged it, and a deflection must never look sourced.
-    """
-    if not answer.strip() or _is_decline(answer):
-        return False
-    if not comparative:
+    first = _first_sentence(answer)
+    if re.match(r"^(?:sorry|apologies)\b", first):
         return True
-    return bool(covered) and all(text_mentions_subject(answer, subject) for subject in covered)
+    return bool(_REFUSAL_RE.search(first))
+
+
+def _is_comparative_servable(answer: str, subjects: Sequence[str]) -> bool:
+    """Rule 1: serve a comparison only when every named subject is mentioned and it is neither a
+    whole-answer refusal nor a decline. A deictic turn (no extracted subjects) has nothing to
+    check beyond the refusal/decline flags.
+    """
+    if _is_whole_answer_refusal(answer) or _is_decline(answer):
+        return False
+    return all(text_mentions_subject(answer, subject) for subject in subjects)
+
+
+def _comparative_citable_passages(
+    subjects: Sequence[str],
+    passages: Sequence[Passage],
+) -> tuple[Passage, ...]:
+    """Rule 2: cite only a COMPLETE per-subject set, never a partial one.
+
+    When subjects are named, every subject must have at least one capped passage that mentions
+    it; otherwise nothing is citable and the answer is served uncited. A deictic turn (no named
+    subjects) keeps the 065 whole-message citation behaviour.
+    """
+    if not subjects:
+        return tuple(passages)
+    if not all(
+        any(passage_mentions_subject(passage, subject) for passage in passages)
+        for subject in subjects
+    ):
+        return ()
+    return tuple(
+        passage
+        for passage in passages
+        if any(passage_mentions_subject(passage, subject) for subject in subjects)
+    )
+
+
+#: ``SparkyReply.failure`` → the content-free reason string in ``comparative_outcome``.
+_COMPARATIVE_FAILURE_REASONS = {
+    "meta": "guard_meta",
+    "action": "guard_action",
+    "refused": "refused",
+    "empty": "empty",
+    "upstream": "upstream",
+    # ``Sparky`` uses "unusable" when no more specific guard reason is available; it is a
+    # CONTENT rejection, not a non-answer/deflection, so it gets its own logged reason.
+    "unusable": "unusable",
+}
+
+
+def _comparative_failure_reason(failure: str | None) -> str:
+    """Map a prose failure kind onto the logged comparative-outcome reason set.
+
+    A missing or unknown kind maps explicitly to ``non_answer``; ``unusable`` keeps its own
+    reason because it is a content-guard discard, not a deflection.
+    """
+    if not failure:
+        return "non_answer"
+    return _COMPARATIVE_FAILURE_REASONS.get(failure, "non_answer")
+
+
+def _log_comparative_outcome(
+    subjects: Sequence[str],
+    covered: Sequence[str],
+    *,
+    reason: str,
+    cited: bool,
+) -> None:
+    """Address-free, content-free observability for a comparative prose outcome.
+
+    Never includes the user message, the model text, a wallet or a citation endpoint. ``reason``
+    is one of ``served``, ``guard_meta``, ``guard_action``, ``refused``, ``empty``,
+    ``unusable``, ``non_answer`` or ``upstream``; ``cited`` says whether a citation block shipped.
+    """
+    _logger.info(
+        "comparative_outcome subjects=%d covered=%d reason=%s cited=%s",
+        len(subjects),
+        len(covered),
+        reason,
+        "true" if cited else "false",
+    )
 
 
 def _is_release_note(passage: Passage) -> bool:
@@ -633,34 +728,23 @@ class CoordinatorDag:
         kept only when they name at least one subject, so release notes cannot be cited as
         protocol material.
 
-        Returns ``(passages, covered_subjects)``. ``covered`` is computed from the per-subject
-        hits, in the message's subject order, and drives the prompt's coverage hint and the
-        citation gate.
+        Returns ``(passages, covered_subjects)``. The cap is allocated round-robin across the
+        named subjects before any whole-message remainder, so a subject whose query returned many
+        hits cannot truncate a later subject to zero. ``covered`` is computed from the passages
+        that actually survive the :data:`_COMPARATIVE_MAX_PASSAGES` cap, in the message's subject
+        order, and drives the prompt's coverage hint and the citation gate.
         """
-        merged: list[Passage] = []
-        seen: set[tuple[str, str, str]] = set()
-        covered: list[str] = []
-
-        def add(passage: Passage) -> None:
-            citation = passage.citation
-            key = (citation.endpoint, citation.field, passage.content.strip())
-            if key in seen:
-                return
-            seen.add(key)
-            merged.append(passage)
-
+        buckets: list[list[Passage]] = []
         for subject in subjects:
             entity_hits = await self._ground(subject, k=_ENTITY_GROUND_K, min_score=0.0)
-            kept = tuple(
-                passage
-                for passage in entity_hits
-                if passage_mentions_subject(passage, subject)
-                and not _is_release_note(passage)
+            buckets.append(
+                [
+                    passage
+                    for passage in entity_hits
+                    if passage_mentions_subject(passage, subject)
+                    and not _is_release_note(passage)
+                ]
             )
-            if kept:
-                covered.append(subject)
-            for passage in kept:
-                add(passage)
 
         whole_hits = await self._ground(message, k=_GROUND_K, min_score=_OTHER_MIN_SCORE)
         if subjects:
@@ -670,10 +754,56 @@ class CoordinatorDag:
                 if any(passage_mentions_subject(passage, subject) for subject in subjects)
                 and not _is_release_note(passage)
             )
+
+        selected: list[Passage] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        def add(passage: Passage) -> bool:
+            citation = passage.citation
+            key = (citation.endpoint, citation.field, passage.content.strip())
+            if key in seen or len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                return False
+            seen.add(key)
+            selected.append(passage)
+            return True
+
+        # Round-robin: each subject with hits gets a slot before any subject gets a second one.
+        # This guarantees every represented subject at least floor(cap/n) passages (or all of its
+        # hits when it has fewer), instead of letting an early subject exhaust the cap.
+        positions = [0] * len(buckets)
+        while len(selected) < _COMPARATIVE_MAX_PASSAGES:
+            progressed = False
+            for index, bucket in enumerate(buckets):
+                if len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                    break
+                while positions[index] < len(bucket):
+                    passage = bucket[positions[index]]
+                    positions[index] += 1
+                    if add(passage):
+                        progressed = True
+                        break
+            if not progressed:
+                break
+
+        # Whole-message hits fill only the remainder after every subject got its fair share.
         for passage in whole_hits:
+            if len(selected) >= _COMPARATIVE_MAX_PASSAGES:
+                break
             add(passage)
 
-        return tuple(merged[:_COMPARATIVE_MAX_PASSAGES]), tuple(covered)
+        # 067 — coverage includes a whole-message hit that genuinely names a subject (before this,
+        # a subject whose named query missed but whose note arrived with the whole message was
+        # falsely reported as "no verified material"). Coverage is computed AFTER the passage cap:
+        # a subject whose only passage was truncated away is not covered, so the hint never claims
+        # material that did not ship and the citation gate cannot cite dropped passages.
+        capped = selected[:_COMPARATIVE_MAX_PASSAGES]
+        covered = [
+            subject
+            for subject in subjects
+            if any(passage_mentions_subject(passage, subject) for passage in capped)
+        ]
+
+        return tuple(capped), tuple(covered)
 
     async def _general_answer(
         self,
@@ -1266,6 +1396,13 @@ class CoordinatorDag:
                 # 065 — a comparative answer that the model DID produce but the content guard
                 # rejected ("my reference notes…") is not an upstream outage. Answer honestly
                 # from code instead of telling the user the model was unreachable.
+                if comparative:
+                    _log_comparative_outcome(
+                        subjects,
+                        covered,
+                        reason=_comparative_failure_reason(failure),
+                        cited=False,
+                    )
                 if comparative and failure != "upstream":
                     yield TextBlock(
                         _comparative_fallback(message, subjects=subjects, covered=covered)
@@ -1277,23 +1414,38 @@ class CoordinatorDag:
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            # 066 — a comparative "answer" that only declines is not useful, and using it
-            # would waste the honest structural fallback. Replace it BEFORE the text block is
-            # emitted (streaming may already have painted it; the terminal block is
-            # authoritative), and never attach a citation to it.
-            if comparative and _is_comparative_non_answer(prose_answer):
-                yield TextBlock(
-                    _comparative_fallback(message, subjects=subjects, covered=covered)
+            if comparative:
+                # 067 — serve a comparison only when every named subject is mentioned and the
+                # answer is not a whole-answer refusal; otherwise use the honest code-authored
+                # fallback (uncited). Replace it BEFORE the text block is emitted (streaming may
+                # already have painted it; the terminal block is authoritative).
+                if not _is_comparative_servable(prose_answer, subjects):
+                    _log_comparative_outcome(
+                        subjects, covered, reason="non_answer", cited=False
+                    )
+                    yield TextBlock(
+                        _comparative_fallback(message, subjects=subjects, covered=covered)
+                    )
+                    return
+                # Cite only a COMPLETE per-subject set; a partial one is served uncited.
+                citable = _comparative_citable_passages(subjects, passages)
+                cited = bool(passages and grounded and citable)
+                _log_comparative_outcome(
+                    subjects, covered, reason="served", cited=cited
                 )
-                return
+            else:
+                # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
+                # is not grounded in the retrieved passages, so it must not carry sources.
+                citable = tuple(passages)
+                cited = bool(
+                    passages
+                    and grounded
+                    and prose_answer.strip()
+                    and not _is_decline(prose_answer)
+                )
             yield TextBlock(prose_answer)
-            # Cite ONLY when the grounded answer actually came from the model AND actually
-            # answered. A fallback is not grounded in those passages, and neither is a refusal
-            # (029/FR-014) — citing either would claim a provenance the text does not have.
-            # 066 adds the comparative tests: the answer must name every subject that was
-            # actually grounded, so a tangential passage cannot be cited under a non-answer.
-            if passages and grounded and _answer_can_cite(prose_answer, comparative, covered):
-                yield CitationBlock(sources=tuple(p.citation for p in passages))
+            if cited:
+                yield CitationBlock(sources=tuple(p.citation for p in citable))
             return
 
         yield ToolStepBlock("Reading your portfolio", "running")

@@ -56,34 +56,199 @@ _KNOWN: tuple[_KnownSubject, ...] = (
 )
 
 
-#: Capitalised words that are part of the question's grammar, not a protocol name.
+#: Capitalised words that are part of the question's grammar, not a protocol name. Matched
+#: case-insensitively, so the all-caps conjunction/interrogative forms ("AND", "OR", "NOT", "VS",
+#: "DOES", "SHOULD", "WOULD", "CAN", "HAS", "WHEN", "WHICH", "WHAT", "IS", "ARE", "HOW") are
+#: dropped too — the capitalised-token fallback used to return them as subjects.
+#:
+#: This is deliberately broad: a sentence opener or ordinary function word (determiner,
+#: preposition, conjunction, pronoun, auxiliary, question word) must never become a subject via
+#: the proper-noun fallback. "For" was lost when the old mixed-case set was refactored to a
+#: lowercased comprehension; restoring it alone is not enough, so the whole function-word family
+#: is listed. Domain tokens that are Capitalised but not protocols stay here too.
 _NOT_A_SUBJECT = frozenset(
-    {
+    word.lower()
+    for word in (
+        # Question / instruction words.
         "Compare",
+        "Compared",
         "Comparing",
         "Comparison",
         "Which",
         "What",
         "Whats",
         "How",
+        "When",
+        "Where",
+        "Why",
+        "Who",
+        "Whom",
+        "Whose",
+        "Whether",
+        "Explain",
+        "Tell",
+        "Show",
+        "Give",
+        "List",
+        "Describe",
+        "Define",
+        "Consider",
+        "Regarding",
+        "Please",
+        "Versus",
+        "Vs",
+        # Determiners and pronouns.
+        "A",
+        "An",
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "My",
+        "Your",
+        "His",
+        "Her",
+        "Its",
+        "Our",
+        "Their",
+        "I",
+        "Me",
+        "We",
+        "Us",
+        "You",
+        "They",
+        "Them",
+        "Him",
+        "Some",
+        "Any",
+        "All",
+        "Both",
+        "Each",
+        "Every",
+        "Either",
+        "Neither",
+        "No",
+        "Another",
+        "Such",
+        "Many",
+        "Much",
+        "More",
+        "Most",
+        "Few",
+        "Little",
+        "Several",
+        # Prepositions and conjunctions.
+        "About",
+        "Above",
+        "Across",
+        "After",
+        "Against",
+        "Along",
+        "Among",
+        "Around",
+        "At",
+        "Before",
+        "Behind",
+        "Below",
+        "Beneath",
+        "Beside",
+        "Between",
+        "Beyond",
+        "By",
+        "Despite",
+        "Down",
+        "During",
+        "Except",
+        "For",
+        "From",
+        "In",
+        "Inside",
+        "Into",
+        "Like",
+        "Near",
+        "Of",
+        "Off",
+        "On",
+        "Onto",
+        "Out",
+        "Outside",
+        "Over",
+        "Past",
+        "Per",
+        "Since",
+        "Through",
+        "Throughout",
+        "To",
+        "Toward",
+        "Towards",
+        "Under",
+        "Underneath",
+        "Until",
+        "Up",
+        "Upon",
+        "Via",
+        "With",
+        "Within",
+        "Without",
+        "And",
+        "But",
+        "Or",
+        "Nor",
+        "So",
+        "Yet",
+        "Because",
+        "Although",
+        "Though",
+        "While",
+        "Whereas",
+        "If",
+        "Unless",
+        "As",
+        "Than",
+        "Not",
+        "Then",
+        "There",
+        "Here",
+        # Auxiliaries / modals.
+        "Am",
+        "Be",
+        "Been",
+        "Being",
         "Is",
         "Are",
         "Was",
-        "For",
-        "The",
-        "And",
-        "Or",
-        "Than",
-        "Versus",
-        "Vs",
+        "Were",
+        "Do",
+        "Does",
+        "Did",
+        "Has",
+        "Have",
+        "Had",
+        "May",
+        "Might",
+        "Must",
+        "Shall",
+        "Will",
+        "Would",
+        "Could",
+        "Should",
+        "Can",
+        # Comparison adjectives / audience nouns.
         "Better",
+        "Best",
+        "Worse",
+        "Worst",
         "Safer",
+        "Safest",
         "Riskier",
+        "Riskiest",
         "Beginner",
         "Beginners",
         "Cautious",
         "User",
         "Users",
+        # Domain tokens that are Capitalised but are not protocol names.
         "SparkPoint",
         "Sparky",
         "USDC",
@@ -94,7 +259,7 @@ _NOT_A_SUBJECT = frozenset(
         "APY",
         "TVL",
         "ERC",
-    }
+    )
 )
 
 _CAP_TOKEN_RE = re.compile(r"\b([A-Z][A-Za-z0-9]{2,})\b")
@@ -137,7 +302,7 @@ def _generic_subjects(message: str, *, found: int) -> tuple[str, ...]:
     seen: list[str] = []
     for match in _CAP_TOKEN_RE.finditer(masked):
         token = match.group(1)
-        if token in _NOT_A_SUBJECT or token in seen:
+        if token.lower() in _NOT_A_SUBJECT or token in seen:
             continue
         seen.append(token)
     return tuple(seen)
@@ -168,7 +333,16 @@ def aliases_for(subject: str) -> tuple[str, ...]:
 
 
 def text_mentions_subject(text: str, subject: str) -> bool:
-    """True iff ``text`` names ``subject`` (word-boundary, case-insensitive)."""
+    """True iff ``text`` names ``subject`` (word-boundary, case-insensitive).
+
+    A fallback-only subject is just a capitalised token from the user's message, so it has no
+    curated alias. If that token is an ordinary function word/sentence opener, the lowercased
+    fallback in :func:`aliases_for` would match it in almost any passage ("for" in "for a
+    cautious user"), falsely claiming coverage and unlocking the cite gate. Such a token never
+    names a subject, so it never matches.
+    """
+    if subject not in _ALIASES_BY_DISPLAY and subject.strip().lower() in _NOT_A_SUBJECT:
+        return False
     return any(_alias_pattern(alias).search(text) for alias in aliases_for(subject))
 
 

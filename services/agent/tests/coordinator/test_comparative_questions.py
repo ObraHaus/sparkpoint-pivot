@@ -10,6 +10,7 @@ that receives the retrieved protocol facts (plus the recent conversation for a d
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
@@ -19,6 +20,7 @@ from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
 from sparkpoint_agent.agents.recommender import Recommender
 from sparkpoint_agent.agents.sparky import Sparky
+from sparkpoint_agent.coordinator import comparative
 from sparkpoint_agent.coordinator.chat_blocks import (
     CitationBlock,
     ProseDelta,
@@ -26,11 +28,17 @@ from sparkpoint_agent.coordinator.chat_blocks import (
     TipBlock,
 )
 from sparkpoint_agent.coordinator.dag import (
+    _COMPARATIVE_MAX_PASSAGES,
     ChainContext,
     CoordinatorDag,
     MandateView,
     MarketData,
     PortfolioView,
+    _comparative_citable_passages,
+    _comparative_coverage_hint,
+    _comparative_failure_reason,
+    _is_comparative_servable,
+    _is_whole_answer_refusal,
 )
 from sparkpoint_agent.coordinator.guidance import (
     is_comparative_question,
@@ -161,7 +169,7 @@ async def _collect(
         "Is Morpho safer than Aave?",
         "Morpho vs Aave — which is safer?",
         "Which is safer, Morpho or Aave?",
-        "Compare keeping USDC in Aave with the Sparky vault.",
+        "Compare keeping USDC in Aave with Morpho.",
         "How does Morpho compare with Aave for risk?",
         "Compare that with just keeping it in Aave.",
     ],
@@ -490,9 +498,12 @@ async def test_comparative_retrieves_each_named_subject_separately(streaming: bo
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_one_sided_coverage_names_the_missing_side_and_cites_only_the_grounded_one(
+async def test_one_sided_coverage_is_served_but_never_cites_a_partial_set(
     streaming: bool,
 ) -> None:
+    """Rule 2: a subject with no capped passage makes the whole citation set partial, so the
+    answer is served uncited rather than sourced from only the grounded side.
+    """
     partial = (
         "SparkPoint has no verified data on Compound, but Aave is a shared lending pool whose "
         "supply rate moves with utilisation. Compound is also a lending protocol, so compare "
@@ -509,11 +520,8 @@ async def test_one_sided_coverage_names_the_missing_side_and_cites_only_the_grou
     assert "AAVE-GROUNDING" in prompt
     assert "COMPOUND-GROUNDING" not in prompt
     assert "SparkPoint has no verified material for Compound" in prompt
-    text = _text(blocks)
-    assert "Compound" in text and "Aave" in text
-    cited = _citations(blocks)
-    assert len(cited) == 1
-    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave"}
+    assert _text(blocks) == partial, "a servable comparison is not replaced"
+    assert _citations(blocks) == [], "never cite a partial set"
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -597,6 +605,55 @@ def test_unknown_protocols_fall_back_to_proper_nouns() -> None:
     )
 
 
+def test_function_word_sentence_opener_is_not_extracted_as_a_subject() -> None:
+    """OH Defender (medium): "For" was dropped from the stoplist in the lowercased refactor, so
+    "Curve" arrived via the fallback and "For" became a bogus third subject.
+    """
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects(
+        "For a cautious user, is Aerodrome safer than Curve?"
+    ) == ("Aerodrome", "Curve")
+
+
+@pytest.mark.parametrize("word", sorted(comparative._NOT_A_SUBJECT))
+def test_every_stoplist_word_is_dropped_by_the_proper_noun_fallback(word: str) -> None:
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    subjects = extract_comparison_subjects(f"Compare {word.title()} with something.")
+    assert word.lower() not in {subject.lower() for subject in subjects}
+
+
+def test_stoplist_fallback_subject_cannot_claim_coverage_or_unlock_the_cite_gate() -> None:
+    """A fallback-only function word must never match plain lowercase prose, so it cannot count
+    as coverage, satisfy the substance test, or make a passage citable.
+    """
+    from sparkpoint_agent.coordinator.comparative import (
+        passage_mentions_subject,
+        text_mentions_subject,
+    )
+
+    answer = (
+        "For a cautious user, Aerodrome is safer than Curve because Aerodrome concentrates "
+        "liquidity while Curve is a stableswap pool; neither is insured."
+    )
+    passage = Passage(
+        content="For a cautious user, read the docs; this is not protocol material.",
+        citation=Citation(
+            provider="docs",
+            endpoint="obsidian://caution",
+            field="caution",
+            value="note",
+            as_of="2026-10-29T00:00:00Z",
+            stale=False,
+        ),
+    )
+    assert text_mentions_subject(answer, "For") is False
+    assert passage_mentions_subject(passage, "For") is False
+    # Even if a bug put the bogus subject into the cite gate, no passage mentions it.
+    assert _comparative_citable_passages(("For",), (passage,)) == ()
+
+
 class _ReleaseNoteGrounder:
     """Returns release-note chunks that NAME the protocols — the exact 065 failure shape."""
 
@@ -642,3 +699,585 @@ async def test_release_notes_that_name_the_protocols_are_not_protocol_grounding(
     assert "SparkPoint has no verified material for Morpho and Aave" in prompt
     assert "release note" not in prompt.lower()
     assert _citations(blocks) == []
+
+
+# ── 067 · simplified gating: every subject mentioned, no whole-answer refusal, complete cites ──
+
+
+class _WholeMessageOnlyGrounder:
+    """Per-subject queries miss; only the whole-message query returns a note naming both."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        lowered = query.lower()
+        if "morpho" in lowered and "aave" in lowered:
+            return (
+                Passage(
+                    content=(
+                        "WHOLE-MESSAGE-GROUNDING: Aave is one shared lending pool; Morpho is a "
+                        "framework of isolated markets and curated vaults, so curator and "
+                        "market-isolation risk are added. Neither is insured."
+                    ),
+                    citation=Citation(
+                        provider="docs",
+                        endpoint="obsidian://protocol-basics",
+                        field="risk",
+                        value="structural",
+                        as_of="2026-10-29T00:00:00Z",
+                        stale=False,
+                    ),
+                ),
+            )
+        return ()
+
+
+class _EveryQueryGrounder:
+    """Returns a note naming both subjects for ANY query (the deictic whole-message path)."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        return (
+            Passage(
+                content=(
+                    "DEICTIC-GROUNDING: Aave is one shared lending pool; Morpho is a framework "
+                    "of isolated markets and curated vaults. Neither is insured."
+                ),
+                citation=Citation(
+                    provider="docs",
+                    endpoint="obsidian://protocol-basics",
+                    field="risk",
+                    value="structural",
+                    as_of="2026-10-29T00:00:00Z",
+                    stale=False,
+                ),
+            ),
+        )
+
+
+def _capped_passage(content: str, name: str, index: int) -> Passage:
+    return Passage(
+        content=content,
+        citation=Citation(
+            provider=name,
+            endpoint=f"obsidian://{name}-{index}",
+            field="risk",
+            value=name,
+            as_of="2026-10-29T00:00:00Z",
+            stale=False,
+        ),
+    )
+
+
+class _CapOverflowGrounder:
+    """Per-subject retrieval overflows the passage cap, truncating the second subject away."""
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        lowered = query.lower()
+        if "morpho" in lowered and "aave" not in lowered:
+            return (
+                _capped_passage(
+                    "MORPHO-GROUNDING: Morpho uses isolated markets and curated vaults.",
+                    "morpho",
+                    0,
+                ),
+            )
+        return tuple(
+            _capped_passage(
+                f"AAVE-GROUNDING {index}: Aave is one shared lending pool.",
+                "aave",
+                index,
+            )
+            for index in range(_COMPARATIVE_MAX_PASSAGES)
+        )
+
+
+def _log_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if "comparative_outcome" in record.getMessage()
+    ]
+
+
+#: A servable comparison: no refusal opener and every extracted subject is named.
+BOTH_SUBJECTS_SUBSTANTIVE = (
+    "Aave is one shared lending pool with market-wide risk, while Morpho uses isolated markets "
+    "and adds curator risk; neither is insured."
+)
+
+#: Every explicit first-person refusal opener, with ASCII and curly apostrophes, plus the
+#: connective / markdown / apology fashions that the old startswith-only check served by mistake.
+REFUSAL_ANSWERS = (
+    "I can't rank Morpho and Aave.",
+    "I cannot rank Morpho and Aave.",
+    "I can not rank Morpho and Aave.",
+    "I'm not able to rank Morpho and Aave.",
+    "I am not able to rank Morpho and Aave.",
+    "I'm unable to rank Morpho and Aave.",
+    "I am unable to rank Morpho and Aave.",
+    "I don't have enough to rank Morpho and Aave.",
+    "I do not have enough to rank Morpho and Aave.",
+    "I won't rank Morpho and Aave.",
+    "I will not compare Morpho and Aave.",
+    "I'd rather not compare Morpho and Aave.",
+    "I shouldn't rank Morpho and Aave.",
+    "I'm afraid I can't compare them.",
+    "I’m not able to rank Morpho and Aave.",
+    "I’m unable to rank Morpho and Aave.",
+    "I don’t have enough to rank Morpho and Aave.",
+    "I won’t rank Morpho and Aave.",
+    "Unfortunately, I can't rank Morpho and Aave.",
+    "But I can't rank Morpho and Aave.",
+    "However, I can't rank them.",
+    "Sorry, I can't rank Morpho and Aave.",
+    "Sorry, I can't compare them.",
+    "Apologies, I can't compare them.",
+    "**I can't rank Morpho and Aave.**",
+    "**I can't rank…**",
+)
+
+
+@pytest.mark.parametrize("answer", REFUSAL_ANSWERS)
+def test_each_refusal_opener_is_a_whole_answer_refusal(answer: str) -> None:
+    assert _is_whole_answer_refusal(answer) is True
+
+
+def test_servable_requires_every_subject_and_no_refusal() -> None:
+    assert _is_comparative_servable(BOTH_SUBJECTS_SUBSTANTIVE, ("Morpho", "Aave")) is True
+    assert _is_comparative_servable("Aave is one shared pool.", ("Morpho", "Aave")) is False
+    assert (
+        _is_comparative_servable("I can't rank Morpho and Aave.", ("Morpho", "Aave")) is False
+    )
+    assert _is_comparative_servable("Compare them.", ()) is True
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_both_subjects_substantive_is_served_and_cited(streaming: bool) -> None:
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    assert _text(blocks) == BOTH_SUBJECTS_SUBSTANTIVE
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_one_subject_missing_from_the_answer_falls_back_uncited(streaming: bool) -> None:
+    answer = "Aave is one shared lending pool with market-wide risk."
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_served_uncited_when_a_subject_lacks_passages(streaming: bool) -> None:
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    blocks = await _collect(
+        _dag(llm, _SubjectGrounder({"Aave": AAVE_DOC}), streaming=streaming),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == BOTH_SUBJECTS_SUBSTANTIVE, "rule 1 still serves it"
+    assert _citations(blocks) == [], "rule 2 never cites a partial set"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("answer", REFUSAL_ANSWERS)
+async def test_refusal_openers_are_replaced_and_uncited(
+    streaming: bool, answer: str
+) -> None:
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_not_something_refusal_falls_back_and_is_uncited(
+    streaming: bool,
+) -> None:
+    """A deictic "That's not something I can compare." is a refusal even with no named subjects,
+    so it must fall back and never cite the whole-message passages.
+    """
+    answer = "That's not something I can compare."
+    llm = _AnswerLlm(answer)
+    history = [
+        ("user", "Is Morpho safer than Aave?"),
+        ("assistant", "Aave is one shared pool; Morpho uses isolated markets."),
+    ]
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "compare those two",
+        history=history,
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_not_something_refusal_with_named_subjects_falls_back_uncited(
+    streaming: bool,
+) -> None:
+    """The short refusal list does not contain "that's not something", but _is_decline does: a
+    deictic refusal that names both subjects is still a refusal, not a comparison.
+    """
+    answer = "That's not something I can compare for Morpho and Aave."
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_substantive_first_sentence_with_second_sentence_decline_is_served(
+    streaming: bool,
+) -> None:
+    """Only the FIRST SENTENCE is judged: a refusal in a later sentence does not turn an
+    otherwise substantive comparison into a whole-answer refusal.
+    """
+    answer = (
+        "Aave is one shared pool, while Morpho uses isolated markets and adds curator risk. "
+        "I can't verify which is safer from the material here."
+    )
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == answer
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_appositive_subject_phrase_is_served(streaming: bool) -> None:
+    answer = (
+        "Aave, being one shared pool, carries market-wide risk, while Morpho uses isolated "
+        "markets and adds curator risk."
+    )
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == answer
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_could_be_compared_phrase_is_served(streaming: bool) -> None:
+    answer = (
+        "Morpho could be compared to Aave as a set of isolated markets versus one shared pool; "
+        "neither is insured."
+    )
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == answer
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+def test_third_party_unable_to_verify_is_not_a_refusal() -> None:
+    assert _is_whole_answer_refusal("The oracle is unable to verify prices.") is False
+    assert (
+        _is_whole_answer_refusal(
+            "Neither Morpho nor Aave can be ranked with the available material."
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_third_party_unable_to_verify_answer_is_served(streaming: bool) -> None:
+    answer = (
+        "The oracle is unable to verify prices, but Aave is one shared pool and Morpho uses "
+        "isolated markets with curator risk."
+    )
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == answer
+    assert len(_citations(blocks)) == 1
+
+
+def test_only_the_first_sentence_is_judged_for_refusal() -> None:
+    """A refusal phrase after the first sentence does not make a substantive answer a refusal."""
+    assert (
+        _is_whole_answer_refusal(
+            "Aave is one shared pool. I can't verify which is safer from the material here."
+        )
+        is False
+    )
+    assert _is_whole_answer_refusal("Aave is one pool, while I can't rank them.") is True
+
+
+def test_no_and_unfortunately_openers_are_declines() -> None:
+    """A leading "No,"/"Unfortunately," is enough to flag a decline, so a no-data sentence that
+    opens that way must not carry citations.
+    """
+    from sparkpoint_agent.coordinator.dag import _is_decline
+
+    assert _is_decline("No, that data is not available.") is True
+    assert _is_decline("Unfortunately, the data is not available.") is True
+    assert _is_decline("No, I can't compare them.") is True
+    assert _is_decline("Unfortunately, I cannot compare them.") is True
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_refusal_falls_back_and_is_uncited(streaming: bool) -> None:
+    """The no-subject comparative path applies the same refusal check before citing."""
+    answer = "However, I can't rank them."
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "Compare them for a cautious user.",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+def test_unusable_failure_maps_to_its_own_outcome_reason() -> None:
+    """``unusable`` is a content-guard discard (the model did answer), so it keeps its own reason;
+    a missing or unknown kind maps explicitly to ``non_answer``.
+    """
+    assert _comparative_failure_reason("unusable") == "unusable"
+    assert _comparative_failure_reason("something-else") == "non_answer"
+    assert _comparative_failure_reason(None) == "non_answer"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_whole_message_hit_that_names_a_subject_counts_as_coverage(
+    streaming: bool,
+) -> None:
+    """067 — coverage includes a whole-message hit that genuinely names a subject."""
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    grounder = _WholeMessageOnlyGrounder()
+    blocks = await _collect(
+        _dag(llm, grounder, streaming=streaming),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    prompt = llm.user_contents[-1]
+    assert "SparkPoint-verified material is available for Morpho and Aave" in prompt
+    assert "no verified material for" not in prompt
+    assert _text(blocks) == BOTH_SUBJECTS_SUBSTANTIVE
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {
+        "obsidian://protocol-basics"
+    }
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_cap_is_allocated_round_robin_so_no_subject_is_truncated(streaming: bool) -> None:
+    """One subject's overflow must not truncate the later subject to zero."""
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    dag = _dag(llm, _CapOverflowGrounder(), streaming=streaming)
+    passages, covered = await dag._ground_comparative(
+        "Compare Aave and Morpho", ("Aave", "Morpho")
+    )
+    assert len(passages) == _COMPARATIVE_MAX_PASSAGES
+    assert covered == ("Aave", "Morpho"), "both subjects must survive the cap"
+    assert any("MORPHO-GROUNDING" in passage.content for passage in passages)
+    hint = _comparative_coverage_hint(("Aave", "Morpho"), covered)
+    assert hint is not None
+    assert "no verified material for" not in hint
+
+
+class _ThreeSubjectOverflowGrounder:
+    """Three named subjects each produce enough hits to overflow the passage cap together."""
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        lowered = query.lower()
+        names = [name for name in ("Aave", "Morpho", "Compound") if name.lower() in lowered]
+        if len(names) != 1:
+            return ()
+        name = names[0]
+        return tuple(
+            _capped_passage(
+                f"{name.upper()}-GROUNDING {index}: {name} carries a distinct risk profile.",
+                name.lower(),
+                index,
+            )
+            for index in range(3)
+        )
+
+
+async def test_three_subject_cap_keeps_every_subject_with_hits_represented() -> None:
+    """With 3 subjects (3x3 hits vs cap 8), round-robin keeps every covered subject represented."""
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    dag = _dag(llm, _ThreeSubjectOverflowGrounder(), streaming=False)
+    subjects = ("Aave", "Morpho", "Compound")
+    passages, covered = await dag._ground_comparative("Compare Aave, Morpho and Compound", subjects)
+    assert len(passages) == _COMPARATIVE_MAX_PASSAGES
+    assert covered == subjects
+    counts = {
+        subject: sum(1 for passage in passages if subject.lower() in passage.content.lower())
+        for subject in subjects
+    }
+    assert all(count >= 1 for count in counts.values()), counts
+    assert all(count >= _COMPARATIVE_MAX_PASSAGES // len(subjects) for count in counts.values())
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_comparative_without_subjects_still_cites_a_grounded_answer(
+    streaming: bool,
+) -> None:
+    """A deictic turn ("compare them") has no extracted subjects; a grounded, non-refusal answer
+    keeps 065's whole-message citation behaviour.
+    """
+    llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "Compare them for a cautious user.",
+    )
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {
+        "obsidian://protocol-basics"
+    }
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_replaced_comparative_logs_content_free_reason(
+    streaming: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    decline = (
+        "I can't say which is safer, because SparkPoint does not have enough verified data to "
+        "rank them."
+    )
+    llm = _AnswerLlm(decline)
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                llm,
+                _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    lines = _log_lines(caplog)
+    assert lines, "a replaced comparative answer must leave an outcome line"
+    assert "subjects=2" in lines[-1] and "covered=2" in lines[-1]
+    assert "reason=non_answer" in lines[-1] and "cited=false" in lines[-1]
+    assert "safer" not in lines[-1] and "SparkPoint does not" not in lines[-1]
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_served_and_uncited_comparative_logs_both_states(
+    streaming: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE),
+                _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    assert any("reason=served" in line and "cited=true" in line for line in _log_lines(caplog))
+
+    # A served answer with a subject that has no passage is uncited and must say so.
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE),
+                _SubjectGrounder({"Aave": AAVE_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    assert any("reason=served" in line and "cited=false" in line for line in _log_lines(caplog))
+
+
+def test_proper_noun_fallback_drops_all_caps_grammar_and_question_words() -> None:
+    """The fallback must not return AND/OR/NOT/VS or Does/Should/... as "subjects"."""
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects("Compare AND OR NOT VS") == ()
+    assert (
+        extract_comparison_subjects(
+            "Should Does Would Can Has When Which What Is Are How compare?"
+        )
+        == ()
+    )
+    # A real proper noun still survives the grammar filter.
+    assert extract_comparison_subjects("Compare Yearn with something.") == ("Yearn",)

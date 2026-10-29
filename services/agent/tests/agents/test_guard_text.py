@@ -157,3 +157,20 @@ async def test_a_good_literacy_body_survives_the_guard() -> None:
 
     card = await Literacy(llm=_Good()).tip("what_is_apy")  # type: ignore[arg-type]
     assert card.body == good
+
+
+def test_meta_guard_verbs_match_curly_apostrophes() -> None:
+    """067 — OH Defender (c): the 066 verb patterns only matched ASCII apostrophes."""
+    for leak in [
+        "The passages don’t include details on Morpho.",
+        "The information provided doesn’t include fees.",
+        "The documents supplied don’t mention Compound.",
+        "The context available doesn’t cover Rocket Pool.",
+    ]:
+        assert looks_meta_shaped(leak), f"curly-apostrophe scaffolding slipped through: {leak!r}"
+    # Ordinary answers that merely mention documentation/reference material still pass.
+    for good in [
+        "The reference rate doesn’t change while the vault is closed.",
+        "The documentation on the Vault page doesn’t charge a deposit fee.",
+    ]:
+        assert not looks_meta_shaped(good), f"good answer wrongly discarded: {good!r}"
