@@ -39,5 +39,5 @@
   (2026-10-29).
 - [x] **T6615** Document the knowledge re-ingest step in `research.md` / `plan.md` / PR body
   (not run against beta).
-- [ ] **T6616** Commit, push, PR to `main`; cherry-pick to `~/project/sparkpoint-pivot-066-dev`
+- [x] **T6616** Commit, push, PR to `main`; cherry-pick to `~/project/sparkpoint-pivot-066-dev`
   (`origin/develop`), resolve changelog/whats-new keeping both newest-first, PR to `develop`.
