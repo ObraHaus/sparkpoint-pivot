@@ -28,6 +28,6 @@
 ## D — release
 
 - [x] **T6511** `CHANGELOG.md` top entry + newest-first `content_seed/whats-new.json`.
-- [ ] **T6512** Agent pytest / ruff / mypy / seed tests; web untouched.
+- [x] **T6512** Agent pytest / ruff / mypy / seed tests; web untouched.
 - [ ] **T6513** Commit, push, PR to `main`; cherry-pick to a `-065-dev` worktree, PR to
   `develop`.
