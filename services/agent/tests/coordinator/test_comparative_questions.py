@@ -817,10 +817,12 @@ BOTH_SUBJECTS_SUBSTANTIVE = (
     "and adds curator risk; neither is insured."
 )
 
-#: Every explicit first-person refusal opener, with ASCII and curly apostrophes.
+#: Every explicit first-person refusal opener, with ASCII and curly apostrophes, plus the
+#: connective / markdown / apology fashions that the old startswith-only check served by mistake.
 REFUSAL_ANSWERS = (
     "I can't rank Morpho and Aave.",
     "I cannot rank Morpho and Aave.",
+    "I can not rank Morpho and Aave.",
     "I'm not able to rank Morpho and Aave.",
     "I am not able to rank Morpho and Aave.",
     "I'm unable to rank Morpho and Aave.",
@@ -828,10 +830,22 @@ REFUSAL_ANSWERS = (
     "I don't have enough to rank Morpho and Aave.",
     "I do not have enough to rank Morpho and Aave.",
     "I won't rank Morpho and Aave.",
+    "I will not compare Morpho and Aave.",
+    "I'd rather not compare Morpho and Aave.",
+    "I shouldn't rank Morpho and Aave.",
+    "I'm afraid I can't compare them.",
     "I’m not able to rank Morpho and Aave.",
     "I’m unable to rank Morpho and Aave.",
     "I don’t have enough to rank Morpho and Aave.",
     "I won’t rank Morpho and Aave.",
+    "Unfortunately, I can't rank Morpho and Aave.",
+    "But I can't rank Morpho and Aave.",
+    "However, I can't rank them.",
+    "Sorry, I can't rank Morpho and Aave.",
+    "Sorry, I can't compare them.",
+    "Apologies, I can't compare them.",
+    "**I can't rank Morpho and Aave.**",
+    "**I can't rank…**",
 )
 
 
@@ -916,13 +930,15 @@ async def test_refusal_openers_are_replaced_and_uncited(
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_substantive_start_with_mid_text_decline_is_served(streaming: bool) -> None:
-    """Only a LEADING first-person refusal counts; "unfortunately" or "I can't" mid-text does
-    not turn a substantive comparison into a refusal.
+async def test_substantive_first_sentence_with_second_sentence_decline_is_served(
+    streaming: bool,
+) -> None:
+    """Only the FIRST SENTENCE is judged: a refusal in a later sentence does not turn an
+    otherwise substantive comparison into a whole-answer refusal.
     """
     answer = (
-        "Aave is one shared pool; unfortunately I can't rank them, but Morpho uses isolated "
-        "markets and adds curator risk."
+        "Aave is one shared pool, while Morpho uses isolated markets and adds curator risk. "
+        "I can't verify which is safer from the material here."
     )
     llm = _AnswerLlm(answer)
     blocks = await _collect(
@@ -1008,6 +1024,44 @@ async def test_third_party_unable_to_verify_answer_is_served(streaming: bool) ->
     )
     assert _text(blocks) == answer
     assert len(_citations(blocks)) == 1
+
+
+def test_only_the_first_sentence_is_judged_for_refusal() -> None:
+    """A refusal phrase after the first sentence does not make a substantive answer a refusal."""
+    assert (
+        _is_whole_answer_refusal(
+            "Aave is one shared pool. I can't verify which is safer from the material here."
+        )
+        is False
+    )
+    assert _is_whole_answer_refusal("Aave is one pool, while I can't rank them.") is True
+
+
+def test_no_data_without_a_speaker_refusal_is_not_a_decline() -> None:
+    """Minor: a leading "No,"/"Unfortunately," is only a SKIP — a speaker refusal must follow, so
+    a third-person no-data sentence is not a decline merely because of its opener.
+    """
+    from sparkpoint_agent.coordinator.dag import _is_decline
+
+    assert _is_decline("No, that data is not available.") is False
+    assert _is_decline("Unfortunately, the data is not available.") is False
+    assert _is_decline("No, I can't compare them.") is True
+    assert _is_decline("Unfortunately, I cannot compare them.") is True
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_refusal_falls_back_and_is_uncited(streaming: bool) -> None:
+    """The no-subject comparative path applies the same refusal check before citing."""
+    answer = "However, I can't rank them."
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "Compare them for a cautious user.",
+    )
+    text = _text(blocks)
+    assert text != answer
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
 
 
 def test_unusable_failure_maps_to_its_own_outcome_reason() -> None:

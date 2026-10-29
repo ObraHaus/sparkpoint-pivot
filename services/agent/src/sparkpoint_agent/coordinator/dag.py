@@ -294,22 +294,42 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
     )
 
 
-#: First-person refusal openers. A comparative answer that OPENS with one of these is a
-#: whole-answer refusal, not a comparison, so the honest code-authored fallback replaces it.
-#: Every phrase requires "I": a third-party sentence such as "the oracle is unable to verify
-#: prices" is not the speaker declining. Matched only at the START of the answer (after leading
-#: whitespace), case-insensitively, with ASCII and curly apostrophes normalised.
-_REFUSAL_OPENERS = (
+#: First-person refusal phrases. An answer whose FIRST SENTENCE contains one is a whole-answer
+#: refusal, not a comparison, so the honest code-authored fallback replaces it. Every phrase
+#: requires "I": a third-person sentence such as "the oracle is unable to verify prices" is not
+#: the speaker declining. This is deliberately a short explicit tuple — there is no clause
+#: splitting and no passive/third-party detection (false fallbacks are acceptable here).
+_REFUSAL_PHRASES = (
     "i can't",
     "i cannot",
-    "i'm not able to",
-    "i am not able to",
-    "i'm unable to",
-    "i am unable to",
+    "i can not",
+    "i'm not able",
+    "i am not able",
+    "i'm unable",
+    "i am unable",
     "i don't have",
     "i do not have",
     "i won't",
+    "i will not",
+    "i'm afraid i",
+    "i'd rather not",
+    "i shouldn't",
 )
+
+#: Word-bounded so "i can't" never matches inside a longer word. Built once from the tuple above.
+_REFUSAL_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(phrase) for phrase in _REFUSAL_PHRASES) + r")\b",
+    re.IGNORECASE,
+)
+
+#: Leading markdown / punctuation / underscores are cosmetic: "**I can't rank…**" declines just
+#: like "I can't rank…". Underscores are word characters, so they are stripped explicitly.
+_LEADING_MARKUP_RE = re.compile(r"^[\W_]+")
+#: A first sentence ends at the first sentence punctuation or newline. Only that opening is
+#: judged — a refusal phrase in a later sentence does not make an otherwise substantive answer a
+#: refusal.
+_FIRST_SENTENCE_RE = re.compile(r"[.!?\n]")
+_FIRST_SENTENCE_MAX = 200
 
 
 def _normalise_apostrophes(text: str) -> str:
@@ -317,14 +337,24 @@ def _normalise_apostrophes(text: str) -> str:
     return text.replace("\u2018", "'").replace("\u2019", "'")
 
 
-def _is_whole_answer_refusal(answer: str) -> bool:
-    """Rule 1b: True when the answer OPENS with an explicit first-person refusal.
+def _first_sentence(answer: str) -> str:
+    """Lowercased first sentence, with leading markdown/punctuation stripped and length capped."""
+    normalised = _LEADING_MARKUP_RE.sub("", _normalise_apostrophes(answer).lower())
+    return _FIRST_SENTENCE_RE.split(normalised, maxsplit=1)[0][:_FIRST_SENTENCE_MAX]
 
-    Only the leading phrase counts: there is no mid-text matching, no clause splitting and no
-    passive/third-party detection.
+
+def _is_whole_answer_refusal(answer: str) -> bool:
+    """Rule 1b: True when the FIRST SENTENCE contains an explicit first-person refusal.
+
+    Matching is containment within the first sentence, not just a startswith, so connectives
+    ("But", "However", "Unfortunately") and markdown wrappers do not hide a refusal. A sentence
+    that opens "Sorry"/"Apologies" is also a refusal. There is no clause splitting and a
+    third-party property ("the oracle is unable to verify prices") is never the speaker declining.
     """
-    opening = _normalise_apostrophes(answer.lstrip()).lower()
-    return opening.startswith(_REFUSAL_OPENERS)
+    first = _first_sentence(answer)
+    if re.match(r"^(?:sorry|apologies)\b", first):
+        return True
+    return bool(_REFUSAL_RE.search(first))
 
 
 def _is_comparative_servable(answer: str, subjects: Sequence[str]) -> bool:
@@ -2046,14 +2076,20 @@ _SPEAKER_REFUSAL = (
     r"that['’]s\s+not\s+something\b"
     r")"
 )
-#: Leading connectives/softeners are skipped, never treated as the decline themselves. In
-#: particular "Unfortunately, Morpho …" and "No, Aave …" are substantive clauses.
+#: Leading connectives/softeners are only SKIPPED, never treated as the decline themselves: a
+#: speaker refusal must still FOLLOW. So "Unfortunately, Morpho …" and "No, Aave …" are
+#: substantive clauses, and "No, that data is not available." is not a decline merely because it
+#: opens with "No,".
 _LEADING_CONNECTIVE = (
     r"(?:(?:however|that\s+said|but|still|yet|nevertheless|nonetheless|even\s+so|"
     r"in\s+any\s+case|unfortunately|sadly|honestly|to\s+be\s+clear|and|so)\b"
     r"[\s,:;—–-]*|no\s*[,:;—–-]+\s*)*"
 )
-_DECLINE_RE = re.compile(r"^\W*" + _LEADING_CONNECTIVE + _SPEAKER_REFUSAL, re.IGNORECASE)
+#: The connective group is optional; the speaker-refusal group is mandatory. This is the minor
+#: OH Defender fix: an opener alone ("No,"/"Unfortunately,") must never be enough to decline.
+_DECLINE_RE = re.compile(
+    r"^\W*" + _LEADING_CONNECTIVE + r"(?:" + _SPEAKER_REFUSAL + r")", re.IGNORECASE
+)
 
 
 def _is_decline(answer: str) -> bool:
