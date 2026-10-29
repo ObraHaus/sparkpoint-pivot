@@ -37,6 +37,7 @@ from sparkpoint_agent.coordinator.dag import (
     _answer_can_cite,
     _comparative_coverage_hint,
     _comparative_failure_reason,
+    _comparative_substantive_clauses,
     _is_comparative_non_answer,
 )
 from sparkpoint_agent.coordinator.guidance import (
@@ -914,9 +915,9 @@ INSURANCE_FUND_SUBSTANTIVE = (
 
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_protocol_insurance_coverage_clause_stays_substantive(streaming: bool) -> None:
-    """OH Defender advisory: ``_NO_COMPARATIVE_DATA_RE`` swallowed "has no verified coverage by
-    an insurance fund", a real risk clause. The tightened matcher only recognises the speaker's
-    own lack of material, so this comparison is served and both grounded sides are cited.
+    """OH Defender advisory: the no-data matcher used to swallow "has no verified coverage by
+    an insurance fund", a real risk clause. The speaker-anchored matcher only recognises the
+    speaker's own lack of material, so this comparison is served and both sides are cited.
     """
     assert _is_comparative_non_answer(
         INSURANCE_FUND_SUBSTANTIVE, ("Morpho", "Aave")
@@ -931,6 +932,93 @@ async def test_protocol_insurance_coverage_clause_stays_substantive(streaming: b
         "Is Morpho safer than Aave?",
     )
     assert _text(blocks) == INSURANCE_FUND_SUBSTANTIVE
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+#: The OH Defender medium finding: a one-sided no-data clause must not count as substantive or
+#: unlock a citation. ASCII and curly apostrophes are both real model output.
+NO_DATA_DECLINES = (
+    "I don't have enough data on Aave",
+    "I don’t have enough data on Aave",
+    "I've no verified material on Aave",
+    "I’ve no verified material on Aave",
+    "I've got nothing verified on Aave",
+    "I’ve got nothing verified on Aave",
+    "SparkPoint's notes don't cover Aave",
+    "SparkPoint’s notes don’t cover Aave",
+    "there isn't enough verified data on Aave",
+    "there isn’t enough verified data on Aave",
+    "However, I can't compare them",
+    "However, I can’t compare them",
+)
+
+
+@pytest.mark.parametrize("answer", NO_DATA_DECLINES)
+def test_speaker_no_data_phrasings_are_never_substantive(answer: str) -> None:
+    names = ("Aave", "Morpho")
+    assert _comparative_substantive_clauses(answer, names) == (0, set())
+    assert _is_comparative_non_answer(answer, names) is True
+
+
+@pytest.mark.parametrize("answer", NO_DATA_DECLINES)
+async def test_speaker_no_data_phrasings_are_replaced_and_uncited(answer: str) -> None:
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=False,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) != answer
+    assert _citations(blocks) == [], "a no-data clause is not provenance for its subject"
+
+
+INSUFFICIENT_LIQUIDITY_SUBSTANTIVE = (
+    "I can't say which is safer. Aave is one shared pool, while Morpho has insufficient "
+    "liquidity in some isolated markets, so neither is automatically safer."
+)
+
+TERSE_TWO_SIDED = (
+    "I can't say which is safer. Aave is older; Morpho is newer and isolated."
+)
+
+
+@pytest.mark.parametrize(
+    "answer, names",
+    [
+        (INSURANCE_FUND_SUBSTANTIVE, ("Morpho", "Aave")),
+        (INSUFFICIENT_LIQUIDITY_SUBSTANTIVE, ("Morpho", "Aave")),
+        (TERSE_TWO_SIDED, ("Morpho", "Aave")),
+    ],
+)
+def test_genuine_risk_and_terse_comparisons_stay_substantive(
+    answer: str, names: tuple[str, ...]
+) -> None:
+    """Protocol properties (insurance coverage, liquidity) are not speaker no-data; a terse
+    two-sided comparison is not dropped by the old four-word floor.
+    """
+    substantive, mentioned = _comparative_substantive_clauses(answer, names)
+    assert substantive >= 2
+    assert mentioned == {"Aave", "Morpho"}
+    assert _is_comparative_non_answer(answer, names) is False
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_terse_two_sided_comparison_is_served_and_cited(streaming: bool) -> None:
+    llm = _AnswerLlm(TERSE_TWO_SIDED)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    assert _text(blocks) == TERSE_TWO_SIDED
     cited = _citations(blocks)
     assert len(cited) == 1
     assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
