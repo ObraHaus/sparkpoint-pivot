@@ -168,6 +168,30 @@ _GENERAL_HELP = (
     "you like to do?"
 )
 
+#: 065 — the honest fallback for a comparative turn whose prose answer was produced but REJECTED
+#: by the shared content guard (usually the model narrating "my reference notes" instead of
+#: answering). That is not an upstream failure, so it must never become
+#: ``UPSTREAM_UNAVAILABLE``. This is code-authored, prose-only (a ``text`` block cannot carry an
+#: action), invents no figure, gives no allocation advice and names no internal prompt/notes.
+#: It is intentionally generic enough to fit any comparison; when the two subjects are the
+#: reported Morpho/Aave pair they are named so the answer still reads as an answer.
+_COMPARATIVE_FALLBACK = (
+    "I can't verify a safety ranking between {subjects} from the data I have here, so I won't "
+    "call one safer than the other. In general, compare the smart-contract risk, who curates "
+    "and manages each strategy, how easily you can withdraw, and how the yield and fees are "
+    "produced: a large shared lending pool concentrates risk in one market, while a curated "
+    "vault adds curator and isolated-market risk on top of its underlying markets, and neither "
+    "is insured. The Vault page shows each option's curator, net APY with its as-of date, and "
+    "liquidity notes before you sign."
+)
+
+
+def _comparative_fallback(message: str) -> str:
+    """The 065 honest comparison, naming Morpho/Aave when the turn is that reported pair."""
+    lowered = message.lower()
+    subjects = "Morpho and Aave" if "morpho" in lowered and "aave" in lowered else "those options"
+    return _COMPARATIVE_FALLBACK.format(subjects=subjects)
+
 # How many corpus passages to ground a prose answer on.
 _GROUND_K = 3
 # OTHER-branch grounding threshold (cosine): a general question the corpus doesn't really cover
@@ -452,17 +476,25 @@ class CoordinatorDag:
         memory_lines: Sequence[str] | None = None,
         history: Sequence[tuple[str, str]] | None = None,
         comparative: bool = False,
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, str | None]:
         """The general/identity branch's prose answer + whether the MODEL produced it.
 
-        Returns ``(_GENERAL_HELP, False)`` when no responder is wired (the non-chat DAG
-        consumers), and ``(_GENERAL_FAILURE, False)`` when the responder degraded TWICE — a
-        refusal, an empty or action-shaped generation, or an upstream LLM failure. The second
-        element gates the citation block: neither fallback is grounded in the retrieved
-        passages, so neither must ever be presented as if it were.
+        065 — the third element is the FAILURE KIND (``None`` on success, ``"upstream"`` for a
+        model/provider exception, otherwise the content-guard reason: ``meta``/``action``/
+        ``refused``/``empty``). The caller must only surface ``UPSTREAM_UNAVAILABLE`` for a true
+        upstream failure; a content rejection is answered honestly instead.
 
-        The caller distinguishes the two by identity (``answer is _GENERAL_FAILURE``) and emits
-        the failure as an ERROR block, never as prose — see FR-003.
+        Returns ``(_GENERAL_HELP, False, None)`` when no responder is wired (the non-chat DAG
+        consumers), and ``(_GENERAL_FAILURE, False, reason)`` when the responder degraded — a
+        refusal, an empty or action/meta-shaped generation, or an upstream LLM failure. A
+        comparative turn whose answer was rejected by the content guard stops after that attempt
+        (065); other turns keep the 029 one-retry. The second element gates the citation block:
+        neither fallback is grounded in the retrieved passages, so neither must ever be presented
+        as if it were.
+
+        The caller distinguishes the two by identity (``answer is _GENERAL_FAILURE``) and, since
+        065, only surfaces an ERROR block for ``reason == "upstream"``; a content rejection is
+        answered with honest prose (see FR-003).
 
         ``memory_lines`` (027) is the user's cross-conversation digest, handed to the same prose
         turn as advisory context — this is what lets a NEW conversation answer "what did we do
@@ -473,13 +505,14 @@ class CoordinatorDag:
         if self.sparky is None:
             # No responder wired (the non-chat DAG consumers) — there is nothing to retry and
             # nothing failed, so the static help text is the honest answer here.
-            return _GENERAL_HELP, False
+            return _GENERAL_HELP, False, None
         context = _format_grounding(passages) if passages else None
         # 029: RETRY ONCE, then be honest. The Aug-3 regression saw 3/20 turns under back-to-back
         # use collapse to _GENERAL_HELP with no sign anything had failed — and they were the
         # persona intro, the memory recall and the withdrawal explanation. A user cannot tell that
         # apart from a stupid assistant, so they report the latter. One retry covers the observed
         # transient (queue timeout when turns arrive quickly); a second failure is surfaced.
+        last_failure: str | None = None
         for attempt in (1, 2):
             reply = await self.sparky.reply(
                 message,
@@ -490,10 +523,16 @@ class CoordinatorDag:
                 comparative=comparative,
             )
             if not reply.fell_back and reply.body:
-                return reply.body, True
+                return reply.body, True, None
+            last_failure = reply.failure or "unusable"
+            # 065 — a comparative answer rejected by the CONTENT guard (e.g. the model narrated
+            # "my reference notes") is deterministic: re-asking the same prompt mostly repeats it
+            # AND doubles the ~15–20s turn. The caller has an honest grounded fallback, so stop.
+            if comparative and last_failure in {"meta", "action"}:
+                break
             if attempt == 1:
                 _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
-        return _GENERAL_FAILURE, False
+        return _GENERAL_FAILURE, False, last_failure or "upstream"
 
     async def _stream_general_answer(
         self,
@@ -508,13 +547,15 @@ class CoordinatorDag:
         """Streaming counterpart to :meth:`_general_answer` (059/A2).
 
         Yields :class:`ProseDelta` events as Sparky writes, then exactly one terminal
-        :class:`_ProseResult`. Retry semantics are IDENTICAL to the non-streaming path (one retry,
-        then an honest failure): a retry starts a NEW ``stream_id`` so the renderer resets its
-        partial text instead of appending attempt two to attempt one. The terminal answer is the
-        one the caller wraps in the final ``text`` block, so guardrails/clamps still win.
+        :class:`_ProseResult`. Retry semantics match the non-streaming path (one retry, then an
+        honest failure; a comparative content rejection stops immediately, 065): a retry starts a
+        NEW ``stream_id`` so the renderer resets its partial text instead of appending attempt two
+        to attempt one. The terminal answer is the one the caller wraps in the final ``text``
+        block, so guardrails/clamps still win.
         """
         assert self.sparky is not None  # noqa: S101 — caller narrows
         context = _format_grounding(passages) if passages else None
+        last_failure: str | None = None
         for attempt in (1, 2):
             reply: SparkyReply | None = None
             async for chunk in self.sparky.stream_reply(
@@ -534,9 +575,16 @@ class CoordinatorDag:
             if reply is not None and not reply.fell_back and reply.body:
                 yield _ProseResult(answer=reply.body, grounded=True, failed=False)
                 return
+            last_failure = (reply.failure if reply is not None else None) or "upstream"
+            # 065 — same rule as the non-streaming path: don't re-ask a deterministic content
+            # rejection on a comparative turn; the caller substitutes an honest answer.
+            if comparative and last_failure in {"meta", "action"}:
+                break
             if attempt == 1:
                 _logger.info("general_branch_retry: first prose attempt degraded; retrying once")
-        yield _ProseResult(answer=_GENERAL_FAILURE, grounded=False, failed=True)
+        yield _ProseResult(
+            answer=_GENERAL_FAILURE, grounded=False, failed=True, failure=last_failure
+        )
 
     async def _stream_tip(
         self,
@@ -961,6 +1009,7 @@ class CoordinatorDag:
             prose_answer: str = _GENERAL_FAILURE
             grounded = False
             failed = True
+            failure: str | None = "upstream"
             if (
                 self.streaming
                 and self.sparky is not None
@@ -977,13 +1026,14 @@ class CoordinatorDag:
                     if isinstance(prose_item, ProseDelta):
                         yield prose_item
                     else:
-                        prose_answer, grounded, failed = (
+                        prose_answer, grounded, failed, failure = (
                             prose_item.answer,
                             prose_item.grounded,
                             prose_item.failed,
+                            prose_item.failure,
                         )
             else:
-                prose_answer, grounded = await self._general_answer(
+                prose_answer, grounded, failure = await self._general_answer(
                     message,
                     passages,
                     user=user,
@@ -994,9 +1044,15 @@ class CoordinatorDag:
                 failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
             if failed:
-                # 029/FR-003: a degraded turn must LOOK degraded. An ERROR block renders as the
-                # inline error state with a retry affordance, and (unlike a text block) is not
-                # persisted into the transcript — so a reopened conversation shows no phantom
+                # 065 — a comparative answer that the model DID produce but the content guard
+                # rejected ("my reference notes…") is not an upstream outage. Answer honestly
+                # from code instead of telling the user the model was unreachable.
+                if comparative and failure != "upstream":
+                    yield TextBlock(_comparative_fallback(message))
+                    return
+                # 029/FR-003: a genuinely degraded turn must LOOK degraded. An ERROR block renders
+                # as the inline error state with a retry affordance, and (unlike a text block) is
+                # not persisted into the transcript — so a reopened conversation shows no phantom
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
@@ -1817,6 +1873,9 @@ class _ProseResult:
     answer: str
     grounded: bool
     failed: bool
+    #: 065 — ``None`` on success, ``"upstream"`` for a model/provider failure, else the content
+    #: guard's reason (``meta``/``action``/``refused``/``empty``). See :meth:`_general_answer`.
+    failure: str | None = None
 
 
 #: 059/A3 — normalise a fast-route candidate before an ALLOWLIST match: lower-case, drop
