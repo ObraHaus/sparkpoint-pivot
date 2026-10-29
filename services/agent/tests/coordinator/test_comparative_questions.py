@@ -10,6 +10,7 @@ that receives the retrieved protocol facts (plus the recent conversation for a d
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
@@ -31,6 +32,7 @@ from sparkpoint_agent.coordinator.dag import (
     MandateView,
     MarketData,
     PortfolioView,
+    _is_comparative_non_answer,
 )
 from sparkpoint_agent.coordinator.guidance import (
     is_comparative_question,
@@ -642,3 +644,293 @@ async def test_release_notes_that_name_the_protocols_are_not_protocol_grounding(
     assert "SparkPoint has no verified material for Morpho and Aave" in prompt
     assert "release note" not in prompt.lower()
     assert _citations(blocks) == []
+
+
+# ── 067 · follow-up: substantive declining openings, whole-message coverage, deictic cites ───
+
+
+
+class _WholeMessageOnlyGrounder:
+    """Per-subject queries miss; only the whole-message query returns a note naming both."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        lowered = query.lower()
+        if "morpho" in lowered and "aave" in lowered:
+            return (
+                Passage(
+                    content=(
+                        "WHOLE-MESSAGE-GROUNDING: Aave is one shared lending pool; Morpho is a "
+                        "framework of isolated markets and curated vaults, so curator and "
+                        "market-isolation risk are added. Neither is insured."
+                    ),
+                    citation=Citation(
+                        provider="docs",
+                        endpoint="obsidian://protocol-basics",
+                        field="risk",
+                        value="structural",
+                        as_of="2026-10-29T00:00:00Z",
+                        stale=False,
+                    ),
+                ),
+            )
+        return ()
+
+
+class _EveryQueryGrounder:
+    """Returns a note naming both subjects for ANY query (the deictic whole-message path)."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def retrieve_passages(
+        self, query: str, *, k: int | None = None, min_score: float = 0.0
+    ) -> tuple[Passage, ...]:
+        self.queries.append(query)
+        return (
+            Passage(
+                content=(
+                    "DEICTIC-GROUNDING: Aave is one shared lending pool; Morpho is a framework "
+                    "of isolated markets and curated vaults. Neither is insured."
+                ),
+                citation=Citation(
+                    provider="docs",
+                    endpoint="obsidian://protocol-basics",
+                    field="risk",
+                    value="structural",
+                    as_of="2026-10-29T00:00:00Z",
+                    stale=False,
+                ),
+            ),
+        )
+
+
+def _log_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if "comparative_outcome" in record.getMessage()
+    ]
+
+
+DECLINING_SUBSTANTIVE = (
+    "I can't say which is safer. Aave is one shared lending pool, while Morpho uses isolated "
+    "markets and adds curator risk, so the risk profile differs and neither is insured."
+)
+
+SHORT_SUBSTANTIVE = (
+    "I can't say which is safer. Both are non-custodial lending protocols and neither is "
+    "insured. Aave is one shared pool with market-wide risk; Morpho uses isolated markets and "
+    "adds curator risk."
+)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("answer", [DECLINING_SUBSTANTIVE, SHORT_SUBSTANTIVE])
+async def test_declining_opening_that_compares_substantively_is_served_and_cited(
+    streaming: bool, answer: str
+) -> None:
+    """067 — declining to RANK is not declining to COMPARE. A 2–4 sentence answer (short, no
+    " but " marker) used to be classed a non-answer and silently replaced by the code fallback.
+    """
+    llm = _AnswerLlm(answer)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    text = _text(blocks)
+    assert text == answer, "a substantive comparison must not be replaced"
+    cited = _citations(blocks)
+    assert len(cited) == 1, "a grounded substantive comparison must cite the passages"
+    assert {source["provider"] for source in cited[0]["sources"]} == {"Aave", "Morpho"}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_pure_decline_naming_both_subjects_is_still_replaced_and_uncited(
+    streaming: bool,
+) -> None:
+    """The other direction: naming both sides is not itself a comparison."""
+    decline = (
+        "I can't say which is safer, because SparkPoint does not have enough verified data to "
+        "rank Morpho and Aave."
+    )
+    llm = _AnswerLlm(decline)
+    blocks = await _collect(
+        _dag(
+            llm,
+            _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+            streaming=streaming,
+        ),
+        "Is Morpho safer than Aave?",
+    )
+    text = _text(blocks)
+    assert text != decline
+    assert "I can't rank" in text
+    assert _citations(blocks) == []
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_whole_message_hit_that_names_a_subject_counts_as_coverage(
+    streaming: bool,
+) -> None:
+    """067 — OH Defender (a): coverage came only from per-subject retrieval, so a whole-message
+    hit naming the protocol was ignored and the hint falsely said "no verified material".
+    """
+    llm = _AnswerLlm(DECLINING_SUBSTANTIVE)
+    grounder = _WholeMessageOnlyGrounder()
+    blocks = await _collect(
+        _dag(llm, grounder, streaming=streaming),
+        "Is Morpho safer than Aave? Compare them for a cautious user.",
+    )
+    prompt = llm.user_contents[-1]
+    assert "SparkPoint-verified material is available for Morpho and Aave" in prompt
+    assert "no verified material for" not in prompt
+    text = _text(blocks)
+    assert text == DECLINING_SUBSTANTIVE
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {
+        "obsidian://protocol-basics"
+    }
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_deictic_comparative_without_subjects_still_cites_a_grounded_answer(
+    streaming: bool,
+) -> None:
+    """067 — OH Defender (b): "compare them" has no extracted subjects; 065 still cited a
+    genuinely grounded answer. 066 accidentally required a non-empty covered list.
+    """
+    llm = _AnswerLlm(DECLINING_SUBSTANTIVE)
+    blocks = await _collect(
+        _dag(llm, _EveryQueryGrounder(), streaming=streaming),
+        "Compare them for a cautious user.",
+    )
+    cited = _citations(blocks)
+    assert len(cited) == 1
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {
+        "obsidian://protocol-basics"
+    }
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        DECLINING_SUBSTANTIVE,
+        "I don't have verified data on Compound, but Aave is a shared lending pool and "
+        "Compound is a lending protocol, so compare contract and governance risk.",
+    ],
+)
+def test_substantive_declining_openings_are_not_non_answers(answer: str) -> None:
+    names = ("Compound", "Aave") if "Compound" in answer else ("Morpho", "Aave")
+    assert _is_comparative_non_answer(answer, names) is False
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I’m not able to compare Morpho and Aave because the reference information doesn’t "
+        "include details on either protocol’s risk.",
+        "I don't have current data on Lido and Rocket Pool, so I can't compare their risk.",
+        "I can't say which is safer, because SparkPoint does not have enough verified data to "
+        "rank Morpho and Aave.",
+    ],
+)
+def test_pure_declines_are_still_non_answers(answer: str) -> None:
+    names = ("Lido", "Rocket Pool") if "Lido" in answer else ("Morpho", "Aave")
+    assert _is_comparative_non_answer(answer, names) is True
+
+
+def test_deictic_substance_needs_more_than_a_decline() -> None:
+    assert _is_comparative_non_answer(
+        "I can't say which is safer. The first is one shared pool, while the second uses "
+        "isolated markets and adds curator risk.",
+        (),
+    ) is False
+    assert _is_comparative_non_answer(
+        "I can't say which is safer because SparkPoint does not have enough verified data.",
+        (),
+    ) is True
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_replaced_comparative_logs_content_free_reason(
+    streaming: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    decline = (
+        "I can't say which is safer, because SparkPoint does not have enough verified data to "
+        "rank them."
+    )
+    llm = _AnswerLlm(decline)
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                llm,
+                _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    lines = _log_lines(caplog)
+    assert lines, "a replaced comparative answer must leave an outcome line"
+    assert "subjects=2" in lines[-1] and "covered=2" in lines[-1]
+    assert "reason=decline" in lines[-1] and "cited=false" in lines[-1]
+    assert "safer" not in lines[-1] and "SparkPoint does not" not in lines[-1]
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_served_and_uncited_comparative_logs_both_states(
+    streaming: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    grounded_answer = DECLINING_SUBSTANTIVE
+    llm = _AnswerLlm(grounded_answer)
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                llm,
+                _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    assert any("reason=served" in line and "cited=true" in line for line in _log_lines(caplog))
+
+    # A served answer that never names the grounded sides is uncited and must say so.
+    caplog.clear()
+    llm = _AnswerLlm("Both are non-custodial lending protocols with different risk profiles.")
+    with caplog.at_level(logging.INFO, logger="sparkpoint_agent.coordinator.dag"):
+        await _collect(
+            _dag(
+                llm,
+                _SubjectGrounder({"Aave": AAVE_DOC, "Morpho": MORPHO_DOC}),
+                streaming=streaming,
+            ),
+            "Is Morpho safer than Aave?",
+        )
+    assert any("reason=served" in line and "cited=false" in line for line in _log_lines(caplog))
+
+
+def test_proper_noun_fallback_drops_all_caps_grammar_and_question_words() -> None:
+    """067 — OH Defender (d): the fallback returned AND/OR/NOT/VS and Does/Should/... as
+    "subjects" when the alias table found fewer than two known protocols.
+    """
+    from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
+
+    assert extract_comparison_subjects("Compare AND OR NOT VS") == ()
+    assert (
+        extract_comparison_subjects(
+            "Should Does Would Can Has When Which What Is Are How compare?"
+        )
+        == ()
+    )
+    # A real proper noun still survives the grammar filter.
+    assert extract_comparison_subjects("Compare Yearn with something.") == ("Yearn",)

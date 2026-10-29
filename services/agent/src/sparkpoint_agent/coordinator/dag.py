@@ -266,6 +266,11 @@ def _comparative_coverage_hint(subjects: Sequence[str], covered: Sequence[str]) 
         )
     else:
         lines.append("Compare both sides using only that material.")
+        lines.append(
+            "If the question asks which is safer or better and the material does not establish a "
+            "ranking, say so in one short clause and then compare the specific risk factors side "
+            "by side. Do not stop at the refusal."
+        )
     lines.append(
         "Do not mention notes, reference material, context, documents, or what you do or do not "
         "have access to. Do not give allocation advice or declare a winner."
@@ -289,57 +294,155 @@ def _format_grounding(passages: tuple[Passage, ...]) -> str:
     )
 
 
-#: Markers that turn a comparative decline into a real answer. A partial answer often opens
-#: with ``"I don't have verified data on X, but Y is…"``; replacing that would throw away the
-#: grounded side. A pure "I can't compare X and Y" has none of these.
-_COMPARATIVE_ANSWER_MARKERS: tuple[str, ...] = (
-    " but ",
-    " however",
-    " while ",
-    " whereas",
-    " in contrast",
-    " on the other hand",
-    " in general",
-    " generally",
-    " typically",
-    " structurally",
-    " works by",
-    " is a ",
+#: Clause boundaries used to judge whether a declining OPENING still contains a real comparison.
+#: Sentence punctuation plus the contrast connectives that separate one side's description from
+#: the other's. Splitting is deliberately lexical: the test is whether substantive clauses exist,
+#: not whether the answer is long enough or contains one magic phrase.
+_COMPARATIVE_CLAUSE_SPLIT_RE = re.compile(
+    r"(?<=[.!?;:])\s+|\s+(?:but|however|whereas|while|although|though)\s+",
+    re.IGNORECASE,
+)
+
+#: A clause that only says the corpus lacks material/coverage — honest, but not a comparison.
+_NO_COMPARATIVE_DATA_RE = re.compile(
+    r"\b(?:no|without|lack(?:s|ing)?\s+of)\s+(?:sparkpoint[- ]verified\s+)?(?:verified\s+)?"
+    r"(?:data|material|information|details|coverage)\b"
+    r"|\bnot\s+enough\s+(?:sparkpoint[- ]verified\s+)?(?:verified\s+)?"
+    r"(?:data|material|information|details)\b"
+    r"|\binsufficient\s+(?:verified\s+)?(?:data|material|information|details)\b",
+    re.IGNORECASE,
 )
 
 
-def _is_comparative_non_answer(answer: str) -> bool:
+def _comparative_substantive_clauses(
+    answer: str, names: Sequence[str]
+) -> tuple[int, set[str]]:
+    """How many clauses make a real comparison, and which named subjects they mention.
+
+    ``names`` are the subjects the coordinator extracted (or, for a deictic turn, the grounded
+    ones). A clause counts only when it is not itself a decline/no-data clause and says enough
+    about a named side. Mention collection includes the decline clause so a partial answer that
+    explicitly names the ungrounded side ("no data on Compound, but Aave is…") still counts both.
+    """
+    substantive = 0
+    mentioned: set[str] = set()
+    for clause in _COMPARATIVE_CLAUSE_SPLIT_RE.split(answer):
+        text = clause.strip()
+        if not text:
+            continue
+        hits = {name for name in names if text_mentions_subject(text, name)}
+        mentioned |= hits
+        if _is_decline(text) or _NO_COMPARATIVE_DATA_RE.search(text):
+            continue
+        if names and not hits:
+            continue
+        if len(text.split()) < 4:
+            continue
+        substantive += 1
+    return substantive, mentioned
+
+
+def _comparative_has_substance(answer: str, names: Sequence[str]) -> bool:
+    """True when a declining opening goes on to make a substantive comparison.
+
+    This replaces the 066 length-plus-literal-marker heuristic. A 2–4 sentence answer (which is
+    what the prose system prompt asks for) is frequently shorter than 220 characters, and a
+    concise comparison can use sentence punctuation instead of " but " / " is a ". The substance
+    test asks two things instead: at least one non-decline clause that talks about a named side,
+    and both sides represented across the answer. Deictic turns (no extracted names) need two
+    substantive clauses, because there is no name to anchor the comparison.
+    """
+    substantive, mentioned = _comparative_substantive_clauses(answer, names)
+    if not names:
+        return substantive >= 2
+    return substantive >= 1 and len(mentioned) >= min(2, len(names))
+
+
+def _is_comparative_non_answer(answer: str, names: Sequence[str] = ()) -> bool:
     """True for a comparative response that only declines, so it must not be served as the answer.
 
     The 066 beta capture had a pure deflection (``"I'm not able to compare Morpho and Aave…"``)
-    and a pure no-data reply (``"I don't have current data on Lido and Rocket Pool…"``). Both are
-    honest but not useful. A longer answer that contrasts a grounded side with an ungrounded one
-    starts with the same words, so the marker/length test keeps it.
+    and a pure no-data reply (``"I don't have current data on Lido and Rocket Pool…"``) — both are
+    honest but not useful. A declining OPENING that then compares the grounded sides (``"I can't
+    say which is safer. Aave is one shared pool; Morpho uses isolated markets…"``) is a real
+    answer and must be served. Classification is by substance, not length or a marker list.
     """
     if not _is_decline(answer):
         return False
-    lowered = f" {answer.lower()} "
-    if len(answer.strip()) >= 220 and any(
-        marker in lowered for marker in _COMPARATIVE_ANSWER_MARKERS
-    ):
-        return False
-    return True
+    return not _comparative_has_substance(answer, names)
+
+
+def _comparative_non_answer_reason(answer: str, names: Sequence[str]) -> str:
+    """Log-only classification of a replaced comparative answer: ``decline`` or ``non_answer``.
+
+    ``decline`` is a bare refusal that names no subject; ``non_answer`` is a subject-aware
+    deflection that still contains no substantive comparison clause.
+    """
+    mentioned = {name for name in names if text_mentions_subject(answer, name)}
+    return "non_answer" if mentioned else "decline"
 
 
 def _answer_can_cite(
-    answer: str, comparative: bool, covered: Sequence[str]
+    answer: str,
+    comparative: bool,
+    covered: Sequence[str],
+    subjects: Sequence[str] = (),
 ) -> bool:
     """Whether a model-produced answer may carry the retrieved sources.
 
     Non-comparative answers keep the 029 rule (the caller already checked passages/grounded).
-    A comparative answer must also name every subject that was actually grounded: a passage is
-    not provenance for text that never engaged it, and a deflection must never look sourced.
+    A comparative answer must not be a pure decline, and it must name every subject that was
+    actually grounded: a passage is not provenance for text that never engaged it, and a
+    deflection must never look sourced. A declining OPENING that then compares substantively is
+    citable. A deictic turn (``"compare them"``) has no extracted subjects, so it keeps the 065
+    behaviour: a grounded, non-declining model answer may cite the whole-message passages.
     """
-    if not answer.strip() or _is_decline(answer):
+    if not answer.strip():
         return False
     if not comparative:
+        return not _is_decline(answer)
+    if _is_comparative_non_answer(answer, subjects):
+        return False
+    if not covered:
         return True
-    return bool(covered) and all(text_mentions_subject(answer, subject) for subject in covered)
+    return all(text_mentions_subject(answer, subject) for subject in covered)
+
+
+#: ``SparkyReply.failure`` → the content-free reason string in ``comparative_outcome``.
+_COMPARATIVE_FAILURE_REASONS = {
+    "meta": "guard_meta",
+    "action": "guard_action",
+    "refused": "refused",
+    "empty": "empty",
+    "upstream": "upstream",
+}
+
+
+def _comparative_failure_reason(failure: str | None) -> str:
+    """Map a prose failure kind onto the logged comparative-outcome reason set."""
+    return _COMPARATIVE_FAILURE_REASONS.get(failure or "", "non_answer")
+
+
+def _log_comparative_outcome(
+    subjects: Sequence[str],
+    covered: Sequence[str],
+    *,
+    reason: str,
+    cited: bool,
+) -> None:
+    """Address-free, content-free observability for a comparative prose outcome.
+
+    Never includes the user message, the model text, a wallet or a citation endpoint. ``reason``
+    is one of ``served``, ``guard_meta``, ``guard_action``, ``refused``, ``empty``,
+    ``non_answer``, ``decline`` or ``upstream``; ``cited`` says whether a citation block shipped.
+    """
+    _logger.info(
+        "comparative_outcome subjects=%d covered=%d reason=%s cited=%s",
+        len(subjects),
+        len(covered),
+        reason,
+        "true" if cited else "false",
+    )
 
 
 def _is_release_note(passage: Passage) -> bool:
@@ -672,6 +775,18 @@ class CoordinatorDag:
             )
         for passage in whole_hits:
             add(passage)
+
+        # 067 — a whole-message hit that genuinely names a subject is also coverage. Before this,
+        # coverage came only from the per-subject query, so a subject whose named query missed but
+        # whose note arrived with the whole message was falsely reported as "no verified material".
+        covered_set = set(covered)
+        if subjects:
+            for subject in subjects:
+                if subject in covered_set:
+                    continue
+                if any(passage_mentions_subject(passage, subject) for passage in whole_hits):
+                    covered_set.add(subject)
+            covered = [subject for subject in subjects if subject in covered_set]
 
         return tuple(merged[:_COMPARATIVE_MAX_PASSAGES]), tuple(covered)
 
@@ -1266,6 +1381,13 @@ class CoordinatorDag:
                 # 065 — a comparative answer that the model DID produce but the content guard
                 # rejected ("my reference notes…") is not an upstream outage. Answer honestly
                 # from code instead of telling the user the model was unreachable.
+                if comparative:
+                    _log_comparative_outcome(
+                        subjects,
+                        covered,
+                        reason=_comparative_failure_reason(failure),
+                        cited=False,
+                    )
                 if comparative and failure != "upstream":
                     yield TextBlock(
                         _comparative_fallback(message, subjects=subjects, covered=covered)
@@ -1277,22 +1399,40 @@ class CoordinatorDag:
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            # 066 — a comparative "answer" that only declines is not useful, and using it
+            # 066/067 — a comparative "answer" that only declines is not useful, and using it
             # would waste the honest structural fallback. Replace it BEFORE the text block is
             # emitted (streaming may already have painted it; the terminal block is
-            # authoritative), and never attach a citation to it.
-            if comparative and _is_comparative_non_answer(prose_answer):
+            # authoritative), and never attach a citation to it. 067 classifies by SUBSTANCE: a
+            # declining opening that then compares the grounded sides is served.
+            comparative_names = subjects or covered
+            if comparative and _is_comparative_non_answer(prose_answer, comparative_names):
+                _log_comparative_outcome(
+                    subjects,
+                    covered,
+                    reason=_comparative_non_answer_reason(prose_answer, comparative_names),
+                    cited=False,
+                )
                 yield TextBlock(
                     _comparative_fallback(message, subjects=subjects, covered=covered)
                 )
                 return
+            cited = bool(
+                passages
+                and grounded
+                and _answer_can_cite(prose_answer, comparative, covered, subjects)
+            )
+            if comparative:
+                _log_comparative_outcome(
+                    subjects, covered, reason="served", cited=cited
+                )
             yield TextBlock(prose_answer)
             # Cite ONLY when the grounded answer actually came from the model AND actually
             # answered. A fallback is not grounded in those passages, and neither is a refusal
             # (029/FR-014) — citing either would claim a provenance the text does not have.
-            # 066 adds the comparative tests: the answer must name every subject that was
-            # actually grounded, so a tangential passage cannot be cited under a non-answer.
-            if passages and grounded and _answer_can_cite(prose_answer, comparative, covered):
+            # 066/067 adds the comparative tests: the answer must name every subject that was
+            # actually grounded, so a tangential passage cannot be cited under a non-answer; a
+            # declining opening that compares substantively may cite; a deictic turn keeps 065.
+            if cited:
                 yield CitationBlock(sources=tuple(p.citation for p in passages))
             return
 
