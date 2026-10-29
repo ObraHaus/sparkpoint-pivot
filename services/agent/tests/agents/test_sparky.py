@@ -15,6 +15,7 @@ Asserts the three things the ``OTHER`` chat branch depends on:
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -24,9 +25,10 @@ from sparkpoint_agent.agents.sparky import (
     MAX_TOKENS,
     SYSTEM,
     Sparky,
+    SparkyChunk,
     SparkyReply,
 )
-from sparkpoint_agent.llm import LlmResult
+from sparkpoint_agent.llm import LlmResult, StreamChunk
 
 
 class _FakeLlm:
@@ -288,3 +290,79 @@ async def test_normal_second_person_answers_survive_the_meta_discard() -> None:
         "We looked at your portfolio together yesterday.",
     ]:
         assert not _looks_meta_shaped(good), good
+
+
+# ── 063 · streaming opening guard (40-character hold) ───────────────────────────
+
+
+class _StreamLlm:
+    """A fake streaming LLM that yields ``deltas`` then the terminal result."""
+
+    def __init__(self, deltas: list[str], *, refused: bool = False) -> None:
+        self._deltas = deltas
+        self._refused = refused
+
+    async def stream_complete(self, **_: Any) -> AsyncIterator[StreamChunk]:
+        for delta in self._deltas:
+            yield StreamChunk(delta=delta)
+        yield StreamChunk(
+            result=LlmResult(
+                text="".join(self._deltas),
+                stop_reason="refusal" if self._refused else "end_turn",
+                refused=self._refused,
+            )
+        )
+
+
+async def _stream(deltas: list[str], *, refused: bool = False) -> list[SparkyChunk]:
+    agent = Sparky(llm=_StreamLlm(deltas, refused=refused))  # type: ignore[arg-type]
+    return [chunk async for chunk in agent.stream_reply("tell me something")]
+
+
+@pytest.mark.parametrize(
+    "deltas",
+    [
+        # Meta narration that only becomes visible after the token-sized "We".
+        ["We", " need to answer the user using the reference notes. ", "Here is the answer."],
+        # Action-shaped JSON within the first 40 characters.
+        ["We", ' should call {"type": "vault_deposit", "amount": "1000000"} now.'],
+        # Raw calldata within the first 40 characters.
+        ["We", " can send 0x" + "ab" * 32 + " right away."],
+    ],
+)
+async def test_opening_guard_paints_nothing_when_meta_or_action_is_in_the_window(
+    deltas: list[str],
+) -> None:
+    chunks = await _stream(deltas)
+    assert [chunk.delta for chunk in chunks if chunk.delta] == []
+    assert chunks[-1].reply == SparkyReply(body="", fell_back=True)
+
+
+async def test_normal_answer_paints_as_soon_as_40_chars_accumulate_then_streams_live() -> None:
+    text = "Sparky explains how the Aave pool works and why suppliers earn yield over time."
+    deltas = [text[i : i + 5] for i in range(0, len(text), 5)]
+    chunks = await _stream(deltas)
+
+    painted = [chunk.delta for chunk in chunks if chunk.delta is not None]
+    assert len(painted) > 1
+    assert painted[0] == text[:40]
+    # The first paint happens before the stream ends (the terminal reply is the last chunk).
+    first_delta = next(i for i, chunk in enumerate(chunks) if chunk.delta is not None)
+    assert first_delta < len(chunks) - 1
+    assert chunks[-1].reply is not None
+    assert chunks[-1].reply.body == text
+    assert "".join(painted) == text
+
+
+async def test_short_answer_is_checked_and_painted_after_the_stream_ends() -> None:
+    text = "Hi, I'm Sparky."
+    chunks = await _stream([text])
+    painted = [chunk.delta for chunk in chunks if chunk.delta is not None]
+    assert painted == [text]
+    assert chunks[-1].reply == SparkyReply(body=text)
+
+
+async def test_short_meta_answer_paints_nothing() -> None:
+    chunks = await _stream(["The user asks about Aave."])
+    assert [chunk.delta for chunk in chunks if chunk.delta] == []
+    assert chunks[-1].reply == SparkyReply(body="", fell_back=True)

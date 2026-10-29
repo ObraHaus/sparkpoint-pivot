@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from ..llm import AsyncClaudeClient, Effort, LlmResult
 from ..memory import SPARKY_DIGEST_CHARS, render_digest
 from ..prompt_fencing import BACKGROUND_NOTE, UNTRUSTED_NOTE, fence
-from .guard_text import is_unusable, prefix_is_usable
+from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
 
 EFFORT: Effort = "low"
 
@@ -288,6 +288,7 @@ class Sparky:
         )
         parts: list[str] = []
         pending: list[str] = []
+        pending_len = 0
         forwarded = 0
         released = False
         blocked = False
@@ -304,28 +305,26 @@ class Sparky:
                     parts.append(chunk.delta)
                     # Hold the opening back until it has passed the same action/meta guard the
                     # full text will: an attempt whose OPENING is already unusable is never
-                    # painted. A body that only turns unusable later may have painted; the
-                    # terminal block is authoritative and replaces it.
+                    # painted. The hold is measured in characters of accumulated text, never in
+                    # chunks — a token-sized first delta ("We") must not release the opening.
+                    # A body that only turns unusable later may have painted; the terminal block
+                    # is authoritative and replaces it.
                     if not released and not blocked:
                         pending.append(chunk.delta)
-                        # 063 — release the opening as soon as it exists and passes the guard.
-                        # The 059 char-count hold meant a short answer (or a slow first token)
-                        # painted NOTHING until the model had finished; the terminal block is
-                        # still authoritative, so an answer that only turns unusable later is
-                        # replaced (or retried under a new stream id) exactly as before.
-                        if not prefix_is_usable("".join(pending)):
+                        pending_len += len(chunk.delta)
+                        if pending_len < STREAM_HOLD_CHARS:
+                            continue
+                        held = "".join(pending)
+                        pending.clear()
+                        if not prefix_is_usable(held):
                             blocked = True
-                            pending.clear()
                             continue
                         released = True
-                        for buffered in pending:
-                            room = MAX_CHARS - forwarded
-                            if room <= 0:
-                                break
-                            piece = buffered[:room]
+                        room = MAX_CHARS - forwarded
+                        if room > 0:
+                            piece = held[:room]
                             forwarded += len(piece)
                             yield SparkyChunk(delta=piece)
-                        pending.clear()
                         continue
                     if not blocked:
                         room = MAX_CHARS - forwarded
@@ -342,16 +341,18 @@ class Sparky:
         if result is None or result.refused or is_unusable(body):
             yield SparkyChunk(reply=SparkyReply(body="", fell_back=True))
             return
-        # A short (< hold) answer never crossed the release threshold; paint it now that the
-        # FULL text has passed the guard. A degraded terminal answer already returned above.
+        # The stream ended before the hold window filled: run the prefix guard on whatever was
+        # buffered, then paint it (the FULL text has already passed the guard above). A degraded
+        # terminal answer already returned before this point, so nothing live was painted.
         if not released and not blocked:
-            for buffered in pending:
+            held = "".join(pending)
+            pending.clear()
+            if held and prefix_is_usable(held):
                 room = MAX_CHARS - forwarded
-                if room <= 0:
-                    break
-                piece = buffered[:room]
-                forwarded += len(piece)
-                yield SparkyChunk(delta=piece)
+                if room > 0:
+                    piece = held[:room]
+                    forwarded += len(piece)
+                    yield SparkyChunk(delta=piece)
         yield SparkyChunk(reply=SparkyReply(body=_clamp(body)))
 
     async def reply(
