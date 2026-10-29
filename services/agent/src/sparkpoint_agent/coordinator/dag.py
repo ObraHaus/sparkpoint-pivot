@@ -358,10 +358,11 @@ def _is_whole_answer_refusal(answer: str) -> bool:
 
 
 def _is_comparative_servable(answer: str, subjects: Sequence[str]) -> bool:
-    """Rule 1: serve a comparison only when every named subject is mentioned and it is not a
-    whole-answer refusal. A deictic turn (no extracted subjects) has nothing to check.
+    """Rule 1: serve a comparison only when every named subject is mentioned and it is neither a
+    whole-answer refusal nor a decline. A deictic turn (no extracted subjects) has nothing to
+    check beyond the refusal/decline flags.
     """
-    if _is_whole_answer_refusal(answer):
+    if _is_whole_answer_refusal(answer) or _is_decline(answer):
         return False
     return all(text_mentions_subject(answer, subject) for subject in subjects)
 
@@ -2058,37 +2059,12 @@ def _fmt_bps(bps: int | None) -> str:
 #: "Sources" block to it claims a provenance it does not have. The battery saw ERC-4626
 #: documentation cited beneath "I can't move your funds", which reads either as a non-sequitur or,
 #: worse, as though the refusal were something the docs say. Anchored to the opening clause, so an
-#: answer that merely contains "I can't" partway through still cites what it used. A leading
-#: contrastive connective is skipped, so "However, I can't compare them" still reads as a decline.
-#: A speaker refusal/inability. Deliberately first-person (or SparkPoint's own voice): a
-#: protocol property such as "Morpho cannot be ranked" is not the speaker declining.
-_SPEAKER_REFUSAL = (
-    r"(?:"
-    r"i(?:\s+(?:am|was)|['’]m)\s+(?:not\s+able|unable|sorry|afraid)\b|"
-    r"i\s+can(?:['’]t|not|\s+not)\b|"
-    r"i\s+(?:will\s+not|won['’]?t)\b|"
-    r"i\s+(?:do\s+not|don['’]?t)\s+(?:have|hold|know)\b|"
-    r"we(?:\s+(?:are|were)|['’]re)\s+(?:not\s+able|unable)\b|"
-    r"we\s+can(?:['’]t|not|\s+not)\b|"
-    r"we\s+(?:will\s+not|won['’]?t)\b|"
-    r"we\s+(?:do\s+not|don['’]?t)\s+(?:have|hold|know)\b|"
-    r"sparkpoint\s+(?:can(?:['’]t|not|\s+not)|does\s+not|doesn['’]?t|is\s+not\s+able)\b|"
-    r"that['’]s\s+not\s+something\b"
-    r")"
-)
-#: Leading connectives/softeners are only SKIPPED, never treated as the decline themselves: a
-#: speaker refusal must still FOLLOW. So "Unfortunately, Morpho …" and "No, Aave …" are
-#: substantive clauses, and "No, that data is not available." is not a decline merely because it
-#: opens with "No,".
-_LEADING_CONNECTIVE = (
-    r"(?:(?:however|that\s+said|but|still|yet|nevertheless|nonetheless|even\s+so|"
-    r"in\s+any\s+case|unfortunately|sadly|honestly|to\s+be\s+clear|and|so)\b"
-    r"[\s,:;—–-]*|no\s*[,:;—–-]+\s*)*"
-)
-#: The connective group is optional; the speaker-refusal group is mandatory. This is the minor
-#: OH Defender fix: an opener alone ("No,"/"Unfortunately,") must never be enough to decline.
+#: answer that merely contains "I can't" partway through still cites what it used.
 _DECLINE_RE = re.compile(
-    r"^\W*" + _LEADING_CONNECTIVE + r"(?:" + _SPEAKER_REFUSAL + r")", re.IGNORECASE
+    r"^\W*(?:i(?:['’]m| am)\s+(?:not\s+able|unable|sorry|afraid)|i\s+can(?:['’]t|not)\b|"
+    r"i\s+don['’]?t\s+(?:have|hold|know)|that['’]s\s+not\s+something|"
+    r"unfortunately\b|no,\s)",
+    re.IGNORECASE,
 )
 
 

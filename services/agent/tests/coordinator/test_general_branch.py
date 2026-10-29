@@ -303,6 +303,20 @@ async def test_a_declining_answer_carries_no_citations() -> None:
     assert not any(w["type"] == "citation" for w in wires)
 
 
+async def test_an_unfortunately_no_data_answer_carries_no_citations() -> None:
+    # "Unfortunately, the data is not available." opens by declining, so the non-comparative
+    # citation gate must not attach sources to it.
+    decline = LlmResult(
+        text="Unfortunately, the data is not available.", stop_reason="end_turn"
+    )
+    wires = await _run(
+        _dag(sparky_llm=_RecordingComplete(decline), grounder=_FakeGrounder(hit=True)),
+        "what's the vault fee?",
+    )
+    assert _texts(wires) == ["Unfortunately, the data is not available."]
+    assert not any(w["type"] == "citation" for w in wires)
+
+
 async def test_an_answer_that_merely_mentions_a_limit_still_cites_its_sources() -> None:
     # "I can't" partway through is not a refusal — the answer is still grounded work.
     answer = LlmResult(
