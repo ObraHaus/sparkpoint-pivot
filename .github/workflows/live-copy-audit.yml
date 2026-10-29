@@ -31,7 +31,8 @@ permissions:
 
 jobs:
   audit:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, oh-ci]
+    timeout-minutes: 20
     # A deployment can be down for reasons unrelated to copy. This must not read as a copy
     # regression, so the job reports rather than gates -- nothing merges on its result.
     continue-on-error: true

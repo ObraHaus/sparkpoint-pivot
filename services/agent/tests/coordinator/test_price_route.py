@@ -204,7 +204,8 @@ _COLLISION_CASES: tuple[_Collision, ...] = (
         "yield_guidance",
         history=(("user", "I have 2,000 USDC and want moderate risk."),),
     ),
-    _Collision("Compare that with just keeping it in Aave.", False, "yield_guidance"),
+    # 063 — a comparative question is a grounded Sparky answer, never the yield/mandate composer.
+    _Collision("Compare that with just keeping it in Aave.", False, "general"),
     _Collision("swap USDC to NEAR", False, "unsupported_swap"),
     _Collision("bridge to NEAR", False, "bridge"),
     _Collision("earn yield on NEAR", False, "yield_guidance"),

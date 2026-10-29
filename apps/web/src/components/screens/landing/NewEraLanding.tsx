@@ -208,14 +208,19 @@ export default function NewEraLanding() {
   }
 
   /**
-   * 045 — the public application page.
+   * The Sparky Broker mint whitelist page.
    *
-   * Unlike `goConnect`, this deliberately does NOT mirror the construction gate: `/apply` is in the
-   * middleware's locked-deploy allowlist precisely so a visitor can still ask for access while the
-   * rest of the site is sealed, which is exactly when they would most want to.
+   * This replaced the beta-access application CTA (2026-10-06): the beta opened to every wallet
+   * (`BETA_OPEN=true`), so "Apply for beta access" sent people to a form for something they already
+   * had. The collection's GTD/FCFS allowlists are what actually needs an application now, and the
+   * form keeps its own address so it can be linked from both landings.
+   *
+   * Unlike `goConnect`, this deliberately does NOT mirror the construction gate: `/mint-whitelist`
+   * is in the middleware's locked-deploy allowlist precisely so a visitor can still ask for a mint
+   * spot while the rest of the site is sealed, which is exactly when they would most want to.
    */
-  function goApply() {
-    router.push("/apply");
+  function goMintWhitelist() {
+    router.push("/mint-whitelist");
   }
 
   function goConnect() {
@@ -1045,15 +1050,15 @@ export default function NewEraLanding() {
               <button className="btn ghost" onClick={() => scrollToFraction(0.26)}>
                 See how it works
               </button>
-              {/* 045 — the app is gated, so "Connect wallet" is a wall for most visitors. This
-                  is the door beside it. It NAVIGATES to /apply rather than scrolling: this page is
-                  a scroll-driven WebGL sequence, so a programmatic jump to the end whips the whole
-                  animation past at a speed nobody can read, and dumps the visitor somewhere they
-                  did not ask to be. A page transition is the honest way to change context.
-                  Stage copy is shared with the app: "alpha access" on the testnet build,
-                  "beta access" on the beta (feature: beta stage copy). */}
-              <button className="btn ghost" onClick={goApply}>
-                Apply for {stageCopy.adjective} access
+              {/* The beta is open to every wallet, so this is no longer an access application —
+                  it is the Sparky Broker GTD/FCFS mint whitelist (the collection mints in staged
+                  allowlists on OpenSea). It NAVIGATES to /mint-whitelist rather than scrolling:
+                  this page is a scroll-driven WebGL sequence, so a programmatic jump to the end
+                  whips the whole animation past at a speed nobody can read, and dumps the visitor
+                  somewhere they did not ask to be. A page transition is the honest way to change
+                  context. */}
+              <button className="btn ghost" onClick={goMintWhitelist}>
+                Apply for mint whitelist
               </button>
             </div>
           </div>
@@ -1120,7 +1125,7 @@ export default function NewEraLanding() {
               <div className="broker-flow">
                 <div>
                   <b>1 · Hold</b>
-                  <span>A broker from the 10,000.</span>
+                  <span>A broker from the 5,555.</span>
                 </div>
                 <div>
                   <b>2 · Burn SRK</b>
@@ -1143,6 +1148,11 @@ export default function NewEraLanding() {
                     <ArrowOut />
                   </span>
                 </a>
+                {/* The GTD/FCFS allowlists are the one part of the drop that still needs an
+                    application — the beta-access CTA is gone because the beta is open. */}
+                <button className="btn ghost" onClick={goMintWhitelist}>
+                  Apply for mint whitelist
+                </button>
               </div>
             </div>
           </div>
@@ -1446,10 +1456,9 @@ export default function NewEraLanding() {
               </>
             )}
           </form>
-          {/* 045 — the two ways in, side by side. The application FORM used to be inlined here;
-              it now lives on /apply and this is a link to it. Four text fields at the end of a
-              scroll-driven WebGL sequence made the closing statement into a data-entry screen, and
-              the form is easier to find, share and return to at its own address. */}
+          {/* The two ways in, side by side. "Connect wallet" is the app; the ghost button is the
+              Sparky Broker mint whitelist (5,555, staged through OpenSea GTD/FCFS) — the beta
+              application that used to live at /apply is gone because the beta is open to all. */}
           <div className="fbtns">
             <button className="fbtn primary" onClick={goConnect}>
               Connect wallet
@@ -1459,8 +1468,8 @@ export default function NewEraLanding() {
             </button>
             {/* No arrow: the circled arrow is styled only for `.fbtn.primary` (a light border for a
                 dark fill) and the hero's ghost buttons carry none either. */}
-            <button className="fbtn ghost" onClick={goApply}>
-              Apply for {stageCopy.adjective} access
+            <button className="fbtn ghost" onClick={goMintWhitelist}>
+              Apply for mint whitelist
             </button>
           </div>
         </div>

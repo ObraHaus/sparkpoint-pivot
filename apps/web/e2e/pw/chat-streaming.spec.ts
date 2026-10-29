@@ -93,8 +93,21 @@ test.describe("059 chat streaming", () => {
     const firstTokenMs = Date.now() - started;
     expect(firstTokenMs).toBeLessThan(2_500);
 
+    // 063 — PROGRESSIVE: at first paint the answer is only PARTIAL. The mock streams four
+    // 250 ms chunks, so a buffered implementation would have the full text already here (or
+    // paint nothing at all until the final block). Assert a real prefix, not the whole answer.
+    await expect(streaming).toContainText("Hello");
+    const partial = ((await streaming.textContent()) ?? "").trim();
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial).not.toBe(STREAM_TEXT);
+    expect(STREAM_TEXT.startsWith(partial)).toBe(true);
+
     // The final authoritative block replaces the provisional paint.
     await expect(page.locator(".cturn.ai").last()).toContainText(STREAM_TEXT, { timeout: 10_000 });
+    const doneMs = Date.now() - started;
+    expect(doneMs, "the full answer must land AFTER the first paint").toBeGreaterThan(
+      firstTokenMs + 300,
+    );
     await expect(page.locator('[data-streaming="true"]')).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator(".cturn.ai .ctext").last()).toHaveAttribute("aria-live", "polite");
   });

@@ -73,7 +73,8 @@ suite runs anywhere. The test wallet must be on the agent's **beta** allowlist f
 ## Chat streaming spec (feature 059)
 
 `chat-streaming.spec.ts` asserts that a streamed Sparky answer paints its first token in under
-2.5 s and that the final `text` block reconciles (removes) the provisional paint. It never calls
+2.5 s, that the first paint is only a PARTIAL prefix (063 — the final answer must land later),
+and that the final `text` block reconciles (removes) the provisional paint. It never calls
 the beta agent: a local SSE server stands in for the agent, and the session cookie is signed
 locally with the same `SESSION_SECRET` the app under test uses.
 

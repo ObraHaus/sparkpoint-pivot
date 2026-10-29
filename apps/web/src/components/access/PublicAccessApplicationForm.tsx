@@ -1,7 +1,10 @@
 "use client";
 
 /**
- * PublicAccessApplicationForm — apply for the alpha WITHOUT connecting a wallet (045).
+ * PublicAccessApplicationForm — apply WITHOUT connecting a wallet (045), now shared by two
+ * programs: the beta-access application (`beta_access`, default) and the Sparky Broker GTD/FCFS
+ * mint whitelist (`mint_whitelist`). The copy is prop-driven; the shape, the validation, and the
+ * safety properties (honeypot, one identical response, address-as-a-claim) are identical.
  *
  * The 026 form ({@link ./AccessApplicationForm.tsx}) lives on `/verify`, behind a completed SIWE
  * sign-in, and takes the address from the session. That is right for someone who already connected
@@ -43,6 +46,22 @@ export interface PublicAccessApplicationFormProps {
   readonly submitClassName?: string;
   /** Rendered above the fields. Omitted on a page that already explains itself in its heading. */
   readonly lede?: string;
+  /**
+   * Which public program the submission belongs to. `beta_access` (default) is the app-access
+   * application; `mint_whitelist` is the Sparky Broker GTD/FCFS allowlist. The route files them
+   * into different stores — the copy differs, the shape and the safety properties do not.
+   */
+  readonly program?: "beta_access" | "mint_whitelist";
+  /** Primary button label. Default: "Apply for access". */
+  readonly submitLabel?: string;
+  /** Text of the one success state. Defaults to the beta-application message. */
+  readonly successMessage?: string;
+  /** Label for the free-text reason field. Default: "Why would you like access?". */
+  readonly reasonLabel?: string;
+  /** Placeholder for the reason field. Default: "A sentence or two is plenty.". */
+  readonly reasonPlaceholder?: string;
+  /** The fine print under the button. Defaults to the beta-application wording. */
+  readonly finePrint?: string;
 }
 
 /**
@@ -74,6 +93,12 @@ export function PublicAccessApplicationForm({
   surface = "theme",
   submitClassName = "btn btn-primary btn-md",
   lede,
+  program = "beta_access",
+  submitLabel = "Apply for access",
+  successMessage = SUBMITTED_MESSAGE,
+  reasonLabel = "Why would you like access?",
+  reasonPlaceholder = "A sentence or two is plenty.",
+  finePrint = "Applying grants nothing on its own and moves no funds — an admin reviews each request by hand. We only use your contact to tell you the outcome.",
 }: PublicAccessApplicationFormProps) {
   const hydrated = useHydrated();
   const [draft, setDraft] = useState<PublicApplicationDraft>(EMPTY_PUBLIC_DRAFT);
@@ -99,8 +124,9 @@ export function PublicAccessApplicationForm({
       const res = await fetch("/api/access/apply", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // The honeypot rides along; the server drops the submission if it is filled.
-        body: JSON.stringify({ ...toPublicSubmitBody(draft), website: draft.website }),
+        // The honeypot rides along; the server drops the submission if it is filled. `program`
+        // selects which queue the submission lands in (see the route).
+        body: JSON.stringify({ ...toPublicSubmitBody(draft), program, website: draft.website }),
       });
       if (!res.ok) {
         setError(submitErrorMessage(res.status));
@@ -112,7 +138,7 @@ export function PublicAccessApplicationForm({
     } finally {
       setBusy(false);
     }
-  }, [draft]);
+  }, [draft, program]);
 
   const root = `ap-form${surface === "light" ? " ap-light" : ""}`;
 
@@ -120,7 +146,7 @@ export function PublicAccessApplicationForm({
     return (
       <div className={root}>
         <p className="ap-done" role="status">
-          {SUBMITTED_MESSAGE}
+          {successMessage}
         </p>
       </div>
     );
@@ -187,7 +213,7 @@ export function PublicAccessApplicationForm({
       <FieldError text={fieldError("name")} />
 
       <label className="ap-label" htmlFor="pub-app-reason">
-        Why would you like access?
+        {reasonLabel}
       </label>
       <textarea
         id="pub-app-reason"
@@ -196,7 +222,7 @@ export function PublicAccessApplicationForm({
         maxLength={MAX_REASON}
         rows={3}
         disabled={busy}
-        placeholder="A sentence or two is plenty."
+        placeholder={reasonPlaceholder}
         aria-invalid={fieldError("reason") ? true : undefined}
         onChange={(e) => set("reason")(e.target.value)}
       />
@@ -227,13 +253,10 @@ export function PublicAccessApplicationForm({
           destructive. The label does not change, so there is no layout shift and nothing flickers
           — the button simply cannot throw the applicant's answers away. */}
       <button className={`${submitClassName} ap-submit`} type="submit" disabled={busy || !hydrated}>
-        {busy ? "Submitting…" : "Apply for access"}
+        {busy ? "Submitting…" : submitLabel}
       </button>
 
-      <p className="ap-fine">
-        Applying grants nothing on its own and moves no funds — an admin reviews each request by
-        hand. We only use your contact to tell you the outcome.
-      </p>
+      <p className="ap-fine">{finePrint}</p>
     </form>
   );
 }

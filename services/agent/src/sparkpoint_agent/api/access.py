@@ -34,6 +34,7 @@ from ..db.access_applications import (
     AccessApplicationStore,
 )
 from ..db.allowlist import BETA_ROLE, AllowlistStore
+from ..db.mint_whitelist import MintWhitelistStore
 from .allowlist import get_allowlist_store, require_admin
 from .errors import ApiError, ErrorCode
 from .mandate import get_account
@@ -50,6 +51,11 @@ _STRIP_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f<>]")
 def get_application_store() -> AccessApplicationStore:
     """The asyncpg-backed application store (production). Overridden with a fake in tests."""
     return AccessApplicationStore(get_database())
+
+
+def get_mint_whitelist_store() -> MintWhitelistStore:
+    """The asyncpg-backed Sparky Broker mint whitelist store. Overridden with a fake in tests."""
+    return MintWhitelistStore(get_database())
 
 
 def _clean(value: str, *, cap: int, label: str) -> str:
@@ -155,6 +161,48 @@ async def submit_public_application(
     # `submit_public`'s return value is deliberately dropped: the caller learns only that we took
     # the form, never whether it changed anything.
     return {"ok": True, "received": True}
+
+
+@router.post("/access/mint-whitelist")
+async def submit_mint_whitelist(
+    body: PublicApplicationSubmit,
+    store: Annotated[MintWhitelistStore, Depends(get_mint_whitelist_store)],
+) -> dict[str, object]:
+    """Apply for the Sparky Broker MINT whitelist WITHOUT connecting a wallet.
+
+    The same public shape as ``/access/public-application`` — no session, no signature, the
+    address typed by hand — but for a different decision: an operator adds these addresses to the
+    SeaDrop GTD/FCFS allowlist so the applicant mints early at the allowlist price. It does NOT
+    grant app access (that is ``/access/public-application`` + the beta allowlist) and it does not
+    put anything on-chain; approving one is a human uploading a list.
+
+    The same constraints follow from being unauthenticated, for the same reasons: the address is
+    SELF-DECLARED and stored as such, the response is IDENTICAL for a new, duplicate, or unknown
+    address (no enumeration oracle), and an existing row is never modified (first submission wins,
+    so a stranger cannot overwrite a real applicant's contact details). Never on the custody path.
+    """
+    contact = _clean(body.contact, cap=MAX_CONTACT, label="A contact handle")
+    name = _clean(body.name, cap=MAX_NAME, label="A name or alias")
+    reason = _clean(body.reason, cap=MAX_REASON, label="A reason for the whitelist")
+    await store.submit(address=body.address, contact=contact, display_name=name, reason=reason)
+    # The store's return value is deliberately dropped — see `submit_public_application`.
+    return {"ok": True, "received": True}
+
+
+@router.get("/admin/access/mint-whitelist")
+async def admin_list_mint_whitelist(
+    admin: Annotated[AccountContext, Depends(require_admin)],  # noqa: ARG001 (gates the route)
+    store: Annotated[MintWhitelistStore, Depends(get_mint_whitelist_store)],
+    limit: int = 500,
+) -> dict[str, object]:
+    """List Sparky Broker mint whitelist applications, newest first (admin-gated; 404 otherwise).
+
+    This is the list the operator exports to the SeaDrop allowlist. There is no approve/deny
+    action here on purpose: nothing in this app decides who is on-chain, and a status flip that
+    did not change the actual allowlist would be a lie.
+    """
+    rows = await store.list(limit=limit)
+    return {"applications": [r.to_wire() for r in rows]}
 
 
 @router.get("/access/application")

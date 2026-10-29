@@ -52,7 +52,9 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
 # public internet surface), and only the identity parse is skipped. `request.state.account` is then
 # absent, so `get_account` raises for anything that needs a user, and a route can only end up here
 # deliberately.
-NO_ACCOUNT_PATHS: frozenset[str] = frozenset({"/access/public-application"})
+NO_ACCOUNT_PATHS: frozenset[str] = frozenset(
+    {"/access/public-application", "/access/mint-whitelist"}
+)
 
 # Routes where a missing/invalid identity is an ANSWER, not an error.
 #
