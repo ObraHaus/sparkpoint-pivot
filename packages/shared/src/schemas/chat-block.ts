@@ -488,6 +488,152 @@ export const EarnPositionsBlockSchema = z
   .strict();
 export type EarnPositionsBlock = z.infer<typeof EarnPositionsBlockSchema>;
 
+/* ── 072 — read-only multi-chain portfolio ────────────────────────────────── */
+
+/**
+ * 072 — the five independently-degradable sources. `not_linked` is Kamino's honest "no Solana
+ * address is bound to this owner yet"; `unavailable` is a failed read, never a fabricated zero.
+ */
+export const PortfolioSectionStatusSchema = z.enum(["ok", "unavailable", "not_linked"]);
+export type PortfolioSectionStatus = z.infer<typeof PortfolioSectionStatusSchema>;
+
+export const PortfolioSectionKeySchema = z.enum([
+  "balances",
+  "morpho",
+  "kamino",
+  "rhea",
+  "swaps",
+]);
+export type PortfolioSectionKey = z.infer<typeof PortfolioSectionKeySchema>;
+
+/** A balances-only per-chain status entry (an unconfigured Ethereum RPC says so here). */
+export const PortfolioChainStatusSchema = z
+  .object({
+    chain: z.string(),
+    label: z.string(),
+    status: PortfolioSectionStatusSchema,
+    reason: z.string().nullable(),
+  })
+  .strict();
+export type PortfolioChainStatus = z.infer<typeof PortfolioChainStatusSchema>;
+
+/**
+ * 072 — one display row. The common identity fields are required; everything source-specific is
+ * optional and OMITTED (never `null`) when absent, exactly as `PortfolioRow.to_wire()` emits it.
+ * `valueUsd` is absent when the row cannot be priced honestly (e.g. a Kamino share with no price).
+ */
+export const PortfolioRowSchema = z
+  .object({
+    chain: z.string(),
+    chainLabel: z.string(),
+    protocol: z.string(),
+    kind: z.string(),
+    symbol: z.string(),
+    amount: HumanAmountStringSchema.optional(),
+    valueUsd: UsdStringSchema.optional(),
+    priceSource: z.string().optional(),
+    // balances
+    address: z.string().optional(),
+    decimals: z.number().int().nonnegative().optional(),
+    priceUsd: z.string().optional(),
+    // morpho
+    vaultAddress: z.string().optional(),
+    vaultName: z.string().optional(),
+    assetSymbol: z.string().optional(),
+    netApy: z.string().optional(),
+    shares: z.string().optional(),
+    rail: z.string().optional(),
+    receiptAddress: z.string().optional(),
+    underlyingVault: z.string().optional(),
+    note: z.string().optional(),
+    // kamino
+    sharesMint: z.string().optional(),
+    wallet: z.string().optional(),
+    // rhea
+    apy: z.string().optional(),
+    mca: z.string().optional(),
+    // swaps
+    originKey: z.string().optional(),
+    originLabel: z.string().optional(),
+    destinationKey: z.string().optional(),
+    destinationLabel: z.string().optional(),
+    route: z.string().optional(),
+    amountOut: z.string().optional(),
+    depositAddress: z.string().optional(),
+    createdAt: z.string().optional(),
+    lastStatus: z.string().optional(),
+  })
+  .strict();
+export type PortfolioRow = z.infer<typeof PortfolioRowSchema>;
+
+/**
+ * 072 — one section. `totalUsd` is present only when at least one row is priced; `chains` is the
+ * balances-only additive field, and `mca`/`appUrl` are Rhea's additive fields.
+ */
+export const PortfolioSectionSchema = z
+  .object({
+    key: PortfolioSectionKeySchema,
+    label: z.string(),
+    status: PortfolioSectionStatusSchema,
+    rows: z.array(PortfolioRowSchema),
+    reason: z.string().optional(),
+    source: z.string().optional(),
+    asOf: z.string().optional(),
+    totalUsd: UsdStringSchema.optional(),
+    chains: z.array(PortfolioChainStatusSchema).optional(),
+    mca: z.string().optional(),
+    appUrl: z.string().optional(),
+    note: z.string().optional(),
+  })
+  .strict();
+export type PortfolioSection = z.infer<typeof PortfolioSectionSchema>;
+
+/** 072 — the per-chain and per-protocol sums (only rows in `ok` sections contribute). */
+export const PortfolioChainTotalSchema = z
+  .object({ chain: z.string(), label: z.string(), valueUsd: UsdStringSchema })
+  .strict();
+export type PortfolioChainTotal = z.infer<typeof PortfolioChainTotalSchema>;
+
+export const PortfolioProtocolTotalSchema = z
+  .object({ protocol: z.string(), valueUsd: UsdStringSchema })
+  .strict();
+export type PortfolioProtocolTotal = z.infer<typeof PortfolioProtocolTotalSchema>;
+
+/** `totalUsd` is `null` when nothing is priced; `priced` distinguishes "no value" from "$0". */
+export const PortfolioTotalsSchema = z
+  .object({
+    totalUsd: UsdStringSchema.nullable(),
+    priced: z.boolean(),
+    byChain: z.array(PortfolioChainTotalSchema),
+    byProtocol: z.array(PortfolioProtocolTotalSchema),
+  })
+  .strict();
+export type PortfolioTotals = z.infer<typeof PortfolioTotalsSchema>;
+
+/**
+ * 072 — `portfolio_overview`, the session wallet's read-only multi-chain portfolio. It carries no
+ * calldata, no signature and no policy stamp; every section degrades on its own.
+ *
+ * `wallet` and `text` are ADDITIVE API fields: `GET /portfolio/multichain` returns the same shape
+ * plus the deterministic prose, while the chat block omits both. Optional here so the one schema
+ * validates the endpoint response AND the streamed block, without the renderer depending on either.
+ */
+export const PortfolioOverviewBlockSchema = z
+  .object({
+    type: z.literal("portfolio_overview"),
+    state: z.enum(["ready", "empty", "unavailable"]),
+    focus: z.enum(["all", "swaps", "earn"]),
+    asOf: z.string(),
+    sections: z.array(PortfolioSectionSchema),
+    totals: PortfolioTotalsSchema,
+    sources: z.array(z.string()).optional(),
+    note: z.string().optional(),
+    wallet: z.string().optional(),
+    text: z.string().optional(),
+  })
+  .strict();
+export type PortfolioOverviewBlock = z.infer<typeof PortfolioOverviewBlockSchema>;
+
 export const ChatBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
   ToolStepBlockSchema,
@@ -502,5 +648,6 @@ export const ChatBlockSchema = z.discriminatedUnion("type", [
   EarnVaultsBlockSchema,
   EarnQuoteBlockSchema,
   EarnPositionsBlockSchema,
+  PortfolioOverviewBlockSchema,
 ]);
 export type ChatBlock = z.infer<typeof ChatBlockSchema>;

@@ -1,5 +1,8 @@
 # Quickstart — 072 multi-chain portfolio (backend + evals)
 
+> **Hackathon demo:** the step-by-step 068 → 072 run of show (with every prompt verified against
+> the parsers/golden cases) lives at [`docs/demo/072-hackathon-demo.md`](../../docs/demo/072-hackathon-demo.md).
+
 ## Run the tests
 
 ```bash

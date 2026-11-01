@@ -32,6 +32,7 @@ import { goalProgress } from "@/lib/goal/progress";
 import { formatUsdc } from "@/lib/strategy/projection";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WalletTokensCard } from "@/components/portfolio/WalletTokensCard";
+import { MultichainPanel } from "@/components/portfolio/MultichainPanel";
 import "@/components/screens/portfolio.css";
 
 /** The chain to read before a wallet connects (env-resolved via APP_DEFAULT_CHAIN_ID; mirrors
@@ -690,6 +691,10 @@ export default function Page() {
           )}
         </div>
       </div>
+
+      {/* 072 — the read-only multi-chain overview (session wallet only). The SparkPoint vault view
+          above is untouched; this is a separate, independently-degradable read. */}
+      <MultichainPanel />
 
       {/* MetaMask-style wallet holdings: native ETH + the tokens we know or discover, on ANY network
           (incl. Robinhood Chain, which has no SparkPoint vault). Non-custodial, read-only. */}

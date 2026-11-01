@@ -57,3 +57,25 @@ def test_degraded_fixture_marks_each_section_status() -> None:
     assert statuses["kamino"] == "not_linked"
     assert statuses["rhea"] == "unavailable"
     assert statuses["swaps"] == "ok"
+
+
+@pytest.mark.parametrize("mode", ["ready", "degraded", "empty"])
+def test_chat_block_fixture_carries_only_the_non_signable_chat_shape(mode: str) -> None:
+    """The endpoint adds `wallet`/`text`; the streamed block must never carry them or a policy."""
+    fixture = _fixture(f"portfolio-overview-{mode}.json")
+    for forbidden in ("wallet", "text", "policy", "proposedAction"):
+        assert forbidden not in fixture
+
+
+@pytest.mark.parametrize("mode", ["ready", "degraded", "empty"])
+def test_every_section_and_row_has_the_common_required_fields(mode: str) -> None:
+    """The TS schema requires these; a missing key here fails the web parity suite."""
+    fixture = _fixture(f"portfolio-overview-{mode}.json")
+    for section in fixture["sections"]:
+        assert isinstance(section["key"], str)
+        assert isinstance(section["label"], str)
+        assert section["status"] in {"ok", "unavailable", "not_linked"}
+        assert isinstance(section["rows"], list)
+        for row in section["rows"]:
+            for field in ("chain", "chainLabel", "protocol", "kind", "symbol"):
+                assert isinstance(row[field], str), (section["key"], field)
