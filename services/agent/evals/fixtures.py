@@ -46,6 +46,7 @@ from sparkpoint_agent.persona import get_persona
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom, RiskProfile
 
 from .model import Case, Scripted
+from .portfolio_fixtures import EvalPortfolioService
 
 VAULT = "0x1111111111111111111111111111111111111111"
 USER = "0x2222222222222222222222222222222222222222"
@@ -450,6 +451,7 @@ def build_dag(
     persona = get_persona if live else (lambda: "")
     crosschain = _crosschain_service(case.crosschain) if case.crosschain else None
     earn = _earn_service(case.earn) if case.earn else None
+    portfolio = EvalPortfolioService(case.portfolio) if case.portfolio else None
     return CoordinatorDag(
         planner=Planner(llm=client),
         recommender=Recommender(llm=client),
@@ -465,6 +467,7 @@ def build_dag(
         id_factory=_id_factory(),
         crosschain=crosschain,
         earn=earn,
+        portfolio=portfolio,
     )
 
 

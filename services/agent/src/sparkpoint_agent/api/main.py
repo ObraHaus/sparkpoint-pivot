@@ -70,6 +70,7 @@ from .idempotency import IdempotencyStore, LayeredIdempotencyStore, ScopedStore
 from .mandate import router as mandate_router
 from .memory import router as memory_router
 from .middleware import RequestContextMiddleware
+from .multichain_portfolio import router as multichain_portfolio_router
 from .network_diagnostics import router as network_diagnostics_router
 from .notifications import router as notifications_router
 from .portfolio import router as portfolio_router
@@ -304,7 +305,8 @@ async def _self_authoring_loop() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "self_authoring_loop_stopped (%s: %s) — everything else is unaffected",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
 
 
@@ -347,7 +349,8 @@ async def _index_changelog(db: object) -> None:
     except Exception as exc:  # noqa: BLE001 — a search index must never cost the agent its boot
         logger.warning(
             "changelog_index_skipped (%s: %s) — the changelog page is unaffected",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
 
 
@@ -509,6 +512,7 @@ _ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
 # vault-flows indexer), so its floor default is 0 (the env supplies the real one).
 _ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
 
+
 # One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
 # `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
 # when none is set (never genesis for 46630).
@@ -565,12 +569,11 @@ async def _index_vault_fees_loop() -> None:
     if not (config.vault_address and log_rpc):
         logger.warning(
             "vault_fee_loop_exit: nothing to index (vault_address=%s log_rpc=%s)",
-            bool(config.vault_address), bool(log_rpc),
+            bool(config.vault_address),
+            bool(log_rpc),
         )
         return
-    start_block = _resolve_start_block(
-        ("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0
-    )
+    start_block = _resolve_start_block(("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0)
     window = VAULT_FEE_WINDOW
     try:
         raw_window = os.getenv("VAULT_INDEX_WINDOW")
@@ -594,7 +597,10 @@ async def _index_vault_fees_loop() -> None:
             # is dead does the same thing — silently. The block number is what tells them apart.
             logger.info(
                 "vault_fees_tick added=%d dropped=%d block=%d more=%s",
-                result.inserted, result.dropped, result.last_processed_block, result.more_to_do,
+                result.inserted,
+                result.dropped,
+                result.last_processed_block,
+                result.more_to_do,
             )
         except asyncio.CancelledError:
             raise
@@ -894,6 +900,9 @@ app.include_router(mandate_router)
 # §3.3 portfolio — enriched/derived, stale-markable reads (custody balances reconciled by
 # the frontend via direct RPC, SC-011); degrades to 200+stale, never traps a deposit/exit.
 app.include_router(portfolio_router)
+# 072 — the read-only MULTI-CHAIN portfolio (session wallet only). A sibling of the vault-centric
+# ``/portfolio``; it never signs and never accepts a caller-supplied wallet.
+app.include_router(multichain_portfolio_router)
 # §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
 # surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
 app.include_router(recommendations_router)

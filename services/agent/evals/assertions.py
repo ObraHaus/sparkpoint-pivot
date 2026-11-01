@@ -184,17 +184,17 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         )
 
     for wire in wires:
+        if wire.get("type") == "portfolio_overview":
+            return "portfolio_overview"
+
+    for wire in wires:
         if wire.get("type") == "earn_positions":
             return f"earn_positions_{wire.get('state')}"
     for wire in wires:
         if wire.get("type") == "earn_vaults":
             return "earn_list"
         if wire.get("type") == "earn_quote":
-            return (
-                "earn_unavailable"
-                if str(wire.get("state")) == "unavailable"
-                else "earn_preview"
-            )
+            return "earn_unavailable" if str(wire.get("state")) == "unavailable" else "earn_preview"
 
     if "recommendation" in kinds:
         return "recommendation"
@@ -330,6 +330,31 @@ def case_failures(
                     failures.append(f"tokenOut: expected {want.token_out}, got {got_out}")
             if want.policy is not None and _policy_status(wires) != want.policy:
                 failures.append(f"policy: expected {want.policy}, got {_policy_status(wires)}")
+
+    portfolio_wire = next(
+        (wire for wire in wires if wire.get("type") == "portfolio_overview"), None
+    )
+    if expected.focus is not None:
+        if portfolio_wire is None:
+            failures.append(f"portfolio focus: expected {expected.focus}, no overview block")
+        elif str(portfolio_wire.get("focus")) != expected.focus:
+            failures.append(
+                f"portfolio focus: expected {expected.focus}, got {portfolio_wire.get('focus')}"
+            )
+    if expected.sections:
+        if portfolio_wire is None:
+            failures.append("portfolio sections: no overview block")
+        else:
+            observed_sections = {
+                str(item.get("key")): str(item.get("status"))
+                for item in portfolio_wire.get("sections") or []
+                if isinstance(item, Mapping)
+            }
+            for key, status in expected.sections.items():
+                if observed_sections.get(key) != status:
+                    failures.append(
+                        f"section {key}: expected {status}, got {observed_sections.get(key)}"
+                    )
 
     text = visible_text(wires)
     for forbidden in expected.must_not_contain:

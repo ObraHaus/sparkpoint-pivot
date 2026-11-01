@@ -73,6 +73,12 @@ from ..policy import (
     SimulationInput,
     get_policy_constants,
 )
+from ..portfolio.chat import (
+    build_outcome as build_portfolio_outcome,
+)
+from ..portfolio.chat import (
+    detect_portfolio_focus,
+)
 from ..wire import Citation
 from .chat_blocks import (
     ActionBlock,
@@ -145,6 +151,7 @@ from .staleness import as_of_time
 if TYPE_CHECKING:  # pragma: no cover - import cycle: service imports chat_blocks
     from ..crosschain.service import CrossChainService
     from ..earn.service import EarnService
+    from ..portfolio.service import MultichainPortfolioService
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -676,6 +683,9 @@ class CoordinatorDag:
     #: 069 — the data-driven Morpho earn registry. ``None`` / a disabled flag falls through.
     #: Advisory: list and DRY previews only (1Click receipt or a same-chain/Intents-Connect hint).
     earn: EarnService | None = None
+    #: 072 — the read-only multi-chain portfolio (session wallet only). ``None`` keeps the
+    #: pre-072 routes byte-for-byte, which is what every other test/consumer expects.
+    portfolio: MultichainPortfolioService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -1164,6 +1174,22 @@ class CoordinatorDag:
                 yield ToolStepBlock(f"Checking a {label} vault", "done")
                 yield TextBlock(earn_outcome.text)
                 yield earn_outcome.block
+                return
+
+        # 072 — the read-only multi-chain portfolio for the session wallet. Deliberately AFTER
+        # 068/069/070/071 so an explicit swap or earn/Rhea turn always keeps its route, and narrow
+        # enough that the vault-specific "what is my portfolio worth?" / "what's in my wallet?"
+        # turns still reach the existing portfolio_snapshot path. No LLM, no signable output.
+        if self.portfolio is not None:
+            focus = detect_portfolio_focus(message)
+            if focus is not None:
+                portfolio_wallet = chain.owner or chain.user_account
+                yield ToolStepBlock("Reading your multi-chain portfolio", "running")
+                overview = await self.portfolio.read(portfolio_wallet, focus=focus)
+                yield ToolStepBlock("Reading your multi-chain portfolio", "done")
+                portfolio_outcome = build_portfolio_outcome(overview, focus)
+                yield TextBlock(portfolio_outcome.text)
+                yield portfolio_outcome.block
                 return
 
         # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default

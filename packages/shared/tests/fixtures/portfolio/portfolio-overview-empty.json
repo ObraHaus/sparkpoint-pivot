@@ -1,0 +1,77 @@
+{
+  "type": "portfolio_overview",
+  "state": "empty",
+  "focus": "all",
+  "asOf": "2026-11-01T04:30:00+00:00",
+  "sections": [
+    {
+      "key": "balances",
+      "label": "Wallet balances",
+      "status": "ok",
+      "rows": [],
+      "source": "rpc",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "chains": [
+        {
+          "chain": "base",
+          "label": "Base",
+          "status": "ok",
+          "reason": null
+        },
+        {
+          "chain": "eth",
+          "label": "Ethereum",
+          "status": "unavailable",
+          "reason": "not configured"
+        }
+      ]
+    },
+    {
+      "key": "morpho",
+      "label": "Morpho",
+      "status": "ok",
+      "rows": [],
+      "source": "morpho_api",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "kamino",
+      "label": "Kamino",
+      "status": "ok",
+      "rows": [],
+      "source": "solana_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "rhea",
+      "label": "Rhea",
+      "status": "ok",
+      "rows": [],
+      "source": "rhea_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "mca": "eval.multica.near",
+      "appUrl": "https://app.rhea.finance/lending"
+    },
+    {
+      "key": "swaps",
+      "label": "Cross-chain swaps",
+      "status": "ok",
+      "rows": [],
+      "source": "db",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    }
+  ],
+  "totals": {
+    "totalUsd": null,
+    "byChain": [],
+    "byProtocol": [],
+    "priced": false
+  },
+  "sources": [
+    "rpc",
+    "morpho_api",
+    "solana_rpc",
+    "rhea_rpc",
+    "db"
+  ]
+}

@@ -586,6 +586,43 @@ class EarnQuoteBlock(ChatBlock):
         return wire
 
 
+PortfolioOverviewState = Literal["ready", "empty", "unavailable"]
+PortfolioOverviewFocus = Literal["all", "swaps", "earn"]
+
+
+@dataclass(frozen=True)
+class PortfolioOverviewBlock(ChatBlock):
+    """072 ``portfolio_overview`` — the session wallet's read-only multi-chain portfolio.
+
+    Five independently-degradable sections (wallet balances, Morpho, Kamino, Rhea, swap history)
+    plus totals. Carries no calldata and no signature; nothing here is signable. A missing or
+    unreadable section is a ``status`` on that section, never an error block.
+    """
+
+    state: PortfolioOverviewState
+    focus: PortfolioOverviewFocus
+    as_of: str
+    sections: tuple[dict[str, Any], ...]
+    totals: dict[str, Any]
+    sources: tuple[str, ...] = ()
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "portfolio_overview",
+            "state": self.state,
+            "focus": self.focus,
+            "asOf": self.as_of,
+            "sections": [dict(section) for section in self.sections],
+            "totals": dict(self.totals),
+        }
+        if self.sources:
+            wire["sources"] = list(self.sources)
+        if self.note is not None:
+            wire["note"] = self.note
+        return wire
+
+
 EarnPositionsState = Literal["ready", "empty", "unavailable"]
 
 
