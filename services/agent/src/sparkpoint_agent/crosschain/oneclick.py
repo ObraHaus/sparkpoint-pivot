@@ -222,9 +222,14 @@ class OneClickClient:
         deadline: str,
         refund_to: str,
         recipient: str,
+        custom_recipient_msg: str | None = None,
     ) -> QuoteResult:
-        """``POST /quote``. ``dry=false`` is the only call that yields a deposit address."""
-        body = {
+        """``POST /quote``. ``dry=false`` is the only call that yields a deposit address.
+
+        ``custom_recipient_msg`` is an optional 1Click business message (071 Rhea supply /
+        register-and-supply). It is data, never key material.
+        """
+        body: dict[str, Any] = {
             "dry": dry,
             "swapType": "EXACT_INPUT",
             "slippageTolerance": slippage_bps,
@@ -238,6 +243,8 @@ class OneClickClient:
             "recipientType": "DESTINATION_CHAIN",
             "deadline": deadline,
         }
+        if custom_recipient_msg is not None:
+            body["customRecipientMsg"] = custom_recipient_msg
         response = await self._request("POST", "quote", json_body=body)
         if response.status_code in (200, 201):
             try:

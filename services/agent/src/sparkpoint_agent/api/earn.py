@@ -48,6 +48,17 @@ def get_earn_limiter() -> SlidingWindowLimiter:
     return _LIMITER
 
 
+def get_rhea_wallet(
+    account: Annotated[AccountContext, Depends(get_account)],
+) -> str:
+    """The signed-in user's EVM wallet — the only identity a Rhea read is scoped to.
+
+    Deliberately NOT a query/body parameter: the production path can never be pointed at an
+    arbitrary wallet. Tests override this dependency to inject a wallet.
+    """
+    return account.owner
+
+
 _LIMITER = SlidingWindowLimiter(limit=EARN_RATE_LIMIT_PER_HOUR, window_s=3600)
 
 
@@ -117,9 +128,14 @@ async def list_earn_vaults(
     svc = _require_service(service)
     if chain is not None and svc.config.chain(chain) is None:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown chain {chain!r}")
-    if rail is not None and rail not in {"direct", "oneclick_earn", "intents_connect"}:
+    if rail is not None and rail not in {
+        "direct",
+        "oneclick_earn",
+        "oneclick_rhea",
+        "intents_connect",
+    }:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown rail {rail!r}")
-    if protocol is not None and protocol.lower() not in {"morpho", "kamino"}:
+    if protocol is not None and protocol.lower() not in {"morpho", "kamino", "rhea"}:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown protocol {protocol!r}")
     vaults, snapshot = svc.list_vaults(
         chain=chain,
@@ -155,6 +171,32 @@ async def get_earn_vault(
         "snapshot": _snapshot_meta(snapshot, svc.registry.loaded_from),
         "vault": vault,
     }
+
+
+@router.get("/earn/rhea/positions")
+async def get_rhea_positions(
+    account: Annotated[AccountContext, Depends(get_account)],
+    wallet: Annotated[str, Depends(get_rhea_wallet)],
+    service: Annotated[EarnService | None, Depends(get_earn_service)],
+    limiter: Annotated[SlidingWindowLimiter, Depends(get_earn_limiter)],
+) -> dict[str, Any]:
+    """Read-only Rhea (Burrow) supply positions for the SIGNED-IN wallet.
+
+    The wallet is the session identity (``X-Owner`` via the middleware), never a caller-supplied
+    parameter. Nothing is signed or sent; this is a NEAR view read.
+    """
+    _check_limit(limiter, account)
+    svc = _require_service(service)
+    try:
+        outcome = await svc.rhea_positions(wallet=wallet)
+    except ValueError as exc:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "A signed-in wallet is required to read Rhea positions.",
+        ) from exc
+    wire = outcome.block.to_wire()
+    wire["text"] = outcome.text
+    return wire
 
 
 @router.post("/earn/preview")
@@ -208,6 +250,7 @@ async def preview_earn_vault(
             amount=amount,
             amount_raw=amount_raw,
             recipient=body.recipient,
+            wallet=account.owner,
         )
     except ValueError as exc:
         raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.") from exc

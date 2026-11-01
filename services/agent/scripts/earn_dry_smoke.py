@@ -157,6 +157,83 @@ async def main() -> int:
                 f"{label} | {quote.http_status} | {quote.amount_out_formatted} | {eta} | {LIVE}"
             )
 
+    rhea = config.rhea
+    if rhea.enabled:
+        from sparkpoint_agent.earn.rhea import (  # noqa: PLC0415 - script-only import
+            DRY_PLACEHOLDER_SIGNATURE,
+            RheaViews,
+            custom_recipient_msg,
+            human_string,
+            mca_fee_amount,
+            register_message,
+            supply_message,
+        )
+
+        print()
+        print("== Rhea (Burrow) on NEAR ==")
+        views = RheaViews(rhea)
+        probe_wallet = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+        try:
+            mca = await views.mca_for_wallet(probe_wallet)
+            print(f"get_mca_by_wallet({probe_wallet}) -> {mca!r}")
+        except Exception as exc:  # noqa: BLE001 - advisory smoke output
+            print(f"get_mca_by_wallet -> ERR {type(exc).__name__}")
+        try:
+            fees = await views.create_mca_fee()
+            print(f"get_create_mca_fee_paged -> {len(fees)} tokens")
+            for asset in rhea.enabled_assets():
+                fee = mca_fee_amount(fees, asset, rhea.mca_fee_fallback)
+                print(
+                    f"one-time MCA fee {asset.symbol} -> {human_string(fee)} "
+                    f"(raw={fees.get(asset.token_id, 'fallback')})"
+                )
+        except Exception as exc:  # noqa: BLE001 - advisory smoke output
+            print(f"get_create_mca_fee_paged -> ERR {type(exc).__name__}")
+
+        asset = rhea.asset_for_symbol("USDC")
+        origin = cc.asset(rhea.default_origin)
+        if asset is not None and origin is not None:
+            cases: list[tuple[str, int, str]] = [
+                ("Base USDC 100 -> Rhea USDC (supply msg)", 100, custom_recipient_msg(
+                    supply_message(probe_wallet)
+                )),
+                ("Base USDC 100 -> Rhea USDC (register msg)", 100, custom_recipient_msg(
+                    register_message(probe_wallet, DRY_PLACEHOLDER_SIGNATURE)
+                )),
+                ("Base USDC 5000 -> Rhea USDC", 5000, custom_recipient_msg(
+                    supply_message(probe_wallet)
+                )),
+            ]
+            print("route | http | amountOut | ETA | liveness")
+            print("--- | --- | --- | --- | ---")
+            for label, human_amount, message in cases:
+                try:
+                    quote = await client.quote(
+                        dry=True,
+                        origin_asset=origin.asset_id,
+                        destination_asset=asset.asset_id,
+                        amount=str(human_amount * 10**origin.decimals),
+                        slippage_bps=cc.slippage_bps,
+                        deadline=deadline_at(cc.deadline_minutes),
+                        refund_to=probe_wallet,
+                        recipient=rhea.am_contract,
+                        custom_recipient_msg=message,
+                    )
+                except QuoteUnavailable as exc:
+                    reason = exc.reason
+                    if "liquidity" in reason.lower():
+                        reason = f"{reason} (try a smaller amount)"
+                    print(f"{label} | 400 | unavailable: {reason} | - | {NO_LIQUIDITY}")
+                    continue
+                except CrossChainTransportError as exc:
+                    print(f"{label} | ERR | {exc} | - | {UNKNOWN}")
+                    continue
+                eta = f"{quote.time_estimate_sec}s" if quote.time_estimate_sec else "-"
+                print(
+                    f"{label} | {quote.http_status} | {quote.amount_out_formatted} | "
+                    f"{eta} | {LIVE}"
+                )
+
     if not client.has_api_key:
         print("\nnote: keyless quote — 1Click's 0.25% routing fee is included.")
     return 0

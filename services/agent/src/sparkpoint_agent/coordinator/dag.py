@@ -1100,9 +1100,21 @@ class CoordinatorDag:
         if self.earn is not None and self.earn.feature_enabled:
             earn_request = parse_earn_request(message, self.earn.config)
             if earn_request is not None:
-                label = (
-                    "Kamino" if getattr(earn_request, "protocol", None) == "kamino" else "Morpho"
-                )
+                protocol = getattr(earn_request, "protocol", None)
+                label = {"kamino": "Kamino", "rhea": "Rhea"}.get(protocol or "", "Morpho")
+                wallet = chain.owner or chain.user_account
+                if earn_request.kind == "positions":
+                    yield ToolStepBlock("Checking your Rhea positions", "running")
+                    earn_outcome = await self.earn.rhea_positions(wallet=wallet)
+                    yield ToolStepBlock("Checking your Rhea positions", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+                if earn_request.kind == "withdraw":
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "running")
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "done")
+                    yield TextBlock(self.earn.rhea_withdraw_text())
+                    return
                 if earn_request.kind == "list":
                     yield ToolStepBlock(f"Checking {label} vaults", "running")
                     earn_outcome = self.earn.list_outcome(earn_request)
@@ -1130,6 +1142,7 @@ class CoordinatorDag:
                         origin_key=origin_key,
                         amount=amount,
                         amount_raw=earn_request.amount_raw,
+                        wallet=wallet,
                     )
                 except CrossChainTransportError:
                     yield ToolStepBlock(f"Checking a {label} vault", "error")

@@ -30,8 +30,8 @@ SWAP_ROUTE_PREFIX = "swap_card:"
 #: exact pre-068 DAG (no service injected), so existing routes never move.
 CROSSCHAIN_MODES = frozenset({"quote", "transport_error", "disabled"})
 
-#: The earn fixtures a case can opt into (069). ``None`` keeps the pre-069 DAG.
-EARN_MODES = frozenset({"list", "preview"})
+#: The earn fixtures a case can opt into (069/070/071). ``None`` keeps the pre-069 DAG.
+EARN_MODES = frozenset({"list", "preview", "positions"})
 
 
 @dataclass(frozen=True)

@@ -1154,3 +1154,58 @@ cases:
     offline:
       intent: {kind: other}
     offline_check_contains: false
+
+  # ── Rhea (Burrow) on NEAR (071 — dry supply preview + read-only positions) ─────────
+  - id: earn-90-deposit-rhea-preview
+    category: earn
+    prompt: "Deposit 100 USDC into Rhea"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation, earn_positions]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-91-rhea-positions-empty
+    category: earn
+    prompt: "Show my Rhea positions"
+    wallet: empty
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea account", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-92-rhea-apy-list
+    category: earn
+    prompt: "Rhea APY for USDC"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-93-rhea-comparative-unchanged
+    category: earn
+    prompt: "Compare Aave and Rhea, then deposit 500 USDC into the safer one."
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote, earn_positions]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false

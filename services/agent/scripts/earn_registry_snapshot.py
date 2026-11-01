@@ -39,9 +39,16 @@ from sparkpoint_agent.earn.rails import (  # noqa: E402
 from sparkpoint_agent.earn.registry import (  # noqa: E402
     EarnRegistry,
     EarnSnapshot,
+    VaultEntry,
     fetch_vaults_for_chains,
     filter_vaults,
     write_snapshot,
+)
+from sparkpoint_agent.earn.rhea import (  # noqa: E402
+    RheaViews,
+    fetch_rhea_vaults,
+    human_string,
+    mca_fee_amount,
 )
 
 #: Verified against the Morpho API on 2026-11-01 (V1 1,410 + V2 3,799; 317 listed; Base 57 and
@@ -59,7 +66,7 @@ def _counts(values: list[str]) -> str:
     return ", ".join(f"{key}={count}" for key, count in sorted(Counter(values).items()))
 
 
-def _existing_morpho(out_path: Path):  # noqa: ANN202 - script helper
+def _existing_without(out_path: Path, exclude: set[str]) -> list[VaultEntry]:
     registry = EarnRegistry(
         default_config(),
         writable_path=Path("/nonexistent/earn-snapshot.json"),
@@ -68,7 +75,7 @@ def _existing_morpho(out_path: Path):  # noqa: ANN202 - script helper
     snapshot = registry.current()
     if snapshot is None:
         return []
-    return [entry for entry in snapshot.vaults if entry.protocol != "kamino"]
+    return [entry for entry in snapshot.vaults if entry.protocol not in exclude]
 
 
 def _kamino_by_asset(catalog: list) -> str:
@@ -88,26 +95,49 @@ async def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--kamino-only",
         action="store_true",
-        help="refresh Kamino rows only; keep the Morpho rows already in snapshot.json",
+        help="refresh Kamino rows only; keep the Morpho/Rhea rows already in snapshot.json",
+    )
+    parser.add_argument(
+        "--rhea-only",
+        action="store_true",
+        help="refresh Rhea rows only; keep the Morpho/Kamino rows already in snapshot.json",
     )
     args = parser.parse_args(argv)
+    if args.kamino_only and args.rhea_only:
+        parser.error("--kamino-only and --rhea-only are mutually exclusive")
     config = default_config()
     out_path = shipped_snapshot_path()
 
+    kept: list[VaultEntry] = []
     if args.kamino_only:
-        morpho_entries = _existing_morpho(out_path)
-        on_enabled = list(morpho_entries)
-        filtered = list(morpho_entries)
+        kept = _existing_without(out_path, {"kamino"})
+        on_enabled = [entry for entry in kept if entry.protocol == "morpho"]
+        filtered = list(on_enabled)
+    elif args.rhea_only:
+        kept = _existing_without(out_path, {"rhea"})
+        on_enabled = [entry for entry in kept if entry.protocol == "morpho"]
+        filtered = list(on_enabled)
     else:
         on_enabled = await fetch_vaults_for_chains(
             config, config.enabled_chains, apply_filters=False
         )
         filtered = filter_vaults(config, on_enabled)
-        morpho_entries = list(filtered)
 
-    kamino_entries = await fetch_kamino_vaults(config) if config.kamino.enabled else []
+    morpho_entries = [entry for entry in kept if entry.protocol == "morpho"] or list(filtered)
+    if args.kamino_only:
+        kamino_entries = await fetch_kamino_vaults(config) if config.kamino.enabled else []
+    else:
+        kamino_entries = [entry for entry in kept if entry.protocol == "kamino"]
+        if not args.rhea_only and config.kamino.enabled:
+            kamino_entries = await fetch_kamino_vaults(config)
+    if args.rhea_only:
+        rhea_entries = await fetch_rhea_vaults(config) if config.rhea.enabled else []
+    else:
+        rhea_entries = [entry for entry in kept if entry.protocol == "rhea"]
+        if not rhea_entries and config.rhea.enabled and not args.kamino_only:
+            rhea_entries = await fetch_rhea_vaults(config)
     catalog = await fetch_kamino_catalog(config) if config.kamino.enabled else []
-    combined = [*morpho_entries, *kamino_entries]
+    combined = [*morpho_entries, *kamino_entries, *rhea_entries]
 
     liveness = ReceiptLivenessCache()
     client = OneClickClient.from_env()
@@ -149,7 +179,8 @@ async def main(argv: list[str] | None = None) -> int:
         and liveness.get(receipt.asset_id) == LIVE
     ]
 
-    print(f"wrote: {out_path} ({'kamino-only' if args.kamino_only else 'full'})")
+    mode = "rhea-only" if args.rhea_only else ("kamino-only" if args.kamino_only else "full")
+    print(f"wrote: {out_path} ({mode})")
     print()
     print("== snapshot ==")
     print(f"vaults={len(combined)} chains: {_counts([e.chain for e in combined])}")
@@ -233,6 +264,30 @@ async def main(argv: list[str] | None = None) -> int:
     print("== receipt liveness (dry 100 USDC) ==")
     for receipt in config.receipts:
         print(f"{receipt.symbol} | {receipt.protocol} | {liveness.get(receipt.asset_id)}")
+    if config.rhea.enabled:
+        print()
+        print("== Rhea (Burrow) on NEAR ==")
+        print("asset | supply apy | supplied (stable pegged) | source | fetched at")
+        print("--- | --- | --- | --- | ---")
+        for entry in rhea_entries:
+            print(
+                f"{entry.asset.symbol} | {entry.net_apy_percent or '-'}% | "
+                f"{entry.tvl_usd if entry.tvl_usd is not None else '-'} | "
+                f"{entry.source} | {entry.fetched_at}"
+            )
+        views = RheaViews(config.rhea)
+        try:
+            fees = await views.create_mca_fee()
+        except Exception as exc:  # noqa: BLE001 - advisory table only
+            print(f"mca fee read failed: {type(exc).__name__}")
+            fees = {}
+        for asset in config.rhea.enabled_assets():
+            fee = mca_fee_amount(fees, asset, config.rhea.mca_fee_fallback)
+            print(
+                f"one-time MCA fee {asset.symbol} | {human_string(fee)} "
+                f"(live={'yes' if asset.token_id in fees else 'fallback'})"
+            )
+        print(f"app | {config.rhea.app_url}")
     return 0
 
 

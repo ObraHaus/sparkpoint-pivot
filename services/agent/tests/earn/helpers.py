@@ -80,6 +80,35 @@ def make_kamino_vault(
     )
 
 
+RHEA_TOKEN_ID = (  # noqa: S105 - a public NEAR token id, not a secret
+    "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"  # noqa: S105
+)
+
+
+def make_rhea_vault(
+    *,
+    symbol: str = "USDC",
+    token_id: str = RHEA_TOKEN_ID,
+    tvl: Decimal | None = Decimal("12733763.455236751"),
+    apy: Decimal | None = Decimal("0.1405"),
+) -> VaultEntry:
+    return VaultEntry(
+        chain="near",
+        chain_id=0,
+        address=token_id,
+        version="lending",
+        name=f"Rhea Lending {symbol}",
+        symbol=symbol,
+        asset=VaultAsset(address=token_id, symbol=symbol, decimals=6),
+        listed=True,
+        tvl_usd=tvl,
+        net_apy=apy,
+        source="rhea_rpc",
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="rhea",
+    )
+
+
 def make_snapshot(*vaults: VaultEntry) -> EarnSnapshot:
     return EarnSnapshot(
         fetched_at=datetime.now(UTC),

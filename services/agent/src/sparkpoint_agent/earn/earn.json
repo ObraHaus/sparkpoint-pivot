@@ -77,6 +77,15 @@
       "protocols": [
         "kamino"
       ]
+    },
+    {
+      "chain": "near",
+      "chain_id": 0,
+      "label": "NEAR",
+      "enabled": true,
+      "protocols": [
+        "rhea"
+      ]
     }
   ],
   "filters": {
@@ -198,6 +207,40 @@
         "shares_mint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK"
       }
     ]
+  },
+  "rhea": {
+    "enabled": true,
+    "rpc_urls": [
+      "https://free.rpc.fastnear.com",
+      "https://rpc.mainnet.near.org"
+    ],
+    "logic_contract": "contract.main.burrow.near",
+    "am_contract": "multica.near",
+    "app_url": "https://app.rhea.finance/lending",
+    "assets": [
+      {
+        "symbol": "USDC",
+        "asset_id": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "decimals": 6,
+        "enabled": true
+      },
+      {
+        "symbol": "USDT",
+        "asset_id": "nep141:usdt.tether-token.near",
+        "decimals": 6,
+        "enabled": false
+      }
+    ],
+    "mca_fee_fallback": {
+      "USDC": "0.30"
+    },
+    "use_as_collateral": false,
+    "origins": [
+      "base:USDC",
+      "eth:USDC",
+      "sol:USDC"
+    ],
+    "default_origin": "base:USDC"
   },
   "dry_probe_addresses": {
     "sol": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
