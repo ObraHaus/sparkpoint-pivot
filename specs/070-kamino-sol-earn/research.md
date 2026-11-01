@@ -54,7 +54,7 @@ An EVM `0x…` recipient is **not** valid for a `sol` receipt.
 `GET /kvaults/vaults` → JSON list, **194 vaults**, ~400 KB. Fields used: `address`,
 `state{name, tokenMint, tokenMintDecimals, sharesMint, sharesMintDecimals, sharesIssued, prevAum,
 managementFeeBps, performanceFeeBps, depositCap, …}`. Mint distribution: **110** have
-`tokenMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` (USDC), **23** have SOL.
+the USDC mint (public Solana USDC mint address EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v) as their deposit mint, **23** have SOL.
 
 `GET /kvaults/{address}/metrics` → `{apy (fraction string), apy7d, apy30d, apy90d,
 tokensInvestedUsd, tokensPerShare, sharePrice, tokenPrice, numberOfHolders, …}`. For `DcCRSd…` on
