@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from sparkpoint_agent.crosschain.config import config_from_dict, default_config
@@ -115,3 +117,86 @@ def test_unknown_asset_in_a_custom_config_is_ignored() -> None:
         }
     )
     assert parse_cross_chain_request("Swap 10 USDC into BTC", config) is not None
+
+
+@pytest.mark.parametrize(
+    ("prompt", "amount", "raw"),
+    [
+        ("Swap 1,000.50 USDC into BTC", "1000.5", 1_000_500_000),
+        ("Swap 1k USDC into BTC", "1000", 1_000_000_000),
+        ("Swap 2m USDC into BTC", "2000000", 2_000_000_000_000),
+    ],
+)
+def test_comma_decimal_and_scale_amounts_are_exact(prompt: str, amount: str, raw: int) -> None:
+    request = parse_cross_chain_request(prompt, default_config())
+    assert request is not None
+    assert request.amount_human == amount
+    assert request.amount_raw == raw
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "swap 100 usdc to btc",
+        "SWAP 100 USDC TO BTC",
+        "SwAp 100 UsDc To BtC",
+    ],
+)
+def test_verbs_symbols_and_chains_are_case_insensitive(prompt: str) -> None:
+    request = parse_cross_chain_request(prompt, default_config())
+    assert request is not None
+    assert request.origin_key == "base:USDC"
+    assert request.destination_key == "btc:BTC"
+    assert request.amount_human == "100"
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "swap 100 DOGE to BTC",
+        "swap 100 USDC to DOGE",
+        "swap 100 USDC to XYZ chain",
+    ],
+)
+def test_unknown_assets_or_chains_do_not_match(prompt: str) -> None:
+    assert parse_cross_chain_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "swap 100 USDC to USDC on Base",
+        "move 100 USDC from Base to Base",
+        "swap 100 USDC into USDC",
+    ],
+)
+def test_same_chain_same_asset_does_not_match(prompt: str) -> None:
+    assert parse_cross_chain_request(prompt, default_config()) is None
+
+
+def test_a_zero_amount_does_not_match() -> None:
+    assert parse_cross_chain_request("swap 0 USDC to BTC", default_config()) is None
+
+
+def test_a_very_large_amount_stays_exact() -> None:
+    request = parse_cross_chain_request(
+        "Swap 999999999999999999999 USDC into BTC", default_config()
+    )
+    assert request is not None
+    assert request.amount == Decimal("999999999999999999999")
+    assert request.amount_raw == int(Decimal("999999999999999999999").scaleb(6))
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "what is NEAR?",
+        "earn yield on NEAR",
+        "bridge to NEAR",
+        "Is Base cheaper than Ethereum?",
+        "tell me about Solana",
+        "what is the price of BTC?",
+    ],
+)
+def test_chain_mentions_without_a_swap_request_do_not_match(prompt: str) -> None:
+    assert parse_cross_chain_request(prompt, default_config()) is None

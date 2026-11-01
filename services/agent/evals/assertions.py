@@ -174,6 +174,15 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
             return f"{SWAP_ROUTE_PREFIX}{token_in}->{token_out}"
         return f"proposal:{action_type}"
 
+    for wire in wires:
+        if wire.get("type") != "crosschain_quote":
+            continue
+        return (
+            "crosschain_unavailable"
+            if str(wire.get("state")) == "unavailable"
+            else "crosschain_preview"
+        )
+
     if "recommendation" in kinds:
         return "recommendation"
     if "portfolio_snapshot" in kinds:
@@ -192,9 +201,7 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         "to withdraw" in text
     ):
         return "nothing_to_withdraw"
-    if "aren't supported yet" in text and (
-        "cross-chain swap" in text or "near intents" in text
-    ):
+    if "aren't supported yet" in text and ("cross-chain swap" in text or "near intents" in text):
         return "unsupported_swap"
     if "bridging to another chain" in text:
         return "bridge"
@@ -210,9 +217,7 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         return "all_in"
     if "can't show a per-wallet" in text:
         return "fees_paid"
-    if "not on my own" in text and (
-        "session key" in text or "every transaction is signed" in text
-    ):
+    if "not on my own" in text and ("session key" in text or "every transaction is signed" in text):
         return "automation"
     if "apy" in text and (
         "the vault is currently showing" in text
@@ -227,7 +232,8 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         "i'd point you at" in text
         or "curated vaults live on this network" in text
         or "curated vault live on this network" in text
-        or "is showing" in text and "net apy" in text
+        or "is showing" in text
+        and "net apy" in text
         or "i'm tracking" in text
         or "there are no curated vaults on this network" in text
     ):

@@ -1,10 +1,11 @@
 # Sparky golden evals (spec 058)
 
-A reviewable set of **72 real user prompts** — the 26-prompt beta audit plus NEAR / swap /
-knowledge / adversarial / edge coverage — run through the **real `CoordinatorDag`**. The
-suite pins what "a good Sparky answer" means after **057 (chat dead-ends)**.
+A reviewable set of **82 real user prompts** — the 26-prompt beta audit plus NEAR / swap /
+cross-chain / knowledge / adversarial / edge coverage — run through the **real
+`CoordinatorDag`**. The suite pins what "a good Sparky answer" means after **057 (chat
+dead-ends)** and **068 (cross-chain chat swaps)**.
 
-There are two modes:
+There are three modes:
 
 | Mode | What it does | Network | Blocking? |
 |---|---|---|---|
@@ -91,6 +92,7 @@ Edit `golden.yaml`:
   wallet: empty            # empty | with_position | with_mandate
   history:                 # optional
     - {role: user, content: "…"}
+  crosschain: quote        # optional: quote | transport_error | disabled
   expected:
     route: unsupported_swap  # or routes: [knowledge, general]
     blocks_present: [text]
@@ -105,7 +107,13 @@ Edit `golden.yaml`:
 ```
 
 - `route`/`routes` are observed from the emitted blocks (`proposal:vault_deposit`,
-  `swap_card:USDC->ETH`, `unsafe_refusal`, `knowledge`, `portfolio`, …).
+  `swap_card:USDC->ETH`, `crosschain_preview`, `crosschain_unavailable`, `unsafe_refusal`,
+  `knowledge`, `portfolio`, …).
+- `crosschain` opts the case into the 068 fixture. `quote` injects a real `CrossChainService`
+  behind a canned `httpx.MockTransport` that returns a dry quote; `transport_error` makes that
+  transport raise `httpx.ConnectError`; `disabled` builds the service with
+  `CROSSCHAIN_ENABLED=false`. **Cases without the key get `crosschain=None`** — the exact
+  pre-068 DAG — so existing routes cannot move. No fixture makes a network call.
 - The `offline.intent` is usually a **misleading** canned intent: deterministic routes must
   fire before the classifier, so a wrong route fails loudly instead of being hidden.
 - For prose-only routes (`general`, `knowledge`) set `offline_check_contains: false`; the

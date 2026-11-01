@@ -29,6 +29,11 @@
   unavailable; transport fallback; old bridge/same-chain behaviour preserved.
 - [x] **T6815** `scripts/oneclick_dry_smoke.py` and one real dry run.
 - [x] **T6816** Verify `ruff check`, `ruff format --check`, `mypy`, full `pytest`.
+- [x] **T6824** Extend the 058 golden eval harness with a `crosschain` fixture (canned dry 1Click
+  transport, transport-error and flag-off modes) and ten `crosschain` cases: demo prompts,
+  Taglish, no-amount, Tron unavailable, transport fallback, flag-off and chain-mention negatives —
+  plus parser edge-case tests (comma/decimal/scale amounts, casing, unknown assets, same-chain,
+  very large amounts). (`evals/golden.yaml`, `tests/crosschain/test_parse.py`)
 
 ## Phase 2 — frontend
 

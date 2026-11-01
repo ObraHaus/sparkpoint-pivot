@@ -13,9 +13,12 @@ every candidate, exactly as it does in production.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
+
+import httpx
 
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
@@ -30,6 +33,9 @@ from sparkpoint_agent.coordinator.dag import (
     MarketData,
     PortfolioView,
 )
+from sparkpoint_agent.crosschain.config import load_config
+from sparkpoint_agent.crosschain.oneclick import OneClickClient
+from sparkpoint_agent.crosschain.service import CrossChainService
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.persona import get_persona
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom, RiskProfile
@@ -211,6 +217,61 @@ def _id_factory() -> Any:
     return next_id
 
 
+_CROSSCHAIN_OUTPUTS: Mapping[str, tuple[str, str, str, str, int]] = {
+    # destination-asset marker -> (amountOut, formatted, USD, minOut, eta seconds)
+    "btc": ("6439596", "0.06439596", "4986.69", "6375200", 480),
+    "sol": ("425000000", "0.425", "50.00", "420000000", 120),
+    "base-": ("24900000", "24.9", "24.90", "24775500", 300),
+    "hood-": ("24900000", "24.9", "24.90", "24775500", 300),
+    "eth-": ("24900000", "24.9", "24.90", "24775500", 300),
+}
+
+
+def _crosschain_quote(marker: str, amount: str) -> dict[str, Any]:
+    amount_out, formatted, usd, min_out, eta = _CROSSCHAIN_OUTPUTS.get(
+        marker, ("1000000", "1.0", "1.00", "990000", 300)
+    )
+    return {
+        "quote": {
+            "amountIn": amount,
+            "amountInFormatted": amount,
+            "amountInUsd": "100.00",
+            "amountOut": amount_out,
+            "amountOutFormatted": formatted,
+            "amountOutUsd": usd,
+            "minAmountOut": min_out,
+            "timeEstimate": eta,
+        },
+        "quoteRequest": {"deadline": "2026-10-31T12:30:00.000Z"},
+        "signature": "ed25519:eval-fixture",
+    }
+
+
+def _crosschain_handler(mode: str) -> Any:
+    """A canned 1Click transport: dry quotes only, or a deterministic connect error."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode == "transport_error":
+            raise httpx.ConnectError("offline", request=request)
+        body = json.loads(request.content)
+        destination = str(body.get("destinationAsset", ""))
+        marker = next((key for key in _CROSSCHAIN_OUTPUTS if key in destination), "")
+        return httpx.Response(201, json=_crosschain_quote(marker, str(body.get("amount", "0"))))
+
+    return handler
+
+
+def _crosschain_service(mode: str) -> CrossChainService:
+    """Build the real service around the fake transport (``disabled`` keeps the pre-068 path)."""
+    # Pin the flag explicitly: the eval must not inherit CROSSCHAIN_ENABLED from the shell.
+    config = replace(load_config(env={}), feature_enabled=mode != "disabled")
+    client = OneClickClient(
+        transport=httpx.MockTransport(_crosschain_handler(mode)),
+        clock=lambda: 1000.0,
+    )
+    return CrossChainService(config, client)
+
+
 def build_dag(
     *,
     case: Case,
@@ -223,9 +284,14 @@ def build_dag(
 
     ``streaming`` / ``single_call`` mirror the 059 deployment flags; both default to OFF so the
     offline golden run is the exact pre-059 path unless a caller explicitly exercises a combo.
+
+    A case with a ``crosschain`` key gets a real :class:`CrossChainService` wired to a canned
+    1Click transport (no network). Cases without the key keep ``crosschain=None`` — byte-for-byte
+    the pre-068 DAG, so existing golden routes cannot move.
     """
     fixture = wallet_fixture(case.wallet)
     persona = get_persona if live else (lambda: "")
+    crosschain = _crosschain_service(case.crosschain) if case.crosschain else None
     return CoordinatorDag(
         planner=Planner(llm=client),
         recommender=Recommender(llm=client),
@@ -239,6 +305,7 @@ def build_dag(
         streaming=streaming,
         single_call=single_call,
         id_factory=_id_factory(),
+        crosschain=crosschain,
     )
 
 
