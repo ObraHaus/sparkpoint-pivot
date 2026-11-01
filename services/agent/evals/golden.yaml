@@ -178,11 +178,12 @@ cases:
     category: near
     prompt: "Can you earn yield for me on NEAR, like Rhea Finance?"
     wallet: empty
+    earn: list
     expected:
-      route: yield_guidance
-      blocks_present: [text]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near yield", "isn't supported yet", "coming", "gauntlet usdc prime", "4.41%", "/vault"]
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
     offline:
       intent: {kind: build_action, actionType: aerodrome_swap, asset: USDC, amount: 100000000}
 
@@ -371,11 +372,12 @@ cases:
     category: near
     prompt: "earn yield on NEAR"
     wallet: empty
+    earn: list
     expected:
-      route: yield_guidance
-      blocks_present: [text]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near yield", "coming"]
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
     offline:
       intent: {kind: other}
 
@@ -384,12 +386,12 @@ cases:
     prompt: "stake NEAR"
     wallet: empty
     expected:
-      routes: [general, knowledge]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near"]
+      route: general
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, earn_quote, earn_vaults]
+      must_contain: ["near-token staking", "rhea lending", "usdc only"]
     offline:
       intent: {kind: other}
-    offline_check_contains: false
 
   - id: near-31-what-is-near-intents
     category: near
@@ -1209,3 +1211,73 @@ cases:
     offline:
       intent: {kind: other}
     offline_check_contains: false
+
+  # ── 071 — vague NEAR-yield turns route to Rhea (no protocol named) ────────────
+  - id: near-95-vague-near-yield
+    category: earn
+    prompt: "where can I get yield on near?"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
+      must_not_contain: ["isn't supported yet", "near support is coming"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-96-vague-near-stake-usdc
+    category: earn
+    prompt: "stake my USDC on NEAR"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-97-vague-near-amount
+    category: earn
+    prompt: "put 100 USDC to work on NEAR"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation, earn_positions]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-98-vague-near-positions
+    category: earn
+    prompt: "my NEAR yield"
+    wallet: empty
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea account", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-99-usdt-on-near-disabled
+    category: earn
+    prompt: "best USDT yield on NEAR"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["usdc only for now", "usdt isn't enabled"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}

@@ -54,7 +54,7 @@ from ..agents.sparky import Sparky, SparkyReply
 from ..crosschain.oneclick import CrossChainTransportError
 from ..crosschain.parse import parse_cross_chain_request
 from ..data.prices import PriceService, PriceSnapshot
-from ..earn.parse import parse_earn_request
+from ..earn.parse import is_near_native_staking_request, parse_earn_request
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -109,6 +109,7 @@ from .curated import (
     is_vaults_list_question,
 )
 from .guidance import (
+    NEAR_NATIVE_STAKING_ANSWER,
     NOTHING_TO_WITHDRAW,
     NOTHING_TO_WITHDRAW_NO_VAULT,
     UNSAFE_REFUSAL,
@@ -218,8 +219,7 @@ def _comparative_fallback(
         gap = "SparkPoint has no verified material on either side of that comparison."
     elif not missing:
         gap = (
-            "SparkPoint has verified material on both, but not enough to rank one above the "
-            "other."
+            "SparkPoint has verified material on both, but not enough to rank one above the other."
         )
     elif len(missing) == len(names):
         gap = f"SparkPoint has no verified material on {_join_names(names)}."
@@ -755,8 +755,7 @@ class CoordinatorDag:
                 [
                     passage
                     for passage in entity_hits
-                    if passage_mentions_subject(passage, subject)
-                    and not _is_release_note(passage)
+                    if passage_mentions_subject(passage, subject) and not _is_release_note(passage)
                 ]
             )
 
@@ -953,13 +952,9 @@ class CoordinatorDag:
         number, so a retry becomes a new ``stream_id`` (client resets, never concatenates).
         """
         assert self.literacy is not None  # noqa: S101
-        async for chunk in self.literacy.stream_tip(
-            topic, context_hint=context_hint, user=user
-        ):
+        async for chunk in self.literacy.stream_tip(topic, context_hint=context_hint, user=user):
             if chunk.delta:
-                yield ProseDelta(
-                    target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}"
-                )
+                yield ProseDelta(target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}")
             elif chunk.card is not None:
                 yield chunk.card
 
@@ -1091,6 +1086,14 @@ class CoordinatorDag:
                 yield TextBlock(outcome.text)
                 yield outcome.block
                 return
+
+        # 071 — native NEAR-token staking ("stake NEAR tokens", "liquid staking NEAR") is not
+        # Rhea USDC lending. Answer honestly and point at the supported path, never at a preview.
+        if is_near_native_staking_request(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(NEAR_NATIVE_STAKING_ANSWER)
+            return
 
         # 069 — explicit Morpho requests ("Show Morpho vaults on Base", "Deposit 100 USDC into
         # Morpho Gauntlet USDC Prime") are answered deterministically before the planner. The
@@ -1350,9 +1353,7 @@ class CoordinatorDag:
             full_amount = withdraw_all_amount(withdraw_gathered.portfolio.positions)
             if full_amount is None:
                 yield TextBlock(
-                    NOTHING_TO_WITHDRAW
-                    if _offers_vault(chain)
-                    else NOTHING_TO_WITHDRAW_NO_VAULT
+                    NOTHING_TO_WITHDRAW if _offers_vault(chain) else NOTHING_TO_WITHDRAW_NO_VAULT
                 )
                 return
             # "withdraw everything except 100" is a residual, never the full position. If the
@@ -1362,7 +1363,7 @@ class CoordinatorDag:
                 if leave_behind is None or leave_behind >= full_amount:
                     yield TextBlock(
                         "I can withdraw all but a set amount — tell me how much you'd like to "
-                        "leave in the vault, for example \"withdraw everything except $100\"."
+                        'leave in the vault, for example "withdraw everything except $100".'
                     )
                     return
                 full_amount -= leave_behind
@@ -1464,11 +1465,7 @@ class CoordinatorDag:
             grounded = False
             failed = True
             failure: str | None = "upstream"
-            if (
-                self.streaming
-                and self.sparky is not None
-                and hasattr(self.sparky, "stream_reply")
-            ):
+            if self.streaming and self.sparky is not None and hasattr(self.sparky, "stream_reply"):
                 async for prose_item in self._stream_general_answer(
                     message,
                     passages,
@@ -1527,9 +1524,7 @@ class CoordinatorDag:
                 # fallback (uncited). Replace it BEFORE the text block is emitted (streaming may
                 # already have painted it; the terminal block is authoritative).
                 if not _is_comparative_servable(prose_answer, subjects):
-                    _log_comparative_outcome(
-                        subjects, covered, reason="non_answer", cited=False
-                    )
+                    _log_comparative_outcome(subjects, covered, reason="non_answer", cited=False)
                     yield TextBlock(
                         _comparative_fallback(message, subjects=subjects, covered=covered)
                     )
@@ -1537,18 +1532,13 @@ class CoordinatorDag:
                 # Cite only a COMPLETE per-subject set; a partial one is served uncited.
                 citable = _comparative_citable_passages(subjects, passages)
                 cited = bool(passages and grounded and citable)
-                _log_comparative_outcome(
-                    subjects, covered, reason="served", cited=cited
-                )
+                _log_comparative_outcome(subjects, covered, reason="served", cited=cited)
             else:
                 # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
                 # is not grounded in the retrieved passages, so it must not carry sources.
                 citable = tuple(passages)
                 cited = bool(
-                    passages
-                    and grounded
-                    and prose_answer.strip()
-                    and not _is_decline(prose_answer)
+                    passages and grounded and prose_answer.strip() and not _is_decline(prose_answer)
                 )
             yield TextBlock(prose_answer)
             if cited:
@@ -1970,11 +1960,7 @@ def _earn_origin_key(service: EarnService, request: Any, vault: Any) -> str:
     beta wallet is EVM, so that is the honest default.
     """
     origin_chain = getattr(request, "origin_chain", None)
-    chain = (
-        origin_chain
-        or getattr(request, "chain", None)
-        or getattr(vault, "chain", None)
-    )
+    chain = origin_chain or getattr(request, "chain", None) or getattr(vault, "chain", None)
     symbol = getattr(request, "asset", None) or getattr(vault, "asset", None)
     if not isinstance(symbol, str) and symbol is not None:
         symbol = getattr(symbol, "symbol", None)
@@ -2166,10 +2152,7 @@ def _apy_answer(chain: ChainContext, *, now: datetime | None = None) -> str:
     headline = net if net is not None else gross
     read_at = as_of_time(getattr(market, "as_of", None) if market else None, now=now)
     stamp = read_at.strftime("%H:%M UTC")
-    parts = [
-        f"The vault is currently showing about **{_fmt_bps(headline)}% APY** "
-        f"(as of {stamp})"
-    ]
+    parts = [f"The vault is currently showing about **{_fmt_bps(headline)}% APY** (as of {stamp})"]
     if net is not None and gross is not None and gross != net:
         fee = f" after the {_fmt_bps(fee_bps)}% performance fee" if fee_bps else " after fees"
         parts.append(f" net{fee} (gross {_fmt_bps(gross)}%)")
@@ -2530,6 +2513,7 @@ def _fast_path_is_blocked(text: str) -> bool:
         or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
     )
 
+
 #: 059/A3 — the ONLY concept shapes allowed to skip the planner. Fully anchored after
 #: normalisation, with a short topic phrase (≤6 words for "what is/explain", ≤5 before "work")
 #: and no extra clause. ``_FAST_CLAUSE_WORD_RE`` rejects conjunctions, pronouns/advice and
@@ -2571,9 +2555,7 @@ _IDENTITY_FAST_RE = re.compile(
 #: left to the planner, which routes them to the general/OTHER prose branch: a deterministic
 #: matcher cannot know a price, and answering one from the knowledge corpus would turn a quote
 #: request into a tip (058 golden ``audit-07-eth-price``).
-_PRICE_FAST_RE = re.compile(
-    r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
-)
+_PRICE_FAST_RE = re.compile(r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE)
 
 #: 059/A3 follow-up safety — with prior turns in the conversation, a deictic/anaphoric reference
 #: ("how does it work?", "what about fees?") is only answerable in context. The deterministic
@@ -2593,11 +2575,59 @@ _FOLLOWUP_LEAD_RE = re.compile(
 #: Words that describe the QUESTION rather than a subject. A concept topic made only of these
 #: ("how does it work?" → ``it``) is not a real topic and must fall back to the planner.
 _TOPIC_STOPWORDS = {
-    "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
-    "about", "how", "does", "do", "why", "of", "to", "in", "work", "works", "with", "for",
-    "from", "by", "on", "at", "can", "could", "would", "should", "it", "its", "that", "this",
-    "these", "those", "they", "them", "their", "theirs", "there", "one", "same", "above",
-    "and", "also", "then", "so", "but", "or", "more", "please",
+    "what",
+    "whats",
+    "is",
+    "are",
+    "the",
+    "a",
+    "an",
+    "explain",
+    "define",
+    "tell",
+    "me",
+    "about",
+    "how",
+    "does",
+    "do",
+    "why",
+    "of",
+    "to",
+    "in",
+    "work",
+    "works",
+    "with",
+    "for",
+    "from",
+    "by",
+    "on",
+    "at",
+    "can",
+    "could",
+    "would",
+    "should",
+    "it",
+    "its",
+    "that",
+    "this",
+    "these",
+    "those",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "there",
+    "one",
+    "same",
+    "above",
+    "and",
+    "also",
+    "then",
+    "so",
+    "but",
+    "or",
+    "more",
+    "please",
 }
 
 

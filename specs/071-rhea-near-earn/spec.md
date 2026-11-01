@@ -49,9 +49,9 @@ deposit also pays a one-off MCA creation fee taken from the deposited amount.
   No MCA / unknown account is an honest `empty` with an explainer; RPC failure is `unavailable`.
 - **R6 — Chat.** Deterministic parser for "deposit/supply/lend/earn X USDC on/in/into Rhea
   [Finance] [lending]", "Rhea APY|rate for USDC", "show my Rhea position(s)" and "how do I withdraw
-  from Rhea" (link). Fires only on an explicit **Rhea**/**Burrow** mention and never steals
-  068/069/070 phrasing (bridge/swap/comparative/generic vault negatives). Emits `earn_vaults` /
-  `earn_quote` (protocol `rhea`) and the new `earn_positions` block through the SSE path.
+  from Rhea" (link), plus the vague NEAR-yield turns in R10. Never steals 068/069/070 phrasing
+  (bridge/swap/comparative/generic vault negatives). Emits `earn_vaults` / `earn_quote`
+  (protocol `rhea`) and the new `earn_positions` block through the SSE path.
 - **R7 — Size cap is honest.** Same 1Click rule as 070: no hard-coded cap; a
   `400 No liquidity available` becomes an `unavailable` card with "try a smaller amount".
 - **R8 — Scripts + tests.** `earn_registry_snapshot.py --rhea-only` merges Rhea rows without
@@ -61,6 +61,18 @@ deposit also pays a one-off MCA creation fee taken from the deposited amount.
   unknown, API session-wallet scoping, router filters, parser positives/negatives and the DAG.
   All 068/069/070 tests still pass.
 - **R9 — Spec-kit artifacts**, CLAUDE.md SPECKIT pointer and a CHANGELOG entry.
+- **R10 — Vague NEAR-yield routing.** A NEAR-yield turn that names no protocol is Rhea, not an
+  unsupported chain. "earn yield on NEAR", "where can I get yield on near?", "stake my USDC on
+  NEAR", "NEAR lending", "best stablecoin yield on NEAR" and "earn on Rhea" (no amount) emit the
+  071 `earn_vaults` block for Rhea Lending USDC with its snapshot/source, plus short copy naming
+  Rhea as the supported NEAR yield, "USDC only for now", and an invitation to give an amount for a
+  dry preview. An amount ("put 100 USDC to work on NEAR") emits the same `earn_quote` preview as
+  "Deposit 100 USDC into Rhea". Positions phrasing ("my NEAR yield", "my Rhea positions") emits
+  `earn_positions`. Native NEAR-*token* staking ("stake NEAR tokens", "liquid staking NEAR") is a
+  deterministic honest reply that it is unsupported and that Rhea USDC lending is the supported
+  path. USDT on NEAR remains config-disabled and answers "USDC only for now". The stale "NEAR
+  yield isn't supported yet / NEAR support is coming" copy is gone from guidance, evals and tests.
+  Morpho/Kamino/Base/Solana and cross-chain swap phrasing keeps its existing route.
 
 ## Non-goals
 
@@ -84,3 +96,7 @@ deposit also pays a one-off MCA creation fee taken from the deposited amount.
    "Bridge 100 USDC to NEAR then deposit into Rhea" keep their existing routes.
 6. Full agent `pytest`, `ruff` and `mypy` pass (the 12 pre-existing vault_reader forge-artifact
    failures excepted).
+7. "earn yield on NEAR", "where can I get yield on near?", "stake my USDC on NEAR" and "put 100
+   USDC to work on NEAR" emit `earn_vaults` / `earn_quote` for Rhea Lending USDC without the LLM;
+   "stake NEAR tokens" / "liquid staking NEAR" answer honestly with no earn card; "my NEAR yield"
+   emits `earn_positions`; USDT says "USDC only for now".

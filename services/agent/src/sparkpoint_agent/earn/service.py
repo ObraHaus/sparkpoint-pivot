@@ -212,9 +212,7 @@ class EarnService:
                 return matches[0]
             # Rhea requests name the ASSET ("deposit into Rhea USDC"), not a vault name.
             asset_matches = [
-                entry
-                for entry in candidates
-                if wanted and entry.asset.symbol.lower() == wanted
+                entry for entry in candidates if wanted and entry.asset.symbol.lower() == wanted
             ]
             if asset_matches:
                 asset_matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
@@ -244,6 +242,26 @@ class EarnService:
                 text=_UNKNOWN_SNAPSHOT,
                 block=EarnVaultsBlock(state="unavailable", unavailable_reason="no snapshot"),
             )
+        protocol = getattr(request, "protocol", None)
+        if protocol == "rhea" and request.asset:
+            # USDT (or any other Burrow market) is config-disabled: say so plainly instead of
+            # leaking into the generic no-match copy.
+            configured = self.config.rhea.asset_for_symbol(request.asset)
+            if configured is None or not configured.enabled:
+                symbol = request.asset.upper()
+                return EarnOutcome(
+                    text=(
+                        f"Rhea Lending on NEAR is USDC only for now — {symbol} isn't enabled. "
+                        "Tell me a USDC amount (for example 100 USDC) and I'll show a dry "
+                        "deposit preview."
+                    ),
+                    block=EarnVaultsBlock(
+                        state="unavailable",
+                        snapshot_age_minutes=snapshot.age_minutes(),
+                        snapshot_source=self.registry.loaded_from,
+                        unavailable_reason=f"{symbol} is not enabled for Rhea",
+                    ),
+                )
         if not vaults:
             return EarnOutcome(
                 text=_NO_MATCH,
@@ -254,7 +272,7 @@ class EarnService:
                     unavailable_reason="no matching vaults",
                 ),
             )
-        protocol = getattr(request, "protocol", None)
+
         protocol_label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
             protocol or "", ""
         )
@@ -267,7 +285,7 @@ class EarnService:
             note = (
                 "Rhea (Burrow) lending on NEAR is data-driven. The rate is the contract's "
                 "supply APR (variable), read live; supply runs through 1Click into your Rhea "
-                "account. Withdraw on app.rhea.finance with the same wallet."
+                "account. USDC only for now. Withdraw on app.rhea.finance with the same wallet."
             )
         else:
             note = (
@@ -296,6 +314,12 @@ class EarnService:
                 f"{_usd(Decimal(vault['tvlUsd'])) if vault['tvlUsd'] else 'TVL n/a'} "
                 f"({rails})"
             )
+        if protocol == "rhea":
+            lines.append(
+                "Rhea Lending is the supported NEAR yield — USDC only for now. Tell me an "
+                "amount (for example 100 USDC) and I'll show a dry deposit preview."
+            )
+            lines.append("Source: Rhea's on-chain get_asset supply APR (variable).")
         lines.append("Nothing here is a transaction; pick a vault to see a dry preview.")
         return EarnOutcome(text="\n".join(lines), block=block)
 
@@ -320,9 +344,7 @@ class EarnService:
         entry = self._entry(chain, address)
         assert entry is not None  # noqa: S101 - get_vault just proved it
         if entry.protocol == "rhea":
-            return await self._rhea_preview(
-                entry, vault, origin_key, amount, amount_raw, wallet
-            )
+            return await self._rhea_preview(entry, vault, origin_key, amount, amount_raw, wallet)
         rails = self._rails(entry)
         origin = self.crosschain.asset(origin_key) if origin_key else None
 
@@ -749,9 +771,7 @@ class EarnService:
             (row.amount for row in rows if row.symbol.upper() in {"USDC", "USDT"}),
             Decimal(0),
         )
-        lines = [
-            f"Your Rhea positions on NEAR ({mca}) — read-only, nothing was signed or sent:"
-        ]
+        lines = [f"Your Rhea positions on NEAR ({mca}) — read-only, nothing was signed or sent:"]
         for row in rows:
             apy = f", supply APY {percent_string(row.apy)}%" if row.apy is not None else ""
             lines.append(f"- {human_string(row.amount)} {row.symbol}{apy}")

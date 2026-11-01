@@ -57,9 +57,7 @@ _AMOUNT_RE = re.compile(
     r"(?P<symbol>USDC|USDT|WETH|ETH|cbBTC|CBBTC|SOL)\b",
     re.IGNORECASE,
 )
-_TARGET_RE = re.compile(
-    r"\b(?:into|in|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE
-)
+_TARGET_RE = re.compile(r"\b(?:into|in|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE)
 _CHAIN_MARKER_RE = re.compile(
     r"\b(?:on|in)\s+(?P<chain>base|base mainnet|ethereum|ethereum mainnet|eth|mainnet|"
     r"solana|sol)\b",
@@ -70,24 +68,44 @@ _FROM_CHAIN_RE = re.compile(
     r"solana|sol)\b",
     re.IGNORECASE,
 )
-_FOR_ASSET_RE = re.compile(
-    r"\bfor\s+(?P<asset>USDC|USDT|WETH|ETH|cbBTC|SOL)\b", re.IGNORECASE
-)
+_FOR_ASSET_RE = re.compile(r"\bfor\s+(?P<asset>USDC|USDT|WETH|ETH|cbBTC|SOL)\b", re.IGNORECASE)
 _TRAILING_NOISE_RE = re.compile(r"\b(?:please|now|today|thanks|asap)\b.*$", re.IGNORECASE)
 
-# 071 — Rhea (Burrow) on NEAR. Only an explicit Rhea/Burrow mention reaches this parser.
+# 071 — Rhea (Burrow) on NEAR. An explicit Rhea/Burrow mention reaches this parser, and so do
+# vague NEAR-yield turns ("earn yield on NEAR", "stake my USDC on NEAR") that name no protocol.
 _RHEA_RE = re.compile(r"\b(?:rhea(?:\s+finance)?|burrow)\b", re.IGNORECASE)
 _POSITION_RE = re.compile(r"\bpositions?\b", re.IGNORECASE)
 _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
 _WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
-_RHEA_TARGET_RE = re.compile(
-    r"\b(?:into|in|on|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE
-)
+_RHEA_TARGET_RE = re.compile(r"\b(?:into|in|on|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE)
 _STABLE_RE = re.compile(r"\b(USDC|USDT)\b", re.IGNORECASE)
 _RHEA_NEGATIVE_RE = re.compile(
     r"\b(?:bridge|bridges|bridging|swap|swaps|swapping|cross[-\s]?chain)\b",
     re.IGNORECASE,
 )
+# Same deliberate narrowing as coordinator.guidance._NEAR_RE: uppercase NEAR is the chain/asset,
+# while lowercase "near" only counts after a chain preposition ("yield on near") so "near-term"
+# and "near the top" remain ordinary English.
+_NEAR_CHAIN_RE = re.compile(
+    r"\bNEAR\b"
+    r"|(?i:\bnear\s+(?:protocol|chain|network|token)\b)"
+    r"|(?i:\b(?:on|in|into|to|for|from)\s+near\b(?!\s*-))"
+)
+_NEAR_YIELD_RE = re.compile(
+    r"\b(?:earn|earning|yield|apy|apr|returns?|interest|invest|investing|grow|"
+    r"lending|lend|supply|supplies|supplying|deposit|put|stake|staking|stablecoins?)\b",
+    re.IGNORECASE,
+)
+_STAKE_RE = re.compile(
+    r"\b(?:stake|stakes|staking|staked|unstake|unstaking|liquid\s+staking)\b",
+    re.IGNORECASE,
+)
+_COMPARATIVE_RE = re.compile(
+    r"\b(?:compare|compares|compared|comparing|comparison|vs\.?|versus)\b"
+    r"|\bsafer\s+than\b|\b(?:more|less)\s+(?:safe|risky)\s+than\b",
+    re.IGNORECASE,
+)
+_MY_YIELD_RE = re.compile(r"\bmy\b[^.?!]{0,30}\byield\b|\byield\b[^.?!]{0,30}\bmy\b", re.IGNORECASE)
 
 _DECIMALS = {"USDC": 6, "USDT": 6, "WETH": 18, "ETH": 18, "CBBTC": 8, "SOL": 9}
 
@@ -178,8 +196,7 @@ def _vault_query(target: str, config: EarnConfig, protocol: str | None) -> str |
         if any(vault.address == cleaned for vault in config.kamino.vaults):
             return cleaned
         if any(
-            vault.name.lower() in wanted and len(vault.name) > 3
-            for vault in config.kamino.vaults
+            vault.name.lower() in wanted and len(vault.name) > 3 for vault in config.kamino.vaults
         ):
             return cleaned
         return None
@@ -191,61 +208,113 @@ def _vault_query(target: str, config: EarnConfig, protocol: str | None) -> str |
     return cleaned
 
 
-def _parse_rhea(text: str, message: str) -> EarnRequest | None:
+def _stable_symbol(text: str) -> str | None:
+    """The stablecoin a turn names (USDC/USDT), if any."""
+    asset_match = _FOR_ASSET_RE.search(text)
+    if asset_match is not None:
+        return asset_match.group("asset").upper()
+    stable = _STABLE_RE.search(text)
+    return stable.group(1).upper() if stable is not None else None
+
+
+def _rhea_asset_enabled(config: EarnConfig, symbol: str) -> bool:
+    asset = config.rhea.asset_for_symbol(symbol)
+    return asset is not None and asset.enabled
+
+
+def is_near_native_staking_request(message: str) -> bool:
+    """True for NEAR-*token* staking (never Rhea USDC lending).
+
+    "stake NEAR" / "stake NEAR tokens" / "liquid staking NEAR" are native NEAR staking, which
+    this product does not offer. A stablecoin plus NEAR ("stake my USDC on NEAR") is Rhea
+    lending, and an explicit Rhea/Burrow mention always belongs to the Rhea parser.
+    """
+    text = message.strip()
+    if not text or _NEAR_CHAIN_RE.search(text) is None:
+        return False
+    if _STAKE_RE.search(text) is None:
+        return False
+    if _STABLE_RE.search(text) is not None or _RHEA_RE.search(text) is not None:
+        return False
+    return True
+
+
+def _withdraw_request(message: str) -> EarnRequest:
+    return EarnRequest(
+        kind="withdraw",
+        chain="near",
+        asset=None,
+        amount=None,
+        amount_raw=None,
+        vault_query=None,
+        sort="tvl",
+        message=message,
+        protocol="rhea",
+    )
+
+
+def _positions_request(message: str) -> EarnRequest:
+    return EarnRequest(
+        kind="positions",
+        chain="near",
+        asset=None,
+        amount=None,
+        amount_raw=None,
+        vault_query=None,
+        sort="tvl",
+        message=message,
+        protocol="rhea",
+    )
+
+
+def _list_request(message: str, asset: str | None, *, best: bool) -> EarnRequest:
+    return EarnRequest(
+        kind="list",
+        chain="near",
+        asset=asset,
+        amount=None,
+        amount_raw=None,
+        vault_query=None,
+        sort="apy" if best else "tvl",
+        message=message,
+        protocol="rhea",
+    )
+
+
+def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
     """Rhea/Burrow: positions, withdraw link, APY/list, or a supply preview."""
-    # A bridge/swap command is the 068 flow's job, even when it names Rhea as the destination.
-    if _RHEA_NEGATIVE_RE.search(text) is not None:
+    # A bridge/swap/comparative command belongs to 068/063, even when it names Rhea.
+    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
         return None
     if _WITHDRAW_RE.search(text) is not None:
-        return EarnRequest(
-            kind="withdraw",
-            chain="near",
-            asset=None,
-            amount=None,
-            amount_raw=None,
-            vault_query=None,
-            sort="tvl",
-            message=message,
-            protocol="rhea",
-        )
+        return _withdraw_request(message)
     if _POSITION_RE.search(text) is not None:
-        return EarnRequest(
-            kind="positions",
-            chain="near",
-            asset=None,
-            amount=None,
-            amount_raw=None,
-            vault_query=None,
-            sort="tvl",
-            message=message,
-            protocol="rhea",
-        )
-    if _LIST_RE.search(text) is not None or _APY_RE.search(text) is not None:
-        asset_match = _FOR_ASSET_RE.search(text)
-        asset = asset_match.group("asset").upper() if asset_match is not None else None
-        if asset is None:
-            stable = _STABLE_RE.search(text)
-            asset = stable.group(1).upper() if stable is not None else None
-        return EarnRequest(
-            kind="list",
-            chain="near",
-            asset=asset,
-            amount=None,
-            amount_raw=None,
-            vault_query=None,
-            sort="apy" if _BEST_RE.search(text) is not None else "tvl",
-            message=message,
-            protocol="rhea",
-        )
+        return _positions_request(message)
     if _DEPOSIT_VERB_RE.search(text) is None:
+        if _LIST_RE.search(text) is not None or _APY_RE.search(text) is not None:
+            return _list_request(
+                message, _stable_symbol(text), best=_BEST_RE.search(text) is not None
+            )
         return None
     amount = _amount(text)
     if amount is None:
+        # "earn on Rhea" with no amount is a list/explain turn, not a preview.
+        if (
+            _LIST_RE.search(text) is not None
+            or _APY_RE.search(text) is not None
+            or _NEAR_YIELD_RE.search(text) is not None
+        ):
+            return _list_request(
+                message, _stable_symbol(text), best=_BEST_RE.search(text) is not None
+            )
         return None
     target_match = _RHEA_TARGET_RE.search(text)
     if target_match is None or _RHEA_RE.search(target_match.group("target")) is None:
         return None
     parsed_amount, raw, symbol = amount
+    if not _rhea_asset_enabled(config, symbol):
+        # USDT (or any disabled Burrow market) stays disabled: answer with the USDC-only list.
+        return _list_request(message, symbol, best=False)
     return EarnRequest(
         kind="deposit",
         chain="near",
@@ -260,17 +329,48 @@ def _parse_rhea(text: str, message: str) -> EarnRequest | None:
     )
 
 
+def _parse_near_yield(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
+    """Vague NEAR-yield turns route to Rhea; native NEAR-token staking is not lending."""
+    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
+        return None
+    if _NEAR_CHAIN_RE.search(text) is None or is_near_native_staking_request(text):
+        return None
+    if _WITHDRAW_RE.search(text) is not None:
+        return _withdraw_request(message)
+    if _POSITION_RE.search(text) is not None or _MY_YIELD_RE.search(text) is not None:
+        return _positions_request(message)
+    amount = _amount(text)
+    if amount is not None and _DEPOSIT_VERB_RE.search(text) is not None:
+        parsed_amount, raw, symbol = amount
+        if not _rhea_asset_enabled(config, symbol):
+            return _list_request(message, symbol, best=False)
+        return EarnRequest(
+            kind="deposit",
+            chain="near",
+            asset=symbol,
+            amount=parsed_amount,
+            amount_raw=raw,
+            vault_query=symbol,
+            sort="tvl",
+            message=message,
+            origin_chain=_origin_chain_from(text),
+            protocol="rhea",
+        )
+    if _NEAR_YIELD_RE.search(text) is not None or _DEPOSIT_VERB_RE.search(text) is not None:
+        return _list_request(message, _stable_symbol(text), best=_BEST_RE.search(text) is not None)
+    return None
+
 
 def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
-    """Parse an explicit Morpho/Kamino/Rhea request, or ``None`` to leave the turn alone."""
+    """Parse an explicit Morpho/Kamino/Rhea request or a vague NEAR-yield turn."""
     text = message.strip()
     if not text:
         return None
     protocol = config.known_protocol(text)
     if protocol is None:
-        return None
+        return _parse_near_yield(text, message, config)
     if protocol == "rhea":
-        return _parse_rhea(text, message)
+        return _parse_rhea(text, message, config)
 
     if _LIST_RE.search(text) is not None and _LIST_VERB_RE.search(text) is not None:
         chain = _chain_from(text)

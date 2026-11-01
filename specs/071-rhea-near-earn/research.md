@@ -146,6 +146,7 @@ the parsing follows the contract method + the SDK type and is covered by mocked 
 3. **USDT / other Burrow markets:** enable by config now, or wait for a product decision? The
    `get_asset`/fee views already support them.
 4. **TVL:** stablecoin TVL is a $1-peg estimate; do we want a real price feed before showing it?
-5. **Generic NEAR guidance copy:** the legacy guidance still says "NEAR yield isn't supported yet"
-   for vague turns without an amount (e.g. "earn yield on Rhea"); explicit Rhea deposit/list/
-   positions/withdraw turns are now answered. Update the copy in a follow-up?
+5. **Generic NEAR guidance copy (resolved):** the legacy "NEAR yield isn't supported yet" copy is
+   removed. Vague NEAR-yield turns now route to Rhea (`earn_vaults` / `earn_quote` /
+   `earn_positions`), native NEAR-token staking gets an honest unsupported reply, and USDT stays
+   USDC-only. See R10 in `spec.md`.

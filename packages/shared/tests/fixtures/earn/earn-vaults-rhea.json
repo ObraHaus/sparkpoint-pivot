@@ -46,5 +46,5 @@
   ],
   "snapshotAgeMinutes": 4,
   "snapshotSource": "persisted",
-  "note": "Rhea (Burrow) lending on NEAR is data-driven. The rate is the contract's supply APR (variable), read live; supply runs through 1Click into your Rhea account. Withdraw on app.rhea.finance with the same wallet."
+  "note": "Rhea (Burrow) lending on NEAR is data-driven. The rate is the contract's supply APR (variable), read live; supply runs through 1Click into your Rhea account. USDC only for now. Withdraw on app.rhea.finance with the same wallet."
 }

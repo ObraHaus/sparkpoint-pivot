@@ -20,6 +20,13 @@
   ok/no-liquidity/RPC-down, positions empty/non-empty/unknown, API scoping, router filters, parser,
   DAG. All 068/069/070 tests pass.
 - [x] T010 Spec-kit artifacts, CLAUDE.md pointer, CHANGELOG entry.
+- [x] T017 Vague NEAR-yield routing (follow-up): "earn yield on NEAR", "where can I get yield on
+  near?", "stake my USDC on NEAR", "NEAR lending", "best stablecoin yield on NEAR" and "earn on
+  Rhea" (no amount) route to the Rhea `earn_vaults` block with USDC-only copy; an amount produces
+  the Rhea `earn_quote` preview; "my NEAR yield" is `earn_positions`; native NEAR-token staking
+  answers honestly with no earn card; USDT stays USDC-only. Removed the stale "NEAR yield isn't
+  supported yet / NEAR support is coming" copy from guidance, golden evals and tests. Added parser
+  / DAG tests and 5 offline golden cases; Morpho/Kamino/swap phrasing unchanged.
 
 ## Phase B — web (pending)
 

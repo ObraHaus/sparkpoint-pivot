@@ -340,6 +340,7 @@ _EARN_VAULTS = (
         listed=True,
         tvl_usd=Decimal("12733803.14"),
         net_apy=Decimal("0.1405"),
+        source="rhea_rpc",
         fetched_at="2026-11-01T00:00:00+00:00",
         protocol="rhea",
     ),
