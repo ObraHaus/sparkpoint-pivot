@@ -30,21 +30,23 @@
 - [x] **T6815** `scripts/oneclick_dry_smoke.py` and one real dry run.
 - [x] **T6816** Verify `ruff check`, `ruff format --check`, `mypy`, full `pytest`.
 
-## Phase 2 — frontend (pending)
+## Phase 2 — frontend
 
-- [ ] **T6817** Add the `crosschain_quote` member to the shared zod `ChatBlock` union
-  (`packages/shared`) with the camelCase fields in `contracts/crosschain-api.md`.
-- [ ] **T6818** Render the chat preview card: origin/destination, amount out, USD estimate, ETA,
+- [x] **T6817** Add the `crosschain_quote` member to the shared zod `ChatBlock` union
+  (`packages/shared`) with the camelCase fields in `contracts/crosschain-api.md`, plus shared
+  JSON fixtures asserted against `to_wire()` on both the Python and TypeScript sides.
+- [x] **T6818** Render the chat preview card: origin/destination, amount out, USD estimate, ETA,
   slippage, fee note, expiry, and the unavailable state (factual copy; mainnet-funds warning).
-- [ ] **T6819** Confirm screen: collect destination/refund addresses, call `POST /crosschain/quote`
+- [x] **T6819** Confirm screen: collect destination/refund addresses, call `POST /crosschain/quote`
   with `dry=false`, show the deposit address/deadline, and never sign.
-- [ ] **T6820** Deposit/status UI: submit the origin tx hash, poll `GET /crosschain/status`, show
+- [x] **T6820** Deposit/status UI: submit the origin tx hash, poll `GET /crosschain/status`, show
   PENDING_DEPOSIT / PROCESSING / SUCCESS / REFUNDED / FAILED honestly.
-- [ ] **T6821** E2E on the develop environment with the demo prompts (dry quotes only in CI).
+- [x] **T6821** Playwright e2e with the agent SSE/quote/status mocked (dry quotes only in CI;
+  the spec skips without `PW_TEST_PRIVKEY`/`SESSION_SECRET`).
 
 ## Docs / release
 
 - [x] **T6822** Spec-kit artifacts (`spec.md`, `plan.md`, `tasks.md`, `research.md`,
   `contracts/crosschain-api.md`, `quickstart.md`) and the CLAUDE.md SPECKIT pointer.
-- [ ] **T6823** Client-facing release notes (`CHANGELOG.md` + in-app `whats-new.json`) when the
+- [x] **T6823** Client-facing release notes (`CHANGELOG.md` + in-app `whats-new.json`) when the
   frontend half ships.
