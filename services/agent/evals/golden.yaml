@@ -1060,3 +1060,57 @@ cases:
       must_contain: ["bridging", "isn't available"]
     offline:
       intent: {kind: other}
+
+  # ── Morpho earn registry (069 — data-driven list + dry direct/receipt preview) ─────
+  - id: earn-83-list-morpho-vaults
+    category: earn
+    prompt: "Show Morpho vaults on Base"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["gauntlet usdc prime", "moonwell flagship usdc", "base"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-84-best-morpho-vault
+    category: earn
+    prompt: "What's the best Morpho vault on Base?"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation]
+      must_contain: ["net apy", "gauntlet usdc prime"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-85-deposit-named-vault
+    category: earn
+    prompt: "Deposit 100 USDC into Morpho Gauntlet USDC Prime"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc", "gauntlet usdc prime", "native morpho vault share"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-86-generic-vault-deposit-unchanged
+    category: earn
+    prompt: "deposit 100 USDC into the vault"
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false

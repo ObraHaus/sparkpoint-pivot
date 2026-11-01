@@ -1,6 +1,6 @@
 # Sparky golden evals (spec 058)
 
-A reviewable set of **82 real user prompts** — the 26-prompt beta audit plus NEAR / swap /
+A reviewable set of **86 real user prompts** — the 26-prompt beta audit plus NEAR / swap /
 cross-chain / knowledge / adversarial / edge coverage — run through the **real
 `CoordinatorDag`**. The suite pins what "a good Sparky answer" means after **057 (chat
 dead-ends)** and **068 (cross-chain chat swaps)**.

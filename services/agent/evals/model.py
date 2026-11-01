@@ -30,6 +30,9 @@ SWAP_ROUTE_PREFIX = "swap_card:"
 #: exact pre-068 DAG (no service injected), so existing routes never move.
 CROSSCHAIN_MODES = frozenset({"quote", "transport_error", "disabled"})
 
+#: The earn fixtures a case can opt into (069). ``None`` keeps the pre-069 DAG.
+EARN_MODES = frozenset({"list", "preview"})
+
 
 @dataclass(frozen=True)
 class HistoryTurn:
@@ -87,6 +90,7 @@ class Case:
     offline_check_contains: bool = True
     read_only: bool = True
     crosschain: str | None = None
+    earn: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +126,8 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
     offline_raw = _mapping(raw.get("offline"))
     crosschain_raw = raw.get("crosschain")
     crosschain = str(crosschain_raw) if crosschain_raw else None
+    earn_raw = raw.get("earn")
+    earn = str(earn_raw) if earn_raw else None
     return Case(
         id=str(raw["id"]),
         category=str(raw.get("category", "uncategorised")),
@@ -154,6 +160,7 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
         offline_check_contains=bool(raw.get("offline_check_contains", True)),
         read_only=bool(raw.get("read_only", True)),
         crosschain=crosschain,
+        earn=earn,
     )
 
 
@@ -177,6 +184,11 @@ def load_cases(path: Path | None = None) -> tuple[Case, ...]:
     )
     if unknown_modes:
         raise ValueError(f"unknown crosschain fixture modes: {unknown_modes}")
+    unknown_earn = sorted(
+        {case.earn for case in cases if case.earn not in (None, *EARN_MODES)}
+    )
+    if unknown_earn:
+        raise ValueError(f"unknown earn fixture modes: {unknown_earn}")
     return cases
 
 

@@ -57,6 +57,7 @@ from .content import router as content_router
 from .conversations import router as conversations_router
 from .crosschain import router as crosschain_router
 from .curated_vaults import router as curated_vaults_router
+from .earn import router as earn_router
 from .errors import (
     ApiError,
     api_error_handler,
@@ -725,6 +726,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     vault_fee_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     apy_task: asyncio.Task[None] | None = None
+    earn_task: asyncio.Task[None] | None = None
     changelog_task: asyncio.Task[None] | None = None
     selfauthor_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
@@ -777,6 +779,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Feature 024 phase 4 (T051): background vault-APY poller → vault_apy_snapshots.
         # Best-effort, off the request path (the Morpho API is rate-limited); never withdraw (N2).
         apy_task = asyncio.create_task(_vault_apy_poller_loop())
+        # Feature 069: refresh the data-driven Morpho earn registry (V1+V2 snapshot) in the
+        # background. The request path never calls Morpho; the shipped snapshot is the fallback.
+        from ..earn.refresh import run_earn_loop
+        from ..earn.service import build_service_from_env as _build_earn_service
+
+        _earn_service = _build_earn_service()
+        if _earn_service is not None:
+            earn_task = asyncio.create_task(run_earn_loop(_earn_service))
+            earn_task.add_done_callback(_log_task_death)
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -792,6 +803,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             notif_task.cancel()
         if apy_task is not None:
             apy_task.cancel()
+        if earn_task is not None:
+            earn_task.cancel()
         if changelog_task is not None:
             changelog_task.cancel()
         if selfauthor_task is not None:
@@ -874,6 +887,7 @@ app.include_router(chat_router)
 # 068 — cross-chain swap quotes/confirm/status via NEAR Intents 1Click. The user sends funds from
 # their own wallet; the agent never signs or takes custody. A disabled route is a 200 "unavailable".
 app.include_router(crosschain_router)
+app.include_router(earn_router)
 # §3.1 onboarding + mandate — chat onboarding (SSE, terminal mandate_draft) + versioned
 # mandate CRUD. Advisory only; NEVER returns a signable bundle (FR-002/004).
 app.include_router(mandate_router)
