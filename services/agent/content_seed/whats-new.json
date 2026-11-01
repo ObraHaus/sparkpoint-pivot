@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "morpho-earn-vaults-069-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Morpho vaults and dry previews in Sparky chat",
+      "body": "Ask Sparky to show Morpho vaults on Base or Ethereum and you get the current list with each vault's name, chain, asset, TVL, net APY as Morpho reports it, and which rails can actually reach it: a direct same-chain deposit, the NEAR Intents 1Click receipt route (live or no liquidity), or Aurora Intents Connect (still needs access). Pick Preview to see a dry quote for depositing 100 USDC, including the estimated receipt amount, fees and the honest note that a 1Click receipt is a NEAR-issued wrapper, not the native Morpho share. Nothing is signable yet: this release shows the preview only, and a live deposit or withdrawal is coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T03:00:00Z"
+    },
+    {
       "slug": "crosschain-chat-swaps-068-2026-11",
       "type": "changelog",
       "tag": "New",

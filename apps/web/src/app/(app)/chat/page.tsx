@@ -1341,6 +1341,8 @@ export default function ChatPage() {
                       // 068 — lets an in-progress cross-chain deposit resume after a refresh;
                       // the id is present by the time a confirm can happen (it arrives at `done`).
                       conversationId={convRef.current}
+                      // 069 — a read-only card (Morpho vault list) can send a normal follow-up.
+                      onSend={send}
                       // 061 A9 — persist a thumbs rating on a finished answer. The message id is
                       // per conversation+turn, so a repeat tap updates the same row (idempotent).
                       feedback={

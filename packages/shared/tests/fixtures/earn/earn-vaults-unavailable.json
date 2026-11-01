@@ -1,0 +1,6 @@
+{
+  "type": "earn_vaults",
+  "state": "unavailable",
+  "vaults": [],
+  "unavailableReason": "no snapshot"
+}

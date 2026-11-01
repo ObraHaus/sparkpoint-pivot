@@ -1,6 +1,6 @@
 # Spec 069 — Morpho earn registry (data-driven vaults + 1Click Earn preview)
 
-**Status:** backend implemented · frontend Phase B pending · **Owner:** build · **Branch:**
+**Status:** backend implemented · frontend Phase B implemented (preview-only; live execution is Phase C) · **Owner:** build · **Branch:**
 `feat/069-morpho-earn-registry` (stacked on `feat/068-oneclick-chat-swap`) ·
 **Worktree:** `~/project/sparkpoint-pivot-069`
 

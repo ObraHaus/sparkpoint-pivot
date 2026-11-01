@@ -210,6 +210,149 @@ export const CrossChainQuoteBlockSchema = z
   .strict();
 export type CrossChainQuoteBlock = z.infer<typeof CrossChainQuoteBlockSchema>;
 
+/* ── 069 — data-driven Morpho earn registry ───────────────────────────────── */
+
+/** The three rails feature 069 can report. A missing rail is an honest "not here" reason. */
+export const EarnRailSchema = z.enum(["direct", "oneclick_earn", "intents_connect"]);
+export type EarnRail = z.infer<typeof EarnRailSchema>;
+
+/** The underlying ERC-20 of a Morpho vault (`VaultAsset.wire()`). */
+export const EarnVaultAssetSchema = z
+  .object({
+    address: z.string(),
+    symbol: z.string(),
+    decimals: z.number().int().nonnegative(),
+  })
+  .strict();
+export type EarnVaultAsset = z.infer<typeof EarnVaultAssetSchema>;
+
+/** The NEAR-issued 1Click receipt that can stand in for a vault's native share. */
+export const OneClickReceiptSchema = z
+  .object({
+    symbol: z.string(),
+    assetId: z.string(),
+    decimals: z.number().int().nonnegative(),
+    chain: z.string(),
+    wrapperAddress: z.string(),
+    underlyingVault: z.string(),
+  })
+  .strict();
+export type OneClickReceipt = z.infer<typeof OneClickReceiptSchema>;
+
+/** One read-only EVM step in an Aurora Intents Connect plan (never executed by this card). */
+export const IntentsConnectStepSchema = z
+  .object({
+    to: z.string(),
+    functionSignature: z.string(),
+    parameters: z.array(z.string()),
+    value: z.string(),
+    metadata: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+export type IntentsConnectStep = z.infer<typeof IntentsConnectStepSchema>;
+
+/**
+ * 069 — the per-vault rail detail. Mirrors `earn/rails.py::RailResolution.wire()`:
+ * camelCase, optional fields are OMITTED (never `null`) when the backend has no value.
+ */
+export const EarnRailsSchema = z
+  .object({
+    available: z.array(EarnRailSchema),
+    direct: z
+      .object({
+        available: z.boolean(),
+        reason: z.string().nullable(),
+        note: z.string(),
+      })
+      .strict(),
+    oneclickEarn: z
+      .object({
+        available: z.boolean(),
+        liveness: z.string().optional(),
+        receipt: OneClickReceiptSchema.optional(),
+        reason: z.string().nullable().optional(),
+        note: z.string().optional(),
+        feeNote: z.string().optional(),
+      })
+      .strict(),
+    intentsConnect: z
+      .object({
+        available: z.boolean(),
+        reason: z.string().nullable().optional(),
+        steps: z.array(IntentsConnectStepSchema).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+export type EarnRails = z.infer<typeof EarnRailsSchema>;
+
+/**
+ * 069 — one normalized vault row (`VaultEntry.wire()` + `curatedDefault` + `rails`). `tvlUsd` and
+ * `netApy` are REQUIRED but nullable: the UI shows an em dash rather than inventing a figure.
+ */
+export const EarnVaultSchema = z
+  .object({
+    chain: z.string(),
+    chainId: z.number().int().nonnegative(),
+    address: z.string(),
+    version: z.string(),
+    name: z.string(),
+    symbol: z.string(),
+    asset: EarnVaultAssetSchema,
+    listed: z.boolean(),
+    tvlUsd: z.string().nullable(),
+    netApy: z.string().nullable(),
+    source: z.string(),
+    fetchedAt: z.string(),
+    curatedDefault: z.boolean(),
+    rails: EarnRailsSchema,
+  })
+  .strict();
+export type EarnVault = z.infer<typeof EarnVaultSchema>;
+
+/**
+ * 069 — `earn_vaults`, the deterministic Morpho vault list. Non-signable: it carries no calldata
+ * and no action. `state="unavailable"` is an honest empty/failed snapshot, not an error.
+ */
+export const EarnVaultsBlockSchema = z
+  .object({
+    type: z.literal("earn_vaults"),
+    state: z.enum(["ready", "unavailable"]),
+    vaults: z.array(EarnVaultSchema),
+    snapshotAgeMinutes: z.number().int().nonnegative().optional(),
+    snapshotSource: z.string().optional(),
+    unavailableReason: z.string().optional(),
+    note: z.string().optional(),
+  })
+  .strict();
+export type EarnVaultsBlock = z.infer<typeof EarnVaultsBlockSchema>;
+
+/**
+ * 069 — `earn_quote`, a DRY preview (1Click receipt, direct same-chain hint or an Intents Connect
+ * step plan). NON-SIGNABLE: there is no confirm/send button in Phase B. Every optional field is
+ * omitted when absent, matching `EarnQuoteBlock.to_wire()`.
+ */
+export const EarnQuoteBlockSchema = z
+  .object({
+    type: z.literal("earn_quote"),
+    state: z.enum(["preview", "unavailable"]),
+    rail: EarnRailSchema,
+    vault: EarnVaultSchema,
+    origin: CrossChainOriginSchema.optional(),
+    amountIn: HumanAmountStringSchema.optional(),
+    amountOut: HumanAmountStringSchema.optional(),
+    amountOutUsd: HumanAmountStringSchema.optional(),
+    timeEstimateSec: z.number().int().nonnegative().optional(),
+    feeNote: z.string().optional(),
+    receiptNote: z.string().optional(),
+    unavailableReason: z.string().optional(),
+    steps: z.array(IntentsConnectStepSchema).optional(),
+    quotedAt: z.string().optional(),
+    expiresHint: z.string().optional(),
+  })
+  .strict();
+export type EarnQuoteBlock = z.infer<typeof EarnQuoteBlockSchema>;
+
 export const ChatBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
   ToolStepBlockSchema,
@@ -221,5 +364,7 @@ export const ChatBlockSchema = z.discriminatedUnion("type", [
   CitationBlockSchema,
   ErrorBlockSchema,
   CrossChainQuoteBlockSchema,
+  EarnVaultsBlockSchema,
+  EarnQuoteBlockSchema,
 ]);
 export type ChatBlock = z.infer<typeof ChatBlockSchema>;

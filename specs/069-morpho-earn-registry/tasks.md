@@ -23,12 +23,28 @@
 - [x] T011 Spec-kit artifacts (`spec.md`, `plan.md`, `research.md`, `contracts/earn-api.md`,
   `quickstart.md`), CLAUDE.md SPECKIT pointer, CHANGELOG entry.
 
-## Phase B — frontend (pending)
+## Phase B — frontend (done in this branch)
 
-- [ ] T012 Add `earn_vaults` / `earn_quote` to the shared zod `ChatBlock` union + fixtures.
-- [ ] T013 Web `earn_vaults` list card (name, chain, asset, TVL, net APY, rails; curated first).
-- [ ] T014 Web `earn_quote` preview card with the receipt vs native-share label and fee note.
-- [ ] T015 Live deposit/withdraw flow (reuse the 068 confirm pattern; no live quote in the agent
-  until Phase B defines the confirm path).
-- [ ] T016 Client decisions from `research.md` open questions (receipts, Aurora key, chains, filters,
-  fee copy).
+- [x] T012 Add `earn_vaults` / `earn_quote` to the shared zod `ChatBlock` union + five fixtures
+  (`earn-vaults-list`, `earn-vaults-unavailable`, `earn-quote-preview-oneclick`,
+  `earn-quote-unavailable`, `earn-quote-direct`), with a shared TS test and an agent-side parity
+  test that regenerates the same JSON from the real dataclasses.
+- [x] T013 Web `earn_vaults` list card: name, chain badge, asset, compact TVL, net APY (Morpho),
+  rail chips (Direct · 1Click Earn live/no liquidity · Intents Connect needs key), snapshot age,
+  Preview follow-up and an external “View on Morpho” link.
+- [x] T014 Web `earn_quote` preview card with the receipt vs native-share label, fee note, ETA,
+  expiry hint, honest unavailable state and a read-only Intents Connect step list. Deliberately
+  non-signable: no confirm/send button in Phase B.
+- [x] T014a Format helpers + unit tests (`apps/web/src/lib/earn/format.ts`), live-blocks/chat wiring,
+  mocked-agent Playwright spec (`apps/web/e2e/pw/earn-chat.spec.ts`) and What's New/CHANGELOG copy.
+
+## Phase C — live earn execution (pending)
+
+- [ ] T015 Live 1Click Earn deposit via the 068 confirm flow (explicit acknowledgement, live quote,
+  user-signed origin transfer, status polling, receipt-vs-share disclosure).
+- [ ] T016 Withdraw/redeem path for a Morpho position (native share and 1Click receipt), reusing the
+  existing withdraw/exit guarantees (withdrawals never gated).
+- [ ] T017 Intents Connect execution behind the flag + Aurora key, using the read-only approve+deposit
+  step plan the preview already renders.
+- [ ] T018 Client decisions from `research.md` open questions (receipts, Aurora key, chains, filters,
+  fee copy) before any live path ships.

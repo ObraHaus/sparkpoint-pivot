@@ -1,0 +1,193 @@
+{
+  "type": "earn_vaults",
+  "state": "ready",
+  "vaults": [
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "address": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+      "version": "v1",
+      "name": "Gauntlet USDC Prime",
+      "symbol": "GTUSDC",
+      "asset": {
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "listed": true,
+      "tvlUsd": "420000000",
+      "netApy": "4.41",
+      "source": "morpho_api",
+      "fetchedAt": "2026-11-01T00:00:00+00:00",
+      "curatedDefault": true,
+      "rails": {
+        "available": [
+          "direct",
+          "oneclick_earn"
+        ],
+        "direct": {
+          "available": true,
+          "reason": null,
+          "note": "Deposit from a wallet on this chain to receive the native Morpho vault share."
+        },
+        "oneclickEarn": {
+          "available": true,
+          "liveness": "live",
+          "receipt": {
+            "symbol": "gtUSDCp",
+            "assetId": "nep141:base-0x0bb69b79bc829e1cfcc34a740110886d98d2bd14.omft.near",
+            "decimals": 18,
+            "chain": "base",
+            "wrapperAddress": "0x0bb69b79bc829e1cfcc34a740110886d98d2bd14",
+            "underlyingVault": "0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61"
+          },
+          "reason": null,
+          "note": "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. The receipt is backed by the vault; a direct same-chain deposit gives you the native share.",
+          "feeNote": "Includes 1Click's 0.25% keyless routing fee."
+        },
+        "intentsConnect": {
+          "available": false,
+          "reason": "Aurora Intents Connect is disabled in the earn config."
+        }
+      }
+    },
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "address": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+      "version": "v1",
+      "name": "Moonwell Flagship USDC",
+      "symbol": "mwUSDC",
+      "asset": {
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "listed": true,
+      "tvlUsd": "115000000",
+      "netApy": "5.12",
+      "source": "morpho_api",
+      "fetchedAt": "2026-11-01T00:00:00+00:00",
+      "curatedDefault": false,
+      "rails": {
+        "available": [
+          "direct"
+        ],
+        "direct": {
+          "available": true,
+          "reason": null,
+          "note": "Deposit from a wallet on this chain to receive the native Morpho vault share."
+        },
+        "oneclickEarn": {
+          "available": false,
+          "liveness": "no_liquidity",
+          "receipt": {
+            "symbol": "mwUSDC",
+            "assetId": "nep141:base-0x3388d158fdcc31398b99478420e6945cdaace009.omft.near",
+            "decimals": 18,
+            "chain": "base",
+            "wrapperAddress": "0x3388d158fdcc31398b99478420e6945cdaace009",
+            "underlyingVault": "0xc1256ae5ff1cf2719d4937adb3bbccab2e00a2ca"
+          },
+          "reason": "1Click currently reports no liquidity for this receipt.",
+          "note": "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. The receipt is backed by the vault; a direct same-chain deposit gives you the native share.",
+          "feeNote": "Includes 1Click's 0.25% keyless routing fee."
+        },
+        "intentsConnect": {
+          "available": false,
+          "reason": "Aurora Intents Connect is disabled in the earn config."
+        }
+      }
+    },
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "address": "0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A",
+      "version": "v1",
+      "name": "Spark USDC",
+      "symbol": "spUSDC",
+      "asset": {
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "listed": true,
+      "tvlUsd": "88000000",
+      "netApy": "4.38",
+      "source": "morpho_api",
+      "fetchedAt": "2026-11-01T00:00:00+00:00",
+      "curatedDefault": false,
+      "rails": {
+        "available": [
+          "direct",
+          "oneclick_earn"
+        ],
+        "direct": {
+          "available": true,
+          "reason": null,
+          "note": "Deposit from a wallet on this chain to receive the native Morpho vault share."
+        },
+        "oneclickEarn": {
+          "available": true,
+          "liveness": "unknown",
+          "receipt": {
+            "symbol": "sparkUSDC",
+            "assetId": "nep141:base-0x7429743f8adbbe932b27bc02267b0e70f1ba688b.omft.near",
+            "decimals": 18,
+            "chain": "base",
+            "wrapperAddress": "0x7429743f8adbbe932b27bc02267b0e70f1ba688b",
+            "underlyingVault": "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
+          },
+          "reason": "Liquidity has not been probed yet; a preview asks 1Click for a dry quote.",
+          "note": "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. The receipt is backed by the vault; a direct same-chain deposit gives you the native share.",
+          "feeNote": "Includes 1Click's 0.25% keyless routing fee."
+        },
+        "intentsConnect": {
+          "available": false,
+          "reason": "Aurora Intents Connect is disabled in the earn config."
+        }
+      }
+    },
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "address": "0x3333333333333333333333333333333333333333",
+      "version": "v1",
+      "name": "Mystery Vault",
+      "symbol": "MYS",
+      "asset": {
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "listed": true,
+      "tvlUsd": null,
+      "netApy": null,
+      "source": "morpho_api",
+      "fetchedAt": "2026-11-01T00:00:00+00:00",
+      "curatedDefault": false,
+      "rails": {
+        "available": [
+          "direct"
+        ],
+        "direct": {
+          "available": true,
+          "reason": null,
+          "note": "Deposit from a wallet on this chain to receive the native Morpho vault share."
+        },
+        "oneclickEarn": {
+          "available": false,
+          "reason": "No 1Click receipt is configured for this vault.",
+          "liveness": "unknown"
+        },
+        "intentsConnect": {
+          "available": false,
+          "reason": "Aurora Intents Connect is disabled in the earn config."
+        }
+      }
+    }
+  ],
+  "snapshotAgeMinutes": 12,
+  "snapshotSource": "persisted",
+  "note": "Morpho's vault list is data-driven. The 1Click receipt rail is shown only where a receipt is configured; a direct same-chain deposit gives the native vault share."
+}
