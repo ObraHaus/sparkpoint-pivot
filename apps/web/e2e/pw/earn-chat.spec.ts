@@ -32,6 +32,10 @@ function fixture(name: string): unknown {
 const VAULTS = fixture("earn-vaults-list.json");
 const QUOTE = fixture("earn-quote-preview-oneclick.json");
 const UNAVAILABLE = fixture("earn-quote-unavailable.json");
+const KAMINO_VAULTS = fixture("earn-vaults-kamino.json");
+const KAMINO_QUOTE = fixture("earn-quote-kamino-preview.json");
+const KAMINO_SOL_QUOTE = fixture("earn-quote-kamino-preview-sol-origin.json");
+const KAMINO_UNAVAILABLE = fixture("earn-quote-kamino-unavailable.json");
 
 async function setSessionCookie(page: Page): Promise<void> {
   const account = privateKeyToAccount(PRIV!);
@@ -191,5 +195,157 @@ test.describe("069 Morpho earn chat cards", () => {
     await expect(card).toHaveAttribute("data-state", "unavailable");
     await expect(card.getByTestId("earn-quote-unavailable")).toContainText("No liquidity available");
     await expect(card.getByRole("button")).toHaveCount(0);
+  });
+});
+
+
+test.describe("070 Kamino SOL earn chat cards", () => {
+  test.skip(!PRIV, "PW_TEST_PRIVKEY not set");
+  test.skip(!SESSION_SECRET, "SESSION_SECRET not set (the mocked session needs it)");
+  test.describe.configure({ timeout: 120_000 });
+
+  test("Kamino vault list renders native shares and a Solana recipient step", async ({ page }) => {
+    await installInjectedWallet(page, { privateKey: PRIV!, chainId: 8453 });
+
+    let calls = 0;
+    await page.route("**/api/agent/chat", (route) => {
+      calls += 1;
+      const blocks =
+        calls === 1
+          ? [{ type: "text", markdown: "Here is the Kamino SOL vault." }, KAMINO_VAULTS]
+          : [{ type: "text", markdown: "Preview only — nothing is signed or sent." }, KAMINO_QUOTE];
+      return route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: sse(blocks),
+      });
+    });
+
+    await signIn(page);
+    await page.goto("/chat", { waitUntil: "domcontentloaded" });
+    await dismissWhatsNew(page);
+
+    await page.locator(".composer textarea").fill("Show Kamino vaults");
+    await page.locator(".sendbtn").click();
+
+    const card = page.locator('[data-card="earn-vaults"]');
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-state", "ready");
+    await expect(card.getByTestId("earn-snapshot")).toContainText("data from Kamino API, 3 min ago");
+    await expect(card).toContainText("Kamino vaults");
+
+    const rows = card.getByTestId("earn-vault-row");
+    await expect(rows).toHaveCount(1);
+    const row = rows.first();
+    await expect(row).toContainText("SOL Balanced");
+    await expect(row.getByTestId("earn-protocol")).toHaveText("Kamino");
+    await expect(row.getByTestId("earn-protocol")).toHaveAttribute("data-protocol", "kamino");
+    await expect(row).toContainText("Solana");
+    await expect(row).toContainText("SOL");
+    await expect(row).toContainText("$2.4M");
+    await expect(row).toContainText("net APY (Kamino)");
+    await expect(row).toContainText("4.45%");
+    await expect(row.getByTestId("earn-receipt-kind")).toContainText("native vault shares");
+    await expect(row.locator('[data-rail="oneclick_earn"]')).toContainText("1Click Earn live");
+    await expect(row.getByTestId("earn-vault-link")).toHaveCount(0);
+
+    await row.getByTestId("earn-vault-preview").click();
+    await expect(page.locator(".cbubble-user").last()).toHaveText(
+      "Deposit 100 SOL into Kamino SOL Balanced on Solana",
+    );
+
+    const quote = page.locator('[data-card="earn-quote"]');
+    await expect(quote).toBeVisible({ timeout: 20_000 });
+    await expect(quote).toHaveAttribute("data-state", "preview");
+    await expect(quote).toHaveAttribute("data-protocol", "kamino");
+    await expect(quote).toHaveAttribute("data-receipt-kind", "native_shares");
+    await expect(quote).toContainText("Kamino earn preview");
+    await expect(quote.getByTestId("earn-quote-amount-out")).toContainText("0.9835 kV-gtSOLb");
+    await expect(quote.getByTestId("earn-quote-receipt-kind")).toContainText("native Kamino shares");
+    await expect(quote).toContainText("under a minute");
+    await expect(quote).toContainText("Includes 1Click's 0.25% keyless routing fee.");
+    await expect(quote.getByTestId("earn-quote-receipt-note")).toContainText(
+      "native Kamino kVault share",
+    );
+
+    const recipient = quote.getByTestId("earn-recipient-step");
+    await expect(recipient).toBeVisible();
+    const input = quote.getByTestId("earn-sol-recipient");
+
+    await input.fill("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+    await expect(quote.getByTestId("earn-recipient-error")).toContainText("EVM address");
+    await expect(quote.getByTestId("earn-recipient-error")).toContainText("base58 Solana address");
+
+    await input.fill("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
+    await expect(quote.getByTestId("earn-recipient-valid")).toContainText("Valid Solana address");
+    await expect(quote.getByTestId("earn-recipient-error")).toHaveCount(0);
+
+    const evmPath = quote.getByTestId("earn-deposit-evm-wallet");
+    await expect(evmPath).toBeVisible();
+    await expect(evmPath.getByTestId("earn-deposit-disabled")).toBeDisabled();
+    await expect(evmPath).toContainText("Live deposits coming soon (phase C)");
+    await expect(quote.getByTestId("earn-quote-not-signable")).toContainText("Not signable");
+  });
+
+  test("a SOL-origin Kamino preview shows the copy-address deposit explainer", async ({ page }) => {
+    await installInjectedWallet(page, { privateKey: PRIV!, chainId: 8453 });
+    await page.route("**/api/agent/chat", (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: sse([
+          { type: "text", markdown: "Preview only — nothing is signed or sent." },
+          KAMINO_SOL_QUOTE,
+        ]),
+      }),
+    );
+
+    await signIn(page);
+    await page.goto("/chat", { waitUntil: "domcontentloaded" });
+    await dismissWhatsNew(page);
+
+    await page.locator(".composer textarea").fill("Deposit 100 USDC into Kamino SOL vault");
+    await page.locator(".sendbtn").click();
+
+    const quote = page.locator('[data-card="earn-quote"]');
+    await expect(quote).toBeVisible({ timeout: 20_000 });
+    await expect(quote.getByTestId("earn-deposit-copy-address")).toContainText(
+      "Send from your own Solana wallet (Phantom etc.)",
+    );
+    await expect(quote.getByTestId("earn-deposit-copy-address")).toContainText(
+      "copy-address deposit, phase C",
+    );
+    await expect(quote.getByTestId("earn-deposit-evm-wallet")).toHaveCount(0);
+    await expect(quote.getByTestId("earn-recipient-step")).toBeVisible();
+  });
+
+  test("a Kamino no-liquidity preview says to try a smaller amount", async ({ page }) => {
+    await installInjectedWallet(page, { privateKey: PRIV!, chainId: 8453 });
+    await page.route("**/api/agent/chat", (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: sse([
+          { type: "text", markdown: "I can't preview that size right now." },
+          KAMINO_UNAVAILABLE,
+        ]),
+      }),
+    );
+
+    await signIn(page);
+    await page.goto("/chat", { waitUntil: "domcontentloaded" });
+    await dismissWhatsNew(page);
+
+    await page
+      .locator(".composer textarea")
+      .fill("Deposit 10000 USDC into Kamino SOL vault");
+    await page.locator(".sendbtn").click();
+
+    const card = page.locator('[data-card="earn-quote"]');
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-state", "unavailable");
+    await expect(card.getByTestId("earn-quote-unavailable")).toContainText("No liquidity available");
+    await expect(card.getByTestId("earn-quote-unavailable-hint")).toContainText("try a smaller amount");
+    await expect(card.getByTestId("earn-recipient-step")).toHaveCount(0);
   });
 });

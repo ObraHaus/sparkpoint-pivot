@@ -1,6 +1,6 @@
 # Spec 070 — Kamino SOL yield via 1Click Earn on the 069 registry
 
-**Status:** backend implemented · web card updates Phase B pending · live deposits/withdraw Phase C
+**Status:** backend + web (Phase B) implemented · live deposits/withdraw Phase C
 (awaits owner) · **Branch:** `feat/070-kamino-sol-earn` (stacked on
 `feat/069-morpho-earn-registry` @ `8ce6256`, which is stacked on 068) · **Worktree:**
 `~/project/sparkpoint-pivot-070`
@@ -47,8 +47,8 @@ Earn yet.
 
 ## Non-goals
 
-- No web card changes in this branch (Phase B).
-- No live deposit/withdraw, no signing, no custody (Phase C).
+- No live (signable) web deposit/withdraw, no signing, no custody (Phase C); Phase B is preview-only.
+- No live 1Click quote call from the web card and no transaction of any kind.
 - No new npm/python dependency; no Defender/CI/secret/model/billing changes.
 
 ## Acceptance

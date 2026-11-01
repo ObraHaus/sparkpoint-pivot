@@ -16,13 +16,13 @@
   case-sensitive keys, rails, previews, router, parser, DAG, golden evals. All 069 tests pass.
 - [x] T008 Spec-kit artifacts, CLAUDE.md pointer, CHANGELOG entry.
 
-## Phase B — web (pending)
+## Phase B — web (done in this branch)
 
-- [ ] T009 Add optional `protocol` / `receiptKind` / `walletSupport` to the shared zod earn
+- [x] T009 Add optional `protocol` / `receiptKind` / `walletSupport` to the shared zod earn
   schemas and Kamino fixtures.
-- [ ] T010 Kamino list + preview cards: Solana badge, native kVault-share label, base58 recipient
+- [x] T010 Kamino list + preview cards: Solana badge, native kVault-share label, base58 recipient
   paste, EVM-wallet vs copy-address deposit affordance.
-- [ ] T011 Mocked-agent Playwright coverage for “Show Kamino vaults” and a Kamino preview.
+- [x] T011 Mocked-agent Playwright coverage for “Show Kamino vaults” and a Kamino preview.
 
 ## Phase C — live execution (pending, awaits owner)
 
