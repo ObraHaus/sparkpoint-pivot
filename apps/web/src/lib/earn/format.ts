@@ -8,9 +8,11 @@
  */
 
 import type {
+  EarnOneTimeFee,
   EarnProtocol,
   EarnQuoteBlock,
   EarnReceiptKind,
+  EarnSource,
   EarnVault,
 } from "@sparkpoint/shared/schemas";
 
@@ -21,9 +23,20 @@ export function protocolOf(vault: Pick<EarnVault, "protocol">): EarnProtocol {
   return vault.protocol ?? "morpho";
 }
 
-/** `Morpho` / `Kamino` — the row badge and list title. */
+/** `Morpho` / `Kamino` / `Rhea` — the row badge and list title. */
 export function protocolLabel(protocol: EarnProtocol): string {
-  return protocol === "kamino" ? "Kamino" : "Morpho";
+  if (protocol === "kamino") return "Kamino";
+  if (protocol === "rhea") return "Rhea";
+  return "Morpho";
+}
+
+/** 071 — Rhea's lending app, the one verified withdraw/link-out target. */
+export const RHEA_APP_URL = "https://app.rhea.finance/lending";
+
+/** The row title. Rhea rows name the lending market and chain explicitly (071). */
+export function vaultRowTitle(vault: Pick<EarnVault, "name" | "symbol" | "protocol">): string {
+  if (protocolOf(vault) === "rhea") return "Rhea Lending (NEAR) supply";
+  return vault.name || vault.symbol;
 }
 
 /** The protocols present in a list, in wire order. */
@@ -56,7 +69,7 @@ export function apyLabel(protocol: EarnProtocol): string {
  * 1Click delivery, so there is nothing honest to label; a wrapper is the 069 Morpho default.
  */
 export function receiptKindOf(vault: Pick<EarnVault, "rails">): EarnReceiptKind | null {
-  const receipt = vault.rails.oneclickEarn.receipt;
+  const receipt = vault.rails.oneclickEarn?.receipt;
   if (!receipt) return null;
   return receipt.receiptKind ?? "wrapper";
 }
@@ -119,6 +132,8 @@ export function chainLabel(chain: string): string {
       return "Robinhood Chain";
     case "sol":
       return "Solana";
+    case "near":
+      return "NEAR";
     default:
       return chain.charAt(0).toUpperCase() + chain.slice(1);
   }
@@ -168,12 +183,19 @@ export function snapshotAgeCopy(
     return `cached snapshot, ${age} min old`;
   }
   // Omitted keeps the 069 wording; `null` is a genuinely mixed list.
-  const api = protocol === undefined || protocol === "morpho" ? "Morpho" : protocol === "kamino" ? "Kamino" : "vault";
+  const api =
+    protocol === undefined || protocol === "morpho"
+      ? "Morpho"
+      : protocol === "kamino"
+        ? "Kamino"
+        : protocol === "rhea"
+          ? "Rhea"
+          : "vault";
   return `data from ${api} API, ${age} min ago`;
 }
 
 export interface RailChip {
-  key: "direct" | "oneclick_earn" | "intents_connect";
+  key: "direct" | "oneclick_earn" | "oneclick_rhea" | "intents_connect";
   label: string;
   available: boolean;
 }
@@ -184,12 +206,35 @@ export interface RailChip {
  * receipt says that instead. Intents Connect without an Aurora key is "needs key", never "live".
  */
 export function railChips(vault: EarnVault): RailChip[] {
-  const { direct, oneclickEarn, intentsConnect } = vault.rails;
+  const { direct, oneclickEarn, oneclickRhea, intentsConnect } = vault.rails;
+
+  // 071 — Rhea has its own rail and no Morpho/Kamino 1Click receipt. Keep all three named so a
+  // missing one is visible rather than silently omitted.
+  if (oneclickRhea) {
+    let rheaLabel = "1Click Rhea";
+    if (!oneclickRhea.available) {
+      rheaLabel =
+        oneclickRhea.liveness === "no_liquidity"
+          ? "1Click Rhea no liquidity"
+          : "1Click Rhea unavailable";
+    } else if (oneclickRhea.liveness === "live") {
+      rheaLabel = "1Click Rhea live";
+    }
+    return [
+      { key: "direct", label: "Direct", available: direct.available },
+      { key: "oneclick_rhea", label: rheaLabel, available: oneclickRhea.available },
+      {
+        key: "intents_connect",
+        label: intentsConnect.available ? "Intents Connect" : "Intents Connect n/a",
+        available: intentsConnect.available,
+      },
+    ];
+  }
 
   let oneclickLabel = "1Click Earn";
-  if (!oneclickEarn.available) {
+  if (!oneclickEarn?.available) {
     oneclickLabel =
-      oneclickEarn.liveness === "no_liquidity"
+      oneclickEarn?.liveness === "no_liquidity"
         ? "1Click Earn no liquidity"
         : "1Click Earn unavailable";
   } else if (oneclickEarn.liveness === "live") {
@@ -202,7 +247,7 @@ export function railChips(vault: EarnVault): RailChip[] {
 
   return [
     { key: "direct", label: "Direct", available: direct.available },
-    { key: "oneclick_earn", label: oneclickLabel, available: oneclickEarn.available },
+    { key: "oneclick_earn", label: oneclickLabel, available: oneclickEarn?.available ?? false },
     { key: "intents_connect", label: intentsLabel, available: intentsConnect.available },
   ];
 }
@@ -212,6 +257,9 @@ export function railChips(vault: EarnVault): RailChip[] {
  * 070 names the row's own protocol and chain; the Morpho wording is unchanged.
  */
 export function previewPrompt(vault: EarnVault): string {
+  if (protocolOf(vault) === "rhea") {
+    return `Deposit 100 ${vault.asset.symbol} into Rhea on ${chainLabel(vault.chain)}`;
+  }
   return `Deposit 100 ${vault.asset.symbol} into ${protocolLabel(protocolOf(vault))} ${vault.name || vault.symbol} on ${chainLabel(vault.chain)}`;
 }
 
@@ -222,8 +270,40 @@ export function morphoVaultUrl(vault: Pick<EarnVault, "chain" | "address">): str
 
 /**
  * The external app link for a row, or `null` when this build has no verified link for the protocol.
- * Kamino rows deliberately get no link rather than a guessed URL.
+ * Kamino rows deliberately get no link rather than a guessed URL; Rhea links to its lending app.
  */
 export function vaultAppUrl(vault: Pick<EarnVault, "chain" | "address" | "protocol">): string | null {
-  return protocolOf(vault) === "morpho" ? morphoVaultUrl(vault) : null;
+  const protocol = protocolOf(vault);
+  if (protocol === "morpho") return morphoVaultUrl(vault);
+  if (protocol === "rhea") return RHEA_APP_URL;
+  return null;
+}
+
+/**
+ * 071 — the exact APY provenance line: `Rhea contract.main.burrow.near get_asset.supply_apr,
+ * fetched <time>`. The contract/method/field are the agent's wire values, never a UI guess.
+ */
+export function sourceAttribution(source: EarnSource, label = "Rhea"): string {
+  return `${label} ${source.contract} ${source.method}.${source.field}, fetched ${source.fetchedAt}`;
+}
+
+/** `One-time Rhea account setup fee: 0.30 USDC (first deposit only)`; `null` when no fee. */
+export function oneTimeFeeLine(fee: EarnOneTimeFee | null | undefined): string | null {
+  if (!fee) return null;
+  return `One-time Rhea account setup fee: ${fee.amount} ${fee.symbol} (first deposit only)`;
+}
+
+/** `Net supplied ≈ 99.6808 USDC`; `null` when the backend has no net figure. */
+export function netSuppliedLine(
+  netSupplied: string | null | undefined,
+  symbol: string,
+): string | null {
+  if (netSupplied === null || netSupplied === undefined || netSupplied.trim() === "") return null;
+  return `Net supplied ≈ ${netSupplied} ${symbol}`;
+}
+
+/** `Supply APY 14.05% (Rhea, variable)`; `null` when the contract read failed. */
+export function rheaApyLine(supplyApy: string | null | undefined): string | null {
+  if (!supplyApy) return null;
+  return `Supply APY ${supplyApy} (Rhea, variable)`;
 }

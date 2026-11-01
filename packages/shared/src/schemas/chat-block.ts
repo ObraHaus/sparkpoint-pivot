@@ -212,8 +212,16 @@ export type CrossChainQuoteBlock = z.infer<typeof CrossChainQuoteBlockSchema>;
 
 /* ── 069 — data-driven Morpho earn registry ───────────────────────────────── */
 
-/** The three rails feature 069 can report. A missing rail is an honest "not here" reason. */
-export const EarnRailSchema = z.enum(["direct", "oneclick_earn", "intents_connect"]);
+/**
+ * The rails the earn cards can report. 071 adds `oneclick_rhea`, the only way to reach Rhea
+ * lending on NEAR; a missing rail is an honest "not here" reason.
+ */
+export const EarnRailSchema = z.enum([
+  "direct",
+  "oneclick_earn",
+  "oneclick_rhea",
+  "intents_connect",
+]);
 export type EarnRail = z.infer<typeof EarnRailSchema>;
 
 /** The underlying ERC-20 of a Morpho vault (`VaultAsset.wire()`). */
@@ -227,7 +235,7 @@ export const EarnVaultAssetSchema = z
 export type EarnVaultAsset = z.infer<typeof EarnVaultAssetSchema>;
 
 /** The protocol a vault/receipt belongs to. A missing value means the 069 Morpho default. */
-export const EarnProtocolSchema = z.enum(["morpho", "kamino"]);
+export const EarnProtocolSchema = z.enum(["morpho", "kamino", "rhea"]);
 export type EarnProtocol = z.infer<typeof EarnProtocolSchema>;
 
 /** How a 1Click receipt relates to the vault share: a NEAR wrapper or the native share mint. */
@@ -288,9 +296,11 @@ export const EarnRailsSchema = z
       .object({
         available: z.boolean(),
         reason: z.string().nullable(),
-        note: z.string(),
+        // 071 Rhea rows name only a reason (there is no NEAR wallet path); 069/070 keep a note.
+        note: z.string().optional(),
       })
       .strict(),
+    // Present on 069/070 Morpho/Kamino rows; omitted for 071 Rhea (it uses `oneclickRhea`).
     oneclickEarn: z
       .object({
         available: z.boolean(),
@@ -300,7 +310,20 @@ export const EarnRailsSchema = z
         note: z.string().optional(),
         feeNote: z.string().optional(),
       })
-      .strict(),
+      .strict()
+      .optional(),
+    // 071 — the Rhea 1Click rail. `assetId` names the NEAR token id the quote supplies into.
+    oneclickRhea: z
+      .object({
+        available: z.boolean(),
+        liveness: z.string().optional(),
+        reason: z.string().nullable().optional(),
+        note: z.string().optional(),
+        feeNote: z.string().optional(),
+        assetId: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     intentsConnect: z
       .object({
         available: z.boolean(),
@@ -355,9 +378,51 @@ export const EarnVaultsBlockSchema = z
 export type EarnVaultsBlock = z.infer<typeof EarnVaultsBlockSchema>;
 
 /**
+ * 071 — where an APY/position came from. `stale` is only on preview sources (a positions read is
+ * always live), so it is optional. The contract/method/field triple is *not* decoration: it is
+ * what lets the UI say the rate is a contract read rather than a hard-coded guess.
+ */
+export const EarnSourceSchema = z
+  .object({
+    kind: z.string(),
+    contract: z.string(),
+    method: z.string(),
+    field: z.string(),
+    uiUrl: z.string(),
+    fetchedAt: z.string(),
+    stale: z.boolean().optional(),
+  })
+  .strict();
+export type EarnSource = z.infer<typeof EarnSourceSchema>;
+
+/** 071 — the one-off Rhea account (MCA) creation fee, taken from the first deposit only. */
+export const EarnOneTimeFeeSchema = z
+  .object({
+    amount: z.string(),
+    symbol: z.string(),
+    reason: z.string(),
+  })
+  .strict();
+export type EarnOneTimeFee = z.infer<typeof EarnOneTimeFeeSchema>;
+
+/** 071 — Rhea withdraw is an external link-out in this phase, never an in-app transaction. */
+export const EarnWithdrawSchema = z
+  .object({
+    kind: z.literal("external_link"),
+    url: z.string(),
+    note: z.string(),
+  })
+  .strict();
+export type EarnWithdraw = z.infer<typeof EarnWithdrawSchema>;
+
+/**
  * 069 — `earn_quote`, a DRY preview (1Click receipt, direct same-chain hint or an Intents Connect
  * step plan). NON-SIGNABLE: there is no confirm/send button in Phase B. Every optional field is
  * omitted when absent, matching `EarnQuoteBlock.to_wire()`.
+ *
+ * 071 adds the Rhea preview fields (all optional so 069/070 fixtures are byte-identical). `mca` is
+ * explicitly nullable: on a first deposit it is `null` and the recipient is the Rhea account
+ * manager (`multica.near`).
  */
 export const EarnQuoteBlockSchema = z
   .object({
@@ -378,9 +443,50 @@ export const EarnQuoteBlockSchema = z
     steps: z.array(IntentsConnectStepSchema).optional(),
     quotedAt: z.string().optional(),
     expiresHint: z.string().optional(),
+    protocol: EarnProtocolSchema.optional(),
+    firstDeposit: z.boolean().optional(),
+    mca: z.string().nullable().optional(),
+    recipient: z.string().optional(),
+    customRecipientMsg: z.string().optional(),
+    messageToSign: z.string().optional(),
+    oneTimeFee: EarnOneTimeFeeSchema.optional(),
+    netSupplied: HumanAmountStringSchema.optional(),
+    supplyApy: z.string().optional(),
+    source: EarnSourceSchema.optional(),
+    withdraw: EarnWithdrawSchema.optional(),
   })
   .strict();
 export type EarnQuoteBlock = z.infer<typeof EarnQuoteBlockSchema>;
+
+/** One supplied row from `get_account_all_positions`, already unit-converted by the agent. */
+export const EarnPositionSchema = z
+  .object({
+    symbol: z.string(),
+    amount: HumanAmountStringSchema,
+    apy: z.string().nullable().optional(),
+  })
+  .strict();
+export type EarnPosition = z.infer<typeof EarnPositionSchema>;
+
+/**
+ * 071 — `earn_positions`, a read-only view of the signed-in wallet's Rhea (Burrow) account.
+ * `state="empty"` is an honest "no Rhea account yet", not an error; nothing here is signable.
+ */
+export const EarnPositionsBlockSchema = z
+  .object({
+    type: z.literal("earn_positions"),
+    state: z.enum(["ready", "empty", "unavailable"]),
+    mca: z.string().nullable(),
+    supplied: z.array(EarnPositionSchema),
+    totalUsd: HumanAmountStringSchema.optional(),
+    source: EarnSourceSchema.optional(),
+    appUrl: z.string().optional(),
+    explainer: z.string().optional(),
+    unavailableReason: z.string().optional(),
+    note: z.string().optional(),
+  })
+  .strict();
+export type EarnPositionsBlock = z.infer<typeof EarnPositionsBlockSchema>;
 
 export const ChatBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
@@ -395,5 +501,6 @@ export const ChatBlockSchema = z.discriminatedUnion("type", [
   CrossChainQuoteBlockSchema,
   EarnVaultsBlockSchema,
   EarnQuoteBlockSchema,
+  EarnPositionsBlockSchema,
 ]);
 export type ChatBlock = z.infer<typeof ChatBlockSchema>;

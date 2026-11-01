@@ -30,6 +30,7 @@ import {
   vaultAppUrl,
   vaultListTitle,
   vaultReceiptLabel,
+  vaultRowTitle,
 } from "@/lib/earn/format";
 
 const MUTED = "var(--muted-foreground)";
@@ -68,15 +69,15 @@ function ProtocolBadge({ vault }: { vault: EarnVault }) {
         fontSize: 10.5,
         fontWeight: 600,
         letterSpacing: ".02em",
-        color: protocol === "kamino" ? "var(--primary)" : "var(--muted-foreground)",
+        color: protocol === "morpho" ? "var(--muted-foreground)" : "var(--primary)",
         background:
-          protocol === "kamino"
-            ? "color-mix(in srgb, var(--primary) 12%, transparent)"
-            : "transparent",
+          protocol === "morpho"
+            ? "transparent"
+            : "color-mix(in srgb, var(--primary) 12%, transparent)",
         border: `1px solid ${
-          protocol === "kamino"
-            ? "color-mix(in srgb, var(--primary) 28%, transparent)"
-            : "var(--border-soft)"
+          protocol === "morpho"
+            ? "var(--border-soft)"
+            : "color-mix(in srgb, var(--primary) 28%, transparent)"
         }`,
         whiteSpace: "nowrap",
       }}
@@ -175,6 +176,8 @@ export function EarnVaultsCard({
             const prompt = previewPrompt(vault);
             const receipt = vaultReceiptLabel(vault);
             const link = vaultAppUrl(vault);
+            const protocol = protocolOf(vault);
+            const sourceUrl = protocol === "rhea" ? link : null;
             return (
               <div
                 key={`${vault.chain}:${vault.address}`}
@@ -191,7 +194,7 @@ export function EarnVaultsCard({
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{vault.name || vault.symbol}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{vaultRowTitle(vault)}</span>
                       <ProtocolBadge vault={vault} />
                       <ChainBadge chain={vault.chain} />
                       {vault.curatedDefault && (
@@ -211,10 +214,28 @@ export function EarnVaultsCard({
                     )}
                   </div>
                   <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <div style={{ fontSize: 10, color: MUTED }}>{apyLabel(protocolOf(vault))}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{apyLabel(protocol)}</div>
                     <div style={{ fontSize: 16, fontWeight: 600 }} className="tnum">
                       {formatNetApy(vault.netApy)}
                     </div>
+                    {sourceUrl && (
+                      <a
+                        data-testid="earn-vault-source"
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 3,
+                          fontSize: 10.5,
+                          color: MUTED,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        source <Icon name="ext" size={10} />
+                      </a>
+                    )}
                   </div>
                 </div>
 
@@ -250,7 +271,7 @@ export function EarnVaultsCard({
                         textDecoration: "none",
                       }}
                     >
-                      View on Morpho <Icon name="ext" size={12} />
+                      View on {protocolLabel(protocol)} <Icon name="ext" size={12} />
                     </a>
                   )}
                 </div>

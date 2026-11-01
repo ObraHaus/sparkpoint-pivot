@@ -1,0 +1,48 @@
+{
+  "type": "earn_quote",
+  "state": "unavailable",
+  "rail": "oneclick_rhea",
+  "vault": {
+    "chain": "near",
+    "chainId": 0,
+    "address": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "version": "lending",
+    "name": "Rhea Lending USDC",
+    "symbol": "USDC",
+    "asset": {
+      "address": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "listed": true,
+    "tvlUsd": "12733763.455236751",
+    "netApy": "14.05",
+    "source": "rhea_rpc",
+    "fetchedAt": "2026-11-01T00:00:00+00:00",
+    "protocol": "rhea",
+    "curatedDefault": false,
+    "rails": {
+      "available": [
+        "oneclick_rhea"
+      ],
+      "direct": {
+        "available": false,
+        "reason": "Rhea lending is on NEAR; the beta has no NEAR wallet. Supply runs through NEAR Intents 1Click instead."
+      },
+      "oneclickRhea": {
+        "available": true,
+        "liveness": "unknown",
+        "reason": "Liquidity has not been probed yet; a preview asks 1Click for a dry quote.",
+        "note": "Supplies into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click \u2014 no NEAR wallet, gas or chain switch. Withdraw on app.rhea.finance with the same wallet.",
+        "feeNote": "Includes 1Click's 0.25% keyless routing fee. A one-time 0.30 USDC Rhea account fee applies on the first deposit only.",
+        "assetId": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+      },
+      "intentsConnect": {
+        "available": false,
+        "reason": "Intents Connect does not apply to Rhea supply."
+      }
+    }
+  },
+  "unavailableReason": "No liquidity available \u2014 try a smaller amount.",
+  "quotedAt": "2026-11-01T02:31:00+00:00"
+}
