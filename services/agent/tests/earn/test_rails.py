@@ -13,7 +13,7 @@ from sparkpoint_agent.earn.rails import (
     resolve_rails,
 )
 
-from .helpers import make_vault
+from .helpers import make_kamino_vault, make_vault
 
 
 def test_direct_and_receipt_rails_point_at_the_same_underlying_vault() -> None:
@@ -83,3 +83,34 @@ def test_intents_connect_is_gated_by_flag_key_and_asset() -> None:
     assert "intents_connect" not in resolve_rails(
         enabled, wrong_asset, liveness=ReceiptLivenessCache(), aurora_key="key"
     ).available
+
+
+def test_kamino_direct_is_hidden_and_the_receipt_is_native_shares() -> None:
+    config = default_config()
+    vault = make_kamino_vault()
+    receipt = config.receipt_for_vault(vault.address)
+    assert receipt is not None and receipt.receipt_kind == "native_shares"
+    liveness = ReceiptLivenessCache(clock=lambda: 1000.0)
+    liveness.set(receipt.asset_id, LIVE)
+
+    rails = resolve_rails(config, vault, liveness=liveness, aurora_key="")
+    assert "direct" not in rails.available
+    assert "oneclick_earn" in rails.available
+    detail = rails.wire()
+    assert "Solana wallet" in detail["direct"]["reason"]
+    assert detail["oneclickEarn"]["receipt"]["protocol"] == "kamino"
+    assert detail["oneclickEarn"]["receipt"]["receiptKind"] == "native_shares"
+    assert "native Kamino" in detail["oneclickEarn"]["note"]
+    assert "not the native Morpho vault share" not in detail["oneclickEarn"]["note"]
+
+
+def test_intents_connect_never_claims_a_solana_vault() -> None:
+    enabled = replace(
+        default_config(),
+        rails=replace(default_config().rails, intents_connect=True),
+    )
+    rails = resolve_rails(
+        enabled, make_kamino_vault(), liveness=ReceiptLivenessCache(), aurora_key="key"
+    )
+    assert "intents_connect" not in rails.available
+    assert "cannot deliver" in rails.detail["intentsConnect"]["reason"]

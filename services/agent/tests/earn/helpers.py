@@ -22,6 +22,7 @@ def make_vault(
     tvl: Decimal | None = Decimal("420000000"),
     apy: Decimal | None = Decimal("0.0441"),
     version: str = "v1",
+    protocol: str = "morpho",
 ) -> VaultEntry:
     return VaultEntry(
         chain=chain,
@@ -43,6 +44,39 @@ def make_vault(
         tvl_usd=tvl,
         net_apy=apy,
         fetched_at="2026-11-01T00:00:00+00:00",
+        protocol=protocol,
+    )
+
+
+KV_VAULT = "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg"
+KV_SHARES = "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK"
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+
+def make_kamino_vault(
+    *,
+    address: str = KV_VAULT,
+    name: str = "SOL Balanced",
+    asset: str = "SOL",
+    mint: str = SOL_MINT,
+    decimals: int = 9,
+    tvl: Decimal | None = Decimal("2443425.6"),
+    apy: Decimal | None = Decimal("0.0445"),
+) -> VaultEntry:
+    return VaultEntry(
+        chain="sol",
+        chain_id=0,
+        address=address,
+        version="kvault",
+        name=name,
+        symbol="kV",
+        asset=VaultAsset(address=mint, symbol=asset, decimals=decimals),
+        listed=True,
+        tvl_usd=tvl,
+        net_apy=apy,
+        source="kamino_api",
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="kamino",
     )
 
 

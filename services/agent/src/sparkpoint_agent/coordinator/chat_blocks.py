@@ -523,6 +523,8 @@ class EarnQuoteBlock(ChatBlock):
     time_estimate_sec: int | None = None
     fee_note: str | None = None
     receipt_note: str | None = None
+    receipt_kind: str | None = None
+    wallet_support: dict[str, Any] | None = None
     unavailable_reason: str | None = None
     steps: tuple[dict[str, Any], ...] = ()
     quoted_at: str | None = None
@@ -546,6 +548,8 @@ class EarnQuoteBlock(ChatBlock):
             ("time_estimate_sec", "timeEstimateSec"),
             ("fee_note", "feeNote"),
             ("receipt_note", "receiptNote"),
+            ("receipt_kind", "receiptKind"),
+            ("wallet_support", "walletSupport"),
             ("unavailable_reason", "unavailableReason"),
             ("quoted_at", "quotedAt"),
             ("expires_hint", "expiresHint"),

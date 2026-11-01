@@ -1,18 +1,21 @@
 #!/usr/bin/env python
-"""069 — fetch Morpho V1+V2 (≤6 requests), write ``earn/snapshot.json``, print reachability.
+"""069/070 — build ``earn/snapshot.json`` (Morpho + Kamino) and print reachability.
 
 Run from ``services/agent``::
 
-    uv run python scripts/earn_registry_snapshot.py
+    uv run python scripts/earn_registry_snapshot.py            # full refresh
+    uv run python scripts/earn_registry_snapshot.py --kamino-only
 
-The Morpho API is rate-limited; this script deliberately paginates in ONE pass per version across
-every known chain (so the "all vaults" table is real, not estimated) and applies the configured
-filters only to the snapshot it writes. It then dry-quotes each configured 1Click receipt (no funds,
-no live quote) to report which receipt rail is actually live today.
+The full mode fetches Morpho V1+V2 (one pass per version, applied filters) then merges the enabled
+Kamino kVaults. ``--kamino-only`` keeps the Morpho rows already in the shipped snapshot and only
+refreshes the Kamino rows — useful when the Morpho API budget is spent (the Morpho fetch pages a
+large universe). It then dry-quotes each configured 1Click receipt (no funds, no live quote) to
+report which receipt rail is actually live today.
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from collections import Counter
@@ -24,12 +27,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sparkpoint_agent.crosschain.config import default_config as crosschain_config  # noqa: E402
 from sparkpoint_agent.crosschain.oneclick import OneClickClient  # noqa: E402
 from sparkpoint_agent.earn.config import default_config, shipped_snapshot_path  # noqa: E402
+from sparkpoint_agent.earn.kamino import (  # noqa: E402
+    fetch_kamino_catalog,
+    fetch_kamino_vaults,
+)
 from sparkpoint_agent.earn.rails import (  # noqa: E402
     LIVE,
     ReceiptLivenessCache,
     probe_receipts,
 )
 from sparkpoint_agent.earn.registry import (  # noqa: E402
+    EarnRegistry,
     EarnSnapshot,
     fetch_vaults_for_chains,
     filter_vaults,
@@ -51,10 +59,55 @@ def _counts(values: list[str]) -> str:
     return ", ".join(f"{key}={count}" for key, count in sorted(Counter(values).items()))
 
 
-async def main() -> int:
+def _existing_morpho(out_path: Path):  # noqa: ANN202 - script helper
+    registry = EarnRegistry(
+        default_config(),
+        writable_path=Path("/nonexistent/earn-snapshot.json"),
+        fallback_path=out_path,
+    )
+    snapshot = registry.current()
+    if snapshot is None:
+        return []
+    return [entry for entry in snapshot.vaults if entry.protocol != "kamino"]
+
+
+def _kamino_by_asset(catalog: list) -> str:
     config = default_config()
-    on_enabled = await fetch_vaults_for_chains(config, config.enabled_chains, apply_filters=False)
-    filtered = filter_vaults(config, on_enabled)
+    symbols: list[str] = []
+    for item in catalog:
+        state = item.get("state")
+        if not isinstance(state, dict):
+            continue
+        mapped = config.kamino.asset_for_mint(str(state.get("tokenMint") or ""))
+        symbols.append(mapped[0] if mapped else "other")
+    return _counts(symbols)
+
+
+async def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--kamino-only",
+        action="store_true",
+        help="refresh Kamino rows only; keep the Morpho rows already in snapshot.json",
+    )
+    args = parser.parse_args(argv)
+    config = default_config()
+    out_path = shipped_snapshot_path()
+
+    if args.kamino_only:
+        morpho_entries = _existing_morpho(out_path)
+        on_enabled = list(morpho_entries)
+        filtered = list(morpho_entries)
+    else:
+        on_enabled = await fetch_vaults_for_chains(
+            config, config.enabled_chains, apply_filters=False
+        )
+        filtered = filter_vaults(config, on_enabled)
+        morpho_entries = list(filtered)
+
+    kamino_entries = await fetch_kamino_vaults(config) if config.kamino.enabled else []
+    catalog = await fetch_kamino_catalog(config) if config.kamino.enabled else []
+    combined = [*morpho_entries, *kamino_entries]
 
     liveness = ReceiptLivenessCache()
     client = OneClickClient.from_env()
@@ -62,10 +115,9 @@ async def main() -> int:
 
     snapshot = EarnSnapshot(
         fetched_at=datetime.now(UTC),
-        source="morpho_api",
-        vaults=tuple(filtered),
+        source="registry",
+        vaults=tuple(combined),
     )
-    out_path = shipped_snapshot_path()
     write_snapshot(out_path, snapshot)
 
     listed_enabled = [entry for entry in on_enabled if entry.listed]
@@ -85,15 +137,29 @@ async def main() -> int:
             and config.intents_connect.supports(entry.chain, entry.asset.symbol)
         )
 
-    print(f"wrote: {out_path}")
+    configured_kamino = [
+        entry for entry in kamino_entries if entry.address in {
+            vault.address for vault in config.kamino.vaults
+        }
+    ]
+    kamino_live = [
+        entry
+        for entry in configured_kamino
+        if (receipt := config.receipt_for_vault(entry.address)) is not None
+        and liveness.get(receipt.asset_id) == LIVE
+    ]
+
+    print(f"wrote: {out_path} ({'kamino-only' if args.kamino_only else 'full'})")
     print()
     print("== snapshot ==")
-    print(f"vaults={len(filtered)} chains: {_counts([e.chain for e in filtered])}")
-    print(f"assets: {_counts([e.asset.symbol for e in filtered])}")
+    print(f"vaults={len(combined)} chains: {_counts([e.chain for e in combined])}")
+    print(f"protocols: {_counts([e.protocol for e in combined])}")
+    print(f"assets: {_counts([e.asset.symbol for e in combined])}")
     print(
         "rails: direct="
-        f"{sum(1 for e in filtered if config.rails.direct)} "
-        f"oneclick_configured={len(receipt_vaults)} oneclick_live={len(live_receipts)} "
+        f"{sum(1 for e in combined if config.rails.direct)} "
+        f"oneclick_configured={len(receipt_vaults) + len(configured_kamino)} "
+        f"oneclick_live={len(live_receipts) + len(kamino_live)} "
         f"intents_eligible={sum(intents_eligible.values())}"
     )
     print()
@@ -137,9 +203,36 @@ async def main() -> int:
             f"{intents_eligible.get(chain.chain, 0)}"
         )
     print()
+    print("== Kamino kVaults ==")
+    print("metric | count")
+    print("--- | ---")
+    print(f"auto_discover | {str(config.kamino.auto_discover).lower()}")
+    print(f"total kVaults (list endpoint) | {len(catalog)}")
+    print(f"kVaults by asset (known mints) | {_kamino_by_asset(catalog)}")
+    print(f"configured | {len(config.kamino.vaults)}")
+    print(f"in snapshot | {len(kamino_entries)}")
+    print(f"oneclick_live | {len(kamino_live)}")
+    print()
+    print("configured vault | asset | tvl usd | net apy | oneclick")
+    print("--- | --- | --- | --- | ---")
+    for vault in config.kamino.vaults:
+        entry = next((e for e in kamino_entries if e.address == vault.address), None)
+        receipt = config.receipt_for_vault(vault.address)
+        live = (
+            liveness.get(receipt.asset_id) == LIVE if receipt is not None else False
+        )
+        if entry is None:
+            print(f"{vault.name} | {vault.asset} | - | - | {'live' if live else 'not in snapshot'}")
+            continue
+        print(
+            f"{entry.name} | {entry.asset.symbol} | "
+            f"{entry.tvl_usd if entry.tvl_usd is not None else '-'} | "
+            f"{entry.net_apy_percent or '-'}% | {'live' if live else 'no receipt/liquidity'}"
+        )
+    print()
     print("== receipt liveness (dry 100 USDC) ==")
     for receipt in config.receipts:
-        print(f"{receipt.symbol} | {liveness.get(receipt.asset_id)}")
+        print(f"{receipt.symbol} | {receipt.protocol} | {liveness.get(receipt.asset_id)}")
     return 0
 
 

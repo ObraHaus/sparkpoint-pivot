@@ -21,7 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ..crosschain.config import CrossChainConfig
+from ..crosschain.addresses import placeholder_for
+from ..crosschain.config import AddressKind, CrossChainConfig
 from ..crosschain.oneclick import OneClickClient, QuoteUnavailable, deadline_at
 from .config import AURORA_KEY_ENV, EarnConfig, OneClickReceipt
 from .registry import VaultEntry
@@ -35,6 +36,13 @@ FEE_NOTE = "Includes 1Click's 0.25% keyless routing fee."
 RECEIPT_NOTE = (
     "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. "
     "The receipt is backed by the vault; a direct same-chain deposit gives you the native share."
+)
+NATIVE_SHARES_NOTE = (
+    "This route delivers the native Kamino kVault share token on Solana — the receipt IS the "
+    "vault share (not a NEAR-issued wrapper). You receive the same share mint the vault issues."
+)
+KAMINO_DIRECT_NOTE = (
+    "Direct Kamino deposits require a Solana wallet, which the beta does not support yet."
 )
 INTENTS_MISSING_KEY = (
     "Aurora Intents Connect is not configured on this deployment (requires Aurora API access)."
@@ -90,12 +98,22 @@ class RailResolution:
 
 def _direct_rail(config: EarnConfig, entry: VaultEntry) -> dict[str, Any]:
     chain = config.chain(entry.chain)
+    if entry.protocol == "kamino":
+        return {
+            "available": False,
+            "reason": KAMINO_DIRECT_NOTE,
+            "note": "The beta has no Solana wallet connection, so 1Click Earn is the only rail.",
+        }
     enabled = bool(chain and chain.enabled and config.rails.direct)
     return {
         "available": enabled,
         "reason": None if enabled else "Direct deposits are disabled for this chain.",
         "note": "Deposit from a wallet on this chain to receive the native Morpho vault share.",
     }
+
+
+def _receipt_note(receipt: OneClickReceipt) -> str:
+    return NATIVE_SHARES_NOTE if receipt.receipt_kind == "native_shares" else RECEIPT_NOTE
 
 
 def _oneclick_rail(
@@ -126,7 +144,7 @@ def _oneclick_rail(
         "liveness": state,
         "receipt": receipt.wire(),
         "reason": reason,
-        "note": RECEIPT_NOTE,
+        "note": _receipt_note(receipt),
         "feeNote": FEE_NOTE,
     }
 
@@ -161,7 +179,9 @@ def _intents_rail(
         return {"available": False, "reason": INTENTS_DISABLED}
     if not aurora_key:
         return {"available": False, "reason": INTENTS_MISSING_KEY}
-    if not config.intents_connect.supports(entry.chain, entry.asset.symbol):
+    if entry.chain == "sol" or not config.intents_connect.supports(
+        entry.chain, entry.asset.symbol
+    ):
         return {
             "available": False,
             "reason": (
@@ -222,6 +242,17 @@ async def probe_receipts(
         return
     amount_raw = 100 * 10**origin.decimals
     for receipt in config.receipts:
+        recipient_kind: AddressKind = "sol" if receipt.chain == "sol" else "evm"
+        recipient = (
+            config.dry_probe_addresses.get("sol")
+            if recipient_kind == "sol"
+            else None
+        ) or placeholder_for(recipient_kind)
+        refund_to = (
+            config.dry_probe_addresses.get("sol")
+            if origin.address_kind == "sol"
+            else None
+        ) or placeholder_for(origin.address_kind)
         try:
             await client.quote(
                 dry=True,
@@ -230,8 +261,8 @@ async def probe_receipts(
                 amount=str(amount_raw),
                 slippage_bps=crosschain_config.slippage_bps,
                 deadline=deadline_at(crosschain_config.deadline_minutes),
-                refund_to="0x0000000000000000000000000000000000000001",
-                recipient="0x0000000000000000000000000000000000000002",
+                refund_to=refund_to,
+                recipient=recipient,
             )
         except QuoteUnavailable:
             liveness.set(receipt.asset_id, NO_LIQUIDITY)
