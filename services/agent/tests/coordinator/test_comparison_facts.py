@@ -279,6 +279,10 @@ async def test_bottom_line_temperature_reaches_only_the_comparative_call() -> No
     assert llm.complete_kwargs, "the Bottom line is the one prose call"
     assert llm.complete_kwargs[-1]["temperature"] == BOTTOM_LINE_TEMPERATURE
     assert llm.complete_kwargs[-1]["seed"] == BOTTOM_LINE_SEED
+    assert llm.complete_kwargs[-1]["max_tokens"] >= 512, (
+        "reasoning models in the free pool spend part of a small budget thinking and return "
+        "empty text, so the Bottom-line call must not use the old 200-token cap"
+    )
 
 
 def test_gateway_payload_omits_sampling_unless_asked() -> None:
@@ -350,6 +354,49 @@ def test_bottom_line_accepts_a_plain_tradeoff() -> None:
         "The trade-off is structural rather than a ranking, so the fit depends on your risks."
     )
     assert _bottom_line_is_acceptable("Neither is automatically safer; the trade-off is risk.")
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Aave is better than Morpho.",
+        "Aave is worse than Morpho.",
+        "Aave is the one to look at.",
+        "I'd go with Aave.",
+        "Aave stands out.",
+        "Aave is the winner.",
+        "Aave is the clear choice.",
+        "I prefer Aave.",
+        "Opt for Aave.",
+        "Stick with Aave.",
+        "Go for Aave.",
+        "Aave is the safer bet.",
+        "Aave is the more reliable choice.",
+        "Aave edges out Morpho.",
+        "Aave wins.",
+        "Aave beats Morpho.",
+        "Aave outperforms Morpho.",
+    ],
+)
+def test_bottom_line_rejects_winner_and_advice_phrases(answer: str) -> None:
+    assert _bottom_line_is_acceptable(answer) is False
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Neither is strictly safer; the choice depends on whether you value simplicity or depth.",
+        "Aave trades simplicity for a narrower set of collateral options than Morpho.",
+        "The trade-off is not about safety alone: each makes different risk assumptions.",
+        "Which fits depends on whether you prioritise predictable parameters or flexibility.",
+        "Neither option is automatically safer; they optimise for different things.",
+        "The question is not necessarily safer either way; it depends on the yield source.",
+        "The two differ mainly in how yield is produced and who controls the parameters.",
+        "Your choice depends on whether you value lower complexity or more flexibility.",
+    ],
+)
+def test_bottom_line_accepts_tradeoff_phrasings(answer: str) -> None:
+    assert _bottom_line_is_acceptable(answer) is True
 
 
 class _EmptySparkyLlm(_RecordingLlm):

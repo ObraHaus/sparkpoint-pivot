@@ -502,7 +502,7 @@ class Sparky:
                 system=BOTTOM_LINE_SYSTEM,
                 messages=[{"role": "user", "content": user_content}],
                 effort=self.effort,
-                max_tokens=200,
+                max_tokens=self.max_tokens,
                 user=user,
                 temperature=temperature,
                 seed=seed,

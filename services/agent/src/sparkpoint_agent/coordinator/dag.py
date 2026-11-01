@@ -207,15 +207,57 @@ def _join_names(names: Sequence[str]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
-#: 074 — the Bottom line must be a trade-off, not a verdict or advice. High-precision phrases
-#: only: an answer that merely says "neither is safer" is still fine, so the pattern requires an
-#: affirmative assignment ("X is safer/better") or first-person advice.
+#: 074 — the Bottom line must be a trade-off, not a verdict or advice. The gate errs toward the
+#: deterministic fallback: it rejects any winner-implying or advice-shaped phrasing ("X is
+#: better", "Aave wins", "I'd go with X", "the safer bet") while a clause-level negation
+#: ("neither is better", "not necessarily safer") is still allowed through.
 _BOTTOM_LINE_VERDICT_RE = re.compile(
-    r"\b(?:is|are)\s+(?:the\s+)?(?:safer|best|superior|a\s+better)\b"
-    r"|\byou\s+should\b|\bi(?:'d|\s+would)?\s+(?:choose|recommend|pick)\b",
+    r"\b(?:is|are|seems?|looks?|feels?|remains?)\b(?:\s+\w+){0,3}?\s+"
+    r"(?:better|worse|safer|safest|best|superior|preferable|stronger|weaker|"
+    r"more\s+(?:reliable|dependable|attractive|suitable|sensible)|less\s+(?:risky|safe))\b"
+    r"|\b(?:better|worse)\s+than\b"
+    r"|\b(?:is|are)\s+the\s+one\s+to\b"
+    r"|\bone\s+to\s+(?:look\s+at|go\s+with|choose|pick)\b"
+    r"|\byou\s+should\b|\bi(?:'d|\s+would)?\s+(?:choose|recommend|pick|go\s+with|prefer)\b"
+    r"|\b(?:prefer|prefers|preferred)\b"
+    r"|\bopt(?:s|ed|ing)?\s+for\b"
+    r"|\bstick(?:s|ing)?\s+with\b"
+    r"|\bgo(?:es|ne)?\s+(?:for|with)\b"
+    r"|\b(?:safer|safe|better|smarter|stronger)\s+bet\b"
+    r"|\b(?:more|most)\s+(?:reliable|dependable|suitable|appropriate|attractive|sensible)\s+"
+    r"(?:choice|option|pick|bet)\b"
+    r"|\bclear\s+(?:choice|winner|favourite|favorite)\b"
+    r"|\bwinners?\b|\bwins?\b|\bwinning\b|\bbeats?\b|\boutperform\w*\b|\bedges?\s+out\b"
+    r"|\bstands?\s+out\b",
     re.IGNORECASE,
 )
+#: A verdict match is not a verdict when the same clause negates it ("neither is better", "not
+#: necessarily safer"); a contrast conjunction starts a new clause so "neither is safer, but X
+#: wins" still catches the unnegated half.
+_BOTTOM_LINE_NEGATION_RE = re.compile(
+    r"\b(?:not|never|neither|none|nobody)\b|n't\b", re.IGNORECASE
+)
+_BOTTOM_LINE_CONTRAST_RE = re.compile(
+    r"[.;:!?]|\b(?:but|however|though|although|yet|whereas)\b", re.IGNORECASE
+)
+_BOTTOM_LINE_NOT_ONLY_RE = re.compile(r"\bnot\s+only\b", re.IGNORECASE)
 _DIGIT_RE = re.compile(r"\d")
+
+
+def _match_is_negated(text: str, match: re.Match[str]) -> bool:
+    """True when ``match`` sits in a negated clause, so it is not an affirmative verdict."""
+    prefix = text[: match.start()]
+    boundaries = list(_BOTTOM_LINE_CONTRAST_RE.finditer(prefix))
+    clause_start = boundaries[-1].end() if boundaries else 0
+    clause = _BOTTOM_LINE_NOT_ONLY_RE.sub("", text[clause_start : match.end()])
+    return bool(_BOTTOM_LINE_NEGATION_RE.search(clause))
+
+
+def _has_verdict(text: str) -> bool:
+    """True when ``text`` contains at least one affirmative verdict/advice phrase."""
+    return any(
+        not _match_is_negated(text, match) for match in _BOTTOM_LINE_VERDICT_RE.finditer(text)
+    )
 
 
 def _curated_picks(curated: CuratedContext | None) -> tuple[CuratedPick, ...]:
@@ -298,7 +340,7 @@ def _bottom_line_is_acceptable(text: str | None) -> bool:
         return False
     if _DIGIT_RE.search(candidate):
         return False
-    if _BOTTOM_LINE_VERDICT_RE.search(candidate):
+    if _has_verdict(candidate):
         return False
     # 067's whole-answer refusal check is broader than ``_is_decline`` ("I won't", "I'd rather
     # not", "Sorry…"), so both are applied to the closing sentence.
