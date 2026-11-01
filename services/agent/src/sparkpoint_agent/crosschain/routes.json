@@ -1,0 +1,125 @@
+{
+  "feature_enabled": true,
+  "base_url": "https://1click.chaindefuser.com/v0",
+  "slippage_bps": 100,
+  "deadline_minutes": 30,
+  "chain_aliases": {
+    "ethereum": "eth",
+    "ethereum mainnet": "eth",
+    "eth": "eth",
+    "mainnet": "eth",
+    "base": "base",
+    "base mainnet": "base",
+    "robinhood": "hood",
+    "robinhood chain": "hood",
+    "hood": "hood",
+    "bitcoin": "btc",
+    "bitcoin mainnet": "btc",
+    "btc": "btc",
+    "native btc": "btc",
+    "solana": "sol",
+    "sol": "sol",
+    "tron": "tron",
+    "near": "near",
+    "near protocol": "near"
+  },
+  "default_origin": {
+    "USDC": "base:USDC",
+    "USDG": "hood:USDG",
+    "USDT": "eth:USDT",
+    "BTC": "btc:BTC",
+    "SOL": "sol:SOL",
+    "NEAR": "near:wNEAR"
+  },
+  "assets": [
+    {
+      "key": "base:USDC",
+      "chain": "base",
+      "chain_label": "Base",
+      "evm_chain_id": 8453,
+      "symbol": "USDC",
+      "asset_id": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "decimals": 6,
+      "address_kind": "evm",
+      "enabled": true
+    },
+    {
+      "key": "eth:USDC",
+      "chain": "eth",
+      "chain_label": "Ethereum",
+      "evm_chain_id": 1,
+      "symbol": "USDC",
+      "asset_id": "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",
+      "decimals": 6,
+      "address_kind": "evm",
+      "enabled": true
+    },
+    {
+      "key": "eth:USDT",
+      "chain": "eth",
+      "chain_label": "Ethereum",
+      "evm_chain_id": 1,
+      "symbol": "USDT",
+      "asset_id": "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near",
+      "decimals": 6,
+      "address_kind": "evm",
+      "enabled": true
+    },
+    {
+      "key": "hood:USDG",
+      "chain": "hood",
+      "chain_label": "Robinhood Chain",
+      "evm_chain_id": 4663,
+      "symbol": "USDG",
+      "asset_id": "nep141:hood-0x5fc5360d0400a0fd4f2af552add042d716f1d168.omft.near",
+      "decimals": 6,
+      "address_kind": "evm",
+      "enabled": true
+    },
+    {
+      "key": "btc:BTC",
+      "chain": "btc",
+      "chain_label": "Bitcoin",
+      "evm_chain_id": null,
+      "symbol": "BTC",
+      "asset_id": "nep141:btc.omft.near",
+      "decimals": 8,
+      "address_kind": "btc",
+      "enabled": true
+    },
+    {
+      "key": "sol:SOL",
+      "chain": "sol",
+      "chain_label": "Solana",
+      "evm_chain_id": null,
+      "symbol": "SOL",
+      "asset_id": "nep141:sol.omft.near",
+      "decimals": 9,
+      "address_kind": "sol",
+      "enabled": true
+    },
+    {
+      "key": "near:wNEAR",
+      "chain": "near",
+      "chain_label": "NEAR",
+      "evm_chain_id": null,
+      "symbol": "NEAR",
+      "asset_id": "nep141:wrap.near",
+      "decimals": 24,
+      "address_kind": "near",
+      "enabled": true
+    },
+    {
+      "key": "tron:USDT",
+      "chain": "tron",
+      "chain_label": "Tron",
+      "evm_chain_id": null,
+      "symbol": "USDT",
+      "asset_id": "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",
+      "decimals": 6,
+      "address_kind": "tron",
+      "enabled": false,
+      "unavailable_reason": "1Click is not quoting Tron payouts right now"
+    }
+  ]
+}

@@ -3,7 +3,9 @@
 # Every case is a real user message (the 26 beta-audit prompts plus NEAR/swap/knowledge/
 # adversarial/edge coverage). `expected` is the CURRENT intended behaviour after 057.
 # `offline` supplies the canned LLM answer for the deterministic run; deterministic routes
-# fire before it, so a mis-route still fails loudly.
+# fire before it, so a mis-route still fails loudly. An optional `crosschain` key
+# (`quote` | `transport_error` | `disabled`) wires the 068 fixture; without it the DAG is
+# byte-for-byte the pre-068 path.
 version: 1
 cases:
   # ── The 26 beta-audit prompts ───────────────────────────────────────────────
@@ -919,3 +921,142 @@ cases:
       must_contain: ["not a financial adviser", "savings", "mandate"]
     offline:
       intent: {kind: build_action, actionType: vault_deposit, asset: USDC, amount: 100000000}
+
+  # ── Cross-chain chat swaps (068 — dry 1Click preview, never signable) ─────────
+  - id: crosschain-73-usdc-base-to-btc
+    category: crosschain
+    prompt: "swap 100 USDC on Base to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc on base", "bitcoin", "keyless routing fee"]
+      must_not_contain: ["aren't supported yet", "november"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-74-usdc-to-sol
+    category: crosschain
+    prompt: "swap 50 USDC to SOL"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "50 usdc on base", "solana"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-75-bridge-base-to-ethereum
+    category: crosschain
+    prompt: "bridge 25 USDC from Base to Ethereum"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "25 usdc on base", "ethereum"]
+      must_not_contain: ["isn't available"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-76-usdg-robinhood-to-base
+    category: crosschain
+    prompt: "swap 10 USDG on Robinhood chain to USDC on Base"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "10 usdg on robinhood chain", "usdc on base"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-77-taglish-swap
+    category: crosschain
+    prompt: "pa-swap ng 20 USDC to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "20 usdc", "bitcoin"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-78-no-amount
+    category: crosschain
+    prompt: "swap USDC to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      # The parser needs an amount, so this keeps the pre-068 unsupported-swap answer.
+      route: unsupported_swap
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["aren't supported yet", "btc"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-79-tron-unavailable
+    category: crosschain
+    prompt: "Pay my supplier 3,000 USDT on Tron."
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_unavailable
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["can't quote", "tron", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-80-transport-error
+    category: crosschain
+    prompt: "swap 100 USDC to BTC"
+    wallet: empty
+    crosschain: transport_error
+    expected:
+      route: general
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["couldn't reach", "nothing was signed"]
+      must_not_contain: ["traceback", "httpx"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-81-feature-disabled
+    category: crosschain
+    prompt: "swap 100 USDC on Base to BTC"
+    wallet: empty
+    crosschain: disabled
+    expected:
+      # Flag off is the exact pre-068 path: the old honest unsupported-swap answer.
+      route: unsupported_swap
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["aren't supported yet", "november"]
+      must_not_contain: ["preview only"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-82-bridge-to-near-unchanged
+    category: crosschain
+    prompt: "bridge to NEAR"
+    wallet: empty
+    crosschain: quote
+    expected:
+      # A chain mention with no amount must not be stolen by the cross-chain parser.
+      route: bridge
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["bridging", "isn't available"]
+    offline:
+      intent: {kind: other}

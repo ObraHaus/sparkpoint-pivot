@@ -381,6 +381,58 @@ class ErrorBlock(ChatBlock):
         return {"type": "error", "code": self.code, "message": self.message}
 
 
+CrossChainState = Literal["preview", "unavailable"]
+
+
+@dataclass(frozen=True)
+class CrossChainQuoteBlock(ChatBlock):
+    """068 ``crosschain_quote`` — a preview from the NEAR Intents 1Click API.
+
+    Deliberately NOT signable: it carries no calldata and no signature. A confirm is a separate
+    ``POST /crosschain/quote`` with ``dry=false``; the user sends the origin funds from their own
+    wallet when 1Click returns a deposit address. ``state=unavailable`` is an ordinary answer
+    (e.g. Tron payouts are paused), never an error block.
+    """
+
+    state: CrossChainState
+    origin: dict[str, Any]
+    destination: dict[str, Any]
+    amount_out: str | None = None
+    amount_out_usd: str | None = None
+    amount_in_usd: str | None = None
+    min_amount_out: str | None = None
+    time_estimate_sec: int | None = None
+    slippage_bps: int | None = None
+    fee_note: str | None = None
+    unavailable_reason: str | None = None
+    quoted_at: str | None = None
+    expires_hint: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "crosschain_quote",
+            "state": self.state,
+            "origin": dict(self.origin),
+            "destination": dict(self.destination),
+        }
+        for attr, key in (
+            ("amount_out", "amountOut"),
+            ("amount_out_usd", "amountOutUsd"),
+            ("amount_in_usd", "amountInUsd"),
+            ("min_amount_out", "minAmountOut"),
+            ("time_estimate_sec", "timeEstimateSec"),
+            ("slippage_bps", "slippageBps"),
+            ("fee_note", "feeNote"),
+            ("unavailable_reason", "unavailableReason"),
+            ("quoted_at", "quotedAt"),
+            ("expires_hint", "expiresHint"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire
+
+
 @dataclass(frozen=True)
 class PositionLite:
     """§2.7 ``PositionLite`` — the trimmed position echoed in a portfolio_snapshot."""

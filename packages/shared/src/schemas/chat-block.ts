@@ -136,6 +136,80 @@ export const ErrorBlockSchema = z
   })
   .strict();
 
+/* ── 068 — NEAR Intents 1Click cross-chain quote ───────────────────────────── */
+
+/**
+ * Human decimal string, e.g. `"5000"` / `"0.06439596"`. The agent serializes money as strings
+ * (never floats), and `amountOut`/`minAmountOut` are HUMAN units — not base units.
+ */
+export const HumanAmountStringSchema = z
+  .string()
+  .regex(/^\d+(?:\.\d+)?$/, "expected a non-negative human decimal string");
+
+/** The address families 1Click destinations can resolve to. */
+export const CrossChainAddressKindSchema = z.enum(["evm", "btc", "sol", "tron", "near"]);
+export type CrossChainAddressKind = z.infer<typeof CrossChainAddressKindSchema>;
+
+/**
+ * 068 — the origin leg of a cross-chain quote. Mirrors
+ * `crosschain/config.py::CrossChainAsset.origin_wire()`. `evmChainId` is REQUIRED but
+ * nullable: a non-EVM origin (BTC/SOL/NEAR) emits `null` rather than omitting the key.
+ */
+export const CrossChainOriginSchema = z
+  .object({
+    key: z.string(),
+    chain: z.string(),
+    chainLabel: z.string(),
+    symbol: z.string(),
+    amount: HumanAmountStringSchema,
+    assetId: z.string(),
+    evmChainId: z.number().int().nullable(),
+  })
+  .strict();
+export type CrossChainOrigin = z.infer<typeof CrossChainOriginSchema>;
+
+/**
+ * 068 — the destination leg. Mirrors `CrossChainAsset.destination_wire()`; the destination
+ * carries the address family the confirm screen must validate against.
+ */
+export const CrossChainDestinationSchema = z
+  .object({
+    key: z.string(),
+    chain: z.string(),
+    chainLabel: z.string(),
+    symbol: z.string(),
+    assetId: z.string(),
+    addressKind: CrossChainAddressKindSchema,
+  })
+  .strict();
+export type CrossChainDestination = z.infer<typeof CrossChainDestinationSchema>;
+
+/**
+ * 068 — `crosschain_quote`, a NON-SIGNABLE preview/unavailable card produced by the
+ * deterministic cross-chain route. Mirrors `CrossChainQuoteBlock.to_wire()` exactly:
+ * camelCase, and every optional field is OMITTED (never `null`) when absent. It carries no
+ * calldata and no signature — confirm/deposit is a separate HTTP flow.
+ */
+export const CrossChainQuoteBlockSchema = z
+  .object({
+    type: z.literal("crosschain_quote"),
+    state: z.enum(["preview", "unavailable"]),
+    origin: CrossChainOriginSchema,
+    destination: CrossChainDestinationSchema,
+    amountOut: HumanAmountStringSchema.optional(),
+    amountOutUsd: HumanAmountStringSchema.optional(),
+    amountInUsd: HumanAmountStringSchema.optional(),
+    minAmountOut: HumanAmountStringSchema.optional(),
+    timeEstimateSec: z.number().int().nonnegative().optional(),
+    slippageBps: z.number().int().nonnegative().optional(),
+    feeNote: z.string().optional(),
+    unavailableReason: z.string().optional(),
+    quotedAt: z.string().optional(),
+    expiresHint: z.string().optional(),
+  })
+  .strict();
+export type CrossChainQuoteBlock = z.infer<typeof CrossChainQuoteBlockSchema>;
+
 export const ChatBlockSchema = z.discriminatedUnion("type", [
   TextBlockSchema,
   ToolStepBlockSchema,
@@ -146,5 +220,6 @@ export const ChatBlockSchema = z.discriminatedUnion("type", [
   OutcomeBlockSchema,
   CitationBlockSchema,
   ErrorBlockSchema,
+  CrossChainQuoteBlockSchema,
 ]);
 export type ChatBlock = z.infer<typeof ChatBlockSchema>;
