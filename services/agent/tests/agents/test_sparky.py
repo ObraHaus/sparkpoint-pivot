@@ -144,7 +144,7 @@ async def test_llm_exception_falls_back_and_never_raises() -> None:
     "poisoned",
     [
         'Sure: {"type": "vault_deposit", "amount": "1000000"}',
-        'Here you go — proposedAction: deposit 100 USDC.',
+        "Here you go — proposedAction: deposit 100 USDC.",
         "I'll run vault_deposit for you now.",
         "Use aerodrome_swap to move that.",
         "Sign this: 0x" + "ab" * 40,
@@ -292,31 +292,45 @@ async def test_normal_second_person_answers_survive_the_meta_discard() -> None:
         assert not _looks_meta_shaped(good), good
 
 
-# ── 063 · streaming opening guard (40-character hold) ───────────────────────────
+# ── 063/073 · incremental streaming guard (sentence gating) ────────────────────
 
 
 class _StreamLlm:
-    """A fake streaming LLM that yields ``deltas`` then the terminal result."""
+    """A fake streaming LLM that yields ``deltas`` then the terminal result.
+
+    ``consumed`` counts deltas the agent actually pulled, so a test can prove the stream was
+    ABORTED early when the incremental guard tripped.
+    """
 
     def __init__(self, deltas: list[str], *, refused: bool = False) -> None:
         self._deltas = deltas
         self._refused = refused
+        self.consumed = 0
+        self.closed = False
 
     async def stream_complete(self, **_: Any) -> AsyncIterator[StreamChunk]:
-        for delta in self._deltas:
-            yield StreamChunk(delta=delta)
-        yield StreamChunk(
-            result=LlmResult(
-                text="".join(self._deltas),
-                stop_reason="refusal" if self._refused else "end_turn",
-                refused=self._refused,
+        try:
+            for delta in self._deltas:
+                self.consumed += 1
+                yield StreamChunk(delta=delta)
+            yield StreamChunk(
+                result=LlmResult(
+                    text="".join(self._deltas),
+                    stop_reason="refusal" if self._refused else "end_turn",
+                    refused=self._refused,
+                )
             )
-        )
+        finally:
+            self.closed = True
 
 
-async def _stream(deltas: list[str], *, refused: bool = False) -> list[SparkyChunk]:
+async def _stream(
+    deltas: list[str], *, refused: bool = False, comparative: bool = False
+) -> list[SparkyChunk]:
     agent = Sparky(llm=_StreamLlm(deltas, refused=refused))  # type: ignore[arg-type]
-    return [chunk async for chunk in agent.stream_reply("tell me something")]
+    return [
+        chunk async for chunk in agent.stream_reply("tell me something", comparative=comparative)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -338,14 +352,16 @@ async def test_opening_guard_paints_nothing_when_meta_or_action_is_in_the_window
     assert chunks[-1].reply == SparkyReply(body="", fell_back=True)
 
 
-async def test_normal_answer_paints_as_soon_as_40_chars_accumulate_then_streams_live() -> None:
-    text = "Sparky explains how the Aave pool works and why suppliers earn yield over time."
+async def test_normal_answer_paints_the_first_complete_sentence_then_streams_live() -> None:
+    first = "Sparky explains how the Aave pool works and why suppliers earn yield. "
+    second = "Rates move with utilization, so the return is variable."
+    text = first + second
     deltas = [text[i : i + 5] for i in range(0, len(text), 5)]
     chunks = await _stream(deltas)
 
     painted = [chunk.delta for chunk in chunks if chunk.delta is not None]
     assert len(painted) > 1
-    assert painted[0] == text[:40]
+    assert painted[0] == first.rstrip()  # 073: whole first sentence, not the old 40-char window
     # The first paint happens before the stream ends (the terminal reply is the last chunk).
     first_delta = next(i for i, chunk in enumerate(chunks) if chunk.delta is not None)
     assert first_delta < len(chunks) - 1
@@ -366,6 +382,78 @@ async def test_short_meta_answer_paints_nothing() -> None:
     chunks = await _stream(["The user asks about Aave."])
     assert [chunk.delta for chunk in chunks if chunk.delta] == []
     assert chunks[-1].reply == SparkyReply(body="", fell_back=True)
+
+
+# ── 073 · incremental guard: guarded prose never reaches a delta ───────────────
+
+_MID_STREAM_GUARD_EXAMPLES = (
+    ("meta", "The user asks about Aave."),
+    ("meta", "It is based on the reference notes provided."),
+    ("meta", "The reference information does not cover Morpho."),
+    ("action", '{"type": "vault_deposit", "amount": "1"}'),
+    ("action", "Send 0x" + "ab" * 32 + " now."),
+)
+
+
+@pytest.mark.parametrize(("reason", "guarded"), _MID_STREAM_GUARD_EXAMPLES)
+async def test_a_guarded_mid_stream_phrase_is_never_painted_and_aborts_early(
+    reason: str, guarded: str
+) -> None:
+    llm = _StreamLlm(
+        ["Aave is a shared lending pool. ", guarded + " ", "This tail must never be pulled."]
+    )
+    agent = Sparky(llm=llm)  # type: ignore[arg-type]
+    chunks = [chunk async for chunk in agent.stream_reply("tell me something")]
+
+    painted = "".join(chunk.delta for chunk in chunks if chunk.delta)
+    assert painted == "Aave is a shared lending pool."
+    assert guarded not in painted
+    # The generator is closed early: the third delta is never consumed.
+    assert llm.consumed == 2
+    assert llm.closed is True
+    # A painted attempt gets exactly one retract before the terminal failure.
+    assert sum(1 for chunk in chunks if chunk.retract) == 1
+    assert chunks[-1].reply == SparkyReply(body="", fell_back=True, failure=reason)
+
+
+@pytest.mark.parametrize(("reason", "guarded"), _MID_STREAM_GUARD_EXAMPLES)
+async def test_a_guarded_first_chunk_paints_nothing_and_needs_no_retract(
+    reason: str, guarded: str
+) -> None:
+    llm = _StreamLlm([guarded + " ", "Never pulled."])
+    agent = Sparky(llm=llm)  # type: ignore[arg-type]
+    chunks = [chunk async for chunk in agent.stream_reply("tell me something")]
+
+    assert [chunk.delta for chunk in chunks if chunk.delta] == []
+    assert not any(chunk.retract for chunk in chunks)
+    assert llm.consumed == 1
+    assert chunks[-1].reply == SparkyReply(body="", fell_back=True, failure=reason)
+
+
+async def test_a_clean_stream_paints_sentences_before_the_terminal_reply() -> None:
+    first = "Aave is one shared lending market. "
+    second = "Morpho adds curator and isolated-market risk."
+    llm = _StreamLlm([first, second])
+    agent = Sparky(llm=llm)  # type: ignore[arg-type]
+    chunks = [chunk async for chunk in agent.stream_reply("tell me something")]
+
+    painted = "".join(chunk.delta for chunk in chunks if chunk.delta)
+    assert painted == first + second
+    assert not any(chunk.retract for chunk in chunks)
+    assert llm.closed is True
+    assert chunks[-1].reply == SparkyReply(body=(first + second))
+
+
+async def test_a_comparative_turn_holds_the_whole_answer() -> None:
+    llm = _StreamLlm(["Morpho and Aave both carry risk. ", "Neither is automatically safer."])
+    agent = Sparky(llm=llm)  # type: ignore[arg-type]
+    chunks = [chunk async for chunk in agent.stream_reply("Morpho vs Aave", comparative=True)]
+
+    assert [chunk.delta for chunk in chunks if chunk.delta] == []
+    assert not any(chunk.retract for chunk in chunks)
+    assert chunks[-1].reply == SparkyReply(
+        body="Morpho and Aave both carry risk. Neither is automatically safer."
+    )
 
 
 # ── 065 · WHY a turn degraded (content rejection vs upstream failure) ──────────

@@ -116,6 +116,23 @@ can never influence a signable action, N2). Operators edit it live at `/admin/kn
 tab (admin-gated, PII-fail-closed, audited); a save reloads the voice with no redeploy. No embedder
 required.
 
+## Chat SSE streaming wire (059/073)
+
+`POST /chat` is `text/event-stream`. Each §2.7 block is one `event: block` record; a turn ends
+with `event: done` (`{conversationId, blockCount}`). Prose is ALSO painted incrementally with
+`event: text-delta` records shaped `{target: "text"|"tip", delta: string, streamId: string}`.
+These deltas are **transport-only**: never counted in `blockCount`, never persisted or summarized,
+and the final `text`/`tip` block is authoritative and replaces them.
+
+- A change of `streamId` (or `target`) is a NEW attempt: the client replaces the provisional
+  buffer instead of appending. Retries use `general-<n>` / `tip-<n>`.
+- **073 retract:** an empty `delta` under a fresh id (`general-<n>-r` / `tip-<n>-r`) clears the
+  partial immediately. It is used when the incremental sentence guard trips after some text was
+  already painted, so no guarded text survives until the terminal fallback.
+- **073 release rule:** only complete sentence/newline segments are painted, after a cumulative
+  action/meta check; comparative turns are held whole (`HOLD_COMPARATIVE_PROSE`). See
+  `specs/073-streaming-guard/`.
+
 ## Migrations (spark-postgres, applied via yoyo)
 
 `0001_foundation` · `0002_vault` · `0003_assistant` · `0004_embedding_dim` · `0005_allowlists` ·

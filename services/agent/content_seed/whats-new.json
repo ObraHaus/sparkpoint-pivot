@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "streaming-guard-073-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Streaming replies are checked sentence by sentence before you see them",
+      "body": "Sparky can now start showing a reply while it is still being written, but only after each sentence is checked for the things an answer must never contain, such as internal notes about how the reply was produced or a machine action payload. Previously only the very beginning of a streamed reply was checked, so a reply could be shown and then replaced moments later. Now, if a later sentence fails the check, the part already shown is cleared immediately and the safe answer is used instead. Comparisons are shown only once the whole comparison has been checked, because deciding whether it names every option and is not just a refusal needs the complete answer. Nothing about reviewing, signing or your funds changes, and the setting that turns streaming on or off is unchanged.",
+      "published_at": "2026-11-01T14:30:00Z"
+    },
+    {
       "slug": "comparative-followup-067-2026-10",
       "type": "changelog",
       "tag": "Fixed",
