@@ -38,7 +38,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agents import guardrail
 from ..agents.literacy import (
@@ -51,6 +51,8 @@ from ..agents.literacy import (
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky, SparkyReply
+from ..crosschain.oneclick import CrossChainTransportError
+from ..crosschain.parse import parse_cross_chain_request
 from ..data.prices import PriceService, PriceSnapshot
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
@@ -137,6 +139,9 @@ from .prices import (
     requested_price_symbols,
 )
 from .staleness import as_of_time
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: service imports chat_blocks
+    from ..crosschain.service import CrossChainService
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -662,6 +667,10 @@ class CoordinatorDag:
     #: 060 — display-only keyless USD reference prices. ``None`` ⇒ the price route says it cannot
     #: fetch a live price; it never guesses, and never reaches propose/build/policy.
     prices: PriceService | None = None
+    #: 068 — cross-chain swaps via the NEAR Intents 1Click API. ``None`` or a disabled feature
+    #: flag falls through to the existing behaviour. Advisory: the user sends funds from their
+    #: own wallet; this branch emits text + a non-signable ``crosschain_quote`` block only.
+    crosschain: CrossChainService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -1055,6 +1064,28 @@ class CoordinatorDag:
             yield ToolStepBlock("Understanding your request", "done")
             yield TextBlock(UNSAFE_REFUSAL)
             return
+
+        # 068 — a cross-chain swap ("Swap 5,000 USDC into native BTC") is answered from the
+        # NEAR Intents 1Click API with a DRY quote. Deterministic and BEFORE the planner, so the
+        # demo prompts work with zero model credits. A disabled route (Tron today) is an ordinary
+        # "unavailable" card, never an error. The feature flag off ⇒ fall through unchanged.
+        if self.crosschain is not None and self.crosschain.feature_enabled:
+            crosschain_request = parse_cross_chain_request(message, self.crosschain.config)
+            if crosschain_request is not None:
+                yield ToolStepBlock("Checking a cross-chain route", "running")
+                try:
+                    outcome = await self.crosschain.preview(crosschain_request)
+                except CrossChainTransportError:
+                    yield ToolStepBlock("Checking a cross-chain route", "error")
+                    yield TextBlock(
+                        "I couldn't reach the cross-chain routing service just now — nothing "
+                        "was signed or sent. Please try again in a moment."
+                    )
+                    return
+                yield ToolStepBlock("Checking a cross-chain route", "done")
+                yield TextBlock(outcome.text)
+                yield outcome.block
+                return
 
         # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default
         # USDG ↔ ETH card. Answer honestly and emit no action block.

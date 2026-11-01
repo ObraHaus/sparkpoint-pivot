@@ -69,6 +69,7 @@ from ..coordinator import (
     TokenBalanceLite,
 )
 from ..coordinator.curated import CuratedContext, CuratedPick
+from ..crosschain.service import build_service_from_env
 from ..data.prices import get_price_service
 from ..db import ChatFeedbackStore, LimitsStore, get_database
 from ..db.content_entries import ContentEntryStore
@@ -594,6 +595,9 @@ def get_coordinator_dag(
         # 060 — keyless USD reference prices for the deterministic price route. Display-only:
         # the service is cached/bounded and never reaches propose/build/policy.
         prices=get_price_service(),
+        # 068 — cross-chain swap previews via NEAR Intents 1Click. Advisory only: the chat branch
+        # emits text + a non-signable card, and the user sends funds from their own wallet.
+        crosschain=build_service_from_env(),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
@@ -917,7 +921,16 @@ def get_memory_sink() -> _MemorySink:
 #
 # Both stay in the LIVE stream (the user sees them in the moment); they just aren't history.
 _PERSISTED_BLOCK_TYPES = frozenset(
-    {"text", "tip", "recommendation", "action", "portfolio_snapshot", "outcome", "citation"}
+    {
+        "text",
+        "tip",
+        "recommendation",
+        "action",
+        "portfolio_snapshot",
+        "outcome",
+        "citation",
+        "crosschain_quote",
+    }
 )
 
 # Blocks that represent CONTENT the model actually produced for the user (scaffolding such as

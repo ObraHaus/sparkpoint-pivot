@@ -55,6 +55,7 @@ from .brokers import router as brokers_router
 from .chat import router as chat_router
 from .content import router as content_router
 from .conversations import router as conversations_router
+from .crosschain import router as crosschain_router
 from .curated_vaults import router as curated_vaults_router
 from .errors import (
     ApiError,
@@ -870,6 +871,9 @@ app.include_router(vault_router)
 app.include_router(subscription_router)
 # §3.2 chat surface — SSE stream of policy-stamped ChatBlocks; NEVER returns a signable bundle.
 app.include_router(chat_router)
+# 068 — cross-chain swap quotes/confirm/status via NEAR Intents 1Click. The user sends funds from
+# their own wallet; the agent never signs or takes custody. A disabled route is a 200 "unavailable".
+app.include_router(crosschain_router)
 # §3.1 onboarding + mandate — chat onboarding (SSE, terminal mandate_draft) + versioned
 # mandate CRUD. Advisory only; NEVER returns a signable bundle (FR-002/004).
 app.include_router(mandate_router)
