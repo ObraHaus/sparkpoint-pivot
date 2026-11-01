@@ -261,16 +261,16 @@ async def test_comparative_question_uses_sparky_not_the_yield_composer() -> None
         ("user", "How does the Aave USDC yield work?"),
         ("assistant", "Aave is a shared lending pool; suppliers earn the variable supply rate."),
     ]
-    wires = await _run(
-        dag, "Compare that with just keeping it in Aave.", history=history
-    )
+    wires = await _run(dag, "Compare that with just keeping it in Aave.", history=history)
     text = _text(wires)
     lower = text.lower()
     assert "nothing for a mandate" not in lower
     assert "you don't have a position yet" not in lower
     assert "4.41%" not in text
     assert not (_types(wires) & {"action", "recommendation", "tip"})
-    assert text.strip() == "prose about Aave", "the comparative answer comes from Sparky"
+    # 074 — the comparison is a code-authored skeleton; only the Bottom line is model-written.
+    assert "**What it is**" in text and "**Bottom line**" in text
+    assert "**Aave**" in text
 
 
 async def test_six_month_earnings_question_answers_the_estimate_not_a_portfolio_summary() -> None:
@@ -553,9 +553,7 @@ async def test_native_btc_swap_gets_no_swap_card_and_an_honest_answer() -> None:
         ("swap BTC to USDC", "native btc"),
     ],
 )
-async def test_an_unsupported_source_asset_gets_no_swap_card(
-    message: str, expected: str
-) -> None:
+async def test_an_unsupported_source_asset_gets_no_swap_card(message: str, expected: str) -> None:
     dag = _dag(intent=_deposit_intent())
     wires = await _run(dag, message)
     assert not (_types(wires) & {"action", "recommendation"})
