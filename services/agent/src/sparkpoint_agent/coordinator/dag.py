@@ -54,6 +54,7 @@ from ..agents.sparky import Sparky, SparkyReply
 from ..crosschain.oneclick import CrossChainTransportError
 from ..crosschain.parse import parse_cross_chain_request
 from ..data.prices import PriceService, PriceSnapshot
+from ..earn.parse import parse_earn_request
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -142,6 +143,7 @@ from .staleness import as_of_time
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle: service imports chat_blocks
     from ..crosschain.service import CrossChainService
+    from ..earn.service import EarnService
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -671,6 +673,9 @@ class CoordinatorDag:
     #: flag falls through to the existing behaviour. Advisory: the user sends funds from their
     #: own wallet; this branch emits text + a non-signable ``crosschain_quote`` block only.
     crosschain: CrossChainService | None = None
+    #: 069 — the data-driven Morpho earn registry. ``None`` / a disabled flag falls through.
+    #: Advisory: list and DRY previews only (1Click receipt or a same-chain/Intents-Connect hint).
+    earn: EarnService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -1085,6 +1090,61 @@ class CoordinatorDag:
                 yield ToolStepBlock("Checking a cross-chain route", "done")
                 yield TextBlock(outcome.text)
                 yield outcome.block
+                return
+
+        # 069 — explicit Morpho requests ("Show Morpho vaults on Base", "Deposit 100 USDC into
+        # Morpho Gauntlet USDC Prime") are answered deterministically before the planner. The
+        # parser only fires on an explicit Morpho mention or a configured vault name, so the
+        # existing vault/deposit flow and comparative turns are not stolen. A list is a snapshot
+        # read; a deposit is a DRY preview (1Click receipt or a same-chain hint).
+        if self.earn is not None and self.earn.feature_enabled:
+            earn_request = parse_earn_request(message, self.earn.config)
+            if earn_request is not None:
+                if earn_request.kind == "list":
+                    yield ToolStepBlock("Checking Morpho vaults", "running")
+                    earn_outcome = self.earn.list_outcome(earn_request)
+                    yield ToolStepBlock("Checking Morpho vaults", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+
+                yield ToolStepBlock("Checking a Morpho vault", "running")
+                vault = self.earn.resolve_vault(earn_request.chain, earn_request.vault_query)
+                if vault is None:
+                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield TextBlock(
+                        "I can't find that Morpho vault in the current snapshot — nothing was "
+                        "signed or sent. Ask me to list Morpho vaults and I'll show what is live."
+                    )
+                    return
+                origin_key = _earn_origin_key(self.earn, earn_request, vault)
+                amount = earn_request.amount
+                assert amount is not None  # noqa: S101 - the parser only builds deposits with one
+                try:
+                    earn_outcome = await self.earn.preview_for(
+                        chain=vault.chain,
+                        address=vault.address,
+                        origin_key=origin_key,
+                        amount=amount,
+                        amount_raw=earn_request.amount_raw,
+                    )
+                except CrossChainTransportError:
+                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield TextBlock(
+                        "I couldn't reach the routing service just now — nothing was signed or "
+                        "sent. Please try again in a moment."
+                    )
+                    return
+                except ValueError:
+                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield TextBlock(
+                        "I can preview that Morpho vault only from a supported origin asset — "
+                        "nothing was signed or sent."
+                    )
+                    return
+                yield ToolStepBlock("Checking a Morpho vault", "done")
+                yield TextBlock(earn_outcome.text)
+                yield earn_outcome.block
                 return
 
         # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default
@@ -1884,6 +1944,24 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
         "tokenOut": token_out,
         "chainId": chain_id,
     }
+
+
+def _earn_origin_key(service: EarnService, request: Any, vault: Any) -> str:
+    """The 1Click origin for a Morpho deposit: an explicit chain/symbol, else the vault's chain."""
+    chain = (
+        getattr(request, "origin_chain", None)
+        or getattr(request, "chain", None)
+        or getattr(vault, "chain", None)
+    )
+    symbol = getattr(request, "asset", None) or getattr(vault, "asset", None)
+    if not isinstance(symbol, str) and symbol is not None:
+        symbol = getattr(symbol, "symbol", None)
+    if not isinstance(chain, str) or not isinstance(symbol, str):
+        return ""
+    asset = service.crosschain.find_asset(chain, symbol)
+    if asset is None:
+        asset = service.crosschain.default_for_symbol(symbol)
+    return asset.key if asset is not None else ""
 
 
 # Bridging isn't an advisory action (no ActionType) and the vault/swaps are Base-only, so a bridge

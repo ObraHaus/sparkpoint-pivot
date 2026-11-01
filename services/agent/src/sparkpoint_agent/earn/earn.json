@@ -1,0 +1,80 @@
+{
+  "feature_enabled": true,
+  "morpho_api_url": "https://api.morpho.org/graphql",
+  "refresh_minutes": 360,
+  "chains": [
+    {"chain": "base", "chain_id": 8453, "label": "Base", "enabled": true},
+    {"chain": "eth", "chain_id": 1, "label": "Ethereum", "enabled": true},
+    {"chain": "arbitrum", "chain_id": 42161, "label": "Arbitrum", "enabled": false},
+    {"chain": "optimism", "chain_id": 10, "label": "Optimism", "enabled": false},
+    {"chain": "polygon", "chain_id": 137, "label": "Polygon", "enabled": false},
+    {"chain": "monad", "chain_id": 143, "label": "Monad", "enabled": false},
+    {"chain": "hyperevm", "chain_id": 999, "label": "HyperEVM", "enabled": false},
+    {"chain": "katana", "chain_id": 747474, "label": "Katana", "enabled": false},
+    {"chain": "unichain", "chain_id": 130, "label": "Unichain", "enabled": false},
+    {"chain": "world", "chain_id": 480, "label": "World Chain", "enabled": false},
+    {"chain": "robinhood", "chain_id": 4663, "label": "Robinhood Chain", "enabled": false}
+  ],
+  "filters": {
+    "listed_only": true,
+    "min_tvl_usd": "1000000",
+    "assets": ["USDC", "WETH", "USDT", "cbBTC"]
+  },
+  "allowlist": [],
+  "denylist": [],
+  "known_vault_names": [
+    "Gauntlet USDC Prime",
+    "Moonwell Flagship USDC",
+    "Spark USDC",
+    "Steakhouse USDC"
+  ],
+  "curated_defaults": {
+    "base": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61"
+  },
+  "oneclick_receipts": [
+    {
+      "symbol": "gtUSDCp",
+      "asset_id": "nep141:base-0x0bb69b79bc829e1cfcc34a740110886d98d2bd14.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x0bb69b79bc829e1cfcc34a740110886d98d2bd14",
+      "underlying_vault": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61"
+    },
+    {
+      "symbol": "mwUSDC",
+      "asset_id": "nep141:base-0x3388d158fdcc31398b99478420e6945cdaace009.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x3388d158fdcc31398b99478420e6945cdaace009",
+      "underlying_vault": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca"
+    },
+    {
+      "symbol": "sparkUSDC",
+      "asset_id": "nep141:base-0x7429743f8adbbe932b27bc02267b0e70f1ba688b.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x7429743f8adbbe932b27bc02267b0e70f1ba688b",
+      "underlying_vault": "0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A"
+    },
+    {
+      "symbol": "steakUSDC",
+      "asset_id": "nep141:eth-0xaf08e292d62df255f7953665a44ed65f0380aa60.omft.near",
+      "decimals": 18,
+      "chain": "eth",
+      "wrapper_address": "0xaf08e292d62df255f7953665a44ed65f0380aa60",
+      "underlying_vault": "0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB"
+    }
+  ],
+  "rails": {
+    "direct": true,
+    "oneclick_earn": true,
+    "intents_connect": false
+  },
+  "intents_connect": {
+    "base_url": "https://intents-connect-api.aurora.dev",
+    "supported_assets": {
+      "base": ["USDC", "WETH", "USDT", "cbBTC"],
+      "eth": ["USDC", "WETH", "USDT", "cbBTC"]
+    }
+  }
+}

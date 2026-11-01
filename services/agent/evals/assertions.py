@@ -183,6 +183,16 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
             else "crosschain_preview"
         )
 
+    for wire in wires:
+        if wire.get("type") == "earn_vaults":
+            return "earn_list"
+        if wire.get("type") == "earn_quote":
+            return (
+                "earn_unavailable"
+                if str(wire.get("state")) == "unavailable"
+                else "earn_preview"
+            )
+
     if "recommendation" in kinds:
         return "recommendation"
     if "portfolio_snapshot" in kinds:

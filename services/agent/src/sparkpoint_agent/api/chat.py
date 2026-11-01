@@ -80,6 +80,7 @@ from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
 from ..db.wrapper_whitelist import PgWhitelistStore
+from ..earn.service import build_service_from_env as build_earn_service_from_env
 from ..knowledge import KnowledgeRetriever, default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
@@ -598,6 +599,8 @@ def get_coordinator_dag(
         # 068 — cross-chain swap previews via NEAR Intents 1Click. Advisory only: the chat branch
         # emits text + a non-signable card, and the user sends funds from their own wallet.
         crosschain=build_service_from_env(),
+        # 069 — data-driven Morpho earn registry: list + DRY previews only, never custody.
+        earn=build_earn_service_from_env(),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky
@@ -930,6 +933,8 @@ _PERSISTED_BLOCK_TYPES = frozenset(
         "outcome",
         "citation",
         "crosschain_quote",
+        "earn_vaults",
+        "earn_quote",
     }
 )
 
@@ -956,6 +961,10 @@ def _assistant_summary(block_wire: dict[str, Any]) -> str:
         return f"[proposed action: {pa.get('type', 'action')}]"
     if t == "portfolio_snapshot":
         return "[showed your portfolio]"
+    if t == "earn_vaults":
+        return "[showed Morpho vaults]"
+    if t == "earn_quote":
+        return "[previewed a Morpho vault]"
     return ""
 
 

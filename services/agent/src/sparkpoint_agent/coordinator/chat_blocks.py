@@ -465,3 +465,92 @@ class PositionLite:
             if value is not None:
                 wire[key] = value
         return wire
+
+
+EarnVaultsState = Literal["ready", "unavailable"]
+EarnQuoteState = Literal["preview", "unavailable"]
+
+
+@dataclass(frozen=True)
+class EarnVaultsBlock(ChatBlock):
+    """069 ``earn_vaults`` — the deterministic Morpho vault list (top N, data-driven).
+
+    Carries no calldata and no signature. ``state=unavailable`` is an honest empty/failed snapshot,
+    never an error block; the vault rows include the rails that are actually available today.
+    """
+
+    state: EarnVaultsState
+    vaults: tuple[dict[str, Any], ...] = ()
+    snapshot_age_minutes: int | None = None
+    snapshot_source: str | None = None
+    unavailable_reason: str | None = None
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_vaults",
+            "state": self.state,
+            "vaults": [dict(vault) for vault in self.vaults],
+        }
+        for attr, key in (
+            ("snapshot_age_minutes", "snapshotAgeMinutes"),
+            ("snapshot_source", "snapshotSource"),
+            ("unavailable_reason", "unavailableReason"),
+            ("note", "note"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire
+
+
+@dataclass(frozen=True)
+class EarnQuoteBlock(ChatBlock):
+    """069 ``earn_quote`` — a DRY preview (1Click receipt or a direct/Intents-Connect hint).
+
+    Never signable. ``rail`` names which of ``direct`` / ``oneclick_earn`` / ``intents_connect`` the
+    preview describes. ``receipt_note`` exists so the UI cannot imply a wrapper token is the native
+    Morpho share; ``fee_note`` carries the keyless 1Click routing fee when no API key is set.
+    """
+
+    state: EarnQuoteState
+    rail: str
+    vault: dict[str, Any]
+    origin: dict[str, Any] | None = None
+    amount_in: str | None = None
+    amount_out: str | None = None
+    amount_out_usd: str | None = None
+    time_estimate_sec: int | None = None
+    fee_note: str | None = None
+    receipt_note: str | None = None
+    unavailable_reason: str | None = None
+    steps: tuple[dict[str, Any], ...] = ()
+    quoted_at: str | None = None
+    expires_hint: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_quote",
+            "state": self.state,
+            "rail": self.rail,
+            "vault": dict(self.vault),
+        }
+        if self.origin is not None:
+            wire["origin"] = dict(self.origin)
+        if self.steps:
+            wire["steps"] = [dict(step) for step in self.steps]
+        for attr, key in (
+            ("amount_in", "amountIn"),
+            ("amount_out", "amountOut"),
+            ("amount_out_usd", "amountOutUsd"),
+            ("time_estimate_sec", "timeEstimateSec"),
+            ("fee_note", "feeNote"),
+            ("receipt_note", "receiptNote"),
+            ("unavailable_reason", "unavailableReason"),
+            ("quoted_at", "quotedAt"),
+            ("expires_hint", "expiresHint"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire

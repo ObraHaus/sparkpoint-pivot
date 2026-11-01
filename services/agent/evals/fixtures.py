@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -36,6 +38,9 @@ from sparkpoint_agent.coordinator.dag import (
 from sparkpoint_agent.crosschain.config import load_config
 from sparkpoint_agent.crosschain.oneclick import OneClickClient
 from sparkpoint_agent.crosschain.service import CrossChainService
+from sparkpoint_agent.earn.config import default_config as earn_config
+from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot, VaultAsset, VaultEntry
+from sparkpoint_agent.earn.service import EarnService
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.persona import get_persona
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom, RiskProfile
@@ -272,6 +277,62 @@ def _crosschain_service(mode: str) -> CrossChainService:
     return CrossChainService(config, client)
 
 
+_EARN_VAULTS = (
+    VaultEntry(
+        chain="base",
+        chain_id=8453,
+        address="0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+        version="v1",
+        name="Gauntlet USDC Prime",
+        symbol="GTUSDC",
+        asset=VaultAsset(
+            address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol="USDC", decimals=6
+        ),
+        listed=True,
+        tvl_usd=Decimal("420747952"),
+        net_apy=Decimal("0.0441"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+    ),
+    VaultEntry(
+        chain="base",
+        chain_id=8453,
+        address="0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+        version="v1",
+        name="Moonwell Flagship USDC",
+        symbol="MWUSDC",
+        asset=VaultAsset(
+            address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol="USDC", decimals=6
+        ),
+        listed=True,
+        tvl_usd=Decimal("150000000"),
+        net_apy=Decimal("0.0612"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+    ),
+)
+
+
+def _earn_service(mode: str) -> EarnService:
+    """A real 069 service over a FIXED snapshot; no Morpho/1Click network call is made."""
+    config = earn_config()
+    registry = EarnRegistry(config, writable_path="/nonexistent/earn-eval.json")
+    registry.install(
+        EarnSnapshot(
+            fetched_at=datetime.now(UTC),
+            source="morpho_api",
+            vaults=_EARN_VAULTS,
+        )
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - direct only
+        return httpx.Response(400, json={"message": "No liquidity available"})
+
+    return EarnService(
+        config,
+        registry,
+        oneclick=OneClickClient(transport=httpx.MockTransport(handler), clock=lambda: 1000.0),
+    )
+
+
 def build_dag(
     *,
     case: Case,
@@ -292,6 +353,7 @@ def build_dag(
     fixture = wallet_fixture(case.wallet)
     persona = get_persona if live else (lambda: "")
     crosschain = _crosschain_service(case.crosschain) if case.crosschain else None
+    earn = _earn_service(case.earn) if case.earn else None
     return CoordinatorDag(
         planner=Planner(llm=client),
         recommender=Recommender(llm=client),
@@ -306,6 +368,7 @@ def build_dag(
         single_call=single_call,
         id_factory=_id_factory(),
         crosschain=crosschain,
+        earn=earn,
     )
 
 
