@@ -28,7 +28,7 @@ jobs:
           # `forge install` at scan time would not: that re-resolves from the
           # network and can pick up something the PR never pinned.
           submodules: recursive
-      - uses: ObraHaus/obrahaus-defender/ci/scan-action@4efc092573b4f9042763de7d8e2af60562d06722 # v1.10.1
+      - uses: ObraHaus/obrahaus-defender/ci/scan-action@526730ec0e39828a5c09c524f1ecc83cf4d9b693 # v1.11.0
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}
           defender-api-key: ${{ secrets.DEFENDER_API_KEY }}
