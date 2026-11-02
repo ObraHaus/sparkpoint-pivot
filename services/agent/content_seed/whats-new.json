@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "protocol-choice-or-questions-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Choice questions about two protocols now get the comparison",
+      "body": "Asking Sparky \"Morpho or Aave?\" or \"should I put my USDC in Rhea or Aave?\" now gives you the usual side-by-side comparison instead of a message that there is no move to build. A question that offers two or more known protocols as a choice is treated as a knowledge question, while a real command with an amount — such as \"deposit 500 USDC into Morpho or Aave, whichever is safer\" — still goes through the normal review path. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T08:00:00Z"
+    },
+    {
       "slug": "amount-exponent-cap-2026-11",
       "type": "changelog",
       "tag": "Fixed",
