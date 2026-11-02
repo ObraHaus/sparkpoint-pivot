@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 from typing import Literal
 
 from .config import EarnConfig
@@ -163,14 +163,17 @@ def _amount(text: str) -> tuple[Decimal, int, str] | None:
         (match.group("scale") or "").lower(), Decimal(1)
     )
     amount *= multiplier
-    if amount <= 0:
+    if not amount.is_finite() or amount <= 0:
         return None
     symbol = match.group("symbol").upper()
     decimals = _DECIMALS.get(symbol, 18)
     exponent = amount.as_tuple().exponent
     if isinstance(exponent, int) and -exponent > decimals:
         return None
-    raw = int(amount.scaleb(decimals))
+    try:
+        raw = int(amount.scaleb(decimals))
+    except (DecimalException, ValueError, OverflowError):
+        return None
     if raw <= 0:
         return None
     return amount, raw, symbol

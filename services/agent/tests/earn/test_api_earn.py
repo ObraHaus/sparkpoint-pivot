@@ -163,7 +163,9 @@ def test_preview_rejects_dry_false(client: TestClient) -> None:
     assert "dry" in response.json()["error"]["message"].lower()
 
 
-@pytest.mark.parametrize("amount", ["0", "-1", "abc", "1.1234567"])
+@pytest.mark.parametrize(
+    "amount", ["0", "-1", "abc", "1.1234567", "NaN", "Infinity", "-Infinity", "1e999999999"]
+)
 def test_preview_rejects_bad_amounts(client: TestClient, amount: str) -> None:
     response = client.post(
         "/earn/preview",
