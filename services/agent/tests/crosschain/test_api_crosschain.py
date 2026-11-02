@@ -169,7 +169,9 @@ def test_unknown_asset_is_a_400(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-@pytest.mark.parametrize("amount", ["0", "-1", "abc", "1.1234567"])
+@pytest.mark.parametrize(
+    "amount", ["0", "-1", "abc", "1.1234567", "NaN", "Infinity", "-Infinity", "1e999999999"]
+)
 def test_bad_amounts_are_rejected(client: TestClient, amount: str) -> None:
     response = client.post(
         "/crosschain/quote",

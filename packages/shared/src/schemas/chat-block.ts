@@ -583,6 +583,10 @@ export const PortfolioSectionSchema = z
     chains: z.array(PortfolioChainStatusSchema).optional(),
     mca: z.string().optional(),
     appUrl: z.string().optional(),
+    // Rhea's empty account ("no Rhea account yet") and its one-time fee explanation.
+    explainer: z.string().optional(),
+    // Kamino's meta count of Solana addresses already linked to this wallet.
+    linkedAddresses: z.number().int().nonnegative().optional(),
     note: z.string().optional(),
   })
   .strict();

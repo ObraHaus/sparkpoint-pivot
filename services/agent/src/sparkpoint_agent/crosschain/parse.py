@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 
 from .config import CrossChainAsset, CrossChainConfig
 
@@ -74,12 +74,15 @@ def _parse_amount(raw: str, scale: str | None, decimals: int) -> tuple[Decimal, 
         (scale or "").lower(), Decimal(1)
     )
     amount *= multiplier
-    if amount <= 0:
+    if not amount.is_finite() or amount <= 0:
         return None
     exponent = amount.as_tuple().exponent
     if isinstance(exponent, int) and -exponent > decimals:
         return None
-    raw_units = int(amount.scaleb(decimals))
+    try:
+        raw_units = int(amount.scaleb(decimals))
+    except (DecimalException, ValueError, OverflowError):
+        return None
     if raw_units <= 0:
         return None
     return amount, raw_units

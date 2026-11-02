@@ -1,0 +1,72 @@
+{
+  "type": "portfolio_overview",
+  "state": "empty",
+  "focus": "all",
+  "asOf": "2026-11-02T03:49:13.370261+00:00",
+  "sections": [
+    {
+      "key": "balances",
+      "label": "Wallet balances",
+      "status": "ok",
+      "rows": [],
+      "source": "rpc",
+      "asOf": "2026-11-02T03:49:13.124053+00:00",
+      "chains": [
+        {
+          "chain": "base",
+          "label": "Base",
+          "status": "unavailable",
+          "reason": "not configured"
+        },
+        {
+          "chain": "eth",
+          "label": "Ethereum",
+          "status": "ok",
+          "reason": null
+        }
+      ]
+    },
+    {
+      "key": "morpho",
+      "label": "Morpho",
+      "status": "ok",
+      "rows": [],
+      "source": "morpho_api",
+      "asOf": "2026-11-02T03:49:13.370166+00:00"
+    },
+    {
+      "key": "kamino",
+      "label": "Kamino",
+      "status": "not_linked",
+      "rows": [],
+      "reason": "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)",
+      "source": "solana_rpc",
+      "asOf": "2026-11-02T03:49:13.059781+00:00"
+    },
+    {
+      "key": "rhea",
+      "label": "Rhea",
+      "status": "ok",
+      "rows": [],
+      "source": "rhea_rpc",
+      "asOf": "2026-11-02T03:49:13.168143+00:00",
+      "appUrl": "https://app.rhea.finance/lending",
+      "explainer": "You don't have a Rhea account yet. Your first deposit creates one (a one-time 0.30 USDC fee) and starts earning on NEAR."
+    },
+    {
+      "key": "swaps",
+      "label": "Cross-chain swaps",
+      "status": "ok",
+      "rows": [],
+      "source": "db",
+      "asOf": "2026-11-02T03:49:13.059866+00:00"
+    }
+  ],
+  "totals": {
+    "totalUsd": null,
+    "byChain": [],
+    "byProtocol": [],
+    "priced": false
+  },
+  "sources": ["rpc", "morpho_api", "solana_rpc", "rhea_rpc", "db"]
+}

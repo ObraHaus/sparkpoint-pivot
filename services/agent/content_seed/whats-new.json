@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "portfolio-verify-earn-wording-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio loads reliably, and Morpho/Kamino earn questions show vaults",
+      "body": "The Across chains panel on the Portfolio page and Sparky's portfolio answer now load reliably when your Rhea account is empty: the Rhea section keeps its honest first-deposit explanation instead of making the whole portfolio read fail verification. Asking Sparky to \"earn on USDC with Morpho\" or \"earn yield on SOL with Kamino\" now shows the matching vault list rather than falling through, while depositing a specific amount works exactly as before. Very large or non-numeric amounts are now rejected cleanly with a validation message instead of an internal error. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T03:55:00Z"
+    },
+    {
       "slug": "streaming-guard-073-2026-11",
       "type": "changelog",
       "tag": "Fixed",
@@ -82,6 +90,14 @@
       "published_at": "2026-10-29T10:00:00Z"
     },
     {
+      "slug": "thumbs-feedback-204-fix-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Rating an answer now confirms cleanly",
+      "body": "When you rate a Sparky answer with a thumbs up or down, the rating was being saved but the app could still show an error, as if the tap had failed. That is fixed: the confirmation now comes back cleanly, so you can see your feedback was recorded. Nothing else about chat, signing or your funds changed.",
+      "published_at": "2026-10-28T09:00:00Z"
+    },
+    {
       "slug": "true-streaming-and-comparisons-2026-10",
       "type": "changelog",
       "tag": "Fixed",
@@ -90,20 +106,20 @@
       "published_at": "2026-10-28T03:00:00Z"
     },
     {
-      "slug": "price-vs-estimate-routing-2026-10",
-      "type": "changelog",
-      "tag": "Fixed",
-      "title": "Sparky tells a price question from an earnings estimate",
-      "body": "Ask for the current price of a coin and Sparky still answers with a live reference figure, its source and the time it was read. Ask what an amount could earn over time — for example \"how much is 10k USDC in 1 year?\" or \"what would $500 in ETH earn in 6 months?\" — and it now treats that as an estimate request instead of quoting a single spot price. If a live price cannot be fetched, Sparky says so instead of guessing.",
-      "published_at": "2026-10-27T17:00:00Z"
-    },
-    {
       "slug": "quota-refund-audit-2026-10",
       "type": "changelog",
       "tag": "Fixed",
       "title": "Behind the scenes: cleaner bookkeeping when an answer fails",
       "body": "When an AI answer fails because the provider is briefly unavailable, that question still does not count against your daily allowance. We fixed an internal check that wrongly reported those refunds as failed. Nothing changes in how you use Sparky.",
       "published_at": "2026-10-27T20:00:00Z"
+    },
+    {
+      "slug": "price-vs-estimate-routing-2026-10",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky tells a price question from an earnings estimate",
+      "body": "Ask for the current price of a coin and Sparky still answers with a live reference figure, its source and the time it was read. Ask what an amount could earn over time — for example \"how much is 10k USDC in 1 year?\" or \"what would $500 in ETH earn in 6 months?\" — and it now treats that as an estimate request instead of quoting a single spot price. If a live price cannot be fetched, Sparky says so instead of guessing.",
+      "published_at": "2026-10-27T17:00:00Z"
     },
     {
       "slug": "chat-intent-routing-2026-10",
@@ -176,6 +192,14 @@
       "title": "A calmer app: no pop-up blocking you, and helpful dead ends",
       "body": "The What's New note no longer covers the app while you are trying to use it — it is now a small panel you can dismiss, and it only greets you once per release. The Strategies tab is hidden while there are no strategies to show, rather than leading to an empty page. On phones the header is tidier, and the trust banner can be dismissed for good. The vault page now refreshes every minute instead of constantly, so it uses much less data and battery. In chat, a slow answer now says Sparky is taking longer than usual, and a failed or rate-limited turn explains when your allowance resets and points you to the Vault, Swap and changelog, which keep working without Sparky. You can now rate a chat answer with a thumbs up or down; the rating is stored so it can improve answers. Signing in also no longer waits forever if the assistant is briefly unreachable — you continue straight to the app.",
       "published_at": "2026-10-26T09:00:00Z"
+    },
+    {
+      "slug": "broker-mint-whitelist-2026-10",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Apply now for the Sparky Broker mint whitelist",
+      "body": "The Sparky Broker collection — 5,555 brokers — mints in stages on OpenSea: Treasury, then GTD, then FCFS, then Public. Apply with the wallet you'll mint from to be added to the GTD/FCFS allowlist, so you mint first at the allowlist price. No wallet connection is needed to apply, and a spot is one per wallet. You'll find the form on the landing page and on the Brokers page in the app.",
+      "published_at": "2026-10-06T09:00:00Z"
     },
     {
       "slug": "embedding-retry-2026-10",
