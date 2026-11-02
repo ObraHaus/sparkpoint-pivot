@@ -13,8 +13,10 @@ Supported shapes::
     Show Morpho vaults on Base
     List Morpho vaults on Ethereum for USDC
     What's the best Morpho vault on Base?
+    Earn on USDC with Morpho
     Show Kamino vaults
     Best Kamino vault
+    Earn yield on SOL with Kamino
     Deposit 100 USDC into Kamino SOL vault
     Put 1 SOL into Kamino on Solana
 """
@@ -79,6 +81,8 @@ _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
 _WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
 _RHEA_TARGET_RE = re.compile(r"\b(?:into|in|on|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE)
 _STABLE_RE = re.compile(r"\b(USDC|USDT)\b", re.IGNORECASE)
+_ASSET_RE = re.compile(r"\b(USDC|USDT|WETH|ETH|cbBTC|SOL)\b", re.IGNORECASE)
+_DIGIT_RE = re.compile(r"\d")
 _RHEA_NEGATIVE_RE = re.compile(
     r"\b(?:bridge|bridges|bridging|swap|swaps|swapping|cross[-\s]?chain)\b",
     re.IGNORECASE,
@@ -215,6 +219,15 @@ def _stable_symbol(text: str) -> str | None:
         return asset_match.group("asset").upper()
     stable = _STABLE_RE.search(text)
     return stable.group(1).upper() if stable is not None else None
+
+
+def _named_asset(text: str) -> str | None:
+    """The earn asset a turn names anywhere (``on USDC``, ``on SOL``), if any."""
+    match = _ASSET_RE.search(text)
+    if match is None:
+        return None
+    symbol = match.group(1).upper()
+    return "WETH" if symbol == "ETH" else symbol
 
 
 def _rhea_asset_enabled(config: EarnConfig, symbol: str) -> bool:
@@ -397,7 +410,25 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
         return None
     amount = _amount(text)
     if amount is None:
-        return None
+        # "earn on USDC with Morpho" / "earn yield on SOL with Kamino" name a protocol and a
+        # yield verb but no amount: that is a list/explain turn, exactly like "earn on Rhea".
+        # A turn with digits (e.g. "deposit 1.1234567 USDC into Morpho") keeps rejecting.
+        if _DIGIT_RE.search(text) is not None:
+            return None
+        chain = _chain_from(text)
+        if chain is None and protocol == "kamino":
+            chain = "sol"
+        return EarnRequest(
+            kind="list",
+            chain=chain,
+            asset=_named_asset(text),
+            amount=None,
+            amount_raw=None,
+            vault_query=None,
+            sort="apy" if _BEST_RE.search(text) is not None else "tvl",
+            message=message,
+            protocol=protocol,
+        )
     target_match = _TARGET_RE.search(text)
     if target_match is None:
         return None

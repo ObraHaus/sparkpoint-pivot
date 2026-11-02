@@ -31,6 +31,33 @@ def test_list_positives(prompt: str, kind: str, chain: str | None, asset: str | 
 
 
 @pytest.mark.parametrize(
+    ("prompt", "chain", "asset"),
+    [
+        ("earn on USDC with Morpho", None, "USDC"),
+        ("earn yield on SOL with Kamino", "sol", "SOL"),
+    ],
+)
+def test_amount_less_protocol_earn_is_a_list(
+    prompt: str, chain: str | None, asset: str | None
+) -> None:
+    request = parse_earn_request(prompt, default_config())
+    assert request is not None
+    assert request.kind == "list"
+    assert request.amount is None
+    assert request.chain == chain
+    assert request.asset == asset
+    assert request.protocol == ("kamino" if "Kamino" in prompt else "morpho")
+
+
+def test_amount_bearing_earn_stays_a_deposit_preview() -> None:
+    request = parse_earn_request("Earn 1,000 USDC with Morpho on Base", default_config())
+    assert request is not None
+    assert request.kind == "deposit"
+    assert request.amount == Decimal("1000")
+    assert parse_earn_request("Deposit 1.1234567 USDC into Morpho", default_config()) is None
+
+
+@pytest.mark.parametrize(
     ("prompt", "amount", "chain", "query"),
     [
         (
