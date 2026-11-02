@@ -266,6 +266,10 @@ _CAP_TOKEN_RE = re.compile(r"\b([A-Z][A-Za-z0-9]{2,})\b")
 
 _ALIASES_BY_DISPLAY: dict[str, tuple[str, ...]] = {s.display: s.aliases for s in _KNOWN}
 
+#: Every canonical subject the alias table knows, in table order. The facts table (074) must
+#: cover exactly this set, and tests pin the two together.
+KNOWN_SUBJECTS: tuple[str, ...] = tuple(s.display for s in _KNOWN)
+
 
 def _alias_pattern(alias: str) -> re.Pattern[str]:
     """A word-boundary matcher for one alias, case-insensitive.
@@ -308,23 +312,46 @@ def _generic_subjects(message: str, *, found: int) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def extract_comparison_subjects(message: str) -> tuple[str, ...]:
-    """The protocols/options a comparative message names, in the order they appear.
-
-    An empty tuple means the turn is deictic or unknown ("compare that with…", "compare them");
-    the caller then keeps the whole-message retrieval path and must not claim per-entity coverage.
-    """
+def _positioned_known(message: str) -> list[tuple[int, str]]:
+    """Known subjects matched in ``message``, with their first-alias position."""
     positioned: list[tuple[int, str]] = []
     for subject in _KNOWN:
         position = _first_position(message, subject.aliases)
         if position is not None:
             positioned.append((position, subject.display))
     positioned.sort(key=lambda item: item[0])
+    return positioned
+
+
+def extract_known_subjects(message: str) -> tuple[str, ...]:
+    """Only the table-known subjects, in message order, with NO proper-noun fallback.
+
+    074 uses this when curated-vault labels are present: a vault label such as ``"Gauntlet USDC
+    Prime"`` would otherwise be shredded into fallback tokens (``Gauntlet``, ``Prime``) that are
+    not protocol subjects.
+    """
+    return tuple(display for _, display in _positioned_known(message))
+
+
+def extract_comparison_subjects(message: str) -> tuple[str, ...]:
+    """The protocols/options a comparative message names, in the order they appear.
+
+    An empty tuple means the turn is deictic or unknown ("compare that with…", "compare them");
+    the caller then keeps the whole-message retrieval path and must not claim per-entity coverage.
+    """
+    positioned = _positioned_known(message)
     names = [display for _, display in positioned]
     for token in _generic_subjects(message, found=len(names)):
-        if token not in names:
-            names.append(token)
-    return tuple(names)
+        if token in names:
+            continue
+        found = message.find(token)
+        positioned.append((found if found >= 0 else len(message) + 1, token))
+    positioned.sort(key=lambda item: item[0])
+    ordered: list[str] = []
+    for _, name in positioned:
+        if name not in ordered:
+            ordered.append(name)
+    return tuple(ordered)
 
 
 def aliases_for(subject: str) -> tuple[str, ...]:
@@ -362,8 +389,10 @@ def passage_mentions_subject(passage: Passage, subject: str) -> bool:
 
 
 __all__ = [
+    "KNOWN_SUBJECTS",
     "aliases_for",
     "extract_comparison_subjects",
+    "extract_known_subjects",
     "passage_mentions_subject",
     "text_mentions_subject",
 ]

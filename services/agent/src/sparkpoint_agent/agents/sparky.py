@@ -117,6 +117,32 @@ COMPARATIVE_RULE = (
 )
 
 
+#: 074 — the comparative answer is a code-authored skeleton; only its closing trade-off comes
+#: from the model. This dedicated prompt is short and asks for ONE thing, which keeps the output
+#: small (latency) and the shape stable. It still forbids the same things the general prompt does
+#: (advice, a personal winner, invented figures, scaffolding talk, action payloads).
+BOTTOM_LINE_SYSTEM = (
+    "You are Sparky, the SparkPoint assistant. A comparison has already been laid out for the "
+    "user. Write ONLY its closing BOTTOM LINE: one or two short sentences of plain English that "
+    "describe the trade-off between the options. Do not declare a winner, do not say one is "
+    "safer or better, and do not give buy/sell or allocation advice. Do not invent, repeat or "
+    "estimate any figure. Do not mention notes, reference material, context, documents or what "
+    "you do or do not have access to. Do not use headings, bullet lists, code or JSON, and never "
+    "output a transaction, action payload or tool call. Output the sentence(s) only."
+)
+
+#: Why 0.2 and not 0: several free models in the gateway pool degrade at temperature 0
+#: (repetition, degenerate short replies). 0.2 keeps the closing sentence close to deterministic
+#: without asking the pool for a mode it handles badly. The gateway sets ``drop_params``, so a
+#: provider that ignores ``temperature``/``seed`` is fine. This is NOT a model/billing change.
+BOTTOM_LINE_TEMPERATURE = 0.2
+#: A fixed seed is best-effort only (some providers ignore it); the structure is deterministic
+#: with or without it.
+BOTTOM_LINE_SEED = 7
+#: The closing trade-off is 1-2 sentences; this is a runaway backstop, not the target length.
+BOTTOM_LINE_MAX_CHARS = 320
+
+
 SYSTEM = (
     "You are Sparky, the SparkPoint assistant, answering a general or conversational message "
     "in chat.\n"
@@ -159,9 +185,14 @@ def _clamp(text: str) -> str:
     Falls back to a whole-word cut (then a hard slice) when the budget contains no sentence
     end, so the result never dangles mid-word.
     """
-    if len(text) <= MAX_CHARS:
+    return _clamp_to(text, MAX_CHARS)
+
+
+def _clamp_to(text: str, limit: int) -> str:
+    """The same sentence-boundary clamp as :func:`_clamp`, for a caller-supplied budget."""
+    if len(text) <= limit:
         return text
-    window = text[:MAX_CHARS]
+    window = text[:limit]
     cut = max(window.rfind("."), window.rfind("!"), window.rfind("?"))
     if cut > 0:
         return window[: cut + 1].strip()
@@ -432,3 +463,53 @@ class Sparky:
             failure = "refused" if result.refused else (unusable_reason(body) or "unusable")
             return SparkyReply(body="", fell_back=True, failure=failure)
         return SparkyReply(body=_clamp(body))
+
+    async def comparison_bottom_line(
+        self,
+        *,
+        subjects: Sequence[str],
+        body: str,
+        recent_conversation: str | None = None,
+        user: str | None = None,
+        temperature: float = BOTTOM_LINE_TEMPERATURE,
+        seed: int | None = BOTTOM_LINE_SEED,
+    ) -> SparkyReply:
+        """074 — the ONE model-authored piece of a comparison: its closing trade-off.
+
+        ``body`` is the already-rendered, code-authored skeleton (facts and any live figures).
+        The model is asked for one or two sentences only; it is never asked for structure or
+        figures. The shared content guard (:func:`is_unusable`) still applies, so a meta-shaped
+        or action-shaped closing sentence is discarded and the caller substitutes its
+        deterministic Bottom line. This method never raises: any provider failure is
+        ``fell_back=True`` with ``failure="upstream"``.
+        """
+        options = ", ".join(subjects)
+        prompt = f"OPTIONS: {options}\n\nCOMPARISON ALREADY SHOWN:\n{body}"
+        if recent_conversation:
+            prompt = f"{prompt}\n\nRECENT CONVERSATION:\n{recent_conversation}"
+        prompt = (
+            f"{prompt}\n\nWrite the closing BOTTOM LINE now (one or two sentences, no winner, "
+            "no advice, no figures, no note/context talk)."
+        )
+        user_content = fence(
+            "COMPARISON_CONTEXT", prompt, note=UNTRUSTED_NOTE
+        )
+        try:
+            result: LlmResult = await self.llm.complete(
+                system=BOTTOM_LINE_SYSTEM,
+                messages=[{"role": "user", "content": user_content}],
+                effort=self.effort,
+                max_tokens=self.max_tokens,
+                user=user,
+                temperature=temperature,
+                seed=seed,
+            )
+        except Exception:
+            return SparkyReply(body="", fell_back=True, failure="upstream")
+        text = result.text.strip()
+        if result.refused or is_unusable(text):
+            failure = (
+                "refused" if result.refused else (unusable_reason(text) or "unusable")
+            )
+            return SparkyReply(body="", fell_back=True, failure=failure)
+        return SparkyReply(body=_clamp_to(text, BOTTOM_LINE_MAX_CHARS))

@@ -41,6 +41,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agents import guardrail
+from ..agents.guard_text import is_unusable
 from ..agents.literacy import (
     DEFAULT_TIPS,
     FALLBACK_TOPIC,
@@ -101,14 +102,23 @@ from .chat_blocks import (
 )
 from .comparative import (
     extract_comparison_subjects,
+    extract_known_subjects,
     passage_mentions_subject,
     text_mentions_subject,
+)
+from .comparison_facts import (
+    curated_figures,
+    curated_label_subjects,
+    deterministic_bottom_line,
+    facts_for,
+    render_comparison,
 )
 from .curated import (
     BEST_VAULT_RE,
     CURATED_FAILURE,
     VAULT_RATE_RE,
     CuratedContext,
+    CuratedPick,
     curated_answer,
     curated_list_answer,
     curated_rate_answer,
@@ -210,6 +220,172 @@ def _join_names(names: Sequence[str]) -> str:
     if len(names) == 1:
         return names[0]
     return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+#: 074 — the Bottom line must be a trade-off, not a verdict or advice. The gate errs toward the
+#: deterministic fallback: it rejects any winner-implying or advice-shaped phrasing ("X is
+#: better", "Aave wins", "I'd go with X", "the safer bet") while a clause-level negation
+#: ("neither is better", "not necessarily safer") is still allowed through.
+_BOTTOM_LINE_VERDICT_RE = re.compile(
+    r"\b(?:is|are|seems?|looks?|feels?|remains?)\b(?:\s+\w+){0,3}?\s+"
+    r"(?:better|worse|safer|safest|best|superior|preferable|stronger|weaker|"
+    r"more\s+(?:reliable|dependable|attractive|suitable|sensible)|less\s+(?:risky|safe))\b"
+    r"|\b(?:better|worse)\s+than\b"
+    r"|\b(?:is|are)\s+the\s+one\s+to\b"
+    r"|\bone\s+to\s+(?:look\s+at|go\s+with|choose|pick)\b"
+    r"|\byou\s+should\b|\bi(?:'d|\s+would)?\s+(?:choose|recommend|pick|go\s+with|prefer)\b"
+    r"|\b(?:prefer|prefers|preferred)\b"
+    r"|\bopt(?:s|ed|ing)?\s+for\b"
+    r"|\bstick(?:s|ing)?\s+with\b"
+    r"|\bgo(?:es|ne)?\s+(?:for|with)\b"
+    r"|\b(?:safer|safe|better|smarter|stronger)\s+bet\b"
+    r"|\b(?:more|most)\s+(?:reliable|dependable|suitable|appropriate|attractive|sensible)\s+"
+    r"(?:choice|option|pick|bet)\b"
+    r"|\bclear\s+(?:choice|winner|favourite|favorite)\b"
+    r"|\bwinners?\b|\bwins?\b|\bwinning\b|\bbeats?\b|\boutperform\w*\b|\bedges?\s+out\b"
+    r"|\bstands?\s+out\b",
+    re.IGNORECASE,
+)
+#: A verdict match is not a verdict when the same clause negates it ("neither is better", "not
+#: necessarily safer"); a contrast conjunction starts a new clause so "neither is safer, but X
+#: wins" still catches the unnegated half.
+_BOTTOM_LINE_NEGATION_RE = re.compile(
+    r"\b(?:not|never|neither|none|nobody)\b|n't\b", re.IGNORECASE
+)
+_BOTTOM_LINE_CONTRAST_RE = re.compile(
+    r"[.;:!?]|\b(?:but|however|though|although|yet|whereas)\b", re.IGNORECASE
+)
+_BOTTOM_LINE_NOT_ONLY_RE = re.compile(r"\bnot\s+only\b", re.IGNORECASE)
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _match_is_negated(text: str, match: re.Match[str]) -> bool:
+    """True when ``match`` sits in a negated clause, so it is not an affirmative verdict."""
+    prefix = text[: match.start()]
+    boundaries = list(_BOTTOM_LINE_CONTRAST_RE.finditer(prefix))
+    clause_start = boundaries[-1].end() if boundaries else 0
+    clause = _BOTTOM_LINE_NOT_ONLY_RE.sub("", text[clause_start : match.end()])
+    return bool(_BOTTOM_LINE_NEGATION_RE.search(clause))
+
+
+def _has_verdict(text: str) -> bool:
+    """True when ``text`` contains at least one affirmative verdict/advice phrase."""
+    return any(
+        not _match_is_negated(text, match) for match in _BOTTOM_LINE_VERDICT_RE.finditer(text)
+    )
+
+
+def _curated_picks(curated: CuratedContext | None) -> tuple[CuratedPick, ...]:
+    """Every curated row the board renders, in board order (the pick is already in ``vaults``)."""
+    if curated is None:
+        return ()
+    if curated.vaults:
+        return curated.vaults
+    return (curated.pick,) if curated.pick is not None else ()
+
+
+def _ordered_by_mention(message: str, names: Sequence[str]) -> list[str]:
+    """Dedupe ``names`` and order them by their (case-insensitive) first mention in ``message``."""
+    lowered = message.lower()
+
+    def position(name: str) -> int:
+        found = lowered.find(name.lower())
+        return found if found >= 0 else len(message) + 1
+
+    ordered = sorted(dict.fromkeys(names), key=lambda name: (position(name), name))
+    return ordered
+
+
+def _history_comparative_subjects(
+    history: Sequence[tuple[str, str]] | None,
+    curated: CuratedContext | None,
+) -> tuple[str, ...]:
+    """Known subjects named in the most recent user turns (deictic "that" resolution)."""
+    if not history:
+        return ()
+    picks = _curated_picks(curated)
+    vault_names = {pick.label for pick in picks}
+    found: list[str] = []
+    for role, text in reversed(history[-4:]):
+        if role != "user":
+            continue
+        content = str(text).strip()
+        if not content:
+            continue
+        labels = [label for _, label in curated_label_subjects(content, picks)]
+        known = extract_known_subjects(content) if labels else extract_comparison_subjects(content)
+        for name in (*labels, *known):
+            if (facts_for(name) or name in vault_names) and name not in found:
+                found.append(name)
+        if len(found) >= 2:
+            break
+    return tuple(found)
+
+
+def _resolve_comparative_subjects(
+    message: str,
+    history: Sequence[tuple[str, str]] | None,
+    curated: CuratedContext | None,
+) -> tuple[str, ...]:
+    """Canonical comparison subjects: message order first, then history-resolved extras.
+
+    Curated vault labels are matched before the proper-noun fallback so a label like ``"Gauntlet
+    USDC Prime"`` is one subject, not three stray tokens. When the message names fewer than two
+    subjects (``"compare that with…"``), the most recent user turns supply the missing side.
+    """
+    picks = _curated_picks(curated)
+    labels = [label for _, label in curated_label_subjects(message, picks)]
+    if labels:
+        names = _ordered_by_mention(message, [*extract_known_subjects(message), *labels])
+    else:
+        names = list(extract_comparison_subjects(message))
+    if len(names) < 2:
+        for name in _history_comparative_subjects(history, curated):
+            if name not in names:
+                names.append(name)
+    return tuple(dict.fromkeys(names))
+
+
+def _bottom_line_is_acceptable(text: str | None) -> bool:
+    """A Bottom line is usable only when it is a plain, figure-free trade-off sentence."""
+    candidate = (text or "").strip()
+    if not candidate or "\n" in candidate:
+        return False
+    if is_unusable(candidate):
+        return False
+    if _DIGIT_RE.search(candidate):
+        return False
+    if _has_verdict(candidate):
+        return False
+    # 067's whole-answer refusal check is broader than ``_is_decline`` ("I won't", "I'd rather
+    # not", "Sorry…"), so both are applied to the closing sentence.
+    return not _is_decline(candidate) and not _is_whole_answer_refusal(candidate)
+
+
+def _comparative_answer(
+    *,
+    subjects: Sequence[str],
+    covered: Sequence[str],
+    passages: Sequence[Passage],
+    figures: Mapping[str, str],
+    bottom_line: str,
+    vault_subjects: Sequence[str] = (),
+) -> tuple[str, tuple[Passage, ...]]:
+    """Render the final skeleton + Bottom line and return it with the citable passage set."""
+    body = render_comparison(
+        subjects,
+        covered=covered,
+        figures=figures,
+        include_bottom_line=False,
+        vault_subjects=vault_subjects,
+    )
+    assert body is not None  # noqa: S101 — caller only reaches here with a described subject
+    closing = bottom_line.strip() or deterministic_bottom_line(
+        subjects, vault_subjects=vault_subjects
+    )
+    answer = f"{body}\n\n**Bottom line**\n{closing}"
+    citable = _comparative_citable_passages(subjects, passages)
+    return answer, citable
 
 
 def _comparative_fallback(
@@ -448,6 +624,25 @@ def _log_comparative_outcome(
         len(covered),
         reason,
         "true" if cited else "false",
+    )
+
+
+def _passage_sort_key(passage: Passage) -> tuple[str, str, str, str, str]:
+    """074 — deterministic tie-breaker for retrieved passages.
+
+    ``Passage`` carries no relevance score, so there is no score to sort on: the retriever's
+    top-k order is the relevance order and ties are broken by stable provenance fields
+    (source/provider, endpoint, field, value) and finally the content itself. Without this, two
+    equal-score chunks could arrive in a different order on different runs and change the
+    citation block even when the answer did not change.
+    """
+    citation = passage.citation
+    return (
+        citation.provider.lower(),
+        citation.endpoint,
+        citation.field,
+        citation.value,
+        passage.content.strip(),
     )
 
 
@@ -762,20 +957,32 @@ class CoordinatorDag:
         for subject in subjects:
             entity_hits = await self._ground(subject, k=_ENTITY_GROUND_K, min_score=0.0)
             buckets.append(
-                [
-                    passage
-                    for passage in entity_hits
-                    if passage_mentions_subject(passage, subject) and not _is_release_note(passage)
-                ]
+                sorted(
+                    (
+                        passage
+                        for passage in entity_hits
+                        if passage_mentions_subject(passage, subject)
+                        and not _is_release_note(passage)
+                    ),
+                    key=_passage_sort_key,
+                )
             )
 
         whole_hits = await self._ground(message, k=_GROUND_K, min_score=_OTHER_MIN_SCORE)
         if subjects:
             whole_hits = tuple(
-                passage
-                for passage in whole_hits
-                if any(passage_mentions_subject(passage, subject) for subject in subjects)
-                and not _is_release_note(passage)
+                sorted(
+                    (
+                        passage
+                        for passage in whole_hits
+                        if any(
+                            passage_mentions_subject(passage, subject)
+                            for subject in subjects
+                        )
+                        and not _is_release_note(passage)
+                    ),
+                    key=_passage_sort_key,
+                )
             )
 
         selected: list[Passage] = []
@@ -827,6 +1034,77 @@ class CoordinatorDag:
         ]
 
         return tuple(capped), tuple(covered)
+
+    async def _build_comparative_answer(
+        self,
+        message: str,
+        chain: ChainContext,
+        *,
+        history: Sequence[tuple[str, str]] | None,
+        user: str | None,
+    ) -> tuple[str, tuple[str, ...], tuple[str, ...], tuple[Passage, ...]]:
+        """074 — build one deterministic comparison.
+
+        Returns ``(answer, subjects, covered, citable)``. An empty ``answer`` means no named
+        subject had reviewed facts (the caller uses the 066 honest fallback). Curated vault labels
+        are resolved against the SAME board snapshot the curated route reads; their figures come
+        from that record (with its as-of), never from the model. Retrieval still runs per subject
+        so citations and the coverage note stay honest, but it never changes the skeleton.
+        """
+        curated_context: CuratedContext | None = None
+        if self.curated is not None:
+            try:
+                curated_context = await self.curated(chain.chain_id)
+            except Exception:  # noqa: BLE001 — a curated read must never cost the comparison
+                curated_context = None
+
+        subjects = _resolve_comparative_subjects(message, history, curated_context)
+        picks = _curated_picks(curated_context)
+        vault_subjects = tuple(
+            subject for subject in subjects if subject in {pick.label for pick in picks}
+        )
+        if not any(
+            facts_for(subject) is not None or subject in vault_subjects
+            for subject in subjects
+        ):
+            return "", subjects, (), ()
+
+        earlier = " ".join(
+            str(text).strip() for _, text in (history or ())[-2:] if str(text).strip()
+        )
+        ground_query = f"{earlier}\n{message}" if earlier else message
+        passages, covered = await self._ground_comparative(ground_query, subjects)
+        figures = curated_figures(subjects, picks)
+
+        body = (
+            render_comparison(
+                subjects,
+                covered=covered,
+                figures=figures,
+                include_bottom_line=False,
+                vault_subjects=vault_subjects,
+            )
+            or ""
+        )
+        closing = deterministic_bottom_line(subjects, vault_subjects=vault_subjects)
+        if self.sparky is not None:
+            reply = await self.sparky.comparison_bottom_line(
+                subjects=subjects,
+                body=body,
+                recent_conversation=earlier or None,
+                user=user,
+            )
+            if not reply.fell_back and _bottom_line_is_acceptable(reply.body):
+                closing = reply.body.strip()
+        answer, citable = _comparative_answer(
+            subjects=subjects,
+            covered=covered,
+            passages=passages,
+            figures=figures,
+            bottom_line=closing,
+            vault_subjects=vault_subjects,
+        )
+        return answer, subjects, covered, citable
 
     async def _general_answer(
         self,
@@ -1474,25 +1752,39 @@ class CoordinatorDag:
             # Prose-only by construction: whatever comes back is wrapped in a `text` block, which
             # has no proposedAction and no policy stamp — this branch cannot emit anything
             # signable. It also returns BEFORE the gather/propose/gate stages ever run.
-            # A comparative follow-up ("compare that with…") is deictic; retrieve against the
-            # recent turns too, or the first-person "that" finds nothing about what was discussed.
-            ground_query = message
-            prose_history: Sequence[tuple[str, str]] | None = None
-            subjects: tuple[str, ...] = ()
-            covered: tuple[str, ...] = ()
-            coverage_hint: str | None = None
+            # 074 — a comparative turn no longer asks the model for the answer. The skeleton is
+            # code-authored and byte-stable for identical inputs; only its closing Bottom line is
+            # a short model call. There are no prose deltas: a comparison is always ONE final text
+            # block, in both SPARKY_STREAMING modes. The zero-known-subject case keeps the
+            # 066 honest fallback.
             if comparative:
-                prose_history = history
-                earlier = " ".join(
-                    str(text).strip() for _, text in (history or ())[-2:] if str(text).strip()
+                label = "Checking the knowledge base"
+                yield ToolStepBlock(label, "running")
+                answer, subjects, covered, citable = await self._build_comparative_answer(
+                    message,
+                    chain,
+                    history=history,
+                    user=user,
                 )
-                if earlier:
-                    ground_query = f"{earlier}\n{message}"
-                subjects = extract_comparison_subjects(message)
-                passages, covered = await self._ground_comparative(ground_query, subjects)
-                coverage_hint = _comparative_coverage_hint(subjects, covered)
-            else:
-                passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
+                yield ToolStepBlock(label, "done")
+                if not answer:
+                    _log_comparative_outcome(
+                        subjects, covered, reason="non_answer", cited=False
+                    )
+                    yield TextBlock(
+                        _comparative_fallback(message, subjects=subjects, covered=covered)
+                    )
+                    return
+                cited = bool(citable)
+                _log_comparative_outcome(subjects, covered, reason="served", cited=cited)
+                yield TextBlock(answer)
+                if cited:
+                    yield CitationBlock(sources=tuple(p.citation for p in citable))
+                return
+
+            # A non-comparative general turn keeps the 063/065 prose path unchanged.
+            ground_query = message
+            passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
             prose_answer: str = _GENERAL_FAILURE
@@ -1505,9 +1797,7 @@ class CoordinatorDag:
                     passages,
                     user=user,
                     memory_lines=memory_lines,
-                    history=prose_history,
-                    comparative=comparative,
-                    coverage_hint=coverage_hint,
+                    history=history,
                 ):
                     if isinstance(prose_item, ProseDelta):
                         yield prose_item
@@ -1524,56 +1814,26 @@ class CoordinatorDag:
                     passages,
                     user=user,
                     memory_lines=memory_lines,
-                    history=prose_history,
-                    comparative=comparative,
-                    coverage_hint=coverage_hint,
+                    history=history,
                 )
                 failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
             if failed:
-                # 065 — a comparative answer that the model DID produce but the content guard
-                # rejected ("my reference notes…") is not an upstream outage. Answer honestly
-                # from code instead of telling the user the model was unreachable.
-                if comparative:
-                    _log_comparative_outcome(
-                        subjects,
-                        covered,
-                        reason=_comparative_failure_reason(failure),
-                        cited=False,
-                    )
-                if comparative and failure != "upstream":
-                    yield TextBlock(
-                        _comparative_fallback(message, subjects=subjects, covered=covered)
-                    )
-                    return
                 # 029/FR-003: a genuinely degraded turn must LOOK degraded. An ERROR block renders
                 # as the inline error state with a retry affordance, and (unlike a text block) is
                 # not persisted into the transcript — so a reopened conversation shows no phantom
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            if comparative:
-                # 067 — serve a comparison only when every named subject is mentioned and the
-                # answer is not a whole-answer refusal; otherwise use the honest code-authored
-                # fallback (uncited). Replace it BEFORE the text block is emitted (streaming may
-                # already have painted it; the terminal block is authoritative).
-                if not _is_comparative_servable(prose_answer, subjects):
-                    _log_comparative_outcome(subjects, covered, reason="non_answer", cited=False)
-                    yield TextBlock(
-                        _comparative_fallback(message, subjects=subjects, covered=covered)
-                    )
-                    return
-                # Cite only a COMPLETE per-subject set; a partial one is served uncited.
-                citable = _comparative_citable_passages(subjects, passages)
-                cited = bool(passages and grounded and citable)
-                _log_comparative_outcome(subjects, covered, reason="served", cited=cited)
-            else:
-                # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
-                # is not grounded in the retrieved passages, so it must not carry sources.
-                citable = tuple(passages)
-                cited = bool(
-                    passages and grounded and prose_answer.strip() and not _is_decline(prose_answer)
-                )
+            # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
+            # is not grounded in the retrieved passages, so it must not carry sources.
+            citable = tuple(passages)
+            cited = bool(
+                passages
+                and grounded
+                and prose_answer.strip()
+                and not _is_decline(prose_answer)
+            )
             yield TextBlock(prose_answer)
             if cited:
                 yield CitationBlock(sources=tuple(p.citation for p in citable))

@@ -100,6 +100,8 @@ class MessageTransport(Protocol):
         tools: Sequence[Mapping[str, Any]] | None,
         extra_body: Mapping[str, Any],
         user: str | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> Any: ...
 
 
@@ -148,11 +150,16 @@ class AnthropicTransport:
         tools: Sequence[Mapping[str, Any]] | None,
         extra_body: Mapping[str, Any],
         user: str | None = None,  # noqa: ARG002 — Anthropic messages.create has no `user` field
+        temperature: float | None = None,
+        seed: int | None = None,  # noqa: ARG002 — Anthropic Messages API has no `seed`
     ) -> Any:
         from anthropic import NOT_GIVEN
 
         tools_arg: Any = list(tools) if tools else NOT_GIVEN
         messages_api: Any = self.client.messages
+        sampling: dict[str, Any] = {}
+        if temperature is not None:
+            sampling["temperature"] = temperature
         return await messages_api.create(
             model=model,
             max_tokens=max_tokens,
@@ -160,6 +167,7 @@ class AnthropicTransport:
             messages=messages,
             tools=tools_arg,
             extra_body=dict(extra_body),
+            **sampling,
         )
 
 
@@ -298,6 +306,8 @@ class OpenAICompatTransport:
         max_tokens: int,
         user: str | None,
         stream: bool,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             # Per-request tier override (premium routing) if set, else the configured alias.
@@ -305,6 +315,13 @@ class OpenAICompatTransport:
             "messages": _oai_messages(system, messages),
             "max_tokens": max_tokens,
         }
+        # 074 — sent ONLY when a caller asks for it (comparative Bottom-line calls use 0.2/seed 7).
+        # Every other agent omits both, so its payload is byte-identical to before. The gateway
+        # config sets ``drop_params: true``, so a provider that does not support them ignores them.
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if seed is not None:
+            payload["seed"] = seed
         if user:
             payload["user"] = user
         if stream:
@@ -331,9 +348,17 @@ class OpenAICompatTransport:
         tools: Sequence[Mapping[str, Any]] | None,  # noqa: ARG002 — advisory path sends no tools
         extra_body: Mapping[str, Any],  # noqa: ARG002 — Anthropic thinking/effort dropped here
         user: str | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> Any:
         payload = self._payload(
-            system=system, messages=messages, max_tokens=max_tokens, user=user, stream=False
+            system=system,
+            messages=messages,
+            max_tokens=max_tokens,
+            user=user,
+            stream=False,
+            temperature=temperature,
+            seed=seed,
         )
         headers = self._headers()
         url = self._url()
@@ -369,6 +394,8 @@ class OpenAICompatTransport:
         messages: list[dict[str, Any]],
         max_tokens: int,
         user: str | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> AsyncIterator[GatewayStreamPiece]:
         """Open an SSE ``stream=true`` completion and yield text deltas as they arrive.
 
@@ -380,7 +407,13 @@ class OpenAICompatTransport:
         4xx, and the client falls back to the non-streaming path rather than failing the turn.
         """
         payload = self._payload(
-            system=system, messages=messages, max_tokens=max_tokens, user=user, stream=True
+            system=system,
+            messages=messages,
+            max_tokens=max_tokens,
+            user=user,
+            stream=True,
+            temperature=temperature,
+            seed=seed,
         )
         headers = self._headers()
         url = self._url()
@@ -666,6 +699,8 @@ class AsyncClaudeClient:
         tools: Sequence[Mapping[str, Any]] | None = None,
         max_tokens: int = DEFAULT_PROSE_MAX_TOKENS,
         user: str | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> LlmResult:
         """One async Claude turn, refusal-safe and CoT-stripped.
 
@@ -683,16 +718,28 @@ class AsyncClaudeClient:
         system_blocks = self._system_blocks(system)
         request_messages = [dict(m) for m in messages]
         extra_body = self._extra_body(eff, thinking)
+        # 074 — only a caller that explicitly asks opts into sampling params. The call shape stays
+        # the pre-074 one otherwise, so every existing transport double (and every other agent)
+        # is unaffected.
+        sampled = temperature is not None or seed is not None
+
+        def _create() -> Any:
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "system": system_blocks,
+                "messages": request_messages,
+                "max_tokens": max_tokens,
+                "tools": tools,
+                "extra_body": extra_body,
+                "user": user,
+            }
+            if sampled:
+                kwargs["temperature"] = temperature
+                kwargs["seed"] = seed
+            return self.transport.create(**kwargs)
+
         msg = await call_with_resilience(
-            lambda: self.transport.create(
-                model=self.model,
-                system=system_blocks,
-                messages=request_messages,
-                max_tokens=max_tokens,
-                tools=tools,
-                extra_body=extra_body,
-                user=user,
-            ),
+            _create,
             policy=self.retry_policy,
             limiter=self.limiter,
         )
@@ -711,6 +758,8 @@ class AsyncClaudeClient:
         tools: Sequence[Mapping[str, Any]] | None = None,
         max_tokens: int = DEFAULT_PROSE_MAX_TOKENS,
         user: str | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Like :meth:`complete`, but yield text deltas as the model produces them.
 
@@ -735,6 +784,12 @@ class AsyncClaudeClient:
         system_blocks = self._system_blocks(system)
         request_messages = [dict(m) for m in messages]
         stream_fn = getattr(self.transport, "stream", None)
+        # 074 — sampling params are forwarded only when the caller sets them.
+        stream_kwargs: dict[str, Any] = {}
+        if temperature is not None:
+            stream_kwargs["temperature"] = temperature
+        if seed is not None:
+            stream_kwargs["seed"] = seed
         if stream_fn is None:
             result = await self.complete(
                 system=system,
@@ -745,6 +800,8 @@ class AsyncClaudeClient:
                 tools=tools,
                 max_tokens=max_tokens,
                 user=user,
+                temperature=temperature,
+                seed=seed,
             )
             if result.text:
                 yield StreamChunk(delta=result.text)
@@ -768,6 +825,7 @@ class AsyncClaudeClient:
                         messages=request_messages,
                         max_tokens=max_tokens,
                         user=user,
+                        **stream_kwargs,
                     ):
                         if piece.usage is not None:
                             usage = piece.usage
@@ -814,6 +872,8 @@ class AsyncClaudeClient:
             tools=tools,
             max_tokens=max_tokens,
             user=user,
+            temperature=temperature,
+            seed=seed,
         )
         if result.text:
             yield StreamChunk(delta=result.text)

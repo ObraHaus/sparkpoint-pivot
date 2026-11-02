@@ -10,6 +10,14 @@
       "published_at": "2026-11-01T14:30:00Z"
     },
     {
+      "slug": "consistent-comparisons-074-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Comparisons now use a consistent side-by-side format",
+      "body": "When you ask Sparky to compare two options — for example \"Compare Morpho vs Aave\" or two curated vaults by name — the answer now uses the same side-by-side layout every time: what each option is, how the yield is made, the main risks, and the fees and structure, with the live stored figures and their as-of date for curated vaults. Only the short closing trade-off is written by the AI, so a comparison no longer changes shape from one question to the next, and it never picks a winner or gives advice. If the AI cannot write that closing line, Sparky uses a plain, honest one instead. Comparisons also no longer stream in word by word: you get the finished, checked side-by-side answer in one go, and nothing about reviewing or signing changes.",
+      "published_at": "2026-11-01T12:00:00Z"
+    },
+    {
       "slug": "multichain-portfolio-072-2026-11",
       "type": "changelog",
       "tag": "New",

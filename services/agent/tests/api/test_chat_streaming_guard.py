@@ -348,7 +348,10 @@ async def test_a_comparative_turn_emits_no_prose_delta_at_all(
     assert not [event for event in events if event[0] == "text-delta"]
     text = _final_prose(events)
     assert "Morpho" in text and "Aave" in text
-    assert text == answer
+    # 074 — a comparison is served as the code-authored skeleton, with the model text only as
+    # the closing Bottom line (never as the whole answer).
+    assert "**What it is**" in text
+    assert text.endswith(answer)
 
 
 async def test_a_meta_comparative_turn_serves_the_code_fallback_without_paint(
@@ -369,7 +372,10 @@ async def test_a_meta_comparative_turn_serves_the_code_fallback_without_paint(
     text = _final_prose(events)
     assert "reference notes" not in text
     assert "The user asks" not in text
-    assert "I can't rank Morpho and Aave" in text
+    # 074 — a rejected Bottom line falls back to the deterministic code sentence inside the
+    # same skeleton (the 073 guard still keeps the rejected text off the wire entirely).
+    assert "**What it is**" in text
+    assert "The trade-off is structural rather than a ranking" in text
 
 
 async def test_a_clean_answer_paints_before_done_and_reconciles_with_the_final_block(

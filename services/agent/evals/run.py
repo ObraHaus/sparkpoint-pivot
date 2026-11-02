@@ -7,6 +7,7 @@ import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 
+from . import consistency
 from .model import OUT_DIR, load_cases
 from .runner import (
     HttpNotConfigured,
@@ -26,8 +27,16 @@ def _parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("offline", "live", "http"),
         default="offline",
-        help=("offline = deterministic in-process (default); live = gateway + judge; "
-              "http = deployed SSE"),
+        help=(
+            "offline = deterministic in-process (default); live = gateway + judge; "
+            "http = deployed SSE"
+        ),
+    )
+    parser.add_argument(
+        "--suite",
+        choices=("golden", "consistency"),
+        default="golden",
+        help="golden = the product eval set (default); consistency = the 074 repeatability suite",
     )
     parser.add_argument("--out", type=Path, default=OUT_DIR, help="output directory")
     parser.add_argument(
@@ -47,8 +56,36 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_consistency(args: argparse.Namespace) -> int:
+    prompts = consistency.PROMPTS
+    if args.case:
+        wanted = set(args.case)
+        prompts = tuple(prompt for prompt in prompts if prompt.id in wanted)
+        if not prompts:
+            print(f"No consistency prompts matched: {', '.join(sorted(wanted))}")
+            return 1
+    try:
+        if args.mode == "live":
+            report = asyncio.run(consistency.run_live(prompts, repeats=3))
+        elif args.mode == "http":
+            print("Consistency has no HTTP mode; use --mode offline or --mode live.")
+            return 0
+        else:
+            report = asyncio.run(consistency.run_offline(prompts, repeats=5))
+    except consistency.LiveNotConfigured as exc:
+        print(f"Live consistency skipped: {exc}")
+        return 0
+    json_path, md_path = consistency.write_outputs(report, args.out)
+    print(consistency.render(report))
+    print(f"Results: {json_path}")
+    print(f"Summary: {md_path}")
+    return consistency.exit_code(report)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.suite == "consistency":
+        return _run_consistency(args)
     cases = load_cases()
     if args.case:
         wanted = set(args.case)

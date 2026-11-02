@@ -270,7 +270,9 @@ async def test_comparative_question_uses_sparky_not_the_yield_composer() -> None
     assert "you don't have a position yet" not in lower
     assert "4.41%" not in text
     assert not (_types(wires) & {"action", "recommendation", "tip"})
-    assert text.strip() == "prose about Aave", "the comparative answer comes from Sparky"
+    # 074 — the comparison is a code-authored skeleton; only the Bottom line is model-written.
+    assert "**What it is**" in text and "**Bottom line**" in text
+    assert "**Aave**" in text
 
 
 async def test_six_month_earnings_question_answers_the_estimate_not_a_portfolio_summary() -> None:
