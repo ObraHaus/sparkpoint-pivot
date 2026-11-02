@@ -1281,3 +1281,163 @@ cases:
       must_not_contain: ["traceback"]
     offline:
       intent: {kind: other}
+
+  # ── Multi-chain portfolio (072 — read-only, session wallet) ───────────────────
+  - id: portfolio-100-show
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation, portfolio_snapshot]
+      sections: {balances: ok, morpho: ok, kamino: ok, rhea: ok, swaps: ok}
+      must_contain: ["wallet balances", "morpho", "kamino", "rhea", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-101-across-chains
+    category: portfolio
+    prompt: "what do I have across chains"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["priced positions", "base", "near"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-102-balances
+    category: portfolio
+    prompt: "my balances"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation, portfolio_snapshot]
+      must_contain: ["wallet balances", "0.5 eth", "100 usdc"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-103-positions-everywhere
+    category: portfolio
+    prompt: "show my positions everywhere"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["morpho", "kamino", "rhea"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-104-swap-history
+    category: portfolio
+    prompt: "my swap history"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: swaps
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["most recent cross-chain swaps", "base usdc", "solana usdc", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-105-earning
+    category: portfolio
+    prompt: "how much am I earning"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: earn
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["priced positions", "14.05", "4.41"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-106-degraded-sections
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: degraded
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      sections: {morpho: unavailable, kamino: not_linked, rhea: unavailable, swaps: ok}
+      must_contain: ["kamino positions show once you deposit", "morpho: unavailable", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-107-swaps-empty
+    category: portfolio
+    prompt: "my swap history"
+    wallet: empty
+    portfolio: empty
+    expected:
+      route: portfolio_overview
+      focus: swaps
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["don't have any cross-chain swaps yet", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-108-empty
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: empty
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      sections: {balances: ok, morpho: ok, kamino: ok, rhea: ok, swaps: ok}
+      must_contain: ["don't have any positions in these sections yet", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  # Negative / precedence: the vault-specific valuation and explicit Rhea positions keep their
+  # pre-072 routes even when the portfolio service is wired.
+  - id: portfolio-109-vault-worth-unchanged
+    category: portfolio
+    prompt: "What is my portfolio worth right now?"
+    wallet: with_position
+    portfolio: ready
+    expected:
+      route: portfolio
+      blocks_present: [portfolio_snapshot, text]
+      blocks_absent: [portfolio_overview, action, recommendation]
+      must_contain: ["you're holding", "5250.00"]
+    offline:
+      intent: {kind: portfolio}
+
+  - id: portfolio-110-rhea-positions-unchanged
+    category: portfolio
+    prompt: "Show my Rhea positions"
+    wallet: empty
+    portfolio: ready
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [portfolio_overview, action, recommendation]
+      must_contain: ["rhea account", "nothing was signed"]
+    offline:
+      intent: {kind: other}

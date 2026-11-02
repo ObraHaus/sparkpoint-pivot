@@ -42,6 +42,17 @@ WHERE deposit_address = $1
 RETURNING id
 """
 
+#: 072 — the owner's own history, newest first. Read-only; keyed on ``user_eoa`` exactly like
+#: ``get_owned``, so a caller can never list another wallet's swaps.
+_SELECT_OWNER = """
+SELECT id, user_eoa, origin_key, destination_key, amount_in, deposit_address, deadline,
+       quote_response, last_status, created_at
+FROM crosschain_quotes
+WHERE user_eoa = $1
+ORDER BY created_at DESC
+LIMIT $2
+"""
+
 
 def _row_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
     raw = row["quote_response"]
@@ -102,6 +113,11 @@ class CrossChainQuoteStore:
         """The caller's row for this deposit address, or ``None`` (ownership is the query)."""
         row = await self.db.fetchrow(_SELECT_OWNED, owner_eoa.lower(), deposit_address)
         return _row_to_dict(row) if row is not None else None
+
+    async def list_for_owner(self, owner_eoa: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        """The owner's quotes, newest first (072 swap history; never another wallet's rows)."""
+        rows = await self.db.fetch(_SELECT_OWNER, owner_eoa.lower(), max(1, min(limit, 200)))
+        return [_row_to_dict(row) for row in rows]
 
     async def update_status(self, deposit_address: str, status: str) -> None:
         await self.db.execute(_UPDATE_STATUS, deposit_address, status[:40])

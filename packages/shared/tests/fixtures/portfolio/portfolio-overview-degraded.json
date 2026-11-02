@@ -1,0 +1,102 @@
+{
+  "type": "portfolio_overview",
+  "state": "ready",
+  "focus": "all",
+  "asOf": "2026-11-01T04:30:00+00:00",
+  "sections": [
+    {
+      "key": "balances",
+      "label": "Wallet balances",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "wallet",
+          "kind": "token",
+          "symbol": "USDC",
+          "amount": "250",
+          "valueUsd": "250.00",
+          "priceSource": "stablecoin_par",
+          "decimals": 6
+        }
+      ],
+      "source": "rpc",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "chains": [
+        {
+          "chain": "base",
+          "label": "Base",
+          "status": "ok",
+          "reason": null
+        },
+        {
+          "chain": "eth",
+          "label": "Ethereum",
+          "status": "unavailable",
+          "reason": "not configured"
+        }
+      ],
+      "totalUsd": "250.00"
+    },
+    {
+      "key": "morpho",
+      "label": "Morpho",
+      "status": "unavailable",
+      "rows": [],
+      "reason": "Morpho API is unreachable.",
+      "source": "morpho_api",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "kamino",
+      "label": "Kamino",
+      "status": "not_linked",
+      "rows": [],
+      "reason": "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)",
+      "source": "solana_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "rhea",
+      "label": "Rhea",
+      "status": "unavailable",
+      "rows": [],
+      "reason": "The NEAR RPC read is unavailable right now.",
+      "source": "rhea_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "swaps",
+      "label": "Cross-chain swaps",
+      "status": "ok",
+      "rows": [],
+      "source": "db",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    }
+  ],
+  "totals": {
+    "totalUsd": "250.00",
+    "byChain": [
+      {
+        "chain": "base",
+        "label": "Base",
+        "valueUsd": "250.00"
+      }
+    ],
+    "byProtocol": [
+      {
+        "protocol": "wallet",
+        "valueUsd": "250.00"
+      }
+    ],
+    "priced": true
+  },
+  "sources": [
+    "rpc",
+    "morpho_api",
+    "solana_rpc",
+    "rhea_rpc",
+    "db"
+  ]
+}

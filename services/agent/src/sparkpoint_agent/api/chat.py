@@ -85,6 +85,7 @@ from ..knowledge import KnowledgeRetriever, default_citation_retriever
 from ..llm import AsyncClaudeClient, ClaudeAuthError
 from ..memory import derive_memory_lines
 from ..persona import get_persona
+from ..portfolio.service import build_service_from_env as build_portfolio_service_from_env
 from .curated_vaults import public_board
 from .errors import ApiError, ErrorCode
 from .portfolio import get_wrapper_store, read_wrapper_positions
@@ -601,6 +602,8 @@ def get_coordinator_dag(
         crosschain=build_service_from_env(),
         # 069 — data-driven Morpho earn registry: list + DRY previews only, never custody.
         earn=build_earn_service_from_env(),
+        # 072 — the read-only multi-chain portfolio. Session-wallet only; no signing path.
+        portfolio=build_portfolio_service_from_env(),
         portfolio_provider=_VaultChatPortfolioProvider(reader, config, wrapper_store),
         mandate_provider=mandate_provider,
         # The Obsidian GROUNDER — feeds corpus passages into the LEARN/OTHER prose answers so Sparky

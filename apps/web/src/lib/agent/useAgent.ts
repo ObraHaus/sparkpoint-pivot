@@ -32,6 +32,7 @@ import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/rec
 import { strategiesNavVisible } from "@/lib/strategies/navVisibility";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
 import { resolveChainId } from "@/lib/agent/identity";
+import { PortfolioOverviewBlockSchema, type PortfolioOverviewBlock } from "@sparkpoint/shared/schemas";
 import {
   toOutcomesView,
   toOutcomeDetailView,
@@ -185,6 +186,50 @@ export function usePortfolioView(): PortfolioView | null {
     positionPnl: v.positionPnl,
     history: v.history,
     stale: d.stale === true,
+  };
+}
+
+/* ── 072 — GET /portfolio/multichain (read-only, session wallet only) ──────── */
+
+/** The loading/error/data surface the Portfolio screen's "Across chains" panel renders. */
+export interface MultichainPortfolioState {
+  /** The validated block, or `null` until the first successful read. */
+  block: PortfolioOverviewBlock | null;
+  loading: boolean;
+  error: string | null;
+  /** `true` iff a wallet identity exists (the BFF is always same-origin reachable). */
+  online: boolean;
+  refetch: () => void;
+}
+
+/**
+ * Read the signed-in wallet's multi-chain portfolio. The BFF derives the owner from the SIWE
+ * session, so no wallet/address parameter is ever sent (the agent rejects one). The response is
+ * validated fail-closed against the same shared schema the chat block uses.
+ */
+export function useMultichainPortfolio(): MultichainPortfolioState {
+  const { client, online, identity } = useAgentClient();
+  const query = useQuery({
+    queryKey: ["agent", "portfolio", "multichain", identity?.account, identity?.chainId],
+    enabled: online,
+    staleTime: 30_000,
+    retry: 2,
+    queryFn: async ({ signal }) => {
+      const raw = await client!.request<unknown>("/portfolio/multichain", { signal });
+      const parsed = PortfolioOverviewBlockSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error("The multi-chain portfolio response couldn't be verified.");
+      }
+      return parsed.data;
+    },
+  });
+
+  return {
+    block: query.data ?? null,
+    loading: online && query.isLoading,
+    error: query.error ? query.error.message : null,
+    online,
+    refetch: () => void query.refetch(),
   };
 }
 
