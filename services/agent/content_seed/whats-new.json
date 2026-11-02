@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "amount-exponent-cap-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Extremely large amounts are rejected instantly",
+      "body": "If an amount is absurdly large — for example a number with a huge exponent such as \"1e999999000\", or text longer than 64 characters — SparkPoint now rejects it immediately with the usual validation message instead of spending time processing it. Ordinary amounts such as 20, 0.5 or 5,000.50 work exactly as before. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T06:15:00Z"
+    },
+    {
       "slug": "rhea-or-comparisons-2026-11",
       "type": "changelog",
       "tag": "Fixed",
