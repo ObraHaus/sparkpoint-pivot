@@ -49,12 +49,59 @@ def test_amount_less_protocol_earn_is_a_list(
     assert request.protocol == ("kamino" if "Kamino" in prompt else "morpho")
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "should I put my USDC in Morpho or Aave?",
+        "where should I lend USDC — Morpho or Aave?",
+        "Kamino vs Rhea for SOL yield?",
+        "compare Morpho and Kamino to earn on USDC",
+        "Should I deposit USDC with Morpho vs Aave?",
+        "earn on USDC with Morpho or Aave",
+    ],
+)
+def test_comparative_earn_turns_stay_out_of_the_amount_less_list(prompt: str) -> None:
+    # Pre-#342 every amount-less Morpho/Kamino turn returned None, so comparative turns reached
+    # the planner's comparison flow instead of being hijacked into a vault list.
+    assert parse_earn_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "should I put my USDC in Rhea or Aave?",
+        "lend USDC on Rhea or Burrow?",
+        "should I use SparkPoint or Aave for yield on NEAR?",
+    ],
+)
+def test_comparative_rhea_turns_stay_out_of_the_rhea_list(prompt: str) -> None:
+    # Both Rhea paths (_parse_rhea and _parse_near_yield) apply the bare-"or" guard too, so an
+    # "A or B" question reaches the planner's comparison flow instead of a Rhea vault list.
+    assert parse_earn_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize("prompt", ["lend USDC on Rhea", "earn on Rhea"])
+def test_non_comparative_rhea_turns_still_list(prompt: str) -> None:
+    request = parse_earn_request(prompt, default_config())
+    assert request is not None
+    assert request.protocol == "rhea"
+    assert request.kind == "list"
+
+
 def test_amount_bearing_earn_stays_a_deposit_preview() -> None:
     request = parse_earn_request("Earn 1,000 USDC with Morpho on Base", default_config())
     assert request is not None
     assert request.kind == "deposit"
     assert request.amount == Decimal("1000")
     assert parse_earn_request("Deposit 1.1234567 USDC into Morpho", default_config()) is None
+
+
+def test_amount_bearing_vault_phrase_is_unchanged_by_the_comparative_guard() -> None:
+    request = parse_earn_request("deposit 20 USDC into a Morpho vault on Base", default_config())
+    assert request is not None
+    assert request.kind == "deposit"
+    assert request.amount == Decimal("20")
+    assert request.chain == "base"
 
 
 @pytest.mark.parametrize(
