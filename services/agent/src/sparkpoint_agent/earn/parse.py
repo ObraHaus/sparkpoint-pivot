@@ -309,7 +309,11 @@ def _list_request(message: str, asset: str | None, *, best: bool) -> EarnRequest
 def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
     """Rhea/Burrow: positions, withdraw link, APY/list, or a supply preview."""
     # A bridge/swap/comparative command belongs to 068/063, even when it names Rhea.
-    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
+    if (
+        _RHEA_NEGATIVE_RE.search(text) is not None
+        or _COMPARATIVE_RE.search(text) is not None
+        or _OR_COMPARATIVE_RE.search(text) is not None
+    ):
         return None
     if _WITHDRAW_RE.search(text) is not None:
         return _withdraw_request(message)
@@ -356,7 +360,11 @@ def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | No
 
 def _parse_near_yield(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
     """Vague NEAR-yield turns route to Rhea; native NEAR-token staking is not lending."""
-    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
+    if (
+        _RHEA_NEGATIVE_RE.search(text) is not None
+        or _COMPARATIVE_RE.search(text) is not None
+        or _OR_COMPARATIVE_RE.search(text) is not None
+    ):
         return None
     if _NEAR_CHAIN_RE.search(text) is None or is_near_native_staking_request(text):
         return None
