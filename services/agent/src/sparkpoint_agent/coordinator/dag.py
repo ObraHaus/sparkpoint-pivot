@@ -38,9 +38,10 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agents import guardrail
+from ..agents.guard_text import is_unusable
 from ..agents.literacy import (
     DEFAULT_TIPS,
     FALLBACK_TOPIC,
@@ -51,7 +52,10 @@ from ..agents.literacy import (
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky, SparkyReply
+from ..crosschain.oneclick import CrossChainTransportError
+from ..crosschain.parse import parse_cross_chain_request
 from ..data.prices import PriceService, PriceSnapshot
+from ..earn.parse import is_near_native_staking_request, parse_earn_request
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -69,6 +73,12 @@ from ..policy import (
     SessionState,
     SimulationInput,
     get_policy_constants,
+)
+from ..portfolio.chat import (
+    build_outcome as build_portfolio_outcome,
+)
+from ..portfolio.chat import (
+    detect_portfolio_focus,
 )
 from ..wire import Citation
 from .chat_blocks import (
@@ -92,20 +102,30 @@ from .chat_blocks import (
 )
 from .comparative import (
     extract_comparison_subjects,
+    extract_known_subjects,
     passage_mentions_subject,
     text_mentions_subject,
+)
+from .comparison_facts import (
+    curated_figures,
+    curated_label_subjects,
+    deterministic_bottom_line,
+    facts_for,
+    render_comparison,
 )
 from .curated import (
     BEST_VAULT_RE,
     CURATED_FAILURE,
     VAULT_RATE_RE,
     CuratedContext,
+    CuratedPick,
     curated_answer,
     curated_list_answer,
     curated_rate_answer,
     is_vaults_list_question,
 )
 from .guidance import (
+    NEAR_NATIVE_STAKING_ANSWER,
     NOTHING_TO_WITHDRAW,
     NOTHING_TO_WITHDRAW_NO_VAULT,
     UNSAFE_REFUSAL,
@@ -137,6 +157,11 @@ from .prices import (
     requested_price_symbols,
 )
 from .staleness import as_of_time
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: service imports chat_blocks
+    from ..crosschain.service import CrossChainService
+    from ..earn.service import EarnService
+    from ..portfolio.service import MultichainPortfolioService
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -197,6 +222,172 @@ def _join_names(names: Sequence[str]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
+#: 074 — the Bottom line must be a trade-off, not a verdict or advice. The gate errs toward the
+#: deterministic fallback: it rejects any winner-implying or advice-shaped phrasing ("X is
+#: better", "Aave wins", "I'd go with X", "the safer bet") while a clause-level negation
+#: ("neither is better", "not necessarily safer") is still allowed through.
+_BOTTOM_LINE_VERDICT_RE = re.compile(
+    r"\b(?:is|are|seems?|looks?|feels?|remains?)\b(?:\s+\w+){0,3}?\s+"
+    r"(?:better|worse|safer|safest|best|superior|preferable|stronger|weaker|"
+    r"more\s+(?:reliable|dependable|attractive|suitable|sensible)|less\s+(?:risky|safe))\b"
+    r"|\b(?:better|worse)\s+than\b"
+    r"|\b(?:is|are)\s+the\s+one\s+to\b"
+    r"|\bone\s+to\s+(?:look\s+at|go\s+with|choose|pick)\b"
+    r"|\byou\s+should\b|\bi(?:'d|\s+would)?\s+(?:choose|recommend|pick|go\s+with|prefer)\b"
+    r"|\b(?:prefer|prefers|preferred)\b"
+    r"|\bopt(?:s|ed|ing)?\s+for\b"
+    r"|\bstick(?:s|ing)?\s+with\b"
+    r"|\bgo(?:es|ne)?\s+(?:for|with)\b"
+    r"|\b(?:safer|safe|better|smarter|stronger)\s+bet\b"
+    r"|\b(?:more|most)\s+(?:reliable|dependable|suitable|appropriate|attractive|sensible)\s+"
+    r"(?:choice|option|pick|bet)\b"
+    r"|\bclear\s+(?:choice|winner|favourite|favorite)\b"
+    r"|\bwinners?\b|\bwins?\b|\bwinning\b|\bbeats?\b|\boutperform\w*\b|\bedges?\s+out\b"
+    r"|\bstands?\s+out\b",
+    re.IGNORECASE,
+)
+#: A verdict match is not a verdict when the same clause negates it ("neither is better", "not
+#: necessarily safer"); a contrast conjunction starts a new clause so "neither is safer, but X
+#: wins" still catches the unnegated half.
+_BOTTOM_LINE_NEGATION_RE = re.compile(
+    r"\b(?:not|never|neither|none|nobody)\b|n't\b", re.IGNORECASE
+)
+_BOTTOM_LINE_CONTRAST_RE = re.compile(
+    r"[.;:!?]|\b(?:but|however|though|although|yet|whereas)\b", re.IGNORECASE
+)
+_BOTTOM_LINE_NOT_ONLY_RE = re.compile(r"\bnot\s+only\b", re.IGNORECASE)
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _match_is_negated(text: str, match: re.Match[str]) -> bool:
+    """True when ``match`` sits in a negated clause, so it is not an affirmative verdict."""
+    prefix = text[: match.start()]
+    boundaries = list(_BOTTOM_LINE_CONTRAST_RE.finditer(prefix))
+    clause_start = boundaries[-1].end() if boundaries else 0
+    clause = _BOTTOM_LINE_NOT_ONLY_RE.sub("", text[clause_start : match.end()])
+    return bool(_BOTTOM_LINE_NEGATION_RE.search(clause))
+
+
+def _has_verdict(text: str) -> bool:
+    """True when ``text`` contains at least one affirmative verdict/advice phrase."""
+    return any(
+        not _match_is_negated(text, match) for match in _BOTTOM_LINE_VERDICT_RE.finditer(text)
+    )
+
+
+def _curated_picks(curated: CuratedContext | None) -> tuple[CuratedPick, ...]:
+    """Every curated row the board renders, in board order (the pick is already in ``vaults``)."""
+    if curated is None:
+        return ()
+    if curated.vaults:
+        return curated.vaults
+    return (curated.pick,) if curated.pick is not None else ()
+
+
+def _ordered_by_mention(message: str, names: Sequence[str]) -> list[str]:
+    """Dedupe ``names`` and order them by their (case-insensitive) first mention in ``message``."""
+    lowered = message.lower()
+
+    def position(name: str) -> int:
+        found = lowered.find(name.lower())
+        return found if found >= 0 else len(message) + 1
+
+    ordered = sorted(dict.fromkeys(names), key=lambda name: (position(name), name))
+    return ordered
+
+
+def _history_comparative_subjects(
+    history: Sequence[tuple[str, str]] | None,
+    curated: CuratedContext | None,
+) -> tuple[str, ...]:
+    """Known subjects named in the most recent user turns (deictic "that" resolution)."""
+    if not history:
+        return ()
+    picks = _curated_picks(curated)
+    vault_names = {pick.label for pick in picks}
+    found: list[str] = []
+    for role, text in reversed(history[-4:]):
+        if role != "user":
+            continue
+        content = str(text).strip()
+        if not content:
+            continue
+        labels = [label for _, label in curated_label_subjects(content, picks)]
+        known = extract_known_subjects(content) if labels else extract_comparison_subjects(content)
+        for name in (*labels, *known):
+            if (facts_for(name) or name in vault_names) and name not in found:
+                found.append(name)
+        if len(found) >= 2:
+            break
+    return tuple(found)
+
+
+def _resolve_comparative_subjects(
+    message: str,
+    history: Sequence[tuple[str, str]] | None,
+    curated: CuratedContext | None,
+) -> tuple[str, ...]:
+    """Canonical comparison subjects: message order first, then history-resolved extras.
+
+    Curated vault labels are matched before the proper-noun fallback so a label like ``"Gauntlet
+    USDC Prime"`` is one subject, not three stray tokens. When the message names fewer than two
+    subjects (``"compare that with…"``), the most recent user turns supply the missing side.
+    """
+    picks = _curated_picks(curated)
+    labels = [label for _, label in curated_label_subjects(message, picks)]
+    if labels:
+        names = _ordered_by_mention(message, [*extract_known_subjects(message), *labels])
+    else:
+        names = list(extract_comparison_subjects(message))
+    if len(names) < 2:
+        for name in _history_comparative_subjects(history, curated):
+            if name not in names:
+                names.append(name)
+    return tuple(dict.fromkeys(names))
+
+
+def _bottom_line_is_acceptable(text: str | None) -> bool:
+    """A Bottom line is usable only when it is a plain, figure-free trade-off sentence."""
+    candidate = (text or "").strip()
+    if not candidate or "\n" in candidate:
+        return False
+    if is_unusable(candidate):
+        return False
+    if _DIGIT_RE.search(candidate):
+        return False
+    if _has_verdict(candidate):
+        return False
+    # 067's whole-answer refusal check is broader than ``_is_decline`` ("I won't", "I'd rather
+    # not", "Sorry…"), so both are applied to the closing sentence.
+    return not _is_decline(candidate) and not _is_whole_answer_refusal(candidate)
+
+
+def _comparative_answer(
+    *,
+    subjects: Sequence[str],
+    covered: Sequence[str],
+    passages: Sequence[Passage],
+    figures: Mapping[str, str],
+    bottom_line: str,
+    vault_subjects: Sequence[str] = (),
+) -> tuple[str, tuple[Passage, ...]]:
+    """Render the final skeleton + Bottom line and return it with the citable passage set."""
+    body = render_comparison(
+        subjects,
+        covered=covered,
+        figures=figures,
+        include_bottom_line=False,
+        vault_subjects=vault_subjects,
+    )
+    assert body is not None  # noqa: S101 — caller only reaches here with a described subject
+    closing = bottom_line.strip() or deterministic_bottom_line(
+        subjects, vault_subjects=vault_subjects
+    )
+    answer = f"{body}\n\n**Bottom line**\n{closing}"
+    citable = _comparative_citable_passages(subjects, passages)
+    return answer, citable
+
+
 def _comparative_fallback(
     message: str,
     *,
@@ -211,8 +402,7 @@ def _comparative_fallback(
         gap = "SparkPoint has no verified material on either side of that comparison."
     elif not missing:
         gap = (
-            "SparkPoint has verified material on both, but not enough to rank one above the "
-            "other."
+            "SparkPoint has verified material on both, but not enough to rank one above the other."
         )
     elif len(missing) == len(names):
         gap = f"SparkPoint has no verified material on {_join_names(names)}."
@@ -434,6 +624,25 @@ def _log_comparative_outcome(
         len(covered),
         reason,
         "true" if cited else "false",
+    )
+
+
+def _passage_sort_key(passage: Passage) -> tuple[str, str, str, str, str]:
+    """074 — deterministic tie-breaker for retrieved passages.
+
+    ``Passage`` carries no relevance score, so there is no score to sort on: the retriever's
+    top-k order is the relevance order and ties are broken by stable provenance fields
+    (source/provider, endpoint, field, value) and finally the content itself. Without this, two
+    equal-score chunks could arrive in a different order on different runs and change the
+    citation block even when the answer did not change.
+    """
+    citation = passage.citation
+    return (
+        citation.provider.lower(),
+        citation.endpoint,
+        citation.field,
+        citation.value,
+        passage.content.strip(),
     )
 
 
@@ -662,6 +871,16 @@ class CoordinatorDag:
     #: 060 — display-only keyless USD reference prices. ``None`` ⇒ the price route says it cannot
     #: fetch a live price; it never guesses, and never reaches propose/build/policy.
     prices: PriceService | None = None
+    #: 068 — cross-chain swaps via the NEAR Intents 1Click API. ``None`` or a disabled feature
+    #: flag falls through to the existing behaviour. Advisory: the user sends funds from their
+    #: own wallet; this branch emits text + a non-signable ``crosschain_quote`` block only.
+    crosschain: CrossChainService | None = None
+    #: 069 — the data-driven Morpho earn registry. ``None`` / a disabled flag falls through.
+    #: Advisory: list and DRY previews only (1Click receipt or a same-chain/Intents-Connect hint).
+    earn: EarnService | None = None
+    #: 072 — the read-only multi-chain portfolio (session wallet only). ``None`` keeps the
+    #: pre-072 routes byte-for-byte, which is what every other test/consumer expects.
+    portfolio: MultichainPortfolioService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -738,21 +957,32 @@ class CoordinatorDag:
         for subject in subjects:
             entity_hits = await self._ground(subject, k=_ENTITY_GROUND_K, min_score=0.0)
             buckets.append(
-                [
-                    passage
-                    for passage in entity_hits
-                    if passage_mentions_subject(passage, subject)
-                    and not _is_release_note(passage)
-                ]
+                sorted(
+                    (
+                        passage
+                        for passage in entity_hits
+                        if passage_mentions_subject(passage, subject)
+                        and not _is_release_note(passage)
+                    ),
+                    key=_passage_sort_key,
+                )
             )
 
         whole_hits = await self._ground(message, k=_GROUND_K, min_score=_OTHER_MIN_SCORE)
         if subjects:
             whole_hits = tuple(
-                passage
-                for passage in whole_hits
-                if any(passage_mentions_subject(passage, subject) for subject in subjects)
-                and not _is_release_note(passage)
+                sorted(
+                    (
+                        passage
+                        for passage in whole_hits
+                        if any(
+                            passage_mentions_subject(passage, subject)
+                            for subject in subjects
+                        )
+                        and not _is_release_note(passage)
+                    ),
+                    key=_passage_sort_key,
+                )
             )
 
         selected: list[Passage] = []
@@ -804,6 +1034,77 @@ class CoordinatorDag:
         ]
 
         return tuple(capped), tuple(covered)
+
+    async def _build_comparative_answer(
+        self,
+        message: str,
+        chain: ChainContext,
+        *,
+        history: Sequence[tuple[str, str]] | None,
+        user: str | None,
+    ) -> tuple[str, tuple[str, ...], tuple[str, ...], tuple[Passage, ...]]:
+        """074 — build one deterministic comparison.
+
+        Returns ``(answer, subjects, covered, citable)``. An empty ``answer`` means no named
+        subject had reviewed facts (the caller uses the 066 honest fallback). Curated vault labels
+        are resolved against the SAME board snapshot the curated route reads; their figures come
+        from that record (with its as-of), never from the model. Retrieval still runs per subject
+        so citations and the coverage note stay honest, but it never changes the skeleton.
+        """
+        curated_context: CuratedContext | None = None
+        if self.curated is not None:
+            try:
+                curated_context = await self.curated(chain.chain_id)
+            except Exception:  # noqa: BLE001 — a curated read must never cost the comparison
+                curated_context = None
+
+        subjects = _resolve_comparative_subjects(message, history, curated_context)
+        picks = _curated_picks(curated_context)
+        vault_subjects = tuple(
+            subject for subject in subjects if subject in {pick.label for pick in picks}
+        )
+        if not any(
+            facts_for(subject) is not None or subject in vault_subjects
+            for subject in subjects
+        ):
+            return "", subjects, (), ()
+
+        earlier = " ".join(
+            str(text).strip() for _, text in (history or ())[-2:] if str(text).strip()
+        )
+        ground_query = f"{earlier}\n{message}" if earlier else message
+        passages, covered = await self._ground_comparative(ground_query, subjects)
+        figures = curated_figures(subjects, picks)
+
+        body = (
+            render_comparison(
+                subjects,
+                covered=covered,
+                figures=figures,
+                include_bottom_line=False,
+                vault_subjects=vault_subjects,
+            )
+            or ""
+        )
+        closing = deterministic_bottom_line(subjects, vault_subjects=vault_subjects)
+        if self.sparky is not None:
+            reply = await self.sparky.comparison_bottom_line(
+                subjects=subjects,
+                body=body,
+                recent_conversation=earlier or None,
+                user=user,
+            )
+            if not reply.fell_back and _bottom_line_is_acceptable(reply.body):
+                closing = reply.body.strip()
+        answer, citable = _comparative_answer(
+            subjects=subjects,
+            covered=covered,
+            passages=passages,
+            figures=figures,
+            bottom_line=closing,
+            vault_subjects=vault_subjects,
+        )
+        return answer, subjects, covered, citable
 
     async def _general_answer(
         self,
@@ -906,7 +1207,12 @@ class CoordinatorDag:
                 history=history,
                 comparative=comparative,
             ):
-                if chunk.delta:
+                if chunk.retract:
+                    # 073 — clear the provisional paint NOW. An EMPTY delta under a fresh
+                    # stream id is the existing "new attempt" signal, so the reducer discards
+                    # the partial text instead of appending to it.
+                    yield ProseDelta(target="text", delta="", stream_id=f"general-{attempt}-r")
+                elif chunk.delta:
                     yield ProseDelta(
                         target="text", delta=chunk.delta, stream_id=f"general-{attempt}"
                     )
@@ -939,13 +1245,12 @@ class CoordinatorDag:
         number, so a retry becomes a new ``stream_id`` (client resets, never concatenates).
         """
         assert self.literacy is not None  # noqa: S101
-        async for chunk in self.literacy.stream_tip(
-            topic, context_hint=context_hint, user=user
-        ):
-            if chunk.delta:
-                yield ProseDelta(
-                    target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}"
-                )
+        async for chunk in self.literacy.stream_tip(topic, context_hint=context_hint, user=user):
+            if chunk.retract:
+                # 073 — same empty-delta/new-stream-id retract as the general branch.
+                yield ProseDelta(target="tip", delta="", stream_id=f"tip-{chunk.attempt}-r")
+            elif chunk.delta:
+                yield ProseDelta(target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}")
             elif chunk.card is not None:
                 yield chunk.card
 
@@ -1055,6 +1360,123 @@ class CoordinatorDag:
             yield ToolStepBlock("Understanding your request", "done")
             yield TextBlock(UNSAFE_REFUSAL)
             return
+
+        # 068 — a cross-chain swap ("Swap 5,000 USDC into native BTC") is answered from the
+        # NEAR Intents 1Click API with a DRY quote. Deterministic and BEFORE the planner, so the
+        # demo prompts work with zero model credits. A disabled route (Tron today) is an ordinary
+        # "unavailable" card, never an error. The feature flag off ⇒ fall through unchanged.
+        if self.crosschain is not None and self.crosschain.feature_enabled:
+            crosschain_request = parse_cross_chain_request(message, self.crosschain.config)
+            if crosschain_request is not None:
+                yield ToolStepBlock("Checking a cross-chain route", "running")
+                try:
+                    outcome = await self.crosschain.preview(crosschain_request)
+                except CrossChainTransportError:
+                    yield ToolStepBlock("Checking a cross-chain route", "error")
+                    yield TextBlock(
+                        "I couldn't reach the cross-chain routing service just now — nothing "
+                        "was signed or sent. Please try again in a moment."
+                    )
+                    return
+                yield ToolStepBlock("Checking a cross-chain route", "done")
+                yield TextBlock(outcome.text)
+                yield outcome.block
+                return
+
+        # 071 — native NEAR-token staking ("stake NEAR tokens", "liquid staking NEAR") is not
+        # Rhea USDC lending. Answer honestly and point at the supported path, never at a preview.
+        if is_near_native_staking_request(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(NEAR_NATIVE_STAKING_ANSWER)
+            return
+
+        # 069 — explicit Morpho requests ("Show Morpho vaults on Base", "Deposit 100 USDC into
+        # Morpho Gauntlet USDC Prime") are answered deterministically before the planner. The
+        # parser only fires on an explicit Morpho mention or a configured vault name, so the
+        # existing vault/deposit flow and comparative turns are not stolen. A list is a snapshot
+        # read; a deposit is a DRY preview (1Click receipt or a same-chain hint).
+        if self.earn is not None and self.earn.feature_enabled:
+            earn_request = parse_earn_request(message, self.earn.config)
+            if earn_request is not None:
+                protocol = getattr(earn_request, "protocol", None)
+                label = {"kamino": "Kamino", "rhea": "Rhea"}.get(protocol or "", "Morpho")
+                wallet = chain.owner or chain.user_account
+                if earn_request.kind == "positions":
+                    yield ToolStepBlock("Checking your Rhea positions", "running")
+                    earn_outcome = await self.earn.rhea_positions(wallet=wallet)
+                    yield ToolStepBlock("Checking your Rhea positions", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+                if earn_request.kind == "withdraw":
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "running")
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "done")
+                    yield TextBlock(self.earn.rhea_withdraw_text())
+                    return
+                if earn_request.kind == "list":
+                    yield ToolStepBlock(f"Checking {label} vaults", "running")
+                    earn_outcome = self.earn.list_outcome(earn_request)
+                    yield ToolStepBlock(f"Checking {label} vaults", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+
+                yield ToolStepBlock(f"Checking a {label} vault", "running")
+                vault = self.earn.resolve_vault(earn_request.chain, earn_request.vault_query)
+                if vault is None:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        f"I can't find that {label} vault in the current snapshot — nothing was "
+                        f"signed or sent. Ask me to list {label} vaults and I'll show what is live."
+                    )
+                    return
+                origin_key = _earn_origin_key(self.earn, earn_request, vault)
+                amount = earn_request.amount
+                assert amount is not None  # noqa: S101 - the parser only builds deposits with one
+                try:
+                    earn_outcome = await self.earn.preview_for(
+                        chain=vault.chain,
+                        address=vault.address,
+                        origin_key=origin_key,
+                        amount=amount,
+                        amount_raw=earn_request.amount_raw,
+                        wallet=wallet,
+                    )
+                except CrossChainTransportError:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        "I couldn't reach the routing service just now — nothing was signed or "
+                        "sent. Please try again in a moment."
+                    )
+                    return
+                except ValueError:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        f"I can preview that {label} vault only from a supported origin asset — "
+                        "nothing was signed or sent."
+                    )
+                    return
+                yield ToolStepBlock(f"Checking a {label} vault", "done")
+                yield TextBlock(earn_outcome.text)
+                yield earn_outcome.block
+                return
+
+        # 072 — the read-only multi-chain portfolio for the session wallet. Deliberately AFTER
+        # 068/069/070/071 so an explicit swap or earn/Rhea turn always keeps its route, and narrow
+        # enough that the vault-specific "what is my portfolio worth?" / "what's in my wallet?"
+        # turns still reach the existing portfolio_snapshot path. No LLM, no signable output.
+        if self.portfolio is not None:
+            focus = detect_portfolio_focus(message)
+            if focus is not None:
+                portfolio_wallet = chain.owner or chain.user_account
+                yield ToolStepBlock("Reading your multi-chain portfolio", "running")
+                overview = await self.portfolio.read(portfolio_wallet, focus=focus)
+                yield ToolStepBlock("Reading your multi-chain portfolio", "done")
+                portfolio_outcome = build_portfolio_outcome(overview, focus)
+                yield TextBlock(portfolio_outcome.text)
+                yield portfolio_outcome.block
+                return
 
         # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default
         # USDG ↔ ETH card. Answer honestly and emit no action block.
@@ -1243,9 +1665,7 @@ class CoordinatorDag:
             full_amount = withdraw_all_amount(withdraw_gathered.portfolio.positions)
             if full_amount is None:
                 yield TextBlock(
-                    NOTHING_TO_WITHDRAW
-                    if _offers_vault(chain)
-                    else NOTHING_TO_WITHDRAW_NO_VAULT
+                    NOTHING_TO_WITHDRAW if _offers_vault(chain) else NOTHING_TO_WITHDRAW_NO_VAULT
                 )
                 return
             # "withdraw everything except 100" is a residual, never the full position. If the
@@ -1255,7 +1675,7 @@ class CoordinatorDag:
                 if leave_behind is None or leave_behind >= full_amount:
                     yield TextBlock(
                         "I can withdraw all but a set amount — tell me how much you'd like to "
-                        "leave in the vault, for example \"withdraw everything except $100\"."
+                        'leave in the vault, for example "withdraw everything except $100".'
                     )
                     return
                 full_amount -= leave_behind
@@ -1332,44 +1752,52 @@ class CoordinatorDag:
             # Prose-only by construction: whatever comes back is wrapped in a `text` block, which
             # has no proposedAction and no policy stamp — this branch cannot emit anything
             # signable. It also returns BEFORE the gather/propose/gate stages ever run.
-            # A comparative follow-up ("compare that with…") is deictic; retrieve against the
-            # recent turns too, or the first-person "that" finds nothing about what was discussed.
-            ground_query = message
-            prose_history: Sequence[tuple[str, str]] | None = None
-            subjects: tuple[str, ...] = ()
-            covered: tuple[str, ...] = ()
-            coverage_hint: str | None = None
+            # 074 — a comparative turn no longer asks the model for the answer. The skeleton is
+            # code-authored and byte-stable for identical inputs; only its closing Bottom line is
+            # a short model call. There are no prose deltas: a comparison is always ONE final text
+            # block, in both SPARKY_STREAMING modes. The zero-known-subject case keeps the
+            # 066 honest fallback.
             if comparative:
-                prose_history = history
-                earlier = " ".join(
-                    str(text).strip() for _, text in (history or ())[-2:] if str(text).strip()
+                label = "Checking the knowledge base"
+                yield ToolStepBlock(label, "running")
+                answer, subjects, covered, citable = await self._build_comparative_answer(
+                    message,
+                    chain,
+                    history=history,
+                    user=user,
                 )
-                if earlier:
-                    ground_query = f"{earlier}\n{message}"
-                subjects = extract_comparison_subjects(message)
-                passages, covered = await self._ground_comparative(ground_query, subjects)
-                coverage_hint = _comparative_coverage_hint(subjects, covered)
-            else:
-                passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
+                yield ToolStepBlock(label, "done")
+                if not answer:
+                    _log_comparative_outcome(
+                        subjects, covered, reason="non_answer", cited=False
+                    )
+                    yield TextBlock(
+                        _comparative_fallback(message, subjects=subjects, covered=covered)
+                    )
+                    return
+                cited = bool(citable)
+                _log_comparative_outcome(subjects, covered, reason="served", cited=cited)
+                yield TextBlock(answer)
+                if cited:
+                    yield CitationBlock(sources=tuple(p.citation for p in citable))
+                return
+
+            # A non-comparative general turn keeps the 063/065 prose path unchanged.
+            ground_query = message
+            passages = await self._ground(ground_query, min_score=_OTHER_MIN_SCORE)
             label = "Checking the knowledge base" if passages else "Thinking that through"
             yield ToolStepBlock(label, "running")
             prose_answer: str = _GENERAL_FAILURE
             grounded = False
             failed = True
             failure: str | None = "upstream"
-            if (
-                self.streaming
-                and self.sparky is not None
-                and hasattr(self.sparky, "stream_reply")
-            ):
+            if self.streaming and self.sparky is not None and hasattr(self.sparky, "stream_reply"):
                 async for prose_item in self._stream_general_answer(
                     message,
                     passages,
                     user=user,
                     memory_lines=memory_lines,
-                    history=prose_history,
-                    comparative=comparative,
-                    coverage_hint=coverage_hint,
+                    history=history,
                 ):
                     if isinstance(prose_item, ProseDelta):
                         yield prose_item
@@ -1386,63 +1814,26 @@ class CoordinatorDag:
                     passages,
                     user=user,
                     memory_lines=memory_lines,
-                    history=prose_history,
-                    comparative=comparative,
-                    coverage_hint=coverage_hint,
+                    history=history,
                 )
                 failed = prose_answer is _GENERAL_FAILURE
             yield ToolStepBlock(label, "done")
             if failed:
-                # 065 — a comparative answer that the model DID produce but the content guard
-                # rejected ("my reference notes…") is not an upstream outage. Answer honestly
-                # from code instead of telling the user the model was unreachable.
-                if comparative:
-                    _log_comparative_outcome(
-                        subjects,
-                        covered,
-                        reason=_comparative_failure_reason(failure),
-                        cited=False,
-                    )
-                if comparative and failure != "upstream":
-                    yield TextBlock(
-                        _comparative_fallback(message, subjects=subjects, covered=covered)
-                    )
-                    return
                 # 029/FR-003: a genuinely degraded turn must LOOK degraded. An ERROR block renders
                 # as the inline error state with a retry affordance, and (unlike a text block) is
                 # not persisted into the transcript — so a reopened conversation shows no phantom
                 # answer where the model never produced one.
                 yield ErrorBlock("UPSTREAM_UNAVAILABLE", prose_answer)
                 return
-            if comparative:
-                # 067 — serve a comparison only when every named subject is mentioned and the
-                # answer is not a whole-answer refusal; otherwise use the honest code-authored
-                # fallback (uncited). Replace it BEFORE the text block is emitted (streaming may
-                # already have painted it; the terminal block is authoritative).
-                if not _is_comparative_servable(prose_answer, subjects):
-                    _log_comparative_outcome(
-                        subjects, covered, reason="non_answer", cited=False
-                    )
-                    yield TextBlock(
-                        _comparative_fallback(message, subjects=subjects, covered=covered)
-                    )
-                    return
-                # Cite only a COMPLETE per-subject set; a partial one is served uncited.
-                citable = _comparative_citable_passages(subjects, passages)
-                cited = bool(passages and grounded and citable)
-                _log_comparative_outcome(
-                    subjects, covered, reason="served", cited=cited
-                )
-            else:
-                # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
-                # is not grounded in the retrieved passages, so it must not carry sources.
-                citable = tuple(passages)
-                cited = bool(
-                    passages
-                    and grounded
-                    and prose_answer.strip()
-                    and not _is_decline(prose_answer)
-                )
+            # Non-comparative answers keep the 029 rule: a fallback or an opening refusal
+            # is not grounded in the retrieved passages, so it must not carry sources.
+            citable = tuple(passages)
+            cited = bool(
+                passages
+                and grounded
+                and prose_answer.strip()
+                and not _is_decline(prose_answer)
+            )
             yield TextBlock(prose_answer)
             if cited:
                 yield CitationBlock(sources=tuple(p.citation for p in citable))
@@ -1855,6 +2246,31 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
     }
 
 
+def _earn_origin_key(service: EarnService, request: Any, vault: Any) -> str:
+    """The 1Click origin for an earn deposit: explicit chain/symbol, else the vault's chain.
+
+    Kamino deposits default to the funding asset's home route (Base USDC for USDC, Solana for
+    SOL) unless the user said "from <chain>" explicitly — the vault lives on Solana, but the
+    beta wallet is EVM, so that is the honest default.
+    """
+    origin_chain = getattr(request, "origin_chain", None)
+    chain = origin_chain or getattr(request, "chain", None) or getattr(vault, "chain", None)
+    symbol = getattr(request, "asset", None) or getattr(vault, "asset", None)
+    if not isinstance(symbol, str) and symbol is not None:
+        symbol = getattr(symbol, "symbol", None)
+    if not isinstance(symbol, str):
+        return ""
+    if getattr(vault, "protocol", None) == "kamino" and not origin_chain:
+        asset = service.crosschain.default_for_symbol(symbol)
+        return asset.key if asset is not None else ""
+    if not isinstance(chain, str):
+        return ""
+    asset = service.crosschain.find_asset(chain, symbol)
+    if asset is None:
+        asset = service.crosschain.default_for_symbol(symbol)
+    return asset.key if asset is not None else ""
+
+
 # Bridging isn't an advisory action (no ActionType) and the vault/swaps are Base-only, so a bridge
 # request is answered honestly rather than being classified as a buildable action that asks for an
 # amount it can never use. Deterministic keyword guard — "bridge/bridging/cross-chain".
@@ -2030,10 +2446,7 @@ def _apy_answer(chain: ChainContext, *, now: datetime | None = None) -> str:
     headline = net if net is not None else gross
     read_at = as_of_time(getattr(market, "as_of", None) if market else None, now=now)
     stamp = read_at.strftime("%H:%M UTC")
-    parts = [
-        f"The vault is currently showing about **{_fmt_bps(headline)}% APY** "
-        f"(as of {stamp})"
-    ]
+    parts = [f"The vault is currently showing about **{_fmt_bps(headline)}% APY** (as of {stamp})"]
     if net is not None and gross is not None and gross != net:
         fee = f" after the {_fmt_bps(fee_bps)}% performance fee" if fee_bps else " after fees"
         parts.append(f" net{fee} (gross {_fmt_bps(gross)}%)")
@@ -2394,6 +2807,7 @@ def _fast_path_is_blocked(text: str) -> bool:
         or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
     )
 
+
 #: 059/A3 — the ONLY concept shapes allowed to skip the planner. Fully anchored after
 #: normalisation, with a short topic phrase (≤6 words for "what is/explain", ≤5 before "work")
 #: and no extra clause. ``_FAST_CLAUSE_WORD_RE`` rejects conjunctions, pronouns/advice and
@@ -2435,9 +2849,7 @@ _IDENTITY_FAST_RE = re.compile(
 #: left to the planner, which routes them to the general/OTHER prose branch: a deterministic
 #: matcher cannot know a price, and answering one from the knowledge corpus would turn a quote
 #: request into a tip (058 golden ``audit-07-eth-price``).
-_PRICE_FAST_RE = re.compile(
-    r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
-)
+_PRICE_FAST_RE = re.compile(r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE)
 
 #: 059/A3 follow-up safety — with prior turns in the conversation, a deictic/anaphoric reference
 #: ("how does it work?", "what about fees?") is only answerable in context. The deterministic
@@ -2457,11 +2869,59 @@ _FOLLOWUP_LEAD_RE = re.compile(
 #: Words that describe the QUESTION rather than a subject. A concept topic made only of these
 #: ("how does it work?" → ``it``) is not a real topic and must fall back to the planner.
 _TOPIC_STOPWORDS = {
-    "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
-    "about", "how", "does", "do", "why", "of", "to", "in", "work", "works", "with", "for",
-    "from", "by", "on", "at", "can", "could", "would", "should", "it", "its", "that", "this",
-    "these", "those", "they", "them", "their", "theirs", "there", "one", "same", "above",
-    "and", "also", "then", "so", "but", "or", "more", "please",
+    "what",
+    "whats",
+    "is",
+    "are",
+    "the",
+    "a",
+    "an",
+    "explain",
+    "define",
+    "tell",
+    "me",
+    "about",
+    "how",
+    "does",
+    "do",
+    "why",
+    "of",
+    "to",
+    "in",
+    "work",
+    "works",
+    "with",
+    "for",
+    "from",
+    "by",
+    "on",
+    "at",
+    "can",
+    "could",
+    "would",
+    "should",
+    "it",
+    "its",
+    "that",
+    "this",
+    "these",
+    "those",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "there",
+    "one",
+    "same",
+    "above",
+    "and",
+    "also",
+    "then",
+    "so",
+    "but",
+    "or",
+    "more",
+    "please",
 }
 
 

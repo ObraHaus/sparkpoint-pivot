@@ -29,6 +29,11 @@ import { isInlineExecutable, unsupportedIntent } from "@/lib/chat/actionSupport"
 import { chatErrorCopy } from "@/lib/agent/chatError";
 import { tipLabel } from "@/lib/agent/tipLabel";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { CrossChainQuoteCard } from "./crosschain-quote-card";
+import { EarnVaultsCard } from "./earn-vaults-card";
+import { EarnQuoteCard } from "./earn-quote-card";
+import { EarnPositionsCard } from "./earn-positions-card";
+import { PortfolioOverviewCard } from "./portfolio-overview-card";
 import { planTranscript, shouldShowThinking, type TranscriptItem } from "@/lib/chat/steps";
 import { parseRichText } from "@/lib/chat/richText";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
@@ -280,6 +285,10 @@ export interface LiveBlocksProps {
   onCite: () => void;
   /** Persist a thumbs rating on a finished answer (061 A9). Omitted when not signed in. */
   feedback?: TurnFeedbackTarget;
+  /** 068 — the active conversation id, used to resume an in-progress cross-chain deposit. */
+  conversationId?: string;
+  /** 069 — let a read-only card (the earn vault list) send a normal follow-up chat message. */
+  onSend?: (text: string) => void;
 }
 
 /**
@@ -310,6 +319,8 @@ export function LiveBlocks({
   onSign,
   onCite,
   feedback,
+  conversationId,
+  onSend,
 }: LiveBlocksProps) {
   // 036 — when this turn started, so the waiting row can show a clock. Captured on the first render
   // in which the turn is streaming and held until it stops, so the count is of THIS turn rather
@@ -331,6 +342,8 @@ export function LiveBlocks({
             onSign={onSign}
             onCite={onCite}
             onRetry={onRetry}
+            conversationId={conversationId}
+            onSend={onSend}
           />
         ) : (
           <StepGroup key={i} entry={entry} cards={cards} />
@@ -500,6 +513,8 @@ function LiveBlock({
   onSign,
   onCite,
   onRetry,
+  conversationId,
+  onSend,
 }: {
   card: ChatCard;
   onReview: (intent: InlineIntent) => void;
@@ -507,6 +522,8 @@ function LiveBlock({
   onCite: () => void;
   /** Re-send the message this turn failed on — offered on an `error` block (029/FR-001). */
   onRetry?: () => void;
+  conversationId?: string;
+  onSend?: (text: string) => void;
 }) {
   // Fail-closed: an unvalidated / malformed block renders inert, never actionable.
   if (card.status === "inert") return <InertNotice message={card.message} />;
@@ -659,6 +676,21 @@ function LiveBlock({
 
     case "citation":
       return <SourcesCard sources={block.sources} />;
+
+    case "crosschain_quote":
+      return <CrossChainQuoteCard block={block} conversationId={conversationId} />;
+
+    case "earn_vaults":
+      return <EarnVaultsCard block={block} onSend={onSend} />;
+
+    case "earn_quote":
+      return <EarnQuoteCard block={block} />;
+
+    case "earn_positions":
+      return <EarnPositionsCard block={block} />;
+
+    case "portfolio_overview":
+      return <PortfolioOverviewCard block={block} />;
 
     case "error":
       // 029/FR-001 — an error BLOCK is a failed turn just as much as a failed request is, and

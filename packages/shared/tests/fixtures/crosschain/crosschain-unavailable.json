@@ -1,0 +1,24 @@
+{
+  "type": "crosschain_quote",
+  "state": "unavailable",
+  "origin": {
+    "key": "eth:USDT",
+    "chain": "eth",
+    "chainLabel": "Ethereum",
+    "symbol": "USDT",
+    "amount": "3000",
+    "assetId": "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near",
+    "evmChainId": 1
+  },
+  "destination": {
+    "key": "tron:USDT",
+    "chain": "tron",
+    "chainLabel": "Tron",
+    "symbol": "USDT",
+    "assetId": "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",
+    "addressKind": "tron"
+  },
+  "slippageBps": 100,
+  "unavailableReason": "1Click is not quoting Tron payouts right now",
+  "quotedAt": "2026-11-01T00:19:48.065Z"
+}

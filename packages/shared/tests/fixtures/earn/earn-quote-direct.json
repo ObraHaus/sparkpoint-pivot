@@ -1,0 +1,66 @@
+{
+  "type": "earn_quote",
+  "state": "preview",
+  "rail": "direct",
+  "vault": {
+    "chain": "base",
+    "chainId": 8453,
+    "address": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+    "version": "v1",
+    "name": "Gauntlet USDC Prime",
+    "symbol": "GTUSDC",
+    "asset": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    "listed": true,
+    "tvlUsd": "420000000",
+    "netApy": "4.41",
+    "source": "morpho_api",
+    "fetchedAt": "2026-11-01T00:00:00+00:00",
+    "curatedDefault": true,
+    "rails": {
+      "available": [
+        "direct",
+        "oneclick_earn"
+      ],
+      "direct": {
+        "available": true,
+        "reason": null,
+        "note": "Deposit from a wallet on this chain to receive the native Morpho vault share."
+      },
+      "oneclickEarn": {
+        "available": true,
+        "liveness": "unknown",
+        "receipt": {
+          "symbol": "gtUSDCp",
+          "assetId": "nep141:base-0x0bb69b79bc829e1cfcc34a740110886d98d2bd14.omft.near",
+          "decimals": 18,
+          "chain": "base",
+          "wrapperAddress": "0x0bb69b79bc829e1cfcc34a740110886d98d2bd14",
+          "underlyingVault": "0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61"
+        },
+        "reason": "Liquidity has not been probed yet; a preview asks 1Click for a dry quote.",
+        "note": "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. The receipt is backed by the vault; a direct same-chain deposit gives you the native share.",
+        "feeNote": "Includes 1Click's 0.25% keyless routing fee."
+      },
+      "intentsConnect": {
+        "available": false,
+        "reason": "Aurora Intents Connect is disabled in the earn config."
+      }
+    }
+  },
+  "origin": {
+    "key": "base:USDC",
+    "chain": "base",
+    "chainLabel": "Base",
+    "symbol": "USDC",
+    "amount": "100",
+    "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "evmChainId": 8453
+  },
+  "amountIn": "100",
+  "receiptNote": "Direct same-chain deposit: you receive the native Morpho vault share, not a wrapped receipt.",
+  "quotedAt": "2026-11-01T02:31:00+00:00"
+}

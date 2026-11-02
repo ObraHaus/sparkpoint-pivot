@@ -45,6 +45,31 @@ test("an empty streamId is also a NEW stream, so it resets", () => {
   assert.equal(two.streamId, "");
 });
 
+test("073 retract — an empty delta under a fresh streamId clears the painted partial", () => {
+  const painted = reduceTextDelta(start, {
+    kind: "text_delta",
+    target: "text",
+    delta: "Morpho and Aave both carry risk.",
+    streamId: "general-1",
+  });
+  const retracted = reduceTextDelta(painted, {
+    kind: "text_delta",
+    target: "text",
+    delta: "",
+    streamId: "general-1-r",
+  });
+  assert.equal(retracted.text, "");
+  assert.equal(retracted.streamId, "general-1-r");
+  // A later attempt under its own id starts clean, never glued to the retracted text.
+  const retry = reduceTextDelta(retracted, {
+    kind: "text_delta",
+    target: "text",
+    delta: "A fresh answer.",
+    streamId: "general-2",
+  });
+  assert.equal(retry.text, "A fresh answer.");
+});
+
 test("the final block clears the provisional paint so it cannot outlive the answer", () => {
   const painted = reduceTextDelta(start, {
     kind: "text_delta",

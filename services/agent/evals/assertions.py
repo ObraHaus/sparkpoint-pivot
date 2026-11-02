@@ -174,6 +174,28 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
             return f"{SWAP_ROUTE_PREFIX}{token_in}->{token_out}"
         return f"proposal:{action_type}"
 
+    for wire in wires:
+        if wire.get("type") != "crosschain_quote":
+            continue
+        return (
+            "crosschain_unavailable"
+            if str(wire.get("state")) == "unavailable"
+            else "crosschain_preview"
+        )
+
+    for wire in wires:
+        if wire.get("type") == "portfolio_overview":
+            return "portfolio_overview"
+
+    for wire in wires:
+        if wire.get("type") == "earn_positions":
+            return f"earn_positions_{wire.get('state')}"
+    for wire in wires:
+        if wire.get("type") == "earn_vaults":
+            return "earn_list"
+        if wire.get("type") == "earn_quote":
+            return "earn_unavailable" if str(wire.get("state")) == "unavailable" else "earn_preview"
+
     if "recommendation" in kinds:
         return "recommendation"
     if "portfolio_snapshot" in kinds:
@@ -192,9 +214,7 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         "to withdraw" in text
     ):
         return "nothing_to_withdraw"
-    if "aren't supported yet" in text and (
-        "cross-chain swap" in text or "near intents" in text
-    ):
+    if "aren't supported yet" in text and ("cross-chain swap" in text or "near intents" in text):
         return "unsupported_swap"
     if "bridging to another chain" in text:
         return "bridge"
@@ -210,9 +230,7 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         return "all_in"
     if "can't show a per-wallet" in text:
         return "fees_paid"
-    if "not on my own" in text and (
-        "session key" in text or "every transaction is signed" in text
-    ):
+    if "not on my own" in text and ("session key" in text or "every transaction is signed" in text):
         return "automation"
     if "apy" in text and (
         "the vault is currently showing" in text
@@ -227,7 +245,8 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         "i'd point you at" in text
         or "curated vaults live on this network" in text
         or "curated vault live on this network" in text
-        or "is showing" in text and "net apy" in text
+        or "is showing" in text
+        and "net apy" in text
         or "i'm tracking" in text
         or "there are no curated vaults on this network" in text
     ):
@@ -311,6 +330,31 @@ def case_failures(
                     failures.append(f"tokenOut: expected {want.token_out}, got {got_out}")
             if want.policy is not None and _policy_status(wires) != want.policy:
                 failures.append(f"policy: expected {want.policy}, got {_policy_status(wires)}")
+
+    portfolio_wire = next(
+        (wire for wire in wires if wire.get("type") == "portfolio_overview"), None
+    )
+    if expected.focus is not None:
+        if portfolio_wire is None:
+            failures.append(f"portfolio focus: expected {expected.focus}, no overview block")
+        elif str(portfolio_wire.get("focus")) != expected.focus:
+            failures.append(
+                f"portfolio focus: expected {expected.focus}, got {portfolio_wire.get('focus')}"
+            )
+    if expected.sections:
+        if portfolio_wire is None:
+            failures.append("portfolio sections: no overview block")
+        else:
+            observed_sections = {
+                str(item.get("key")): str(item.get("status"))
+                for item in portfolio_wire.get("sections") or []
+                if isinstance(item, Mapping)
+            }
+            for key, status in expected.sections.items():
+                if observed_sections.get(key) != status:
+                    failures.append(
+                        f"section {key}: expected {status}, got {observed_sections.get(key)}"
+                    )
 
     text = visible_text(wires)
     for forbidden in expected.must_not_contain:

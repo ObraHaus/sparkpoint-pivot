@@ -1,0 +1,211 @@
+{
+  "type": "portfolio_overview",
+  "state": "ready",
+  "focus": "all",
+  "asOf": "2026-11-01T04:30:00+00:00",
+  "sections": [
+    {
+      "key": "balances",
+      "label": "Wallet balances",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "wallet",
+          "kind": "native",
+          "symbol": "ETH",
+          "amount": "0.5",
+          "valueUsd": "2000.00",
+          "priceSource": "eth_test",
+          "decimals": 18,
+          "priceUsd": "4000"
+        },
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "wallet",
+          "kind": "token",
+          "symbol": "USDC",
+          "amount": "100",
+          "valueUsd": "100.00",
+          "priceSource": "stablecoin_par",
+          "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "decimals": 6
+        }
+      ],
+      "source": "rpc",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "chains": [
+        {
+          "chain": "base",
+          "label": "Base",
+          "status": "ok",
+          "reason": null
+        },
+        {
+          "chain": "eth",
+          "label": "Ethereum",
+          "status": "unavailable",
+          "reason": "not configured"
+        }
+      ],
+      "totalUsd": "2100.00"
+    },
+    {
+      "key": "morpho",
+      "label": "Morpho",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "morpho",
+          "kind": "vault_position",
+          "symbol": "GTUSDC",
+          "amount": "100",
+          "valueUsd": "100.00",
+          "priceSource": "stablecoin_par",
+          "vaultAddress": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+          "vaultName": "Gauntlet USDC Prime",
+          "assetSymbol": "USDC",
+          "decimals": 6,
+          "netApy": "4.41",
+          "shares": "100",
+          "rail": "direct"
+        }
+      ],
+      "source": "morpho_api",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "totalUsd": "100.00"
+    },
+    {
+      "key": "kamino",
+      "label": "Kamino",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "sol",
+          "chainLabel": "Solana",
+          "protocol": "kamino",
+          "kind": "vault_position",
+          "symbol": "kV-SOL",
+          "amount": "1",
+          "priceSource": "kamino_share_price_unavailable",
+          "vaultAddress": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+          "vaultName": "SOL Balanced",
+          "sharesMint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+          "assetSymbol": "SOL",
+          "netApy": "4.45",
+          "wallet": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+        }
+      ],
+      "source": "solana_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    },
+    {
+      "key": "rhea",
+      "label": "Rhea",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "near",
+          "chainLabel": "NEAR",
+          "protocol": "rhea",
+          "kind": "lending_position",
+          "symbol": "USDC",
+          "amount": "100",
+          "valueUsd": "100.00",
+          "priceSource": "stablecoin_par",
+          "apy": "14.05",
+          "mca": "eval.multica.near"
+        }
+      ],
+      "source": "rhea_rpc",
+      "asOf": "2026-11-01T04:30:00+00:00",
+      "mca": "eval.multica.near",
+      "appUrl": "https://app.rhea.finance/lending",
+      "totalUsd": "100.00"
+    },
+    {
+      "key": "swaps",
+      "label": "Cross-chain swaps",
+      "status": "ok",
+      "rows": [
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "swap",
+          "kind": "cross_chain_swap",
+          "symbol": "USDC",
+          "amount": "100",
+          "originKey": "base:USDC",
+          "originLabel": "Base USDC",
+          "destinationKey": "sol:USDC",
+          "destinationLabel": "Solana USDC",
+          "route": "Base USDC -> Solana USDC",
+          "depositAddress": "0xabababababababababababababababababababab",
+          "createdAt": "2026-10-31T00:00:00+00:00",
+          "lastStatus": "SUCCESS",
+          "amountOut": "0.98"
+        },
+        {
+          "chain": "base",
+          "chainLabel": "Base",
+          "protocol": "swap",
+          "kind": "cross_chain_swap",
+          "symbol": "USDC",
+          "amount": "100",
+          "originKey": "base:USDC",
+          "originLabel": "Base USDC",
+          "destinationKey": "near:USDC",
+          "destinationLabel": "NEAR USDC",
+          "route": "Base USDC -> NEAR USDC",
+          "depositAddress": "0xabababababababababababababababababababab",
+          "createdAt": "2026-10-32T00:00:00+00:00",
+          "lastStatus": "SUCCESS",
+          "amountOut": "99.9"
+        }
+      ],
+      "source": "db",
+      "asOf": "2026-11-01T04:30:00+00:00"
+    }
+  ],
+  "totals": {
+    "totalUsd": "2300.00",
+    "byChain": [
+      {
+        "chain": "base",
+        "label": "Base",
+        "valueUsd": "2200.00"
+      },
+      {
+        "chain": "near",
+        "label": "NEAR",
+        "valueUsd": "100.00"
+      }
+    ],
+    "byProtocol": [
+      {
+        "protocol": "wallet",
+        "valueUsd": "2100.00"
+      },
+      {
+        "protocol": "morpho",
+        "valueUsd": "100.00"
+      },
+      {
+        "protocol": "rhea",
+        "valueUsd": "100.00"
+      }
+    ],
+    "priced": true
+  },
+  "sources": [
+    "rpc",
+    "morpho_api",
+    "solana_rpc",
+    "rhea_rpc",
+    "db"
+  ]
+}

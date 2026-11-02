@@ -29,6 +29,10 @@ export const EMPTY_STREAM_TEXT: StreamTextState = { text: "" };
  * A missing/empty `streamId` cannot be proven to belong to the current attempt, so it is treated
  * as a NEW stream too (reset): appending to an unidentifiable delta risks gluing a retry onto a
  * discarded attempt.
+ *
+ * 073 — the same rule implements RETRACTION: when the incremental guard trips after some text
+ * was painted, the agent sends an empty delta under a fresh `streamId` (`general-1-r`), which
+ * replaces the buffer with `""` and clears the partial immediately. No new wire event is needed.
  */
 export function reduceTextDelta(
   state: StreamTextState,

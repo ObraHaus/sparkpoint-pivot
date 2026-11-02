@@ -1,0 +1,248 @@
+{
+  "feature_enabled": true,
+  "morpho_api_url": "https://api.morpho.org/graphql",
+  "refresh_minutes": 360,
+  "chains": [
+    {
+      "chain": "base",
+      "chain_id": 8453,
+      "label": "Base",
+      "enabled": true
+    },
+    {
+      "chain": "eth",
+      "chain_id": 1,
+      "label": "Ethereum",
+      "enabled": true
+    },
+    {
+      "chain": "arbitrum",
+      "chain_id": 42161,
+      "label": "Arbitrum",
+      "enabled": false
+    },
+    {
+      "chain": "optimism",
+      "chain_id": 10,
+      "label": "Optimism",
+      "enabled": false
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "label": "Polygon",
+      "enabled": false
+    },
+    {
+      "chain": "monad",
+      "chain_id": 143,
+      "label": "Monad",
+      "enabled": false
+    },
+    {
+      "chain": "hyperevm",
+      "chain_id": 999,
+      "label": "HyperEVM",
+      "enabled": false
+    },
+    {
+      "chain": "katana",
+      "chain_id": 747474,
+      "label": "Katana",
+      "enabled": false
+    },
+    {
+      "chain": "unichain",
+      "chain_id": 130,
+      "label": "Unichain",
+      "enabled": false
+    },
+    {
+      "chain": "world",
+      "chain_id": 480,
+      "label": "World Chain",
+      "enabled": false
+    },
+    {
+      "chain": "robinhood",
+      "chain_id": 4663,
+      "label": "Robinhood Chain",
+      "enabled": false
+    },
+    {
+      "chain": "sol",
+      "chain_id": 0,
+      "label": "Solana",
+      "enabled": true,
+      "protocols": [
+        "kamino"
+      ]
+    },
+    {
+      "chain": "near",
+      "chain_id": 0,
+      "label": "NEAR",
+      "enabled": true,
+      "protocols": [
+        "rhea"
+      ]
+    }
+  ],
+  "filters": {
+    "listed_only": true,
+    "min_tvl_usd": "1000000",
+    "assets": [
+      "USDC",
+      "WETH",
+      "USDT",
+      "cbBTC"
+    ]
+  },
+  "allowlist": [],
+  "denylist": [],
+  "known_vault_names": [
+    "Gauntlet USDC Prime",
+    "Moonwell Flagship USDC",
+    "Spark USDC",
+    "Steakhouse USDC",
+    "SOL Balanced",
+    "kV-gtSOLb"
+  ],
+  "curated_defaults": {
+    "base": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+    "sol": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg"
+  },
+  "oneclick_receipts": [
+    {
+      "symbol": "gtUSDCp",
+      "asset_id": "nep141:base-0x0bb69b79bc829e1cfcc34a740110886d98d2bd14.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x0bb69b79bc829e1cfcc34a740110886d98d2bd14",
+      "underlying_vault": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61"
+    },
+    {
+      "symbol": "mwUSDC",
+      "asset_id": "nep141:base-0x3388d158fdcc31398b99478420e6945cdaace009.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x3388d158fdcc31398b99478420e6945cdaace009",
+      "underlying_vault": "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca"
+    },
+    {
+      "symbol": "sparkUSDC",
+      "asset_id": "nep141:base-0x7429743f8adbbe932b27bc02267b0e70f1ba688b.omft.near",
+      "decimals": 18,
+      "chain": "base",
+      "wrapper_address": "0x7429743f8adbbe932b27bc02267b0e70f1ba688b",
+      "underlying_vault": "0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A"
+    },
+    {
+      "symbol": "steakUSDC",
+      "asset_id": "nep141:eth-0xaf08e292d62df255f7953665a44ed65f0380aa60.omft.near",
+      "decimals": 18,
+      "chain": "eth",
+      "wrapper_address": "0xaf08e292d62df255f7953665a44ed65f0380aa60",
+      "underlying_vault": "0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB"
+    },
+    {
+      "symbol": "kV-gtSOLb",
+      "asset_id": "nep141:sol-0xa69aa1bcb03a369e338156a8718ad60271145803.omdep.near",
+      "decimals": 9,
+      "chain": "sol",
+      "wrapper_address": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+      "underlying_vault": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+      "protocol": "kamino",
+      "receipt_kind": "native_shares"
+    }
+  ],
+  "rails": {
+    "direct": true,
+    "oneclick_earn": true,
+    "intents_connect": false
+  },
+  "intents_connect": {
+    "base_url": "https://intents-connect-api.aurora.dev",
+    "supported_assets": {
+      "base": [
+        "USDC",
+        "WETH",
+        "USDT",
+        "cbBTC"
+      ],
+      "eth": [
+        "USDC",
+        "WETH",
+        "USDT",
+        "cbBTC"
+      ]
+    }
+  },
+  "kamino": {
+    "enabled": true,
+    "api_url": "https://api.kamino.finance",
+    "auto_discover": false,
+    "token_mints": {
+      "SOL": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "decimals": 9
+      },
+      "USDC": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decimals": 6
+      }
+    },
+    "filters": {
+      "assets": [
+        "SOL",
+        "USDC"
+      ],
+      "min_tvl_usd": "1000000"
+    },
+    "vaults": [
+      {
+        "address": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+        "name": "SOL Balanced",
+        "asset": "SOL",
+        "shares_mint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK"
+      }
+    ]
+  },
+  "rhea": {
+    "enabled": true,
+    "rpc_urls": [
+      "https://free.rpc.fastnear.com",
+      "https://rpc.mainnet.near.org"
+    ],
+    "logic_contract": "contract.main.burrow.near",
+    "am_contract": "multica.near",
+    "app_url": "https://app.rhea.finance/lending",
+    "assets": [
+      {
+        "symbol": "USDC",
+        "asset_id": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "decimals": 6,
+        "enabled": true
+      },
+      {
+        "symbol": "USDT",
+        "asset_id": "nep141:usdt.tether-token.near",
+        "decimals": 6,
+        "enabled": false
+      }
+    ],
+    "mca_fee_fallback": {
+      "USDC": "0.30"
+    },
+    "use_as_collateral": false,
+    "origins": [
+      "base:USDC",
+      "eth:USDC",
+      "sol:USDC"
+    ],
+    "default_origin": "base:USDC"
+  },
+  "dry_probe_addresses": {
+    "sol": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+  }
+}

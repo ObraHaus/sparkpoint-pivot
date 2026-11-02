@@ -19,7 +19,7 @@
  *     `parseErrorEnvelope` expects.
  *   - all other endpoints return the upstream JSON body + status verbatim. A null-body status
  *     (204/205/304, …) is returned with `null` — the Fetch `Response` constructor rejects ANY body
- *     for those, which used to turn `POST /chat/feedback`'s successful 204 into a 500.
+ *     for those, which used to turn `POST /chat/feedback`'s successful 204 into a 500 (064).
  *
  * GRACEFUL OFFLINE (non-custody law): a missing `AGENT_INTERNAL_URL`, or any
  * network failure reaching the agent, returns a clean §1.5 error envelope that the
@@ -199,6 +199,8 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // Everything else: relay the JSON body + the upstream status verbatim (§1.5 error
   // envelopes included, so the client keys off the real code/status). We copy only
   // a minimal, safe header allowlist — never the token or any upstream auth header.
+  // A null-body status (204/205/304, …) is returned with `null`: the Fetch `Response`
+  // constructor rejects ANY body for those (064 — `POST /chat/feedback`'s 204 used to 500).
   const buffered = await upstream.arrayBuffer();
   return bufferedUpstreamResponse({
     status: upstream.status,

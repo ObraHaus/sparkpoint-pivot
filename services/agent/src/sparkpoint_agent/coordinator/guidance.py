@@ -7,7 +7,7 @@ policy gate — the DAG still runs ``propose`` → ``policy.evaluate`` for every
 
 Covered:
   * an empty-wallet / no-mandate yield question (curated options, a labelled estimate, the Aave
-    comparison, the NEAR/Rhea limit, and a next step) instead of the guardrails dead-end;
+    comparison, the Rhea NEAR-yield path, and a next step) instead of the guardrails dead-end;
   * unsupported swap targets (native BTC, SOL/Solana, NEAR) instead of the default USDG ↔ ETH card;
   * unsafe-transfer / prompt-injection detection with an explicit refusal;
   * small parsing helpers for amounts/durations and the deposit/withdraw/follow-up predicates.
@@ -28,6 +28,7 @@ from .staleness import as_of_suffix, staleness_caveat
 
 __all__ = [
     "CONFIRMATION_RE",
+    "NEAR_NATIVE_STAKING_ANSWER",
     "NOTHING_TO_WITHDRAW",
     "UNSAFE_REFUSAL",
     "amount_from_text",
@@ -57,18 +58,14 @@ __all__ = [
 # Amount + duration parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
-_DOLLAR_AMOUNT_RE = re.compile(
-    r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*(k|m)?\b", re.IGNORECASE
-)
+_DOLLAR_AMOUNT_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*(k|m)?\b", re.IGNORECASE)
 _STABLE_AMOUNT_RE = re.compile(
     r"\b(\d[\d,]*(?:\.\d+)?)\s*(k|m)?\s*(?:usdc|usdg|dollars?|bucks|stablecoins?)\b",
     re.IGNORECASE,
 )
 _MULTIPLIER = {"k": 1_000, "m": 1_000_000}
 
-_DURATION_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)\s*(years?|yrs?|months?|mos?)\b", re.IGNORECASE
-)
+_DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(years?|yrs?|months?|mos?)\b", re.IGNORECASE)
 _ANNUAL_RE = re.compile(r"\b(?:annual|annually|per year|a year|one year|yearly)\b", re.IGNORECASE)
 _HALF_RE = re.compile(r"\bhalf\b", re.IGNORECASE)
 _QUARTER_RE = re.compile(r"\bquarter\b", re.IGNORECASE)
@@ -279,9 +276,7 @@ _SWAP_VERB_RE = re.compile(
 # TON is both a ticker and an ordinary English word ("a ton of ETH"), so it only counts when it
 # is unambiguously the chain/asset: "toncoin" (any case), or uppercase "TON" (which also covers
 # "TON chain/network/token"). An all-caps "TON OF …" is still the English quantifier.
-_TON_RE = re.compile(
-    r"\bTON\b(?!\s+(?i:of)\b)|(?i:\btoncoin\b|\bton\s+(?:chain|network|token)\b)"
-)
+_TON_RE = re.compile(r"\bTON\b(?!\s+(?i:of)\b)|(?i:\btoncoin\b|\bton\s+(?:chain|network|token)\b)")
 
 # NEAR likewise: uppercase NEAR (which also covers "on/into/to/for NEAR" and
 # "NEAR protocol/chain/network/token"), or "Rhea". Lowercase "near-term", "near the top" and
@@ -314,9 +309,7 @@ _UNSUPPORTED_TARGETS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
 )
 
-_RECEIVE_SIDE_RE = re.compile(
-    r"\b(?:into|to|for)\s+(?P<target>[^.?!\n]+)", re.IGNORECASE
-)
+_RECEIVE_SIDE_RE = re.compile(r"\b(?:into|to|for)\s+(?P<target>[^.?!\n]+)", re.IGNORECASE)
 
 
 def _swap_sides(message: str) -> tuple[str, str]:
@@ -436,9 +429,7 @@ _ADDRESS_RE = re.compile(r"\b0x[0-9a-fA-F]{40}\b")
 _TO_ADDRESS_RE = re.compile(
     r"\b(?:to|into|towards?)\s+(?:the\s+|a\s+)?0x[0-9a-fA-F]{40}\b", re.IGNORECASE
 )
-_FROM_ADDRESS_RE = re.compile(
-    r"\bfrom\b[^.?!\n]{0,40}?0x[0-9a-fA-F]{40}\b", re.IGNORECASE
-)
+_FROM_ADDRESS_RE = re.compile(r"\bfrom\b[^.?!\n]{0,40}?0x[0-9a-fA-F]{40}\b", re.IGNORECASE)
 _IGNORE_RE = re.compile(
     r"\b(?:ignore|disregard|forget|override|bypass|discard)\b[^.?!]{0,40}"
     r"\b(?:previous|prior|above|earlier|all)\b[^.?!]{0,25}"
@@ -552,14 +543,11 @@ def is_comparative_question(message: str) -> bool:
     if _COMPARATIVE_RE.search(message):
         return True
     return bool(
-        _BETTER_WORSE_THAN_RE.search(message)
-        and _COMPARATIVE_QUESTION_SHAPE_RE.search(message)
+        _BETTER_WORSE_THAN_RE.search(message) and _COMPARATIVE_QUESTION_SHAPE_RE.search(message)
     )
 
 
-_FOLLOWUP_RE = re.compile(
-    r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE
-)
+_FOLLOWUP_RE = re.compile(r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE)
 
 
 def is_yield_guidance_question(message: str) -> bool:
@@ -621,8 +609,7 @@ def _options_block(curated: CuratedContext | None) -> str:
         as_of = as_of_suffix(vault.as_of)
         lines.append(f"- **{vault.label}** — {_fmt_bps(vault.net_apy_bps)} net APY{as_of}")
     caveats = [
-        staleness_caveat(vault.as_of, subject=f"{vault.label}'s figure")
-        for vault in vaults[:3]
+        staleness_caveat(vault.as_of, subject=f"{vault.label}'s figure") for vault in vaults[:3]
     ]
     unique = [c for i, c in enumerate(caveats) if c and c not in caveats[:i]]
     if unique:
@@ -640,9 +627,7 @@ def _estimate_apy(
     return projected if projected is not None else gross
 
 
-def _estimate_block(
-    amount: int, months: int, apy_bps: int, as_of: str | None
-) -> str:
+def _estimate_block(amount: int, months: int, apy_bps: int, as_of: str | None) -> str:
     earned = amount * apy_bps * months // (10_000 * 12)
     stamp = as_of_suffix(as_of, style="space")
     caveat = staleness_caveat(as_of, subject="This rate")
@@ -673,9 +658,7 @@ def _comparison_block(
         )
     parts: list[str] = ["Here's the honest comparison."]
     if net_bps is not None:
-        parts.append(
-            f"**{label}** shows **{_fmt_bps(net_bps)} net APY**{as_of}."
-        )
+        parts.append(f"**{label}** shows **{_fmt_bps(net_bps)} net APY**{as_of}.")
     if gross_bps is not None:
         fee_note = (
             f" The vault's net figure already reflects its {_fmt_bps(fee_bps)} performance fee."
@@ -705,15 +688,20 @@ def withdraw_all_amount(positions: Sequence[object]) -> int | None:
             continue
         value = str(getattr(position, "value_usd", "")).replace(",", "")
         try:
-            units = int(
-                (Decimal(value) * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP)
-            )
+            units = int((Decimal(value) * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
         except (ArithmeticError, ValueError):
             continue
         if units > 0:
             return units
     return None
 
+
+# 071 — native NEAR-token staking is not Rhea USDC lending; say so and point at what works.
+NEAR_NATIVE_STAKING_ANSWER = (
+    "NEAR-token staking isn't supported here. The supported NEAR yield is Rhea Lending — "
+    "USDC only for now. Tell me an amount (for example 100 USDC) and I'll show a dry deposit "
+    "preview; nothing is signed or sent."
+)
 
 NOTHING_TO_WITHDRAW = (
     "You don't have a position in the SparkPoint vault, so there's nothing to withdraw right now. "
@@ -774,7 +762,7 @@ def yield_guidance_answer(
         )
     elif amount is None and is_yield_guidance_question(message):
         sections.append(
-            "If you tell me an amount and a duration (for example \"2,000 USDC for 6 months\"), "
+            'If you tell me an amount and a duration (for example "2,000 USDC for 6 months"), '
             "I'll give you an illustrative estimate at the current rate."
         )
 
@@ -785,15 +773,12 @@ def yield_guidance_answer(
 
     if _NEAR_RE.search(message):
         sections.append(
-            "NEAR yield (including Rhea Finance) isn't supported yet — NEAR support is coming. "
-            "Today the live yield path is the curated vault board on this network."
+            "Rhea Lending is the supported NEAR yield — USDC only for now. Tell me an amount "
+            "(for example 100 USDC) and I'll show a dry deposit preview; you withdraw on "
+            "app.rhea.finance with the same wallet."
         )
 
-    if (
-        amount is not None
-        and per_user_cap_base is not None
-        and amount > per_user_cap_base
-    ):
+    if amount is not None and per_user_cap_base is not None and amount > per_user_cap_base:
         cap = format_usd(per_user_cap_base)
         sections.append(
             f"One thing to know: a single deposit above {cap} exceeds the current per-user cap, "

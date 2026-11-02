@@ -37,17 +37,14 @@ model pool, and the branch is latency-sensitive (it is what a user hits when the
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort, LlmResult
 from ..memory import SPARKY_DIGEST_CHARS, render_digest
 from ..prompt_fencing import BACKGROUND_NOTE, UNTRUSTED_NOTE, fence
-from .guard_text import (
-    STREAM_HOLD_CHARS,
-    is_unusable,
-    prefix_is_usable,
-    unusable_reason,
-)
+from .guard_text import is_unusable, unusable_reason
+from .stream_guard import HOLD_COMPARATIVE_PROSE, StreamGuard
 
 EFFORT: Effort = "low"
 
@@ -120,6 +117,32 @@ COMPARATIVE_RULE = (
 )
 
 
+#: 074 — the comparative answer is a code-authored skeleton; only its closing trade-off comes
+#: from the model. This dedicated prompt is short and asks for ONE thing, which keeps the output
+#: small (latency) and the shape stable. It still forbids the same things the general prompt does
+#: (advice, a personal winner, invented figures, scaffolding talk, action payloads).
+BOTTOM_LINE_SYSTEM = (
+    "You are Sparky, the SparkPoint assistant. A comparison has already been laid out for the "
+    "user. Write ONLY its closing BOTTOM LINE: one or two short sentences of plain English that "
+    "describe the trade-off between the options. Do not declare a winner, do not say one is "
+    "safer or better, and do not give buy/sell or allocation advice. Do not invent, repeat or "
+    "estimate any figure. Do not mention notes, reference material, context, documents or what "
+    "you do or do not have access to. Do not use headings, bullet lists, code or JSON, and never "
+    "output a transaction, action payload or tool call. Output the sentence(s) only."
+)
+
+#: Why 0.2 and not 0: several free models in the gateway pool degrade at temperature 0
+#: (repetition, degenerate short replies). 0.2 keeps the closing sentence close to deterministic
+#: without asking the pool for a mode it handles badly. The gateway sets ``drop_params``, so a
+#: provider that ignores ``temperature``/``seed`` is fine. This is NOT a model/billing change.
+BOTTOM_LINE_TEMPERATURE = 0.2
+#: A fixed seed is best-effort only (some providers ignore it); the structure is deterministic
+#: with or without it.
+BOTTOM_LINE_SEED = 7
+#: The closing trade-off is 1-2 sentences; this is a runaway backstop, not the target length.
+BOTTOM_LINE_MAX_CHARS = 320
+
+
 SYSTEM = (
     "You are Sparky, the SparkPoint assistant, answering a general or conversational message "
     "in chat.\n"
@@ -156,17 +179,20 @@ SYSTEM = (
 #: length hex blob. Any hit discards the whole answer (fail-closed to the caller's canned text).
 
 
-
-
 def _clamp(text: str) -> str:
     """Trim a runaway generation to :data:`MAX_CHARS`, cutting at the last sentence terminator.
 
     Falls back to a whole-word cut (then a hard slice) when the budget contains no sentence
     end, so the result never dangles mid-word.
     """
-    if len(text) <= MAX_CHARS:
+    return _clamp_to(text, MAX_CHARS)
+
+
+def _clamp_to(text: str, limit: int) -> str:
+    """The same sentence-boundary clamp as :func:`_clamp`, for a caller-supplied budget."""
+    if len(text) <= limit:
         return text
-    window = text[:MAX_CHARS]
+    window = text[:limit]
     cut = max(window.rfind("."), window.rfind("!"), window.rfind("?"))
     if cut > 0:
         return window[: cut + 1].strip()
@@ -194,15 +220,19 @@ class SparkyReply:
 
 @dataclass(frozen=True)
 class SparkyChunk:
-    """One event from :meth:`Sparky.stream_reply` — a text delta or the terminal reply.
+    """One event from :meth:`Sparky.stream_reply` — a text delta, a retract, or the terminal reply.
 
-    Exactly one field is set. ``reply`` carries the SAME guarded/clamped outcome the non-streaming
-    :meth:`Sparky.reply` would return, so the coordinator's final ``text`` block is authoritative
-    and can replace anything already streamed (a retry, a clamp, or the static fallback).
+    At most one of ``delta`` / ``retract`` / ``reply`` is set. ``reply`` carries the SAME
+    guarded/clamped outcome the non-streaming :meth:`Sparky.reply` would return, so the
+    coordinator's final ``text`` block is authoritative and can replace anything already streamed
+    (a retry, a clamp, or the static fallback). ``retract`` (073) tells the transport to clear the
+    provisional paint NOW because the guard tripped after some text had been released; it is
+    implemented on the wire as an empty delta under a fresh ``streamId``.
     """
 
     delta: str | None = None
     reply: SparkyReply | None = None
+    retract: bool = False
 
 
 @dataclass
@@ -253,14 +283,12 @@ class Sparky:
             )
             if recent:
                 user_content = (
-                    f"{user_content}\n"
-                    f"{fence('RECENT_CONVERSATION', recent, note=UNTRUSTED_NOTE)}"
+                    f"{user_content}\n{fence('RECENT_CONVERSATION', recent, note=UNTRUSTED_NOTE)}"
                 )
         memory = render_digest(memory_lines or (), max_chars=SPARKY_DIGEST_CHARS)
         if memory:
             user_content = (
-                f"{user_content}\n"
-                f"{fence('MEMORY', memory, note=BACKGROUND_NOTE, neutralise=False)}"
+                f"{user_content}\n{fence('MEMORY', memory, note=BACKGROUND_NOTE, neutralise=False)}"
             )
         if context_hint:
             user_content = f"{user_content}\n{context_hint}"
@@ -276,14 +304,23 @@ class Sparky:
         history: Sequence[tuple[str, str]] | None = None,
         comparative: bool = False,
     ) -> AsyncIterator[SparkyChunk]:
-        """Stream Sparky's prose as deltas, then yield the SAME guarded reply :meth:`reply` returns.
+        """Stream guarded deltas, then yield the SAME guarded reply as :meth:`reply`.
 
-        The deltas are UNTRUSTED until the terminal chunk: the full text still goes through
-        ``is_unusable`` (action/meta-shaped discard), the refusal check and :func:`_clamp`, and the
-        caller must render the terminal reply as the authoritative block — replacing whatever was
-        streamed if a guard rewrote or rejected it. Forwarding stops at :data:`MAX_CHARS` so the
-        visible text can never exceed the clamp; the final block may still be shorter (the clamp
-        cuts at a sentence boundary), which is why the final replacement is mandatory.
+        073 — the deltas are UNTRUSTED, so :class:`StreamGuard` releases only complete
+        sentences/newline segments whose CUMULATIVE text passes the shared action/meta predicates.
+        A guarded phrase therefore never reaches the client: the guard trips the moment it sees one,
+        stops releasing, the model stream is closed early, and the terminal reply is the same
+        ``fell_back`` failure (``"meta"`` / ``"action"``) the non-streaming path would produce. If
+        anything had already been painted, one ``retract`` chunk tells the transport to clear it.
+
+        COMPARATIVE turns are deliberately held WHOLE (:data:`HOLD_COMPARATIVE_PROSE`): their
+        acceptance depends on whole-answer checks that cannot be known mid-stream (065/066/067),
+        so no prose delta is emitted and the terminal ``text`` block is the first prose the user
+        sees. Tool-step progress still streams above it.
+
+        The full text still goes through ``is_unusable``, the refusal check and :func:`_clamp`; the
+        terminal reply stays authoritative. Forwarding is clamp-aligned (:meth:`StreamGuard.finish`)
+        so a served answer never replaces a longer paint with a shorter block.
 
         Never raises: an upstream stream failure (even mid-way) ends with ``fell_back=True`` and an
         empty body, exactly like :meth:`reply`, so the coordinator can retry once or fall back.
@@ -308,77 +345,70 @@ class Sparky:
             memory_lines=memory_lines,
             history=history,
         )
-        parts: list[str] = []
-        pending: list[str] = []
-        pending_len = 0
-        forwarded = 0
-        released = False
-        blocked = False
+        hold_whole = comparative and HOLD_COMPARATIVE_PROSE
+        guard = StreamGuard(max_chars=MAX_CHARS)
+        painted = False
         result: LlmResult | None = None
         try:
-            async for chunk in self.llm.stream_complete(
+            stream = self.llm.stream_complete(
                 system=self._system(comparative=comparative),
                 messages=[{"role": "user", "content": user_content}],
                 effort=self.effort,
                 max_tokens=self.max_tokens,
                 user=user,
-            ):
+            )
+        except Exception:
+            yield SparkyChunk(reply=SparkyReply(body="", fell_back=True, failure="upstream"))
+            return
+        try:
+            async for chunk in stream:
                 if chunk.delta:
-                    parts.append(chunk.delta)
-                    # Hold the opening back until it has passed the same action/meta guard the
-                    # full text will: an attempt whose OPENING is already unusable is never
-                    # painted. The hold is measured in characters of accumulated text, never in
-                    # chunks — a token-sized first delta ("We") must not release the opening.
-                    # A body that only turns unusable later may have painted; the terminal block
-                    # is authoritative and replaces it.
-                    if not released and not blocked:
-                        pending.append(chunk.delta)
-                        pending_len += len(chunk.delta)
-                        if pending_len < STREAM_HOLD_CHARS:
-                            continue
-                        held = "".join(pending)
-                        pending.clear()
-                        if not prefix_is_usable(held):
-                            blocked = True
-                            continue
-                        released = True
-                        room = MAX_CHARS - forwarded
-                        if room > 0:
-                            piece = held[:room]
-                            forwarded += len(piece)
-                            yield SparkyChunk(delta=piece)
-                        continue
-                    if not blocked:
-                        room = MAX_CHARS - forwarded
-                        if room > 0:
-                            piece = chunk.delta[:room]
-                            forwarded += len(piece)
-                            yield SparkyChunk(delta=piece)
+                    released = guard.feed(chunk.delta)
+                    if not hold_whole:
+                        for piece in released:
+                            if piece:
+                                painted = True
+                                yield SparkyChunk(delta=piece)
+                    if guard.tripped:
+                        # The COMPLETE answer would fail ``is_unusable`` too; stop consuming and
+                        # close the model iterator in the ``finally`` below.
+                        break
                 elif chunk.result is not None:
                     result = chunk.result
         except Exception:
             yield SparkyChunk(reply=SparkyReply(body="", fell_back=True, failure="upstream"))
             return
+        finally:
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                with suppress(Exception):
+                    await aclose()
+        if guard.tripped:
+            if painted:
+                yield SparkyChunk(retract=True)
+            yield SparkyChunk(
+                reply=SparkyReply(body="", fell_back=True, failure=guard.reason or "unusable")
+            )
+            return
         body = result.text.strip() if result is not None else ""
         if result is None or result.refused or is_unusable(body):
-            failure = "upstream" if result is None else (
-                "refused" if result.refused else (unusable_reason(body) or "unusable")
+            failure = (
+                "upstream"
+                if result is None
+                else ("refused" if result.refused else (unusable_reason(body) or "unusable"))
             )
             yield SparkyChunk(reply=SparkyReply(body="", fell_back=True, failure=failure))
             return
-        # The stream ended before the hold window filled: run the prefix guard on whatever was
-        # buffered, then paint it (the FULL text has already passed the guard above). A degraded
-        # terminal answer already returned before this point, so nothing live was painted.
-        if not released and not blocked:
-            held = "".join(pending)
-            pending.clear()
-            if held and prefix_is_usable(held):
-                room = MAX_CHARS - forwarded
-                if room > 0:
-                    piece = held[:room]
-                    forwarded += len(piece)
-                    yield SparkyChunk(delta=piece)
-        yield SparkyChunk(reply=SparkyReply(body=_clamp(body)))
+        final_body = _clamp(body)
+        if not hold_whole:
+            # A clamp that cut earlier than the paint must clear the paint, not shrink it.
+            if painted and not final_body.startswith(guard.released_text):
+                yield SparkyChunk(retract=True)
+                painted = False
+            piece = guard.finish(final_body)
+            if piece:
+                yield SparkyChunk(delta=piece)
+        yield SparkyChunk(reply=SparkyReply(body=final_body))
 
     async def reply(
         self,
@@ -430,8 +460,56 @@ class Sparky:
         body = result.text.strip()
         # 029: one SHARED guard for every prose agent (see agents/guard_text.py).
         if result.refused or is_unusable(body):
-            failure = (
-                "refused" if result.refused else (unusable_reason(body) or "unusable")
-            )
+            failure = "refused" if result.refused else (unusable_reason(body) or "unusable")
             return SparkyReply(body="", fell_back=True, failure=failure)
         return SparkyReply(body=_clamp(body))
+
+    async def comparison_bottom_line(
+        self,
+        *,
+        subjects: Sequence[str],
+        body: str,
+        recent_conversation: str | None = None,
+        user: str | None = None,
+        temperature: float = BOTTOM_LINE_TEMPERATURE,
+        seed: int | None = BOTTOM_LINE_SEED,
+    ) -> SparkyReply:
+        """074 — the ONE model-authored piece of a comparison: its closing trade-off.
+
+        ``body`` is the already-rendered, code-authored skeleton (facts and any live figures).
+        The model is asked for one or two sentences only; it is never asked for structure or
+        figures. The shared content guard (:func:`is_unusable`) still applies, so a meta-shaped
+        or action-shaped closing sentence is discarded and the caller substitutes its
+        deterministic Bottom line. This method never raises: any provider failure is
+        ``fell_back=True`` with ``failure="upstream"``.
+        """
+        options = ", ".join(subjects)
+        prompt = f"OPTIONS: {options}\n\nCOMPARISON ALREADY SHOWN:\n{body}"
+        if recent_conversation:
+            prompt = f"{prompt}\n\nRECENT CONVERSATION:\n{recent_conversation}"
+        prompt = (
+            f"{prompt}\n\nWrite the closing BOTTOM LINE now (one or two sentences, no winner, "
+            "no advice, no figures, no note/context talk)."
+        )
+        user_content = fence(
+            "COMPARISON_CONTEXT", prompt, note=UNTRUSTED_NOTE
+        )
+        try:
+            result: LlmResult = await self.llm.complete(
+                system=BOTTOM_LINE_SYSTEM,
+                messages=[{"role": "user", "content": user_content}],
+                effort=self.effort,
+                max_tokens=self.max_tokens,
+                user=user,
+                temperature=temperature,
+                seed=seed,
+            )
+        except Exception:
+            return SparkyReply(body="", fell_back=True, failure="upstream")
+        text = result.text.strip()
+        if result.refused or is_unusable(text):
+            failure = (
+                "refused" if result.refused else (unusable_reason(text) or "unusable")
+            )
+            return SparkyReply(body="", fell_back=True, failure=failure)
+        return SparkyReply(body=_clamp_to(text, BOTTOM_LINE_MAX_CHARS))
