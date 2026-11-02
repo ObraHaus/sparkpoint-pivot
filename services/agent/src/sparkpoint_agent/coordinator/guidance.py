@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 
 from ..formatting import format_usd
+from .comparative import KNOWN_SUBJECTS, aliases_for
 from .curated import CuratedContext, CuratedPick
 from .staleness import as_of_suffix, staleness_caveat
 
@@ -37,6 +38,7 @@ __all__ = [
     "is_comparative_question",
     "is_confirmation",
     "is_explicit_financial_command",
+    "is_protocol_choice_question",
     "is_unsafe_request",
     "is_withdraw_all",
     "is_withdraw_request",
@@ -534,17 +536,86 @@ _COMPARATIVE_RE = re.compile(
 #: it only marks a knowledge comparison when the whole turn is shaped like a question.
 _BETTER_WORSE_THAN_RE = re.compile(r"\b(?:better|worse)\s+than\b", re.IGNORECASE)
 _COMPARATIVE_QUESTION_SHAPE_RE = re.compile(
-    r"^\s*(?:is|are|which|what|how|compare|does|do|should)\b|\?\s*$", re.IGNORECASE
+    r"^\s*(?:is|are|which|what|how|where|compare|does|do|should)\b|\?\s*$", re.IGNORECASE
+)
+_OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
+
+
+def _venue_aliases() -> dict[str, str]:
+    """Alias → canonical protocol/venue name, reusing the comparative subject table.
+
+    The table covers the shipped corpus protocols; Rhea and Kamino are supported earn venues
+    but are not knowledge subjects, so they are added here rather than to ``_KNOWN`` (which the
+    074 facts table pins).
+    """
+    aliases: dict[str, str] = {}
+    for subject in KNOWN_SUBJECTS:
+        for alias in aliases_for(subject):
+            aliases[alias.lower()] = subject.lower()
+    for alias in ("rhea", "rhea finance"):
+        aliases[alias] = "rhea"
+    aliases["kamino"] = "kamino"
+    return aliases
+
+
+def _venue_alias_pattern(alias: str) -> str:
+    # "compound" is also an ordinary verb ("compound my earnings") and "auto-compound" is the
+    # vault verb, so only the Capitalised protocol name or an explicit "compound protocol/
+    # finance/vault" phrase counts here.
+    if alias == "compound":
+        return (
+            r"(?:(?<![A-Za-z0-9])(?-i:Compound)(?![A-Za-z0-9])"
+            r"|(?<![A-Za-z0-9])compound\s+(?:protocol|finance|vault)\b)"
+        )
+    return re.escape(alias)
+
+
+_VENUE_ALIASES = _venue_aliases()
+_VENUE_ALIAS_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:"
+    + "|".join(
+        _venue_alias_pattern(alias)
+        for alias in sorted(_VENUE_ALIASES, key=len, reverse=True)
+    )
+    + r")(?![A-Za-z0-9])",
+    re.IGNORECASE,
 )
 
 
+def _named_venues(message: str) -> tuple[str, ...]:
+    seen: list[str] = []
+    for match in _VENUE_ALIAS_RE.finditer(message):
+        key = match.group(0).lower()
+        canonical = _VENUE_ALIASES.get(
+            key, "compound" if key.startswith("compound") else key
+        )
+        if canonical not in seen:
+            seen.append(canonical)
+    return tuple(seen)
+
+
+def is_protocol_choice_question(message: str) -> bool:
+    """True for an advisory "X or Y?" choice between two or more known protocols/venues.
+
+    A choice question with no parsed amount is a KNOWLEDGE question even when it contains an
+    action verb ("should I put my USDC in Rhea or Aave?"). A sized command keeps the planner.
+    """
+    if amount_from_text(message) is not None:
+        return False
+    if not _COMPARATIVE_QUESTION_SHAPE_RE.search(message):
+        return False
+    if not _OR_RE.search(message):
+        return False
+    return len(_named_venues(message)) >= 2
+
+
 def is_comparative_question(message: str) -> bool:
-    """True for an "X vs Y" / "safer than" / "compare … with …" knowledge question (063)."""
+    """True for an "X vs Y" / "safer than" / "compare …" / "X or Y?" knowledge question."""
     if _COMPARATIVE_RE.search(message):
         return True
-    return bool(
-        _BETTER_WORSE_THAN_RE.search(message) and _COMPARATIVE_QUESTION_SHAPE_RE.search(message)
-    )
+    if _BETTER_WORSE_THAN_RE.search(message) and _COMPARATIVE_QUESTION_SHAPE_RE.search(message):
+        return True
+    return is_protocol_choice_question(message)
 
 
 _FOLLOWUP_RE = re.compile(r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE)

@@ -197,6 +197,27 @@ async def test_comparative_questions_route_to_grounded_sparky(message: str) -> N
     assert "you don't have a position yet" not in visible
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Morpho or Aave?",
+        "should I put my USDC in Rhea or Aave?",
+    ],
+)
+async def test_protocol_choice_questions_take_the_comparative_branch(message: str) -> None:
+    """smoke-1102c: "X or Y?" is a choice question, not a deposit/action the planner can drop."""
+    llm = _RecordingLlm()
+    grounder = _Grounder()
+    blocks = await _collect(_dag(llm, grounder), message)
+
+    assert llm.structured_calls == 0, "a protocol choice is not a planner/action turn"
+    assert grounder.queries, "grounding is retrieved for the choice"
+    text = next(block for block in blocks if isinstance(block, TextBlock))
+    visible = text.markdown.lower()
+    assert "i don't have a move i can build" not in visible
+    assert not any(isinstance(block, TipBlock) for block in blocks)
+
+
 async def test_comparative_followup_gets_the_recent_conversation_and_grounds_on_it() -> None:
     llm = _RecordingLlm()
     grounder = _Grounder()
@@ -335,6 +356,37 @@ def test_ordinary_questions_are_not_comparative(message: str) -> None:
 )
 def test_comparison_shapes_are_recognised(message: str) -> None:
     assert is_comparative_question(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Morpho or Aave?",
+        "Aave or Morpho for USDC?",
+        "Aave or Compound for USDC?",
+        "should I put my USDC in Rhea or Aave?",
+        "where should I lend USDC, Rhea or Aave?",
+    ],
+)
+def test_protocol_choice_questions_are_comparative(message: str) -> None:
+    assert is_comparative_question(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "deposit 500 USDC into Morpho",
+        "swap 50 USDC to SOL",
+        "lend USDC on Rhea",
+        "earn on USDC with Morpho",
+        "Morpho or Aave, deposit 500 USDC into the safer one",
+        "Should I compound my earnings weekly or monthly on Aave?",
+        "Should I park cash in T-bills while the yield curve is inverted, or in Aave?",
+        "auto-compound my rewards or move them to Aave?",
+    ],
+)
+def test_sized_or_single_protocol_turns_are_not_comparative(message: str) -> None:
+    assert is_comparative_question(message) is False
 
 
 def test_bare_better_than_in_an_action_turn_is_not_a_comparative_question() -> None:
