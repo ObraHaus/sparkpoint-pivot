@@ -13,9 +13,14 @@ every candidate, exactly as it does in production.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
+
+import httpx
 
 from sparkpoint_agent.agents.literacy import Literacy
 from sparkpoint_agent.agents.planner import Intent, IntentKind, Planner
@@ -30,11 +35,18 @@ from sparkpoint_agent.coordinator.dag import (
     MarketData,
     PortfolioView,
 )
+from sparkpoint_agent.crosschain.config import load_config
+from sparkpoint_agent.crosschain.oneclick import OneClickClient
+from sparkpoint_agent.crosschain.service import CrossChainService
+from sparkpoint_agent.earn.config import default_config as earn_config
+from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot, VaultAsset, VaultEntry
+from sparkpoint_agent.earn.service import EarnService
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.persona import get_persona
 from sparkpoint_agent.policy import ActionType, Asset, CapHeadroom, RiskProfile
 
 from .model import Case, Scripted
+from .portfolio_fixtures import EvalPortfolioService
 
 VAULT = "0x1111111111111111111111111111111111111111"
 USER = "0x2222222222222222222222222222222222222222"
@@ -211,6 +223,213 @@ def _id_factory() -> Any:
     return next_id
 
 
+_CROSSCHAIN_OUTPUTS: Mapping[str, tuple[str, str, str, str, int]] = {
+    # destination-asset marker -> (amountOut, formatted, USD, minOut, eta seconds)
+    "btc": ("6439596", "0.06439596", "4986.69", "6375200", 480),
+    "sol": ("425000000", "0.425", "50.00", "420000000", 120),
+    "base-": ("24900000", "24.9", "24.90", "24775500", 300),
+    "hood-": ("24900000", "24.9", "24.90", "24775500", 300),
+    "eth-": ("24900000", "24.9", "24.90", "24775500", 300),
+}
+
+
+def _crosschain_quote(marker: str, amount: str) -> dict[str, Any]:
+    amount_out, formatted, usd, min_out, eta = _CROSSCHAIN_OUTPUTS.get(
+        marker, ("1000000", "1.0", "1.00", "990000", 300)
+    )
+    return {
+        "quote": {
+            "amountIn": amount,
+            "amountInFormatted": amount,
+            "amountInUsd": "100.00",
+            "amountOut": amount_out,
+            "amountOutFormatted": formatted,
+            "amountOutUsd": usd,
+            "minAmountOut": min_out,
+            "timeEstimate": eta,
+        },
+        "quoteRequest": {"deadline": "2026-10-31T12:30:00.000Z"},
+        "signature": "ed25519:eval-fixture",
+    }
+
+
+def _crosschain_handler(mode: str) -> Any:
+    """A canned 1Click transport: dry quotes only, or a deterministic connect error."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if mode == "transport_error":
+            raise httpx.ConnectError("offline", request=request)
+        body = json.loads(request.content)
+        destination = str(body.get("destinationAsset", ""))
+        marker = next((key for key in _CROSSCHAIN_OUTPUTS if key in destination), "")
+        return httpx.Response(201, json=_crosschain_quote(marker, str(body.get("amount", "0"))))
+
+    return handler
+
+
+def _crosschain_service(mode: str) -> CrossChainService:
+    """Build the real service around the fake transport (``disabled`` keeps the pre-068 path)."""
+    # Pin the flag explicitly: the eval must not inherit CROSSCHAIN_ENABLED from the shell.
+    config = replace(load_config(env={}), feature_enabled=mode != "disabled")
+    client = OneClickClient(
+        transport=httpx.MockTransport(_crosschain_handler(mode)),
+        clock=lambda: 1000.0,
+    )
+    return CrossChainService(config, client)
+
+
+RHEA_TOKEN_ID = (  # noqa: S105 - a public NEAR token id, not a secret
+    "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"  # noqa: S105
+)
+RHEA_ASSET_ID = f"nep141:{RHEA_TOKEN_ID}"
+
+_EARN_VAULTS = (
+    VaultEntry(
+        chain="base",
+        chain_id=8453,
+        address="0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+        version="v1",
+        name="Gauntlet USDC Prime",
+        symbol="GTUSDC",
+        asset=VaultAsset(
+            address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol="USDC", decimals=6
+        ),
+        listed=True,
+        tvl_usd=Decimal("420747952"),
+        net_apy=Decimal("0.0441"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+    ),
+    VaultEntry(
+        chain="base",
+        chain_id=8453,
+        address="0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca",
+        version="v1",
+        name="Moonwell Flagship USDC",
+        symbol="MWUSDC",
+        asset=VaultAsset(
+            address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol="USDC", decimals=6
+        ),
+        listed=True,
+        tvl_usd=Decimal("150000000"),
+        net_apy=Decimal("0.0612"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+    ),
+    VaultEntry(
+        chain="sol",
+        chain_id=0,
+        address="DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+        version="kvault",
+        name="SOL Balanced",
+        symbol="kV",
+        asset=VaultAsset(
+            address="So11111111111111111111111111111111111111112", symbol="SOL", decimals=9
+        ),
+        listed=True,
+        tvl_usd=Decimal("2443425.6"),
+        net_apy=Decimal("0.0445"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="kamino",
+    ),
+    VaultEntry(
+        chain="near",
+        chain_id=0,
+        address=RHEA_TOKEN_ID,
+        version="lending",
+        name="Rhea Lending USDC",
+        symbol="USDC",
+        asset=VaultAsset(address=RHEA_TOKEN_ID, symbol="USDC", decimals=6),
+        listed=True,
+        tvl_usd=Decimal("12733803.14"),
+        net_apy=Decimal("0.1405"),
+        source="rhea_rpc",
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="rhea",
+    ),
+)
+
+
+class _EvalRheaViews:
+    """A fixed Rhea view double: no wallet has an MCA in the eval fixture."""
+
+    async def mca_for_wallet(self, wallet: str) -> str | None:
+        return None
+
+    async def create_mca_fee(self) -> dict[str, str]:
+        return {RHEA_TOKEN_ID: "300000"}
+
+    async def asset(self, token_id: str) -> Mapping[str, Any]:
+        return {
+            "supplied": {"balance": "12733763455236751230092183"},
+            "config": {"extra_decimals": 12},
+            "supply_apr": "0.140459036159116681312316847",
+        }
+
+    async def positions(self, account_id: str) -> Mapping[str, Any] | None:
+        return None
+
+
+def _earn_service(mode: str) -> EarnService:
+    """A real 069 service over a FIXED snapshot; no Morpho/1Click network call is made."""
+    config = earn_config()
+    registry = EarnRegistry(config, writable_path="/nonexistent/earn-eval.json")
+    registry.install(
+        EarnSnapshot(
+            fetched_at=datetime.now(UTC),
+            source="morpho_api",
+            vaults=_EARN_VAULTS,
+        )
+    )
+
+    kv_receipt = config.receipt_for_symbol("kV-gtSOLb")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if body.get("destinationAsset") == RHEA_ASSET_ID:
+            return httpx.Response(
+                201,
+                json={
+                    "quote": {
+                        "amountIn": "100000000",
+                        "amountInFormatted": "100",
+                        "amountInUsd": "100.0",
+                        "amountOut": "99980800",
+                        "amountOutFormatted": "99.9808",
+                        "amountOutUsd": "99.9808",
+                        "minAmountOut": "98980992",
+                        "timeEstimate": 35,
+                    },
+                    "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+                    "signature": "ed25519:test",
+                },
+            )
+        if kv_receipt is not None and body.get("destinationAsset") == kv_receipt.asset_id:
+            return httpx.Response(
+                201,
+                json={
+                    "quote": {
+                        "amountIn": "100000000",
+                        "amountInFormatted": "100",
+                        "amountInUsd": "100.0",
+                        "amountOut": "983500000",
+                        "amountOutFormatted": "0.9835",
+                        "amountOutUsd": "99.2",
+                        "minAmountOut": "970000000",
+                        "timeEstimate": 47,
+                    },
+                    "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+                    "signature": "ed25519:test",
+                },
+            )
+        return httpx.Response(400, json={"message": "No liquidity available"})
+
+    return EarnService(
+        config,
+        registry,
+        oneclick=OneClickClient(transport=httpx.MockTransport(handler), clock=lambda: 1000.0),
+        rhea_views=_EvalRheaViews(),  # type: ignore[arg-type]
+    )
+
+
 def build_dag(
     *,
     case: Case,
@@ -223,9 +442,16 @@ def build_dag(
 
     ``streaming`` / ``single_call`` mirror the 059 deployment flags; both default to OFF so the
     offline golden run is the exact pre-059 path unless a caller explicitly exercises a combo.
+
+    A case with a ``crosschain`` key gets a real :class:`CrossChainService` wired to a canned
+    1Click transport (no network). Cases without the key keep ``crosschain=None`` — byte-for-byte
+    the pre-068 DAG, so existing golden routes cannot move.
     """
     fixture = wallet_fixture(case.wallet)
     persona = get_persona if live else (lambda: "")
+    crosschain = _crosschain_service(case.crosschain) if case.crosschain else None
+    earn = _earn_service(case.earn) if case.earn else None
+    portfolio = EvalPortfolioService(case.portfolio) if case.portfolio else None
     return CoordinatorDag(
         planner=Planner(llm=client),
         recommender=Recommender(llm=client),
@@ -239,6 +465,9 @@ def build_dag(
         streaming=streaming,
         single_call=single_call,
         id_factory=_id_factory(),
+        crosschain=crosschain,
+        earn=earn,
+        portfolio=portfolio,
     )
 
 

@@ -26,6 +26,16 @@ OUT_DIR = EVALS_DIR / "out"
 #: Route label for an emitted ``action`` block of type ``aerodrome_swap``.
 SWAP_ROUTE_PREFIX = "swap_card:"
 
+#: The cross-chain fixtures a case can opt into. A case with no ``crosschain`` key keeps the
+#: exact pre-068 DAG (no service injected), so existing routes never move.
+CROSSCHAIN_MODES = frozenset({"quote", "transport_error", "disabled"})
+
+#: The earn fixtures a case can opt into (069/070/071). ``None`` keeps the pre-069 DAG.
+EARN_MODES = frozenset({"list", "preview", "positions"})
+
+#: The 072 portfolio fixtures a case can opt into. ``None`` keeps the pre-072 DAG.
+PORTFOLIO_MODES = frozenset({"ready", "degraded", "empty"})
+
 
 @dataclass(frozen=True)
 class HistoryTurn:
@@ -54,6 +64,9 @@ class Expectation:
     english: bool = True
     rubric: tuple[str, ...] = ("accuracy", "grounding", "safety", "tone")
     action: ActionExpectation = field(default_factory=ActionExpectation)
+    #: 072 — expected ``portfolio_overview`` focus and per-section statuses.
+    focus: str | None = None
+    sections: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -82,6 +95,9 @@ class Case:
     offline: Scripted = field(default_factory=Scripted)
     offline_check_contains: bool = True
     read_only: bool = True
+    crosschain: str | None = None
+    earn: str | None = None
+    portfolio: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +131,13 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
         if isinstance(turn, Mapping)
     )
     offline_raw = _mapping(raw.get("offline"))
+    crosschain_raw = raw.get("crosschain")
+    crosschain = str(crosschain_raw) if crosschain_raw else None
+    earn_raw = raw.get("earn")
+    earn = str(earn_raw) if earn_raw else None
+    portfolio_raw = raw.get("portfolio")
+    portfolio = str(portfolio_raw) if portfolio_raw else None
+    sections_raw = _mapping(expected_raw.get("sections"))
     return Case(
         id=str(raw["id"]),
         category=str(raw.get("category", "uncategorised")),
@@ -139,6 +162,8 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
                 token_out=action_raw.get("token_out"),
                 policy=action_raw.get("policy"),
             ),
+            focus=(str(expected_raw["focus"]) if expected_raw.get("focus") is not None else None),
+            sections={str(key): str(value) for key, value in sections_raw.items()},
         ),
         offline=Scripted(
             intent=_mapping(offline_raw.get("intent")) or None,
@@ -146,6 +171,9 @@ def _case_from_mapping(raw: Mapping[str, Any]) -> Case:
         ),
         offline_check_contains=bool(raw.get("offline_check_contains", True)),
         read_only=bool(raw.get("read_only", True)),
+        crosschain=crosschain,
+        earn=earn,
+        portfolio=portfolio,
     )
 
 
@@ -164,6 +192,19 @@ def load_cases(path: Path | None = None) -> tuple[Case, ...]:
     missing = [case.id for case in cases if not case.expected.routes]
     if missing:
         raise ValueError(f"cases without an expected route: {missing}")
+    unknown_modes = sorted(
+        {case.crosschain for case in cases if case.crosschain not in (None, *CROSSCHAIN_MODES)}
+    )
+    if unknown_modes:
+        raise ValueError(f"unknown crosschain fixture modes: {unknown_modes}")
+    unknown_earn = sorted({case.earn for case in cases if case.earn not in (None, *EARN_MODES)})
+    if unknown_earn:
+        raise ValueError(f"unknown earn fixture modes: {unknown_earn}")
+    unknown_portfolio = sorted(
+        {case.portfolio for case in cases if case.portfolio not in (None, *PORTFOLIO_MODES)}
+    )
+    if unknown_portfolio:
+        raise ValueError(f"unknown portfolio fixture modes: {unknown_portfolio}")
     return cases
 
 
@@ -192,6 +233,7 @@ __all__ = [
     "GOLDEN_PATH",
     "HistoryTurn",
     "OUT_DIR",
+    "PORTFOLIO_MODES",
     "RUBRIC_PATH",
     "Rubric",
     "SWAP_ROUTE_PREFIX",

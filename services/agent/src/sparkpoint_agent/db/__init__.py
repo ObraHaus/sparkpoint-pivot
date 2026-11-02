@@ -18,6 +18,7 @@ from .analytics import AnalyticsStore, build_funnel, pseudonymize
 from .chat_feedback import ChatFeedbackStore
 from .config import DATABASE_URL_ENV, DatabaseConfig
 from .content_entries import ContentEntryStore
+from .crosschain_quotes import CrossChainQuoteStore
 from .executions import ExecutionRow, ExecutionStore
 from .intent_bundles import BundleInsert, BundleRow, IntentBundleStore
 from .limits import DEFAULT_TIER, LimitsStore
@@ -57,6 +58,7 @@ __all__ = [
     "BundleRow",
     "ChatFeedbackStore",
     "ContentEntryStore",
+    "CrossChainQuoteStore",
     "Database",
     "ExecutionRow",
     "ExecutionStore",

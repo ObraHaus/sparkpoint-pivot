@@ -381,6 +381,58 @@ class ErrorBlock(ChatBlock):
         return {"type": "error", "code": self.code, "message": self.message}
 
 
+CrossChainState = Literal["preview", "unavailable"]
+
+
+@dataclass(frozen=True)
+class CrossChainQuoteBlock(ChatBlock):
+    """068 ``crosschain_quote`` — a preview from the NEAR Intents 1Click API.
+
+    Deliberately NOT signable: it carries no calldata and no signature. A confirm is a separate
+    ``POST /crosschain/quote`` with ``dry=false``; the user sends the origin funds from their own
+    wallet when 1Click returns a deposit address. ``state=unavailable`` is an ordinary answer
+    (e.g. Tron payouts are paused), never an error block.
+    """
+
+    state: CrossChainState
+    origin: dict[str, Any]
+    destination: dict[str, Any]
+    amount_out: str | None = None
+    amount_out_usd: str | None = None
+    amount_in_usd: str | None = None
+    min_amount_out: str | None = None
+    time_estimate_sec: int | None = None
+    slippage_bps: int | None = None
+    fee_note: str | None = None
+    unavailable_reason: str | None = None
+    quoted_at: str | None = None
+    expires_hint: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "crosschain_quote",
+            "state": self.state,
+            "origin": dict(self.origin),
+            "destination": dict(self.destination),
+        }
+        for attr, key in (
+            ("amount_out", "amountOut"),
+            ("amount_out_usd", "amountOutUsd"),
+            ("amount_in_usd", "amountInUsd"),
+            ("min_amount_out", "minAmountOut"),
+            ("time_estimate_sec", "timeEstimateSec"),
+            ("slippage_bps", "slippageBps"),
+            ("fee_note", "feeNote"),
+            ("unavailable_reason", "unavailableReason"),
+            ("quoted_at", "quotedAt"),
+            ("expires_hint", "expiresHint"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire
+
+
 @dataclass(frozen=True)
 class PositionLite:
     """§2.7 ``PositionLite`` — the trimmed position echoed in a portfolio_snapshot."""
@@ -408,6 +460,204 @@ class PositionLite:
             ("cost_basis_usd", "costBasisUsd"),
             ("unrealized_pnl_usd", "unrealizedPnlUsd"),
             ("risk_tier", "riskTier"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire
+
+
+EarnVaultsState = Literal["ready", "unavailable"]
+EarnQuoteState = Literal["preview", "unavailable"]
+
+
+@dataclass(frozen=True)
+class EarnVaultsBlock(ChatBlock):
+    """069 ``earn_vaults`` — the deterministic Morpho vault list (top N, data-driven).
+
+    Carries no calldata and no signature. ``state=unavailable`` is an honest empty/failed snapshot,
+    never an error block; the vault rows include the rails that are actually available today.
+    """
+
+    state: EarnVaultsState
+    vaults: tuple[dict[str, Any], ...] = ()
+    snapshot_age_minutes: int | None = None
+    snapshot_source: str | None = None
+    unavailable_reason: str | None = None
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_vaults",
+            "state": self.state,
+            "vaults": [dict(vault) for vault in self.vaults],
+        }
+        for attr, key in (
+            ("snapshot_age_minutes", "snapshotAgeMinutes"),
+            ("snapshot_source", "snapshotSource"),
+            ("unavailable_reason", "unavailableReason"),
+            ("note", "note"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        return wire
+
+
+@dataclass(frozen=True)
+class EarnQuoteBlock(ChatBlock):
+    """069 ``earn_quote`` — a DRY preview (1Click receipt or a direct/Intents-Connect hint).
+
+    Never signable. ``rail`` names which of ``direct`` / ``oneclick_earn`` / ``intents_connect`` the
+    preview describes. ``receipt_note`` exists so the UI cannot imply a wrapper token is the native
+    Morpho share; ``fee_note`` carries the keyless 1Click routing fee when no API key is set.
+    """
+
+    state: EarnQuoteState
+    rail: str
+    vault: dict[str, Any]
+    origin: dict[str, Any] | None = None
+    amount_in: str | None = None
+    amount_out: str | None = None
+    amount_out_usd: str | None = None
+    time_estimate_sec: int | None = None
+    fee_note: str | None = None
+    receipt_note: str | None = None
+    receipt_kind: str | None = None
+    wallet_support: dict[str, Any] | None = None
+    unavailable_reason: str | None = None
+    steps: tuple[dict[str, Any], ...] = ()
+    quoted_at: str | None = None
+    expires_hint: str | None = None
+    # 071 — Rhea (NEAR) preview fields. All omitted for 069/070 quotes, so those fixtures stay
+    # byte-identical; ``protocol="rhea"`` also emits ``mca`` explicitly (it may be null).
+    protocol: str | None = None
+    first_deposit: bool | None = None
+    mca: str | None = None
+    recipient: str | None = None
+    custom_recipient_msg: str | None = None
+    message_to_sign: str | None = None
+    one_time_fee: dict[str, Any] | None = None
+    net_supplied: str | None = None
+    supply_apy: str | None = None
+    source: dict[str, Any] | None = None
+    withdraw: dict[str, Any] | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_quote",
+            "state": self.state,
+            "rail": self.rail,
+            "vault": dict(self.vault),
+        }
+        if self.origin is not None:
+            wire["origin"] = dict(self.origin)
+        if self.steps:
+            wire["steps"] = [dict(step) for step in self.steps]
+        for attr, key in (
+            ("amount_in", "amountIn"),
+            ("amount_out", "amountOut"),
+            ("amount_out_usd", "amountOutUsd"),
+            ("time_estimate_sec", "timeEstimateSec"),
+            ("fee_note", "feeNote"),
+            ("receipt_note", "receiptNote"),
+            ("receipt_kind", "receiptKind"),
+            ("wallet_support", "walletSupport"),
+            ("unavailable_reason", "unavailableReason"),
+            ("quoted_at", "quotedAt"),
+            ("expires_hint", "expiresHint"),
+            ("protocol", "protocol"),
+            ("first_deposit", "firstDeposit"),
+            ("recipient", "recipient"),
+            ("custom_recipient_msg", "customRecipientMsg"),
+            ("message_to_sign", "messageToSign"),
+            ("one_time_fee", "oneTimeFee"),
+            ("net_supplied", "netSupplied"),
+            ("supply_apy", "supplyApy"),
+            ("source", "source"),
+            ("withdraw", "withdraw"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        if self.protocol == "rhea":
+            # The Rhea preview always states whether an MCA exists (null = first deposit).
+            wire["mca"] = self.mca
+        return wire
+
+
+PortfolioOverviewState = Literal["ready", "empty", "unavailable"]
+PortfolioOverviewFocus = Literal["all", "swaps", "earn"]
+
+
+@dataclass(frozen=True)
+class PortfolioOverviewBlock(ChatBlock):
+    """072 ``portfolio_overview`` — the session wallet's read-only multi-chain portfolio.
+
+    Five independently-degradable sections (wallet balances, Morpho, Kamino, Rhea, swap history)
+    plus totals. Carries no calldata and no signature; nothing here is signable. A missing or
+    unreadable section is a ``status`` on that section, never an error block.
+    """
+
+    state: PortfolioOverviewState
+    focus: PortfolioOverviewFocus
+    as_of: str
+    sections: tuple[dict[str, Any], ...]
+    totals: dict[str, Any]
+    sources: tuple[str, ...] = ()
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "portfolio_overview",
+            "state": self.state,
+            "focus": self.focus,
+            "asOf": self.as_of,
+            "sections": [dict(section) for section in self.sections],
+            "totals": dict(self.totals),
+        }
+        if self.sources:
+            wire["sources"] = list(self.sources)
+        if self.note is not None:
+            wire["note"] = self.note
+        return wire
+
+
+EarnPositionsState = Literal["ready", "empty", "unavailable"]
+
+
+@dataclass(frozen=True)
+class EarnPositionsBlock(ChatBlock):
+    """071 ``earn_positions`` — the read-only Rhea (Burrow) supply positions for a wallet.
+
+    Never signable and never a transaction: it is a VIEW read of the user's Multichain Account.
+    ``state=empty`` is an honest "no Rhea account yet" (with an explainer), not an error.
+    """
+
+    state: EarnPositionsState
+    mca: str | None = None
+    supplied: tuple[dict[str, Any], ...] = ()
+    total_usd: str | None = None
+    source: dict[str, Any] | None = None
+    app_url: str | None = None
+    explainer: str | None = None
+    unavailable_reason: str | None = None
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_positions",
+            "state": self.state,
+            "mca": self.mca,
+            "supplied": [dict(position) for position in self.supplied],
+        }
+        for attr, key in (
+            ("total_usd", "totalUsd"),
+            ("source", "source"),
+            ("app_url", "appUrl"),
+            ("explainer", "explainer"),
+            ("unavailable_reason", "unavailableReason"),
+            ("note", "note"),
         ):
             value = getattr(self, attr)
             if value is not None:

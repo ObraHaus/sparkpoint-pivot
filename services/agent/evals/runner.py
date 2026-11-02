@@ -43,7 +43,7 @@ class _Budget:
     """A single wall-clock deadline shared by every case in a live run.
 
     A per-case timeout alone is not enough: with retries and a judge call, one unlucky case
-    can consume several minutes, so 72 cases can outlive the CI job. The deadline caps the
+    can consume several minutes, so 82 cases can outlive the CI job. The deadline caps the
     WHOLE run and lets the runner return partial results (and still write them) instead of
     being killed by the job timeout.
     """

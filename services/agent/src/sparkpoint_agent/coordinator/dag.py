@@ -38,7 +38,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agents import guardrail
 from ..agents.guard_text import is_unusable
@@ -52,7 +52,10 @@ from ..agents.literacy import (
 from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky, SparkyReply
+from ..crosschain.oneclick import CrossChainTransportError
+from ..crosschain.parse import parse_cross_chain_request
 from ..data.prices import PriceService, PriceSnapshot
+from ..earn.parse import is_near_native_staking_request, parse_earn_request
 from ..formatting import format_usd6
 from ..knowledge import KnowledgeGrounder, Passage
 from ..policy import (
@@ -70,6 +73,12 @@ from ..policy import (
     SessionState,
     SimulationInput,
     get_policy_constants,
+)
+from ..portfolio.chat import (
+    build_outcome as build_portfolio_outcome,
+)
+from ..portfolio.chat import (
+    detect_portfolio_focus,
 )
 from ..wire import Citation
 from .chat_blocks import (
@@ -116,6 +125,7 @@ from .curated import (
     is_vaults_list_question,
 )
 from .guidance import (
+    NEAR_NATIVE_STAKING_ANSWER,
     NOTHING_TO_WITHDRAW,
     NOTHING_TO_WITHDRAW_NO_VAULT,
     UNSAFE_REFUSAL,
@@ -147,6 +157,11 @@ from .prices import (
     requested_price_symbols,
 )
 from .staleness import as_of_time
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: service imports chat_blocks
+    from ..crosschain.service import CrossChainService
+    from ..earn.service import EarnService
+    from ..portfolio.service import MultichainPortfolioService
 
 # The interposed policy gate: deterministic, LLM-free. Overridable in tests; defaults to
 # the guardrail (a thin pass-through to ``policy.evaluate``).
@@ -387,8 +402,7 @@ def _comparative_fallback(
         gap = "SparkPoint has no verified material on either side of that comparison."
     elif not missing:
         gap = (
-            "SparkPoint has verified material on both, but not enough to rank one above the "
-            "other."
+            "SparkPoint has verified material on both, but not enough to rank one above the other."
         )
     elif len(missing) == len(names):
         gap = f"SparkPoint has no verified material on {_join_names(names)}."
@@ -857,6 +871,16 @@ class CoordinatorDag:
     #: 060 — display-only keyless USD reference prices. ``None`` ⇒ the price route says it cannot
     #: fetch a live price; it never guesses, and never reaches propose/build/policy.
     prices: PriceService | None = None
+    #: 068 — cross-chain swaps via the NEAR Intents 1Click API. ``None`` or a disabled feature
+    #: flag falls through to the existing behaviour. Advisory: the user sends funds from their
+    #: own wallet; this branch emits text + a non-signable ``crosschain_quote`` block only.
+    crosschain: CrossChainService | None = None
+    #: 069 — the data-driven Morpho earn registry. ``None`` / a disabled flag falls through.
+    #: Advisory: list and DRY previews only (1Click receipt or a same-chain/Intents-Connect hint).
+    earn: EarnService | None = None
+    #: 072 — the read-only multi-chain portfolio (session wallet only). ``None`` keeps the
+    #: pre-072 routes byte-for-byte, which is what every other test/consumer expects.
+    portfolio: MultichainPortfolioService | None = None
     gate: PolicyGate = guardrail.check
     context_factory: ContextFactory = advisory_context
     id_factory: Callable[[], str] = _default_rec_id
@@ -1183,7 +1207,12 @@ class CoordinatorDag:
                 history=history,
                 comparative=comparative,
             ):
-                if chunk.delta:
+                if chunk.retract:
+                    # 073 — clear the provisional paint NOW. An EMPTY delta under a fresh
+                    # stream id is the existing "new attempt" signal, so the reducer discards
+                    # the partial text instead of appending to it.
+                    yield ProseDelta(target="text", delta="", stream_id=f"general-{attempt}-r")
+                elif chunk.delta:
                     yield ProseDelta(
                         target="text", delta=chunk.delta, stream_id=f"general-{attempt}"
                     )
@@ -1216,13 +1245,12 @@ class CoordinatorDag:
         number, so a retry becomes a new ``stream_id`` (client resets, never concatenates).
         """
         assert self.literacy is not None  # noqa: S101
-        async for chunk in self.literacy.stream_tip(
-            topic, context_hint=context_hint, user=user
-        ):
-            if chunk.delta:
-                yield ProseDelta(
-                    target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}"
-                )
+        async for chunk in self.literacy.stream_tip(topic, context_hint=context_hint, user=user):
+            if chunk.retract:
+                # 073 — same empty-delta/new-stream-id retract as the general branch.
+                yield ProseDelta(target="tip", delta="", stream_id=f"tip-{chunk.attempt}-r")
+            elif chunk.delta:
+                yield ProseDelta(target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}")
             elif chunk.card is not None:
                 yield chunk.card
 
@@ -1332,6 +1360,123 @@ class CoordinatorDag:
             yield ToolStepBlock("Understanding your request", "done")
             yield TextBlock(UNSAFE_REFUSAL)
             return
+
+        # 068 — a cross-chain swap ("Swap 5,000 USDC into native BTC") is answered from the
+        # NEAR Intents 1Click API with a DRY quote. Deterministic and BEFORE the planner, so the
+        # demo prompts work with zero model credits. A disabled route (Tron today) is an ordinary
+        # "unavailable" card, never an error. The feature flag off ⇒ fall through unchanged.
+        if self.crosschain is not None and self.crosschain.feature_enabled:
+            crosschain_request = parse_cross_chain_request(message, self.crosschain.config)
+            if crosschain_request is not None:
+                yield ToolStepBlock("Checking a cross-chain route", "running")
+                try:
+                    outcome = await self.crosschain.preview(crosschain_request)
+                except CrossChainTransportError:
+                    yield ToolStepBlock("Checking a cross-chain route", "error")
+                    yield TextBlock(
+                        "I couldn't reach the cross-chain routing service just now — nothing "
+                        "was signed or sent. Please try again in a moment."
+                    )
+                    return
+                yield ToolStepBlock("Checking a cross-chain route", "done")
+                yield TextBlock(outcome.text)
+                yield outcome.block
+                return
+
+        # 071 — native NEAR-token staking ("stake NEAR tokens", "liquid staking NEAR") is not
+        # Rhea USDC lending. Answer honestly and point at the supported path, never at a preview.
+        if is_near_native_staking_request(message):
+            yield ToolStepBlock("Understanding your request", "running")
+            yield ToolStepBlock("Understanding your request", "done")
+            yield TextBlock(NEAR_NATIVE_STAKING_ANSWER)
+            return
+
+        # 069 — explicit Morpho requests ("Show Morpho vaults on Base", "Deposit 100 USDC into
+        # Morpho Gauntlet USDC Prime") are answered deterministically before the planner. The
+        # parser only fires on an explicit Morpho mention or a configured vault name, so the
+        # existing vault/deposit flow and comparative turns are not stolen. A list is a snapshot
+        # read; a deposit is a DRY preview (1Click receipt or a same-chain hint).
+        if self.earn is not None and self.earn.feature_enabled:
+            earn_request = parse_earn_request(message, self.earn.config)
+            if earn_request is not None:
+                protocol = getattr(earn_request, "protocol", None)
+                label = {"kamino": "Kamino", "rhea": "Rhea"}.get(protocol or "", "Morpho")
+                wallet = chain.owner or chain.user_account
+                if earn_request.kind == "positions":
+                    yield ToolStepBlock("Checking your Rhea positions", "running")
+                    earn_outcome = await self.earn.rhea_positions(wallet=wallet)
+                    yield ToolStepBlock("Checking your Rhea positions", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+                if earn_request.kind == "withdraw":
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "running")
+                    yield ToolStepBlock("Finding the Rhea withdraw link", "done")
+                    yield TextBlock(self.earn.rhea_withdraw_text())
+                    return
+                if earn_request.kind == "list":
+                    yield ToolStepBlock(f"Checking {label} vaults", "running")
+                    earn_outcome = self.earn.list_outcome(earn_request)
+                    yield ToolStepBlock(f"Checking {label} vaults", "done")
+                    yield TextBlock(earn_outcome.text)
+                    yield earn_outcome.block
+                    return
+
+                yield ToolStepBlock(f"Checking a {label} vault", "running")
+                vault = self.earn.resolve_vault(earn_request.chain, earn_request.vault_query)
+                if vault is None:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        f"I can't find that {label} vault in the current snapshot — nothing was "
+                        f"signed or sent. Ask me to list {label} vaults and I'll show what is live."
+                    )
+                    return
+                origin_key = _earn_origin_key(self.earn, earn_request, vault)
+                amount = earn_request.amount
+                assert amount is not None  # noqa: S101 - the parser only builds deposits with one
+                try:
+                    earn_outcome = await self.earn.preview_for(
+                        chain=vault.chain,
+                        address=vault.address,
+                        origin_key=origin_key,
+                        amount=amount,
+                        amount_raw=earn_request.amount_raw,
+                        wallet=wallet,
+                    )
+                except CrossChainTransportError:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        "I couldn't reach the routing service just now — nothing was signed or "
+                        "sent. Please try again in a moment."
+                    )
+                    return
+                except ValueError:
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
+                    yield TextBlock(
+                        f"I can preview that {label} vault only from a supported origin asset — "
+                        "nothing was signed or sent."
+                    )
+                    return
+                yield ToolStepBlock(f"Checking a {label} vault", "done")
+                yield TextBlock(earn_outcome.text)
+                yield earn_outcome.block
+                return
+
+        # 072 — the read-only multi-chain portfolio for the session wallet. Deliberately AFTER
+        # 068/069/070/071 so an explicit swap or earn/Rhea turn always keeps its route, and narrow
+        # enough that the vault-specific "what is my portfolio worth?" / "what's in my wallet?"
+        # turns still reach the existing portfolio_snapshot path. No LLM, no signable output.
+        if self.portfolio is not None:
+            focus = detect_portfolio_focus(message)
+            if focus is not None:
+                portfolio_wallet = chain.owner or chain.user_account
+                yield ToolStepBlock("Reading your multi-chain portfolio", "running")
+                overview = await self.portfolio.read(portfolio_wallet, focus=focus)
+                yield ToolStepBlock("Reading your multi-chain portfolio", "done")
+                portfolio_outcome = build_portfolio_outcome(overview, focus)
+                yield TextBlock(portfolio_outcome.text)
+                yield portfolio_outcome.block
+                return
 
         # 057/C — a swap into an asset/chain we do not support must NOT fall back to the default
         # USDG ↔ ETH card. Answer honestly and emit no action block.
@@ -1520,9 +1665,7 @@ class CoordinatorDag:
             full_amount = withdraw_all_amount(withdraw_gathered.portfolio.positions)
             if full_amount is None:
                 yield TextBlock(
-                    NOTHING_TO_WITHDRAW
-                    if _offers_vault(chain)
-                    else NOTHING_TO_WITHDRAW_NO_VAULT
+                    NOTHING_TO_WITHDRAW if _offers_vault(chain) else NOTHING_TO_WITHDRAW_NO_VAULT
                 )
                 return
             # "withdraw everything except 100" is a residual, never the full position. If the
@@ -1532,7 +1675,7 @@ class CoordinatorDag:
                 if leave_behind is None or leave_behind >= full_amount:
                     yield TextBlock(
                         "I can withdraw all but a set amount — tell me how much you'd like to "
-                        "leave in the vault, for example \"withdraw everything except $100\"."
+                        'leave in the vault, for example "withdraw everything except $100".'
                     )
                     return
                 full_amount -= leave_behind
@@ -1648,11 +1791,7 @@ class CoordinatorDag:
             grounded = False
             failed = True
             failure: str | None = "upstream"
-            if (
-                self.streaming
-                and self.sparky is not None
-                and hasattr(self.sparky, "stream_reply")
-            ):
+            if self.streaming and self.sparky is not None and hasattr(self.sparky, "stream_reply"):
                 async for prose_item in self._stream_general_answer(
                     message,
                     passages,
@@ -2107,6 +2246,31 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
     }
 
 
+def _earn_origin_key(service: EarnService, request: Any, vault: Any) -> str:
+    """The 1Click origin for an earn deposit: explicit chain/symbol, else the vault's chain.
+
+    Kamino deposits default to the funding asset's home route (Base USDC for USDC, Solana for
+    SOL) unless the user said "from <chain>" explicitly — the vault lives on Solana, but the
+    beta wallet is EVM, so that is the honest default.
+    """
+    origin_chain = getattr(request, "origin_chain", None)
+    chain = origin_chain or getattr(request, "chain", None) or getattr(vault, "chain", None)
+    symbol = getattr(request, "asset", None) or getattr(vault, "asset", None)
+    if not isinstance(symbol, str) and symbol is not None:
+        symbol = getattr(symbol, "symbol", None)
+    if not isinstance(symbol, str):
+        return ""
+    if getattr(vault, "protocol", None) == "kamino" and not origin_chain:
+        asset = service.crosschain.default_for_symbol(symbol)
+        return asset.key if asset is not None else ""
+    if not isinstance(chain, str):
+        return ""
+    asset = service.crosschain.find_asset(chain, symbol)
+    if asset is None:
+        asset = service.crosschain.default_for_symbol(symbol)
+    return asset.key if asset is not None else ""
+
+
 # Bridging isn't an advisory action (no ActionType) and the vault/swaps are Base-only, so a bridge
 # request is answered honestly rather than being classified as a buildable action that asks for an
 # amount it can never use. Deterministic keyword guard — "bridge/bridging/cross-chain".
@@ -2282,10 +2446,7 @@ def _apy_answer(chain: ChainContext, *, now: datetime | None = None) -> str:
     headline = net if net is not None else gross
     read_at = as_of_time(getattr(market, "as_of", None) if market else None, now=now)
     stamp = read_at.strftime("%H:%M UTC")
-    parts = [
-        f"The vault is currently showing about **{_fmt_bps(headline)}% APY** "
-        f"(as of {stamp})"
-    ]
+    parts = [f"The vault is currently showing about **{_fmt_bps(headline)}% APY** (as of {stamp})"]
     if net is not None and gross is not None and gross != net:
         fee = f" after the {_fmt_bps(fee_bps)}% performance fee" if fee_bps else " after fees"
         parts.append(f" net{fee} (gross {_fmt_bps(gross)}%)")
@@ -2646,6 +2807,7 @@ def _fast_path_is_blocked(text: str) -> bool:
         or _FAST_BLOCKING_CROSS_CHAIN_RE.search(text)
     )
 
+
 #: 059/A3 — the ONLY concept shapes allowed to skip the planner. Fully anchored after
 #: normalisation, with a short topic phrase (≤6 words for "what is/explain", ≤5 before "work")
 #: and no extra clause. ``_FAST_CLAUSE_WORD_RE`` rejects conjunctions, pronouns/advice and
@@ -2687,9 +2849,7 @@ _IDENTITY_FAST_RE = re.compile(
 #: left to the planner, which routes them to the general/OTHER prose branch: a deterministic
 #: matcher cannot know a price, and answering one from the knowledge corpus would turn a quote
 #: request into a tip (058 golden ``audit-07-eth-price``).
-_PRICE_FAST_RE = re.compile(
-    r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE
-)
+_PRICE_FAST_RE = re.compile(r"\b(?:price|cost|worth|quote)\b|\bhow\s+much\s+is\b", re.IGNORECASE)
 
 #: 059/A3 follow-up safety — with prior turns in the conversation, a deictic/anaphoric reference
 #: ("how does it work?", "what about fees?") is only answerable in context. The deterministic
@@ -2709,11 +2869,59 @@ _FOLLOWUP_LEAD_RE = re.compile(
 #: Words that describe the QUESTION rather than a subject. A concept topic made only of these
 #: ("how does it work?" → ``it``) is not a real topic and must fall back to the planner.
 _TOPIC_STOPWORDS = {
-    "what", "whats", "is", "are", "the", "a", "an", "explain", "define", "tell", "me",
-    "about", "how", "does", "do", "why", "of", "to", "in", "work", "works", "with", "for",
-    "from", "by", "on", "at", "can", "could", "would", "should", "it", "its", "that", "this",
-    "these", "those", "they", "them", "their", "theirs", "there", "one", "same", "above",
-    "and", "also", "then", "so", "but", "or", "more", "please",
+    "what",
+    "whats",
+    "is",
+    "are",
+    "the",
+    "a",
+    "an",
+    "explain",
+    "define",
+    "tell",
+    "me",
+    "about",
+    "how",
+    "does",
+    "do",
+    "why",
+    "of",
+    "to",
+    "in",
+    "work",
+    "works",
+    "with",
+    "for",
+    "from",
+    "by",
+    "on",
+    "at",
+    "can",
+    "could",
+    "would",
+    "should",
+    "it",
+    "its",
+    "that",
+    "this",
+    "these",
+    "those",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "there",
+    "one",
+    "same",
+    "above",
+    "and",
+    "also",
+    "then",
+    "so",
+    "but",
+    "or",
+    "more",
+    "please",
 }
 
 

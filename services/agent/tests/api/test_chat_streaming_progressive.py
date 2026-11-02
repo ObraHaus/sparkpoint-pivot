@@ -1,10 +1,11 @@
 # ruff: noqa: S101, S105, S106  (pytest asserts; test-only fixture token)
-"""063 — model tokens reach the HTTP SSE client WHILE they are generated.
+"""063/073 — model tokens reach the HTTP SSE client WHILE they are generated.
 
 Uses a real uvicorn server on a free localhost port, the real ``/chat`` route + request middleware,
-and a slow fake LLM (5 deltas, 150 ms apart). The old 40-char opening hold painted nothing until
-the model had finished for a short answer, so the first ``text-delta`` arrived with ``done``. This
-test pins that the first delta is a small fraction of the total turn time.
+and a slow fake LLM (5 deltas, 150 ms apart). 073 releases only COMPLETE sentences, so the first
+paint lands after the first sentence (roughly one or two chunks) rather than after the old 40-char
+hold — but still well before ``done``. This pins that the first delta arrives while the model is
+still generating, not in the terminal burst.
 """
 
 from __future__ import annotations
@@ -83,9 +84,9 @@ class _SlowLlm:
 
     async def stream_complete(self, *, system: str = "", **_: Any) -> AsyncIterator[StreamChunk]:
         text = TIP_TEXT if "financial-literacy tutor" in system else GENERAL_TEXT
-        # Split into CHUNKS near-equal character pieces. Each piece is wider than the 40-character
-        # opening hold, so the first paint lands on the first generated chunk (the timing this test
-        # pins) while a normal short answer is covered by the agent-layer streaming tests.
+        # Split into CHUNKS near-equal character pieces. 073 releases a complete sentence at a
+        # time, so the first paint lands when the first sentence's terminator arrives — this test
+        # pins that it is still a modest fraction of the turn, not the terminal burst.
         size = (len(text) + CHUNKS - 1) // CHUNKS
         pieces = [text[i : i + size] for i in range(0, len(text), size)][:CHUNKS]
         for piece in pieces:
@@ -264,7 +265,12 @@ async def test_first_content_reaches_the_http_client_long_before_done(
     first_key = "delta" if kind == "delta" else "block"
     assert first_key in marks, events
     if progressive:
-        assert marks[first_key] < 0.4 * total, (marks, total)
+        # 073 sentence gating paints one complete sentence at a time; that is intrinsically a
+        # larger share of a short answer than the old 40-char window, but still well before the
+        # authoritative block/done. Keep the INTENT (paint while generating) without re-encoding
+        # an exact character window.
+        assert marks[first_key] < 0.6 * total, (marks, total)
+        assert marks[first_key] < marks["block"]
     else:
         assert marks[first_key] < 1.0, "the deterministic fast path is not held by any model"
         assert not [e for e, _ in events if e == "text-delta"]

@@ -2,12 +2,60 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "streaming-guard-073-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Streaming replies are checked sentence by sentence before you see them",
+      "body": "Sparky can now start showing a reply while it is still being written, but only after each sentence is checked for the things an answer must never contain, such as internal notes about how the reply was produced or a machine action payload. Previously only the very beginning of a streamed reply was checked, so a reply could be shown and then replaced moments later. Now, if a later sentence fails the check, the part already shown is cleared immediately and the safe answer is used instead. Comparisons are shown only once the whole comparison has been checked, because deciding whether it names every option and is not just a refusal needs the complete answer. Nothing about reviewing, signing or your funds changes, and the setting that turns streaming on or off is unchanged.",
+      "published_at": "2026-11-01T14:30:00Z"
+    },
+    {
       "slug": "consistent-comparisons-074-2026-11",
       "type": "changelog",
       "tag": "Improved",
       "title": "Comparisons now use a consistent side-by-side format",
       "body": "When you ask Sparky to compare two options — for example \"Compare Morpho vs Aave\" or two curated vaults by name — the answer now uses the same side-by-side layout every time: what each option is, how the yield is made, the main risks, and the fees and structure, with the live stored figures and their as-of date for curated vaults. Only the short closing trade-off is written by the AI, so a comparison no longer changes shape from one question to the next, and it never picks a winner or gives advice. If the AI cannot write that closing line, Sparky uses a plain, honest one instead. Comparisons also no longer stream in word by word: you get the finished, checked side-by-side answer in one go, and nothing about reviewing or signing changes.",
       "published_at": "2026-11-01T12:00:00Z"
+    },
+    {
+      "slug": "multichain-portfolio-072-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "See your whole portfolio across chains — read-only",
+      "body": "Ask Sparky to show your portfolio and you get one read-only view of the signed-in wallet across Base, Solana and NEAR: wallet balances with chain badges, Morpho vault positions, Kamino shares on a Solana address already linked to you, Rhea lending positions, and your recent cross-chain swap history. Each section reads on its own, so a slow source or a missing Solana link only says so in that section instead of hiding the rest. You also get a priced total with per-chain and per-protocol breakdowns, the source of each read and when it was taken. 'Show my portfolio', 'what do I have across chains', 'my balances' and 'show my positions everywhere' open the full overview, 'my swap history' focuses on swaps, and 'how much am I earning' focuses on the earn positions. The Portfolio page has the same 'Across chains' panel. Nothing here is signable: this release reads only, and live deposits, signing and withdraws are coming in the next phase. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T05:20:00Z"
+    },
+    {
+      "slug": "rhea-near-lending-071-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Rhea lending on NEAR — vault list, dry previews and read-only positions",
+      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and — on your first deposit only — the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign in a later phase to create your Rhea account. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T04:15:00Z"
+    },
+    {
+      "slug": "kamino-sol-vaults-070-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Kamino SOL vaults and native-share previews in Sparky chat",
+      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which rails can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) — the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T03:30:00Z"
+    },
+    {
+      "slug": "morpho-earn-vaults-069-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Morpho vaults and dry previews in Sparky chat",
+      "body": "Ask Sparky to show Morpho vaults on Base or Ethereum and you get the current list with each vault's name, chain, asset, TVL, net APY as Morpho reports it, and which rails can actually reach it: a direct same-chain deposit, the NEAR Intents 1Click receipt route (live or no liquidity), or Aurora Intents Connect (still needs access). Pick Preview to see a dry quote for depositing 100 USDC, including the estimated receipt amount, fees and the honest note that a 1Click receipt is a NEAR-issued wrapper, not the native Morpho share. Nothing is signable yet: this release shows the preview only, and a live deposit or withdrawal is coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T03:00:00Z"
+    },
+    {
+      "slug": "crosschain-chat-swaps-068-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Cross-chain swaps in Sparky chat",
+      "body": "Cross-chain swaps in Sparky chat — ask Sparky to swap USDC into BTC, SOL or move it between chains; preview the quote, confirm, send from your own wallet and track it live. SparkPoint never holds your funds: you send from your own wallet to a one-time deposit address, and if the swap can't complete the funds are refunded to your refund address.",
+      "published_at": "2026-11-01T00:30:00Z"
     },
     {
       "slug": "comparative-followup-067-2026-10",

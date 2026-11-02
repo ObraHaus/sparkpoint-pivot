@@ -37,7 +37,7 @@ async def test_golden_routes_are_identical_for_every_flag_combo(
 ) -> None:
     """059 flags are a latency widening — they must never change a golden route or card.
 
-    Same 72-case set, same canned LLM/reads, all four ``SPARKY_STREAMING`` x ``SPARKY_SINGLE_CALL``
+    Same 82-case set, same canned LLM/reads, all four ``SPARKY_STREAMING`` x ``SPARKY_SINGLE_CALL``
     combos: the route, the blocks and every must(-not)-contain rule must match the pre-059 path.
     """
     report = await run_offline(streaming=streaming, single_call=single_call)
@@ -46,9 +46,7 @@ async def test_golden_routes_are_identical_for_every_flag_combo(
         for result in report.results
         if result.status != "pass"
     ]
-    assert not failures, (
-        f"streaming={streaming} single_call={single_call}\n" + "\n".join(failures)
-    )
+    assert not failures, f"streaming={streaming} single_call={single_call}\n" + "\n".join(failures)
     assert report.infra == 0
     assert report.passed == report.total
 
@@ -60,6 +58,7 @@ def test_golden_set_shape() -> None:
     audit = [case for case in cases if case.id.startswith("audit-")]
     assert len(audit) == 26, "all 26 beta-audit prompts must be present"
     assert any(case.category == "near" for case in cases)
+    assert any(case.category == "crosschain" for case in cases)
     assert any(case.category == "injection" for case in cases)
     assert any(case.category == "english_only" for case in cases)
     for case in cases:

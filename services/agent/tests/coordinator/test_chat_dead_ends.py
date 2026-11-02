@@ -208,8 +208,10 @@ async def test_near_yield_question_is_honest_and_never_the_guardrails_dead_end()
     text = _text(await _run(dag, "Can you earn yield for me on NEAR, like Rhea Finance?"))
     lower = text.lower()
     assert "guardrails" not in lower
-    assert "near yield" in lower and "isn't supported yet" in lower
-    assert "coming" in lower
+    assert "rhea lending is the supported near yield" in lower
+    assert "usdc only for now" in lower
+    assert "isn't supported yet" not in lower
+    assert "coming" not in lower
     assert "gauntlet usdc prime" in lower and "4.41%" in lower
     assert "/vault" in lower
 

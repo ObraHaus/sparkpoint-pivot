@@ -203,10 +203,10 @@ async def test_other_prose_streams_deltas_then_one_authoritative_text_block() ->
     llm = _ScriptedLlm([(deltas, GOOD, None)])
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
     painted = [b for b in blocks if isinstance(b, ProseDelta)]
-    # 063 guard: the opening is held until 40 characters accumulate, then painted as one delta
-    # and every later chunk streams live.
+    # 073 guard: only COMPLETE sentences are released (not the old 40-char window), so the first
+    # paint is the first sentence and the rest follows as its own segment.
     assert len(painted) > 1
-    assert painted[0].delta == GOOD[:40]
+    assert painted[0].delta == "I'm Sparky, SparkPoint's assistant."
     assert {d.target for d in painted} == {"text"}
     assert len({d.stream_id for d in painted}) == 1
     text = next(b for b in blocks if isinstance(b, TextBlock))
@@ -251,9 +251,7 @@ async def test_mid_stream_failure_retries_once_then_answers() -> None:
 
 
 async def test_both_stream_attempts_fail_to_an_error_block_not_a_partial_answer() -> None:
-    llm = _ScriptedLlm(
-        [(["half", "never"], "half", 1), (["half", "never"], "half", 1)]
-    )
+    llm = _ScriptedLlm([(["half", "never"], "half", 1), (["half", "never"], "half", 1)])
     blocks = await _collect(_dag(llm, streaming=True, single_call=True), "hi")
     wires = [b.to_wire() for b in blocks if not isinstance(b, ProseDelta)]
     assert not any(w["type"] == "text" for w in wires)
@@ -295,8 +293,7 @@ def test_single_call_removes_serial_llm_calls_for_read_only_intents() -> None:
         )
         fast_llm = _CountingLlm(intent)
         assert (
-            _llm_calls(_dag(fast_llm, streaming=True, single_call=True), message, fast_llm)
-            == after
+            _llm_calls(_dag(fast_llm, streaming=True, single_call=True), message, fast_llm) == after
         )
 
 
@@ -324,9 +321,7 @@ def test_fast_route_yields_to_any_action_signal_on_every_readonly_path() -> None
 
 
 def test_plain_concept_and_greeting_still_take_the_single_call_path() -> None:
-    assert _fast_readonly_intent("what is a vault?") == Intent(
-        kind=IntentKind.LEARN, topic="vault"
-    )
+    assert _fast_readonly_intent("what is a vault?") == Intent(kind=IntentKind.LEARN, topic="vault")
     assert _fast_readonly_intent("explain APY") == Intent(kind=IntentKind.LEARN, topic="apy")
     assert _fast_readonly_intent("hi") == Intent(kind=IntentKind.OTHER)
     assert _fast_readonly_intent("show my portfolio") == Intent(kind=IntentKind.PORTFOLIO)
@@ -601,7 +596,6 @@ async def test_history_followups_and_compound_actions_reach_the_planner() -> Non
         _dag(llm, streaming=True, single_call=True), "what is a vault?", history=_HISTORY
     )
     assert llm.structured_calls == 0  # self-contained concept still takes the fast path
-
 
 
 async def test_compound_concept_plus_action_reaches_the_planner() -> None:

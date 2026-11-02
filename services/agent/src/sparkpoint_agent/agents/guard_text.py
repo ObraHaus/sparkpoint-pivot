@@ -64,9 +64,7 @@ _META_SHAPED: tuple[re.Pattern[str], ...] = (
         r"(?:doesn['’]t|does not|didn['’]t|did not)\b",
         re.IGNORECASE,
     ),
-    re.compile(
-        r"\bthe information (?:i (?:have|was given|can draw on|can use))\b", re.IGNORECASE
-    ),
+    re.compile(r"\bthe information (?:i (?:have|was given|can draw on|can use))\b", re.IGNORECASE),
     re.compile(
         r"\b(?:the )?(?:context|documents?|passages?|sources?|material)"
         r"(?: (?:provided|supplied|given|available(?: to me)?|i have|i was given|"
@@ -76,9 +74,7 @@ _META_SHAPED: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
     re.compile(r"\bmy (?:sources?|documents?|passages?)\b", re.IGNORECASE),
-    re.compile(
-        r"\breference material (?:i (?:have|can draw on)|available)\b", re.IGNORECASE
-    ),
+    re.compile(r"\breference material (?:i (?:have|can draw on)|available)\b", re.IGNORECASE),
 )
 
 
@@ -117,33 +113,14 @@ def is_unusable(text: str) -> bool:
     return unusable_reason(text) is not None
 
 
-#: How many opening characters a streamed prose turn buffers before the first paint (059, restored
-#: in 063 after a Defender review). The window must be measured in CHARACTERS of accumulated text,
-#: never in chunks: a token-sized first delta ("We") passes the guard on its own, but a response
-#: that opens into meta narration ("reference notes", "The user asks") or an action shape
-#: (`"type":`, raw calldata) within the first 40 characters must never be painted. Once the window
-#: is reached (or the stream ends) the whole buffered prefix is checked, then painted as one delta
-#: and every later chunk streams live. The terminal block remains authoritative: a body that only
-#: turns unusable AFTER the window may have painted, and is replaced (or retried under a new
-#: stream id) exactly as before.
-STREAM_HOLD_CHARS = 40
-
-
-def prefix_is_usable(text: str) -> bool:
-    """True when a buffered STREAM PREFIX carries no action/meta shape.
-
-    Same heuristics as :func:`is_unusable`, minus the empty check (the caller only runs this once
-    it has buffered data). A prefix can pass and the full answer still fail; the terminal block
-    remains authoritative and replaces any paint.
-    """
-    return not (looks_action_shaped(text) or looks_meta_shaped(text))
+# 059/063 streamed prose held its opening for 40 characters. Spec 073 replaced that with the
+# incremental, sentence-gated :class:`~sparkpoint_agent.agents.stream_guard.StreamGuard`, which
+# checks every released segment against these SAME predicates (see ``agents/stream_guard.py``).
 
 
 __all__ = [
-    "STREAM_HOLD_CHARS",
     "is_unusable",
     "looks_action_shaped",
     "looks_meta_shaped",
-    "prefix_is_usable",
     "unusable_reason",
 ]

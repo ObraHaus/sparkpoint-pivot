@@ -1,0 +1,30 @@
+{
+  "type": "crosschain_quote",
+  "state": "preview",
+  "origin": {
+    "key": "base:USDC",
+    "chain": "base",
+    "chainLabel": "Base",
+    "symbol": "USDC",
+    "amount": "5000",
+    "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "evmChainId": 8453
+  },
+  "destination": {
+    "key": "btc:BTC",
+    "chain": "btc",
+    "chainLabel": "Bitcoin",
+    "symbol": "BTC",
+    "assetId": "nep141:btc.omft.near",
+    "addressKind": "btc"
+  },
+  "amountOut": "0.06439596",
+  "amountOutUsd": "4986.694350",
+  "amountInUsd": "5000.000000",
+  "minAmountOut": "0.063752",
+  "timeEstimateSec": 480,
+  "slippageBps": 100,
+  "feeNote": "Includes 1Click's 0.25% keyless routing fee.",
+  "quotedAt": "2026-11-01T00:19:48.065Z",
+  "expiresHint": "Quote expires in about 30 minutes."
+}
