@@ -363,6 +363,7 @@ def test_comparison_shapes_are_recognised(message: str) -> None:
     [
         "Morpho or Aave?",
         "Aave or Morpho for USDC?",
+        "Aave or Compound for USDC?",
         "should I put my USDC in Rhea or Aave?",
         "where should I lend USDC, Rhea or Aave?",
     ],
@@ -379,6 +380,9 @@ def test_protocol_choice_questions_are_comparative(message: str) -> None:
         "lend USDC on Rhea",
         "earn on USDC with Morpho",
         "Morpho or Aave, deposit 500 USDC into the safer one",
+        "Should I compound my earnings weekly or monthly on Aave?",
+        "Should I park cash in T-bills while the yield curve is inverted, or in Aave?",
+        "auto-compound my rewards or move them to Aave?",
     ],
 )
 def test_sized_or_single_protocol_turns_are_not_comparative(message: str) -> None:

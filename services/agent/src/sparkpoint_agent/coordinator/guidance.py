@@ -550,7 +550,7 @@ def _venue_aliases() -> dict[str, str]:
     """
     aliases: dict[str, str] = {}
     for subject in KNOWN_SUBJECTS:
-        for alias in (*aliases_for(subject), subject.lower()):
+        for alias in aliases_for(subject):
             aliases[alias.lower()] = subject.lower()
     for alias in ("rhea", "rhea finance"):
         aliases[alias] = "rhea"
@@ -558,10 +558,25 @@ def _venue_aliases() -> dict[str, str]:
     return aliases
 
 
+def _venue_alias_pattern(alias: str) -> str:
+    # "compound" is also an ordinary verb ("compound my earnings") and "auto-compound" is the
+    # vault verb, so only the Capitalised protocol name or an explicit "compound protocol/
+    # finance/vault" phrase counts here.
+    if alias == "compound":
+        return (
+            r"(?:(?<![A-Za-z0-9])(?-i:Compound)(?![A-Za-z0-9])"
+            r"|(?<![A-Za-z0-9])compound\s+(?:protocol|finance|vault)\b)"
+        )
+    return re.escape(alias)
+
+
 _VENUE_ALIASES = _venue_aliases()
 _VENUE_ALIAS_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:"
-    + "|".join(re.escape(alias) for alias in sorted(_VENUE_ALIASES, key=len, reverse=True))
+    + "|".join(
+        _venue_alias_pattern(alias)
+        for alias in sorted(_VENUE_ALIASES, key=len, reverse=True)
+    )
     + r")(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
@@ -570,7 +585,10 @@ _VENUE_ALIAS_RE = re.compile(
 def _named_venues(message: str) -> tuple[str, ...]:
     seen: list[str] = []
     for match in _VENUE_ALIAS_RE.finditer(message):
-        canonical = _VENUE_ALIASES[match.group(0).lower()]
+        key = match.group(0).lower()
+        canonical = _VENUE_ALIASES.get(
+            key, "compound" if key.startswith("compound") else key
+        )
         if canonical not in seen:
             seen.append(canonical)
     return tuple(seen)
