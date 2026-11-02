@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -169,13 +170,31 @@ def test_unknown_asset_is_a_400(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-@pytest.mark.parametrize("amount", ["0", "-1", "abc", "1.1234567"])
+@pytest.mark.parametrize(
+    "amount",
+    [
+        "0",
+        "-1",
+        "abc",
+        "1.1234567",
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "1e999999999",
+        "1e999999000",
+        "1e31",
+        "9" * 70,
+        "1E+40",
+    ],
+)
 def test_bad_amounts_are_rejected(client: TestClient, amount: str) -> None:
+    started = time.perf_counter()
     response = client.post(
         "/crosschain/quote",
         json={"originKey": "base:USDC", "destinationKey": "btc:BTC", "amount": amount},
     )
     assert response.status_code == 400
+    assert time.perf_counter() - started < 1.0
 
 
 def test_live_quote_requires_a_valid_destination_address(client: TestClient) -> None:

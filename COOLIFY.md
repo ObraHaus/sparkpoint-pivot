@@ -62,7 +62,7 @@ Coolify project **3 "sparkpoint"** (new app group — group 1 = core obrahaus, 2
 
 - Container ports — `web` **3000** (FINAL; Next.js `next start`); `agent` 8080 (confirm OpenClaw/Hermes' actual listen port at build time); `postgres` 5432.
 - **Host ports are FINAL** per the table; only the primary/secondary of one app+env may share a port (they sit on different servers). The web LB fronts the `31101` pair (see the runbook in `specs/003-landing-only-gate/deploy-runbook.md`).
-- **Reaching the DB / agent:** the internal container-name/uuid URL does **not** resolve across resources on this setup. Publish the host port, mark the DB **Proxy → "Make it publicly available"** + set the public port, restart it, then connect via the **coolify-master LAN IP `192.168.31.240`** + that port (e.g. `postgres://user:pass@192.168.31.240:31203/sparkpoint`). Same for web→agent: call `http://192.168.31.240:31202` or route via the agent's public domain.
+- **Reaching the DB / agent:** the internal container-name/uuid URL does **not** resolve across resources on this setup. Publish the host port, mark the DB **Proxy → "Make it publicly available"** + set the public port, restart it, then connect via the coolify host's current LAN/published endpoint from the Coolify dashboard. Same for web→agent: call the agent's current published endpoint or route via its public domain. ⚠️ **Beta DB (2026-11-02):** `sparkpoint-postgres-beta` now runs on server **`m4412`**, published on coolify-build and reached from the workspace VM over **`vnet1`**; use its current published endpoint from the Coolify dashboard. The old `192.168.31.x` beta-DB endpoints are retired — do not reuse the former LAN IP/port.
 
 ## Domains (planned, `http://` scheme)
 

@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
+from ..amounts import bounded_smallest_units
 from .config import CrossChainAsset, CrossChainConfig
 
 _ACTION_RE = re.compile(
@@ -66,23 +67,10 @@ class CrossChainRequest:
 
 
 def _parse_amount(raw: str, scale: str | None, decimals: int) -> tuple[Decimal, int] | None:
-    try:
-        amount = Decimal(raw.replace(",", ""))
-    except InvalidOperation:
-        return None
     multiplier = {"k": Decimal(1000), "m": Decimal(1_000_000)}.get(
         (scale or "").lower(), Decimal(1)
     )
-    amount *= multiplier
-    if amount <= 0:
-        return None
-    exponent = amount.as_tuple().exponent
-    if isinstance(exponent, int) and -exponent > decimals:
-        return None
-    raw_units = int(amount.scaleb(decimals))
-    if raw_units <= 0:
-        return None
-    return amount, raw_units
+    return bounded_smallest_units(raw, decimals, multiplier=multiplier)
 
 
 def _resolve_source_chain(message: str, config: CrossChainConfig) -> str | None:

@@ -2,6 +2,30 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "amount-exponent-cap-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Extremely large amounts are rejected instantly",
+      "body": "If an amount is absurdly large — for example a number with a huge exponent such as \"1e999999000\", or text longer than 64 characters — SparkPoint now rejects it immediately with the usual validation message instead of spending time processing it. Ordinary amounts such as 20, 0.5 or 5,000.50 work exactly as before. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T06:15:00Z"
+    },
+    {
+      "slug": "rhea-or-comparisons-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Questions that compare Rhea with another option now get a comparison",
+      "body": "Asking Sparky something like \"should I put my USDC in Rhea or Aave?\" or \"lend USDC on Rhea or Burrow?\" now gives you the usual side-by-side comparison instead of a Rhea vault list. Questions that compare anything with a NEAR yield option are handled the same way, while a plain request such as \"lend USDC on Rhea\" or \"earn on Rhea\" still shows the Rhea vault list exactly as before. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T05:30:00Z"
+    },
+    {
+      "slug": "portfolio-verify-earn-wording-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio loads reliably, and Morpho/Kamino earn questions show vaults",
+      "body": "The Across chains panel on the Portfolio page and Sparky's portfolio answer now load reliably when your Rhea account is empty: the Rhea section keeps its honest first-deposit explanation instead of making the whole portfolio read fail verification. Asking Sparky to \"earn on USDC with Morpho\" or \"earn yield on SOL with Kamino\" now shows the matching vault list rather than falling through, while depositing a specific amount works exactly as before. Very large or non-numeric amounts are now rejected cleanly with a validation message instead of an internal error. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T03:55:00Z"
+    },
+    {
       "slug": "streaming-guard-073-2026-11",
       "type": "changelog",
       "tag": "Fixed",

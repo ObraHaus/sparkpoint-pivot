@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -163,8 +164,25 @@ def test_preview_rejects_dry_false(client: TestClient) -> None:
     assert "dry" in response.json()["error"]["message"].lower()
 
 
-@pytest.mark.parametrize("amount", ["0", "-1", "abc", "1.1234567"])
+@pytest.mark.parametrize(
+    "amount",
+    [
+        "0",
+        "-1",
+        "abc",
+        "1.1234567",
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "1e999999999",
+        "1e999999000",
+        "1e31",
+        "9" * 70,
+        "1E+40",
+    ],
+)
 def test_preview_rejects_bad_amounts(client: TestClient, amount: str) -> None:
+    started = time.perf_counter()
     response = client.post(
         "/earn/preview",
         json={
@@ -175,6 +193,7 @@ def test_preview_rejects_bad_amounts(client: TestClient, amount: str) -> None:
         },
     )
     assert response.status_code == 400
+    assert time.perf_counter() - started < 1.0
 
 
 def test_preview_unknown_origin_and_vault(client: TestClient) -> None:

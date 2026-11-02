@@ -97,6 +97,31 @@ test("empty fixture is an honest empty read with an unpriced total", () => {
   assert.equal(block.sections.every((section) => section.rows.length === 0), true);
 });
 
+test("the real empty-Rhea wire (explainer + linked addresses) validates", () => {
+  const block = parse("portfolio-overview-empty-rhea-explainer.json");
+  assert.equal(block.type, "portfolio_overview");
+  if (block.type !== "portfolio_overview") return;
+  assert.equal(block.state, "empty");
+  const rhea = block.sections.find((section) => section.key === "rhea");
+  assert.match(rhea?.explainer ?? "", /first deposit creates one/);
+  assert.equal(rhea?.appUrl, "https://app.rhea.finance/lending");
+
+  const withLinked = {
+    ...(fixture("portfolio-overview-empty-rhea-explainer.json") as Record<string, unknown>),
+    sections: [
+      {
+        key: "kamino",
+        label: "Kamino",
+        status: "ok",
+        rows: [],
+        linkedAddresses: 1,
+      },
+    ],
+  };
+  const parsed = ChatBlockSchema.safeParse(withLinked);
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+});
+
 test("portfolio_overview is strict: unknown fields and bad enums are rejected", () => {
   const ready = fixture("portfolio-overview-ready.json") as Record<string, unknown>;
   assert.equal(ChatBlockSchema.safeParse({ ...ready, unexpected: true }).success, false);

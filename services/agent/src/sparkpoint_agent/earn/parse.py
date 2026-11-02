@@ -13,8 +13,10 @@ Supported shapes::
     Show Morpho vaults on Base
     List Morpho vaults on Ethereum for USDC
     What's the best Morpho vault on Base?
+    Earn on USDC with Morpho
     Show Kamino vaults
     Best Kamino vault
+    Earn yield on SOL with Kamino
     Deposit 100 USDC into Kamino SOL vault
     Put 1 SOL into Kamino on Solana
 """
@@ -23,9 +25,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Literal
 
+from ..amounts import bounded_smallest_units
 from .config import EarnConfig
 
 EarnKind = Literal["list", "deposit", "positions", "withdraw"]
@@ -79,6 +82,8 @@ _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
 _WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
 _RHEA_TARGET_RE = re.compile(r"\b(?:into|in|on|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE)
 _STABLE_RE = re.compile(r"\b(USDC|USDT)\b", re.IGNORECASE)
+_ASSET_RE = re.compile(r"\b(USDC|USDT|WETH|ETH|cbBTC|SOL)\b", re.IGNORECASE)
+_DIGIT_RE = re.compile(r"\d")
 _RHEA_NEGATIVE_RE = re.compile(
     r"\b(?:bridge|bridges|bridging|swap|swaps|swapping|cross[-\s]?chain)\b",
     re.IGNORECASE,
@@ -103,6 +108,15 @@ _STAKE_RE = re.compile(
 _COMPARATIVE_RE = re.compile(
     r"\b(?:compare|compares|compared|comparing|comparison|vs\.?|versus)\b"
     r"|\bsafer\s+than\b|\b(?:more|less)\s+(?:safe|risky)\s+than\b",
+    re.IGNORECASE,
+)
+# "should I put my USDC in Morpho or Aave?" names two options but has no "vs"/"compare",
+# so _COMPARATIVE_RE misses it. Match a bare "or" between two known earn subjects so those
+# turns still reach the planner's comparison flow, exactly as they did before #342.
+_OR_COMPARATIVE_RE = re.compile(
+    r"\b(?:morpho|kamino|rhea|burrow|aave|compound|sparkpoint|vaults?)\b"
+    r"[^.?!]{0,40}\bor\b[^.?!]{0,40}"
+    r"\b(?:morpho|kamino|rhea|burrow|aave|compound|sparkpoint|vaults?)\b",
     re.IGNORECASE,
 )
 _MY_YIELD_RE = re.compile(r"\bmy\b[^.?!]{0,30}\byield\b|\byield\b[^.?!]{0,30}\bmy\b", re.IGNORECASE)
@@ -151,24 +165,15 @@ def _amount(text: str) -> tuple[Decimal, int, str] | None:
     match = _AMOUNT_RE.search(text)
     if match is None:
         return None
-    try:
-        amount = Decimal(match.group("amount").replace(",", ""))
-    except InvalidOperation:
-        return None
+    symbol = match.group("symbol").upper()
+    decimals = _DECIMALS.get(symbol, 18)
     multiplier = {"k": Decimal(1000), "m": Decimal(1_000_000)}.get(
         (match.group("scale") or "").lower(), Decimal(1)
     )
-    amount *= multiplier
-    if amount <= 0:
+    parsed = bounded_smallest_units(match.group("amount"), decimals, multiplier=multiplier)
+    if parsed is None:
         return None
-    symbol = match.group("symbol").upper()
-    decimals = _DECIMALS.get(symbol, 18)
-    exponent = amount.as_tuple().exponent
-    if isinstance(exponent, int) and -exponent > decimals:
-        return None
-    raw = int(amount.scaleb(decimals))
-    if raw <= 0:
-        return None
+    amount, raw = parsed
     return amount, raw, symbol
 
 
@@ -215,6 +220,15 @@ def _stable_symbol(text: str) -> str | None:
         return asset_match.group("asset").upper()
     stable = _STABLE_RE.search(text)
     return stable.group(1).upper() if stable is not None else None
+
+
+def _named_asset(text: str) -> str | None:
+    """The earn asset a turn names anywhere (``on USDC``, ``on SOL``), if any."""
+    match = _ASSET_RE.search(text)
+    if match is None:
+        return None
+    symbol = match.group(1).upper()
+    return "WETH" if symbol == "ETH" else symbol
 
 
 def _rhea_asset_enabled(config: EarnConfig, symbol: str) -> bool:
@@ -284,7 +298,11 @@ def _list_request(message: str, asset: str | None, *, best: bool) -> EarnRequest
 def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
     """Rhea/Burrow: positions, withdraw link, APY/list, or a supply preview."""
     # A bridge/swap/comparative command belongs to 068/063, even when it names Rhea.
-    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
+    if (
+        _RHEA_NEGATIVE_RE.search(text) is not None
+        or _COMPARATIVE_RE.search(text) is not None
+        or _OR_COMPARATIVE_RE.search(text) is not None
+    ):
         return None
     if _WITHDRAW_RE.search(text) is not None:
         return _withdraw_request(message)
@@ -331,7 +349,11 @@ def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | No
 
 def _parse_near_yield(text: str, message: str, config: EarnConfig) -> EarnRequest | None:
     """Vague NEAR-yield turns route to Rhea; native NEAR-token staking is not lending."""
-    if _RHEA_NEGATIVE_RE.search(text) is not None or _COMPARATIVE_RE.search(text) is not None:
+    if (
+        _RHEA_NEGATIVE_RE.search(text) is not None
+        or _COMPARATIVE_RE.search(text) is not None
+        or _OR_COMPARATIVE_RE.search(text) is not None
+    ):
         return None
     if _NEAR_CHAIN_RE.search(text) is None or is_near_native_staking_request(text):
         return None
@@ -397,7 +419,33 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
         return None
     amount = _amount(text)
     if amount is None:
-        return None
+        # A comparative turn ("Morpho vs Aave", "should I lend USDC with Morpho or Aave?")
+        # belongs to the planner's comparison flow, never to the vault list. This mirrors the
+        # `_COMPARATIVE_RE` guard both Rhea paths apply at the top of their functions.
+        if (
+            _COMPARATIVE_RE.search(text) is not None
+            or _OR_COMPARATIVE_RE.search(text) is not None
+        ):
+            return None
+        # "earn on USDC with Morpho" / "earn yield on SOL with Kamino" name a protocol and a
+        # yield verb but no amount: that is a list/explain turn, exactly like "earn on Rhea".
+        # A turn with digits (e.g. "deposit 1.1234567 USDC into Morpho") keeps rejecting.
+        if _DIGIT_RE.search(text) is not None:
+            return None
+        chain = _chain_from(text)
+        if chain is None and protocol == "kamino":
+            chain = "sol"
+        return EarnRequest(
+            kind="list",
+            chain=chain,
+            asset=_named_asset(text),
+            amount=None,
+            amount_raw=None,
+            vault_query=None,
+            sort="apy" if _BEST_RE.search(text) is not None else "tvl",
+            message=message,
+            protocol=protocol,
+        )
     target_match = _TARGET_RE.search(text)
     if target_match is None:
         return None
