@@ -3,7 +3,9 @@
 # Every case is a real user message (the 26 beta-audit prompts plus NEAR/swap/knowledge/
 # adversarial/edge coverage). `expected` is the CURRENT intended behaviour after 057.
 # `offline` supplies the canned LLM answer for the deterministic run; deterministic routes
-# fire before it, so a mis-route still fails loudly.
+# fire before it, so a mis-route still fails loudly. An optional `crosschain` key
+# (`quote` | `transport_error` | `disabled`) wires the 068 fixture; without it the DAG is
+# byte-for-byte the pre-068 path.
 version: 1
 cases:
   # ── The 26 beta-audit prompts ───────────────────────────────────────────────
@@ -176,11 +178,12 @@ cases:
     category: near
     prompt: "Can you earn yield for me on NEAR, like Rhea Finance?"
     wallet: empty
+    earn: list
     expected:
-      route: yield_guidance
-      blocks_present: [text]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near yield", "isn't supported yet", "coming", "gauntlet usdc prime", "4.41%", "/vault"]
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
     offline:
       intent: {kind: build_action, actionType: aerodrome_swap, asset: USDC, amount: 100000000}
 
@@ -369,11 +372,12 @@ cases:
     category: near
     prompt: "earn yield on NEAR"
     wallet: empty
+    earn: list
     expected:
-      route: yield_guidance
-      blocks_present: [text]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near yield", "coming"]
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
     offline:
       intent: {kind: other}
 
@@ -382,12 +386,12 @@ cases:
     prompt: "stake NEAR"
     wallet: empty
     expected:
-      routes: [general, knowledge]
-      blocks_absent: [action, recommendation]
-      must_contain: ["near"]
+      route: general
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, earn_quote, earn_vaults]
+      must_contain: ["near-token staking", "rhea lending", "usdc only"]
     offline:
       intent: {kind: other}
-    offline_check_contains: false
 
   - id: near-31-what-is-near-intents
     category: near
@@ -919,3 +923,521 @@ cases:
       must_contain: ["not a financial adviser", "savings", "mandate"]
     offline:
       intent: {kind: build_action, actionType: vault_deposit, asset: USDC, amount: 100000000}
+
+  # ── Cross-chain chat swaps (068 — dry 1Click preview, never signable) ─────────
+  - id: crosschain-73-usdc-base-to-btc
+    category: crosschain
+    prompt: "swap 100 USDC on Base to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc on base", "bitcoin", "keyless routing fee"]
+      must_not_contain: ["aren't supported yet", "november"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-74-usdc-to-sol
+    category: crosschain
+    prompt: "swap 50 USDC to SOL"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "50 usdc on base", "solana"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-75-bridge-base-to-ethereum
+    category: crosschain
+    prompt: "bridge 25 USDC from Base to Ethereum"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "25 usdc on base", "ethereum"]
+      must_not_contain: ["isn't available"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-76-usdg-robinhood-to-base
+    category: crosschain
+    prompt: "swap 10 USDG on Robinhood chain to USDC on Base"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "10 usdg on robinhood chain", "usdc on base"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-77-taglish-swap
+    category: crosschain
+    prompt: "pa-swap ng 20 USDC to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_preview
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "20 usdc", "bitcoin"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-78-no-amount
+    category: crosschain
+    prompt: "swap USDC to BTC"
+    wallet: empty
+    crosschain: quote
+    expected:
+      # The parser needs an amount, so this keeps the pre-068 unsupported-swap answer.
+      route: unsupported_swap
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["aren't supported yet", "btc"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-79-tron-unavailable
+    category: crosschain
+    prompt: "Pay my supplier 3,000 USDT on Tron."
+    wallet: empty
+    crosschain: quote
+    expected:
+      route: crosschain_unavailable
+      blocks_present: [text, crosschain_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["can't quote", "tron", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-80-transport-error
+    category: crosschain
+    prompt: "swap 100 USDC to BTC"
+    wallet: empty
+    crosschain: transport_error
+    expected:
+      route: general
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["couldn't reach", "nothing was signed"]
+      must_not_contain: ["traceback", "httpx"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-81-feature-disabled
+    category: crosschain
+    prompt: "swap 100 USDC on Base to BTC"
+    wallet: empty
+    crosschain: disabled
+    expected:
+      # Flag off is the exact pre-068 path: the old honest unsupported-swap answer.
+      route: unsupported_swap
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["aren't supported yet", "november"]
+      must_not_contain: ["preview only"]
+    offline:
+      intent: {kind: other}
+
+  - id: crosschain-82-bridge-to-near-unchanged
+    category: crosschain
+    prompt: "bridge to NEAR"
+    wallet: empty
+    crosschain: quote
+    expected:
+      # A chain mention with no amount must not be stolen by the cross-chain parser.
+      route: bridge
+      blocks_present: [text]
+      blocks_absent: [action, recommendation, crosschain_quote]
+      must_contain: ["bridging", "isn't available"]
+    offline:
+      intent: {kind: other}
+
+  # ── Morpho earn registry (069 — data-driven list + dry direct/receipt preview) ─────
+  - id: earn-83-list-morpho-vaults
+    category: earn
+    prompt: "Show Morpho vaults on Base"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["gauntlet usdc prime", "moonwell flagship usdc", "base"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-84-best-morpho-vault
+    category: earn
+    prompt: "What's the best Morpho vault on Base?"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation]
+      must_contain: ["net apy", "gauntlet usdc prime"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-85-deposit-named-vault
+    category: earn
+    prompt: "Deposit 100 USDC into Morpho Gauntlet USDC Prime"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc", "gauntlet usdc prime", "native morpho vault share"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-86-generic-vault-deposit-unchanged
+    category: earn
+    prompt: "deposit 100 USDC into the vault"
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false
+
+  - id: earn-87-list-kamino-vaults
+    category: earn
+    prompt: "Show Kamino vaults"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["sol balanced", "kamino", "solana"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-88-deposit-kamino-sol-vault
+    category: earn
+    prompt: "Deposit 100 USDC into Kamino SOL vault"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc", "native kamino", "base"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-89-kamino-comparative-unchanged
+    category: earn
+    prompt: "Compare Aave and Kamino, then deposit 500 USDC into the safer one."
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false
+
+  # ── Rhea (Burrow) on NEAR (071 — dry supply preview + read-only positions) ─────────
+  - id: earn-90-deposit-rhea-preview
+    category: earn
+    prompt: "Deposit 100 USDC into Rhea"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation, earn_positions]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-91-rhea-positions-empty
+    category: earn
+    prompt: "Show my Rhea positions"
+    wallet: empty
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea account", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-92-rhea-apy-list
+    category: earn
+    prompt: "Rhea APY for USDC"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-93-rhea-comparative-unchanged
+    category: earn
+    prompt: "Compare Aave and Rhea, then deposit 500 USDC into the safer one."
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote, earn_positions]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false
+
+  # ── 071 — vague NEAR-yield turns route to Rhea (no protocol named) ────────────
+  - id: near-95-vague-near-yield
+    category: earn
+    prompt: "where can I get yield on near?"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now", "deposit preview"]
+      must_not_contain: ["isn't supported yet", "near support is coming"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-96-vague-near-stake-usdc
+    category: earn
+    prompt: "stake my USDC on NEAR"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea lending usdc", "14.05", "usdc only for now"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-97-vague-near-amount
+    category: earn
+    prompt: "put 100 USDC to work on NEAR"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation, earn_positions]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-98-vague-near-positions
+    category: earn
+    prompt: "my NEAR yield"
+    wallet: empty
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["rhea account", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: near-99-usdt-on-near-disabled
+    category: earn
+    prompt: "best USDT yield on NEAR"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["usdc only for now", "usdt isn't enabled"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  # ── Multi-chain portfolio (072 — read-only, session wallet) ───────────────────
+  - id: portfolio-100-show
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation, portfolio_snapshot]
+      sections: {balances: ok, morpho: ok, kamino: ok, rhea: ok, swaps: ok}
+      must_contain: ["wallet balances", "morpho", "kamino", "rhea", "nothing was signed"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-101-across-chains
+    category: portfolio
+    prompt: "what do I have across chains"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["priced positions", "base", "near"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-102-balances
+    category: portfolio
+    prompt: "my balances"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation, portfolio_snapshot]
+      must_contain: ["wallet balances", "0.5 eth", "100 usdc"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-103-positions-everywhere
+    category: portfolio
+    prompt: "show my positions everywhere"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["morpho", "kamino", "rhea"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-104-swap-history
+    category: portfolio
+    prompt: "my swap history"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: swaps
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["most recent cross-chain swaps", "base usdc", "solana usdc", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-105-earning
+    category: portfolio
+    prompt: "how much am I earning"
+    wallet: empty
+    portfolio: ready
+    expected:
+      route: portfolio_overview
+      focus: earn
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["priced positions", "14.05", "4.41"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-106-degraded-sections
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: degraded
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      sections: {morpho: unavailable, kamino: not_linked, rhea: unavailable, swaps: ok}
+      must_contain: ["kamino positions show once you deposit", "morpho: unavailable", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-107-swaps-empty
+    category: portfolio
+    prompt: "my swap history"
+    wallet: empty
+    portfolio: empty
+    expected:
+      route: portfolio_overview
+      focus: swaps
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      must_contain: ["don't have any cross-chain swaps yet", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  - id: portfolio-108-empty
+    category: portfolio
+    prompt: "show my portfolio"
+    wallet: empty
+    portfolio: empty
+    expected:
+      route: portfolio_overview
+      focus: all
+      blocks_present: [text, portfolio_overview]
+      blocks_absent: [action, recommendation]
+      sections: {balances: ok, morpho: ok, kamino: ok, rhea: ok, swaps: ok}
+      must_contain: ["don't have any positions in these sections yet", "nothing was signed"]
+    offline:
+      intent: {kind: other}
+
+  # Negative / precedence: the vault-specific valuation and explicit Rhea positions keep their
+  # pre-072 routes even when the portfolio service is wired.
+  - id: portfolio-109-vault-worth-unchanged
+    category: portfolio
+    prompt: "What is my portfolio worth right now?"
+    wallet: with_position
+    portfolio: ready
+    expected:
+      route: portfolio
+      blocks_present: [portfolio_snapshot, text]
+      blocks_absent: [portfolio_overview, action, recommendation]
+      must_contain: ["you're holding", "5250.00"]
+    offline:
+      intent: {kind: portfolio}
+
+  - id: portfolio-110-rhea-positions-unchanged
+    category: portfolio
+    prompt: "Show my Rhea positions"
+    wallet: empty
+    portfolio: ready
+    earn: positions
+    expected:
+      route: earn_positions_empty
+      blocks_present: [text, earn_positions]
+      blocks_absent: [portfolio_overview, action, recommendation]
+      must_contain: ["rhea account", "nothing was signed"]
+    offline:
+      intent: {kind: other}

@@ -17,6 +17,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-transform-types --import ./tests/register.mjs --test \"tests/**/*.test.ts\"",
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {

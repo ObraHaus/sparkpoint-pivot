@@ -55,7 +55,9 @@ from .brokers import router as brokers_router
 from .chat import router as chat_router
 from .content import router as content_router
 from .conversations import router as conversations_router
+from .crosschain import router as crosschain_router
 from .curated_vaults import router as curated_vaults_router
+from .earn import router as earn_router
 from .errors import (
     ApiError,
     api_error_handler,
@@ -68,6 +70,7 @@ from .idempotency import IdempotencyStore, LayeredIdempotencyStore, ScopedStore
 from .mandate import router as mandate_router
 from .memory import router as memory_router
 from .middleware import RequestContextMiddleware
+from .multichain_portfolio import router as multichain_portfolio_router
 from .network_diagnostics import router as network_diagnostics_router
 from .notifications import router as notifications_router
 from .portfolio import router as portfolio_router
@@ -302,7 +305,8 @@ async def _self_authoring_loop() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "self_authoring_loop_stopped (%s: %s) — everything else is unaffected",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
 
 
@@ -345,7 +349,8 @@ async def _index_changelog(db: object) -> None:
     except Exception as exc:  # noqa: BLE001 — a search index must never cost the agent its boot
         logger.warning(
             "changelog_index_skipped (%s: %s) — the changelog page is unaffected",
-            type(exc).__name__, exc,
+            type(exc).__name__,
+            exc,
         )
 
 
@@ -507,6 +512,7 @@ _ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
 # vault-flows indexer), so its floor default is 0 (the env supplies the real one).
 _ROBINHOOD_SWAP_INCEPTION_BLOCK = 90_500_000
 
+
 # One swap-fee indexer per network. `rpc_env` wins, then `rpc_fallback`, then the agent's main RPC;
 # `from_block_envs` are tried in order (first non-empty wins); `from_block_default` is the floor
 # when none is set (never genesis for 46630).
@@ -563,12 +569,11 @@ async def _index_vault_fees_loop() -> None:
     if not (config.vault_address and log_rpc):
         logger.warning(
             "vault_fee_loop_exit: nothing to index (vault_address=%s log_rpc=%s)",
-            bool(config.vault_address), bool(log_rpc),
+            bool(config.vault_address),
+            bool(log_rpc),
         )
         return
-    start_block = _resolve_start_block(
-        ("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0
-    )
+    start_block = _resolve_start_block(("VAULT_FEE_INDEX_FROM_BLOCK", "VAULT_INDEX_FROM_BLOCK"), 0)
     window = VAULT_FEE_WINDOW
     try:
         raw_window = os.getenv("VAULT_INDEX_WINDOW")
@@ -592,7 +597,10 @@ async def _index_vault_fees_loop() -> None:
             # is dead does the same thing — silently. The block number is what tells them apart.
             logger.info(
                 "vault_fees_tick added=%d dropped=%d block=%d more=%s",
-                result.inserted, result.dropped, result.last_processed_block, result.more_to_do,
+                result.inserted,
+                result.dropped,
+                result.last_processed_block,
+                result.more_to_do,
             )
         except asyncio.CancelledError:
             raise
@@ -724,6 +732,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     vault_fee_task: asyncio.Task[None] | None = None
     notif_task: asyncio.Task[None] | None = None
     apy_task: asyncio.Task[None] | None = None
+    earn_task: asyncio.Task[None] | None = None
     changelog_task: asyncio.Task[None] | None = None
     selfauthor_task: asyncio.Task[None] | None = None
     swap_fee_tasks: list[asyncio.Task[None]] = []
@@ -776,6 +785,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Feature 024 phase 4 (T051): background vault-APY poller → vault_apy_snapshots.
         # Best-effort, off the request path (the Morpho API is rate-limited); never withdraw (N2).
         apy_task = asyncio.create_task(_vault_apy_poller_loop())
+        # Feature 069: refresh the data-driven Morpho earn registry (V1+V2 snapshot) in the
+        # background. The request path never calls Morpho; the shipped snapshot is the fallback.
+        from ..earn.refresh import run_earn_loop
+        from ..earn.service import build_service_from_env as _build_earn_service
+
+        _earn_service = _build_earn_service()
+        if _earn_service is not None:
+            earn_task = asyncio.create_task(run_earn_loop(_earn_service))
+            earn_task.add_done_callback(_log_task_death)
     except Exception:
         # Covers connect errors AND the wait_for timeout — never interpolate the exception/DSN
         # (a connect error can carry the credential). Startup proceeds regardless.
@@ -791,6 +809,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             notif_task.cancel()
         if apy_task is not None:
             apy_task.cancel()
+        if earn_task is not None:
+            earn_task.cancel()
         if changelog_task is not None:
             changelog_task.cancel()
         if selfauthor_task is not None:
@@ -870,12 +890,19 @@ app.include_router(vault_router)
 app.include_router(subscription_router)
 # §3.2 chat surface — SSE stream of policy-stamped ChatBlocks; NEVER returns a signable bundle.
 app.include_router(chat_router)
+# 068 — cross-chain swap quotes/confirm/status via NEAR Intents 1Click. The user sends funds from
+# their own wallet; the agent never signs or takes custody. A disabled route is a 200 "unavailable".
+app.include_router(crosschain_router)
+app.include_router(earn_router)
 # §3.1 onboarding + mandate — chat onboarding (SSE, terminal mandate_draft) + versioned
 # mandate CRUD. Advisory only; NEVER returns a signable bundle (FR-002/004).
 app.include_router(mandate_router)
 # §3.3 portfolio — enriched/derived, stale-markable reads (custody balances reconciled by
 # the frontend via direct RPC, SC-011); degrades to 200+stale, never traps a deposit/exit.
 app.include_router(portfolio_router)
+# 072 — the read-only MULTI-CHAIN portfolio (session wallet only). A sibling of the vault-centric
+# ``/portfolio``; it never signs and never accepts a caller-supplied wallet.
+app.include_router(multichain_portfolio_router)
 # §3.4 recommendations — ranked vs. the mandate; ONLY whitelisted + policy-cleared strategies
 # surface (FR-016). Advisory; each rec's proposedAction is signable only later via /build-tx.
 app.include_router(recommendations_router)

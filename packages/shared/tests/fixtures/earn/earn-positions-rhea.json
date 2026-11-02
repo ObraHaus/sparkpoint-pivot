@@ -1,0 +1,23 @@
+{
+  "type": "earn_positions",
+  "state": "ready",
+  "mca": "abc.multica.near",
+  "supplied": [
+    {
+      "symbol": "USDC",
+      "amount": "100",
+      "apy": "14"
+    }
+  ],
+  "totalUsd": "100",
+  "source": {
+    "kind": "contract",
+    "contract": "contract.main.burrow.near",
+    "method": "get_account_all_positions",
+    "field": "supplied",
+    "uiUrl": "https://app.rhea.finance/lending",
+    "fetchedAt": "2026-11-01T02:31:00+00:00"
+  },
+  "appUrl": "https://app.rhea.finance/lending",
+  "note": "Read-only view of your Rhea (Burrow) account. Supply/withdraw happen on Rhea with the same wallet."
+}

@@ -1,0 +1,16 @@
+{
+  "type": "earn_positions",
+  "state": "empty",
+  "mca": null,
+  "supplied": [],
+  "source": {
+    "kind": "contract",
+    "contract": "contract.main.burrow.near",
+    "method": "get_account_all_positions",
+    "field": "supplied",
+    "uiUrl": "https://app.rhea.finance/lending",
+    "fetchedAt": "2026-11-01T02:31:00+00:00"
+  },
+  "appUrl": "https://app.rhea.finance/lending",
+  "explainer": "You don't have a Rhea account yet. Your first deposit creates one (a one-time 0.30 USDC fee) and starts earning on NEAR."
+}
