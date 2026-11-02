@@ -586,9 +586,29 @@ _BARE_COMPOUND_RE = re.compile(r"(?<![A-Za-z0-9-])compound(?![A-Za-z0-9])", re.I
 _OR_BEFORE_RE = re.compile(r"\bor\s*,?\s*$", re.IGNORECASE)
 _OR_AFTER_RE = re.compile(r"^\s*,?\s*or\b", re.IGNORECASE)
 
+#: 075 Defender follow-up 2 — "compound" is a verb, never a venue, when an object follows it
+#: ("compound my earnings", "compound interest"), when it is the "auto-compound" vault verb, or
+#: when it is a "to" infinitive. A bare "compound or aave?" stays a noun/venue.
+_COMPOUND_OBJECT_RE = re.compile(
+    r"\s+(?:my|the|your|our|interest|earnings|rewards|yield|returns|gains|it|them|"
+    r"daily|weekly|monthly)\b",
+    re.IGNORECASE,
+)
+
+
+def _compound_is_a_verb(message: str, start: int, end: int) -> bool:
+    if _COMPOUND_OBJECT_RE.match(message[end:]):
+        return True
+    before = message[:start]
+    if before.lower().endswith("auto-"):
+        return True
+    return bool(re.search(r"\bto\s+$", before, re.IGNORECASE))
+
 
 def _bare_compound_or_joined(message: str) -> bool:
     for match in _BARE_COMPOUND_RE.finditer(message):
+        if _compound_is_a_verb(message, match.start(), match.end()):
+            continue
         if _OR_BEFORE_RE.search(message[: match.start()]) or _OR_AFTER_RE.match(
             message[match.end() :]
         ):
@@ -607,6 +627,46 @@ def _named_venues(message: str) -> tuple[str, ...]:
         seen.append("compound")
     return tuple(seen)
 
+
+#: 075 Defender follow-up 2 — the choice detector needs the FULL action vocabulary, including
+#: bridge/earn and the verbs the general ``_ACTION_VERB_RE`` deliberately omits. This is LOCAL to
+#: ``is_protocol_choice_question`` on purpose: the global verb list and
+#: ``has_financial_action_verb`` feed other routes (e.g. dag.py:1354) and must not broaden.
+#: "compound" is included only in its
+#: verb forms; the venue noun remains governed by ``_bare_compound_or_joined``.
+_CHOICE_ACTION_VERB_RE = re.compile(
+    r"\b(?:deposit|supply|stake|withdraw|redeem|cash\s?out|unstake|swap|exchange|convert|"
+    r"trade|buy|sell|transfer|send|move|put|invest|allocate|rebalance|lend|borrow|"
+    r"bridge|earn|farm|yield[- ]farm|provide\s+liquidity|restake|wrap|unwrap|"
+    r"rollover|roll\s+over|park|shift|switch|migrate|zap|ape)\b"
+    r"|(?<![A-Za-z0-9-])compound(?=\s+(?:my|the|your|our|interest|earnings|rewards|"
+    r"yield|returns|gains|it|them|daily|weekly|monthly)\b)"
+    r"|(?:\bauto-compound\b|\bto\s+compound\b)",
+    re.IGNORECASE,
+)
+
+#: 075 Defender follow-up 2 — a request ("can you …", "help me …", "let's …") is an action even
+#: when it ends in "?". Polite/lead-in words are ignored. "would you please" is a request, but
+#: "would you recommend" stays an advice lead (do NOT add a bare "would you").
+_REQUEST_LEAD_RE = re.compile(
+    r"^\s*(?:(?:hey|ok|okay|so|please)[\s,]+)*"
+    r"(?:"
+    r"can\s+you\b"
+    r"|could\s+you\b"
+    r"|will\s+you\b"
+    r"|would\s+you\s+please\b"
+    r"|pls\b"
+    r"|i\s+want\b"
+    r"|i['’]d\s+like\b"
+    r"|i\s+would\s+like\b"
+    r"|i\s+need\b"
+    r"|help\s+me\b"
+    r"|let['’]?s\b"
+    r"|go\s+ahead\b"
+    r"|just\b"
+    r")",
+    re.IGNORECASE,
+)
 
 #: 075 Defender — an action-verb turn is advisory ONLY when it opens as an advice question.
 #: A bare "?" is not enough: "deposit my entire balance into Morpho or Aave?" is a command.
@@ -650,11 +710,13 @@ def is_protocol_choice_question(message: str) -> bool:
         return False
     if _PLANNER_KEEP_PHRASES_RE.search(message) or _IMPERATIVE_OPENER_RE.search(message):
         return False
+    if _REQUEST_LEAD_RE.search(message):
+        return False
     if not _OR_RE.search(message):
         return False
     if len(_named_venues(message)) < 2:
         return False
-    if has_financial_action_verb(message):
+    if _CHOICE_ACTION_VERB_RE.search(message):
         return bool(_ADVICE_LEAD_RE.search(message))
     return bool(_COMPARATIVE_QUESTION_SHAPE_RE.search(message))
 
