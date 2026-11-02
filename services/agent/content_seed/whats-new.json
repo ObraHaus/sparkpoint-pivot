@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "portfolio-verify-earn-wording-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Portfolio loads reliably, and Morpho/Kamino earn questions show vaults",
+      "body": "The Across chains panel on the Portfolio page and Sparky's portfolio answer now load reliably when your Rhea account is empty: the Rhea section keeps its honest first-deposit explanation instead of making the whole portfolio read fail verification. Asking Sparky to \"earn on USDC with Morpho\" or \"earn yield on SOL with Kamino\" now shows the matching vault list rather than falling through, while depositing a specific amount works exactly as before. Very large or non-numeric amounts are now rejected cleanly with a validation message instead of an internal error. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-02T03:55:00Z"
+    },
+    {
       "slug": "streaming-guard-073-2026-11",
       "type": "changelog",
       "tag": "Fixed",
