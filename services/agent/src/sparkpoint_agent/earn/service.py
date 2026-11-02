@@ -1,9 +1,9 @@
-"""Preview + list orchestration for feature 069 (chat and HTTP surfaces share this).
+"""Preview + list orchestration for features 069/070 (chat and HTTP surfaces share this).
 
 A preview is a DRY 1Click quote (``oneclick_earn``), a same-chain deposit hint (``direct``) or an
 Aurora Intents Connect step plan (``intents_connect``) — never a live quote, never a signature, and
 never a transaction. Request handlers call this service; the service reads the in-memory snapshot
-and never calls Morpho.
+and never calls Morpho or Kamino.
 """
 
 from __future__ import annotations
@@ -20,11 +20,12 @@ from ..crosschain.config import CrossChainAsset, CrossChainConfig
 from ..crosschain.config import default_config as cc_config
 from ..crosschain.oneclick import OneClickClient, QuoteUnavailable, deadline_at
 from ..crosschain.service import amount_from_human
-from .config import EarnConfig
+from .config import EarnConfig, addresses_equal
 from .parse import EarnRequest
 from .rails import (
     FEE_NOTE,
     LIVE,
+    NATIVE_SHARES_NOTE,
     NO_LIQUIDITY,
     RECEIPT_NOTE,
     RailResolution,
@@ -38,10 +39,10 @@ logger = logging.getLogger("sparkpoint_agent.earn.service")
 
 SortKey = Literal["tvl", "apy"]
 _UNKNOWN_SNAPSHOT = (
-    "I don't have a Morpho vault snapshot yet. The registry refreshes in the background; "
+    "I don't have an earn vault snapshot yet. The registry refreshes in the background; "
     "nothing was signed or sent."
 )
-_NO_MATCH = "No Morpho vault matched those filters in the current snapshot."
+_NO_MATCH = "No vault matched those filters in the current snapshot."
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +81,8 @@ def _vault_summary_wire(
     rails: RailResolution,
 ) -> dict[str, Any]:
     wire = entry.wire()
-    wire["curatedDefault"] = config.default_vault(entry.chain) == entry.address.lower()
+    default = config.default_vault(entry.chain)
+    wire["curatedDefault"] = bool(default and addresses_equal(default, entry.address))
     wire["rails"] = rails.wire()
     return wire
 
@@ -129,6 +131,7 @@ class EarnService:
         chain: str | None = None,
         asset: str | None = None,
         rail: str | None = None,
+        protocol: str | None = None,
         min_tvl: Decimal | None = None,
         limit: int = 200,
         sort: SortKey = "tvl",
@@ -139,6 +142,9 @@ class EarnService:
         vaults: list[VaultEntry] = list(snapshot.vaults)
         if chain is not None:
             vaults = [entry for entry in vaults if entry.chain == chain]
+        if protocol is not None:
+            wanted_protocol = protocol.lower()
+            vaults = [entry for entry in vaults if entry.protocol == wanted_protocol]
         if asset is not None:
             wanted = asset.upper()
             vaults = [entry for entry in vaults if entry.asset.symbol.upper() == wanted]
@@ -160,9 +166,8 @@ class EarnService:
         snapshot = self.registry.current()
         if snapshot is None:
             return None
-        wanted = address.lower()
         for entry in snapshot.vaults:
-            if entry.chain == chain and entry.address.lower() == wanted:
+            if entry.chain == chain and addresses_equal(entry.address, address):
                 return _vault_summary_wire(self.config, entry, self._rails(entry)), snapshot
         return None
 
@@ -176,8 +181,13 @@ class EarnService:
             lowered = query.strip().lower()
             wanted = lowered.removesuffix(" vault").strip()
             for entry in candidates:
-                if entry.address.lower() == lowered:
+                if addresses_equal(entry.address, query.strip()):
                     return entry
+            receipt = self.config.receipt_for_symbol(query.strip())
+            if receipt is not None:
+                for entry in candidates:
+                    if addresses_equal(entry.address, receipt.underlying_vault):
+                        return entry
             matches = [entry for entry in candidates if wanted and wanted in entry.name.lower()]
             if matches:
                 matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
@@ -185,7 +195,7 @@ class EarnService:
         default = self.config.default_vault(target_chain)
         if default:
             for entry in candidates:
-                if entry.address.lower() == default:
+                if addresses_equal(entry.address, default):
                     return entry
         if candidates:
             candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
@@ -198,6 +208,7 @@ class EarnService:
         vaults, snapshot = self.list_vaults(
             chain=request.chain,
             asset=request.asset,
+            protocol=getattr(request, "protocol", None),
             limit=limit,
             sort=request.sort,
         )
@@ -216,18 +227,28 @@ class EarnService:
                     unavailable_reason="no matching vaults",
                 ),
             )
+        protocol = getattr(request, "protocol", None)
+        protocol_label = {"kamino": "Kamino", "morpho": "Morpho"}.get(
+            protocol or "", ""
+        )
+        note = (
+            "Kamino's vault list is data-driven. The 1Click rail uses a configured receipt whose "
+            "underlying vault matches; the native kVault share is what the user receives."
+            if protocol == "kamino"
+            else (
+                "Morpho's vault list is data-driven. The 1Click receipt rail is shown only where "
+                "a receipt is configured; a direct same-chain deposit gives the native vault share."
+            )
+        )
         block = EarnVaultsBlock(
             state="ready",
             vaults=tuple(vaults),
             snapshot_age_minutes=snapshot.age_minutes(),
             snapshot_source=self.registry.loaded_from,
-            note=(
-                "Morpho's vault list is data-driven. The 1Click receipt rail is shown only where a "
-                "receipt is configured; a direct same-chain deposit gives the native vault share."
-            ),
+            note=note,
         )
         lines = [
-            f"Here are the top Morpho vaults"
+            f"Here are the top {protocol_label + ' ' if protocol_label else ''}vaults"
             f"{f' on {_chain_label_for_key(self.config, request.chain)}' if request.chain else ''}"
             f"{f' for {request.asset}' if request.asset else ''}, by "
             f"{'net APY' if request.sort == 'apy' else 'TVL'} (snapshot {snapshot.age_minutes()} "
@@ -254,11 +275,12 @@ class EarnService:
         origin_key: str,
         amount: Decimal,
         amount_raw: int | None = None,
+        recipient: str | None = None,
     ) -> EarnOutcome:
         snapshot = self.registry.current()
         found = self.get_vault(chain, address) if snapshot is not None else None
         if found is None:
-            raise ValueError("unknown Morpho vault")
+            raise ValueError("unknown vault")
         vault, _ = found
         entry = self._entry(chain, address)
         assert entry is not None  # noqa: S101 - get_vault just proved it
@@ -270,7 +292,9 @@ class EarnService:
         if "direct" in rails.available and (origin is None or origin.chain == entry.chain):
             return self._direct_preview(entry, vault, amount, origin_key)
         if "oneclick_earn" in rails.available:
-            return await self._oneclick_preview(entry, vault, origin_key, amount, amount_raw)
+            return await self._oneclick_preview(
+                entry, vault, origin_key, amount, amount_raw, recipient
+            )
         if "intents_connect" in rails.available:
             return self._intents_preview(entry, vault, rails)
         reasons = [
@@ -286,9 +310,8 @@ class EarnService:
         snapshot = self.registry.current()
         if snapshot is None:
             return None
-        wanted = address.lower()
         for entry in snapshot.vaults:
-            if entry.chain == chain and entry.address.lower() == wanted:
+            if entry.chain == chain and addresses_equal(entry.address, address):
                 return entry
         return None
 
@@ -335,6 +358,7 @@ class EarnService:
         origin_key: str,
         amount: Decimal,
         amount_raw: int | None,
+        recipient: str | None = None,
     ) -> EarnOutcome:
         receipt = self.config.receipt_for_vault(entry.address)
         if receipt is None:  # pragma: no cover - rails proved a receipt exists
@@ -348,6 +372,16 @@ class EarnService:
             if parsed is None:
                 raise ValueError("amount has too many decimal places")
             raw = parsed[1]
+        sol_receipt = receipt.chain == "sol"
+        dry_probe = self.config.dry_probe_addresses.get("sol") or placeholder_for("sol")
+        if sol_receipt:
+            quote_recipient = recipient or dry_probe
+            refund_to = (
+                dry_probe if origin.address_kind == "sol" else placeholder_for(origin.address_kind)
+            )
+        else:
+            quote_recipient = recipient or placeholder_for("evm")
+            refund_to = placeholder_for(origin.address_kind)
         try:
             quote = await self.oneclick.quote(
                 dry=True,
@@ -356,8 +390,8 @@ class EarnService:
                 amount=str(raw),
                 slippage_bps=self.crosschain.slippage_bps,
                 deadline=deadline_at(self.crosschain.deadline_minutes),
-                refund_to=placeholder_for(origin.address_kind),
-                recipient=placeholder_for("evm"),
+                refund_to=refund_to,
+                recipient=quote_recipient,
             )
         except QuoteUnavailable as exc:
             self.liveness.set(receipt.asset_id, NO_LIQUIDITY)
@@ -370,13 +404,24 @@ class EarnService:
             else "a short time"
         )
         human = _human(amount)
+        native = receipt.receipt_kind == "native_shares"
+        note = NATIVE_SHARES_NOTE if native else RECEIPT_NOTE
+        label = "kV shares" if native else "receipt"
         text = (
             f"Preview only — nothing is signed or sent. {human} {origin.symbol} on "
-            f"{origin.chain_label} → about {quote.amount_out_formatted} {receipt.symbol} receipt, "
-            f"settling in {eta}. {RECEIPT_NOTE}"
+            f"{origin.chain_label} → about {quote.amount_out_formatted} {receipt.symbol} "
+            f"({label}), settling in {eta}. {note}"
         )
         if fee_note:
             text = f"{text} {fee_note}"
+        wallet_support = (
+            {
+                "recipient": "paste_solana_address",
+                "deposit": "evm_wallet" if origin.address_kind == "evm" else "copy_address",
+            }
+            if sol_receipt
+            else None
+        )
         block = EarnQuoteBlock(
             state="preview",
             rail="oneclick_earn",
@@ -387,7 +432,9 @@ class EarnService:
             amount_out_usd=quote.amount_out_usd,
             time_estimate_sec=quote.time_estimate_sec,
             fee_note=fee_note,
-            receipt_note=RECEIPT_NOTE,
+            receipt_note=note,
+            receipt_kind="native_shares" if native else None,
+            wallet_support=wallet_support,
             quoted_at=_now_iso(),
         )
         return EarnOutcome(text=text, block=block)

@@ -1,4 +1,4 @@
-"""Feature 069 — the data-driven Morpho earn registry HTTP surface.
+"""Features 069/070 — the data-driven earn registry (Morpho + Kamino) HTTP surface.
 
   GET  /earn/vaults                    — the filtered snapshot + rails + snapshot age
   GET  /earn/vaults/{chain}/{address}  — one vault
@@ -18,6 +18,8 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from ..crosschain.addresses import expected_address_description, is_valid_address
+from ..crosschain.config import AddressKind
 from ..crosschain.oneclick import CrossChainError
 from ..earn.config import EarnConfig, default_config
 from ..earn.registry import EarnSnapshot
@@ -54,6 +56,7 @@ class PreviewBody(BaseModel):
     vaultAddress: str = Field(min_length=8, max_length=80)
     originKey: str = Field(min_length=1, max_length=80)
     amount: str = Field(min_length=1, max_length=40)
+    recipient: str | None = Field(default=None, max_length=80)
     dry: bool = True
 
 
@@ -61,7 +64,7 @@ def _require_service(service: EarnService | None) -> EarnService:
     if service is None:
         raise ApiError(
             ErrorCode.UPSTREAM_UNAVAILABLE,
-            "Morpho yield is temporarily unavailable on this deployment.",
+            "Earn yield is temporarily unavailable on this deployment.",
         )
     return service
 
@@ -104,6 +107,7 @@ async def list_earn_vaults(
     service: Annotated[EarnService | None, Depends(get_earn_service)],
     chain: Annotated[str | None, Query(max_length=32)] = None,
     asset: Annotated[str | None, Query(max_length=16)] = None,
+    protocol: Annotated[str | None, Query(max_length=16)] = None,
     rail: Annotated[str | None, Query(max_length=32)] = None,
     min_tvl: Annotated[str | None, Query(max_length=40)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -115,10 +119,13 @@ async def list_earn_vaults(
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown chain {chain!r}")
     if rail is not None and rail not in {"direct", "oneclick_earn", "intents_connect"}:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown rail {rail!r}")
+    if protocol is not None and protocol.lower() not in {"morpho", "kamino"}:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown protocol {protocol!r}")
     vaults, snapshot = svc.list_vaults(
         chain=chain,
         asset=asset,
         rail=rail,
+        protocol=protocol,
         min_tvl=_parse_min_tvl(min_tvl),
         limit=limit,
         sort=sort,
@@ -141,7 +148,7 @@ async def get_earn_vault(
     svc = _require_service(service)
     found = svc.get_vault(chain, address)
     if found is None:
-        raise ApiError(ErrorCode.NOT_FOUND, "No Morpho vault at that address in the snapshot.")
+        raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address in the snapshot.")
     vault, snapshot = found
     return {
         "featureEnabled": svc.feature_enabled,
@@ -171,6 +178,19 @@ async def preview_earn_vault(
     if origin is None:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown origin asset {body.originKey!r}")
 
+    found = svc.get_vault(body.chain, body.vaultAddress)
+    if found is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.")
+    if body.recipient:
+        receipt = svc.config.receipt_for_vault(body.vaultAddress)
+        if receipt is not None:
+            kind: AddressKind = "sol" if receipt.chain == "sol" else "evm"
+            if not is_valid_address(body.recipient, kind):
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"recipient must be {expected_address_description(kind)}",
+                )
+
     from ..crosschain.service import amount_from_human
 
     parsed = amount_from_human(body.amount, origin.decimals)
@@ -187,9 +207,10 @@ async def preview_earn_vault(
             origin_key=body.originKey,
             amount=amount,
             amount_raw=amount_raw,
+            recipient=body.recipient,
         )
     except ValueError as exc:
-        raise ApiError(ErrorCode.NOT_FOUND, "No Morpho vault at that address.") from exc
+        raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.") from exc
     except CrossChainError as exc:
         raise ApiError(
             ErrorCode.UPSTREAM_UNAVAILABLE,

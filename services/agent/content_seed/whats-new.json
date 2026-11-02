@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "kamino-sol-vaults-070-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Kamino SOL vaults and native-share previews in Sparky chat",
+      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which rails can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) — the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T03:30:00Z"
+    },
+    {
       "slug": "morpho-earn-vaults-069-2026-11",
       "type": "changelog",
       "tag": "New",

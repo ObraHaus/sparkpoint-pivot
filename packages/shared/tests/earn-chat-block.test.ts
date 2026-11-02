@@ -107,3 +107,95 @@ test("earn blocks are strict: unknown fields and bad enums are rejected", () => 
     "netApy is required-but-nullable",
   );
 });
+
+/* ── 070 — Kamino SOL vaults + native-share previews ───────────────────────── */
+
+test("earn_vaults Kamino fixture validates with protocol, Solana and native-share receipt", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-vaults-kamino.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_vaults") return;
+  assert.equal(parsed.data.state, "ready");
+  assert.equal(parsed.data.vaults.length, 1);
+  assert.match(parsed.data.note ?? "", /Kamino/);
+
+  const [vault] = parsed.data.vaults;
+  assert.equal(vault?.name, "SOL Balanced");
+  assert.equal(vault?.protocol, "kamino");
+  assert.equal(vault?.chain, "sol");
+  assert.equal(vault?.chainId, 0);
+  assert.equal(vault?.version, "kvault");
+  assert.equal(vault?.asset.symbol, "SOL");
+  assert.deepEqual(vault?.rails.available, ["oneclick_earn"]);
+  assert.equal(vault?.rails.direct.available, false);
+  assert.match(vault?.rails.direct.reason ?? "", /Solana wallet/);
+  assert.equal(vault?.rails.oneclickEarn.receipt?.symbol, "kV-gtSOLb");
+  assert.equal(vault?.rails.oneclickEarn.receipt?.protocol, "kamino");
+  assert.equal(vault?.rails.oneclickEarn.receipt?.receiptKind, "native_shares");
+  assert.match(vault?.rails.oneclickEarn.note ?? "", /native Kamino kVault share/);
+});
+
+test("earn_quote Kamino preview carries receiptKind, walletSupport and a Solana recipient", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-kamino-preview.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.state, "preview");
+  assert.equal(parsed.data.rail, "oneclick_earn");
+  assert.equal(parsed.data.receiptKind, "native_shares");
+  assert.deepEqual(parsed.data.walletSupport, {
+    recipient: "paste_solana_address",
+    deposit: "evm_wallet",
+  });
+  assert.equal(parsed.data.origin?.key, "base:USDC");
+  assert.equal(parsed.data.amountOut, "0.9835");
+  assert.equal(parsed.data.amountOutUsd, "99.2");
+  assert.equal(parsed.data.timeEstimateSec, 47);
+  assert.match(parsed.data.feeNote ?? "", /0\.25%/);
+  assert.match(parsed.data.receiptNote ?? "", /native Kamino kVault share/);
+  assert.equal(parsed.data.vault.protocol, "kamino");
+});
+
+test("earn_quote Kamino SOL-origin preview uses the copy-address deposit path", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-kamino-preview-sol-origin.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.origin?.key, "sol:USDC");
+  assert.equal(parsed.data.origin?.evmChainId, null);
+  assert.equal(parsed.data.walletSupport?.deposit, "copy_address");
+  assert.equal(parsed.data.walletSupport?.recipient, "paste_solana_address");
+});
+
+test("earn_quote Kamino unavailable fixture keeps the honest no-liquidity answer", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-kamino-unavailable.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.state, "unavailable");
+  assert.equal(parsed.data.unavailableReason, "No liquidity available");
+  assert.equal(parsed.data.amountOut, undefined);
+  assert.equal(parsed.data.walletSupport, undefined);
+  assert.equal(parsed.data.vault.protocol, "kamino");
+});
+
+test("070 additions are strict: an unknown walletSupport mode is rejected", () => {
+  const quote = fixture("earn-quote-kamino-preview.json") as Record<string, unknown>;
+  assert.equal(
+    ChatBlockSchema.safeParse({
+      ...quote,
+      walletSupport: { recipient: "paste_solana_address", deposit: "bank_transfer" },
+    }).success,
+    false,
+  );
+  assert.equal(
+    ChatBlockSchema.safeParse({
+      ...quote,
+      walletSupport: { recipient: "use_evm_wallet", deposit: "evm_wallet" },
+    }).success,
+    false,
+  );
+
+  const list = fixture("earn-vaults-kamino.json") as Record<string, unknown>;
+  const vault = (list.vaults as Record<string, unknown>[])[0] as Record<string, unknown>;
+  assert.equal(
+    ChatBlockSchema.safeParse({ ...list, vaults: [{ ...vault, protocol: "aave" }] }).success,
+    false,
+  );
+});

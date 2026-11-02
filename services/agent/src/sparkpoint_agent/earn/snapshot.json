@@ -1,6 +1,6 @@
 {
-  "fetchedAt": "2026-11-01T02:32:00.811297+00:00",
-  "source": "morpho_api",
+  "fetchedAt": "2026-11-01T03:25:31.574457+00:00",
+  "source": "registry",
   "vaults": [
     {
       "chain": "base",
@@ -2089,6 +2089,25 @@
       "netApy": "0.05347757006763236",
       "source": "morpho_api",
       "fetchedAt": "2026-11-01T02:31:33.974144+00:00"
+    },
+    {
+      "chain": "sol",
+      "chainId": 0,
+      "address": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+      "version": "kvault",
+      "name": "SOL Balanced",
+      "symbol": "kV",
+      "asset": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "listed": true,
+      "tvlUsd": "2450341.9961820395528",
+      "netApy": "0.044515294688873164",
+      "source": "kamino_api",
+      "fetchedAt": "2026-11-01T03:25:20.608796+00:00",
+      "protocol": "kamino"
     }
   ]
 }

@@ -99,6 +99,17 @@
       "enabled": true
     },
     {
+      "key": "sol:USDC",
+      "chain": "sol",
+      "chain_label": "Solana",
+      "evm_chain_id": null,
+      "symbol": "USDC",
+      "asset_id": "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+      "decimals": 6,
+      "address_kind": "sol",
+      "enabled": true
+    },
+    {
       "key": "near:wNEAR",
       "chain": "near",
       "chain_label": "NEAR",

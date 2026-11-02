@@ -1,9 +1,9 @@
-"""Config for feature 069 — the data-driven Morpho earn registry.
+"""Config for features 069/070 — the data-driven earn registry (Morpho + Kamino).
 
 ``earn.json`` ships inside this package and is overridable with ``EARN_CONFIG_PATH``;
 ``EARN_ENABLED`` is the deployment flag (unset means the JSON default). Everything a client can
-ask for — a newly enabled chain, a different TVL floor, a curated default, a 1Click receipt — is
-one JSON edit, never a code change.
+ask for — a newly enabled chain, a different TVL floor, a curated default, a 1Click receipt, a
+Kamino vault — is one JSON edit, never a code change.
 
 No key material lives here. ``AURORA_INTENTS_API_KEY`` is read only by :mod:`rails` and is never
 returned through any serialized config or HTTP surface.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -35,17 +35,39 @@ class EarnConfigError(RuntimeError):
     """A malformed earn config. A deploy should fail loudly rather than show the wrong vaults."""
 
 
+def normalize_address(value: str) -> str:
+    """Case-normalize an address for matching.
+
+    EVM addresses are case-insensitive (lowercase them); Solana/base58 addresses are
+    case-SENSITIVE, so every other value is returned untouched. This is the only place the
+    registry is allowed to normalize an address for equality/key purposes.
+    """
+    text = value.strip()
+    return text.lower() if text.startswith("0x") else text
+
+
+def addresses_equal(left: str, right: str) -> bool:
+    """Address equality with the EVM-only lowercase rule above."""
+    return normalize_address(left) == normalize_address(right)
+
+
 @dataclass(frozen=True, slots=True)
 class EarnChain:
     chain: str
     chain_id: int
     label: str
     enabled: bool = True
+    protocols: tuple[str, ...] = ("morpho",)
 
 
 @dataclass(frozen=True, slots=True)
 class OneClickReceipt:
-    """One NEAR-issued ERC-4626 wrapper whose ``asset()`` is a Morpho vault."""
+    """One 1Click Earn receipt for a yield vault.
+
+    ``receipt_kind="wrapper"`` is a NEAR-issued ERC-4626 wrapper (069 Morpho); ``native_shares``
+    is the native Kamino kVault share mint on Solana (070). ``protocol`` defaults to Morpho so old
+    ``earn.json`` files keep working.
+    """
 
     symbol: str
     asset_id: str
@@ -53,9 +75,11 @@ class OneClickReceipt:
     chain: str
     wrapper_address: str
     underlying_vault: str
+    protocol: str = "morpho"
+    receipt_kind: str = "wrapper"
 
     def wire(self) -> dict[str, Any]:
-        return {
+        wire = {
             "symbol": self.symbol,
             "assetId": self.asset_id,
             "decimals": self.decimals,
@@ -63,6 +87,49 @@ class OneClickReceipt:
             "wrapperAddress": self.wrapper_address,
             "underlyingVault": self.underlying_vault,
         }
+        # Additive: 069 fixtures stay byte-identical for the Morpho defaults.
+        if self.protocol != "morpho":
+            wire["protocol"] = self.protocol
+        if self.receipt_kind != "wrapper":
+            wire["receiptKind"] = self.receipt_kind
+        return wire
+
+
+@dataclass(frozen=True, slots=True)
+class KaminoTokenMint:
+    mint: str
+    decimals: int
+
+
+@dataclass(frozen=True, slots=True)
+class KaminoVaultConfig:
+    """A Kamino kVault the deployment chose to list (config-only addition)."""
+
+    address: str
+    name: str
+    asset: str
+    shares_mint: str
+
+
+@dataclass(frozen=True, slots=True)
+class KaminoConfig:
+    enabled: bool = False
+    api_url: str = "https://api.kamino.finance"
+    auto_discover: bool = False
+    token_mints: Mapping[str, KaminoTokenMint] = field(default_factory=dict)
+    assets: tuple[str, ...] = ()
+    min_tvl_usd: str = "1000000"
+    vaults: tuple[KaminoVaultConfig, ...] = ()
+
+    def asset_for_mint(self, mint: str) -> tuple[str, int] | None:
+        for symbol, token in self.token_mints.items():
+            if token.mint == mint:
+                return symbol, token.decimals
+        return None
+
+    def configured(self) -> tuple[KaminoVaultConfig, ...]:
+        return self.vaults
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +165,8 @@ class EarnConfig:
     receipts: tuple[OneClickReceipt, ...]
     rails: EarnRails
     intents_connect: IntentsConnectConfig
+    kamino: KaminoConfig = field(default_factory=KaminoConfig)
+    dry_probe_addresses: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def enabled_chains(self) -> tuple[EarnChain, ...]:
@@ -113,9 +182,15 @@ class EarnConfig:
         return None
 
     def receipt_for_vault(self, vault_address: str) -> OneClickReceipt | None:
-        wanted = vault_address.lower()
         for receipt in self.receipts:
-            if receipt.underlying_vault.lower() == wanted:
+            if addresses_equal(receipt.underlying_vault, vault_address):
+                return receipt
+        return None
+
+    def receipt_for_symbol(self, symbol: str) -> OneClickReceipt | None:
+        wanted = symbol.strip().lower()
+        for receipt in self.receipts:
+            if receipt.symbol.lower() == wanted:
                 return receipt
         return None
 
@@ -124,7 +199,26 @@ class EarnConfig:
 
     def is_known_vault_name(self, text: str) -> bool:
         lowered = text.lower()
-        return any(name.lower() in lowered for name in self.known_vault_names)
+        if any(name.lower() in lowered for name in self.known_vault_names):
+            return True
+        return any(vault.name.lower() in lowered for vault in self.kamino.vaults)
+
+    def known_protocol(self, text: str) -> str | None:
+        """Which protocol a message explicitly names (Kamino wins over Morpho)."""
+        lowered = text.lower()
+        if "kamino" in lowered:
+            return "kamino"
+        if any(vault.name.lower() in lowered for vault in self.kamino.vaults):
+            return "kamino"
+        if any(receipt.symbol.lower() in lowered for receipt in self.receipts):
+            for receipt in self.receipts:
+                if receipt.symbol.lower() in lowered:
+                    return receipt.protocol
+        if "morpho" in lowered:
+            return "morpho"
+        if any(name.lower() in lowered for name in self.known_vault_names):
+            return "morpho"
+        return None
 
 
 def _chain_from_json(raw: Mapping[str, Any]) -> EarnChain:
@@ -134,6 +228,9 @@ def _chain_from_json(raw: Mapping[str, Any]) -> EarnChain:
             chain_id=int(raw["chain_id"]),
             label=str(raw.get("label") or raw["chain"]),
             enabled=bool(raw.get("enabled", True)),
+            protocols=tuple(
+                str(item) for item in (raw.get("protocols") or ("morpho",))
+            ),
         )
     except KeyError as exc:
         raise EarnConfigError(f"chain is missing {exc.args[0]!r}") from exc
@@ -146,8 +243,10 @@ def _receipt_from_json(raw: Mapping[str, Any]) -> OneClickReceipt:
             asset_id=str(raw["asset_id"]),
             decimals=int(raw["decimals"]),
             chain=str(raw["chain"]),
-            wrapper_address=str(raw["wrapper_address"]).lower(),
-            underlying_vault=str(raw["underlying_vault"]).lower(),
+            wrapper_address=normalize_address(str(raw["wrapper_address"])),
+            underlying_vault=normalize_address(str(raw["underlying_vault"])),
+            protocol=str(raw.get("protocol") or "morpho"),
+            receipt_kind=str(raw.get("receipt_kind") or "wrapper"),
         )
     except KeyError as exc:
         raise EarnConfigError(f"oneclick receipt is missing {exc.args[0]!r}") from exc
@@ -163,6 +262,7 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
     filters = raw.get("filters") or {}
     rails_raw = raw.get("rails") or {}
     intents_raw = raw.get("intents_connect") or {}
+    kamino_raw = raw.get("kamino") or {}
     enabled_default = bool(raw.get("feature_enabled", True))
     enabled = (
         env_flag(FEATURE_FLAG_ENV, default=enabled_default)
@@ -177,11 +277,15 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
         listed_only=bool(filters.get("listed_only", True)),
         min_tvl_usd=str(filters.get("min_tvl_usd", "1000000")),
         assets=tuple(str(item).upper() for item in filters.get("assets", [])),
-        allowlist=tuple(str(item).lower() for item in raw.get("allowlist", [])),
-        denylist=tuple(str(item).lower() for item in raw.get("denylist", [])),
+        allowlist=tuple(
+            normalize_address(str(item)) for item in raw.get("allowlist", [])
+        ),
+        denylist=tuple(
+            normalize_address(str(item)) for item in raw.get("denylist", [])
+        ),
         known_vault_names=tuple(str(item) for item in raw.get("known_vault_names", [])),
         curated_defaults={
-            str(key): str(value).lower()
+            str(key): normalize_address(str(value))
             for key, value in (raw.get("curated_defaults") or {}).items()
         },
         receipts=tuple(receipts),
@@ -199,6 +303,45 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
                 for chain, symbols in (intents_raw.get("supported_assets") or {}).items()
             },
         ),
+        kamino=_kamino_from_json(kamino_raw),
+        dry_probe_addresses={
+            str(kind): str(value)
+            for kind, value in (raw.get("dry_probe_addresses") or {}).items()
+        },
+    )
+
+
+def _kamino_from_json(raw: Mapping[str, Any]) -> KaminoConfig:
+    if not raw:
+        return KaminoConfig()
+    filters = raw.get("filters") or {}
+    token_mints = {
+        str(symbol).upper(): KaminoTokenMint(
+            mint=str(value["mint"]), decimals=int(value["decimals"])
+        )
+        for symbol, value in (raw.get("token_mints") or {}).items()
+    }
+    vaults: list[KaminoVaultConfig] = []
+    for item in raw.get("vaults", []):
+        try:
+            vaults.append(
+                KaminoVaultConfig(
+                    address=str(item["address"]),
+                    name=str(item.get("name") or item["address"]),
+                    asset=str(item["asset"]).upper(),
+                    shares_mint=str(item.get("shares_mint") or ""),
+                )
+            )
+        except KeyError as exc:
+            raise EarnConfigError(f"kamino vault is missing {exc.args[0]!r}") from exc
+    return KaminoConfig(
+        enabled=bool(raw.get("enabled", False)),
+        api_url=str(raw.get("api_url", "https://api.kamino.finance")).rstrip("/"),
+        auto_discover=bool(raw.get("auto_discover", False)),
+        token_mints=token_mints,
+        assets=tuple(str(item).upper() for item in filters.get("assets", [])),
+        min_tvl_usd=str(filters.get("min_tvl_usd", "1000000")),
+        vaults=tuple(vaults),
     )
 
 

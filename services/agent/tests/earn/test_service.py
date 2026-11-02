@@ -177,3 +177,87 @@ def test_list_outcome_names_the_filtered_set_and_marks_the_curated_default() -> 
     assert len(wire["vaults"]) == 2
     assert wire["vaults"][0]["curatedDefault"] is True
     assert "Gauntlet USDC Prime" in outcome.text
+
+
+def _kamino_service(handler) -> tuple[EarnService, list]:
+    from .helpers import KV_VAULT, make_kamino_vault
+
+    calls: list[dict] = []
+
+    def wrapped(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content))
+        return handler(request)
+
+    config = default_config()
+    registry = EarnRegistry(config, writable_path="/nonexistent/earn.json")
+    registry.install(make_snapshot(make_kamino_vault(), make_vault()))
+    liveness = ReceiptLivenessCache(clock=lambda: 1000.0)
+    receipt = config.receipt_for_vault(KV_VAULT)
+    assert receipt is not None
+    liveness.set(receipt.asset_id, LIVE)
+    service = EarnService(
+        config,
+        registry,
+        oneclick=OneClickClient(transport=httpx.MockTransport(wrapped), clock=lambda: 1000.0),
+        liveness=liveness,
+    )
+    return service, calls
+
+
+async def test_kamino_preview_uses_native_shares_and_wallet_support() -> None:
+    from .helpers import KV_VAULT
+
+    service, calls = _kamino_service(lambda request: httpx.Response(201, json=_payload()))
+    outcome = await service.preview_for(
+        chain="sol",
+        address=KV_VAULT,
+        origin_key="base:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+    )
+    wire = outcome.block.to_wire()
+    assert wire["rail"] == "oneclick_earn"
+    assert wire["receiptKind"] == "native_shares"
+    assert wire["walletSupport"] == {
+        "recipient": "paste_solana_address",
+        "deposit": "evm_wallet",
+    }
+    assert "native Kamino" in wire["receiptNote"]
+    assert calls and calls[0]["recipient"] == service.config.dry_probe_addresses["sol"]
+    assert calls[0]["refundTo"].startswith("0x")
+    assert wire["vault"]["protocol"] == "kamino"
+
+
+async def test_kamino_sol_origin_uses_copy_address_deposit() -> None:
+    from .helpers import KV_VAULT
+
+    service, calls = _kamino_service(lambda request: httpx.Response(201, json=_payload()))
+    outcome = await service.preview_for(
+        chain="sol",
+        address=KV_VAULT,
+        origin_key="sol:SOL",
+        amount=Decimal("1"),
+        amount_raw=1_000_000_000,
+        recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    )
+    wire = outcome.block.to_wire()
+    assert wire["walletSupport"]["deposit"] == "copy_address"
+    assert calls[0]["recipient"] == "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+    assert calls[0]["refundTo"] == "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+
+async def test_kamino_no_liquidity_is_unavailable() -> None:
+    from .helpers import KV_VAULT
+
+    service, _ = _kamino_service(
+        lambda request: httpx.Response(400, json={"message": "No liquidity available"})
+    )
+    outcome = await service.preview_for(
+        chain="sol",
+        address=KV_VAULT,
+        origin_key="base:USDC",
+        amount=Decimal("1000"),
+        amount_raw=1_000_000_000,
+    )
+    assert outcome.block.state == "unavailable"
+    assert outcome.block.unavailable_reason == "No liquidity available"

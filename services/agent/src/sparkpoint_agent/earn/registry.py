@@ -27,7 +27,7 @@ from typing import Any, Final
 
 import httpx
 
-from .config import EarnChain, EarnConfig, shipped_snapshot_path, snapshot_path
+from .config import EarnChain, EarnConfig, normalize_address, shipped_snapshot_path, snapshot_path
 
 logger = logging.getLogger("sparkpoint_agent.earn.registry")
 
@@ -109,10 +109,11 @@ class VaultEntry:
     net_apy: Decimal | None
     source: str = "morpho_api"
     fetched_at: str = ""
+    protocol: str = "morpho"
 
     @property
     def key(self) -> str:
-        return f"{self.chain}:{self.address.lower()}"
+        return f"{self.chain}:{normalize_address(self.address)}"
 
     @property
     def net_apy_percent(self) -> str | None:
@@ -120,7 +121,7 @@ class VaultEntry:
         return _percent(self.net_apy)
 
     def wire(self) -> dict[str, Any]:
-        return {
+        wire = {
             "chain": self.chain,
             "chainId": self.chain_id,
             "address": self.address,
@@ -134,9 +135,14 @@ class VaultEntry:
             "source": self.source,
             "fetchedAt": self.fetched_at,
         }
+        # Additive: Morpho rows omit the field (069 fixtures stay byte-identical); clients default
+        # an absent protocol to "morpho".
+        if self.protocol != "morpho":
+            wire["protocol"] = self.protocol
+        return wire
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        wire = {
             "chain": self.chain,
             "chainId": self.chain_id,
             "address": self.address,
@@ -150,6 +156,9 @@ class VaultEntry:
             "source": self.source,
             "fetchedAt": self.fetched_at,
         }
+        if self.protocol != "morpho":
+            wire["protocol"] = self.protocol
+        return wire
 
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> VaultEntry:
@@ -173,6 +182,7 @@ class VaultEntry:
             net_apy=_to_decimal(raw.get("netApy")),
             source=str(raw.get("source", "morpho_api")),
             fetched_at=str(raw.get("fetchedAt", "")),
+            protocol=str(raw.get("protocol") or "morpho"),
         )
 
 
@@ -272,7 +282,7 @@ def _apply_filters(config: EarnConfig, entries: Iterable[VaultEntry]) -> list[Va
     assets = set(config.assets)
     filtered: list[VaultEntry] = []
     for entry in entries:
-        address = entry.address.lower()
+        address = normalize_address(entry.address)
         if allow and address not in allow:
             continue
         if address in deny:
@@ -357,7 +367,16 @@ async def fetch_vaults_for_chains(
     *,
     apply_filters: bool = True,
 ) -> list[VaultEntry]:
-    """Fetch V1/V2 vaults for ``chains`` (one query per version, paginated if needed)."""
+    """Fetch Morpho V1/V2 vaults for ``chains`` (one query per version, paginated if needed).
+
+    Non-EVM chains (the Solana/Kamino chain uses chain_id 0) are skipped: Morpho only indexes EVM
+    chains, and sending id 0 to its GraphQL API would return noise.
+    """
+    chains = [
+        chain
+        for chain in chains
+        if chain.chain_id > 0 and "morpho" in chain.protocols
+    ]
     if not chains:
         return []
     chain_ids = [chain.chain_id for chain in chains]
@@ -382,8 +401,13 @@ async def fetch_vaults_for_chains(
 
 
 async def fetch_vaults(config: EarnConfig) -> list[VaultEntry]:
-    """Fetch + filter every V1/V2 vault for the ENABLED chains."""
-    return await fetch_vaults_for_chains(config, config.enabled_chains)
+    """Fetch + filter every enabled Morpho vault, then merge enabled Kamino kVaults."""
+    entries = await fetch_vaults_for_chains(config, config.enabled_chains)
+    if config.kamino.enabled:
+        from .kamino import fetch_kamino_vaults
+
+        entries.extend(await fetch_kamino_vaults(config))
+    return entries
 
 
 def filter_vaults(

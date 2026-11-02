@@ -226,7 +226,18 @@ export const EarnVaultAssetSchema = z
   .strict();
 export type EarnVaultAsset = z.infer<typeof EarnVaultAssetSchema>;
 
-/** The NEAR-issued 1Click receipt that can stand in for a vault's native share. */
+/** The protocol a vault/receipt belongs to. A missing value means the 069 Morpho default. */
+export const EarnProtocolSchema = z.enum(["morpho", "kamino"]);
+export type EarnProtocol = z.infer<typeof EarnProtocolSchema>;
+
+/** How a 1Click receipt relates to the vault share: a NEAR wrapper or the native share mint. */
+export const EarnReceiptKindSchema = z.enum(["wrapper", "native_shares"]);
+export type EarnReceiptKind = z.infer<typeof EarnReceiptKindSchema>;
+
+/**
+ * The 1Click receipt that can stand in for a vault's native share. 070 adds `protocol` and
+ * `receiptKind`, both omitted for the 069 Morpho wrapper defaults so those fixtures stay valid.
+ */
 export const OneClickReceiptSchema = z
   .object({
     symbol: z.string(),
@@ -235,9 +246,24 @@ export const OneClickReceiptSchema = z
     chain: z.string(),
     wrapperAddress: z.string(),
     underlyingVault: z.string(),
+    protocol: EarnProtocolSchema.optional(),
+    receiptKind: EarnReceiptKindSchema.optional(),
   })
   .strict();
 export type OneClickReceipt = z.infer<typeof OneClickReceiptSchema>;
+
+/**
+ * 070 — how the beta can accept a preview's recipient/deposit today. `paste_solana_address` is the
+ * only recipient mode; `deposit` says whether the origin is a connected EVM wallet or the 068
+ * copy-address flow. Present only on Solana receipt previews.
+ */
+export const EarnWalletSupportSchema = z
+  .object({
+    recipient: z.literal("paste_solana_address"),
+    deposit: z.enum(["evm_wallet", "copy_address"]),
+  })
+  .strict();
+export type EarnWalletSupport = z.infer<typeof EarnWalletSupportSchema>;
 
 /** One read-only EVM step in an Aurora Intents Connect plan (never executed by this card). */
 export const IntentsConnectStepSchema = z
@@ -305,6 +331,7 @@ export const EarnVaultSchema = z
     source: z.string(),
     fetchedAt: z.string(),
     curatedDefault: z.boolean(),
+    protocol: EarnProtocolSchema.optional(),
     rails: EarnRailsSchema,
   })
   .strict();
@@ -345,6 +372,8 @@ export const EarnQuoteBlockSchema = z
     timeEstimateSec: z.number().int().nonnegative().optional(),
     feeNote: z.string().optional(),
     receiptNote: z.string().optional(),
+    receiptKind: EarnReceiptKindSchema.optional(),
+    walletSupport: EarnWalletSupportSchema.optional(),
     unavailableReason: z.string().optional(),
     steps: z.array(IntentsConnectStepSchema).optional(),
     quotedAt: z.string().optional(),

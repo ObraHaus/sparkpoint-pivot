@@ -1114,3 +1114,43 @@ cases:
     offline:
       intent: {kind: other}
     offline_check_contains: false
+
+  - id: earn-87-list-kamino-vaults
+    category: earn
+    prompt: "Show Kamino vaults"
+    wallet: empty
+    earn: list
+    expected:
+      route: earn_list
+      blocks_present: [text, earn_vaults]
+      blocks_absent: [action, recommendation, earn_quote]
+      must_contain: ["sol balanced", "kamino", "solana"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-88-deposit-kamino-sol-vault
+    category: earn
+    prompt: "Deposit 100 USDC into Kamino SOL vault"
+    wallet: empty
+    earn: preview
+    expected:
+      route: earn_preview
+      blocks_present: [text, earn_quote]
+      blocks_absent: [action, recommendation]
+      must_contain: ["preview only", "100 usdc", "native kamino", "base"]
+      must_not_contain: ["traceback"]
+    offline:
+      intent: {kind: other}
+
+  - id: earn-89-kamino-comparative-unchanged
+    category: earn
+    prompt: "Compare Aave and Kamino, then deposit 500 USDC into the safer one."
+    wallet: empty
+    earn: preview
+    expected:
+      routes: [general, knowledge, portfolio, curated, yield_guidance, proposal:vault_deposit]
+      blocks_absent: [earn_vaults, earn_quote]
+    offline:
+      intent: {kind: other}
+    offline_check_contains: false

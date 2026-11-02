@@ -3,22 +3,91 @@
   "morpho_api_url": "https://api.morpho.org/graphql",
   "refresh_minutes": 360,
   "chains": [
-    {"chain": "base", "chain_id": 8453, "label": "Base", "enabled": true},
-    {"chain": "eth", "chain_id": 1, "label": "Ethereum", "enabled": true},
-    {"chain": "arbitrum", "chain_id": 42161, "label": "Arbitrum", "enabled": false},
-    {"chain": "optimism", "chain_id": 10, "label": "Optimism", "enabled": false},
-    {"chain": "polygon", "chain_id": 137, "label": "Polygon", "enabled": false},
-    {"chain": "monad", "chain_id": 143, "label": "Monad", "enabled": false},
-    {"chain": "hyperevm", "chain_id": 999, "label": "HyperEVM", "enabled": false},
-    {"chain": "katana", "chain_id": 747474, "label": "Katana", "enabled": false},
-    {"chain": "unichain", "chain_id": 130, "label": "Unichain", "enabled": false},
-    {"chain": "world", "chain_id": 480, "label": "World Chain", "enabled": false},
-    {"chain": "robinhood", "chain_id": 4663, "label": "Robinhood Chain", "enabled": false}
+    {
+      "chain": "base",
+      "chain_id": 8453,
+      "label": "Base",
+      "enabled": true
+    },
+    {
+      "chain": "eth",
+      "chain_id": 1,
+      "label": "Ethereum",
+      "enabled": true
+    },
+    {
+      "chain": "arbitrum",
+      "chain_id": 42161,
+      "label": "Arbitrum",
+      "enabled": false
+    },
+    {
+      "chain": "optimism",
+      "chain_id": 10,
+      "label": "Optimism",
+      "enabled": false
+    },
+    {
+      "chain": "polygon",
+      "chain_id": 137,
+      "label": "Polygon",
+      "enabled": false
+    },
+    {
+      "chain": "monad",
+      "chain_id": 143,
+      "label": "Monad",
+      "enabled": false
+    },
+    {
+      "chain": "hyperevm",
+      "chain_id": 999,
+      "label": "HyperEVM",
+      "enabled": false
+    },
+    {
+      "chain": "katana",
+      "chain_id": 747474,
+      "label": "Katana",
+      "enabled": false
+    },
+    {
+      "chain": "unichain",
+      "chain_id": 130,
+      "label": "Unichain",
+      "enabled": false
+    },
+    {
+      "chain": "world",
+      "chain_id": 480,
+      "label": "World Chain",
+      "enabled": false
+    },
+    {
+      "chain": "robinhood",
+      "chain_id": 4663,
+      "label": "Robinhood Chain",
+      "enabled": false
+    },
+    {
+      "chain": "sol",
+      "chain_id": 0,
+      "label": "Solana",
+      "enabled": true,
+      "protocols": [
+        "kamino"
+      ]
+    }
   ],
   "filters": {
     "listed_only": true,
     "min_tvl_usd": "1000000",
-    "assets": ["USDC", "WETH", "USDT", "cbBTC"]
+    "assets": [
+      "USDC",
+      "WETH",
+      "USDT",
+      "cbBTC"
+    ]
   },
   "allowlist": [],
   "denylist": [],
@@ -26,10 +95,13 @@
     "Gauntlet USDC Prime",
     "Moonwell Flagship USDC",
     "Spark USDC",
-    "Steakhouse USDC"
+    "Steakhouse USDC",
+    "SOL Balanced",
+    "kV-gtSOLb"
   ],
   "curated_defaults": {
-    "base": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61"
+    "base": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+    "sol": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg"
   },
   "oneclick_receipts": [
     {
@@ -63,6 +135,16 @@
       "chain": "eth",
       "wrapper_address": "0xaf08e292d62df255f7953665a44ed65f0380aa60",
       "underlying_vault": "0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB"
+    },
+    {
+      "symbol": "kV-gtSOLb",
+      "asset_id": "nep141:sol-0xa69aa1bcb03a369e338156a8718ad60271145803.omdep.near",
+      "decimals": 9,
+      "chain": "sol",
+      "wrapper_address": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+      "underlying_vault": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+      "protocol": "kamino",
+      "receipt_kind": "native_shares"
     }
   ],
   "rails": {
@@ -73,8 +155,51 @@
   "intents_connect": {
     "base_url": "https://intents-connect-api.aurora.dev",
     "supported_assets": {
-      "base": ["USDC", "WETH", "USDT", "cbBTC"],
-      "eth": ["USDC", "WETH", "USDT", "cbBTC"]
+      "base": [
+        "USDC",
+        "WETH",
+        "USDT",
+        "cbBTC"
+      ],
+      "eth": [
+        "USDC",
+        "WETH",
+        "USDT",
+        "cbBTC"
+      ]
     }
+  },
+  "kamino": {
+    "enabled": true,
+    "api_url": "https://api.kamino.finance",
+    "auto_discover": false,
+    "token_mints": {
+      "SOL": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "decimals": 9
+      },
+      "USDC": {
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "decimals": 6
+      }
+    },
+    "filters": {
+      "assets": [
+        "SOL",
+        "USDC"
+      ],
+      "min_tvl_usd": "1000000"
+    },
+    "vaults": [
+      {
+        "address": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+        "name": "SOL Balanced",
+        "asset": "SOL",
+        "shares_mint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK"
+      }
+    ]
+  },
+  "dry_probe_addresses": {
+    "sol": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
   }
 }

@@ -170,3 +170,61 @@ async def test_a_transport_error_in_a_cross_chain_deposit_is_friendly_text() -> 
     text = "\n".join(wire.get("markdown", "") for wire in wires)
     assert "couldn't reach" in text
     assert "Traceback" not in text
+
+
+def _quote_payload() -> dict[str, Any]:
+    return {
+        "quote": {
+            "amountIn": "100000000",
+            "amountInFormatted": "100",
+            "amountInUsd": "100.0",
+            "amountOut": "983500000",
+            "amountOutFormatted": "0.9835",
+            "amountOutUsd": "99.2",
+            "minAmountOut": "970000000",
+            "timeEstimate": 47,
+        },
+        "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+        "signature": "ed25519:test",
+    }
+
+
+def _kamino_service() -> EarnService:
+    from .helpers import make_kamino_vault
+
+    config = default_config()
+    registry = EarnRegistry(config, writable_path="/nonexistent/earn.json")
+    registry.install(make_snapshot(make_kamino_vault(), VAULT))
+    client = OneClickClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(201, json=_quote_payload())
+        ),
+        clock=lambda: 1000.0,
+    )
+    return EarnService(config, registry, oneclick=client)
+
+
+async def test_show_kamino_vaults_emits_a_list_block_without_the_llm() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(_dag(_kamino_service(), _ExplodingPlanner()), "Show Kamino vaults")
+    types = [wire["type"] for wire in wires]
+    assert "text" in types and types[-1] == "earn_vaults"
+    assert wires[-1]["state"] == "ready"
+    assert wires[-1]["vaults"][0]["name"] == "SOL Balanced"
+    assert wires[-1]["vaults"][0]["protocol"] == "kamino"
+    assert _ExplodingPlanner.calls == 0
+
+
+async def test_deposit_into_kamino_sol_vault_emits_a_native_shares_preview() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_kamino_service(), _ExplodingPlanner()),
+        "Deposit 100 USDC into Kamino SOL vault",
+    )
+    types = [wire["type"] for wire in wires]
+    assert types[-1] == "earn_quote"
+    assert wires[-1]["state"] == "preview"
+    assert wires[-1]["rail"] == "oneclick_earn"
+    assert wires[-1]["receiptKind"] == "native_shares"
+    assert wires[-1]["walletSupport"]["recipient"] == "paste_solana_address"
+    assert _ExplodingPlanner.calls == 0

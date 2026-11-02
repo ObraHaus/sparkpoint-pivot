@@ -1100,21 +1100,24 @@ class CoordinatorDag:
         if self.earn is not None and self.earn.feature_enabled:
             earn_request = parse_earn_request(message, self.earn.config)
             if earn_request is not None:
+                label = (
+                    "Kamino" if getattr(earn_request, "protocol", None) == "kamino" else "Morpho"
+                )
                 if earn_request.kind == "list":
-                    yield ToolStepBlock("Checking Morpho vaults", "running")
+                    yield ToolStepBlock(f"Checking {label} vaults", "running")
                     earn_outcome = self.earn.list_outcome(earn_request)
-                    yield ToolStepBlock("Checking Morpho vaults", "done")
+                    yield ToolStepBlock(f"Checking {label} vaults", "done")
                     yield TextBlock(earn_outcome.text)
                     yield earn_outcome.block
                     return
 
-                yield ToolStepBlock("Checking a Morpho vault", "running")
+                yield ToolStepBlock(f"Checking a {label} vault", "running")
                 vault = self.earn.resolve_vault(earn_request.chain, earn_request.vault_query)
                 if vault is None:
-                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
                     yield TextBlock(
-                        "I can't find that Morpho vault in the current snapshot — nothing was "
-                        "signed or sent. Ask me to list Morpho vaults and I'll show what is live."
+                        f"I can't find that {label} vault in the current snapshot — nothing was "
+                        f"signed or sent. Ask me to list {label} vaults and I'll show what is live."
                     )
                     return
                 origin_key = _earn_origin_key(self.earn, earn_request, vault)
@@ -1129,20 +1132,20 @@ class CoordinatorDag:
                         amount_raw=earn_request.amount_raw,
                     )
                 except CrossChainTransportError:
-                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
                     yield TextBlock(
                         "I couldn't reach the routing service just now — nothing was signed or "
                         "sent. Please try again in a moment."
                     )
                     return
                 except ValueError:
-                    yield ToolStepBlock("Checking a Morpho vault", "error")
+                    yield ToolStepBlock(f"Checking a {label} vault", "error")
                     yield TextBlock(
-                        "I can preview that Morpho vault only from a supported origin asset — "
+                        f"I can preview that {label} vault only from a supported origin asset — "
                         "nothing was signed or sent."
                     )
                     return
-                yield ToolStepBlock("Checking a Morpho vault", "done")
+                yield ToolStepBlock(f"Checking a {label} vault", "done")
                 yield TextBlock(earn_outcome.text)
                 yield earn_outcome.block
                 return
@@ -1947,16 +1950,27 @@ def _swap_proposed_action(intent: Intent, chain_id: int) -> dict[str, Any]:
 
 
 def _earn_origin_key(service: EarnService, request: Any, vault: Any) -> str:
-    """The 1Click origin for a Morpho deposit: an explicit chain/symbol, else the vault's chain."""
+    """The 1Click origin for an earn deposit: explicit chain/symbol, else the vault's chain.
+
+    Kamino deposits default to the funding asset's home route (Base USDC for USDC, Solana for
+    SOL) unless the user said "from <chain>" explicitly — the vault lives on Solana, but the
+    beta wallet is EVM, so that is the honest default.
+    """
+    origin_chain = getattr(request, "origin_chain", None)
     chain = (
-        getattr(request, "origin_chain", None)
+        origin_chain
         or getattr(request, "chain", None)
         or getattr(vault, "chain", None)
     )
     symbol = getattr(request, "asset", None) or getattr(vault, "asset", None)
     if not isinstance(symbol, str) and symbol is not None:
         symbol = getattr(symbol, "symbol", None)
-    if not isinstance(chain, str) or not isinstance(symbol, str):
+    if not isinstance(symbol, str):
+        return ""
+    if getattr(vault, "protocol", None) == "kamino" and not origin_chain:
+        asset = service.crosschain.default_for_symbol(symbol)
+        return asset.key if asset is not None else ""
+    if not isinstance(chain, str):
         return ""
     asset = service.crosschain.find_asset(chain, symbol)
     if asset is None:

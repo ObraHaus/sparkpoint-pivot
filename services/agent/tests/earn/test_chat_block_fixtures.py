@@ -26,7 +26,7 @@ from sparkpoint_agent.earn.rails import LIVE, NO_LIQUIDITY, ReceiptLivenessCache
 from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot
 from sparkpoint_agent.earn.service import EarnService
 
-from .helpers import make_vault
+from .helpers import make_kamino_vault, make_vault
 
 _FIXTURE_DIR = (
     Path(__file__).resolve().parents[4]
@@ -77,6 +77,23 @@ def _payload() -> dict[str, Any]:
             "amountOutUsd": "99.55",
             "minAmountOut": "88000000",
             "timeEstimate": 52,
+        },
+        "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+        "signature": "ed25519:test",
+    }
+
+
+def _kamino_payload() -> dict[str, Any]:
+    return {
+        "quote": {
+            "amountIn": "100000000",
+            "amountInFormatted": "100",
+            "amountInUsd": "100.0",
+            "amountOut": "983500000",
+            "amountOutFormatted": "0.9835",
+            "amountOutUsd": "99.2",
+            "minAmountOut": "970000000",
+            "timeEstimate": 47,
         },
         "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
         "signature": "ed25519:test",
@@ -211,6 +228,104 @@ async def test_earn_quote_direct_matches_the_shared_ts_fixture() -> None:
     outcome = await service.preview_for(
         chain="base",
         address=_GAUNTLET.address,
+        origin_key="base:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+    )
+    block = replace(outcome.block, quoted_at=fixture["quotedAt"])
+    assert block.to_wire() == fixture
+
+
+# ── 070 — Kamino SOL vault fixtures ────────────────────────────────────────────
+
+_KAMINO = make_kamino_vault()
+
+
+def _kamino_registry() -> EarnRegistry:
+    config = default_config()
+    registry = EarnRegistry(config, writable_path=Path("/nonexistent/earn.json"))
+    snapshot = EarnSnapshot(
+        fetched_at=datetime(2026, 11, 1, 2, 32, tzinfo=UTC),
+        source="kamino_api",
+        vaults=(_KAMINO,),
+    )
+    registry.install(snapshot, loaded_from="persisted")
+    return registry
+
+
+def test_earn_vaults_kamino_matches_the_shared_ts_fixture() -> None:
+    fixture = _fixture("earn-vaults-kamino.json")
+    config = default_config()
+    liveness = ReceiptLivenessCache(clock=lambda: 1000.0)
+    liveness.set(config.receipt_for_symbol("kV-gtSOLb").asset_id, LIVE)
+    service = _service(
+        _kamino_registry(),
+        lambda request: httpx.Response(201),
+        liveness=liveness,
+    )
+
+    request = EarnRequest(
+        kind="list",
+        chain="sol",
+        asset=None,
+        amount=None,
+        amount_raw=None,
+        vault_query=None,
+        sort="tvl",
+        message="Show Kamino vaults",
+        protocol="kamino",
+    )
+    outcome = service.list_outcome(request)
+    block = replace(outcome.block, snapshot_age_minutes=fixture["snapshotAgeMinutes"])
+    assert block.to_wire() == fixture
+
+
+@pytest.mark.asyncio
+async def test_earn_quote_kamino_preview_matches_the_shared_ts_fixture() -> None:
+    fixture = _fixture("earn-quote-kamino-preview.json")
+    service = _service(
+        _kamino_registry(), lambda request: httpx.Response(201, json=_kamino_payload())
+    )
+    outcome = await service.preview_for(
+        chain="sol",
+        address=_KAMINO.address,
+        origin_key="base:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+        recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    )
+    block = replace(outcome.block, quoted_at=fixture["quotedAt"])
+    assert block.to_wire() == fixture
+
+
+@pytest.mark.asyncio
+async def test_earn_quote_kamino_sol_origin_preview_matches_the_shared_ts_fixture() -> None:
+    fixture = _fixture("earn-quote-kamino-preview-sol-origin.json")
+    service = _service(
+        _kamino_registry(), lambda request: httpx.Response(201, json=_kamino_payload())
+    )
+    outcome = await service.preview_for(
+        chain="sol",
+        address=_KAMINO.address,
+        origin_key="sol:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+        recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    )
+    block = replace(outcome.block, quoted_at=fixture["quotedAt"])
+    assert block.to_wire() == fixture
+
+
+@pytest.mark.asyncio
+async def test_earn_quote_kamino_unavailable_matches_the_shared_ts_fixture() -> None:
+    fixture = _fixture("earn-quote-kamino-unavailable.json")
+    service = _service(
+        _kamino_registry(),
+        lambda request: httpx.Response(400, json={"message": "No liquidity available"}),
+    )
+    outcome = await service.preview_for(
+        chain="sol",
+        address=_KAMINO.address,
         origin_key="base:USDC",
         amount=Decimal("100"),
         amount_raw=100_000_000,

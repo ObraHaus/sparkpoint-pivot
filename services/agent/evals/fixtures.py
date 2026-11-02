@@ -308,6 +308,22 @@ _EARN_VAULTS = (
         net_apy=Decimal("0.0612"),
         fetched_at="2026-11-01T00:00:00+00:00",
     ),
+    VaultEntry(
+        chain="sol",
+        chain_id=0,
+        address="DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+        version="kvault",
+        name="SOL Balanced",
+        symbol="kV",
+        asset=VaultAsset(
+            address="So11111111111111111111111111111111111111112", symbol="SOL", decimals=9
+        ),
+        listed=True,
+        tvl_usd=Decimal("2443425.6"),
+        net_apy=Decimal("0.0445"),
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="kamino",
+    ),
 )
 
 
@@ -323,7 +339,28 @@ def _earn_service(mode: str) -> EarnService:
         )
     )
 
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - direct only
+    kv_receipt = config.receipt_for_symbol("kV-gtSOLb")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if kv_receipt is not None and body.get("destinationAsset") == kv_receipt.asset_id:
+            return httpx.Response(
+                201,
+                json={
+                    "quote": {
+                        "amountIn": "100000000",
+                        "amountInFormatted": "100",
+                        "amountInUsd": "100.0",
+                        "amountOut": "983500000",
+                        "amountOutFormatted": "0.9835",
+                        "amountOutUsd": "99.2",
+                        "minAmountOut": "970000000",
+                        "timeEstimate": 47,
+                    },
+                    "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+                    "signature": "ed25519:test",
+                },
+            )
         return httpx.Response(400, json={"message": "No liquidity available"})
 
     return EarnService(
