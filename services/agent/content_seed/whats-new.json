@@ -6,7 +6,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Choice questions about two protocols now get the comparison",
-      "body": "Asking Sparky \"Morpho or Aave?\" or \"should I put my USDC in Rhea or Aave?\" now gives you the usual side-by-side comparison instead of a message that there is no move to build. A question that offers two or more known protocols as a choice is treated as a knowledge question, while a real command with an amount — such as \"deposit 500 USDC into Morpho or Aave, whichever is safer\" — still goes through the normal review path. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "body": "Asking Sparky \"Morpho or Aave?\" or \"should I put my USDC in Rhea or Aave?\" now gives you the usual side-by-side comparison instead of a message that there is no move to build. A choice is treated as a comparison only when it is asked as advice; a command such as \"deposit my entire balance into Morpho or Aave, whichever is safer\" or \"move all my USDC from Aave or Morpho\" still goes through the normal review path, so a requested action is never silently dropped. Protocol names such as Compound are recognised as a choice in any capitalisation. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
       "published_at": "2026-11-02T08:00:00Z"
     },
     {

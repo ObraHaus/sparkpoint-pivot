@@ -40,6 +40,7 @@ from sparkpoint_agent.coordinator.dag import (
     _is_whole_answer_refusal,
 )
 from sparkpoint_agent.coordinator.guidance import (
+    _named_venues,
     is_comparative_question,
     is_yield_guidance_question,
 )
@@ -202,6 +203,9 @@ async def test_comparative_questions_route_to_grounded_sparky(message: str) -> N
     [
         "Morpho or Aave?",
         "should I put my USDC in Rhea or Aave?",
+        "where should I lend USDC, Rhea or Aave?",
+        "would you recommend Morpho or Aave?",
+        "which is better for earning, Morpho or Aave?",
     ],
 )
 async def test_protocol_choice_questions_take_the_comparative_branch(message: str) -> None:
@@ -303,6 +307,60 @@ async def test_comparative_that_is_also_a_command_still_reaches_the_planner() ->
 @pytest.mark.parametrize(
     "message",
     [
+        "Move everything from Aave or Morpho into the SparkPoint vault?",
+        "deposit my entire balance into Morpho or Aave, whichever is safer?",
+        "move all my USDC from Aave or Morpho?",
+        "please deposit into Morpho or Aave?",
+        "lend on Rhea or Aave, whichever is better?",
+    ],
+)
+async def test_unsized_imperative_or_choice_does_not_take_the_comparative_branch(
+    message: str,
+) -> None:
+    """075 Defender: the action must stay on the planner path, never a prose-only comparison."""
+    llm = _RecordingLlm(Intent(kind=IntentKind.OTHER))
+    grounder = _Grounder()
+    blocks = await _collect(_dag(llm, grounder), message)
+    assert not _is_prose_only_comparison(llm, grounder)
+    if llm.structured_calls:
+        assert llm.structured_calls == 1, "the planner/action path owns the turn"
+    else:
+        text = "\n".join(block.markdown for block in blocks if isinstance(block, TextBlock))
+        assert "not a financial adviser" in text, "the deterministic action boundary answers"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Can you bridge my USDC into Morpho or Aave?",
+        "Can you earn yield on Aave or Morpho?",
+        "could you move my USDC to Rhea or Aave?",
+        "I want to stake on Kamino or Morpho?",
+        "help me farm on Aave or Morpho?",
+        "let's switch to Aave or Morpho?",
+        "migrate my position to Aave or Morpho?",
+        "Should I move to Aave or compound my earnings?",
+    ],
+)
+async def test_choice_requests_never_take_the_comparative_branch(message: str) -> None:
+    """Defender follow-up 2: a request ("can you …", "help me …") keeps its action; the
+    comparative prose branch would answer the choice and silently drop it.
+
+    Some of these are owned by an earlier deterministic route (the bridge guard, yield
+    guidance); what matters is that NONE of them becomes a prose-only comparison.
+    """
+    llm = _RecordingLlm(Intent(kind=IntentKind.OTHER))
+    grounder = _Grounder()
+    blocks = await _collect(_dag(llm, grounder), message)
+    assert not _is_prose_only_comparison(llm, grounder)
+    assert llm.structured_calls <= 1, "at most one planner call, never a comparison"
+    text = "\n".join(block.markdown for block in blocks if isinstance(block, TextBlock))
+    assert "**What it is**" not in text, "the comparative skeleton is never rendered"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "deposit my entire balance into whichever is safer than Aave",
         "move everything to whatever is better than Aave",
         "withdraw from Aave if Morpho is safer",
@@ -364,12 +422,47 @@ def test_comparison_shapes_are_recognised(message: str) -> None:
         "Morpho or Aave?",
         "Aave or Morpho for USDC?",
         "Aave or Compound for USDC?",
+        "compound or aave?",
+        "COMPOUND or Aave?",
         "should I put my USDC in Rhea or Aave?",
         "where should I lend USDC, Rhea or Aave?",
+        "would you recommend Morpho or Aave?",
+        "which is better for earning, Morpho or Aave?",
+        "should I bridge to Aave or Morpho?",
     ],
 )
 def test_protocol_choice_questions_are_comparative(message: str) -> None:
     assert is_comparative_question(message) is True
+
+
+def test_compound_as_a_verb_is_never_counted_as_a_venue() -> None:
+    assert _named_venues("Should I move to Aave or compound my earnings?") == ("aave",)
+    assert _named_venues("Should I compound my earnings weekly or monthly on Aave?") == ("aave",)
+    assert _named_venues("auto-compound my rewards or move them to Aave?") == ("aave",)
+    assert _named_venues("compound or aave?") == ("aave", "compound")
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Move everything from Aave or Morpho into the SparkPoint vault?",
+        "deposit my entire balance into Morpho or Aave, whichever is safer?",
+        "move all my USDC from Aave or Morpho?",
+        "please deposit into Morpho or Aave?",
+        "lend on Rhea or Aave, whichever is better?",
+        "Can you bridge my USDC into Morpho or Aave?",
+        "Can you earn yield on Aave or Morpho?",
+        "could you move my USDC to Rhea or Aave?",
+        "I want to stake on Kamino or Morpho?",
+        "help me farm on Aave or Morpho?",
+        "let's switch to Aave or Morpho?",
+        "migrate my position to Aave or Morpho?",
+        "Should I move to Aave or compound my earnings?",
+    ],
+)
+def test_unsized_imperative_or_choice_keeps_the_planner(message: str) -> None:
+    """075 Defender: a "?" is not enough to turn an unsized command into advice."""
+    assert is_comparative_question(message) is False
 
 
 @pytest.mark.parametrize(
