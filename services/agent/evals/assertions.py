@@ -184,6 +184,9 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         )
 
     for wire in wires:
+        if wire.get("type") == "earn_positions":
+            return f"earn_positions_{wire.get('state')}"
+    for wire in wires:
         if wire.get("type") == "earn_vaults":
             return "earn_list"
         if wire.get("type") == "earn_quote":

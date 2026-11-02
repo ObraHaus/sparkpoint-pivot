@@ -935,6 +935,7 @@ _PERSISTED_BLOCK_TYPES = frozenset(
         "crosschain_quote",
         "earn_vaults",
         "earn_quote",
+        "earn_positions",
     }
 )
 
@@ -965,6 +966,8 @@ def _assistant_summary(block_wire: dict[str, Any]) -> str:
         return "[showed Morpho vaults]"
     if t == "earn_quote":
         return "[previewed a Morpho vault]"
+    if t == "earn_positions":
+        return "[showed Rhea positions]"
     return ""
 
 

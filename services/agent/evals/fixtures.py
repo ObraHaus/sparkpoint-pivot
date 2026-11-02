@@ -277,6 +277,11 @@ def _crosschain_service(mode: str) -> CrossChainService:
     return CrossChainService(config, client)
 
 
+RHEA_TOKEN_ID = (  # noqa: S105 - a public NEAR token id, not a secret
+    "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"  # noqa: S105
+)
+RHEA_ASSET_ID = f"nep141:{RHEA_TOKEN_ID}"
+
 _EARN_VAULTS = (
     VaultEntry(
         chain="base",
@@ -324,7 +329,42 @@ _EARN_VAULTS = (
         fetched_at="2026-11-01T00:00:00+00:00",
         protocol="kamino",
     ),
+    VaultEntry(
+        chain="near",
+        chain_id=0,
+        address=RHEA_TOKEN_ID,
+        version="lending",
+        name="Rhea Lending USDC",
+        symbol="USDC",
+        asset=VaultAsset(address=RHEA_TOKEN_ID, symbol="USDC", decimals=6),
+        listed=True,
+        tvl_usd=Decimal("12733803.14"),
+        net_apy=Decimal("0.1405"),
+        source="rhea_rpc",
+        fetched_at="2026-11-01T00:00:00+00:00",
+        protocol="rhea",
+    ),
 )
+
+
+class _EvalRheaViews:
+    """A fixed Rhea view double: no wallet has an MCA in the eval fixture."""
+
+    async def mca_for_wallet(self, wallet: str) -> str | None:
+        return None
+
+    async def create_mca_fee(self) -> dict[str, str]:
+        return {RHEA_TOKEN_ID: "300000"}
+
+    async def asset(self, token_id: str) -> Mapping[str, Any]:
+        return {
+            "supplied": {"balance": "12733763455236751230092183"},
+            "config": {"extra_decimals": 12},
+            "supply_apr": "0.140459036159116681312316847",
+        }
+
+    async def positions(self, account_id: str) -> Mapping[str, Any] | None:
+        return None
 
 
 def _earn_service(mode: str) -> EarnService:
@@ -343,6 +383,24 @@ def _earn_service(mode: str) -> EarnService:
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        if body.get("destinationAsset") == RHEA_ASSET_ID:
+            return httpx.Response(
+                201,
+                json={
+                    "quote": {
+                        "amountIn": "100000000",
+                        "amountInFormatted": "100",
+                        "amountInUsd": "100.0",
+                        "amountOut": "99980800",
+                        "amountOutFormatted": "99.9808",
+                        "amountOutUsd": "99.9808",
+                        "minAmountOut": "98980992",
+                        "timeEstimate": 35,
+                    },
+                    "quoteRequest": {"deadline": "2026-11-01T12:30:00.000Z"},
+                    "signature": "ed25519:test",
+                },
+            )
         if kv_receipt is not None and body.get("destinationAsset") == kv_receipt.asset_id:
             return httpx.Response(
                 201,
@@ -367,6 +425,7 @@ def _earn_service(mode: str) -> EarnService:
         config,
         registry,
         oneclick=OneClickClient(transport=httpx.MockTransport(handler), clock=lambda: 1000.0),
+        rhea_views=_EvalRheaViews(),  # type: ignore[arg-type]
     )
 
 

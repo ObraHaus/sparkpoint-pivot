@@ -401,12 +401,16 @@ async def fetch_vaults_for_chains(
 
 
 async def fetch_vaults(config: EarnConfig) -> list[VaultEntry]:
-    """Fetch + filter every enabled Morpho vault, then merge enabled Kamino kVaults."""
+    """Fetch + filter every enabled Morpho vault, then merge Kamino and Rhea rows."""
     entries = await fetch_vaults_for_chains(config, config.enabled_chains)
     if config.kamino.enabled:
         from .kamino import fetch_kamino_vaults
 
         entries.extend(await fetch_kamino_vaults(config))
+    if config.rhea.enabled:
+        from .rhea import fetch_rhea_vaults
+
+        entries.extend(await fetch_rhea_vaults(config))
     return entries
 
 

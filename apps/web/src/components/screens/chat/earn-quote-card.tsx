@@ -26,8 +26,12 @@ import {
   chainLabel,
   isNativeShares,
   needsSolanaRecipient,
+  netSuppliedLine,
+  oneTimeFeeLine,
   protocolLabel,
   protocolOf,
+  rheaApyLine,
+  sourceAttribution,
 } from "@/lib/earn/format";
 
 const MUTED = "var(--muted-foreground)";
@@ -35,6 +39,7 @@ const MUTED = "var(--muted-foreground)";
 const RAIL_LABEL: Record<EarnQuoteBlock["rail"], string> = {
   direct: "Direct same-chain deposit",
   oneclick_earn: "NEAR Intents 1Click Earn",
+  oneclick_rhea: "NEAR Intents 1Click → Rhea lending",
   intents_connect: "Aurora Intents Connect",
 };
 
@@ -102,10 +107,13 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
   const vault = block.vault;
   const vaultName = vault.name || vault.symbol;
   const protocol = protocolOf(vault);
-  const receipt = vault.rails.oneclickEarn.receipt;
+  const isRhea = protocol === "rhea" || block.rail === "oneclick_rhea";
+  const receipt = vault.rails.oneclickEarn?.receipt;
   const receiptSymbol = receipt?.symbol ?? vault.symbol;
   const isReceipt = block.rail === "oneclick_earn";
   const native = isNativeShares(block);
+  const feeLine = isRhea ? oneTimeFeeLine(block.oneTimeFee) : null;
+  const netLine = isRhea ? netSuppliedLine(block.netSupplied, vault.asset.symbol) : null;
   const amountIn = block.amountIn ?? block.origin?.amount;
 
   const recipientRequired = needsSolanaRecipient(block);
@@ -169,7 +177,23 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: MUTED }}>
               You receive (est.)
             </div>
-            {isReceipt ? (
+            {isRhea ? (
+              <>
+                <div
+                  style={{ fontSize: 20, fontWeight: 600, marginTop: 2 }}
+                  className="tnum"
+                  data-testid="earn-quote-amount-out"
+                >
+                  {block.amountOut
+                    ? `${formatHumanAmount(block.amountOut, 6)} ${vault.asset.symbol}`
+                    : "—"}
+                </div>
+                <div style={{ fontSize: 12.5, color: MUTED }} data-testid="earn-rhea-receive-note">
+                  {block.amountOutUsd ? `≈ ${formatUsd(block.amountOutUsd)} · ` : ""}
+                  supplied to your Rhea (Burrow) account on NEAR
+                </div>
+              </>
+            ) : isReceipt ? (
               <>
                 <div style={{ fontSize: 20, fontWeight: 600, marginTop: 2 }} className="tnum" data-testid="earn-quote-amount-out">
                   {block.amountOut ? `${formatHumanAmount(block.amountOut, 6)} ${receiptSymbol}` : "—"}
@@ -208,6 +232,180 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
             )}
             {block.feeNote && <Row k="Fees" v={block.feeNote} tone="caution" />}
           </div>
+
+          {isRhea && (block.supplyApy || block.source) && (
+            <div
+              data-testid="earn-rhea-rate"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 4,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              {rheaApyLine(block.supplyApy) && (
+                <div style={{ fontWeight: 600 }}>{rheaApyLine(block.supplyApy)}</div>
+              )}
+              {block.source && (
+                <div style={{ color: MUTED }} data-testid="earn-rhea-source">
+                  {sourceAttribution(block.source)}{" "}
+                  <a
+                    href={block.source.uiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--primary)", fontWeight: 600 }}
+                  >
+                    source ↗
+                  </a>
+                </div>
+              )}
+              <div style={{ color: MUTED }}>
+                Variable rate: the contract&apos;s supply APR moves with utilization; it is not a
+                fixed yield. Farm rewards, if any, are not included.
+              </div>
+            </div>
+          )}
+
+          {(feeLine || netLine) && (
+            <div
+              data-testid="earn-rhea-fee-block"
+              style={{
+                border: "1px solid color-mix(in srgb, var(--caution) 26%, transparent)",
+                background: "color-mix(in srgb, var(--caution) 8%, transparent)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 3,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+              }}
+            >
+              {feeLine && (
+                <div data-testid="earn-rhea-one-time-fee" style={{ fontWeight: 600 }}>
+                  {feeLine}
+                </div>
+              )}
+              {netLine && <div data-testid="earn-rhea-net-supplied">{netLine}</div>}
+            </div>
+          )}
+
+          {isRhea && block.recipient && (
+            <div
+              data-testid="earn-rhea-recipient"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 5,
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+                {block.firstDeposit
+                  ? "Rhea account (MCA) — created on your first deposit"
+                  : "Your Rhea account (MCA)"}
+              </div>
+              <div
+                data-testid="earn-rhea-recipient-value"
+                style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12.5, wordBreak: "break-all" }}
+              >
+                {block.recipient}
+              </div>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                Read-only and derived from your connected wallet — not user-entered.{" "}
+                {block.firstDeposit
+                  ? "The first deposit is addressed to Rhea's account manager (multica.near), which creates your MCA."
+                  : "Supplies are addressed to this existing Rhea account."}
+              </div>
+            </div>
+          )}
+
+          {isRhea && block.firstDeposit && block.messageToSign && (
+            <details
+              data-testid="earn-rhea-message"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "9px 11px",
+                fontSize: 12,
+              }}
+            >
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                Phase C: you will sign this message in your wallet to create your Rhea account
+              </summary>
+              <pre
+                data-testid="earn-rhea-message-text"
+                style={{
+                  margin: "8px 0 4px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: 11.5,
+                }}
+              >
+                {block.messageToSign}
+              </pre>
+              <div style={{ color: MUTED, lineHeight: 1.5 }}>
+                Display only — this build does not sign it or ask your wallet to sign. Nothing is
+                signed or sent.
+              </div>
+            </details>
+          )}
+
+          {isRhea && (
+            <div
+              data-testid="earn-rhea-deposit"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                data-testid="earn-rhea-deposit-disabled"
+                disabled
+                style={{ justifySelf: "start" }}
+              >
+                Deposit
+              </button>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                Live deposits coming soon (phase C). This preview is not signable.
+              </div>
+            </div>
+          )}
+
+          {isRhea && block.withdraw && (
+            <div data-testid="earn-rhea-withdraw-block" style={{ display: "grid", gap: 4 }}>
+              <a
+                data-testid="earn-rhea-withdraw"
+                href={block.withdraw.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "var(--primary)",
+                  textDecoration: "none",
+                  justifySelf: "start",
+                }}
+              >
+                Withdraw on Rhea ↗
+              </a>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                {block.withdraw.note}. Nothing is signed or sent here.
+              </div>
+            </div>
+          )}
 
           {block.receiptNote && (
             <Notice tone={isReceipt && !native ? "caution" : "info"} testId="earn-quote-receipt-note">

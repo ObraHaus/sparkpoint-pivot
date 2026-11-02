@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "rhea-near-lending-071-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Rhea lending on NEAR — vault list, dry previews and read-only positions",
+      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and — on your first deposit only — the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign in a later phase to create your Rhea account. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
+      "published_at": "2026-11-01T04:15:00Z"
+    },
+    {
       "slug": "kamino-sol-vaults-070-2026-11",
       "type": "changelog",
       "tag": "New",

@@ -44,6 +44,18 @@ NATIVE_SHARES_NOTE = (
 KAMINO_DIRECT_NOTE = (
     "Direct Kamino deposits require a Solana wallet, which the beta does not support yet."
 )
+RHEA_DIRECT_NOTE = (
+    "Rhea lending is on NEAR; the beta has no NEAR wallet. Supply runs through NEAR Intents "
+    "1Click instead."
+)
+RHEA_NOTE = (
+    "Supplies into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click — no NEAR "
+    "wallet, gas or chain switch. Withdraw on app.rhea.finance with the same wallet."
+)
+RHEA_FEE_NOTE = (
+    "Includes 1Click's 0.25% keyless routing fee. A one-time 0.30 USDC Rhea account fee applies "
+    "on the first deposit only."
+)
 INTENTS_MISSING_KEY = (
     "Aurora Intents Connect is not configured on this deployment (requires Aurora API access)."
 )
@@ -149,6 +161,32 @@ def _oneclick_rail(
     }
 
 
+def _rhea_rail(
+    config: EarnConfig, entry: VaultEntry, liveness: ReceiptLivenessCache
+) -> dict[str, Any]:
+    if not config.rhea.enabled or not config.rails.oneclick_rhea:
+        return {
+            "available": False,
+            "reason": "Rhea lending is disabled in the earn config.",
+        }
+    asset = config.rhea.asset_for_token(entry.address)
+    state = liveness.get(entry.address)
+    available = state != NO_LIQUIDITY
+    reason: str | None = None
+    if state == NO_LIQUIDITY:
+        reason = "1Click currently reports no liquidity for this Rhea asset."
+    elif state == UNKNOWN:
+        reason = "Liquidity has not been probed yet; a preview asks 1Click for a dry quote."
+    return {
+        "available": available,
+        "liveness": state,
+        "reason": reason,
+        "note": RHEA_NOTE,
+        "feeNote": RHEA_FEE_NOTE,
+        **({"assetId": asset.asset_id} if asset is not None else {}),
+    }
+
+
 def intents_steps(entry: VaultEntry) -> list[dict[str, Any]]:
     """The native Morpho deposit plan Aurora Intents Connect executes (data only)."""
     return [
@@ -204,6 +242,22 @@ def resolve_rails(
     aurora_key: str | None = None,
 ) -> RailResolution:
     key = aurora_key if aurora_key is not None else os.getenv(AURORA_KEY_ENV)
+    if entry.protocol == "rhea":
+        rhea = _rhea_rail(config, entry, liveness)
+        available: tuple[str, ...] = (
+            ("oneclick_rhea",) if rhea.get("available") else ()
+        )
+        return RailResolution(
+            available=available,
+            detail={
+                "direct": {"available": False, "reason": RHEA_DIRECT_NOTE},
+                "oneclickRhea": rhea,
+                "intentsConnect": {
+                    "available": False,
+                    "reason": "Intents Connect does not apply to Rhea supply.",
+                },
+            },
+        )
     receipt = config.receipt_for_vault(entry.address)
     direct = _direct_rail(config, entry)
     oneclick = _oneclick_rail(config, entry, receipt, liveness)

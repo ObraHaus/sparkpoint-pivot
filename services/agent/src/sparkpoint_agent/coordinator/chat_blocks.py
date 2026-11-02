@@ -529,6 +529,19 @@ class EarnQuoteBlock(ChatBlock):
     steps: tuple[dict[str, Any], ...] = ()
     quoted_at: str | None = None
     expires_hint: str | None = None
+    # 071 — Rhea (NEAR) preview fields. All omitted for 069/070 quotes, so those fixtures stay
+    # byte-identical; ``protocol="rhea"`` also emits ``mca`` explicitly (it may be null).
+    protocol: str | None = None
+    first_deposit: bool | None = None
+    mca: str | None = None
+    recipient: str | None = None
+    custom_recipient_msg: str | None = None
+    message_to_sign: str | None = None
+    one_time_fee: dict[str, Any] | None = None
+    net_supplied: str | None = None
+    supply_apy: str | None = None
+    source: dict[str, Any] | None = None
+    withdraw: dict[str, Any] | None = None
 
     def to_wire(self) -> dict[str, Any]:
         wire: dict[str, Any] = {
@@ -553,6 +566,61 @@ class EarnQuoteBlock(ChatBlock):
             ("unavailable_reason", "unavailableReason"),
             ("quoted_at", "quotedAt"),
             ("expires_hint", "expiresHint"),
+            ("protocol", "protocol"),
+            ("first_deposit", "firstDeposit"),
+            ("recipient", "recipient"),
+            ("custom_recipient_msg", "customRecipientMsg"),
+            ("message_to_sign", "messageToSign"),
+            ("one_time_fee", "oneTimeFee"),
+            ("net_supplied", "netSupplied"),
+            ("supply_apy", "supplyApy"),
+            ("source", "source"),
+            ("withdraw", "withdraw"),
+        ):
+            value = getattr(self, attr)
+            if value is not None:
+                wire[key] = value
+        if self.protocol == "rhea":
+            # The Rhea preview always states whether an MCA exists (null = first deposit).
+            wire["mca"] = self.mca
+        return wire
+
+
+EarnPositionsState = Literal["ready", "empty", "unavailable"]
+
+
+@dataclass(frozen=True)
+class EarnPositionsBlock(ChatBlock):
+    """071 ``earn_positions`` — the read-only Rhea (Burrow) supply positions for a wallet.
+
+    Never signable and never a transaction: it is a VIEW read of the user's Multichain Account.
+    ``state=empty`` is an honest "no Rhea account yet" (with an explainer), not an error.
+    """
+
+    state: EarnPositionsState
+    mca: str | None = None
+    supplied: tuple[dict[str, Any], ...] = ()
+    total_usd: str | None = None
+    source: dict[str, Any] | None = None
+    app_url: str | None = None
+    explainer: str | None = None
+    unavailable_reason: str | None = None
+    note: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        wire: dict[str, Any] = {
+            "type": "earn_positions",
+            "state": self.state,
+            "mca": self.mca,
+            "supplied": [dict(position) for position in self.supplied],
+        }
+        for attr, key in (
+            ("total_usd", "totalUsd"),
+            ("source", "source"),
+            ("app_url", "appUrl"),
+            ("explainer", "explainer"),
+            ("unavailable_reason", "unavailableReason"),
+            ("note", "note"),
         ):
             value = getattr(self, attr)
             if value is not None:

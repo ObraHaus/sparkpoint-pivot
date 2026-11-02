@@ -32,6 +32,7 @@ import { ThinkingIndicator } from "./ThinkingIndicator";
 import { CrossChainQuoteCard } from "./crosschain-quote-card";
 import { EarnVaultsCard } from "./earn-vaults-card";
 import { EarnQuoteCard } from "./earn-quote-card";
+import { EarnPositionsCard } from "./earn-positions-card";
 import { planTranscript, shouldShowThinking, type TranscriptItem } from "@/lib/chat/steps";
 import { parseRichText } from "@/lib/chat/richText";
 import type { ProposedAction } from "@sparkpoint/shared/schemas";
@@ -683,6 +684,9 @@ function LiveBlock({
 
     case "earn_quote":
       return <EarnQuoteCard block={block} />;
+
+    case "earn_positions":
+      return <EarnPositionsCard block={block} />;
 
     case "error":
       // 029/FR-001 — an error BLOCK is a failed turn just as much as a failed request is, and

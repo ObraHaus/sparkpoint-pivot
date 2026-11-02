@@ -131,11 +131,69 @@ class KaminoConfig:
         return self.vaults
 
 
+@dataclass(frozen=True, slots=True)
+class RheaAsset:
+    """One Burrow (Rhea) lending asset the deployment chose to list."""
+
+    symbol: str
+    token_id: str
+    asset_id: str
+    decimals: int
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class RheaConfig:
+    """Rhea Finance (Burrow) lending on NEAR — feature 071.
+
+    The asset list lives in ``earn.json`` so enabling USDT (or any other Burrow market) is a data
+    edit. RPC URLs, the account-manager contract (``multica.near``) and the Burrow logic contract
+    are config too, so a network move never needs a code change. No key material lives here.
+    """
+
+    enabled: bool = False
+    rpc_urls: tuple[str, ...] = (
+        "https://free.rpc.fastnear.com",
+        "https://rpc.mainnet.near.org",
+    )
+    logic_contract: str = "contract.main.burrow.near"
+    am_contract: str = "multica.near"
+    app_url: str = "https://app.rhea.finance/lending"
+    assets: tuple[RheaAsset, ...] = ()
+    mca_fee_fallback: Mapping[str, str] = field(default_factory=dict)
+    use_as_collateral: bool = False
+    origins: tuple[str, ...] = ("base:USDC", "eth:USDC", "sol:USDC")
+    default_origin: str = "base:USDC"
+    asset_ttl_s: float = 300.0
+    fee_ttl_s: float = 300.0
+    mca_ttl_s: float = 60.0
+
+    def enabled_assets(self) -> tuple[RheaAsset, ...]:
+        return tuple(asset for asset in self.assets if asset.enabled)
+
+    def asset_for_symbol(self, symbol: str) -> RheaAsset | None:
+        wanted = symbol.strip().upper()
+        for asset in self.assets:
+            if asset.symbol.upper() == wanted:
+                return asset
+        return None
+
+    def asset_for_token(self, token_id: str) -> RheaAsset | None:
+        # NEAR account ids are case-sensitive; compare exactly.
+        for asset in self.assets:
+            if asset.token_id == token_id:
+                return asset
+        return None
+
+    def supports_origin(self, key: str) -> bool:
+        return key in self.origins
+
 
 @dataclass(frozen=True, slots=True)
 class EarnRails:
     direct: bool = True
     oneclick_earn: bool = True
+    oneclick_rhea: bool = True
     intents_connect: bool = False
 
 
@@ -166,6 +224,7 @@ class EarnConfig:
     rails: EarnRails
     intents_connect: IntentsConnectConfig
     kamino: KaminoConfig = field(default_factory=KaminoConfig)
+    rhea: RheaConfig = field(default_factory=RheaConfig)
     dry_probe_addresses: Mapping[str, str] = field(default_factory=dict)
 
     @property
@@ -204,8 +263,10 @@ class EarnConfig:
         return any(vault.name.lower() in lowered for vault in self.kamino.vaults)
 
     def known_protocol(self, text: str) -> str | None:
-        """Which protocol a message explicitly names (Kamino wins over Morpho)."""
+        """Which protocol a message explicitly names (Rhea/Kamino win over Morpho)."""
         lowered = text.lower()
+        if "rhea" in lowered or "burrow" in lowered:
+            return "rhea"
         if "kamino" in lowered:
             return "kamino"
         if any(vault.name.lower() in lowered for vault in self.kamino.vaults):
@@ -228,9 +289,7 @@ def _chain_from_json(raw: Mapping[str, Any]) -> EarnChain:
             chain_id=int(raw["chain_id"]),
             label=str(raw.get("label") or raw["chain"]),
             enabled=bool(raw.get("enabled", True)),
-            protocols=tuple(
-                str(item) for item in (raw.get("protocols") or ("morpho",))
-            ),
+            protocols=tuple(str(item) for item in (raw.get("protocols") or ("morpho",))),
         )
     except KeyError as exc:
         raise EarnConfigError(f"chain is missing {exc.args[0]!r}") from exc
@@ -263,6 +322,7 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
     rails_raw = raw.get("rails") or {}
     intents_raw = raw.get("intents_connect") or {}
     kamino_raw = raw.get("kamino") or {}
+    rhea_raw = raw.get("rhea") or {}
     enabled_default = bool(raw.get("feature_enabled", True))
     enabled = (
         env_flag(FEATURE_FLAG_ENV, default=enabled_default)
@@ -277,12 +337,8 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
         listed_only=bool(filters.get("listed_only", True)),
         min_tvl_usd=str(filters.get("min_tvl_usd", "1000000")),
         assets=tuple(str(item).upper() for item in filters.get("assets", [])),
-        allowlist=tuple(
-            normalize_address(str(item)) for item in raw.get("allowlist", [])
-        ),
-        denylist=tuple(
-            normalize_address(str(item)) for item in raw.get("denylist", [])
-        ),
+        allowlist=tuple(normalize_address(str(item)) for item in raw.get("allowlist", [])),
+        denylist=tuple(normalize_address(str(item)) for item in raw.get("denylist", [])),
         known_vault_names=tuple(str(item) for item in raw.get("known_vault_names", [])),
         curated_defaults={
             str(key): normalize_address(str(value))
@@ -292,21 +348,20 @@ def config_from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = 
         rails=EarnRails(
             direct=bool(rails_raw.get("direct", True)),
             oneclick_earn=bool(rails_raw.get("oneclick_earn", True)),
+            oneclick_rhea=bool(rails_raw.get("oneclick_rhea", True)),
             intents_connect=bool(rails_raw.get("intents_connect", False)),
         ),
         intents_connect=IntentsConnectConfig(
-            base_url=str(
-                intents_raw.get("base_url", "https://intents-connect-api.aurora.dev")
-            ),
+            base_url=str(intents_raw.get("base_url", "https://intents-connect-api.aurora.dev")),
             supported_assets={
                 str(chain): tuple(str(item).upper() for item in symbols)
                 for chain, symbols in (intents_raw.get("supported_assets") or {}).items()
             },
         ),
         kamino=_kamino_from_json(kamino_raw),
+        rhea=_rhea_from_json(rhea_raw),
         dry_probe_addresses={
-            str(kind): str(value)
-            for kind, value in (raw.get("dry_probe_addresses") or {}).items()
+            str(kind): str(value) for kind, value in (raw.get("dry_probe_addresses") or {}).items()
         },
     )
 
@@ -342,6 +397,51 @@ def _kamino_from_json(raw: Mapping[str, Any]) -> KaminoConfig:
         assets=tuple(str(item).upper() for item in filters.get("assets", [])),
         min_tvl_usd=str(filters.get("min_tvl_usd", "1000000")),
         vaults=tuple(vaults),
+    )
+
+
+def _rhea_from_json(raw: Mapping[str, Any]) -> RheaConfig:
+    if not raw:
+        return RheaConfig()
+    assets: list[RheaAsset] = []
+    for item in raw.get("assets", []):
+        try:
+            assets.append(
+                RheaAsset(
+                    symbol=str(item["symbol"]).upper(),
+                    token_id=_rhea_token_id(item),
+                    asset_id=str(item.get("asset_id") or f"nep141:{_rhea_token_id(item)}"),
+                    decimals=int(item["decimals"]),
+                    enabled=bool(item.get("enabled", True)),
+                )
+            )
+        except KeyError as exc:
+            raise EarnConfigError(f"rhea asset is missing {exc.args[0]!r}") from exc
+    return RheaConfig(
+        enabled=bool(raw.get("enabled", False)),
+        rpc_urls=tuple(
+            str(item)
+            for item in (
+                raw.get("rpc_urls")
+                or ("https://free.rpc.fastnear.com", "https://rpc.mainnet.near.org")
+            )
+        ),
+        logic_contract=str(raw.get("logic_contract", "contract.main.burrow.near")),
+        am_contract=str(raw.get("am_contract", "multica.near")),
+        app_url=str(raw.get("app_url", "https://app.rhea.finance/lending")),
+        assets=tuple(assets),
+        mca_fee_fallback={
+            str(key).upper(): str(value)
+            for key, value in (raw.get("mca_fee_fallback") or {}).items()
+        },
+        use_as_collateral=bool(raw.get("use_as_collateral", False)),
+        origins=tuple(
+            str(item) for item in (raw.get("origins") or ("base:USDC", "eth:USDC", "sol:USDC"))
+        ),
+        default_origin=str(raw.get("default_origin", "base:USDC")),
+        asset_ttl_s=float(raw.get("asset_ttl_s", 300.0)),
+        fee_ttl_s=float(raw.get("fee_ttl_s", 300.0)),
+        mca_ttl_s=float(raw.get("mca_ttl_s", 60.0)),
     )
 
 
@@ -384,3 +484,17 @@ def snapshot_path(*, env: Mapping[str, str] | None = None) -> Path:
         return Path(explicit)
     data_dir = source.get(DATA_DIR_ENV) or "/var/lib/sparkpoint-agent"
     return Path(data_dir) / "earn-snapshot.json"
+
+
+def _rhea_token_id(item: Mapping[str, Any]) -> str:
+    """NEAR token account id for a Rhea asset.
+
+    earn.json stores only ``asset_id`` (``nep141:<account>``); the bare account id is derived so
+    the 64-hex implicit account never sits next to a ``token``-named key (gitleaks false positive).
+    An explicit ``token_id`` is still honoured.
+    """
+    explicit = item.get("token_id")
+    if explicit:
+        return str(explicit)
+    asset_id = str(item["asset_id"])
+    return asset_id.removeprefix("nep141:")

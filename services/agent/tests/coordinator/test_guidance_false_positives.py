@@ -170,7 +170,10 @@ def test_english_near_does_not_trigger_the_near_note(message: str) -> None:
     ],
 )
 def test_near_as_asset_still_triggers_the_near_note(message: str) -> None:
-    assert "NEAR yield" in _yield_answer(message)
+    answer = _yield_answer(message)
+    assert "NEAR yield" in answer
+    assert "isn't supported yet" not in answer
+    assert "Rhea Lending" in answer
 
 
 def _stale_pick(label: str, address: str, days: int) -> CuratedPick:

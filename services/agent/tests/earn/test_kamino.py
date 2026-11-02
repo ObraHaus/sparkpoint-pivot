@@ -242,6 +242,7 @@ async def test_registry_fetch_merges_morpho_and_kamino_rows(
 ) -> None:
     from sparkpoint_agent.earn import kamino as kamino_module
     from sparkpoint_agent.earn import registry as registry_module
+    from sparkpoint_agent.earn import rhea as rhea_module
 
     async def fake_morpho(config: EarnConfig, chains: Any) -> list[VaultEntry]:
         return [
@@ -256,7 +257,13 @@ async def test_registry_fetch_merges_morpho_and_kamino_rows(
     async def fake_kamino(config: EarnConfig, **_: Any) -> list[VaultEntry]:
         return [make_kamino_vault()]
 
+    async def fake_rhea(config: EarnConfig, **_: Any) -> list[VaultEntry]:
+        from .helpers import make_rhea_vault
+
+        return [make_rhea_vault()]
+
     monkeypatch.setattr(registry_module, "fetch_vaults_for_chains", fake_morpho)
     monkeypatch.setattr(kamino_module, "fetch_kamino_vaults", fake_kamino)
+    monkeypatch.setattr(rhea_module, "fetch_rhea_vaults", fake_rhea)
     entries = await registry_module.fetch_vaults(default_config())
-    assert {entry.protocol for entry in entries} == {"morpho", "kamino"}
+    assert {entry.protocol for entry in entries} == {"morpho", "kamino", "rhea"}

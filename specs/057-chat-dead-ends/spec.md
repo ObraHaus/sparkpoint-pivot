@@ -36,6 +36,8 @@ not "I couldn't find a strategy that clears your current guardrails".
 4. "half"/"quarter" follow-ups use the previous amount from conversation history when the current
    turn has none.
 5. A NEAR/Rhea question says NEAR yield is not supported yet and that NEAR support is coming.
+   *(Superseded by 071: Rhea Lending is the supported NEAR yield — vague NEAR-yield turns route
+   to Rhea, USDC only for now. See `specs/071-rhea-near-earn/spec.md` R10.)*
 6. The answer points at the next steps: fund the wallet, deposit on `/vault`, and (optionally) set
    a mandate.
 7. "Compare that with just keeping it in Aave" gives a real comparison from curated/market data

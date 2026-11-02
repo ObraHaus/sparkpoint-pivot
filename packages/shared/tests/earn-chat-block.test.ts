@@ -199,3 +199,129 @@ test("070 additions are strict: an unknown walletSupport mode is rejected", () =
     false,
   );
 });
+
+/* ── 071 — Rhea (Burrow) lending on NEAR ─────────────────────────────────────── */
+
+test("earn_vaults Rhea fixture validates with the near chain and the Rhea rail", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-vaults-rhea.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_vaults") return;
+  assert.equal(parsed.data.state, "ready");
+  assert.equal(parsed.data.vaults.length, 1);
+  assert.match(parsed.data.note ?? "", /Rhea \(Burrow\)/);
+
+  const [vault] = parsed.data.vaults;
+  assert.equal(vault?.name, "Rhea Lending USDC");
+  assert.equal(vault?.protocol, "rhea");
+  assert.equal(vault?.chain, "near");
+  assert.equal(vault?.chainId, 0);
+  assert.equal(vault?.version, "lending");
+  assert.equal(vault?.asset.symbol, "USDC");
+  assert.equal(vault?.netApy, "14.05");
+  assert.equal(vault?.source, "rhea_rpc");
+  assert.deepEqual(vault?.rails.available, ["oneclick_rhea"]);
+  assert.equal(vault?.rails.oneclickEarn, undefined);
+  assert.equal(vault?.rails.direct.note, undefined);
+  assert.match(vault?.rails.direct.reason ?? "", /NEAR wallet/);
+  assert.equal(vault?.rails.oneclickRhea?.available, true);
+  assert.equal(vault?.rails.oneclickRhea?.liveness, "live");
+  assert.match(vault?.rails.oneclickRhea?.assetId ?? "", /^nep141:/);
+  assert.match(vault?.rails.oneclickRhea?.feeNote ?? "", /one-time 0\.30 USDC/);
+  assert.equal(vault?.rails.intentsConnect.available, false);
+});
+
+test("earn_quote Rhea first deposit carries the fee, net supplied and message to sign", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-rhea-first-deposit.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.state, "preview");
+  assert.equal(parsed.data.rail, "oneclick_rhea");
+  assert.equal(parsed.data.protocol, "rhea");
+  assert.equal(parsed.data.firstDeposit, true);
+  assert.equal(parsed.data.mca, null);
+  assert.equal(parsed.data.recipient, "multica.near");
+  assert.equal(parsed.data.amountOut, "99.9808");
+  assert.equal(parsed.data.oneTimeFee?.amount, "0.30");
+  assert.equal(parsed.data.oneTimeFee?.symbol, "USDC");
+  assert.equal(parsed.data.netSupplied, "99.6808");
+  assert.match(parsed.data.customRecipientMsg ?? "", /BurrowRegisterAndSupply/);
+  assert.match(parsed.data.messageToSign ?? "", /^\[\{"EVM"/);
+  assert.equal(parsed.data.supplyApy, "14.05%");
+  assert.equal(parsed.data.source?.kind, "contract");
+  assert.equal(parsed.data.source?.contract, "contract.main.burrow.near");
+  assert.equal(parsed.data.source?.method, "get_asset");
+  assert.equal(parsed.data.source?.field, "supply_apr");
+  assert.equal(parsed.data.source?.uiUrl, "https://app.rhea.finance/lending");
+  assert.equal(parsed.data.source?.stale, false);
+  assert.equal(parsed.data.withdraw?.kind, "external_link");
+  assert.equal(parsed.data.withdraw?.url, "https://app.rhea.finance/lending");
+});
+
+test("earn_quote Rhea existing-MCA supply omits the fee and message", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-rhea-supply.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.firstDeposit, false);
+  assert.equal(parsed.data.mca, "abc.multica.near");
+  assert.equal(parsed.data.recipient, "abc.multica.near");
+  assert.equal(parsed.data.oneTimeFee, undefined);
+  assert.equal(parsed.data.messageToSign, undefined);
+  assert.equal(parsed.data.netSupplied, "99.9808");
+  assert.match(parsed.data.customRecipientMsg ?? "", /BurrowSupply/);
+  assert.doesNotMatch(parsed.data.customRecipientMsg ?? "", /RegisterAndSupply/);
+});
+
+test("earn_quote Rhea unavailable keeps the smaller-amount hint", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-quote-rhea-unavailable.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_quote") return;
+  assert.equal(parsed.data.state, "unavailable");
+  assert.match(parsed.data.unavailableReason ?? "", /No liquidity available/);
+  assert.match(parsed.data.unavailableReason ?? "", /try a smaller amount/);
+  assert.equal(parsed.data.amountOut, undefined);
+  assert.equal(parsed.data.oneTimeFee, undefined);
+});
+
+test("earn_positions Rhea fixture validates supplied rows, total and source", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-positions-rhea.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_positions") return;
+  assert.equal(parsed.data.state, "ready");
+  assert.equal(parsed.data.mca, "abc.multica.near");
+  assert.deepEqual(parsed.data.supplied, [{ symbol: "USDC", amount: "100", apy: "14" }]);
+  assert.equal(parsed.data.totalUsd, "100");
+  assert.equal(parsed.data.source?.method, "get_account_all_positions");
+  assert.equal(parsed.data.appUrl, "https://app.rhea.finance/lending");
+  assert.match(parsed.data.note ?? "", /Read-only view/);
+});
+
+test("earn_positions Rhea empty fixture is an honest no-account explainer", () => {
+  const parsed = ChatBlockSchema.safeParse(fixture("earn-positions-rhea-empty.json"));
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  if (!parsed.success || parsed.data.type !== "earn_positions") return;
+  assert.equal(parsed.data.state, "empty");
+  assert.equal(parsed.data.mca, null);
+  assert.deepEqual(parsed.data.supplied, []);
+  assert.match(parsed.data.explainer ?? "", /don't have a Rhea account yet/);
+  assert.equal(parsed.data.appUrl, "https://app.rhea.finance/lending");
+});
+
+test("071 additions are strict: unknown Rhea rails and incomplete sources are rejected", () => {
+  const quote = fixture("earn-quote-rhea-first-deposit.json") as Record<string, unknown>;
+  assert.equal(ChatBlockSchema.safeParse({ ...quote, rail: "oneclick_rhea_v2" }).success, false);
+  assert.equal(
+    ChatBlockSchema.safeParse({ ...quote, source: { kind: "contract" } }).success,
+    false,
+  );
+  assert.equal(ChatBlockSchema.safeParse({ ...quote, firstDeposit: "yes" }).success, false);
+
+  const positions = fixture("earn-positions-rhea.json") as Record<string, unknown>;
+  assert.equal(ChatBlockSchema.safeParse({ ...positions, state: "pending" }).success, false);
+  assert.equal(
+    ChatBlockSchema.safeParse({
+      ...positions,
+      supplied: [{ symbol: "USDC", amount: 100 }],
+    }).success,
+    false,
+  );
+});

@@ -9,12 +9,13 @@ and never calls Morpho or Kamino.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from ..coordinator.chat_blocks import EarnQuoteBlock, EarnVaultsBlock
+from ..coordinator.chat_blocks import EarnPositionsBlock, EarnQuoteBlock, EarnVaultsBlock
 from ..crosschain.addresses import placeholder_for
 from ..crosschain.config import CrossChainAsset, CrossChainConfig
 from ..crosschain.config import default_config as cc_config
@@ -28,12 +29,27 @@ from .rails import (
     NATIVE_SHARES_NOTE,
     NO_LIQUIDITY,
     RECEIPT_NOTE,
+    RHEA_NOTE,
     RailResolution,
     ReceiptLivenessCache,
     default_liveness,
     resolve_rails,
 )
 from .registry import EarnRegistry, EarnSnapshot, VaultEntry
+from .rhea import (
+    DRY_PLACEHOLDER_SIGNATURE,
+    RheaRpcError,
+    RheaViews,
+    custom_recipient_msg,
+    fee_string,
+    human_string,
+    mca_fee_amount,
+    message_to_sign,
+    parse_supplied_positions,
+    percent_string,
+    register_message,
+    supply_message,
+)
 
 logger = logging.getLogger("sparkpoint_agent.earn.service")
 
@@ -48,7 +64,7 @@ _NO_MATCH = "No vault matched those filters in the current snapshot."
 @dataclass(frozen=True, slots=True)
 class EarnOutcome:
     text: str
-    block: EarnVaultsBlock | EarnQuoteBlock
+    block: EarnVaultsBlock | EarnQuoteBlock | EarnPositionsBlock
 
 
 def _now_iso() -> str:
@@ -103,6 +119,7 @@ class EarnService:
         crosschain: CrossChainConfig | None = None,
         liveness: ReceiptLivenessCache | None = None,
         aurora_key: str | None = None,
+        rhea_views: RheaViews | None = None,
     ) -> None:
         self.config = config
         self.registry = registry
@@ -110,6 +127,7 @@ class EarnService:
         self.crosschain = crosschain or cc_config()
         self.liveness = liveness or default_liveness()
         self._aurora_key = aurora_key
+        self.rhea_views = rhea_views or RheaViews(config.rhea)
 
     @property
     def feature_enabled(self) -> bool:
@@ -192,6 +210,13 @@ class EarnService:
             if matches:
                 matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
                 return matches[0]
+            # Rhea requests name the ASSET ("deposit into Rhea USDC"), not a vault name.
+            asset_matches = [
+                entry for entry in candidates if wanted and entry.asset.symbol.lower() == wanted
+            ]
+            if asset_matches:
+                asset_matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+                return asset_matches[0]
         default = self.config.default_vault(target_chain)
         if default:
             for entry in candidates:
@@ -217,6 +242,26 @@ class EarnService:
                 text=_UNKNOWN_SNAPSHOT,
                 block=EarnVaultsBlock(state="unavailable", unavailable_reason="no snapshot"),
             )
+        protocol = getattr(request, "protocol", None)
+        if protocol == "rhea" and request.asset:
+            # USDT (or any other Burrow market) is config-disabled: say so plainly instead of
+            # leaking into the generic no-match copy.
+            configured = self.config.rhea.asset_for_symbol(request.asset)
+            if configured is None or not configured.enabled:
+                symbol = request.asset.upper()
+                return EarnOutcome(
+                    text=(
+                        f"Rhea Lending on NEAR is USDC only for now — {symbol} isn't enabled. "
+                        "Tell me a USDC amount (for example 100 USDC) and I'll show a dry "
+                        "deposit preview."
+                    ),
+                    block=EarnVaultsBlock(
+                        state="unavailable",
+                        snapshot_age_minutes=snapshot.age_minutes(),
+                        snapshot_source=self.registry.loaded_from,
+                        unavailable_reason=f"{symbol} is not enabled for Rhea",
+                    ),
+                )
         if not vaults:
             return EarnOutcome(
                 text=_NO_MATCH,
@@ -227,19 +272,26 @@ class EarnService:
                     unavailable_reason="no matching vaults",
                 ),
             )
-        protocol = getattr(request, "protocol", None)
-        protocol_label = {"kamino": "Kamino", "morpho": "Morpho"}.get(
+
+        protocol_label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
             protocol or "", ""
         )
-        note = (
-            "Kamino's vault list is data-driven. The 1Click rail uses a configured receipt whose "
-            "underlying vault matches; the native kVault share is what the user receives."
-            if protocol == "kamino"
-            else (
+        if protocol == "kamino":
+            note = (
+                "Kamino's vault list is data-driven. The 1Click rail uses a configured receipt "
+                "whose underlying vault matches; the native kVault share is what the user receives."
+            )
+        elif protocol == "rhea":
+            note = (
+                "Rhea (Burrow) lending on NEAR is data-driven. The rate is the contract's "
+                "supply APR (variable), read live; supply runs through 1Click into your Rhea "
+                "account. USDC only for now. Withdraw on app.rhea.finance with the same wallet."
+            )
+        else:
+            note = (
                 "Morpho's vault list is data-driven. The 1Click receipt rail is shown only where "
                 "a receipt is configured; a direct same-chain deposit gives the native vault share."
             )
-        )
         block = EarnVaultsBlock(
             state="ready",
             vaults=tuple(vaults),
@@ -262,6 +314,12 @@ class EarnService:
                 f"{_usd(Decimal(vault['tvlUsd'])) if vault['tvlUsd'] else 'TVL n/a'} "
                 f"({rails})"
             )
+        if protocol == "rhea":
+            lines.append(
+                "Rhea Lending is the supported NEAR yield — USDC only for now. Tell me an "
+                "amount (for example 100 USDC) and I'll show a dry deposit preview."
+            )
+            lines.append("Source: Rhea's on-chain get_asset supply APR (variable).")
         lines.append("Nothing here is a transaction; pick a vault to see a dry preview.")
         return EarnOutcome(text="\n".join(lines), block=block)
 
@@ -276,6 +334,7 @@ class EarnService:
         amount: Decimal,
         amount_raw: int | None = None,
         recipient: str | None = None,
+        wallet: str | None = None,
     ) -> EarnOutcome:
         snapshot = self.registry.current()
         found = self.get_vault(chain, address) if snapshot is not None else None
@@ -284,6 +343,8 @@ class EarnService:
         vault, _ = found
         entry = self._entry(chain, address)
         assert entry is not None  # noqa: S101 - get_vault just proved it
+        if entry.protocol == "rhea":
+            return await self._rhea_preview(entry, vault, origin_key, amount, amount_raw, wallet)
         rails = self._rails(entry)
         origin = self.crosschain.asset(origin_key) if origin_key else None
 
@@ -439,6 +500,305 @@ class EarnService:
         )
         return EarnOutcome(text=text, block=block)
 
+    async def _rhea_preview(
+        self,
+        entry: VaultEntry,
+        vault: dict[str, Any],
+        origin_key: str,
+        amount: Decimal,
+        amount_raw: int | None,
+        wallet: str | None,
+    ) -> EarnOutcome:
+        rhea = self.config.rhea
+        if not rhea.enabled:
+            return self._unavailable(
+                entry, vault, "oneclick_rhea", "Rhea lending is disabled in the earn config."
+            )
+        if not wallet:
+            raise ValueError("a signed-in wallet is required for a Rhea preview")
+        asset = rhea.asset_for_token(entry.address)
+        if asset is None:
+            return self._unavailable(
+                entry, vault, "oneclick_rhea", "That asset is not enabled for Rhea."
+            )
+        origin = self.crosschain.asset(origin_key) if origin_key else None
+        if origin is None:
+            raise ValueError("unknown origin asset")
+        if not rhea.supports_origin(origin.key):
+            return self._unavailable(
+                entry,
+                vault,
+                "oneclick_rhea",
+                f"{origin.chain_label} {origin.symbol} is not an enabled Rhea origin.",
+            )
+        raw = amount_raw
+        if raw is None:
+            parsed = amount_from_human(_human(amount), origin.decimals)
+            if parsed is None:
+                raise ValueError("amount has too many decimal places")
+            raw = parsed[1]
+
+        # MCA + one-off fee. A lookup failure is fail-open: the preview still renders, assuming a
+        # first deposit, and the text says the account read was unavailable.
+        mca: str | None = None
+        lookup_failed = False
+        try:
+            mca = await self.rhea_views.mca_for_wallet(wallet)
+        except RheaRpcError:
+            lookup_failed = True
+        first_deposit = mca is None
+        fee_amount = Decimal(0)
+        one_time_fee: dict[str, Any] | None = None
+        if first_deposit:
+            try:
+                fees = await self.rhea_views.create_mca_fee()
+            except RheaRpcError:
+                fees = {}
+            fee_amount = mca_fee_amount(fees, asset, rhea.mca_fee_fallback)
+            one_time_fee = {
+                "amount": fee_string(fee_amount),
+                "symbol": asset.symbol,
+                "reason": "one-time Rhea account fee — first deposit only",
+            }
+
+        if first_deposit:
+            message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+            message_text: str | None = message_to_sign(wallet)
+        else:
+            message = supply_message(wallet)
+            message_text = None
+        message_json = custom_recipient_msg(message)
+        recipient = mca or rhea.am_contract
+        refund_to = (
+            wallet
+            if origin.address_kind == "evm"
+            else (
+                self.config.dry_probe_addresses.get(origin.address_kind)
+                or placeholder_for(origin.address_kind)
+            )
+        )
+        try:
+            quote = await self.oneclick.quote(
+                dry=True,
+                origin_asset=origin.asset_id,
+                destination_asset=asset.asset_id,
+                amount=str(raw),
+                slippage_bps=self.crosschain.slippage_bps,
+                deadline=deadline_at(self.crosschain.deadline_minutes),
+                refund_to=refund_to,
+                recipient=recipient,
+                custom_recipient_msg=message_json,
+            )
+        except QuoteUnavailable as exc:
+            self.liveness.set(entry.address, NO_LIQUIDITY)
+            reason = exc.reason
+            if "liquidity" in reason.lower() and "smaller" not in reason.lower():
+                reason = f"{reason} — try a smaller amount."
+            return self._unavailable(entry, vault, "oneclick_rhea", reason)
+        self.liveness.set(entry.address, LIVE)
+
+        human = _human(amount)
+        out_amount = _decimal(quote.amount_out_formatted)
+        net = (out_amount - fee_amount) if out_amount is not None else None
+        eta = (
+            f"about {max(1, round(quote.time_estimate_sec / 60))} min"
+            if quote.time_estimate_sec
+            else "a short time"
+        )
+        supply_apy = f"{entry.net_apy_percent}%" if entry.net_apy_percent else None
+        source = {
+            "kind": "contract",
+            "contract": rhea.logic_contract,
+            "method": "get_asset",
+            "field": "supply_apr",
+            "uiUrl": rhea.app_url,
+            "fetchedAt": entry.fetched_at,
+            "stale": self.registry.is_stale(),
+        }
+        fee_line = (
+            f" A one-time {fee_string(fee_amount)} {asset.symbol} Rhea account fee applies on "
+            "this first deposit."
+            if first_deposit
+            else ""
+        )
+        net_line = (
+            f" Net supplied after the fee: {human_string(net)} {asset.symbol}."
+            if first_deposit and net is not None
+            else ""
+        )
+        text = (
+            f"Preview only — nothing is signed or sent. {human} {origin.symbol} on "
+            f"{origin.chain_label} → about {quote.amount_out_formatted} {asset.symbol} supplied to "
+            f"Rhea Lending on NEAR, settling in {eta}.{fee_line}{net_line} {RHEA_NOTE}"
+        )
+        if supply_apy:
+            text = f"{text} Supply APY {supply_apy} (Rhea, variable)."
+        if lookup_failed:
+            text = (
+                f"{text} I couldn't read your Rhea account just now, so this preview assumes a "
+                "first deposit."
+            )
+        block = EarnQuoteBlock(
+            state="preview",
+            rail="oneclick_rhea",
+            vault=vault,
+            origin=origin.origin_wire(human),
+            amount_in=human,
+            amount_out=quote.amount_out_formatted,
+            amount_out_usd=quote.amount_out_usd,
+            time_estimate_sec=quote.time_estimate_sec,
+            fee_note=None if self.oneclick.has_api_key else FEE_NOTE,
+            receipt_note=RHEA_NOTE,
+            protocol="rhea",
+            first_deposit=first_deposit,
+            mca=mca,
+            recipient=recipient,
+            custom_recipient_msg=message_json,
+            message_to_sign=message_text,
+            one_time_fee=one_time_fee,
+            net_supplied=human_string(net),
+            supply_apy=supply_apy,
+            source=source,
+            withdraw={
+                "kind": "external_link",
+                "url": rhea.app_url,
+                "note": "Withdraw on Rhea with the same wallet",
+            },
+            quoted_at=_now_iso(),
+        )
+        return EarnOutcome(text=text, block=block)
+
+    async def rhea_positions(self, *, wallet: str) -> EarnOutcome:
+        """Read-only Rhea supply positions for the signed-in wallet (never a transaction)."""
+        rhea = self.config.rhea
+        if not rhea.enabled:
+            return EarnOutcome(
+                text="Rhea lending is not enabled on this deployment.",
+                block=EarnPositionsBlock(
+                    state="unavailable",
+                    app_url=rhea.app_url,
+                    unavailable_reason="Rhea lending is disabled in the earn config.",
+                ),
+            )
+        if not wallet:
+            raise ValueError("a signed-in wallet is required to read Rhea positions")
+        source = {
+            "kind": "contract",
+            "contract": rhea.logic_contract,
+            "method": "get_account_all_positions",
+            "field": "supplied",
+            "uiUrl": rhea.app_url,
+            "fetchedAt": _now_iso(),
+        }
+        try:
+            mca = await self.rhea_views.mca_for_wallet(wallet)
+        except RheaRpcError:
+            return EarnOutcome(
+                text=(
+                    "I couldn't read your Rhea account just now — nothing was signed or sent. "
+                    f"You can check positions directly at {rhea.app_url}."
+                ),
+                block=EarnPositionsBlock(
+                    state="unavailable",
+                    app_url=rhea.app_url,
+                    source=source,
+                    unavailable_reason="The NEAR RPC read is unavailable right now.",
+                ),
+            )
+        if mca is None:
+            fee_asset = next(iter(rhea.enabled_assets()), None)
+            fee_value = (
+                mca_fee_amount({}, fee_asset, rhea.mca_fee_fallback)
+                if fee_asset is not None
+                else Decimal("0.30")
+            )
+            fee_symbol = fee_asset.symbol if fee_asset is not None else "USDC"
+            explainer = (
+                "You don't have a Rhea account yet. Your first deposit creates one (a one-time "
+                f"{fee_string(fee_value)} {fee_symbol} fee) and starts earning on NEAR."
+            )
+            return EarnOutcome(
+                text=(
+                    "You don't have a Rhea account yet, so there are no positions to show. "
+                    "Deposit into Rhea and your first supply creates the account — nothing was "
+                    "signed or sent."
+                ),
+                block=EarnPositionsBlock(
+                    state="empty",
+                    mca=None,
+                    app_url=rhea.app_url,
+                    explainer=explainer,
+                    source=source,
+                ),
+            )
+        try:
+            portfolio = await self.rhea_views.positions(mca)
+        except RheaRpcError:
+            return EarnOutcome(
+                text=(
+                    "I couldn't read your Rhea positions just now — nothing was signed or sent. "
+                    f"You can check them directly at {rhea.app_url}."
+                ),
+                block=EarnPositionsBlock(
+                    state="unavailable",
+                    mca=mca,
+                    app_url=rhea.app_url,
+                    source=source,
+                    unavailable_reason="The NEAR RPC read is unavailable right now.",
+                ),
+            )
+        details: dict[str, Mapping[str, Any] | None] = {}
+        for asset in rhea.enabled_assets():
+            try:
+                details[asset.token_id] = await self.rhea_views.asset(asset.token_id)
+            except RheaRpcError:
+                details[asset.token_id] = None
+        rows = parse_supplied_positions(portfolio, rhea, details) if portfolio is not None else []
+        if not rows:
+            return EarnOutcome(
+                text=(
+                    f"No supplied Rhea positions found for {mca} yet. Nothing was signed or sent."
+                ),
+                block=EarnPositionsBlock(
+                    state="empty",
+                    mca=mca,
+                    app_url=rhea.app_url,
+                    explainer="No supplied positions were found for this Rhea account.",
+                    source=source,
+                ),
+            )
+        total = sum(
+            (row.amount for row in rows if row.symbol.upper() in {"USDC", "USDT"}),
+            Decimal(0),
+        )
+        lines = [f"Your Rhea positions on NEAR ({mca}) — read-only, nothing was signed or sent:"]
+        for row in rows:
+            apy = f", supply APY {percent_string(row.apy)}%" if row.apy is not None else ""
+            lines.append(f"- {human_string(row.amount)} {row.symbol}{apy}")
+        lines.append(f"Withdraw on Rhea with the same wallet: {rhea.app_url}")
+        return EarnOutcome(
+            text="\n".join(lines),
+            block=EarnPositionsBlock(
+                state="ready",
+                mca=mca,
+                supplied=tuple(row.wire() for row in rows),
+                total_usd=human_string(total) if total > 0 else None,
+                source=source,
+                app_url=rhea.app_url,
+                note=(
+                    "Read-only view of your Rhea (Burrow) account. Supply/withdraw happen on "
+                    "Rhea with the same wallet."
+                ),
+            ),
+        )
+
+    def rhea_withdraw_text(self) -> str:
+        url = self.config.rhea.app_url
+        return (
+            f"To withdraw from Rhea, open {url} and connect the same wallet you supplied with. "
+            "In-app Rhea withdrawals aren't enabled in this beta yet — nothing was signed or sent."
+        )
+
     def _intents_preview(
         self, entry: VaultEntry, vault: dict[str, Any], rails: RailResolution
     ) -> EarnOutcome:
@@ -481,6 +841,16 @@ def _human(amount: Decimal) -> str:
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
+
+
+def _decimal(value: str | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        number = Decimal(value)
+    except (InvalidOperation, ValueError):
+        return None
+    return number if number.is_finite() else None
 
 
 _REGISTRY: EarnRegistry | None = None

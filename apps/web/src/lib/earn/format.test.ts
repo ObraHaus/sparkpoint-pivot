@@ -12,6 +12,8 @@ import {
   morphoChainSlug,
   morphoVaultUrl,
   needsSolanaRecipient,
+  netSuppliedLine,
+  oneTimeFeeLine,
   previewPrompt,
   protocolLabel,
   protocolOf,
@@ -19,10 +21,14 @@ import {
   railChips,
   receiptKindOf,
   receiptLabel,
+  rheaApyLine,
+  RHEA_APP_URL,
   snapshotAgeCopy,
+  sourceAttribution,
   vaultAppUrl,
   vaultListTitle,
   vaultReceiptLabel,
+  vaultRowTitle,
 } from "./format.ts";
 
 function vault(overrides: Partial<EarnVault["rails"]> = {}, extra: Partial<EarnVault> = {}): EarnVault {
@@ -271,4 +277,124 @@ test("Kamino snapshot copy names Kamino, a mixed list stays neutral, and no link
     previewPrompt(kaminoVault()),
     "Deposit 100 SOL into Kamino SOL Balanced on Solana",
   );
+});
+
+
+/* ── 071 — Rhea (Burrow) lending on NEAR ─────────────────────────────────────── */
+
+function rheaVault(extra: Partial<EarnVault> = {}): EarnVault {
+  return {
+    chain: "near",
+    chainId: 0,
+    address: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    version: "lending",
+    name: "Rhea Lending USDC",
+    symbol: "USDC",
+    asset: {
+      address: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    listed: true,
+    tvlUsd: "12733763.455236751",
+    netApy: "14.05",
+    source: "rhea_rpc",
+    fetchedAt: "2026-11-01T00:00:00+00:00",
+    curatedDefault: false,
+    protocol: "rhea",
+    rails: {
+      available: ["oneclick_rhea"],
+      direct: {
+        available: false,
+        reason: "Rhea lending is on NEAR; the beta has no NEAR wallet.",
+      },
+      oneclickRhea: {
+        available: true,
+        liveness: "live",
+        reason: null,
+        note: "Supplies into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click.",
+        feeNote: "Includes 1Click's 0.25% keyless routing fee.",
+        assetId:
+          "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      },
+      intentsConnect: {
+        available: false,
+        reason: "Intents Connect does not apply to Rhea supply.",
+      },
+    },
+    ...extra,
+  };
+}
+
+test("Rhea labels name the protocol, NEAR chain and lending row", () => {
+  assert.equal(protocolOf({ protocol: "rhea" }), "rhea");
+  assert.equal(protocolLabel("rhea"), "Rhea");
+  assert.equal(chainLabel("near"), "NEAR");
+  assert.deepEqual(protocolsOf([rheaVault()]), ["rhea"]);
+  assert.equal(vaultListTitle([rheaVault()]), "Rhea vaults");
+  assert.equal(apyLabel("rhea"), "net APY (Rhea)");
+  assert.equal(vaultRowTitle(rheaVault()), "Rhea Lending (NEAR) supply");
+  assert.equal(vaultRowTitle(vault()), "Gauntlet USDC Prime");
+  assert.equal(
+    snapshotAgeCopy(4, "persisted", "rhea"),
+    "data from Rhea API, 4 min ago",
+  );
+});
+
+test("Rhea rail chips name the Rhea rail and keep the others visible", () => {
+  const chips = railChips(rheaVault());
+  assert.deepEqual(
+    chips.map((chip) => [chip.key, chip.label, chip.available]),
+    [
+      ["direct", "Direct", false],
+      ["oneclick_rhea", "1Click Rhea live", true],
+      ["intents_connect", "Intents Connect n/a", false],
+    ],
+  );
+
+  const noLiquidity = railChips(
+    rheaVault({
+      rails: {
+        ...rheaVault().rails,
+        available: [],
+        oneclickRhea: {
+          available: false,
+          liveness: "no_liquidity",
+          reason: "1Click currently reports no liquidity for this Rhea asset.",
+        },
+      },
+    }),
+  );
+  assert.equal(noLiquidity[1]?.label, "1Click Rhea no liquidity");
+  assert.equal(noLiquidity[1]?.available, false);
+});
+
+test("Rhea preview copy is honest about the contract APY and the one-time fee", () => {
+  assert.equal(
+    sourceAttribution({
+      kind: "contract",
+      contract: "contract.main.burrow.near",
+      method: "get_asset",
+      field: "supply_apr",
+      uiUrl: RHEA_APP_URL,
+      fetchedAt: "2026-11-01T00:00:00+00:00",
+      stale: false,
+    }),
+    "Rhea contract.main.burrow.near get_asset.supply_apr, fetched 2026-11-01T00:00:00+00:00",
+  );
+  assert.equal(
+    oneTimeFeeLine({ amount: "0.30", symbol: "USDC", reason: "one-time Rhea account fee" }),
+    "One-time Rhea account setup fee: 0.30 USDC (first deposit only)",
+  );
+  assert.equal(oneTimeFeeLine(undefined), null);
+  assert.equal(netSuppliedLine("99.6808", "USDC"), "Net supplied ≈ 99.6808 USDC");
+  assert.equal(netSuppliedLine(undefined, "USDC"), null);
+  assert.equal(netSuppliedLine("", "USDC"), null);
+  assert.equal(rheaApyLine("14.05%"), "Supply APY 14.05% (Rhea, variable)");
+  assert.equal(rheaApyLine(undefined), null);
+
+  assert.equal(vaultAppUrl(rheaVault()), RHEA_APP_URL);
+  assert.equal(receiptKindOf(rheaVault()), null);
+  assert.equal(vaultReceiptLabel(rheaVault()), null);
+  assert.equal(previewPrompt(rheaVault()), "Deposit 100 USDC into Rhea on NEAR");
 });

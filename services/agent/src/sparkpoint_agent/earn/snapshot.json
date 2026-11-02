@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-11-01T03:25:31.574457+00:00",
+  "fetchedAt": "2026-11-01T04:06:11.828636+00:00",
   "source": "registry",
   "vaults": [
     {
@@ -2108,6 +2108,25 @@
       "source": "kamino_api",
       "fetchedAt": "2026-11-01T03:25:20.608796+00:00",
       "protocol": "kamino"
+    },
+    {
+      "chain": "near",
+      "chainId": 0,
+      "address": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "version": "lending",
+      "name": "Rhea Lending USDC",
+      "symbol": "USDC",
+      "asset": {
+        "address": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "listed": true,
+      "tvlUsd": "12733803.142795182964809779",
+      "netApy": "0.1405",
+      "source": "rhea_rpc",
+      "fetchedAt": "2026-11-01T04:06:00.637390+00:00",
+      "protocol": "rhea"
     }
   ]
 }
