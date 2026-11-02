@@ -560,13 +560,11 @@ def _venue_aliases() -> dict[str, str]:
 
 def _venue_alias_pattern(alias: str) -> str:
     # "compound" is also an ordinary verb ("compound my earnings") and "auto-compound" is the
-    # vault verb, so only the Capitalised protocol name or an explicit "compound protocol/
-    # finance/vault" phrase counts here.
+    # vault verb, so a bare token is NOT a venue here. Only the unambiguous "compound protocol/
+    # finance/vault" phrase matches in the general alias scan; a bare "compound" in any case is
+    # added by ``_named_venues`` only when it is directly joined by "or" to another venue.
     if alias == "compound":
-        return (
-            r"(?:(?<![A-Za-z0-9])(?-i:Compound)(?![A-Za-z0-9])"
-            r"|(?<![A-Za-z0-9])compound\s+(?:protocol|finance|vault)\b)"
-        )
+        return r"(?<![A-Za-z0-9])compound\s+(?:protocol|finance|vault)\b"
     return re.escape(alias)
 
 
@@ -574,39 +572,91 @@ _VENUE_ALIASES = _venue_aliases()
 _VENUE_ALIAS_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:"
     + "|".join(
-        _venue_alias_pattern(alias)
-        for alias in sorted(_VENUE_ALIASES, key=len, reverse=True)
+        _venue_alias_pattern(alias) for alias in sorted(_VENUE_ALIASES, key=len, reverse=True)
     )
     + r")(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 
 
+#: A bare "compound" is only a venue when "or" directly joins it to another known venue:
+#: "compound or aave", "Aave or COMPOUND?". The lookbehind also excludes "auto-compound", and
+#: the "-or-" here is the DISJUNCTION, not the verb phrase "compound … or …".
+_BARE_COMPOUND_RE = re.compile(r"(?<![A-Za-z0-9-])compound(?![A-Za-z0-9])", re.IGNORECASE)
+_OR_BEFORE_RE = re.compile(r"\bor\s*,?\s*$", re.IGNORECASE)
+_OR_AFTER_RE = re.compile(r"^\s*,?\s*or\b", re.IGNORECASE)
+
+
+def _bare_compound_or_joined(message: str) -> bool:
+    for match in _BARE_COMPOUND_RE.finditer(message):
+        if _OR_BEFORE_RE.search(message[: match.start()]) or _OR_AFTER_RE.match(
+            message[match.end() :]
+        ):
+            return True
+    return False
+
+
 def _named_venues(message: str) -> tuple[str, ...]:
     seen: list[str] = []
     for match in _VENUE_ALIAS_RE.finditer(message):
         key = match.group(0).lower()
-        canonical = _VENUE_ALIASES.get(
-            key, "compound" if key.startswith("compound") else key
-        )
+        canonical = _VENUE_ALIASES.get(key, "compound" if key.startswith("compound") else key)
         if canonical not in seen:
             seen.append(canonical)
+    if seen and "compound" not in seen and _bare_compound_or_joined(message):
+        seen.append("compound")
     return tuple(seen)
+
+
+#: 075 Defender — an action-verb turn is advisory ONLY when it opens as an advice question.
+#: A bare "?" is not enough: "deposit my entire balance into Morpho or Aave?" is a command.
+_ADVICE_LEAD_RE = re.compile(
+    r"^\s*(?:"
+    r"should\s+(?:i|we)\b"
+    r"|would\s+you\b"
+    r"|do\s+you\s+recommend\b"
+    r"|which\b"
+    r"|where\b"
+    r"|what\b"
+    r"|is\s+it\s+better\b"
+    r"|better\s+to\b"
+    r")",
+    re.IGNORECASE,
+)
+#: 075 Defender — these phrases always mean an action is being requested, so the comparative
+#: override must never swallow them, whatever the sentence shape.
+_PLANNER_KEEP_PHRASES_RE = re.compile(
+    r"\b(?:whichever|the\s+safer\s+one|the\s+better\s+one|entire\s+balance|"
+    r"everything|all\s+my|max)\b",
+    re.IGNORECASE,
+)
+#: 075 Defender — an instruction opens with a command verb (an optional "please" is ignored).
+_IMPERATIVE_OPENER_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:deposit|move|put|lend|withdraw|swap|send|bridge|stake|"
+    r"supply|earn|transfer)\b",
+    re.IGNORECASE,
+)
 
 
 def is_protocol_choice_question(message: str) -> bool:
     """True for an advisory "X or Y?" choice between two or more known protocols/venues.
 
     A choice question with no parsed amount is a KNOWLEDGE question even when it contains an
-    action verb ("should I put my USDC in Rhea or Aave?"). A sized command keeps the planner.
+    action verb ("should I put my USDC in Rhea or Aave?"), but only when it opens as advice.
+    A command such as "deposit my entire balance into Morpho or Aave?" keeps the planner, and a
+    sized command always keeps the planner.
     """
     if amount_from_text(message) is not None:
         return False
-    if not _COMPARATIVE_QUESTION_SHAPE_RE.search(message):
+    if _PLANNER_KEEP_PHRASES_RE.search(message) or _IMPERATIVE_OPENER_RE.search(message):
         return False
     if not _OR_RE.search(message):
         return False
-    return len(_named_venues(message)) >= 2
+    if len(_named_venues(message)) < 2:
+        return False
+    if has_financial_action_verb(message):
+        return bool(_ADVICE_LEAD_RE.search(message))
+    return bool(_COMPARATIVE_QUESTION_SHAPE_RE.search(message))
 
 
 def is_comparative_question(message: str) -> bool:
