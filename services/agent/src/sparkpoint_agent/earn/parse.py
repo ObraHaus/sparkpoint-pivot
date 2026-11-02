@@ -25,9 +25,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, DecimalException, InvalidOperation
+from decimal import Decimal
 from typing import Literal
 
+from ..amounts import bounded_smallest_units
 from .config import EarnConfig
 
 EarnKind = Literal["list", "deposit", "positions", "withdraw"]
@@ -164,27 +165,15 @@ def _amount(text: str) -> tuple[Decimal, int, str] | None:
     match = _AMOUNT_RE.search(text)
     if match is None:
         return None
-    try:
-        amount = Decimal(match.group("amount").replace(",", ""))
-    except InvalidOperation:
-        return None
+    symbol = match.group("symbol").upper()
+    decimals = _DECIMALS.get(symbol, 18)
     multiplier = {"k": Decimal(1000), "m": Decimal(1_000_000)}.get(
         (match.group("scale") or "").lower(), Decimal(1)
     )
-    amount *= multiplier
-    if not amount.is_finite() or amount <= 0:
+    parsed = bounded_smallest_units(match.group("amount"), decimals, multiplier=multiplier)
+    if parsed is None:
         return None
-    symbol = match.group("symbol").upper()
-    decimals = _DECIMALS.get(symbol, 18)
-    exponent = amount.as_tuple().exponent
-    if isinstance(exponent, int) and -exponent > decimals:
-        return None
-    try:
-        raw = int(amount.scaleb(decimals))
-    except (DecimalException, ValueError, OverflowError):
-        return None
-    if raw <= 0:
-        return None
+    amount, raw = parsed
     return amount, raw, symbol
 
 

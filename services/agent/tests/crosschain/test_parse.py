@@ -78,6 +78,17 @@ def test_too_many_decimals_for_origin_is_rejected() -> None:
     assert parse_cross_chain_request("Swap 1.1234567 USDC into BTC", default_config()) is None
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        f"Swap {'9' * 70} USDC into BTC",
+        f"Swap {'9' * 30}k USDC into BTC",
+    ],
+)
+def test_huge_or_over_long_amounts_are_rejected(prompt: str) -> None:
+    assert parse_cross_chain_request(prompt, default_config()) is None
+
+
 def test_disabled_route_still_parses_so_chat_can_explain_it() -> None:
     config = default_config()
     request = parse_cross_chain_request("Pay my supplier 3,000 USDT on Tron.", config)

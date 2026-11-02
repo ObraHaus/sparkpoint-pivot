@@ -162,6 +162,17 @@ def test_over_precise_and_non_positive_amounts_are_rejected() -> None:
 
 
 @pytest.mark.parametrize(
+    "prompt",
+    [
+        f"Deposit {'9' * 70} USDC into Morpho",
+        f"Deposit {'9' * 30}k USDC into Morpho",
+    ],
+)
+def test_huge_or_over_long_amounts_are_rejected(prompt: str) -> None:
+    assert parse_earn_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
     ("prompt", "chain", "sort"),
     [
         ("Show Kamino vaults", "sol", "tvl"),

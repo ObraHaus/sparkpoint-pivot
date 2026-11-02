@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, DecimalException, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from ..amounts import bounded_smallest_units
 from ..coordinator.chat_blocks import CrossChainQuoteBlock
 from .addresses import placeholder_for
 from .config import CrossChainAsset, CrossChainConfig
@@ -237,22 +238,7 @@ class CrossChainService:
 
 def amount_from_human(text: str, decimals: int) -> tuple[Decimal, int] | None:
     """Parse a human amount (``"5,000.50"``) into ``(Decimal, smallest-unit int)``."""
-    try:
-        amount = Decimal(text.replace(",", "").strip())
-    except (InvalidOperation, ValueError):
-        return None
-    if not amount.is_finite() or amount <= 0:
-        return None
-    exponent = amount.as_tuple().exponent
-    if isinstance(exponent, int) and -exponent > decimals:
-        return None
-    try:
-        raw = int(amount.scaleb(decimals))
-    except (DecimalException, ValueError, OverflowError):
-        return None
-    if raw <= 0:
-        return None
-    return amount, raw
+    return bounded_smallest_units(text, decimals)
 
 
 def build_service_from_env() -> CrossChainService | None:
