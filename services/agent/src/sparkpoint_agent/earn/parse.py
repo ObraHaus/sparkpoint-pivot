@@ -109,6 +109,15 @@ _COMPARATIVE_RE = re.compile(
     r"|\bsafer\s+than\b|\b(?:more|less)\s+(?:safe|risky)\s+than\b",
     re.IGNORECASE,
 )
+# "should I put my USDC in Morpho or Aave?" names two options but has no "vs"/"compare",
+# so _COMPARATIVE_RE misses it. Match a bare "or" between two known earn subjects so those
+# turns still reach the planner's comparison flow, exactly as they did before #342.
+_OR_COMPARATIVE_RE = re.compile(
+    r"\b(?:morpho|kamino|rhea|burrow|aave|compound|sparkpoint|vaults?)\b"
+    r"[^.?!]{0,40}\bor\b[^.?!]{0,40}"
+    r"\b(?:morpho|kamino|rhea|burrow|aave|compound|sparkpoint|vaults?)\b",
+    re.IGNORECASE,
+)
 _MY_YIELD_RE = re.compile(r"\bmy\b[^.?!]{0,30}\byield\b|\byield\b[^.?!]{0,30}\bmy\b", re.IGNORECASE)
 
 _DECIMALS = {"USDC": 6, "USDT": 6, "WETH": 18, "ETH": 18, "CBBTC": 8, "SOL": 9}
@@ -413,6 +422,14 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
         return None
     amount = _amount(text)
     if amount is None:
+        # A comparative turn ("Morpho vs Aave", "should I lend USDC with Morpho or Aave?")
+        # belongs to the planner's comparison flow, never to the vault list. This mirrors the
+        # `_COMPARATIVE_RE` guard both Rhea paths apply at the top of their functions.
+        if (
+            _COMPARATIVE_RE.search(text) is not None
+            or _OR_COMPARATIVE_RE.search(text) is not None
+        ):
+            return None
         # "earn on USDC with Morpho" / "earn yield on SOL with Kamino" name a protocol and a
         # yield verb but no amount: that is a list/explain turn, exactly like "earn on Rhea".
         # A turn with digits (e.g. "deposit 1.1234567 USDC into Morpho") keeps rejecting.
