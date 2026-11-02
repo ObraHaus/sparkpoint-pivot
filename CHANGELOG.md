@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (premium + self-authoring model swap — 2026-11-02)
+
+- **The `sparkpoint-chat-premium` and `sparkpoint-selfauthor` groups now run Gemini 2.5 Flash Lite (primary) + gpt-oss-120b (backup)** instead of Ling 3.1 Flash + Ling 3.0 Flash, at operator request. Both are cheap, first-party-served, tool-calling models and were probed live through OpenRouter with the beta key (text + tool call both OK): Gemini 2.5 Flash Lite (Google AI Studio, 1M ctx, **$0.10/M in · $0.40/M out**, text 0.7s, tool call 0.5s, weight 4 / rpm 60) and gpt-oss-120b (OpenAI, 131k ctx, **$0.15/M in · $0.60/M out**, tool call 1.1s, weight 1 / rpm 30). The **operator's budget ceiling is gpt-oss-120b's OpenRouter price** ($0.15/M input, $0.60/M output) — nothing pricier may be added. This raises the old Ling prices ($0.075/$0.225 and $0.021/$0.063 per M) to the ceiling while gaining tool calling and first-party serving. Pricing is pinned per deployment (`input_cost_per_token` / `output_cost_per_token`) so LiteLLM spend accounting + per-user budgets stay correct even if its cost map lacks these slugs; the router fallback, free group and everything else are unchanged. (`services/litellm/config.yaml`, `DEVELOPMENT.md`, `COOLIFY.md`)
+
 ### Fixed (portfolio verification, earn wording, amount hardening — 2026-11-02)
 
 - **The Rhea section no longer invalidates the whole `portfolio_overview` block.** The real empty-Rhea wire carries an `explainer` (and a ready Kamino section carries `linkedAddresses`), but the shared strict `PortfolioSectionSchema` did not declare either key, so a valid read failed `safeParse` — chat marked the block inert and `/portfolio` → **Across chains** showed its error. Both additive keys are now optional in the shared schema, validated by the same schema the web hook uses. (`packages/shared/src/schemas/chat-block.ts`, `packages/shared/tests/portfolio-chat-block.test.ts`, no separate web copy)

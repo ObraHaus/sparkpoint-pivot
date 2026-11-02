@@ -10,8 +10,11 @@
 # hard reliability. (Lineup restored 2026-10-27 — the 2026-10-14 free pair was dead: OpenRouter's
 # Nvidia provider returned 404 for Nemotron 3 Super 120B (`status -5`) and Google AI Studio
 # throttled Gemma 4 31B with 429s. Free is now Nemotron 3 Ultra 550B A55B + Cohere North Mini
-# Code + Poolside Laguna S 2.1, three different upstream providers; premium is unchanged (Ling 3.1
-# Flash + Ling 3.0 Flash). Every replacement was probed live before the switch.)
+# Code + Poolside Laguna S 2.1, three different upstream providers. Premium was swapped 2026-11-02
+# at operator request to two DIFFERENT first-party providers — Gemini 2.5 Flash Lite (Google AI
+# Studio) + gpt-oss-120b (OpenAI) — each probed live through OpenRouter with the beta key (text +
+# tool call both OK). The previous premium pair (Ling 3.1 Flash + Ling 3.0 Flash) is still listed
+# in this history but was replaced at operator request.)
 #
 # The DATABASE_URL env (a dedicated, isolated Postgres — never the agent's DB) is auto-detected
 # by LiteLLM for virtual keys + per-user budgets.
@@ -46,28 +49,40 @@ model_list:
       weight: 1
 
   # Premium alias (feature 008, US4) — the premium-tier alias, a clear step up from the free open
-  # models. Mirrors the free alias's primary+fallback shape: Ling 3.1 Flash is the primary (weight 4;
-  # 262k ctx — sharp reasoning + clean JSON); Ling 3.0 Flash is the cheaper same-family secondary
-  # (weight 1; $0.021/$0.063 per M) that absorbs cooldowns when the primary 429s. If the WHOLE
-  # premium group fails the router FALLS BACK to the free `sparkpoint-chat` alias
-  # (router_settings.fallbacks) so premium degrades to free quality instead of erroring.
-  # Both upstreams are PAID (2026-10-14) — no cost pins; LiteLLM's model cost map prices them so
-  # spend accounting + per-user budgets see the real numbers.
+  # models. Swapped 2026-11-02 at operator request to two DIFFERENT first-party providers, each
+  # probed live through OpenRouter with the beta key (text + tool call both OK):
+  #   primary  Gemini 2.5 Flash Lite (Google AI Studio; 1M ctx; $0.10/M in, $0.40/M out; text 0.7s,
+  #            tool call 0.5s) — weight 4, rpm 60, carries the bulk of premium traffic.
+  #   backup   gpt-oss-120b (OpenAI; 131k ctx; $0.15/M in, $0.60/M out; tool call 1.1s) — weight 1,
+  #            rpm 30, absorbs the primary's cooldowns.
+  # The operator's budget CEILING is gpt-oss-120b's OpenRouter price ($0.15/M in, $0.60/M out) —
+  # nothing pricier may be added. The previous pair (Ling 3.1 Flash + Ling 3.0 Flash) is still
+  # listed in the history above but was replaced at operator request. If the WHOLE premium group
+  # fails the router FALLS BACK to the free `sparkpoint-chat` alias (router_settings.fallbacks) so
+  # premium degrades to free quality instead of erroring. Both upstreams are PAID, and pricing is
+  # pinned per deployment below so LiteLLM spend accounting + per-user budgets stay correct even
+  # if its model cost map lacks these slugs.
   - model_name: sparkpoint-chat-premium
     litellm_params:
-      model: openrouter/inclusionai/ling-3.1-flash
+      model: openrouter/google/gemini-2.5-flash-lite
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
+      # Cost pinned so spend accounting is right even if LiteLLM's cost map lacks the slug.
+      input_cost_per_token: 0.0000001    # $0.10 / M input
+      output_cost_per_token: 0.0000004   # $0.40 / M output
       # Per-deployment request/min ceiling used by the router for load-based routing (primary carries
       # the bulk of premium traffic). The virtual key's global rpm is the real spend/abuse ceiling.
       rpm: 60
   - model_name: sparkpoint-chat-premium
     litellm_params:
-      model: openrouter/inclusionai/ling-3.0-flash
+      model: openrouter/openai/gpt-oss-120b
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
+      # Cost pinned; this deployment's price IS the operator's budget ceiling.
+      input_cost_per_token: 0.00000015   # $0.15 / M input
+      output_cost_per_token: 0.0000006   # $0.60 / M output
       # Fallback deployment — a smaller per-min ceiling (it only absorbs the primary's cooldowns).
       rpm: 30
 
@@ -80,17 +95,23 @@ model_list:
   # published documents untouched, which is the safe outcome; degrading onto users' pool is not.
   - model_name: sparkpoint-selfauthor
     litellm_params:
-      model: openrouter/inclusionai/ling-3.1-flash
+      model: openrouter/google/gemini-2.5-flash-lite
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 4
+      # Cost pinned so spend accounting is right even if LiteLLM's cost map lacks the slug.
+      input_cost_per_token: 0.0000001    # $0.10 / M input
+      output_cost_per_token: 0.0000004   # $0.40 / M output
       rpm: 60
   - model_name: sparkpoint-selfauthor
     litellm_params:
-      model: openrouter/inclusionai/ling-3.0-flash
+      model: openrouter/openai/gpt-oss-120b
       api_key: os.environ/OPENROUTER_API_KEY
       api_base: https://openrouter.ai/api/v1
       weight: 1
+      # Cost pinned; this deployment's price IS the operator's budget ceiling.
+      input_cost_per_token: 0.00000015   # $0.15 / M input
+      output_cost_per_token: 0.0000006   # $0.60 / M output
       rpm: 30
 
 litellm_settings:
