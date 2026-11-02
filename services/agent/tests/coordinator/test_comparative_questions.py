@@ -183,13 +183,13 @@ async def test_comparative_questions_route_to_grounded_sparky(message: str) -> N
     assert grounder.queries, "grounding is retrieved for the comparison"
     assert any("GROUNDING-SENTINEL" in prompt for prompt in llm.user_contents)
     assert "COMPARE" in llm.systems[-1]
-    assert any(isinstance(block, ProseDelta) for block in blocks)
+    # 073 — a comparative answer is accepted on WHOLE-answer checks (065/066/067), so its prose is
+    # held: no text-delta at all, and the terminal text block is the first prose the user sees.
+    assert not any(isinstance(block, ProseDelta) for block in blocks)
     text = next(block for block in blocks if isinstance(block, TextBlock))
     assert text.markdown == ANSWER
     assert not any(isinstance(block, TipBlock) for block in blocks)
-    wire_types = {
-        block.to_wire()["type"] for block in blocks if not isinstance(block, ProseDelta)
-    }
+    wire_types = {block.to_wire()["type"] for block in blocks if not isinstance(block, ProseDelta)}
     assert not (wire_types & {"action", "recommendation", "tip", "error"})
     visible = text.markdown.lower()
     assert "nothing for a mandate" not in visible
@@ -474,9 +474,7 @@ def _citations(blocks: Sequence[Any]) -> list[dict[str, Any]]:
 
 
 def _text(blocks: Sequence[Any]) -> str:
-    return next(
-        b.markdown for b in blocks if isinstance(b, TextBlock)
-    )
+    return next(b.markdown for b in blocks if isinstance(b, TextBlock))
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -611,9 +609,10 @@ def test_function_word_sentence_opener_is_not_extracted_as_a_subject() -> None:
     """
     from sparkpoint_agent.coordinator.comparative import extract_comparison_subjects
 
-    assert extract_comparison_subjects(
-        "For a cautious user, is Aerodrome safer than Curve?"
-    ) == ("Aerodrome", "Curve")
+    assert extract_comparison_subjects("For a cautious user, is Aerodrome safer than Curve?") == (
+        "Aerodrome",
+        "Curve",
+    )
 
 
 @pytest.mark.parametrize("word", sorted(comparative._NOT_A_SUBJECT))
@@ -668,7 +667,7 @@ class _ReleaseNoteGrounder:
             Passage(
                 content=(
                     "Comparison questions get a real answer instead of a retry error. Asking "
-                    "Sparky to compare two options — for example \"Is Morpho safer than Aave?\" — "
+                    'Sparky to compare two options — for example "Is Morpho safer than Aave?" — '
                     "…"
                 ),
                 citation=Citation(
@@ -857,9 +856,7 @@ def test_each_refusal_opener_is_a_whole_answer_refusal(answer: str) -> None:
 def test_servable_requires_every_subject_and_no_refusal() -> None:
     assert _is_comparative_servable(BOTH_SUBJECTS_SUBSTANTIVE, ("Morpho", "Aave")) is True
     assert _is_comparative_servable("Aave is one shared pool.", ("Morpho", "Aave")) is False
-    assert (
-        _is_comparative_servable("I can't rank Morpho and Aave.", ("Morpho", "Aave")) is False
-    )
+    assert _is_comparative_servable("I can't rank Morpho and Aave.", ("Morpho", "Aave")) is False
     assert _is_comparative_servable("Compare them.", ()) is True
 
 
@@ -911,9 +908,7 @@ async def test_served_uncited_when_a_subject_lacks_passages(streaming: bool) -> 
 
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("answer", REFUSAL_ANSWERS)
-async def test_refusal_openers_are_replaced_and_uncited(
-    streaming: bool, answer: str
-) -> None:
+async def test_refusal_openers_are_replaced_and_uncited(streaming: bool, answer: str) -> None:
     llm = _AnswerLlm(answer)
     blocks = await _collect(
         _dag(
@@ -1137,9 +1132,7 @@ async def test_whole_message_hit_that_names_a_subject_counts_as_coverage(
     assert _text(blocks) == BOTH_SUBJECTS_SUBSTANTIVE
     cited = _citations(blocks)
     assert len(cited) == 1
-    assert {source["endpoint"] for source in cited[0]["sources"]} == {
-        "obsidian://protocol-basics"
-    }
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {"obsidian://protocol-basics"}
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -1147,9 +1140,7 @@ async def test_cap_is_allocated_round_robin_so_no_subject_is_truncated(streaming
     """One subject's overflow must not truncate the later subject to zero."""
     llm = _AnswerLlm(BOTH_SUBJECTS_SUBSTANTIVE)
     dag = _dag(llm, _CapOverflowGrounder(), streaming=streaming)
-    passages, covered = await dag._ground_comparative(
-        "Compare Aave and Morpho", ("Aave", "Morpho")
-    )
+    passages, covered = await dag._ground_comparative("Compare Aave and Morpho", ("Aave", "Morpho"))
     assert len(passages) == _COMPARATIVE_MAX_PASSAGES
     assert covered == ("Aave", "Morpho"), "both subjects must survive the cap"
     assert any("MORPHO-GROUNDING" in passage.content for passage in passages)
@@ -1209,9 +1200,7 @@ async def test_deictic_comparative_without_subjects_still_cites_a_grounded_answe
     )
     cited = _citations(blocks)
     assert len(cited) == 1
-    assert {source["endpoint"] for source in cited[0]["sources"]} == {
-        "obsidian://protocol-basics"
-    }
+    assert {source["endpoint"] for source in cited[0]["sources"]} == {"obsidian://protocol-basics"}
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -1274,9 +1263,7 @@ def test_proper_noun_fallback_drops_all_caps_grammar_and_question_words() -> Non
 
     assert extract_comparison_subjects("Compare AND OR NOT VS") == ()
     assert (
-        extract_comparison_subjects(
-            "Should Does Would Can Has When Which What Is Are How compare?"
-        )
+        extract_comparison_subjects("Should Does Would Can Has When Which What Is Are How compare?")
         == ()
     )
     # A real proper noun still survives the grammar filter.

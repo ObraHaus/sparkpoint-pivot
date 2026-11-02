@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 from ..llm import AsyncClaudeClient, Effort
-from .guard_text import STREAM_HOLD_CHARS, is_unusable, prefix_is_usable
+from .guard_text import is_unusable
+from .stream_guard import StreamGuard
 
 EFFORT: Effort = "low"
 
@@ -36,6 +38,7 @@ _logger = logging.getLogger(__name__)
 def _no_persona() -> str:
     """Default persona provider — no persona (preserves the exact pre-persona SYSTEM)."""
     return ""
+
 
 FALLBACK_TOPIC = "general"
 
@@ -155,16 +158,18 @@ class TipCard:
 
 @dataclass(frozen=True)
 class TipChunk:
-    """One event from :meth:`Literacy.stream_tip` — a text delta or the terminal card.
+    """One event from :meth:`Literacy.stream_tip` — a text delta, a retract, or the terminal card.
 
     ``attempt`` is 1-based and lets the transport surface a NEW stream id when the first attempt
     degraded and a retry starts, so the client replaces the partial text instead of appending a
-    second answer to it. The terminal card is authoritative.
+    second answer to it. ``retract`` (073) clears a partial paint immediately when the incremental
+    guard trips mid-attempt. The terminal card is authoritative.
     """
 
     delta: str | None = None
     card: TipCard | None = None
     attempt: int = 1
+    retract: bool = False
 
 
 @dataclass
@@ -195,12 +200,15 @@ class Literacy:
     async def stream_tip(
         self, topic: str | None, *, context_hint: str | None = None, user: str | None = None
     ) -> AsyncIterator[TipChunk]:
-        """Stream the tip body as deltas, then yield the SAME fail-closed :class:`TipCard`.
+        """Stream the tip body as guarded deltas, then yield the SAME fail-closed :class:`TipCard`.
 
         Mirrors :meth:`tip` (including the single retry) but emits deltas while the model writes.
-        The full body still passes the shared ``is_unusable`` guard, so a meta/action-shaped
-        generation is discarded and the caller's terminal card replaces the streamed text. A
-        retry is tagged with a new ``attempt`` so the client RESETS rather than concatenates.
+        073 — :class:`StreamGuard` releases only complete segments whose cumulative text passes the
+        shared action/meta predicates, so a guarded phrase never reaches the client. A mid-stream
+        trip aborts that attempt (closing the model iterator), emits one ``retract`` if anything
+        was already painted, and starts the retry under a new ``attempt`` so the client clears
+        rather than concatenates. The full body still passes ``is_unusable``; the terminal card is
+        authoritative and the caller's fallback replaces a discarded attempt exactly as before.
         """
         key = (topic or FALLBACK_TOPIC).strip() or FALLBACK_TOPIC
         if not hasattr(self.llm, "stream_complete"):
@@ -208,55 +216,54 @@ class Literacy:
             return
         user_content = self._user_content(key, context_hint)
         for attempt in (1, 2):
-            parts: list[str] = []
-            pending: list[str] = []
-            pending_len = 0
-            released = False
-            blocked = False
+            guard = StreamGuard()
+            painted = False
             result = None
             try:
-                async for chunk in self.llm.stream_complete(
+                stream = self.llm.stream_complete(
                     system=self._system(),
                     messages=[{"role": "user", "content": user_content}],
                     effort=self.effort,
                     user=user,
-                ):
+                )
+            except Exception:
+                _logger.info("literacy_upstream_error topic=%s attempt=%d", key, attempt)
+                continue
+            try:
+                async for chunk in stream:
                     if chunk.delta:
-                        parts.append(chunk.delta)
-                        # Hold the opening until it passes the same guard the full body will, so
-                        # an attempt whose opening is already action/meta-shaped is never painted.
-                        # The hold counts CHARACTERS of accumulated text, never chunks: a
-                        # token-sized first delta must not release the opening. A later-unusable
-                        # body may paint; the terminal card replaces it.
-                        if not released and not blocked:
-                            pending.append(chunk.delta)
-                            pending_len += len(chunk.delta)
-                            if pending_len < STREAM_HOLD_CHARS:
-                                continue
-                            held = "".join(pending)
-                            pending.clear()
-                            if not prefix_is_usable(held):
-                                blocked = True
-                                continue
-                            released = True
-                            yield TipChunk(delta=held, attempt=attempt)
-                            continue
-                        if not blocked:
-                            yield TipChunk(delta=chunk.delta, attempt=attempt)
+                        released = guard.feed(chunk.delta)
+                        for piece in released:
+                            if piece:
+                                painted = True
+                                yield TipChunk(delta=piece, attempt=attempt)
+                        if guard.tripped:
+                            # The full body would fail ``is_unusable`` too; stop consuming now.
+                            break
                     elif chunk.result is not None:
                         result = chunk.result
             except Exception:
                 _logger.info("literacy_upstream_error topic=%s attempt=%d", key, attempt)
                 continue
+            finally:
+                aclose = getattr(stream, "aclose", None)
+                if aclose is not None:
+                    with suppress(Exception):
+                        await aclose()
+            if guard.tripped:
+                if painted:
+                    yield TipChunk(retract=True, attempt=attempt)
+                if attempt == 1:
+                    _logger.info("literacy_retry: first tip attempt degraded for topic=%s", key)
+                continue
             body = result.text.strip() if result is not None else ""
             if result is not None and not (result.refused or is_unusable(body)):
-                # The stream ended before the hold window filled: run the prefix guard on whatever
-                # was buffered, then paint it now that the FULL body has passed the guard.
-                if not released and not blocked:
-                    held = "".join(pending)
-                    pending.clear()
-                    if held and prefix_is_usable(held):
-                        yield TipChunk(delta=held, attempt=attempt)
+                if painted and not body.startswith(guard.released_text):
+                    yield TipChunk(retract=True, attempt=attempt)
+                    painted = False
+                piece = guard.finish(body)
+                if piece:
+                    yield TipChunk(delta=piece, attempt=attempt)
                 yield TipChunk(card=TipCard(topic=key, body=body, fell_back=False), attempt=attempt)
                 return
             if attempt == 1:

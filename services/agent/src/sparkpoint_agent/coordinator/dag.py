@@ -929,7 +929,12 @@ class CoordinatorDag:
                 history=history,
                 comparative=comparative,
             ):
-                if chunk.delta:
+                if chunk.retract:
+                    # 073 — clear the provisional paint NOW. An EMPTY delta under a fresh
+                    # stream id is the existing "new attempt" signal, so the reducer discards
+                    # the partial text instead of appending to it.
+                    yield ProseDelta(target="text", delta="", stream_id=f"general-{attempt}-r")
+                elif chunk.delta:
                     yield ProseDelta(
                         target="text", delta=chunk.delta, stream_id=f"general-{attempt}"
                     )
@@ -963,7 +968,10 @@ class CoordinatorDag:
         """
         assert self.literacy is not None  # noqa: S101
         async for chunk in self.literacy.stream_tip(topic, context_hint=context_hint, user=user):
-            if chunk.delta:
+            if chunk.retract:
+                # 073 — same empty-delta/new-stream-id retract as the general branch.
+                yield ProseDelta(target="tip", delta="", stream_id=f"tip-{chunk.attempt}-r")
+            elif chunk.delta:
                 yield ProseDelta(target="tip", delta=chunk.delta, stream_id=f"tip-{chunk.attempt}")
             elif chunk.card is not None:
                 yield chunk.card
