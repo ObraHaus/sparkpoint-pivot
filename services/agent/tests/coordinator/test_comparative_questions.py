@@ -202,10 +202,16 @@ async def test_comparative_questions_route_to_grounded_sparky(message: str) -> N
     "message",
     [
         "Morpho or Aave?",
+        "Rhea or Aave?",
+        "Aave or Morpho for USDC?",
+        "compound or aave?",
+        "COMPOUND or Aave?",
         "should I put my USDC in Rhea or Aave?",
         "where should I lend USDC, Rhea or Aave?",
         "would you recommend Morpho or Aave?",
         "which is better for earning, Morpho or Aave?",
+        "what's better, Morpho or Aave?",
+        "Compare Morpho vs Aave for USDC",
     ],
 )
 async def test_protocol_choice_questions_take_the_comparative_branch(message: str) -> None:
@@ -332,6 +338,34 @@ async def test_unsized_imperative_or_choice_does_not_take_the_comparative_branch
 @pytest.mark.parametrize(
     "message",
     [
+        "Add liquidity on Aave or Morpho?",
+        "Close my Aave or Morpho position?",
+        "Top up my Aave or Morpho position?",
+        "Moving my USDC from Aave to Morpho or leaving it?",
+        "Close my Aave position or Morpho?",
+        "Add to Morpho or Aave?",
+        "Rebalance between Aave or Morpho?",
+    ],
+)
+async def test_unlisted_verb_or_choices_never_take_the_comparative_branch(
+    message: str,
+) -> None:
+    """Defender #349 scan 4cf8d0a: a trailing "?" alone must not turn an unlisted command into a
+    prose comparison. These verbs are outside the old choice vocabulary, so the requested action
+    used to be dropped; the strict allowlist keeps them on the planner/action path.
+    """
+    llm = _RecordingLlm(Intent(kind=IntentKind.OTHER))
+    grounder = _Grounder()
+    blocks = await _collect(_dag(llm, grounder), message)
+    assert not _is_prose_only_comparison(llm, grounder)
+    assert llm.structured_calls <= 1, "at most one planner call, never a comparison"
+    text = "\n".join(block.markdown for block in blocks if isinstance(block, TextBlock))
+    assert "**What it is**" not in text, "the comparative skeleton is never rendered"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
         "Can you bridge my USDC into Morpho or Aave?",
         "Can you earn yield on Aave or Morpho?",
         "could you move my USDC to Rhea or Aave?",
@@ -420,6 +454,7 @@ def test_comparison_shapes_are_recognised(message: str) -> None:
     "message",
     [
         "Morpho or Aave?",
+        "Rhea or Aave?",
         "Aave or Morpho for USDC?",
         "Aave or Compound for USDC?",
         "compound or aave?",
@@ -428,7 +463,9 @@ def test_comparison_shapes_are_recognised(message: str) -> None:
         "where should I lend USDC, Rhea or Aave?",
         "would you recommend Morpho or Aave?",
         "which is better for earning, Morpho or Aave?",
+        "what's better, Morpho or Aave?",
         "should I bridge to Aave or Morpho?",
+        "Compare Morpho vs Aave for USDC",
     ],
 )
 def test_protocol_choice_questions_are_comparative(message: str) -> None:
@@ -462,6 +499,24 @@ def test_compound_as_a_verb_is_never_counted_as_a_venue() -> None:
 )
 def test_unsized_imperative_or_choice_keeps_the_planner(message: str) -> None:
     """075 Defender: a "?" is not enough to turn an unsized command into advice."""
+    assert is_comparative_question(message) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Add liquidity on Aave or Morpho?",
+        "Close my Aave or Morpho position?",
+        "Top up my Aave or Morpho position?",
+        "Moving my USDC from Aave to Morpho or leaving it?",
+        "Close my Aave position or Morpho?",
+        "Add to Morpho or Aave?",
+        "Rebalance between Aave or Morpho?",
+    ],
+)
+def test_unlisted_verb_or_choices_keep_the_planner(message: str) -> None:
+    """Defender #349 scan 4cf8d0a: the old verb denylist let any trailing "?" fall through to the
+    comparison shape, dropping actions with unlisted verbs. The strict allowlist rejects them."""
     assert is_comparative_question(message) is False
 
 

@@ -628,20 +628,19 @@ def _named_venues(message: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
-#: 075 Defender follow-up 2 — the choice detector needs the FULL action vocabulary, including
-#: bridge/earn and the verbs the general ``_ACTION_VERB_RE`` deliberately omits. This is LOCAL to
-#: ``is_protocol_choice_question`` on purpose: the global verb list and
-#: ``has_financial_action_verb`` feed other routes (e.g. dag.py:1354) and must not broaden.
-#: "compound" is included only in its
-#: verb forms; the venue noun remains governed by ``_bare_compound_or_joined``.
-_CHOICE_ACTION_VERB_RE = re.compile(
-    r"\b(?:deposit|supply|stake|withdraw|redeem|cash\s?out|unstake|swap|exchange|convert|"
-    r"trade|buy|sell|transfer|send|move|put|invest|allocate|rebalance|lend|borrow|"
-    r"bridge|earn|farm|yield[- ]farm|provide\s+liquidity|restake|wrap|unwrap|"
-    r"rollover|roll\s+over|park|shift|switch|migrate|zap|ape)\b"
-    r"|(?<![A-Za-z0-9-])compound(?=\s+(?:my|the|your|our|interest|earnings|rewards|"
-    r"yield|returns|gains|it|them|daily|weekly|monthly)\b)"
-    r"|(?:\bauto-compound\b|\bto\s+compound\b)",
+#: 075 Defender follow-up 3 — a bare "X or Y?" choice is advisory only when the WHOLE message is
+#: just two venue names, optionally with a short "for/on/with <asset or chain>" tail. The venue
+#: token reuses the alias table above (plus a bare "compound", which is a venue only in this
+#: or-joined noun shape); anchoring with ^...$ means extra words such as "Add liquidity on …" or
+#: "Close my … position" cannot fall through from a mere trailing "?".
+_BARE_COMPOUND_VENUE = r"(?<![A-Za-z0-9-])compound(?![A-Za-z0-9])"
+_BARE_VENUE = rf"(?:{_VENUE_ALIAS_RE.pattern}|{_BARE_COMPOUND_VENUE})"
+_BARE_CHOICE_TAIL = (
+    r"(?:\s+(?:for|on|with)\s+[A-Za-z0-9][A-Za-z0-9'’._-]*"
+    r"(?:\s+[A-Za-z0-9][A-Za-z0-9'’._-]*){0,2})?"
+)
+_BARE_TWO_VENUE_CHOICE_RE = re.compile(
+    rf"^\s*{_BARE_VENUE}\s*,?\s*or\s+{_BARE_VENUE}{_BARE_CHOICE_TAIL}\s*\??\s*$",
     re.IGNORECASE,
 )
 
@@ -668,18 +667,23 @@ _REQUEST_LEAD_RE = re.compile(
     re.IGNORECASE,
 )
 
-#: 075 Defender — an action-verb turn is advisory ONLY when it opens as an advice question.
-#: A bare "?" is not enough: "deposit my entire balance into Morpho or Aave?" is a command.
+#: 075 Defender follow-up 3 — a choice is advisory ONLY when it opens with an advice lead. A bare
+#: "?" or a plain "what/where" opener is not enough: "Add liquidity on Aave or Morpho?" is a
+#: command, not a comparison. Lead-in words ("hey", "ok", "so") are ignored.
 _ADVICE_LEAD_RE = re.compile(
-    r"^\s*(?:"
+    r"^\s*(?:(?:hey|ok|okay|so)[\s,]+)*"
+    r"(?:"
     r"should\s+(?:i|we)\b"
-    r"|would\s+you\b"
-    r"|do\s+you\s+recommend\b"
     r"|which\b"
-    r"|where\b"
-    r"|what\b"
+    r"|what['’]s\s+better\b"
+    r"|what\s+is\s+better\b"
+    r"|which\s+is\s+(?:better|safer)\b"
     r"|is\s+it\s+better\b"
     r"|better\s+to\b"
+    r"|would\s+you\s+recommend\b"
+    r"|do\s+you\s+recommend\b"
+    r"|where\s+should\s+(?:i|we)\b"
+    r"|what\s+do\s+you\s+think\b"
     r")",
     re.IGNORECASE,
 )
@@ -701,10 +705,11 @@ _IMPERATIVE_OPENER_RE = re.compile(
 def is_protocol_choice_question(message: str) -> bool:
     """True for an advisory "X or Y?" choice between two or more known protocols/venues.
 
-    A choice question with no parsed amount is a KNOWLEDGE question even when it contains an
-    action verb ("should I put my USDC in Rhea or Aave?"), but only when it opens as advice.
-    A command such as "deposit my entire balance into Morpho or Aave?" keeps the planner, and a
-    sized command always keeps the planner.
+    A choice question with no parsed amount is a KNOWLEDGE question only when it opens with an
+    advice lead ("should I/we", "which", "what's better", "would you recommend", …) or when the
+    WHOLE message is a bare two-venue choice ("Morpho or Aave?", "Aave or Morpho for USDC?").
+    A command such as "Add liquidity on Aave or Morpho?" or "Close my Aave or Morpho position?"
+    keeps the planner; a sized command always keeps the planner.
     """
     if amount_from_text(message) is not None:
         return False
@@ -716,9 +721,9 @@ def is_protocol_choice_question(message: str) -> bool:
         return False
     if len(_named_venues(message)) < 2:
         return False
-    if _CHOICE_ACTION_VERB_RE.search(message):
-        return bool(_ADVICE_LEAD_RE.search(message))
-    return bool(_COMPARATIVE_QUESTION_SHAPE_RE.search(message))
+    if _ADVICE_LEAD_RE.search(message):
+        return True
+    return bool(_BARE_TWO_VENUE_CHOICE_RE.match(message))
 
 
 def is_comparative_question(message: str) -> bool:

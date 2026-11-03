@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (strict "X or Y?" choice allowlist — 2026-11-03)
+
+- **Unlisted-verb commands no longer take the comparative path (Defender #349, scan 4cf8d0a).** `is_protocol_choice_question` now uses a strict allowlist: a no-amount two-venue turn is comparative only when it opens with an advice lead ("should I/we", "which", "what's better", "would you recommend", …) or when the whole message is a bare "venue or venue" choice with an optional short "for/on/with <asset>" tail. The old action-verb denylist and trailing-"?" question-shape fallback are gone, so "Add liquidity on Aave or Morpho?", "Close my Aave or Morpho position?", "Top up my Aave or Morpho position?" and "Moving my USDC from Aave to Morpho or leaving it?" keep their requested action on the planner path, while "Morpho or Aave?", "Rhea or Aave?" and "what's better, Morpho or Aave?" still get the comparison. The global `_ACTION_VERB_RE`, `has_financial_action_verb`, `_COMPARATIVE_RE`, the better/worse-than path and DAG routing are unchanged. (`services/agent/src/sparkpoint_agent/coordinator/guidance.py`, `tests/coordinator/test_comparative_questions.py`)
+
 ### Fixed ("X or Y?" protocol choice questions — 2026-11-02)
 
 - **Choice requests and the verb “compound” no longer take the comparison (Defender follow-up 2).** The choice detector now uses a local action vocabulary that includes bridge, earn, farm, yield-farm, provide liquidity, restake, wrap/unwrap, rollover/roll over, park, shift, switch, migrate, zap and ape, and recognises request openers (“can/could/will you”, “I want”, “help me”, “let’s”, …) and “please” as actions that keep the planner. “compound” is a venue only as a noun: “Should I move to Aave or compound my earnings?” now has one venue and stays on the planner path, while “compound or aave?” is still a comparison. (`services/agent/src/sparkpoint_agent/coordinator/guidance.py`, `tests/coordinator/test_comparative_questions.py`)
