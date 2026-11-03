@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 
 from ..formatting import format_usd
+from .comparative import KNOWN_SUBJECTS, aliases_for
 from .curated import CuratedContext, CuratedPick
 from .staleness import as_of_suffix, staleness_caveat
 
@@ -37,6 +38,7 @@ __all__ = [
     "is_comparative_question",
     "is_confirmation",
     "is_explicit_financial_command",
+    "is_protocol_choice_question",
     "is_unsafe_request",
     "is_withdraw_all",
     "is_withdraw_request",
@@ -534,17 +536,203 @@ _COMPARATIVE_RE = re.compile(
 #: it only marks a knowledge comparison when the whole turn is shaped like a question.
 _BETTER_WORSE_THAN_RE = re.compile(r"\b(?:better|worse)\s+than\b", re.IGNORECASE)
 _COMPARATIVE_QUESTION_SHAPE_RE = re.compile(
-    r"^\s*(?:is|are|which|what|how|compare|does|do|should)\b|\?\s*$", re.IGNORECASE
+    r"^\s*(?:is|are|which|what|how|where|compare|does|do|should)\b|\?\s*$", re.IGNORECASE
+)
+_OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
+
+
+def _venue_aliases() -> dict[str, str]:
+    """Alias → canonical protocol/venue name, reusing the comparative subject table.
+
+    The table covers the shipped corpus protocols; Rhea and Kamino are supported earn venues
+    but are not knowledge subjects, so they are added here rather than to ``_KNOWN`` (which the
+    074 facts table pins).
+    """
+    aliases: dict[str, str] = {}
+    for subject in KNOWN_SUBJECTS:
+        for alias in aliases_for(subject):
+            aliases[alias.lower()] = subject.lower()
+    for alias in ("rhea", "rhea finance"):
+        aliases[alias] = "rhea"
+    aliases["kamino"] = "kamino"
+    return aliases
+
+
+def _venue_alias_pattern(alias: str) -> str:
+    # "compound" is also an ordinary verb ("compound my earnings") and "auto-compound" is the
+    # vault verb, so a bare token is NOT a venue here. Only the unambiguous "compound protocol/
+    # finance/vault" phrase matches in the general alias scan; a bare "compound" in any case is
+    # added by ``_named_venues`` only when it is directly joined by "or" to another venue.
+    if alias == "compound":
+        return r"(?<![A-Za-z0-9])compound\s+(?:protocol|finance|vault)\b"
+    return re.escape(alias)
+
+
+_VENUE_ALIASES = _venue_aliases()
+_VENUE_ALIAS_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:"
+    + "|".join(
+        _venue_alias_pattern(alias) for alias in sorted(_VENUE_ALIASES, key=len, reverse=True)
+    )
+    + r")(?![A-Za-z0-9])",
+    re.IGNORECASE,
 )
 
 
+#: A bare "compound" is only a venue when "or" directly joins it to another known venue:
+#: "compound or aave", "Aave or COMPOUND?". The lookbehind also excludes "auto-compound", and
+#: the "-or-" here is the DISJUNCTION, not the verb phrase "compound … or …".
+_BARE_COMPOUND_RE = re.compile(r"(?<![A-Za-z0-9-])compound(?![A-Za-z0-9])", re.IGNORECASE)
+_OR_BEFORE_RE = re.compile(r"\bor\s*,?\s*$", re.IGNORECASE)
+_OR_AFTER_RE = re.compile(r"^\s*,?\s*or\b", re.IGNORECASE)
+
+#: 075 Defender follow-up 2 — "compound" is a verb, never a venue, when an object follows it
+#: ("compound my earnings", "compound interest"), when it is the "auto-compound" vault verb, or
+#: when it is a "to" infinitive. A bare "compound or aave?" stays a noun/venue.
+_COMPOUND_OBJECT_RE = re.compile(
+    r"\s+(?:my|the|your|our|interest|earnings|rewards|yield|returns|gains|it|them|"
+    r"daily|weekly|monthly)\b",
+    re.IGNORECASE,
+)
+
+
+def _compound_is_a_verb(message: str, start: int, end: int) -> bool:
+    if _COMPOUND_OBJECT_RE.match(message[end:]):
+        return True
+    before = message[:start]
+    if before.lower().endswith("auto-"):
+        return True
+    return bool(re.search(r"\bto\s+$", before, re.IGNORECASE))
+
+
+def _bare_compound_or_joined(message: str) -> bool:
+    for match in _BARE_COMPOUND_RE.finditer(message):
+        if _compound_is_a_verb(message, match.start(), match.end()):
+            continue
+        if _OR_BEFORE_RE.search(message[: match.start()]) or _OR_AFTER_RE.match(
+            message[match.end() :]
+        ):
+            return True
+    return False
+
+
+def _named_venues(message: str) -> tuple[str, ...]:
+    seen: list[str] = []
+    for match in _VENUE_ALIAS_RE.finditer(message):
+        key = match.group(0).lower()
+        canonical = _VENUE_ALIASES.get(key, "compound" if key.startswith("compound") else key)
+        if canonical not in seen:
+            seen.append(canonical)
+    if seen and "compound" not in seen and _bare_compound_or_joined(message):
+        seen.append("compound")
+    return tuple(seen)
+
+
+#: 075 Defender follow-up 3 — a bare "X or Y?" choice is advisory only when the WHOLE message is
+#: just two venue names, optionally with a short "for/on/with <asset or chain>" tail. The venue
+#: token reuses the alias table above (plus a bare "compound", which is a venue only in this
+#: or-joined noun shape); anchoring with ^...$ means extra words such as "Add liquidity on …" or
+#: "Close my … position" cannot fall through from a mere trailing "?".
+_BARE_COMPOUND_VENUE = r"(?<![A-Za-z0-9-])compound(?![A-Za-z0-9])"
+_BARE_VENUE = rf"(?:{_VENUE_ALIAS_RE.pattern}|{_BARE_COMPOUND_VENUE})"
+_BARE_CHOICE_TAIL = (
+    r"(?:\s+(?:for|on|with)\s+[A-Za-z0-9][A-Za-z0-9'’._-]*"
+    r"(?:\s+[A-Za-z0-9][A-Za-z0-9'’._-]*){0,2})?"
+)
+_BARE_TWO_VENUE_CHOICE_RE = re.compile(
+    rf"^\s*{_BARE_VENUE}\s*,?\s*or\s+{_BARE_VENUE}{_BARE_CHOICE_TAIL}\s*\??\s*$",
+    re.IGNORECASE,
+)
+
+#: 075 Defender follow-up 2 — a request ("can you …", "help me …", "let's …") is an action even
+#: when it ends in "?". Polite/lead-in words are ignored. "would you please" is a request, but
+#: "would you recommend" stays an advice lead (do NOT add a bare "would you").
+_REQUEST_LEAD_RE = re.compile(
+    r"^\s*(?:(?:hey|ok|okay|so|please)[\s,]+)*"
+    r"(?:"
+    r"can\s+you\b"
+    r"|could\s+you\b"
+    r"|will\s+you\b"
+    r"|would\s+you\s+please\b"
+    r"|pls\b"
+    r"|i\s+want\b"
+    r"|i['’]d\s+like\b"
+    r"|i\s+would\s+like\b"
+    r"|i\s+need\b"
+    r"|help\s+me\b"
+    r"|let['’]?s\b"
+    r"|go\s+ahead\b"
+    r"|just\b"
+    r")",
+    re.IGNORECASE,
+)
+
+#: 075 Defender follow-up 3 — a choice is advisory ONLY when it opens with an advice lead. A bare
+#: "?" or a plain "what/where" opener is not enough: "Add liquidity on Aave or Morpho?" is a
+#: command, not a comparison. Lead-in words ("hey", "ok", "so") are ignored.
+_ADVICE_LEAD_RE = re.compile(
+    r"^\s*(?:(?:hey|ok|okay|so)[\s,]+)*"
+    r"(?:"
+    r"should\s+(?:i|we)\b"
+    r"|which\b"
+    r"|what['’]s\s+better\b"
+    r"|what\s+is\s+better\b"
+    r"|which\s+is\s+(?:better|safer)\b"
+    r"|is\s+it\s+better\b"
+    r"|better\s+to\b"
+    r"|would\s+you\s+recommend\b"
+    r"|do\s+you\s+recommend\b"
+    r"|where\s+should\s+(?:i|we)\b"
+    r"|what\s+do\s+you\s+think\b"
+    r")",
+    re.IGNORECASE,
+)
+#: 075 Defender — these phrases always mean an action is being requested, so the comparative
+#: override must never swallow them, whatever the sentence shape.
+_PLANNER_KEEP_PHRASES_RE = re.compile(
+    r"\b(?:whichever|the\s+safer\s+one|the\s+better\s+one|entire\s+balance|"
+    r"everything|all\s+my|max)\b",
+    re.IGNORECASE,
+)
+#: 075 Defender — an instruction opens with a command verb (an optional "please" is ignored).
+_IMPERATIVE_OPENER_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:deposit|move|put|lend|withdraw|swap|send|bridge|stake|"
+    r"supply|earn|transfer)\b",
+    re.IGNORECASE,
+)
+
+
+def is_protocol_choice_question(message: str) -> bool:
+    """True for an advisory "X or Y?" choice between two or more known protocols/venues.
+
+    A choice question with no parsed amount is a KNOWLEDGE question only when it opens with an
+    advice lead ("should I/we", "which", "what's better", "would you recommend", …) or when the
+    WHOLE message is a bare two-venue choice ("Morpho or Aave?", "Aave or Morpho for USDC?").
+    A command such as "Add liquidity on Aave or Morpho?" or "Close my Aave or Morpho position?"
+    keeps the planner; a sized command always keeps the planner.
+    """
+    if amount_from_text(message) is not None:
+        return False
+    if _PLANNER_KEEP_PHRASES_RE.search(message) or _IMPERATIVE_OPENER_RE.search(message):
+        return False
+    if _REQUEST_LEAD_RE.search(message):
+        return False
+    if not _OR_RE.search(message):
+        return False
+    if len(_named_venues(message)) < 2:
+        return False
+    if _ADVICE_LEAD_RE.search(message):
+        return True
+    return bool(_BARE_TWO_VENUE_CHOICE_RE.match(message))
+
+
 def is_comparative_question(message: str) -> bool:
-    """True for an "X vs Y" / "safer than" / "compare … with …" knowledge question (063)."""
+    """True for an "X vs Y" / "safer than" / "compare …" / "X or Y?" knowledge question."""
     if _COMPARATIVE_RE.search(message):
         return True
-    return bool(
-        _BETTER_WORSE_THAN_RE.search(message) and _COMPARATIVE_QUESTION_SHAPE_RE.search(message)
-    )
+    if _BETTER_WORSE_THAN_RE.search(message) and _COMPARATIVE_QUESTION_SHAPE_RE.search(message):
+        return True
+    return is_protocol_choice_question(message)
 
 
 _FOLLOWUP_RE = re.compile(r"\b(?:half|quarter|twice|double)\b", re.IGNORECASE)

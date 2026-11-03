@@ -133,6 +133,7 @@ from .guidance import (
     is_comparative_question,
     is_confirmation,
     is_explicit_financial_command,
+    is_protocol_choice_question,
     is_unsafe_request,
     is_withdraw_all,
     is_withdraw_request,
@@ -1351,7 +1352,12 @@ class CoordinatorDag:
         # names a financial ACTION verb ("deposit my entire balance into whichever is safer than
         # Aave", "compare them, then deposit 500 USDC") keeps the normal planner path even when
         # no amount parses, so a requested action is never silently dropped.
-        comparative = is_comparative_question(message) and not has_financial_action_verb(message)
+        # 075 — a no-amount choice question between two protocols ("should I put my USDC in
+        # Rhea or Aave?") is advisory even though it names an action verb; a sized command
+        # keeps the planner, and any other action-verb turn keeps the normal path.
+        comparative = is_comparative_question(message) and (
+            not has_financial_action_verb(message) or is_protocol_choice_question(message)
+        )
 
         # 057/D — unsafe-transfer and prompt-injection requests never reach the model. The policy
         # gate still runs on every proposal; this is the explicit refusal the audit asked for.
