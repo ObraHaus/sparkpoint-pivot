@@ -42,7 +42,7 @@ import {
   crosschainTxUrl,
   evmChainIdForKey,
   firstHash,
-  type ChainTxHash,
+  parseSwapDetails,
 } from "@/lib/crosschain/explorer";
 import {
   depositStorageKey,
@@ -64,11 +64,6 @@ interface HttpQuote extends Omit<CrossChainQuoteBlock, "type" | "state"> {
   quoteId?: number;
 }
 
-/** The subset of 1Click's `swapDetails` we link to (hashes may be absent mid-flight). */
-interface SwapDetails {
-  originChainTxHashes?: ChainTxHash[];
-  destinationChainTxHashes?: ChainTxHash[];
-}
 
 type Stage = "preview" | "recipient" | "confirm" | "deposit";
 
@@ -175,7 +170,7 @@ export function CrossChainQuoteCard({
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletTxHash, setWalletTxHash] = useState<Hex | null>(null);
-  const [swapDetails, setSwapDetails] = useState<SwapDetails | null>(null);
+  const [swapDetails, setSwapDetails] = useState<ReturnType<typeof parseSwapDetails>>(null);
   const [submitRetryable, setSubmitRetryable] = useState(false);
 
   const statusRef = useRef<string | undefined>(undefined);
@@ -257,9 +252,8 @@ export function CrossChainQuoteCard({
         const next = typeof body.status === "string" ? body.status : undefined;
         statusRef.current = next;
         setStatus(next);
-        if (typeof body.swapDetails === "object" && body.swapDetails !== null) {
-          setSwapDetails(body.swapDetails as SwapDetails);
-        }
+        const details = parseSwapDetails(body.swapDetails);
+        if (details !== null) setSwapDetails(details);
         setStatusError(null);
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === "AbortError")) return;

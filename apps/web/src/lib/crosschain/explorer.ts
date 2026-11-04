@@ -53,6 +53,42 @@ export interface ChainTxHash {
   hash?: string;
 }
 
+/** The only fields of 1Click's `swapDetails` this card reads. */
+export interface SwapDetails {
+  originChainTxHashes?: ChainTxHash[];
+  destinationChainTxHashes?: ChainTxHash[];
+}
+
+const MAX_HASHES = 50;
+const MAX_HASH_LENGTH = 200;
+
+function hashList(value: unknown): ChainTxHash[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const hashes: ChainTxHash[] = [];
+  for (const entry of value.slice(0, MAX_HASHES)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const hash = (entry as { hash?: unknown }).hash;
+    if (typeof hash === "string" && hash.trim() && hash.length <= MAX_HASH_LENGTH) {
+      hashes.push({ hash: hash.trim() });
+    }
+  }
+  return hashes;
+}
+
+/**
+ * Validate an untrusted `swapDetails` payload before it reaches React state. A cast would let a
+ * malformed upstream response crash the status card; this returns only the two hash arrays we use,
+ * with every entry re-checked, or `null` when there is nothing usable.
+ */
+export function parseSwapDetails(value: unknown): SwapDetails | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const origin = hashList(record.originChainTxHashes);
+  const destination = hashList(record.destinationChainTxHashes);
+  if (origin === undefined && destination === undefined) return null;
+  return { originChainTxHashes: origin, destinationChainTxHashes: destination };
+}
+
 /** The first usable hash from a 1Click hash array, or undefined. */
 export function firstHash(hashes: readonly ChainTxHash[] | undefined): string | undefined {
   for (const entry of hashes ?? []) {

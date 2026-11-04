@@ -6,6 +6,7 @@ import {
   crosschainTxUrl,
   evmChainIdForKey,
   firstHash,
+  parseSwapDetails,
 } from "./explorer.ts";
 
 test("EVM legs use the shared registry explorer, never a literal", () => {
@@ -42,4 +43,18 @@ test("EVM chain keys resolve for destination links", () => {
   assert.equal(evmChainIdForKey("base"), 8453);
   assert.equal(evmChainIdForKey("eth"), 1);
   assert.equal(evmChainIdForKey("sol"), undefined);
+});
+
+test("untrusted swapDetails is validated, not cast", () => {
+  assert.equal(parseSwapDetails(null), null);
+  assert.equal(parseSwapDetails("nope"), null);
+  assert.equal(parseSwapDetails({}), null);
+  assert.equal(parseSwapDetails({ originChainTxHashes: "nope" }), null);
+  assert.deepEqual(
+    parseSwapDetails({
+      originChainTxHashes: [{ hash: " aaa " }, { hash: 42 }, null, { hash: "b".repeat(201) }],
+      destinationChainTxHashes: [{ hash: "bbb" }],
+    }),
+    { originChainTxHashes: [{ hash: "aaa" }], destinationChainTxHashes: [{ hash: "bbb" }] },
+  );
 });
