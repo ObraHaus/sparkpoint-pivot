@@ -4,14 +4,24 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
 import { Icon, SparkMark } from "@/lib/icons";
-import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
-import { chainName } from "@sparkpoint/shared/chains";
 import { PUBLIC_NETWORKS } from "@sparkpoint/shared/networks";
 import { PubTop } from "@/components/screens/PubTop";
 import { NearWalletControl } from "@/components/near/NearWalletControl";
 import "@/components/screens/public.css";
 
 /** The one wallet row this build actually wires: the injected/browser connector. */
+const WALLET_ROW_LABEL = "Browser wallet / MetaMask";
+
+/**
+ * wagmi names the injected connector "Injected", which is implementation jargon. Show a label
+ * people recognise instead, while still passing through a real connector name if one is supplied.
+ */
+function walletRowLabel(name: string | undefined): string {
+  const clean = name?.trim();
+  if (!clean || clean.toLowerCase() === "injected") return WALLET_ROW_LABEL;
+  return clean;
+}
+
 const BrowserIcon = (
   <svg width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden>
     <rect width="40" height="40" rx="10" fill="#2a3346" />
@@ -106,7 +116,7 @@ export default function ConnectPage() {
                   ) : (
                     <>
                       <span className="wl-ico">{BrowserIcon}</span>
-                      <span className="wl-name">{connector.name || "Browser wallet"}</span>
+                      <span className="wl-name">{walletRowLabel(connector.name)}</span>
                       <Icon name="chevr" size={16} />
                     </>
                   )}
@@ -145,8 +155,8 @@ export default function ConnectPage() {
                 lineHeight: 1.5,
               }}
             >
-              Sign in with Meteor to show your NEAR account and prefill NEAR recipients. This adds
-              no access key and is never used as server sign-in.
+              Connect your NEAR account to receive swaps on NEAR. Signing in still uses your EVM
+              wallet for now.
             </p>
             <NearWalletControl />
           </div>
@@ -170,10 +180,6 @@ export default function ConnectPage() {
                 {n.label}
               </span>
             ))}
-          </div>
-          <div style={{ textAlign: "center", marginTop: "8px", fontSize: 11.5, color: "var(--muted-foreground)" }}>
-            This build targets {chainName(APP_DEFAULT_CHAIN_ID)}. Cross-chain swaps can deliver to
-            the other networks above.
           </div>
         </div>
       </div>

@@ -41,7 +41,9 @@ const COPY: Record<Stage, StageCopy> = {
   },
   beta: {
     label: "Beta",
-    long: "Beta — Robinhood Chain",
+    // Multi-network beta (EVM + Solana + NEAR destinations) — not chain-specific, so the badge
+    // does not read as "only Robinhood Chain is supported".
+    long: "Beta — multi-chain",
     capNoun: "beta cap",
     gateNoun: "private beta",
     adjective: "beta",

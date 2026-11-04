@@ -139,7 +139,7 @@ export default function Page() {
             </li>
             <li>
               <Icon name="check" size={14} />
-              Applies on <b>Robinhood Chain</b>.
+              Applies to in-app swaps on supported networks.
             </li>
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>

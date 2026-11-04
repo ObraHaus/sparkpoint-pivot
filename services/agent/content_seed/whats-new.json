@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "polish-copy-money-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Clearer wallet labels, plain-English NEAR copy, and tidy dollar amounts",
+      "body": "The login page now says \"Browser wallet / MetaMask\" instead of \"Injected\", and explains the optional NEAR connection in plain English: connect your NEAR account to receive swaps on NEAR, while signing in still uses your EVM wallet for now. Single-chain footer copy is gone, so the app reads as the multi-network product it is. Cross-chain preview dollar estimates now round to cents instead of showing long decimals. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-04T20:55:00Z"
+    },
+    {
       "slug": "phase-b-crosschain-recipient-2026-11",
       "type": "changelog",
       "tag": "Improved",

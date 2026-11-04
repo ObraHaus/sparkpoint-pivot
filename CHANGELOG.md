@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (UX copy + money formatting polish)
+
+- **Login and network copy is plain English and no longer single-chain.** The injected wallet row reads "Browser wallet / MetaMask" instead of the implementation term "Injected"; the NEAR section explains the benefit ("Connect your NEAR account to receive swaps on NEAR. Signing in still uses your EVM wallet for now."); and the "This build targets Robinhood Chain…" footer is gone from login and Settings. The stage badge tooltip now says "Beta — multi-chain" and the fees page says the routing fee applies to in-app swaps on supported networks. (`connect/page.tsx`, `settings/page.tsx`, `lib/stage.ts`, `fees/page.tsx`)
+- **Cross-chain USD estimates round to cents.** The agent's preview sentence used to print 1Click's raw value (`about $48.337108270000`); it now formats as `about $48.34`, matching the web card's two-decimal `formatUsd`. (`services/agent/src/sparkpoint_agent/crosschain/service.py`)
+- **The top-bar pill's NEAR suffix is unit-tested.** The label logic moved to a pure `networkPillLabel()` helper covering the EVM-only, `· NEAR`, settling and wrong-network states. (`apps/web/src/lib/networkPill.ts`, `apps/web/src/lib/networkPill.test.ts`)
+
 ### Fixed (vault zero-result filters + cross-chain polish — Phase B)
 
 - **/vault keeps its filter controls when a chip matches nothing.** The list header, chip row and cards were rendered inside a `list.length > 0` gate where `list` was the POST-filter result, so clicking "New this week" on a board with no new vaults unmounted the "All live" chip that could reset it. The gate now uses the unfiltered live list, the count reads `N of M` while filtering, and the existing "No live vaults match that filter" message is reachable. (`apps/web/src/components/vault/CuratedBoard.tsx`, `apps/web/src/lib/curation/boardV2.test.ts`)

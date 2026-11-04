@@ -60,6 +60,23 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def format_usd_two_dp(value: str | None) -> str | None:
+    """Format a 1Click USD string as ``$1,234.56`` for prose — never expose raw 12-dp floats.
+
+    ``None`` (no USD estimate) and malformed values are dropped rather than rendered verbatim.
+    Display only: the structured block keeps the wire value.
+    """
+    if not value:
+        return None
+    try:
+        amount = Decimal(value)
+    except (InvalidOperation, ValueError):
+        return None
+    if not amount.is_finite():
+        return None
+    return f"${amount:,.2f}"
+
+
 class CrossChainService:
     """One 1Click client + the route config, with preview/live quote helpers."""
 
@@ -193,7 +210,8 @@ class CrossChainService:
             if quote.time_estimate_sec
             else "a short time"
         )
-        usd = f" (about ${quote.amount_out_usd})" if quote.amount_out_usd else ""
+        usd_value = format_usd_two_dp(quote.amount_out_usd)
+        usd = f" (about {usd_value})" if usd_value else ""
         text = (
             f"Preview only — nothing is signed or sent. {request.amount_human} "
             f"{origin.symbol} on {origin.chain_label} → about {amount_out} {destination.symbol} "
