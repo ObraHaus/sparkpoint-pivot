@@ -10,6 +10,14 @@
       "published_at": "2026-11-04T18:45:00Z"
     },
     {
+      "slug": "multi-network-story-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "See every supported network, and connect with the wallet you actually have",
+      "body": "SparkPoint now shows the networks it supports across the landing page, the login page, the top bar and Settings: Base, Ethereum, Solana, NEAR, Bitcoin and Robinhood Chain. Bitcoin is receive-only \u2014 you paste a payout address \u2014 while the others can be swap sources or destinations where the product actually wires them. The login page lists only wallets this build really connects (the browser wallet) instead of advertising wallets it cannot open, and the NEAR connect control stays visible on mobile. Chat and swap labels now follow the same registry, so the app tells one consistent multi-chain story. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-04T18:50:00Z"
+    },
+    {
       "slug": "near-implicit-account-076-2026-11",
       "type": "changelog",
       "tag": "Fixed",
