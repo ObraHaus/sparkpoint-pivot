@@ -5,7 +5,6 @@ import {
   crosschainAddressUrl,
   crosschainTxUrl,
   evmChainIdForKey,
-  firstExplorerUrl,
   firstHash,
 } from "./explorer.ts";
 
@@ -33,13 +32,9 @@ test("missing values never fabricate a URL", () => {
   assert.equal(crosschainAddressUrl("sol", null, ""), undefined);
 });
 
-test("1Click hashes prefer its own explorer URL when present", () => {
-  const hashes = [
-    { hash: "aaa" },
-    { hash: "bbb", explorerUrl: "https://example.test/tx/bbb" },
-  ];
-  assert.equal(firstHash(hashes), "aaa");
-  assert.equal(firstExplorerUrl(hashes), "https://example.test/tx/bbb");
+test("the first usable 1Click hash is selected, and no upstream URL is trusted", () => {
+  const hashes = [{ hash: "" }, { hash: " bbb " }, { hash: "ccc" }];
+  assert.equal(firstHash(hashes), "bbb");
   assert.equal(firstHash(undefined), undefined);
 });
 

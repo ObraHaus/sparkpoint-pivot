@@ -41,7 +41,6 @@ import {
   crosschainAddressUrl,
   crosschainTxUrl,
   evmChainIdForKey,
-  firstExplorerUrl,
   firstHash,
   type ChainTxHash,
 } from "@/lib/crosschain/explorer";
@@ -420,9 +419,9 @@ export function CrossChainQuoteCard({
   const destinationTxHash = firstHash(swapDetails?.destinationChainTxHashes);
   const destinationEvmChainId = evmChainIdForKey(block.destination.key);
   const originTxUrl = crosschainTxUrl(originKind, block.origin.evmChainId, originTxHash);
-  const destinationTxUrl =
-    firstExplorerUrl(swapDetails?.destinationChainTxHashes) ??
-    crosschainTxUrl(destinationKind, destinationEvmChainId, destinationTxHash);
+  // Derive the link ourselves from the hash + chain. A URL supplied by 1Click is deliberately
+  // NOT rendered: an upstream string must never become an href without our own validation.
+  const destinationTxUrl = crosschainTxUrl(destinationKind, destinationEvmChainId, destinationTxHash);
   const depositAddressUrl = crosschainAddressUrl(
     originKind,
     block.origin.evmChainId,

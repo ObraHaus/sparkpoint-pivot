@@ -48,31 +48,15 @@ export function crosschainAddressUrl(
   return kind === null ? undefined : NON_EVM_ADDRESS[kind](address);
 }
 
-/** A `{hash, explorerUrl?}` entry from a 1Click `swapDetails` hash array. */
+/** A `{hash}` entry from a 1Click `swapDetails` hash array. */
 export interface ChainTxHash {
   hash?: string;
-  explorerUrl?: string;
 }
 
 /** The first usable hash from a 1Click hash array, or undefined. */
 export function firstHash(hashes: readonly ChainTxHash[] | undefined): string | undefined {
   for (const entry of hashes ?? []) {
     if (typeof entry?.hash === "string" && entry.hash.trim()) return entry.hash.trim();
-  }
-  return undefined;
-}
-
-/**
- * 1Click sometimes supplies its own explorer URL. Prefer that (it knows the chain), falling back
- * to our registry-derived link only when it doesn't.
- */
-export function firstExplorerUrl(
-  hashes: readonly ChainTxHash[] | undefined,
-): string | undefined {
-  for (const entry of hashes ?? []) {
-    if (typeof entry?.explorerUrl === "string" && entry.explorerUrl.trim()) {
-      return entry.explorerUrl.trim();
-    }
   }
   return undefined;
 }
