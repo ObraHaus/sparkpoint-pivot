@@ -19,6 +19,9 @@ dist/
 secrets/
 *.pem
 *.key
+# Defense in depth: never commit a wallet/seed note even if someone drops one here.
+.claude/near-wallet.txt
+**/near-wallet*.txt
 
 # ---- Foundry / smart contracts ----
 cache/
