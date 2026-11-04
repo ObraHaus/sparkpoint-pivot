@@ -1,48 +1,29 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
 import { Icon, SparkMark } from "@/lib/icons";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
-import { chainName, chainMeta } from "@sparkpoint/shared/chains";
+import { chainName } from "@sparkpoint/shared/chains";
+import { PUBLIC_NETWORKS } from "@sparkpoint/shared/networks";
 import { PubTop } from "@/components/screens/PubTop";
 import { NearWalletControl } from "@/components/near/NearWalletControl";
 import "@/components/screens/public.css";
 
-/** Wallet rows — real brand logos (public/wallets) on a 38px tile. */
-const WALLETS: { name: string; icon: ReactNode; tileStyle?: CSSProperties }[] = [
-  {
-    name: "Coinbase Wallet",
-    icon: <Image src="/wallets/coinbase.webp" alt="" width={38} height={38} style={{ objectFit: "cover" }} />,
-    tileStyle: { background: "#0052FF" },
-  },
-  {
-    name: "WalletConnect",
-    icon: <Image src="/wallets/walletconnect.png" alt="" width={38} height={38} style={{ objectFit: "cover" }} />,
-  },
-  {
-    name: "MetaMask",
-    icon: <Image src="/wallets/metamask.png" alt="" width={38} height={38} style={{ objectFit: "contain" }} />,
-    tileStyle: { background: "#ffffff" },
-  },
-  {
-    name: "Browser wallet",
-    icon: (
-      <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
-        <rect width="40" height="40" rx="10" fill="#2a3346" />
-        <circle cx="20" cy="20" r="9" fill="none" stroke="#cbd5e1" strokeWidth="2" />
-        <path
-          d="M11 20h18M20 11c2.6 2.4 2.6 15.6 0 18M20 11c-2.6 2.4-2.6 15.6 0 18"
-          stroke="#cbd5e1"
-          strokeWidth="1.6"
-          fill="none"
-        />
-      </svg>
-    ),
-  },
-];
+/** The one wallet row this build actually wires: the injected/browser connector. */
+const BrowserIcon = (
+  <svg width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden>
+    <rect width="40" height="40" rx="10" fill="#2a3346" />
+    <circle cx="20" cy="20" r="9" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+    <path
+      d="M11 20h18M20 11c2.6 2.4 2.6 15.6 0 18M20 11c-2.6 2.4-2.6 15.6 0 18"
+      stroke="#cbd5e1"
+      strokeWidth="1.6"
+      fill="none"
+    />
+  </svg>
+);
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -51,7 +32,11 @@ export default function ConnectPage() {
   // page advances to /verify ONLY after an actual connection is established.
   const { isConnected } = useAccount();
   const { connect, connectors, isPending, error } = useConnect();
-  const injected = connectors.find((c) => c.type === "injected") ?? connectors[0];
+  // HONEST ROWS: one per REAL connector. This build wires `injected()` only — the old four
+  // Coinbase/WalletConnect/MetaMask/Browser rows all called this same connector, which promised
+  // wallet support the app did not have. Add a row here only when its connector is truly wired.
+  const walletRows = connectors.filter((c) => c.type === "injected");
+  const injected = walletRows[0];
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
 
   useEffect(() => {
@@ -59,9 +44,10 @@ export default function ConnectPage() {
   }, [isConnected, router]);
 
   const onConnect = (i: number) => {
-    if (isPending || !injected) return;
+    const connector = walletRows[i];
+    if (isPending || !connector) return;
     setPendingIdx(i);
-    connect({ connector: injected });
+    connect({ connector });
   };
   const connecting = isPending ? pendingIdx : null;
 
@@ -89,24 +75,44 @@ export default function ConnectPage() {
             <b style={{ color: "var(--foreground)" }}>nothing moves without your signature.</b>
           </p>
           <div className="walletlist">
-            {WALLETS.map((w, i) => (
-              <button className="walletrow" data-i={i} key={i} onClick={() => onConnect(i)}>
-                {connecting === i ? (
-                  <>
-                    <span className="wl-ico">
-                      <span className="ai-dot"></span>
-                    </span>
-                    <span className="wl-name">Connecting…</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="wl-ico" style={w.tileStyle}>{w.icon}</span>
-                    <span className="wl-name">{w.name}</span>
-                    <Icon name="chevr" size={16} />
-                  </>
-                )}
-              </button>
-            ))}
+            {walletRows.length === 0 ? (
+              <p
+                style={{
+                  textAlign: "center",
+                  fontSize: "12.5px",
+                  color: "var(--muted-foreground)",
+                  margin: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                No browser wallet detected. Install MetaMask (or another browser wallet) to connect.
+              </p>
+            ) : (
+              walletRows.map((connector, i) => (
+                <button
+                  className="walletrow"
+                  data-i={i}
+                  key={connector.uid}
+                  data-testid="connect-wallet-row"
+                  onClick={() => onConnect(i)}
+                >
+                  {connecting === i ? (
+                    <>
+                      <span className="wl-ico">
+                        <span className="ai-dot"></span>
+                      </span>
+                      <span className="wl-name">Connecting…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="wl-ico">{BrowserIcon}</span>
+                      <span className="wl-name">{connector.name || "Browser wallet"}</span>
+                      <Icon name="chevr" size={16} />
+                    </>
+                  )}
+                </button>
+              ))
+            )}
           </div>
           {!injected && (
             <p style={{ textAlign: "center", fontSize: "12.5px", color: "var(--muted-foreground)", margin: "10px 0 0", lineHeight: 1.5 }}>
@@ -149,13 +155,25 @@ export default function ConnectPage() {
             <Icon name="shieldcheck" size={16} />
             <span>You own your keys and your account. We never generate a wallet for you or hold your keys.</span>
           </div>
-          <div style={{ textAlign: "center", marginTop: "14px" }}>
-            <span className="pill ghosty" style={{ cursor: "default" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" fill={chainMeta(APP_DEFAULT_CHAIN_ID)?.color ?? "#0052FF"} />
-              </svg>
-              {chainName(APP_DEFAULT_CHAIN_ID)}
-            </span>
+          <div
+            data-testid="connect-networks"
+            style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6, marginTop: "14px" }}
+          >
+            {PUBLIC_NETWORKS.map((n) => (
+              <span
+                key={n.id}
+                className="pill ghosty"
+                style={{ cursor: "default", fontSize: 11.5 }}
+                title={n.destinationOnly ? `${n.label} — receive only (paste a payout address)` : `${n.label} — supported`}
+              >
+                <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: n.color, display: "inline-block" }} />
+                {n.label}
+              </span>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", marginTop: "8px", fontSize: 11.5, color: "var(--muted-foreground)" }}>
+            This build targets {chainName(APP_DEFAULT_CHAIN_ID)}. Cross-chain swaps can deliver to
+            the other networks above.
           </div>
         </div>
       </div>

@@ -11,9 +11,13 @@ import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { NearWalletControl } from "@/components/near/NearWalletControl";
+import { useNearWallet } from "@/lib/near/NearWalletProvider";
 
 export function TopBar({ active }: { active: string }) {
   const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
+  // The network indicator is the honest combined state: the connected EVM chain plus the
+  // client-side NEAR claim (when one is connected). NEAR is never server auth.
+  const { accountId: nearAccountId } = useNearWallet();
   const ov = useOverlay();
   // The bell badge = the REAL unread count (§3.11), after the user's on-device category filter. 0
   // (no badge) when offline or all-read — honest, never a hardcoded number.
@@ -44,7 +48,13 @@ export function TopBar({ active }: { active: string }) {
           onClick={ov.openNetworkMenu}
         >
           <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
-          <span>{networkSettling ? "Checking…" : wrongNetwork ? "Switch network" : network.name}</span>
+          <span data-testid="topbar-network">
+            {networkSettling
+              ? "Checking…"
+              : wrongNetwork
+                ? "Switch network"
+                : `${network.name}${nearAccountId ? " · NEAR" : ""}`}
+          </span>
           <Icon name="chevd" size={12} />
         </span>
         <NearWalletControl />

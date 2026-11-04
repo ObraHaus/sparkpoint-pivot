@@ -73,6 +73,7 @@ import { turnCanRetry } from "@/lib/agent/chatError";
 import { useAccount, useBalance } from "wagmi";
 import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName } from "@sparkpoint/shared/chains";
 import { derivePortfolio } from "@/lib/portfolio/derive";
 import "@/components/screens/chat.css";
 
@@ -87,6 +88,8 @@ const CHAT_DISPLAY_CHAIN_ID = APP_DEFAULT_CHAIN_ID;
  * its existing Aave/Base/Sui demo byte-for-byte in the else paths.
  */
 const IS_ROBINHOOD_MAINNET_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+/** Registry-derived home-network label — copy follows the build, not a literal. */
+const NETWORK_NAME = chainName(APP_DEFAULT_CHAIN_ID);
 
 type CardKind = "rec" | "snapshot" | "tip" | "outcome" | "wallet" | "swap" | "bridge";
 
@@ -394,11 +397,11 @@ export default function ChatPage() {
       ) {
         if (IS_ROBINHOOD_MAINNET_BUILD) {
           think(
-            [{ a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" }],
+            [{ a: `Checking what's live on ${NETWORK_NAME}`, b: `Checked what's live on ${NETWORK_NAME}` }],
             () => {
               pushAi(
                 <>
-                  Bridging isn&apos;t available on Robinhood Chain yet — there&apos;s no other network to move funds to
+                  Bridging isn&apos;t available on {NETWORK_NAME} yet — there&apos;s no other network to move funds to
                   from here. What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page,
                   and I can read your wallet. You approve and sign every move.
                 </>,
@@ -434,7 +437,7 @@ export default function ChatPage() {
           think(
             [
               { a: "Reading your wallet", b: "Read your wallet" },
-              { a: "Finding the best route on Robinhood Chain", b: "Found the best route on Robinhood Chain" },
+              { a: `Finding the best route on ${NETWORK_NAME}`, b: `Found the best route on ${NETWORK_NAME}` },
               { a: "Checking slippage", b: "Checked slippage" },
             ],
             () => {
@@ -473,12 +476,12 @@ export default function ChatPage() {
           think(
             [
               { a: "Reading your wallet", b: "Read your wallet" },
-              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+              { a: `Checking what's live on ${NETWORK_NAME}`, b: `Checked what's live on ${NETWORK_NAME}` },
             ],
             () => {
               pushAi(
                 <>
-                  There&apos;s no AI yield vault on Robinhood Chain yet, so there&apos;s nothing to deposit into here.
+                  There&apos;s no AI yield vault on {NETWORK_NAME} yet, so there&apos;s nothing to deposit into here.
                   What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I can
                   read your wallet. You approve and sign every move.
                 </>,
@@ -515,7 +518,7 @@ export default function ChatPage() {
         if (IS_ROBINHOOD_MAINNET_BUILD) {
           think(
             [
-              { a: "Reading your wallet on Robinhood Chain", b: "Read your wallet on Robinhood Chain" },
+              { a: `Reading your wallet on ${NETWORK_NAME}`, b: `Read your wallet on ${NETWORK_NAME}` },
               { a: "Pricing your assets", b: "Priced your assets" },
             ],
             () => {
@@ -552,12 +555,12 @@ export default function ChatPage() {
           think(
             [
               { a: "Reading your wallet", b: "Read your wallet" },
-              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+              { a: `Checking what's live on ${NETWORK_NAME}`, b: `Checked what's live on ${NETWORK_NAME}` },
             ],
             () => {
               pushAi(
                 <>
-                  The AI yield vault isn&apos;t on Robinhood Chain yet, so there&apos;s no lending position I can set up
+                  The AI yield vault isn&apos;t on {NETWORK_NAME} yet, so there&apos;s no lending position I can set up
                   here. Today you can swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I can read
                   your wallet. I&apos;ll surface earning options here the moment they go live.
                 </>,
@@ -611,12 +614,12 @@ export default function ChatPage() {
           think(
             [
               { a: "Reading your wallet", b: "Read your wallet" },
-              { a: "Checking what's live on Robinhood Chain", b: "Checked what's live on Robinhood Chain" },
+              { a: `Checking what's live on ${NETWORK_NAME}`, b: `Checked what's live on ${NETWORK_NAME}` },
             ],
             () => {
               pushAi(
                 <>
-                  The AI yield vault isn&apos;t on Robinhood Chain yet, so I don&apos;t have an earning move to suggest
+                  The AI yield vault isn&apos;t on {NETWORK_NAME} yet, so I don&apos;t have an earning move to suggest
                   here. What you can do today is swap <b>ETH/WETH</b> and <b>USDG</b>, both ways, on the Swap page, and I
                   can read your wallet. You approve and sign every move.
                 </>,
