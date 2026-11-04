@@ -18,8 +18,6 @@ import { useTheme } from "next-themes";
 import { Icon } from "@/lib/icons";
 import { useNetwork } from "@/lib/network";
 import { stageCopy } from "@/lib/stage";
-import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
-import { chainName } from "@sparkpoint/shared/chains";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
 import { PUBLIC_NETWORKS } from "@sparkpoint/shared/networks";
 import { RiskChip } from "@/components/ui/risk-chip";
@@ -553,8 +551,7 @@ export default function Page() {
               <div>
                 <div style={{ fontWeight: 600 }}>Network</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>
-                  The same connected state the top bar shows. This build targets{" "}
-                  {chainName(APP_DEFAULT_CHAIN_ID)}.
+                  The same connected state the top bar shows.
                 </div>
               </div>
               <span className="pill ghosty" style={{ cursor: "default" }} data-testid="settings-network">

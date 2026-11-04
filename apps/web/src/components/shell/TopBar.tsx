@@ -12,6 +12,7 @@ import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { NearWalletControl } from "@/components/near/NearWalletControl";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { networkPillLabel } from "@/lib/networkPill";
 
 export function TopBar({ active }: { active: string }) {
   const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
@@ -49,11 +50,7 @@ export function TopBar({ active }: { active: string }) {
         >
           <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
           <span data-testid="topbar-network">
-            {networkSettling
-              ? "Checking…"
-              : wrongNetwork
-                ? "Switch network"
-                : `${network.name}${nearAccountId ? " · NEAR" : ""}`}
+            {networkPillLabel({ networkSettling, wrongNetwork, networkName: network.name, nearAccountId })}
           </span>
           <Icon name="chevd" size={12} />
         </span>
