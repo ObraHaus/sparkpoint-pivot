@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SparkLogo } from "@/components/ui/SparkLogo";
 import { stageCopy } from "@/lib/stage";
+import { PUBLIC_NETWORKS, networkNames } from "@sparkpoint/shared/networks";
 import brokerProfile from "@/assets/brokers/opensea-profile.png";
 
 /**
@@ -1040,6 +1041,34 @@ export default function NewEraLanding() {
               Sparky reads your goals, suggests every move, and proves every result on-chain — and{" "}
               <b>can&rsquo;t hold, move, or lose your money.</b>
             </p>
+            {/* The multi-chain story, stated from the ONE registry. "Bitcoin" is honest about
+                being destination-only: no wallet connect, just a pasted payout address. */}
+            <div
+              data-testid="landing-networks"
+              style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, marginTop: 16 }}
+            >
+              {PUBLIC_NETWORKS.map((n) => (
+                <span
+                  key={n.id}
+                  className="pill ghosty"
+                  title={
+                    n.destinationOnly
+                      ? `${n.label} — receive only (paste a payout address)`
+                      : `${n.label} — supported`
+                  }
+                  style={{ cursor: "default" }}
+                >
+                  <span
+                    aria-hidden
+                    style={{ width: 8, height: 8, borderRadius: 999, background: n.color, display: "inline-block" }}
+                  />
+                  {n.label}
+                  {n.destinationOnly && (
+                    <span style={{ fontSize: 10, color: "var(--muted-foreground)" }}>receive</span>
+                  )}
+                </span>
+              ))}
+            </div>
             <div className="btns">
               <button className="btn primary" onClick={goConnect}>
                 Connect wallet
@@ -1475,7 +1504,7 @@ export default function NewEraLanding() {
         </div>
         <div className="fbot">
           <div className="fine">
-            Curated vaults · Robinhood Chain · {stageCopy.adjective}-gated. Not financial advice;
+            Curated vaults · {networkNames()} · {stageCopy.adjective}-gated. Not financial advice;
             capital at risk.
           </div>
           <div className="fcopy">© 2026 Sparky — AI-native onchain hedge fund.</div>

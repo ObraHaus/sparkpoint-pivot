@@ -12,7 +12,8 @@
     "./chains": "./src/chains/index.ts",
     "./addresses": "./src/addresses/index.ts",
     "./schemas": "./src/schemas/index.ts",
-    "./abis": "./src/abis/index.ts"
+    "./abis": "./src/abis/index.ts",
+    "./networks": "./src/networks/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -1,12 +1,28 @@
 {
-  "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
+  "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
+    {
+      "slug": "phase-b-crosschain-recipient-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Cross-chain swaps ask for the amount, explain the destination, and link the explorers",
+      "body": "If you name a cross-chain route without an amount \u2014 for example \"swap USDC to SOL\" or \"swap USDC for SOL\" \u2014 Sparky now asks how much you want to send instead of saying the pair is unavailable. The destination step explains where your funds go and keeps Review disabled until the address is valid; it prefills your own connected wallet when the chain matches and never substitutes a platform wallet. Once a deposit address exists, the card links the deposit address and both transactions on the right explorer, shows a clear expired state alongside success/refunded/failed, and lets you retry the optional speed-up notice without sending anything again. USDC on Base can be sent from your own wallet. Nothing is auto-sent and SparkPoint never holds your funds.",
+      "published_at": "2026-11-04T18:45:00Z"
+    },
+    {
+      "slug": "multi-network-story-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "See every supported network, and connect with the wallet you actually have",
+      "body": "SparkPoint now shows the networks it supports across the landing page, the login page, the top bar and Settings: Base, Ethereum, Solana, NEAR, Bitcoin and Robinhood Chain. Bitcoin is receive-only \u2014 you paste a payout address \u2014 while the others can be swap sources or destinations where the product actually wires them. The login page lists only wallets this build really connects (the browser wallet) instead of advertising wallets it cannot open, and the NEAR connect control stays visible on mobile. Chat and swap labels now follow the same registry, so the app tells one consistent multi-chain story. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-04T18:50:00Z"
+    },
     {
       "slug": "near-implicit-account-076-2026-11",
       "type": "changelog",
       "tag": "Fixed",
       "title": "NEAR addresses made of 64 hex characters now work",
-      "body": "If your NEAR wallet uses an implicit account — a 64-character lowercase hexadecimal address rather than a name like sparkpoint2026.near — SparkPoint now accepts it as a cross-chain destination. Previously a connected implicit account was filled in automatically but then rejected as invalid, so Continue stayed disabled. Named NEAR accounts work exactly as before, and obviously malformed ids (uppercase, the wrong length, or double dots) are still rejected before anything is sent. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "body": "If your NEAR wallet uses an implicit account \u2014 a 64-character lowercase hexadecimal address rather than a name like sparkpoint2026.near \u2014 SparkPoint now accepts it as a cross-chain destination. Previously a connected implicit account was filled in automatically but then rejected as invalid, so Continue stayed disabled. Named NEAR accounts work exactly as before, and obviously malformed ids (uppercase, the wrong length, or double dots) are still rejected before anything is sent. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
       "published_at": "2026-11-04T03:30:00Z"
     },
     {
@@ -14,7 +30,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Connect your NEAR wallet (Meteor) and fill NEAR details automatically",
-      "body": "You can now connect a NEAR wallet with Meteor, right beside your EVM wallet. SparkPoint shows your NEAR account in the wallet area and on the Portfolio page, and uses it to prefill a NEAR destination in a cross-chain swap (you can still edit it) and to name the NEAR account on the Rhea card. Connecting adds no access key to your wallet, and your NEAR account is only a client-side display: it never signs you in to SparkPoint and never authorises a transaction. The Rhea 'sign in your wallet' step can now produce a sign-only message signature when an operator enables it; the signature is never submitted, the Deposit button stays disabled, and nothing is sent on-chain. NEAR balances are not shown yet — the Portfolio says so plainly instead of guessing. SparkPoint never holds your funds.",
+      "body": "You can now connect a NEAR wallet with Meteor, right beside your EVM wallet. SparkPoint shows your NEAR account in the wallet area and on the Portfolio page, and uses it to prefill a NEAR destination in a cross-chain swap (you can still edit it) and to name the NEAR account on the Rhea card. Connecting adds no access key to your wallet, and your NEAR account is only a client-side display: it never signs you in to SparkPoint and never authorises a transaction. The Rhea 'sign in your wallet' step can now produce a sign-only message signature when an operator enables it; the signature is never submitted, the Deposit button stays disabled, and nothing is sent on-chain. NEAR balances are not shown yet \u2014 the Portfolio says so plainly instead of guessing. SparkPoint never holds your funds.",
       "published_at": "2026-11-03T20:00:00Z"
     },
     {
@@ -22,7 +38,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Commands that mention two protocols keep their action",
-      "body": "Asking Sparky to do something that happens to name two protocols — for example \"Add liquidity on Aave or Morpho?\", \"Close my Aave or Morpho position?\" or \"Top up my Aave or Morpho position?\" — now keeps your request on the normal review path instead of answering with a comparison and dropping the action. A question still gets the side-by-side comparison when it is asked as advice (\"should I…\", \"which is better…\", \"would you recommend…\") or when it is just two protocol names (\"Morpho or Aave?\", \"Aave or Morpho for USDC?\"). Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "body": "Asking Sparky to do something that happens to name two protocols \u2014 for example \"Add liquidity on Aave or Morpho?\", \"Close my Aave or Morpho position?\" or \"Top up my Aave or Morpho position?\" \u2014 now keeps your request on the normal review path instead of answering with a comparison and dropping the action. A question still gets the side-by-side comparison when it is asked as advice (\"should I\u2026\", \"which is better\u2026\", \"would you recommend\u2026\") or when it is just two protocol names (\"Morpho or Aave?\", \"Aave or Morpho for USDC?\"). Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
       "published_at": "2026-11-02T09:00:00Z"
     },
     {
@@ -38,7 +54,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Extremely large amounts are rejected instantly",
-      "body": "If an amount is absurdly large — for example a number with a huge exponent such as \"1e999999000\", or text longer than 64 characters — SparkPoint now rejects it immediately with the usual validation message instead of spending time processing it. Ordinary amounts such as 20, 0.5 or 5,000.50 work exactly as before. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "body": "If an amount is absurdly large \u2014 for example a number with a huge exponent such as \"1e999999000\", or text longer than 64 characters \u2014 SparkPoint now rejects it immediately with the usual validation message instead of spending time processing it. Ordinary amounts such as 20, 0.5 or 5,000.50 work exactly as before. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
       "published_at": "2026-11-02T06:15:00Z"
     },
     {
@@ -70,14 +86,14 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Comparisons now use a consistent side-by-side format",
-      "body": "When you ask Sparky to compare two options — for example \"Compare Morpho vs Aave\" or two curated vaults by name — the answer now uses the same side-by-side layout every time: what each option is, how the yield is made, the main risks, and the fees and structure, with the live stored figures and their as-of date for curated vaults. Only the short closing trade-off is written by the AI, so a comparison no longer changes shape from one question to the next, and it never picks a winner or gives advice. If the AI cannot write that closing line, Sparky uses a plain, honest one instead. Comparisons also no longer stream in word by word: you get the finished, checked side-by-side answer in one go, and nothing about reviewing or signing changes.",
+      "body": "When you ask Sparky to compare two options \u2014 for example \"Compare Morpho vs Aave\" or two curated vaults by name \u2014 the answer now uses the same side-by-side layout every time: what each option is, how the yield is made, the main risks, and the fees and structure, with the live stored figures and their as-of date for curated vaults. Only the short closing trade-off is written by the AI, so a comparison no longer changes shape from one question to the next, and it never picks a winner or gives advice. If the AI cannot write that closing line, Sparky uses a plain, honest one instead. Comparisons also no longer stream in word by word: you get the finished, checked side-by-side answer in one go, and nothing about reviewing or signing changes.",
       "published_at": "2026-11-01T12:00:00Z"
     },
     {
       "slug": "multichain-portfolio-072-2026-11",
       "type": "changelog",
       "tag": "New",
-      "title": "See your whole portfolio across chains — read-only",
+      "title": "See your whole portfolio across chains \u2014 read-only",
       "body": "Ask Sparky to show your portfolio and you get one read-only view of the signed-in wallet across Base, Solana and NEAR: wallet balances with chain badges, Morpho vault positions, Kamino shares on a Solana address already linked to you, Rhea lending positions, and your recent cross-chain swap history. Each section reads on its own, so a slow source or a missing Solana link only says so in that section instead of hiding the rest. You also get a priced total with per-chain and per-protocol breakdowns, the source of each read and when it was taken. 'Show my portfolio', 'what do I have across chains', 'my balances' and 'show my positions everywhere' open the full overview, 'my swap history' focuses on swaps, and 'how much am I earning' focuses on the earn positions. The Portfolio page has the same 'Across chains' panel. Nothing here is signable: this release reads only, and live deposits, signing and withdraws are coming in the next phase. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T05:20:00Z"
     },
@@ -85,8 +101,8 @@
       "slug": "rhea-near-lending-071-2026-11",
       "type": "changelog",
       "tag": "New",
-      "title": "Rhea lending on NEAR — vault list, dry previews and read-only positions",
-      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and — on your first deposit only — the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign in a later phase to create your Rhea account. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
+      "title": "Rhea lending on NEAR \u2014 vault list, dry previews and read-only positions",
+      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and \u2014 on your first deposit only \u2014 the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign in a later phase to create your Rhea account. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T04:15:00Z"
     },
     {
@@ -94,7 +110,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Kamino SOL vaults and native-share previews in Sparky chat",
-      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which rails can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) — the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
+      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which rails can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) \u2014 the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T03:30:00Z"
     },
     {
@@ -110,7 +126,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Cross-chain swaps in Sparky chat",
-      "body": "Cross-chain swaps in Sparky chat — ask Sparky to swap USDC into BTC, SOL or move it between chains; preview the quote, confirm, send from your own wallet and track it live. SparkPoint never holds your funds: you send from your own wallet to a one-time deposit address, and if the swap can't complete the funds are refunded to your refund address.",
+      "body": "Cross-chain swaps in Sparky chat \u2014 ask Sparky to swap USDC into BTC, SOL or move it between chains; preview the quote, confirm, send from your own wallet and track it live. SparkPoint never holds your funds: you send from your own wallet to a one-time deposit address, and if the swap can't complete the funds are refunded to your refund address.",
       "published_at": "2026-11-01T00:30:00Z"
     },
     {
@@ -118,7 +134,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Comparisons answer only when they actually compare",
-      "body": "When you ask Sparky to compare two protocols, it now answers only when the reply actually names both options and does not open with a flat refusal. When SparkPoint has verified material for every option, the answer includes its sources; if material is missing for any one of them, the comparison is still shown but without a partial \"Sources\" block. If the reply is just a refusal, Sparky replaces it with its honest structural summary. Behind the scenes, the agent records why a comparison was replaced or left uncited — counts and reasons only, never your message or the answer text. Nothing about reviewing, signing or your funds changes.",
+      "body": "When you ask Sparky to compare two protocols, it now answers only when the reply actually names both options and does not open with a flat refusal. When SparkPoint has verified material for every option, the answer includes its sources; if material is missing for any one of them, the comparison is still shown but without a partial \"Sources\" block. If the reply is just a refusal, Sparky replaces it with its honest structural summary. Behind the scenes, the agent records why a comparison was replaced or left uncited \u2014 counts and reasons only, never your message or the answer text. Nothing about reviewing, signing or your funds changes.",
       "published_at": "2026-10-29T14:00:00Z"
     },
     {
@@ -126,7 +142,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Comparisons now come with real, grounded answers",
-      "body": "When you ask Sparky to compare two protocols, it now looks up each one by name instead of searching the whole sentence once. So \"Is Morpho safer than Aave?\" gets the Morpho and Aave material it needs, rather than a general release note. If SparkPoint has verified material for only one side, Sparky says that plainly and still explains the well-known structural differences for the other side — without inventing rates or figures, giving allocation advice or suggesting a transaction. A comparison that Sparky cannot ground is no longer shown with a \"Sources\" block, so a non-answer can never look like a sourced answer. Nothing about reviewing, signing or your funds changes.",
+      "body": "When you ask Sparky to compare two protocols, it now looks up each one by name instead of searching the whole sentence once. So \"Is Morpho safer than Aave?\" gets the Morpho and Aave material it needs, rather than a general release note. If SparkPoint has verified material for only one side, Sparky says that plainly and still explains the well-known structural differences for the other side \u2014 without inventing rates or figures, giving allocation advice or suggesting a transaction. A comparison that Sparky cannot ground is no longer shown with a \"Sources\" block, so a non-answer can never look like a sourced answer. Nothing about reviewing, signing or your funds changes.",
       "published_at": "2026-10-29T13:20:00Z"
     },
     {
@@ -134,7 +150,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Comparison questions get a real answer instead of a retry error",
-      "body": "Asking Sparky to compare two options — for example \"Is Morpho safer than Aave?\" — could end in a \"try again\" error even after the answer had started to appear. That is fixed: Sparky now finishes a comparison with a useful, honest answer (how the risks differ, how the yield is produced and what the fees look like), or says plainly when it cannot verify a detail, instead of reporting a model problem that did not happen. A genuine provider outage still shows the normal retry message. Nothing about reviewing, signing or your funds changes.",
+      "body": "Asking Sparky to compare two options \u2014 for example \"Is Morpho safer than Aave?\" \u2014 could end in a \"try again\" error even after the answer had started to appear. That is fixed: Sparky now finishes a comparison with a useful, honest answer (how the risks differ, how the yield is produced and what the fees look like), or says plainly when it cannot verify a detail, instead of reporting a model problem that did not happen. A genuine provider outage still shows the normal retry message. Nothing about reviewing, signing or your funds changes.",
       "published_at": "2026-10-29T10:00:00Z"
     },
     {
@@ -149,8 +165,8 @@
       "slug": "true-streaming-and-comparisons-2026-10",
       "type": "changelog",
       "tag": "Fixed",
-      "title": "Sparky's answers now stream as they are written — and comparisons get a real answer",
-      "body": "Sparky's replies now start appearing in the chat as they are written instead of arriving all at once when the answer is finished. A behind-the-scenes gateway was holding every word until the end; it now passes each word through immediately, so a normal answer starts painting in a fraction of a second while the rest is still being written. The complete, checked answer still replaces what you saw, is the only version saved to your history, and nothing about reviewing or signing changes. Comparative questions also get a proper answer now: ask \"Is Morpho safer than Aave?\" or \"Compare that with just keeping it in Aave\" and Sparky compares the risks, how the yield is produced and the fees from its grounded product knowledge — instead of returning a generic empty-wallet message, and without preparing any transaction.",
+      "title": "Sparky's answers now stream as they are written \u2014 and comparisons get a real answer",
+      "body": "Sparky's replies now start appearing in the chat as they are written instead of arriving all at once when the answer is finished. A behind-the-scenes gateway was holding every word until the end; it now passes each word through immediately, so a normal answer starts painting in a fraction of a second while the rest is still being written. The complete, checked answer still replaces what you saw, is the only version saved to your history, and nothing about reviewing or signing changes. Comparative questions also get a proper answer now: ask \"Is Morpho safer than Aave?\" or \"Compare that with just keeping it in Aave\" and Sparky compares the risks, how the yield is produced and the fees from its grounded product knowledge \u2014 instead of returning a generic empty-wallet message, and without preparing any transaction.",
       "published_at": "2026-10-28T03:00:00Z"
     },
     {
@@ -166,7 +182,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Sparky tells a price question from an earnings estimate",
-      "body": "Ask for the current price of a coin and Sparky still answers with a live reference figure, its source and the time it was read. Ask what an amount could earn over time — for example \"how much is 10k USDC in 1 year?\" or \"what would $500 in ETH earn in 6 months?\" — and it now treats that as an estimate request instead of quoting a single spot price. If a live price cannot be fetched, Sparky says so instead of guessing.",
+      "body": "Ask for the current price of a coin and Sparky still answers with a live reference figure, its source and the time it was read. Ask what an amount could earn over time \u2014 for example \"how much is 10k USDC in 1 year?\" or \"what would $500 in ETH earn in 6 months?\" \u2014 and it now treats that as an estimate request instead of quoting a single spot price. If a live price cannot be fetched, Sparky says so instead of guessing.",
       "published_at": "2026-10-27T17:00:00Z"
     },
     {
@@ -198,7 +214,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Sparky answers the awkward questions instead of hitting a dead end",
-      "body": "Ask Sparky how to earn with an empty wallet and you now get the curated vault options with their current net APY and as-of date, a plain-language estimate when you give an amount and a time frame (clearly labelled as an estimate, not a promise), and a real comparison with simply keeping your money in Aave. It also remembers the amount from earlier in the conversation, so \"what if I only put half?\" works. Asking for the safest vault now prepares a move you can review and sign instead of just describing it, \"withdraw everything\" prepares the full withdrawal (or says there is nothing to withdraw), and a simple \"do it\" follows the last move Sparky proposed. Swaps into assets we don't support yet — like native BTC, SOL or NEAR — now say so honestly and point you at what is live today, and requests to send funds to a third party or ignore Sparky's safety rules get a clear refusal. Sparky never moves funds; you always review and sign.",
+      "body": "Ask Sparky how to earn with an empty wallet and you now get the curated vault options with their current net APY and as-of date, a plain-language estimate when you give an amount and a time frame (clearly labelled as an estimate, not a promise), and a real comparison with simply keeping your money in Aave. It also remembers the amount from earlier in the conversation, so \"what if I only put half?\" works. Asking for the safest vault now prepares a move you can review and sign instead of just describing it, \"withdraw everything\" prepares the full withdrawal (or says there is nothing to withdraw), and a simple \"do it\" follows the last move Sparky proposed. Swaps into assets we don't support yet \u2014 like native BTC, SOL or NEAR \u2014 now say so honestly and point you at what is live today, and requests to send funds to a third party or ignore Sparky's safety rules get a clear refusal. Sparky never moves funds; you always review and sign.",
       "published_at": "2026-10-27T11:00:00Z"
     },
     {
@@ -214,22 +230,22 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Behind the scenes: security refresh",
-      "body": "We patched the web framework and the validation libraries against newly published vulnerabilities. Nothing changes in how the app looks or works — your wallet, your keys, and how you sign stay exactly the same.",
+      "body": "We patched the web framework and the validation libraries against newly published vulnerabilities. Nothing changes in how the app looks or works \u2014 your wallet, your keys, and how you sign stay exactly the same.",
       "published_at": "2026-10-27T04:00:00Z"
     },
     {
       "slug": "chat-restore-and-quota-refund-2026-10",
       "type": "changelog",
       "tag": "Fixed",
-      "title": "Sparky chat is back — and a failed answer no longer costs a question",
-      "body": "Free chat is working again after the model provider retired the models Sparky was using. Sparky now has extra models on different providers behind the scenes, so if one is busy or unavailable it tries another before giving up. If a turn still fails because the AI provider is unavailable, it no longer counts against your daily chat, recommendations, or onboarding allowance — you keep the question. Successful turns work exactly as before.",
+      "title": "Sparky chat is back \u2014 and a failed answer no longer costs a question",
+      "body": "Free chat is working again after the model provider retired the models Sparky was using. Sparky now has extra models on different providers behind the scenes, so if one is busy or unavailable it tries another before giving up. If a turn still fails because the AI provider is unavailable, it no longer counts against your daily chat, recommendations, or onboarding allowance \u2014 you keep the question. Successful turns work exactly as before.",
       "published_at": "2026-10-27T02:25:56Z"
     },
     {
       "slug": "grounding-live-prices-as-of-2026-10",
       "type": "changelog",
       "tag": "New",
-      "title": "Sparky now answers price questions — and every APY shows how fresh it is",
+      "title": "Sparky now answers price questions \u2014 and every APY shows how fresh it is",
       "body": "Ask Sparky \"what is the price of ETH today?\" and you now get a live USD reference quote for ETH (plus BTC, SOL and NEAR for context), with the source and the time it was checked in UTC. Stablecoins are shown at about $1, and if a stable moves outside its usual band Sparky says so instead of hiding it. Prices move constantly, so the answer carries a reminder that a quote is not financial advice; if the price feed can't be reached, Sparky says it can't fetch one rather than guessing. SRK still has no dollar price, because there is no oracle and we won't invent one. Every stored vault APY now shows its as-of date too, and if the figure is more than about two days old Sparky tells you how old it is and points you to the Vault page for the live rate. Sparky's product knowledge was also expanded so questions about Morpho vs Aave, how APY and net APY work, slippage and the 0.20% swap fee, NEAR Intents (planned for the November build), self-custody and signing, daily question limits, and mandates get grounded answers.",
       "published_at": "2026-10-26T09:30:00Z"
     },
@@ -238,7 +254,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "A calmer app: no pop-up blocking you, and helpful dead ends",
-      "body": "The What's New note no longer covers the app while you are trying to use it — it is now a small panel you can dismiss, and it only greets you once per release. The Strategies tab is hidden while there are no strategies to show, rather than leading to an empty page. On phones the header is tidier, and the trust banner can be dismissed for good. The vault page now refreshes every minute instead of constantly, so it uses much less data and battery. In chat, a slow answer now says Sparky is taking longer than usual, and a failed or rate-limited turn explains when your allowance resets and points you to the Vault, Swap and changelog, which keep working without Sparky. You can now rate a chat answer with a thumbs up or down; the rating is stored so it can improve answers. Signing in also no longer waits forever if the assistant is briefly unreachable — you continue straight to the app.",
+      "body": "The What's New note no longer covers the app while you are trying to use it \u2014 it is now a small panel you can dismiss, and it only greets you once per release. The Strategies tab is hidden while there are no strategies to show, rather than leading to an empty page. On phones the header is tidier, and the trust banner can be dismissed for good. The vault page now refreshes every minute instead of constantly, so it uses much less data and battery. In chat, a slow answer now says Sparky is taking longer than usual, and a failed or rate-limited turn explains when your allowance resets and points you to the Vault, Swap and changelog, which keep working without Sparky. You can now rate a chat answer with a thumbs up or down; the rating is stored so it can improve answers. Signing in also no longer waits forever if the assistant is briefly unreachable \u2014 you continue straight to the app.",
       "published_at": "2026-10-26T09:00:00Z"
     },
     {
@@ -246,7 +262,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Apply now for the Sparky Broker mint whitelist",
-      "body": "The Sparky Broker collection — 5,555 brokers — mints in stages on OpenSea: Treasury, then GTD, then FCFS, then Public. Apply with the wallet you'll mint from to be added to the GTD/FCFS allowlist, so you mint first at the allowlist price. No wallet connection is needed to apply, and a spot is one per wallet. You'll find the form on the landing page and on the Brokers page in the app.",
+      "body": "The Sparky Broker collection \u2014 5,555 brokers \u2014 mints in stages on OpenSea: Treasury, then GTD, then FCFS, then Public. Apply with the wallet you'll mint from to be added to the GTD/FCFS allowlist, so you mint first at the allowlist price. No wallet connection is needed to apply, and a spot is one per wallet. You'll find the form on the landing page and on the Brokers page in the app.",
       "published_at": "2026-10-06T09:00:00Z"
     },
     {
@@ -254,23 +270,23 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Sparky's knowledge updates ride out busy moments",
-      "body": "When the AI provider briefly rate-limits, the system that keeps Sparky's product knowledge up to date now waits and retries a few times instead of skipping that update. Nothing changes in how you use the app — answers just stay grounded in the latest docs more reliably.",
+      "body": "When the AI provider briefly rate-limits, the system that keeps Sparky's product knowledge up to date now waits and retries a few times instead of skipping that update. Nothing changes in how you use the app \u2014 answers just stay grounded in the latest docs more reliably.",
       "published_at": "2026-10-04T09:00:00Z"
     },
     {
       "slug": "ai-model-upgrade-2026-10",
       "type": "changelog",
       "tag": "Improved",
-      "title": "Sparky runs on a new model lineup — and reads your product docs more sharply",
-      "body": "Sparky's chat now runs on a newer generation of models on both the Beta and the Alpha: quicker free models for everyday questions and a stronger premium model for deeper ones. Its knowledge search also moved to a new embedding system, and we re-indexed everything it reads — the product docs, the changelog, and the tips — so answers about how SparkPoint works stay grounded in the current text. The daily research Sparky does on its own (checking vaults and writing its findings) now runs on the premium model too, on both environments. Nothing about your wallet, your keys, or how you sign changed.",
+      "title": "Sparky runs on a new model lineup \u2014 and reads your product docs more sharply",
+      "body": "Sparky's chat now runs on a newer generation of models on both the Beta and the Alpha: quicker free models for everyday questions and a stronger premium model for deeper ones. Its knowledge search also moved to a new embedding system, and we re-indexed everything it reads \u2014 the product docs, the changelog, and the tips \u2014 so answers about how SparkPoint works stay grounded in the current text. The daily research Sparky does on its own (checking vaults and writing its findings) now runs on the premium model too, on both environments. Nothing about your wallet, your keys, or how you sign changed.",
       "published_at": "2026-10-04T08:38:59Z"
     },
     {
       "slug": "open-beta",
       "type": "changelog",
       "tag": "New",
-      "title": "The beta is open — bring a wallet",
-      "body": "No more invite list: connect a wallet and sign the free message to prove it's yours, and you're in. Chat with Sparky, see your portfolio, swap ETH and USDG, and browse the vault board. SparkPoint never holds your funds — you sign every transaction yourself, and you can withdraw any time.",
+      "title": "The beta is open \u2014 bring a wallet",
+      "body": "No more invite list: connect a wallet and sign the free message to prove it's yours, and you're in. Chat with Sparky, see your portfolio, swap ETH and USDG, and browse the vault board. SparkPoint never holds your funds \u2014 you sign every transaction yourself, and you can withdraw any time.",
       "published_at": "2026-10-04T01:48:43Z"
     },
     {
@@ -278,7 +294,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Sparky Brokers now has its own stop on the landing page",
-      "body": "Scroll just past the hero and you'll meet the Brokers: 10,000 memberships whose two-pixel gold frame is the proof of activation. A short preview shows the unactivated → activated look, and the OpenSea link takes you straight to the collection.",
+      "body": "Scroll just past the hero and you'll meet the Brokers: 10,000 memberships whose two-pixel gold frame is the proof of activation. A short preview shows the unactivated \u2192 activated look, and the OpenSea link takes you straight to the collection.",
       "published_at": "2026-10-03T07:15:37Z"
     },
     {
@@ -286,15 +302,15 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "The access application's tab title no longer stutters",
-      "body": "Small copy fix: the browser tab on the access application read “Apply for beta access — Sparky — Sparky”. It now says it once, and the same fix applies to the alpha build's wording.",
+      "body": "Small copy fix: the browser tab on the access application read \u201cApply for beta access \u2014 Sparky \u2014 Sparky\u201d. It now says it once, and the same fix applies to the alpha build's wording.",
       "published_at": "2026-10-02T11:27:55Z"
     },
     {
       "slug": "beta-stage-copy",
       "type": "changelog",
       "tag": "Fixed",
-      "title": "The site now calls itself what it is — Beta",
-      "body": "The landing page, the access application, and a few app notes still said “alpha” even though you are using the Beta. They now all read the site's real stage, so the beta says Beta and the alpha/testnet build still says Alpha. Nothing about your access or funds changed — this is wording catching up with the product you're already using.",
+      "title": "The site now calls itself what it is \u2014 Beta",
+      "body": "The landing page, the access application, and a few app notes still said \u201calpha\u201d even though you are using the Beta. They now all read the site's real stage, so the beta says Beta and the alpha/testnet build still says Alpha. Nothing about your access or funds changed \u2014 this is wording catching up with the product you're already using.",
       "published_at": "2026-10-02T10:25:08Z"
     },
     {
@@ -302,7 +318,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Safety answers that never wait on a model",
-      "body": "Questions about custody — “how do you keep my funds safe?”, “can you withdraw my funds?” — are now answered directly from the system's own guarantees, so they stay available even when the AI provider is busy. The chat's swap suggestion also names the pair you're actually swapping (ETH and USDG on this network).",
+      "body": "Questions about custody \u2014 \u201chow do you keep my funds safe?\u201d, \u201ccan you withdraw my funds?\u201d \u2014 are now answered directly from the system's own guarantees, so they stay available even when the AI provider is busy. The chat's swap suggestion also names the pair you're actually swapping (ETH and USDG on this network).",
       "published_at": "2026-09-22T04:22:29Z"
     },
     {
@@ -310,7 +326,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Sparky handles busy moments better",
-      "body": "When the model provider is briefly rate-limiting, Sparky now waits and retries a few more times instead of giving up, so a busy moment is less likely to end in “something went wrong”. Asking what a vault is paying is also answered straight from the same stored figure the Vault board shows.",
+      "body": "When the model provider is briefly rate-limiting, Sparky now waits and retries a few more times instead of giving up, so a busy moment is less likely to end in \u201csomething went wrong\u201d. Asking what a vault is paying is also answered straight from the same stored figure the Vault board shows.",
       "published_at": "2026-09-22T02:45:37Z"
     },
     {
@@ -318,7 +334,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Asking Sparky what vaults are available now works",
-      "body": "Asking “what are the vaults available right now?” used to get a generic “no strategy clears your guardrails” reply. Sparky now lists the curated vaults from the same board the Vault page shows, names the current pick, and links the board. The withdrawal receipt also shows the amount you actually withdrew instead of $0.00, and the wallet answer names the token you really hold (USDG on this network).",
+      "body": "Asking \u201cwhat are the vaults available right now?\u201d used to get a generic \u201cno strategy clears your guardrails\u201d reply. Sparky now lists the curated vaults from the same board the Vault page shows, names the current pick, and links the board. The withdrawal receipt also shows the amount you actually withdrew instead of $0.00, and the wallet answer names the token you really hold (USDG on this network).",
       "published_at": "2026-09-22T02:17:56Z"
     },
     {
@@ -342,7 +358,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "The deposit acknowledgement tells the truth",
-      "body": "The confirmation's acknowledgement used to claim it was using your “full idle balance” and called the token USDC — even for a small deposit of USDG. It now names the real asset and the real share of your idle balance, and what stays in your wallet.",
+      "body": "The confirmation's acknowledgement used to claim it was using your \u201cfull idle balance\u201d and called the token USDC \u2014 even for a small deposit of USDG. It now names the real asset and the real share of your idle balance, and what stays in your wallet.",
       "published_at": "2026-09-21T08:57:05Z"
     },
     {
@@ -358,7 +374,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Revenue: every token, in its real units",
-      "body": "A correctness pass on the broker revenue page and the swap confirm screen:\n\n• the revenue page now shows every fee asset, not just ETH — a USDG fee appears as 0.00081 USDG instead of “810 units of 0x5fc5…d168”, and the withdrawable total lists each asset;\n• the broker list no longer misses a broker when an earlier one was fused away — the scan now covers the whole minted range;\n• the swap confirm screen no longer shows “0” for a real, tiny fee — the exact amount is shown before you sign;\n• nothing about where the money goes changed, and the page still reads the same contracts.",
+      "body": "A correctness pass on the broker revenue page and the swap confirm screen:\n\n\u2022 the revenue page now shows every fee asset, not just ETH \u2014 a USDG fee appears as 0.00081 USDG instead of \u201c810 units of 0x5fc5\u2026d168\u201d, and the withdrawable total lists each asset;\n\u2022 the broker list no longer misses a broker when an earlier one was fused away \u2014 the scan now covers the whole minted range;\n\u2022 the swap confirm screen no longer shows \u201c0\u201d for a real, tiny fee \u2014 the exact amount is shown before you sign;\n\u2022 nothing about where the money goes changed, and the page still reads the same contracts.",
       "published_at": "2026-09-21T03:45:00Z"
     },
     {
@@ -366,7 +382,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Behind the scenes: steadier history indexing",
-      "body": "A fix in how the background indexer tracks its progress across networks — one chain's activity can no longer stop another chain's deposit and withdrawal history from updating.",
+      "body": "A fix in how the background indexer tracks its progress across networks \u2014 one chain's activity can no longer stop another chain's deposit and withdrawal history from updating.",
       "published_at": "2026-09-21T02:41:08Z"
     },
     {
@@ -374,7 +390,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Your beta positions now show profit and loss",
-      "body": "Once you hold a curated vault on the beta, Portfolio shows its cost basis and unrealized profit or loss, and the value chart starts drawing from your real deposits and withdrawals. Before the first deposit it stays honestly blank — no placeholder numbers.",
+      "body": "Once you hold a curated vault on the beta, Portfolio shows its cost basis and unrealized profit or loss, and the value chart starts drawing from your real deposits and withdrawals. Before the first deposit it stays honestly blank \u2014 no placeholder numbers.",
       "published_at": "2026-09-21T01:45:14Z"
     },
     {
@@ -382,7 +398,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Sparky now sees your beta portfolio",
-      "body": "When you ask about your portfolio or where to put your funds, Sparky reads the same balances the Portfolio page shows — your idle USDG and any curated vault positions you hold — so its suggestions start from what you actually have, not from a blank slate.",
+      "body": "When you ask about your portfolio or where to put your funds, Sparky reads the same balances the Portfolio page shows \u2014 your idle USDG and any curated vault positions you hold \u2014 so its suggestions start from what you actually have, not from a blank slate.",
       "published_at": "2026-09-21T00:51:26Z"
     },
     {
@@ -390,7 +406,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Your portfolio now shows your real funds",
-      "body": "On the beta, Portfolio shows what your wallet actually holds: your USDG balance (at $1 par), your ETH, and any curated vault positions you hold — all read live on-chain. Before you deposit, your idle balance sits right there with a one-tap “Put it to work”. You can also add any token by address to see it in your wallet list.",
+      "body": "On the beta, Portfolio shows what your wallet actually holds: your USDG balance (at $1 par), your ETH, and any curated vault positions you hold \u2014 all read live on-chain. Before you deposit, your idle balance sits right there with a one-tap \u201cPut it to work\u201d. You can also add any token by address to see it in your wallet list.",
       "published_at": "2026-09-20T23:55:42Z"
     },
     {
@@ -398,7 +414,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "The beta reads in one voice",
-      "body": "The landing page, onboarding, portfolio, premium and automation screens, and the chat suggestion chips now describe only what's live in the beta — curated vaults, swaps, and your wallet. Nothing you read points at something you can't use today.",
+      "body": "The landing page, onboarding, portfolio, premium and automation screens, and the chat suggestion chips now describe only what's live in the beta \u2014 curated vaults, swaps, and your wallet. Nothing you read points at something you can't use today.",
       "published_at": "2026-09-20T12:27:20Z"
     },
     {
@@ -422,7 +438,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Deposit screen fixes, clearer button labels, and fresh builds",
-      "body": "The Deposit screen now opens correctly for the wrapped curated vaults on Robinhood Chain (it previously showed a 'not part of the beta yet' notice), and the button now names the token — 'Deposit USDG' — instead of internal wording. The Portfolio note now points to the live curated vaults.\n\nWe also fixed app updates not showing up until a hard refresh: new builds now reach an open tab and the update banner can reload onto them cleanly.",
+      "body": "The Deposit screen now opens correctly for the wrapped curated vaults on Robinhood Chain (it previously showed a 'not part of the beta yet' notice), and the button now names the token \u2014 'Deposit USDG' \u2014 instead of internal wording. The Portfolio note now points to the live curated vaults.\n\nWe also fixed app updates not showing up until a hard refresh: new builds now reach an open tab and the update banner can reload onto them cleanly.",
       "published_at": "2026-09-20T09:46:37Z"
     },
     {
@@ -430,7 +446,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Real token logos in the swap and vault pages",
-      "body": "USDG, ETH and the Robinhood stock tokens now show their real logos in the swap picker, the vault cards and your portfolio — no more plain letter circles. The art is bundled with the app (no third-party calls), and logos stay decorative: the verified badge is still what tells you a token is the right one.",
+      "body": "USDG, ETH and the Robinhood stock tokens now show their real logos in the swap picker, the vault cards and your portfolio \u2014 no more plain letter circles. The art is bundled with the app (no third-party calls), and logos stay decorative: the verified badge is still what tells you a token is the right one.",
       "published_at": "2026-09-20T08:23:15Z"
     },
     {
@@ -438,7 +454,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "You can deposit into the wrapped vaults now",
-      "body": "The Vault page's recommended vault and every live vault card now open a working deposit flow: the app resolves the SparkPoint wrapper, shows the wrapper's own fee disclosure, and signs the deposit against it. The card also shows the stored curator-scan net APY, labelled as a stored figure, and withdrawals are never gated.\n\nUnder the hood this wires the app to the new V3 wrapper fleet — one wrapper per vault, deployed on-chain and verified.",
+      "body": "The Vault page's recommended vault and every live vault card now open a working deposit flow: the app resolves the SparkPoint wrapper, shows the wrapper's own fee disclosure, and signs the deposit against it. The card also shows the stored curator-scan net APY, labelled as a stored figure, and withdrawals are never gated.\n\nUnder the hood this wires the app to the new V3 wrapper fleet \u2014 one wrapper per vault, deployed on-chain and verified.",
       "published_at": "2026-09-20T07:34:03Z"
     },
     {
@@ -446,15 +462,15 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Vault page: full-colour pick card and honest wrapper status",
-      "body": "The recommended-vault card now wears SparkPoint's full brand gradient, and a vault whose wrapper is deployed no longer claims otherwise — it says plainly that in-app deposits for it are coming shortly.",
+      "body": "The recommended-vault card now wears SparkPoint's full brand gradient, and a vault whose wrapper is deployed no longer claims otherwise \u2014 it says plainly that in-app deposits for it are coming shortly.",
       "published_at": "2026-09-20T06:41:47Z"
     },
     {
       "slug": "vault-page-card-first",
       "type": "changelog",
       "tag": "Improved",
-      "title": "The Vault page is card-first — and shows only vaults you can deposit into",
-      "body": "Sparky's recommended vault now leads the page in a full-width feature card, and every live vault sits below as a card with its net APY, TVL, withdrawable liquidity and a 30-day trend chart — no more table. Scroll and more cards load in.\n\nWe also tightened what's public: only vaults whose SparkPoint wrapper is actually deployed appear here, so every card is depositable today. Vaults still being screened or wrapped are handled in the admin panel and are never shown as 'coming soon'.",
+      "title": "The Vault page is card-first \u2014 and shows only vaults you can deposit into",
+      "body": "Sparky's recommended vault now leads the page in a full-width feature card, and every live vault sits below as a card with its net APY, TVL, withdrawable liquidity and a 30-day trend chart \u2014 no more table. Scroll and more cards load in.\n\nWe also tightened what's public: only vaults whose SparkPoint wrapper is actually deployed appear here, so every card is depositable today. Vaults still being screened or wrapped are handled in the admin panel and are never shown as 'coming soon'.",
       "published_at": "2026-09-20T04:47:08Z"
     },
     {
@@ -462,7 +478,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Under the hood: one clean vault-admission queue",
-      "body": "The vault admission flow now has a single queue. The old wrapper-request path was retired after the new admission queue went live — the AI can admit a curated vault under the public cooling-off window, and the operator keeps the instant lane. Nothing changes for you: deposits, withdrawals and fees are untouched.",
+      "body": "The vault admission flow now has a single queue. The old wrapper-request path was retired after the new admission queue went live \u2014 the AI can admit a curated vault under the public cooling-off window, and the operator keeps the instant lane. Nothing changes for you: deposits, withdrawals and fees are untouched.",
       "published_at": "2026-09-20T01:58:43Z"
     },
     {
@@ -470,7 +486,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Curated vaults: wrapping now follows a public cooling-off window",
-      "body": "When a curated vault gets its SparkPoint wrapper, the AI can now admit it on its own — but the wrapper is not deployable until a public cooling-off window elapses (24 hours by default, configurable between 1 hour and 7 days). The operator can admit and deploy a vault immediately, release a cooling-off entry early, or cancel a pending one, and one wrapper per vault is enforced on-chain.\n\nThe Trust Center now spells this out, including that upgrades still wait out the 72-hour timelock and withdrawals are never gated.",
+      "body": "When a curated vault gets its SparkPoint wrapper, the AI can now admit it on its own \u2014 but the wrapper is not deployable until a public cooling-off window elapses (24 hours by default, configurable between 1 hour and 7 days). The operator can admit and deploy a vault immediately, release a cooling-off entry early, or cancel a pending one, and one wrapper per vault is enforced on-chain.\n\nThe Trust Center now spells this out, including that upgrades still wait out the 72-hour timelock and withdrawals are never gated.",
       "published_at": "2026-09-19T18:05:00Z"
     },
     {
@@ -486,7 +502,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Curated vaults: clearer wrapper fees and upgrades",
-      "body": "Wrapped curated vaults now explain their upgrade model up front: every wrapper upgrade must wait out a public 72-hour timelock, a separate multisig can cancel it, and nothing — not a pause, not an upgrade, not SparkPoint — can stop you from withdrawing.\n\nThe Vault page also keeps its promise to say exactly where a fee applies: a vault shows the SparkPoint wrapper deposit path only after the wrapper has actually been deployed, and a wrapper is never shown before then. Fees stay performance-only: gains above your high-water mark, never a deposit, a withdrawal, or a losing position.",
+      "body": "Wrapped curated vaults now explain their upgrade model up front: every wrapper upgrade must wait out a public 72-hour timelock, a separate multisig can cancel it, and nothing \u2014 not a pause, not an upgrade, not SparkPoint \u2014 can stop you from withdrawing.\n\nThe Vault page also keeps its promise to say exactly where a fee applies: a vault shows the SparkPoint wrapper deposit path only after the wrapper has actually been deployed, and a wrapper is never shown before then. Fees stay performance-only: gains above your high-water mark, never a deposit, a withdrawal, or a losing position.",
       "published_at": "2026-09-19T11:45:00Z"
     },
     {
@@ -494,7 +510,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "The Vault page is now just the curated board",
-      "body": "We removed the “SparkPoint’s own vault” card. SparkPoint is not launching its own vault on this network — the plan is to find strong vaults that already exist here, wrap them in SparkPoint’s own upgradeable wrapper, and bring them to the Vault page for you to use.\n\nWhen the first vault is onboarded it will appear on the board by itself; until then the page says honestly that there is nothing to show. Deposits and withdrawals always stay in your own wallet.",
+      "body": "We removed the \u201cSparkPoint\u2019s own vault\u201d card. SparkPoint is not launching its own vault on this network \u2014 the plan is to find strong vaults that already exist here, wrap them in SparkPoint\u2019s own upgradeable wrapper, and bring them to the Vault page for you to use.\n\nWhen the first vault is onboarded it will appear on the board by itself; until then the page says honestly that there is nothing to show. Deposits and withdrawals always stay in your own wallet.",
       "published_at": "2026-09-19T09:45:00Z"
     },
     {
@@ -502,7 +518,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Under the hood: upgradeable curated-vault wrappers",
-      "body": "We built the system that lets SparkPoint wrap a curated vault in its own upgradeable wrapper — so fees on gains stay future-proof and fixes can reach every wrapper at once.\n\nNothing changes on this network yet: there is still no curated vault live here, so there is nothing to deposit. When one goes live, the Vault page will show it with the full fee disclosure, and you will always sign from your own wallet.",
+      "body": "We built the system that lets SparkPoint wrap a curated vault in its own upgradeable wrapper \u2014 so fees on gains stay future-proof and fixes can reach every wrapper at once.\n\nNothing changes on this network yet: there is still no curated vault live here, so there is nothing to deposit. When one goes live, the Vault page will show it with the full fee disclosure, and you will always sign from your own wallet.",
       "published_at": "2026-09-18T13:30:00Z"
     },
     {
@@ -510,7 +526,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Sparky now hunts for the best vaults for you",
-      "body": "The Vault page has a new job: a daily curator bot checks this network for vaults, screens each one, and ranks them. Sparky then proposes the best pick — and a person on the team reviews and publishes it, so nothing reaches you unchecked.\n\nWhat you'll see on the Vault page:\n\n• Sparky's pick for today, with its net APY, TVL, curator and the reason it was chosen — always shown with the time it was measured;\n• the full curated list, where each row says whether it came from the AI or an admin, and when it was last checked;\n• an “Ask Sparky about vaults” button that opens chat with the question already typed;\n• if there are no vaults on this network yet, the page says exactly that — no empty table pretending to be a market.\n\nOn fees: where SparkPoint adds its performance-fee wrapper, the fee applies only to gains above your high-water mark — never to a deposit, a withdrawal, or a flat or losing position. Vaults without a wrapper are deposited directly from your wallet and carry no SparkPoint fee at all. Either way, you sign from your own wallet and can withdraw directly at any time.\n\nThis network doesn't have a curated vault yet, so you'll see the honest empty state for now. When the curator finds one, the page fills in by itself.",
+      "body": "The Vault page has a new job: a daily curator bot checks this network for vaults, screens each one, and ranks them. Sparky then proposes the best pick \u2014 and a person on the team reviews and publishes it, so nothing reaches you unchecked.\n\nWhat you'll see on the Vault page:\n\n\u2022 Sparky's pick for today, with its net APY, TVL, curator and the reason it was chosen \u2014 always shown with the time it was measured;\n\u2022 the full curated list, where each row says whether it came from the AI or an admin, and when it was last checked;\n\u2022 an \u201cAsk Sparky about vaults\u201d button that opens chat with the question already typed;\n\u2022 if there are no vaults on this network yet, the page says exactly that \u2014 no empty table pretending to be a market.\n\nOn fees: where SparkPoint adds its performance-fee wrapper, the fee applies only to gains above your high-water mark \u2014 never to a deposit, a withdrawal, or a flat or losing position. Vaults without a wrapper are deposited directly from your wallet and carry no SparkPoint fee at all. Either way, you sign from your own wallet and can withdraw directly at any time.\n\nThis network doesn't have a curated vault yet, so you'll see the honest empty state for now. When the curator finds one, the page fills in by itself.",
       "published_at": "2026-09-18T10:30:00Z"
     },
     {
@@ -518,7 +534,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "Swapping: more tokens, fewer taps",
-      "body": "The Swap page and Sparky got easier:\n\n• the token picker now recommends the chain's real Stock Tokens — SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, QQQ, GLD, CRCL, RDDT and SPCX — each verified on-chain, and you can still paste any other token address;\n• the “Route via” box is gone — Uniswap V3 is where swaps run, and the route still shows on the confirm screen;\n• ask Sparky for a swap (“swap 0.001 ETH to USDG”) and the card now opens with the amount and both tokens already filled in — you just review and confirm;\n• the SRK page links to its Pons launchpad, and the broker page links to the collection on OpenSea.\n\nAs always: you sign from your own wallet, and SparkPoint never holds your funds.",
+      "body": "The Swap page and Sparky got easier:\n\n\u2022 the token picker now recommends the chain's real Stock Tokens \u2014 SPY, NVDA, TSLA, GOOGL, META, COIN, AAPL, AMZN, MSFT, QQQ, GLD, CRCL, RDDT and SPCX \u2014 each verified on-chain, and you can still paste any other token address;\n\u2022 the \u201cRoute via\u201d box is gone \u2014 Uniswap V3 is where swaps run, and the route still shows on the confirm screen;\n\u2022 ask Sparky for a swap (\u201cswap 0.001 ETH to USDG\u201d) and the card now opens with the amount and both tokens already filled in \u2014 you just review and confirm;\n\u2022 the SRK page links to its Pons launchpad, and the broker page links to the collection on OpenSea.\n\nAs always: you sign from your own wallet, and SparkPoint never holds your funds.",
       "published_at": "2026-09-18T09:20:00Z"
     },
     {
@@ -526,7 +542,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "A cleaner beta: honest labels, tidier pages, less clutter",
-      "body": "A pass over the beta's rough edges:\n\n• the broker and revenue pages no longer run their labels into the numbers;\n• the “partial data” chips are gone — a feature that isn't available yet now simply says so;\n• Bridge is tucked away for now, SRK lives inside Learn, and the Changelog moved into Settings (all still reachable);\n• no testnet or faucet talk anywhere — SRK is described plainly as a placeholder token;\n• the broker page links to OpenSea and says the collection is a test placeholder.\n\nNothing about how anything works changed — this is clarity.",
+      "body": "A pass over the beta's rough edges:\n\n\u2022 the broker and revenue pages no longer run their labels into the numbers;\n\u2022 the \u201cpartial data\u201d chips are gone \u2014 a feature that isn't available yet now simply says so;\n\u2022 Bridge is tucked away for now, SRK lives inside Learn, and the Changelog moved into Settings (all still reachable);\n\u2022 no testnet or faucet talk anywhere \u2014 SRK is described plainly as a placeholder token;\n\u2022 the broker page links to OpenSea and says the collection is a test placeholder.\n\nNothing about how anything works changed \u2014 this is clarity.",
       "published_at": "2026-09-18T08:44:00Z"
     },
     {
@@ -534,7 +550,7 @@
       "type": "changelog",
       "tag": "Announcement",
       "title": "SparkPoint beta is live on Robinhood Chain",
-      "body": "The beta is open at beta.sparkpoint.io on Robinhood Chain. Connect a wallet, sign a message to prove it is yours (nothing on-chain moves), and you can:\n\n• chat with Sparky about your portfolio;\n• swap ETH and USDG on the network's own Uniswap V3;\n• if you hold a Sparky Broker, clock it in and collect its share of trading revenue — promote or fuse brokers too.\n\nThe swap charges the advertised 0.20% fee, and the confirm screen shows the exact amount and where it goes before you sign. Everything is non-custodial: you sign from your own wallet, and SparkPoint never holds your funds.\n\nThis is a beta — the token and the collection are test assets. Try it, and tell us what to improve.",
+      "body": "The beta is open at beta.sparkpoint.io on Robinhood Chain. Connect a wallet, sign a message to prove it is yours (nothing on-chain moves), and you can:\n\n\u2022 chat with Sparky about your portfolio;\n\u2022 swap ETH and USDG on the network's own Uniswap V3;\n\u2022 if you hold a Sparky Broker, clock it in and collect its share of trading revenue \u2014 promote or fuse brokers too.\n\nThe swap charges the advertised 0.20% fee, and the confirm screen shows the exact amount and where it goes before you sign. Everything is non-custodial: you sign from your own wallet, and SparkPoint never holds your funds.\n\nThis is a beta \u2014 the token and the collection are test assets. Try it, and tell us what to improve.",
       "published_at": "2026-09-18T07:21:00Z"
     }
   ]

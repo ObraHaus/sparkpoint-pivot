@@ -43,7 +43,10 @@ _FROM_CHAIN_RE = re.compile(
     r"\bfrom\s+(?P<chain>[a-z][a-z ]{0,30}?)(?=\s+(?:to|into|on|in)\b|[,.]|$)",
     re.IGNORECASE,
 )
-_DEST_RE = re.compile(r"\b(?:into|to)\s+(?P<dest>.+)$", re.IGNORECASE)
+#: ``swap 50 USDC for SOL`` / ``convert 50 USDC into SOL`` / ``swap USDC to SOL`` all name the
+#: destination the same way. "for" was missing, so the common demo phrasing fell through to the
+#: generic "pair not available" answer.
+_DEST_RE = re.compile(r"\b(?:into|to|for)\s+(?P<dest>.+)$", re.IGNORECASE)
 _CHAIN_MARKER_RE = re.compile(r"\b(?:on|in)\s+(?P<chain>[a-z][a-z ]{0,30})", re.IGNORECASE)
 _TRAILING_NOISE_RE = re.compile(r"\b(?:please|now|today|thanks|asap)\b.*$", re.IGNORECASE)
 
@@ -64,6 +67,29 @@ class CrossChainRequest:
         if "." in text:
             text = text.rstrip("0").rstrip(".")
         return text or "0"
+
+
+@dataclass(frozen=True, slots=True)
+class CrossChainClarification:
+    """A recognisable cross-chain request that is missing only the amount.
+
+    ``swap USDC to SOL`` used to fall through to the generic swap-pair answer ("pair not
+    available"), which is both wrong and unhelpful — the route exists. This carries enough context
+    for the coordinator to ask a focused question instead.
+    """
+
+    origin_key: str
+    destination_key: str
+    source_symbol: str
+    destination_label: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"How much {self.source_symbol} would you like to send to {self.destination_label}? "
+            f'Tell me an amount — for example "swap 50 {self.source_symbol} to '
+            f"{self.destination_label}\" — and I'll quote it. Nothing has been signed or sent."
+        )
 
 
 def _parse_amount(raw: str, scale: str | None, decimals: int) -> tuple[Decimal, int] | None:
@@ -173,4 +199,48 @@ def parse_cross_chain_request(message: str, config: CrossChainConfig) -> CrossCh
         amount=amount,
         amount_raw=amount_raw,
         message=message,
+    )
+
+
+def parse_cross_chain_clarification(
+    message: str, config: CrossChainConfig
+) -> CrossChainClarification | None:
+    """Return a clarification when a cross-chain request names a route but no amount.
+
+    Only fires when the action verb, source symbol and destination all resolve to a REAL,
+    different route. Anything vaguer (``bridge to NEAR``, ``swap USDC``) stays with the normal
+    flows rather than guessing. A same-chain pair is deliberately left alone — that is the
+    existing swap flow's job, not a missing amount.
+    """
+    text = message.strip()
+    if not text or _ACTION_RE.search(text) is None:
+        return None
+    if _AMOUNT_TOKEN_RE.search(text) is not None:
+        return None
+
+    destination_match = _DEST_RE.search(text)
+    if destination_match is None:
+        return None
+
+    head = text[: destination_match.start()]
+    symbols = list(_SYMBOL_RE.finditer(head))
+    if not symbols:
+        return None
+    source_symbol = symbols[-1].group(0).upper()
+
+    origin = config.default_for_symbol(source_symbol)
+    if origin is None:
+        return None
+
+    destination = _destination_asset(destination_match.group("dest"), source_symbol, config)
+    if destination is None:
+        return None
+    if origin.key == destination.key:
+        return None
+
+    return CrossChainClarification(
+        origin_key=origin.key,
+        destination_key=destination.key,
+        source_symbol=origin.symbol,
+        destination_label=destination.chain_label,
     )

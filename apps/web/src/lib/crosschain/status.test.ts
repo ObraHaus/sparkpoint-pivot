@@ -18,6 +18,8 @@ test("every contract status has a plain-language view", () => {
   assert.equal(statusView("INCOMPLETE_DEPOSIT").tone, "attention");
   assert.equal(statusView("REFUNDED").tone, "attention");
   assert.equal(statusView("FAILED").tone, "attention");
+  assert.equal(statusView("EXPIRED").tone, "attention");
+  assert.equal(statusView("EXPIRED").terminal, true);
 });
 
 test("statuses are case-insensitive and unknown values degrade honestly", () => {
@@ -34,6 +36,7 @@ test("polling stops only on the terminal outcomes named in the contract", () => 
   assert.equal(isTerminalStatus("SUCCESS"), true);
   assert.equal(isTerminalStatus("REFUNDED"), true);
   assert.equal(isTerminalStatus("FAILED"), true);
+  assert.equal(isTerminalStatus("EXPIRED"), true);
   assert.equal(isTerminalStatus("INCOMPLETE_DEPOSIT"), false);
   assert.equal(isTerminalStatus("PROCESSING"), false);
   assert.equal(shouldPoll("SUCCESS"), false);

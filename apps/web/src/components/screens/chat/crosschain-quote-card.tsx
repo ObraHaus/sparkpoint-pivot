@@ -38,6 +38,13 @@ import {
 import { isTerminalStatus, pollDelayMs, statusView } from "@/lib/crosschain/status";
 import { canSendFromWallet, humanToBaseUnits } from "@/lib/crosschain/walletSend";
 import {
+  crosschainAddressUrl,
+  crosschainTxUrl,
+  evmChainIdForKey,
+  firstHash,
+  parseSwapDetails,
+} from "@/lib/crosschain/explorer";
+import {
   depositStorageKey,
   readDepositSnapshot,
   writeDepositSnapshot,
@@ -56,6 +63,7 @@ interface HttpQuote extends Omit<CrossChainQuoteBlock, "type" | "state"> {
   deadline?: string;
   quoteId?: number;
 }
+
 
 type Stage = "preview" | "recipient" | "confirm" | "deposit";
 
@@ -162,6 +170,8 @@ export function CrossChainQuoteCard({
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletTxHash, setWalletTxHash] = useState<Hex | null>(null);
+  const [swapDetails, setSwapDetails] = useState<ReturnType<typeof parseSwapDetails>>(null);
+  const [submitRetryable, setSubmitRetryable] = useState(false);
 
   const statusRef = useRef<string | undefined>(undefined);
   const pollStartedAt = useRef(0);
@@ -237,11 +247,13 @@ export function CrossChainQuoteCard({
           { cache: "no-store", signal: controller.signal },
         );
         if (!res.ok) throw new Error(await errorMessage(res));
-        const body = (await res.json()) as { status?: unknown };
+        const body = (await res.json()) as { status?: unknown; swapDetails?: unknown };
         if (cancelled) return;
         const next = typeof body.status === "string" ? body.status : undefined;
         statusRef.current = next;
         setStatus(next);
+        const details = parseSwapDetails(body.swapDetails);
+        if (details !== null) setSwapDetails(details);
         setStatusError(null);
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === "AbortError")) return;
@@ -344,6 +356,33 @@ export function CrossChainQuoteCard({
     }
   }
 
+  // 068b — the speed-up notice is optional; the on-chain transfer already happened. Keep it
+  // retryable instead of leaving the user with a dead-end warning.
+  async function submitDepositNotice(hash: Hex): Promise<void> {
+    if (!deposit) return;
+    setSubmitRetryable(false);
+    try {
+      const res = await fetch("/api/agent/crosschain/deposit/submit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ depositAddress: deposit.depositAddress, txHash: hash }),
+      });
+      if (!res.ok) {
+        setSubmitRetryable(true);
+        setWalletError(
+          "Your transaction was sent, but the speed-up notice couldn't be recorded. Status will still update automatically — you can retry the notice.",
+        );
+      } else {
+        setWalletError(null);
+      }
+    } catch {
+      setSubmitRetryable(true);
+      setWalletError(
+        "Your transaction was sent, but the speed-up notice couldn't be recorded. Status will still update automatically — you can retry the notice.",
+      );
+    }
+  }
+
   async function sendFromWallet() {
     if (!deposit || !originToken || amountInUnits === null) return;
     if (typeof block.origin.evmChainId !== "number") return;
@@ -362,22 +401,26 @@ export function CrossChainQuoteCard({
         chainId: targetChainId,
       });
       setWalletTxHash(hash);
-      const res = await fetch("/api/agent/crosschain/deposit/submit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ depositAddress: deposit.depositAddress, txHash: hash }),
-      });
-      if (!res.ok) {
-        setWalletError(
-          "Your transaction was sent, but the speed-up notice couldn't be recorded. Status will still update automatically.",
-        );
-      }
+      await submitDepositNotice(hash);
     } catch (err) {
       setWalletError(walletErrorCopy(err));
     } finally {
       setWalletBusy(false);
     }
   }
+
+  const originTxHash = walletTxHash ?? firstHash(swapDetails?.originChainTxHashes);
+  const destinationTxHash = firstHash(swapDetails?.destinationChainTxHashes);
+  const destinationEvmChainId = evmChainIdForKey(block.destination.key);
+  const originTxUrl = crosschainTxUrl(originKind, block.origin.evmChainId, originTxHash);
+  // Derive the link ourselves from the hash + chain. A URL supplied by 1Click is deliberately
+  // NOT rendered: an upstream string must never become an href without our own validation.
+  const destinationTxUrl = crosschainTxUrl(destinationKind, destinationEvmChainId, destinationTxHash);
+  const depositAddressUrl = crosschainAddressUrl(
+    originKind,
+    block.origin.evmChainId,
+    deposit?.depositAddress,
+  );
 
   const view = statusView(status);
   const activeStep = view.step;
@@ -501,6 +544,13 @@ export function CrossChainQuoteCard({
               </div>
             )}
           </div>
+
+          <Notice tone="info">
+            <b>Where your funds go:</b> the {block.destination.symbol} is delivered to the{" "}
+            {block.destination.chainLabel} address above. It is always an address you control —
+            SparkPoint never substitutes a platform wallet, never holds the funds, and cannot move
+            them after delivery.
+          </Notice>
 
           <div>
             <div style={{ fontSize: 12.5, fontWeight: 600 }}>Refund address</div>
@@ -668,6 +718,19 @@ export function CrossChainQuoteCard({
                 Send before the quote expires: <b>{formatCountdown(deposit.deadline, now)}</b>
               </div>
             )}
+            {depositAddressUrl && (
+              <div style={{ marginTop: 6 }}>
+                <a
+                  href={depositAddressUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="btn btn-outline btn-sm"
+                  data-testid="cc-deposit-explorer"
+                >
+                  <Icon name="ext" size={13} /> View deposit address on explorer
+                </a>
+              </div>
+            )}
           </div>
 
           {walletSendAvailable ? (
@@ -687,10 +750,30 @@ export function CrossChainQuoteCard({
               </div>
               {walletTxHash && (
                 <div style={{ fontSize: 11.5, color: MUTED, wordBreak: "break-all" }}>
-                  Transaction: {walletTxHash}
+                  {originTxUrl ? (
+                    <a
+                      href={originTxUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      data-testid="cc-origin-explorer"
+                    >
+                      View your transaction on the explorer ↗
+                    </a>
+                  ) : (
+                    <>Transaction: {walletTxHash}</>
+                  )}
                 </div>
               )}
               {walletError && <div style={{ fontSize: 12.5, color: "var(--loss)", lineHeight: 1.5 }}>{walletError}</div>}
+              {submitRetryable && walletTxHash && (
+                <button
+                  className="btn btn-outline btn-sm"
+                  data-testid="cc-submit-retry"
+                  onClick={() => void submitDepositNotice(walletTxHash)}
+                >
+                  Retry the speed-up notice
+                </button>
+              )}
             </div>
           ) : (
             <div data-testid="cc-send-instruction" style={{ fontSize: 13, lineHeight: 1.55 }}>
@@ -709,6 +792,19 @@ export function CrossChainQuoteCard({
               </span>
             </div>
             <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{view.description}</div>
+            {destinationTxUrl && (
+              <div style={{ marginTop: 6 }}>
+                <a
+                  href={destinationTxUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="btn btn-outline btn-sm"
+                  data-testid="cc-destination-explorer"
+                >
+                  <Icon name="ext" size={13} /> View the destination transaction
+                </a>
+              </div>
+            )}
             {activeStep !== null && (
               <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
                 {["Deposited", "Detected", "Swapping", "Done"].map((label, index) => (

@@ -20,6 +20,7 @@ import { Icon } from "@/lib/icons";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName } from "@sparkpoint/shared/chains";
 import { useNetwork } from "@/lib/network";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
 import { useExecuteSwapTx } from "@/lib/swap/useExecuteSwapTx";
@@ -39,7 +40,7 @@ const MUTED = "var(--muted-foreground)";
 
 const eqAddr = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-const netName = (id?: number) => (id === 46630 ? "Robinhood Testnet" : id === 8453 ? "Base" : id === 84532 ? "Base Sepolia" : `chain ${id ?? "?"}`);
+const netName = (id?: number) => (id === undefined ? "this network" : chainName(id));
 
 function defaultTokens(chainId: number | undefined): { tin?: SwapToken; tout?: SwapToken } {
   const rec = swapTokens(chainId);
@@ -395,7 +396,7 @@ export function InlineSwapConfirm({
                   style={{ color: "var(--primary)", cursor: "pointer" }}
                   onClick={() => switchToChain(APP_DEFAULT_CHAIN_ID as Parameters<typeof switchToChain>[0])}
                 >
-                  Switch to Robinhood Chain
+                  Switch to {chainName(APP_DEFAULT_CHAIN_ID)}
                 </a>{" "}
                 to swap.
               </Notice>
