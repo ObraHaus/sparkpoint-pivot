@@ -53,7 +53,10 @@ from ..agents.planner import Intent, IntentKind, Planner
 from ..agents.recommender import Candidate, ProposalContext, Recommender, strategy_meta
 from ..agents.sparky import Sparky, SparkyReply
 from ..crosschain.oneclick import CrossChainTransportError
-from ..crosschain.parse import parse_cross_chain_request
+from ..crosschain.parse import (
+    parse_cross_chain_clarification,
+    parse_cross_chain_request,
+)
 from ..data.prices import PriceService, PriceSnapshot
 from ..earn.parse import is_near_native_staking_request, parse_earn_request
 from ..formatting import format_usd6
@@ -250,9 +253,7 @@ _BOTTOM_LINE_VERDICT_RE = re.compile(
 #: A verdict match is not a verdict when the same clause negates it ("neither is better", "not
 #: necessarily safer"); a contrast conjunction starts a new clause so "neither is safer, but X
 #: wins" still catches the unnegated half.
-_BOTTOM_LINE_NEGATION_RE = re.compile(
-    r"\b(?:not|never|neither|none|nobody)\b|n't\b", re.IGNORECASE
-)
+_BOTTOM_LINE_NEGATION_RE = re.compile(r"\b(?:not|never|neither|none|nobody)\b|n't\b", re.IGNORECASE)
 _BOTTOM_LINE_CONTRAST_RE = re.compile(
     r"[.;:!?]|\b(?:but|however|though|although|yet|whereas)\b", re.IGNORECASE
 )
@@ -976,10 +977,7 @@ class CoordinatorDag:
                     (
                         passage
                         for passage in whole_hits
-                        if any(
-                            passage_mentions_subject(passage, subject)
-                            for subject in subjects
-                        )
+                        if any(passage_mentions_subject(passage, subject) for subject in subjects)
                         and not _is_release_note(passage)
                     ),
                     key=_passage_sort_key,
@@ -1065,8 +1063,7 @@ class CoordinatorDag:
             subject for subject in subjects if subject in {pick.label for pick in picks}
         )
         if not any(
-            facts_for(subject) is not None or subject in vault_subjects
-            for subject in subjects
+            facts_for(subject) is not None or subject in vault_subjects for subject in subjects
         ):
             return "", subjects, (), ()
 
@@ -1373,6 +1370,16 @@ class CoordinatorDag:
         # "unavailable" card, never an error. The feature flag off ⇒ fall through unchanged.
         if self.crosschain is not None and self.crosschain.feature_enabled:
             crosschain_request = parse_cross_chain_request(message, self.crosschain.config)
+            if crosschain_request is None:
+                # 068b — a route the user clearly named but without an amount ("swap USDC to
+                # SOL") must ask for the amount, not answer "pair not available". The route is
+                # real; only the size is missing. Deterministic, so it works with zero credits.
+                clarification = parse_cross_chain_clarification(message, self.crosschain.config)
+                if clarification is not None:
+                    yield ToolStepBlock("Understanding your request", "running")
+                    yield ToolStepBlock("Understanding your request", "done")
+                    yield TextBlock(clarification.message)
+                    return
             if crosschain_request is not None:
                 yield ToolStepBlock("Checking a cross-chain route", "running")
                 try:
@@ -1774,9 +1781,7 @@ class CoordinatorDag:
                 )
                 yield ToolStepBlock(label, "done")
                 if not answer:
-                    _log_comparative_outcome(
-                        subjects, covered, reason="non_answer", cited=False
-                    )
+                    _log_comparative_outcome(subjects, covered, reason="non_answer", cited=False)
                     yield TextBlock(
                         _comparative_fallback(message, subjects=subjects, covered=covered)
                     )
@@ -1835,10 +1840,7 @@ class CoordinatorDag:
             # is not grounded in the retrieved passages, so it must not carry sources.
             citable = tuple(passages)
             cited = bool(
-                passages
-                and grounded
-                and prose_answer.strip()
-                and not _is_decline(prose_answer)
+                passages and grounded and prose_answer.strip() and not _is_decline(prose_answer)
             )
             yield TextBlock(prose_answer)
             if cited:
