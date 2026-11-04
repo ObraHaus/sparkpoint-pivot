@@ -81,6 +81,8 @@ async def test_preview_maps_a_dry_quote_and_surfaces_the_keyless_fee() -> None:
     assert wire["minAmountOut"] == "0.063752"
     assert wire["timeEstimateSec"] == 480
     assert wire["feeNote"] == "Includes 1Click's 0.25% keyless routing fee."
+    assert "about $4,986.69" in outcome.text
+    assert "4986.694350" not in outcome.text
     assert seen and seen[0]["dry"] is True
     assert "depositAddress" not in seen[0]
 
