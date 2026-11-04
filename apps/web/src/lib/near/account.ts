@@ -7,13 +7,18 @@
  */
 
 const IMPLICIT_ACCOUNT_RE = /^[0-9a-f]{64}$/;
+const HEX_ONLY_RE = /^[0-9a-f]+$/;
 const NAMED_ACCOUNT_RE = /^(?=.{2,64}$)[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
 /** True when `value` looks like a NEAR account id (named or implicit). */
 export function isValidNearAccountId(value: string): boolean {
   const candidate = value.trim();
   if (!candidate) return false;
-  return IMPLICIT_ACCOUNT_RE.test(candidate) || NAMED_ACCOUNT_RE.test(candidate);
+  if (IMPLICIT_ACCOUNT_RE.test(candidate)) return true;
+  // A hex-only id is an implicit account by intent; only the exact 64-char form is valid, so a
+  // truncated/oversized one is rejected instead of being re-read as a short named account.
+  if (HEX_ONLY_RE.test(candidate)) return false;
+  return NAMED_ACCOUNT_RE.test(candidate);
 }
 
 /**

@@ -18,7 +18,11 @@ test("NEAR account ids: uppercase, empty, separators and over-long names are rej
   assert.equal(isValidNearAccountId("Sparkpoint2026.near"), false);
   assert.equal(isValidNearAccountId(".near"), false);
   assert.equal(isValidNearAccountId("a..b"), false);
+  assert.equal(isValidNearAccountId("bad..near"), false);
   assert.equal(isValidNearAccountId("a/near"), false);
+  assert.equal(isValidNearAccountId(IMPLICIT.slice(0, 63)), false);
+  assert.equal(isValidNearAccountId(`${IMPLICIT}0`), false);
+  assert.equal(isValidNearAccountId(IMPLICIT.toUpperCase()), false);
   assert.equal(isValidNearAccountId("a".repeat(65)), false);
   assert.equal(isValidNearAccountId("-bad"), false);
 });

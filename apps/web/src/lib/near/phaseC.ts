@@ -50,9 +50,11 @@ export function buildRheaSignRequest(message: string, nonce?: Uint8Array): NearS
 }
 
 export function randomNonce(): Uint8Array {
-  const nonce = new Uint8Array(32);
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    globalThis.crypto.getRandomValues(nonce);
+  const cryptoObj = globalThis.crypto;
+  if (!cryptoObj || typeof cryptoObj.getRandomValues !== "function") {
+    throw new Error("NEAR sign-only nonce requires crypto.getRandomValues");
   }
+  const nonce = new Uint8Array(32);
+  cryptoObj.getRandomValues(nonce);
   return nonce;
 }

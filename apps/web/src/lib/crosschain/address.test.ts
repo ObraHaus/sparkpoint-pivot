@@ -21,6 +21,8 @@ test("Bitcoin accepts bech32 (bc1/tb1) and base58", () => {
   assert.equal(isValidAddress("not-a-bitcoin-address", "btc"), false);
 });
 
+const IMPLICIT_NEAR = "93a4f6f8c1a9d3b7e2f5a8c4d6b1e9f3a7c2d8b5e4f1a6c9d3b7e2f5a8c4d6b1";
+
 test("Solana, Tron and NEAR mirror the backend shapes", () => {
   assert.equal(isValidAddress("So11111111111111111111111111111111111111112", "sol"), true);
   assert.equal(isValidAddress("0OIl", "sol"), false);
@@ -28,6 +30,23 @@ test("Solana, Tron and NEAR mirror the backend shapes", () => {
   assert.equal(isValidAddress("Tla2f6VPqDgRE67v1736s7bJ8Ray5wYjU7", "tron"), false);
   assert.equal(isValidAddress("sparkpoint.near", "near"), true);
   assert.equal(isValidAddress("SparkPoint.near", "near"), false);
+});
+
+test("NEAR accepts named and 64-char lowercase hex implicit accounts", () => {
+  assert.equal(isValidAddress("sparkpoint2026.near", "near"), true);
+  assert.equal(isValidAddress("app.rhea.finance", "near"), true);
+  assert.equal(isValidAddress(IMPLICIT_NEAR, "near"), true);
+  assert.equal(isValidAddress(`  ${IMPLICIT_NEAR}  `, "near"), true);
+});
+
+test("NEAR rejects uppercase, wrong-length hex and malformed named ids", () => {
+  assert.equal(isValidAddress("Sparkpoint2026.near", "near"), false);
+  assert.equal(isValidAddress(IMPLICIT_NEAR.toUpperCase(), "near"), false);
+  assert.equal(isValidAddress(IMPLICIT_NEAR.slice(0, 63), "near"), false);
+  assert.equal(isValidAddress(`${IMPLICIT_NEAR}0`, "near"), false);
+  assert.equal(isValidAddress("bad..near", "near"), false);
+  assert.equal(isValidAddress(".near", "near"), false);
+  assert.equal(isValidAddress("a".repeat(65), "near"), false);
 });
 
 test("surrounding whitespace is trimmed, an empty string is invalid", () => {

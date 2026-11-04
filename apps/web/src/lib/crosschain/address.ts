@@ -5,7 +5,12 @@
  * checks only: 1Click remains the authority on whether an address is usable, and the agent
  * re-validates every address on the confirm (`dry=false`) call. Keeping the copy client-side means
  * an obvious typo never leaves the browser, not that the browser is trusted.
+ *
+ * NEAR delegates to the 075 account-id helper so named and 64-char lowercase hex implicit accounts
+ * share ONE rule with the wallet/recipient surfaces (`lib/near/account.ts`).
  */
+
+import { isValidNearAccountId } from "../near/account.ts";
 
 export type CrossChainAddressKind = "evm" | "btc" | "sol" | "tron" | "near";
 
@@ -14,7 +19,6 @@ const BTC_BECH32_RE = /^(?:bc1|tb1)[02-9ac-hj-np-z]{11,71}$/;
 const BTC_BASE58_RE = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
 const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const TRON_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
-const NEAR_RE = /^[a-z0-9][a-z0-9._-]{1,62}(?:\.near)?$/;
 
 /** True when `value` has the expected shape for `kind` (after trimming surrounding whitespace). */
 export function isValidAddress(value: string, kind: CrossChainAddressKind): boolean {
@@ -30,7 +34,7 @@ export function isValidAddress(value: string, kind: CrossChainAddressKind): bool
     case "tron":
       return TRON_RE.test(candidate);
     case "near":
-      return NEAR_RE.test(candidate);
+      return isValidNearAccountId(candidate);
     default:
       return false;
   }
