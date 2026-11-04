@@ -998,11 +998,12 @@ cases:
     wallet: empty
     crosschain: quote
     expected:
-      # The parser needs an amount, so this keeps the pre-068 unsupported-swap answer.
-      route: unsupported_swap
+      # 068b — the route is real; only the amount is missing. Ask for it instead of claiming the
+      # pair is unsupported (which was the pre-068b answer).
+      route: general
       blocks_present: [text]
       blocks_absent: [action, recommendation, crosschain_quote]
-      must_contain: ["aren't supported yet", "btc"]
+      must_contain: ["how much", "signed or sent"]
     offline:
       intent: {kind: other}
 
