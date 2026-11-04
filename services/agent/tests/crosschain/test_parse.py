@@ -8,7 +8,10 @@ from decimal import Decimal
 import pytest
 
 from sparkpoint_agent.crosschain.config import config_from_dict, default_config
-from sparkpoint_agent.crosschain.parse import parse_cross_chain_request
+from sparkpoint_agent.crosschain.parse import (
+    parse_cross_chain_clarification,
+    parse_cross_chain_request,
+)
 
 
 @pytest.mark.parametrize(
@@ -211,3 +214,59 @@ def test_a_very_large_amount_stays_exact() -> None:
 )
 def test_chain_mentions_without_a_swap_request_do_not_match(prompt: str) -> None:
     assert parse_cross_chain_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
+    ("prompt", "origin", "destination", "amount"),
+    [
+        ("swap 50 USDC for SOL", "base:USDC", "sol:SOL", "50"),
+        ("convert 50 USDC for SOL", "base:USDC", "sol:SOL", "50"),
+        ("swap 50 USDC to SOL", "base:USDC", "sol:SOL", "50"),
+        ("turn 50 USDC into SOL", "base:USDC", "sol:SOL", "50"),
+    ],
+)
+def test_for_is_a_destination_preposition(
+    prompt: str, origin: str, destination: str, amount: str
+) -> None:
+    request = parse_cross_chain_request(prompt, default_config())
+    assert request is not None
+    assert request.origin_key == origin
+    assert request.destination_key == destination
+    assert request.amount_human == amount
+
+
+@pytest.mark.parametrize(
+    ("prompt", "destination"),
+    [
+        ("swap USDC to SOL", "sol:SOL"),
+        ("swap USDC for SOL", "sol:SOL"),
+        ("convert USDC into SOL", "sol:SOL"),
+        ("swap 50 USDC to BTC", "btc:BTC"),
+    ],
+)
+def test_missing_amount_is_a_clarification_not_a_dead_end(prompt: str, destination: str) -> None:
+    # The amount-bearing prompt above parses; the amount-less form must ask, not say "unavailable".
+    if "50" in prompt:
+        assert parse_cross_chain_request(prompt, default_config()) is not None
+        return
+    assert parse_cross_chain_request(prompt, default_config()) is None
+    clarification = parse_cross_chain_clarification(prompt, default_config())
+    assert clarification is not None
+    assert clarification.destination_key == destination
+    assert "How much" in clarification.message
+    assert "signed or sent" in clarification.message
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "swap USDC",
+        "bridge to NEAR",
+        "swap for SOL",
+        "what is the price of BTC?",
+        "swap USDC to ETH",
+        "swap USDC to USDC on Base",
+    ],
+)
+def test_clarification_does_not_fire_without_a_real_route(prompt: str) -> None:
+    assert parse_cross_chain_clarification(prompt, default_config()) is None

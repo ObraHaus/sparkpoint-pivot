@@ -14,6 +14,7 @@ export const CROSSCHAIN_STATUSES = [
   "INCOMPLETE_DEPOSIT",
   "REFUNDED",
   "FAILED",
+  "EXPIRED",
 ] as const;
 
 export type CrossChainStatus = (typeof CROSSCHAIN_STATUSES)[number];
@@ -79,6 +80,14 @@ const VIEWS: Record<CrossChainStatus, Omit<CrossChainStatusView, "status">> = {
     label: "Swap failed",
     description:
       "The swap did not complete. Check the refund address and the deposit address; SparkPoint never holds your funds.",
+    step: null,
+    tone: "attention",
+    terminal: true,
+  },
+  EXPIRED: {
+    label: "Quote expired",
+    description:
+      "The deposit window closed before funds arrived, so nothing was swapped. Create a new quote when you are ready — SparkPoint never held your funds.",
     step: null,
     tone: "attention",
     terminal: true,

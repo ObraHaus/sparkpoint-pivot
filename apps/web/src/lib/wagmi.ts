@@ -23,17 +23,19 @@ import { robinhoodMainnet } from "@/lib/chain/clients";
  * rather than by hoping the two lists match.
  *
  * BUILD-CONDITIONAL (§B beta). The mainnet-beta build (NEXT_PUBLIC_APP_CHAIN_ID=4663) registers
- * Robinhood mainnet (4663) as the SOLE chain — no Base, no testnets ("no base network for now").
- * Every other build (alpha/testnet, env unset) registers Base + Base Sepolia + Robinhood testnet,
- * unchanged. 4663 is now safe to register: its address book is wired + verified on-chain, and the
- * agent accepts it with an EMPTY policy allowlist (agent-mediated actions still fail closed; the swap
- * is user-signed + non-custodial). Still NOT registered anywhere: 31337 (local Anvil fork) — no
- * wallet transport, no public explorer.
+ * Base mainnet (8453) AND Robinhood mainnet (4663). Base is registered as a SOURCE chain only: the
+ * cross-chain card can send USDC from the user's own Base wallet to a 1Click deposit address, which
+ * is the demo's origin. It is not offered in the in-app switcher (CHAIN_META.base.switchable=false)
+ * and no vault/swap flow treats it as the beta's home chain. Every other build (alpha/testnet, env
+ * unset) registers Base + Base Sepolia + Robinhood testnet, unchanged. 4663 is safe to register:
+ * its address book is wired + verified on-chain, and the agent accepts it with an EMPTY policy
+ * allowlist (agent-mediated actions still fail closed; the swap is user-signed + non-custodial).
+ * Still NOT registered anywhere: 31337 (local Anvil fork) — no wallet transport, no public explorer.
  */
 const MAINNET_ONLY = APP_DEFAULT_CHAIN_ID === CHAIN_IDS.robinhoodMainnet;
 
 const REGISTERED_CHAINS = MAINNET_ONLY
-  ? ([robinhoodMainnet] as const)
+  ? ([base, robinhoodMainnet] as const)
   : ([base, baseSepolia, robinhoodTestnet] as const);
 
 // Every chain wagmi can talk to MUST have metadata, or the app would render it as "Unsupported

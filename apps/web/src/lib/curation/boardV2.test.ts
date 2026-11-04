@@ -167,3 +167,17 @@ test("inFlightCounts splits cooling from ready and totals the panel", () => {
     total: 7,
   });
 });
+
+test("a zero-result filter still leaves the unfiltered list for the chip row", () => {
+  // Regression for the "New this week" dead end: filterBoard correctly returns [] when nothing
+  // is fresh, but CuratedBoard must gate the header/chips on `live`, not on the filtered list —
+  // otherwise the controls that reset the filter unmount with the cards.
+  const old = vault(A1, { firstSeenAt: "2020-01-01T00:00:00+00:00" });
+  const alsoOld = vault(A2, { firstSeenAt: "2020-01-02T00:00:00+00:00" });
+  const live = liveVaults(board({ vaults: [old, alsoOld] }));
+  assert.equal(live.length, 2);
+  const filtered = filterBoard(live, { newOnly: true, aiOnly: false }, NOW);
+  assert.deepEqual(filtered, []);
+  // The count the fixed header shows is "0 of 2", not a vanished row.
+  assert.equal(`${filtered.length} of ${live.length}`, "0 of 2");
+});

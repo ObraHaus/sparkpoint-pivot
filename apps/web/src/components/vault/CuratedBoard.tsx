@@ -562,11 +562,13 @@ export function CuratedBoard({
 
       <AdminInFlightPanel />
 
-      {list.length > 0 && (
+      {live.length > 0 && (
         <>
           <div className="vb-listhead">
             <h2>All live vaults</h2>
-            <span className="vb-badge ghosty">wrapped only · {list.length}</span>
+            <span className="vb-badge ghosty">
+              wrapped only · {list.length === live.length ? live.length : `${list.length} of ${live.length}`}
+            </span>
           </div>
           <div className="vb-chiprow" role="group" aria-label="Filter live vaults">
             <button
