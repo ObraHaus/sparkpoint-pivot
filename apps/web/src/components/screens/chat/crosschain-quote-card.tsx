@@ -20,6 +20,8 @@ import type { CrossChainQuoteBlock } from "@sparkpoint/shared/schemas";
 
 import { Icon } from "@/lib/icons";
 import { wagmiConfig } from "@/lib/wagmi";
+import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { resolveCrossChainRecipient } from "@/lib/near/recipient";
 import { swapTokens } from "@/lib/swap/tokens";
 import {
   addressKindForOrigin,
@@ -56,6 +58,10 @@ interface HttpQuote extends Omit<CrossChainQuoteBlock, "type" | "state"> {
 }
 
 type Stage = "preview" | "recipient" | "confirm" | "deposit";
+
+function nowMs(): number {
+  return Date.now();
+}
 
 const MAINNET_WARNING =
   "Mainnet funds. SparkPoint never holds your funds — you send from your own wallet to a one-time 1Click deposit address. If the swap can't complete, funds are refunded to your refund address.";
@@ -137,6 +143,7 @@ export function CrossChainQuoteCard({
   conversationId?: string;
 }) {
   const { address, chainId, isConnected } = useAccount();
+  const { accountId: nearAccountId } = useNearWallet();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
 
@@ -151,7 +158,7 @@ export function CrossChainQuoteCard({
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => nowMs());
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletTxHash, setWalletTxHash] = useState<Hex | null>(null);
@@ -163,10 +170,17 @@ export function CrossChainQuoteCard({
   const destinationKind = block.destination.addressKind;
   const evmOrigin = originKind === "evm";
 
-  // The destination EVM address defaults to the connected wallet, but stays editable. The refund
+  // The destination defaults to the connected wallet for the matching family (EVM as before, and
+  // 075 adds a connected NEAR account for a NEAR destination), but stays editable. The refund
   // address for an EVM origin is always the connected wallet (shown read-only); a non-EVM origin
   // needs its own refund address input.
-  const recipient = recipientOverride ?? (destinationKind === "evm" ? (address ?? "") : "");
+  const recipientSelection = resolveCrossChainRecipient({
+    destinationKind,
+    recipientOverride,
+    evmAddress: address,
+    nearAccountId,
+  });
+  const recipient = recipientSelection.value;
   const refundTo = evmOrigin ? (address ?? "") : (refundOverride ?? "");
 
   const storageKey = useMemo(
@@ -186,7 +200,7 @@ export function CrossChainQuoteCard({
     setRefundOverride(saved.refundTo);
     setStatus(saved.status);
     statusRef.current = saved.status;
-    pollStartedAt.current = Date.now();
+    pollStartedAt.current = nowMs();
     setStage("deposit");
   }, [block.state, storageKey]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -200,7 +214,7 @@ export function CrossChainQuoteCard({
   // Live countdown to the 1Click deadline.
   useEffect(() => {
     if (!deposit?.deadline) return;
-    const id = setInterval(() => setNow(Date.now()), 1_000);
+    const id = setInterval(() => setNow(nowMs()), 1_000);
     return () => clearInterval(id);
   }, [deposit?.deadline]);
 
@@ -208,7 +222,7 @@ export function CrossChainQuoteCard({
   useEffect(() => {
     if (!deposit) return;
     if (isTerminalStatus(statusRef.current)) return;
-    if (pollStartedAt.current === 0) pollStartedAt.current = Date.now();
+    if (pollStartedAt.current === 0) pollStartedAt.current = nowMs();
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -234,7 +248,7 @@ export function CrossChainQuoteCard({
         setStatusError("Couldn't refresh the status just now — retrying.");
       }
       if (cancelled || isTerminalStatus(statusRef.current)) return;
-      timer = setTimeout(tick, pollDelayMs(Date.now() - pollStartedAt.current));
+      timer = setTimeout(tick, pollDelayMs(nowMs() - pollStartedAt.current));
     };
 
     timer = setTimeout(tick, 0);
@@ -316,7 +330,7 @@ export function CrossChainQuoteCard({
         status: "PENDING_DEPOSIT",
         quoteId: body.quoteId,
       };
-      pollStartedAt.current = Date.now();
+      pollStartedAt.current = nowMs();
       statusRef.current = "PENDING_DEPOSIT";
       setStatus("PENDING_DEPOSIT");
       setStatusError(null);
@@ -470,9 +484,20 @@ export function CrossChainQuoteCard({
                 That doesn&apos;t look like {expectedAddressDescription(destinationKind)}.
               </div>
             )}
+            {recipientSelection.source === "near" && (
+              <div data-testid="cc-recipient-near" style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>
+                Prefilled from your connected NEAR wallet ({nearAccountId}). Edit it if you want to send
+                somewhere else — this account is a client-side claim, not server sign-in.
+              </div>
+            )}
             {destinationKind === "evm" && !isConnected && (
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>
                 Connect your wallet to prefill your own address — you can still paste another EVM address.
+              </div>
+            )}
+            {destinationKind === "near" && !nearAccountId && (
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>
+                Connect a NEAR wallet (Meteor) to prefill it — you can still paste another NEAR account id.
               </div>
             )}
           </div>

@@ -8,6 +8,7 @@ import { Icon, SparkMark } from "@/lib/icons";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { chainName, chainMeta } from "@sparkpoint/shared/chains";
 import { PubTop } from "@/components/screens/PubTop";
+import { NearWalletControl } from "@/components/near/NearWalletControl";
 import "@/components/screens/public.css";
 
 /** Wallet rows — real brand logos (public/wallets) on a 38px tile. */
@@ -117,6 +118,33 @@ export default function ConnectPage() {
               {error.message}
             </p>
           )}
+          {/* 075 — optional NEAR wallet, separate from EVM sign-in. Meteor first; no access key. */}
+          <div
+            data-testid="near-connect-section"
+            style={{
+              marginTop: "18px",
+              paddingTop: "16px",
+              borderTop: "1px solid var(--border-soft)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "4px" }}>
+              NEAR wallet (optional)
+            </div>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--muted-foreground)",
+                margin: "0 0 10px",
+                lineHeight: 1.5,
+              }}
+            >
+              Sign in with Meteor to show your NEAR account and prefill NEAR recipients. This adds
+              no access key and is never used as server sign-in.
+            </p>
+            <NearWalletControl />
+          </div>
+
           <div className="connect-reassure">
             <Icon name="shieldcheck" size={16} />
             <span>You own your keys and your account. We never generate a wallet for you or hold your keys.</span>

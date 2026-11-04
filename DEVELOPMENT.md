@@ -61,6 +61,20 @@ pnpm dev                        # runs apps/web (and the agent service per the w
 - Real runtime values also live in the **Coolify app** (set in the dashboard) for dev/staging.
 - ⚠️ Scripts read `.env.local` unconditionally — whatever you put there is what they hit.
 
+### 075 — NEAR wallet env (names only)
+
+| variable | scope | default | purpose |
+|---|---|---|---|
+| `NEXT_PUBLIC_NEAR_NETWORK` | web build | `mainnet` | `mainnet` or `testnet`; any other value falls back to `mainnet`. |
+| `NEXT_PUBLIC_NEAR_RPC_URL` | web build | unset | OPTIONAL read-only NEAR RPC for lookups. Never used to sign or broadcast. |
+| `NEXT_PUBLIC_NEAR_PHASE_C_SIGN` | web build | unset (off) | OPTIONAL gate for the Rhea Phase C NEP-413 sign-only step. Unset keeps the existing display-only placeholder. |
+| `NEXT_PUBLIC_NEAR_WALLET_TEST_HOOK` | web build (tests only) | unset | TEST-ONLY injected NEAR wallet mock for the Playwright 075 spec. Default unset; **never set in production** (production ignores it). |
+
+No value is committed or deployed by 075. The NEAR account connected in the browser is a
+client-side claim: the BFF/agent never receives it and it never authorises anything. A future CSP
+(not set today) would need to allow the hot-labs manifest + Meteor executor origins recorded in
+`specs/075-near-wallet-connect/research.md`.
+
 ### `.env.example` (planned variables)
 
 ```bash

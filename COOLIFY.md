@@ -85,6 +85,19 @@ Set each app's domain with the **`http://` scheme, NOT `https://`** (TLS termina
 Set per-app in the **Coolify dashboard** (not the repo). Planned keys (names only — see DEVELOPMENT.md `.env.example` for the full list):
 `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` + `OPENAI_BASE_URL` for the OpenAI-compatible path), `ALCHEMY_BASE_RPC_URL`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`, `DATABASE_URL` (Postgres+pgvector), `TENDERLY_*`, `SENTRY_DSN`, `DUNE_API_KEY`, `DEFILLAMA_API_KEY`, `NIXPACKS_NODE_VERSION`, `COOLIFY_URL` (auto-derived from FQDN), `SITE_LOCKED` + `NEXT_PUBLIC_SITE_LOCKED` (construction gate — see below).
 
+### 075 — NEAR wallet env (names only, none set by this change)
+
+| variable | default | purpose |
+|---|---|---|
+| `NEXT_PUBLIC_NEAR_NETWORK` | `mainnet` | `mainnet` / `testnet`; invalid ⇒ `mainnet`. |
+| `NEXT_PUBLIC_NEAR_RPC_URL` | unset | OPTIONAL read-only NEAR RPC (never used to sign/broadcast). |
+| `NEXT_PUBLIC_NEAR_PHASE_C_SIGN` | unset (off) | OPTIONAL Rhea Phase C NEP-413 sign-only gate. |
+| `NEXT_PUBLIC_NEAR_WALLET_TEST_HOOK` | unset | TEST-ONLY injected NEAR wallet mock for Playwright. Default unset; **never set in production**. |
+
+The NEAR wallet is a client-side claim and is not sent to the agent. No NEAR key, seed phrase or
+access key is stored: sign-in is `signInWithoutAddKey`. The app ships no CSP today; the origins a
+future CSP must allow are listed in `specs/075-near-wallet-connect/research.md`.
+
 ### Construction gate — `SITE_LOCKED` (landing-only)
 
 The web app ships a per-deployment **construction gate** (feature `003-landing-only-gate`): when on, only the marketing landing is public and every other route redirects to `/coming-soon`. It is **fail-closed** — anything other than `"false"` (including unset) locks the site — and read by Edge middleware at **build** time, so it MUST be set in each app's **build** environment (Coolify env vars are available at build by default).

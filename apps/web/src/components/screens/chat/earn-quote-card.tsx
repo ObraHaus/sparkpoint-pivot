@@ -21,6 +21,14 @@ import { useAccount } from "wagmi";
 import type { EarnQuoteBlock } from "@sparkpoint/shared/schemas";
 
 import { expectedAddressDescription, isValidAddress } from "@/lib/crosschain/address";
+import { truncateNearAccount } from "@/lib/near/account";
+import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import {
+  buildRheaSignRequest,
+  phaseCEnabledFromEnv,
+  shouldOfferRheaSign,
+} from "@/lib/near/phaseC";
+import { rheaAccountSourceLabel, selectRheaAccount } from "@/lib/near/rhea";
 import { formatEta, formatHumanAmount, formatUsd } from "@/lib/crosschain/format";
 import {
   chainLabel,
@@ -103,7 +111,12 @@ function Notice({
 
 export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
   const { address } = useAccount();
+  const { accountId: connectedNearAccountId, signMessage } = useNearWallet();
   const [recipient, setRecipient] = useState("");
+  const [pastedNearAccount, setPastedNearAccount] = useState("");
+  const [rheaSigning, setRheaSigning] = useState(false);
+  const [rheaSignature, setRheaSignature] = useState<string | null>(null);
+  const [rheaSignError, setRheaSignError] = useState<string | null>(null);
   const vault = block.vault;
   const vaultName = vault.name || vault.symbol;
   const protocol = protocolOf(vault);
@@ -121,6 +134,41 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
   const recipientValid = recipientRequired && isValidAddress(recipientValue, "sol");
   const evmLooking = /^0x/i.test(recipientValue);
   const deposit = block.walletSupport?.deposit;
+
+  // 075 — Phase C is OFF unless the build flag says otherwise. The connected NEAR account is the
+  // signer; the Rhea preview's server-derived recipient remains the account funds are addressed to.
+  const phaseCEnabled = phaseCEnabledFromEnv();
+  const rheaAccount = selectRheaAccount({
+    connectedNearAccountId,
+    pasted: pastedNearAccount,
+    rheaRecipient: block.recipient,
+  });
+  const canSignRhea = shouldOfferRheaSign({
+    enabled: phaseCEnabled,
+    accountId: rheaAccount.source === "connected" ? rheaAccount.accountId : null,
+    messageToSign: block.messageToSign,
+  });
+
+  async function signRheaMessage() {
+    if (!canSignRhea || !block.messageToSign || rheaSigning) return;
+    setRheaSigning(true);
+    setRheaSignError(null);
+    try {
+      // SIGNING ONLY: a NEP-413 off-chain signature. It is never submitted, and the deposit
+      // button below stays disabled regardless of the result.
+      const signed = await signMessage(buildRheaSignRequest(block.messageToSign));
+      setRheaSignature(signed.signature);
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : String(error);
+      setRheaSignError(
+        /rejected|denied|cancel/i.test(raw)
+          ? "You cancelled the NEAR signature. Nothing was signed or sent."
+          : raw || "The NEAR wallet could not sign that message.",
+      );
+    } finally {
+      setRheaSigning(false);
+    }
+  }
 
   return (
     <div
@@ -323,6 +371,62 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
             </div>
           )}
 
+          {isRhea && (
+            <div
+              data-testid="earn-rhea-near-account"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 5,
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Your NEAR wallet</div>
+              <div
+                data-testid="earn-rhea-near-account-value"
+                style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12.5, wordBreak: "break-all" }}
+              >
+                {rheaAccount.accountId ? truncateNearAccount(rheaAccount.accountId) : "Not connected"}
+              </div>
+              <div data-testid="earn-rhea-near-account-source" style={{ fontSize: 11.5, color: MUTED }}>
+                {rheaAccountSourceLabel(rheaAccount.source)}. This is a client-side claim, never server
+                authentication, and it adds no access key.
+              </div>
+              {phaseCEnabled && !connectedNearAccountId && (
+                <div style={{ display: "grid", gap: 4 }}>
+                  <label htmlFor="earn-rhea-paste-near" style={{ fontSize: 11.5, fontWeight: 600 }}>
+                    Fallback: paste a NEAR account (read-only)
+                  </label>
+                  <input
+                    id="earn-rhea-paste-near"
+                    data-testid="earn-rhea-paste-near"
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={pastedNearAccount}
+                    onChange={(event) => setPastedNearAccount(event.target.value)}
+                    placeholder="sparkpoint2026.near"
+                    style={{
+                      width: "100%",
+                      fontSize: 12,
+                      padding: "8px 10px",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 9,
+                      color: "var(--foreground)",
+                      outline: "none",
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: MUTED }}>
+                    A pasted account can be shown, not signed with. Connect Meteor to sign.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {isRhea && block.firstDeposit && block.messageToSign && (
             <details
               data-testid="earn-rhea-message"
@@ -349,9 +453,46 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 {block.messageToSign}
               </pre>
               <div style={{ color: MUTED, lineHeight: 1.5 }}>
-                Display only — this build does not sign it or ask your wallet to sign. Nothing is
-                signed or sent.
+                {phaseCEnabled
+                  ? "Display only unless you explicitly choose to sign below. Nothing is sent, and the deposit button stays disabled."
+                  : "Display only — this build does not sign it or ask your wallet to sign. Nothing is signed or sent."}
               </div>
+              {phaseCEnabled && (
+                <div data-testid="earn-rhea-phase-c" style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    data-testid="earn-rhea-sign"
+                    disabled={!canSignRhea || rheaSigning}
+                    onClick={() => void signRheaMessage()}
+                    style={{ justifySelf: "start" }}
+                  >
+                    {rheaSigning ? "Waiting for your NEAR wallet…" : "Sign in your wallet (NEP-413)"}
+                  </button>
+                  <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                    Signs the message with your connected NEAR wallet. This is SIGNING ONLY — the
+                    signature is not submitted anywhere, no transaction is built and nothing is sent.
+                  </div>
+                  {!canSignRhea && (
+                    <div data-testid="earn-rhea-sign-blocked" style={{ fontSize: 11.5, color: "var(--caution)", lineHeight: 1.5 }}>
+                      Connect a NEAR wallet (Meteor) and select a valid account to enable signing.
+                    </div>
+                  )}
+                  {rheaSignature && (
+                    <div
+                      data-testid="earn-rhea-signature"
+                      style={{ fontSize: 11.5, color: "var(--gain)", lineHeight: 1.5, wordBreak: "break-all" }}
+                    >
+                      Signature ready (signing only, not submitted): {truncateNearAccount(rheaSignature, 14, 10)}
+                    </div>
+                  )}
+                  {rheaSignError && (
+                    <div data-testid="earn-rhea-sign-error" style={{ fontSize: 11.5, color: "var(--loss)", lineHeight: 1.5 }}>
+                      {rheaSignError}
+                    </div>
+                  )}
+                </div>
+              )}
             </details>
           )}
 
