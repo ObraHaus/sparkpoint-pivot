@@ -5,6 +5,7 @@ import {
   RHEA_NEP413_RECIPIENT,
   buildRheaSignRequest,
   phaseCSignEnabled,
+  randomNonce,
   shouldOfferRheaSign,
 } from "./phaseC.ts";
 
@@ -61,4 +62,19 @@ test("the NEP-413 request carries the preview message and a 32-byte nonce (never
   assert.deepEqual([...request.nonce], [...nonce]);
   assert.equal("actions" in request, false);
   assert.equal("receiverId" in request, false);
+});
+
+test("randomNonce fills 32 bytes and throws when crypto.getRandomValues is unavailable", () => {
+  const nonce = randomNonce();
+  assert.equal(nonce.length, 32);
+  assert.equal(nonce.every((byte) => byte === 0), false);
+
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  try {
+    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    assert.throws(() => randomNonce(), /crypto\.getRandomValues/);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    else delete (globalThis as { crypto?: Crypto }).crypto;
+  }
 });

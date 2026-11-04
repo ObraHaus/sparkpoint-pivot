@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "near-implicit-account-076-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "NEAR addresses made of 64 hex characters now work",
+      "body": "If your NEAR wallet uses an implicit account — a 64-character lowercase hexadecimal address rather than a name like sparkpoint2026.near — SparkPoint now accepts it as a cross-chain destination. Previously a connected implicit account was filled in automatically but then rejected as invalid, so Continue stayed disabled. Named NEAR accounts work exactly as before, and obviously malformed ids (uppercase, the wrong length, or double dots) are still rejected before anything is sent. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-04T03:30:00Z"
+    },
+    {
       "slug": "near-wallet-connect-075-2026-11",
       "type": "changelog",
       "tag": "New",

@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (NEAR implicit accounts — 076)
+
+- **A NEAR destination can now be a 64-char lowercase hex implicit account.** The cross-chain recipient validator used the older `NEAR_RE` shape, which capped the id at 63 characters and so rejected implicit accounts — the default shape for many Meteor wallets. It now uses the 075 `isValidNearAccountId` rule (named ids OR exactly 64 lowercase hex chars), so a connected implicit account prefills and passes Continue, named accounts such as `sparkpoint2026.near` still pass, and uppercase / 63-char / `bad..near` ids still fail. The mirrored agent validator (`crosschain/addresses.py`) applies the same rule, so the confirm-time check agrees with the browser. `randomNonce()` now throws when `crypto.getRandomValues` is unavailable instead of returning an all-zero nonce, and the card's remaining `Date.now()` calls go through its injectable `nowMs()`. (`apps/web/src/lib/crosschain/address.ts`, `apps/web/src/lib/near/account.test.ts`, `services/agent/src/sparkpoint_agent/crosschain/addresses.py`, `services/agent/tests/crosschain/test_addresses.py`, `apps/web/src/lib/near/phaseC.ts`, `crosschain-quote-card.tsx`)
+
 ### Added (NEAR wallet connect — 075, Meteor first)
 
 - **A separate, client-side NEAR wallet.** `@hot-labs/near-connect` (pinned `0.12.0`) is loaded with a dynamic client-only import and connects Meteor first (`walletId: "meteor-wallet"`), falling back to the library picker only when Meteor is not in the manifest. Sign-in adds **no access key** (`signInWithoutAddKey`; no `contractId`-bound login), and the adapter exposes only connect / disconnect / accountId / `signMessage` (NEP-413) — there is no transaction surface. (`apps/web/src/lib/near/`, `apps/web/src/components/near/`)

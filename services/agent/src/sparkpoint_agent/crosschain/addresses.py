@@ -16,7 +16,9 @@ _BTC_BECH32_RE = re.compile(r"^(?:bc1|tb1)[02-9ac-hj-np-z]{11,71}$")
 _BTC_BASE58_RE = re.compile(r"^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$")
 _SOL_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 _TRON_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
-_NEAR_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,62}(?:\.near)?$")
+_NEAR_IMPLICIT_RE = re.compile(r"^[0-9a-f]{64}$")
+_NEAR_HEX_ONLY_RE = re.compile(r"^[0-9a-f]+$")
+_NEAR_NAMED_RE = re.compile(r"^(?=.{2,64}$)[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 
 #: Placeholders used ONLY for a dry preview. 1Click validates the recipient even when
 #: ``dry=true``; the real destination is collected (and validated) at confirm time.
@@ -47,7 +49,12 @@ def is_valid_address(value: str, kind: AddressKind) -> bool:
     if kind == "tron":
         return bool(_TRON_RE.match(candidate))
     if kind == "near":
-        return bool(_NEAR_RE.match(candidate))
+        if _NEAR_IMPLICIT_RE.match(candidate):
+            return True
+        # Hex-only is an implicit account by intent: only the exact 64-char form is valid.
+        if _NEAR_HEX_ONLY_RE.match(candidate):
+            return False
+        return bool(_NEAR_NAMED_RE.match(candidate))
     return False
 
 

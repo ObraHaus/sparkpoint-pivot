@@ -158,7 +158,7 @@ export function CrossChainQuoteCard({
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => nowMs());
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletTxHash, setWalletTxHash] = useState<Hex | null>(null);
@@ -200,7 +200,7 @@ export function CrossChainQuoteCard({
     setRefundOverride(saved.refundTo);
     setStatus(saved.status);
     statusRef.current = saved.status;
-    pollStartedAt.current = Date.now();
+    pollStartedAt.current = nowMs();
     setStage("deposit");
   }, [block.state, storageKey]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -214,7 +214,7 @@ export function CrossChainQuoteCard({
   // Live countdown to the 1Click deadline.
   useEffect(() => {
     if (!deposit?.deadline) return;
-    const id = setInterval(() => setNow(Date.now()), 1_000);
+    const id = setInterval(() => setNow(nowMs()), 1_000);
     return () => clearInterval(id);
   }, [deposit?.deadline]);
 
@@ -222,7 +222,7 @@ export function CrossChainQuoteCard({
   useEffect(() => {
     if (!deposit) return;
     if (isTerminalStatus(statusRef.current)) return;
-    if (pollStartedAt.current === 0) pollStartedAt.current = Date.now();
+    if (pollStartedAt.current === 0) pollStartedAt.current = nowMs();
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -248,7 +248,7 @@ export function CrossChainQuoteCard({
         setStatusError("Couldn't refresh the status just now — retrying.");
       }
       if (cancelled || isTerminalStatus(statusRef.current)) return;
-      timer = setTimeout(tick, pollDelayMs(Date.now() - pollStartedAt.current));
+      timer = setTimeout(tick, pollDelayMs(nowMs() - pollStartedAt.current));
     };
 
     timer = setTimeout(tick, 0);

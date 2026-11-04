@@ -92,6 +92,7 @@ Set per-app in the **Coolify dashboard** (not the repo). Planned keys (names onl
 | `NEXT_PUBLIC_NEAR_NETWORK` | `mainnet` | `mainnet` / `testnet`; invalid ⇒ `mainnet`. |
 | `NEXT_PUBLIC_NEAR_RPC_URL` | unset | OPTIONAL read-only NEAR RPC (never used to sign/broadcast). |
 | `NEXT_PUBLIC_NEAR_PHASE_C_SIGN` | unset (off) | OPTIONAL Rhea Phase C NEP-413 sign-only gate. |
+| `NEXT_PUBLIC_NEAR_WALLET_TEST_HOOK` | unset | TEST-ONLY injected NEAR wallet mock for Playwright. Default unset; **never set in production**. |
 
 The NEAR wallet is a client-side claim and is not sent to the agent. No NEAR key, seed phrase or
 access key is stored: sign-in is `signInWithoutAddKey`. The app ships no CSP today; the origins a
