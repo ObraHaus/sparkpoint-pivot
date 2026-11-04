@@ -413,6 +413,7 @@ button{font-family:inherit;}
   .topbar{height:54px;padding:0 14px;gap:8px;}
   .netPill{display:none;}        /* Base network → shown in Connect & Settings */
   .walletPill{display:none;}      /* wallet address → in the avatar menu */
+  .nearPill{display:none;}        /* 075 NEAR wallet → available on /connect + /portfolio */
   .rightcluster{gap:6px;}
   .disclaimer{padding:7px 14px;flex-wrap:wrap;align-items:flex-start;row-gap:7px;}
   .disclaimer .txt{font-size:11px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45;}

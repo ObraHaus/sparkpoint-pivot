@@ -22,6 +22,7 @@ import type {
 } from "@sparkpoint/shared/schemas";
 
 import { Icon } from "@/lib/icons";
+import { NearWalletPortfolioLine } from "@/components/near/NearWalletPortfolioLine";
 import {
   apyLine,
   money,
@@ -605,6 +606,7 @@ export function PortfolioOverviewCard({ block }: { block: PortfolioOverviewBlock
           so when it can&apos;t.
         </div>
       </div>
+      <NearWalletPortfolioLine />
       <PortfolioOverviewBody block={block} />
     </div>
   );

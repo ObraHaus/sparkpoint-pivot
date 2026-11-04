@@ -11,6 +11,7 @@
 
 import { useMultichainPortfolio } from "@/lib/agent/useAgent";
 import { PortfolioOverviewBody } from "@/components/screens/chat/portfolio-overview-card";
+import { NearWalletPortfolioLine } from "@/components/near/NearWalletPortfolioLine";
 import "@/components/screens/confirm.css";
 
 const MUTED = "var(--muted-foreground)";
@@ -28,6 +29,8 @@ export function MultichainPanel() {
         <span className="t">Across chains</span>
         <span className="lbl">Read-only · not signable</span>
       </div>
+
+      <NearWalletPortfolioLine />
 
       {!online ? (
         <div className="muted" style={{ padding: "18px 4px", fontSize: 13 }} data-testid="multichain-offline">

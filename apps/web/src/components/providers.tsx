@@ -10,6 +10,7 @@ import { OverlayProvider } from "@/components/overlays/OverlayProvider";
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WhatsNewModal } from "@/components/shell/WhatsNewModal";
 import { PrefsEffect } from "@/components/PrefsEffect";
+import { NearWalletProvider } from "@/lib/near/NearWalletProvider";
 import { useSession } from "@/lib/auth/useSiwe";
 
 /**
@@ -41,17 +42,21 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <NetworkProvider>
-            <OverlayProvider>
-              {children}
-              {/* Feature 006 — force-refresh banner (dormant until NEXT_PUBLIC_FORCE_REFRESH=true). */}
-              <UpdateBanner />
-              {/* Feature 006 — What's New greeting (opens only when there are unseen changelog entries). */}
-              <WhatsNewModal />
-              {/* Keep the session bound to the live wallet on every route (see SessionWalletBinder). */}
-              <SessionWalletBinder />
-              {/* Feature 016 — mirror device-local display prefs (density, reduce-motion) onto <html>. */}
-              <PrefsEffect />
-            </OverlayProvider>
+            {/* 075 — a separate client-side NEAR connection (Meteor first). It never touches the
+                EVM/SIWE session; its account id is a claim, never server authentication. */}
+            <NearWalletProvider>
+              <OverlayProvider>
+                {children}
+                {/* Feature 006 — force-refresh banner (dormant until NEXT_PUBLIC_FORCE_REFRESH=true). */}
+                <UpdateBanner />
+                {/* Feature 006 — What's New greeting (opens only when there are unseen changelog entries). */}
+                <WhatsNewModal />
+                {/* Keep the session bound to the live wallet on every route (see SessionWalletBinder). */}
+                <SessionWalletBinder />
+                {/* Feature 016 — mirror device-local display prefs (density, reduce-motion) onto <html>. */}
+                <PrefsEffect />
+              </OverlayProvider>
+            </NearWalletProvider>
           </NetworkProvider>
         </QueryClientProvider>
       </WagmiProvider>

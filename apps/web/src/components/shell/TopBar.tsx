@@ -10,6 +10,7 @@ import { useNotifPrefs } from "@/lib/settings/usePrefs";
 import { useOverlay } from "@/components/overlays/OverlayProvider";
 import { PrimaryNav } from "@/components/shell/PrimaryNav";
 import { StageBadge } from "@/components/ui/stage-badge";
+import { NearWalletControl } from "@/components/near/NearWalletControl";
 
 export function TopBar({ active }: { active: string }) {
   const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
@@ -46,6 +47,7 @@ export function TopBar({ active }: { active: string }) {
           <span>{networkSettling ? "Checking…" : wrongNetwork ? "Switch network" : network.name}</span>
           <Icon name="chevd" size={12} />
         </span>
+        <NearWalletControl />
         <span className="pill walletPill" onClick={ov.openWalletMenu}>
           <span className="mono">{wallet}</span>
           <Icon name="chevd" size={12} />
