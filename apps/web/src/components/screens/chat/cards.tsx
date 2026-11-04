@@ -16,6 +16,7 @@ import { toHref } from "@/lib/nav";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { StatusTag } from "@/components/ui/status-tag";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName } from "@sparkpoint/shared/chains";
 import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
 
 /**
@@ -26,6 +27,8 @@ import type { InlineIntent } from "@/components/screens/chat/inline-confirm";
  * byte-for-byte in the else path.
  */
 const IS_ROBINHOOD_MAINNET_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
+/** The build's home network, from the shared registry — never a hard-coded chain name. */
+const NETWORK_NAME = chainName(APP_DEFAULT_CHAIN_ID);
 
 /** Card action callbacks — the chat screen wires these to its thread state. */
 export interface CardActions {
@@ -60,7 +63,7 @@ export function RecCard({ actions }: { actions: CardActions }) {
           <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
         </div>
         <div className="cthesis">
-          The AI yield vault isn&apos;t on Robinhood Chain yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
+          The AI yield vault isn&apos;t on {NETWORK_NAME} yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
           <b>USDG</b> — you review the quote and sign from your own wallet.
         </div>
         <div className="cnote">Estimates, not guarantees. · You approve and sign every move.</div>
@@ -360,7 +363,7 @@ export function WalletCard({ actions }: { actions: CardActions }) {
     return (
       <div className="ccard" data-card="wallet">
         <div className="ch">
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Your wallet · Robinhood Chain</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Your wallet · {NETWORK_NAME}</span>
           <span style={{ fontSize: 11, color: "var(--muted-foreground)" }} className="grow">
             total ≈ $4,250
           </span>
@@ -444,7 +447,7 @@ export function SwapCard({ actions }: { actions: CardActions }) {
           <span className="badge badge-ai">AI suggestion — you approve &amp; sign</span>
         </div>
         <div className="cthesis">
-          Best route on Robinhood Chain: <b>ETH → USDG via Uniswap V3</b>. Slippage protection is built into the route.
+          Best route on {NETWORK_NAME}: <b>ETH → USDG via Uniswap V3</b>. Slippage protection is built into the route.
         </div>
         <div className="crow">
           <div className="capy">
@@ -519,7 +522,7 @@ export function BridgeCard({ actions }: { actions: CardActions }) {
           <span className="rank">Bridge</span>
         </div>
         <div className="cthesis">
-          Bridging isn&apos;t available on Robinhood Chain yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
+          Bridging isn&apos;t available on {NETWORK_NAME} yet. What you can do today is swap between <b>ETH/WETH</b> and{" "}
           <b>USDG</b> — you approve and sign from your own wallet.
         </div>
         <div className="cact">
@@ -570,12 +573,12 @@ export function CiteBody() {
   if (IS_ROBINHOOD_MAINNET_BUILD) {
     return (
       <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-        <b>Based on the on-chain Uniswap V3 pool (Robinhood Chain)</b>
+        <b>Based on the on-chain Uniswap V3 pool ({NETWORK_NAME})</b>
         <div className="muted" style={{ marginTop: 6 }}>
           ETH/USDG quote · live from the pool · as of 2 min ago
         </div>
         <a className="cite" style={{ marginTop: 10, display: "inline-flex" }}>
-          View on the Robinhood Chain explorer <Icon name="ext" size={10} />
+          View on the {NETWORK_NAME} explorer <Icon name="ext" size={10} />
         </a>
       </div>
     );

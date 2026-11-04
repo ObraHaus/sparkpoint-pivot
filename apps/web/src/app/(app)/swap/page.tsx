@@ -25,6 +25,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
+import { chainName } from "@sparkpoint/shared/chains";
 import { useNetwork } from "@/lib/network";
 import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
@@ -93,7 +94,9 @@ export default function Page() {
   const dex = dexById("uniswap_v3");
   const dexLive = dexLiveOn(dex, activeChain);
   const uniswapVenue = dexDisplayLabel(dexById("uniswap_v3"), activeChain);
-  const netLabel = activeChain === 46630 ? "Robinhood Testnet" : activeChain === 4663 ? "Robinhood Chain" : activeChain === 8453 ? "Base" : "Base Sepolia";
+  // Registry-derived: the swap page must agree with the top bar / settings on what to call the
+  // connected network, and unknown chains must never be silently renamed.
+  const netLabel = chainName(activeChain);
   const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
@@ -304,7 +307,7 @@ export default function Page() {
               style={{ color: "var(--primary)", cursor: "pointer" }}
               onClick={() => switchToChain(APP_DEFAULT_CHAIN_ID as Parameters<typeof switchToChain>[0])}
             >
-              Switch to Robinhood Chain
+              Switch to {chainName(APP_DEFAULT_CHAIN_ID)}
             </a>{" "}
             to swap.
           </Notice>

@@ -20,6 +20,8 @@ import { useNetwork } from "@/lib/network";
 import { stageCopy } from "@/lib/stage";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { chainName } from "@sparkpoint/shared/chains";
+import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { PUBLIC_NETWORKS } from "@sparkpoint/shared/networks";
 import { RiskChip } from "@/components/ui/risk-chip";
 import { toHref } from "@/lib/nav";
 import "@/components/screens/support.css";
@@ -490,7 +492,8 @@ function MemoryTab() {
 export default function Page() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-  const { wallet, disconnectWallet } = useNetwork();
+  const { wallet, disconnectWallet, network } = useNetwork();
+  const { accountId: nearAccountId } = useNearWallet();
   const [tab, setTab] = useState<Tab>("account");
   const premium = useSelfPremiumStatus();
   const sessionKeys = useSessionKeys();
@@ -549,9 +552,41 @@ export default function Page() {
             <div className="setrow">
               <div>
                 <div style={{ fontWeight: 600 }}>Network</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  The same connected state the top bar shows. This build targets{" "}
+                  {chainName(APP_DEFAULT_CHAIN_ID)}.
+                </div>
               </div>
-              <span className="pill ghosty" style={{ cursor: "default" }}>
-                {chainName(APP_DEFAULT_CHAIN_ID)}
+              <span className="pill ghosty" style={{ cursor: "default" }} data-testid="settings-network">
+                {network.name}
+                {nearAccountId ? " · NEAR" : ""}
+              </span>
+            </div>
+            <div className="setrow">
+              <div>
+                <div style={{ fontWeight: 600 }}>NEAR wallet</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  Optional, client-side only — used to prefill NEAR recipients and read your NEAR
+                  portfolio. Never server sign-in.
+                </div>
+              </div>
+              <span className="mono" data-testid="settings-near">
+                {nearAccountId ?? "Not connected"}
+              </span>
+            </div>
+            <div className="setrow">
+              <div>
+                <div style={{ fontWeight: 600 }}>Supported networks</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  Cross-chain swaps can deliver to these networks; Bitcoin is receive-only.
+                </div>
+              </div>
+              <span style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "flex-end" }}>
+                {PUBLIC_NETWORKS.map((n) => (
+                  <span key={n.id} className="pill ghosty" style={{ cursor: "default", fontSize: 11.5 }}>
+                    {n.label}
+                  </span>
+                ))}
               </span>
             </div>
             <div className="setrow">
