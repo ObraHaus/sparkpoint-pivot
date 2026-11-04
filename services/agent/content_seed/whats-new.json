@@ -7,7 +7,7 @@
       "tag": "Improved",
       "title": "Clearer wallet labels, plain-English NEAR copy, and tidy dollar amounts",
       "body": "The login page now says \"Browser wallet / MetaMask\" instead of \"Injected\", and explains the optional NEAR connection in plain English: connect your NEAR account to receive swaps on NEAR, while signing in still uses your EVM wallet for now. Single-chain footer copy is gone, so the app reads as the multi-network product it is. Cross-chain preview dollar estimates now round to cents instead of showing long decimals. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
-      "published_at": "2026-11-04T21:15:00Z"
+      "published_at": "2026-11-04T20:55:00Z"
     },
     {
       "slug": "phase-b-crosschain-recipient-2026-11",
