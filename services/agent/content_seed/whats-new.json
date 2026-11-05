@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "freeze-dual-access-multichain-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "One multi-chain story: pages and Sparky both show swaps, earn and portfolio",
+      "body": "The freeze build tells one consistent story. The Swap page is the manual on-chain swap on your connected EVM network (Base or Robinhood Chain) and points cross-chain routes \u2014 USDC to BTC, ETH to Base, USDC to SOL \u2014 to Sparky, where they run through NEAR Intents with a preview first. The Vault page now shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana and Rhea on NEAR, with chain filters and an honest note when a rail needs a funded wallet or is not available yet. Portfolio keeps aggregating across chains without asking you to flip networks in MetaMask, and the top bar now shows network status only. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-05T16:00:00Z"
+    },
+    {
       "slug": "near-only-login-2026-11",
       "type": "changelog",
       "tag": "New",

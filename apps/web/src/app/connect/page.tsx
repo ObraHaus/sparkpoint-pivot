@@ -42,10 +42,14 @@ export default function ConnectPage() {
   // page advances to /verify ONLY after an actual connection is established.
   const { isConnected } = useAccount();
   const { connect, connectors, isPending, error } = useConnect();
-  // HONEST ROWS: one per REAL connector. This build wires `injected()` only — the old four
-  // Coinbase/WalletConnect/MetaMask/Browser rows all called this same connector, which promised
-  // wallet support the app did not have. Add a row here only when its connector is truly wired.
-  const walletRows = connectors.filter((c) => c.type === "injected");
+  // HONEST ROWS: exactly ONE real injected connector. `wagmi` can surface the same injected wallet
+  // twice (window.ethereum + an EIP-6963 announcement), which used to render duplicate MetaMask
+  // rows that both drove the same connector. Prefer the announced/named connector, otherwise the
+  // first injected one, and render it once. Add another row only when its connector is truly wired.
+  const injectedConnectors = connectors.filter((c) => c.type === "injected");
+  const walletConnector =
+    injectedConnectors.find((c) => c.name && c.name.trim().toLowerCase() !== "injected") ??
+    injectedConnectors[0];
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
   // Read the injected provider's real identity without a setState-in-effect cascade: false on the
   // server, the actual provider flag on the client. Every non-MetaMask injected wallet stays the
@@ -61,11 +65,10 @@ export default function ConnectPage() {
     if (isConnected) router.push("/verify");
   }, [isConnected, router]);
 
-  const onConnect = (i: number) => {
-    const connector = walletRows[i];
-    if (isPending || !connector) return;
-    setPendingIdx(i);
-    connect({ connector });
+  const onConnect = () => {
+    if (isPending || !walletConnector) return;
+    setPendingIdx(0);
+    connect({ connector: walletConnector });
   };
   const connecting = isPending ? pendingIdx : null;
   const nearPhaseLabel =
@@ -127,7 +130,7 @@ export default function ConnectPage() {
               </span>
               <Icon name="chevr" size={16} />
             </button>
-            {walletRows.length === 0 ? (
+            {!walletConnector ? (
               <p
                 style={{
                   textAlign: "center",
@@ -140,37 +143,35 @@ export default function ConnectPage() {
                 No browser wallet detected. Install MetaMask (or another browser wallet) to connect.
               </p>
             ) : (
-              walletRows.map((connector, i) => (
-                <button
-                  className="walletrow"
-                  data-i={i}
-                  key={connector.uid}
-                  data-testid="connect-wallet-row"
-                  onClick={() => onConnect(i)}
-                >
-                  {connecting === i ? (
-                    <>
-                      <span className="wl-ico">
-                        <span className="ai-dot"></span>
-                      </span>
-                      <span className="wl-name">Connecting…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="wl-ico">
-                        {isMetaMask ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- 38px wallet logo
-                          <img src="/wallets/metamask.png" alt="" width={38} height={38} />
-                        ) : (
-                          BrowserWalletIcon
-                        )}
-                      </span>
-                      <span className="wl-name">{isMetaMask ? "MetaMask" : "Browser wallet"}</span>
-                      <Icon name="chevr" size={16} />
-                    </>
-                  )}
-                </button>
-              ))
+              <button
+                className="walletrow"
+                data-i={0}
+                key={walletConnector.uid}
+                data-testid="connect-wallet-row"
+                onClick={onConnect}
+              >
+                {connecting === 0 ? (
+                  <>
+                    <span className="wl-ico">
+                      <span className="ai-dot"></span>
+                    </span>
+                    <span className="wl-name">Connecting…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="wl-ico">
+                      {isMetaMask ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- 38px wallet logo
+                        <img src="/wallets/metamask.png" alt="" width={38} height={38} />
+                      ) : (
+                        BrowserWalletIcon
+                      )}
+                    </span>
+                    <span className="wl-name">{isMetaMask ? "MetaMask" : "Browser wallet"}</span>
+                    <Icon name="chevr" size={16} />
+                  </>
+                )}
+              </button>
             )}
           </div>
           {(error || nearLogin.error) && (

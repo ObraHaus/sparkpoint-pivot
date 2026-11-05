@@ -3,7 +3,7 @@ title: Common Beta Questions, Answered Plainly
 source: beta-questions
 tags: [faq, morpho, aave, apy, slippage, fees, near, non-custody, quota, mandate, beta]
 risk_tier: all
-updated: 2026-10-27
+updated: 2026-11-05
 ---
 
 # Common Beta Questions, Answered Plainly
@@ -79,19 +79,20 @@ SparkPoint. It is separate from slippage and from the underlying DEX pool fee. I
 taken on the input side of the swap by the fee router, and the swap is still
 user-signed. See [[platform-surfaces]] for the `/swap` surface and the Fees page.
 
-## What is NEAR Intents, and when is it coming?
+## What is NEAR Intents, and is it live?
 
 **NEAR Intents** is a cross-chain execution model in which a user expresses an
 intent (for example, "swap this asset on this chain for that asset on another
-chain") and solvers compete to fill it. It is how SparkPoint plans to offer
-**cross-chain swaps**.
+chain") and solvers compete to fill it. SparkPoint uses it, through 1Click, for
+**cross-chain swaps in Sparky chat**.
 
-It is **not live yet**. Today SparkPoint prepares **same-network** swaps, and asks the
-user to sign them. Swaps into unsupported assets or chains — native BTC, SOL/Solana,
-NEAR — are refused honestly rather than turned into the default stablecoin ↔ ETH
-card. NEAR Intents-based cross-chain swaps are planned for the **November build**.
-There is no bridge in the product today, and no cross-chain route should be described
-as available. See [[sparky-capabilities]].
+In the freeze build, ask Sparky to swap **USDC→BTC**, move **ETH→Base** or swap
+**USDC→SOL**. Sparky shows a preview with the amount, destination and fees before
+anything is sent; the user sends from their own wallet to a one-time deposit
+address, and an incomplete swap is refunded to the stated refund address. The
+**manual `/swap` page is the same-network EVM swap**, not the cross-chain product.
+There is no standalone bridge outside the Intents flow, and an unsupported route
+is refused honestly. See [[multichain-dual-access]].
 
 ## Non-custody and signing: who can move my funds?
 
@@ -141,5 +142,6 @@ SparkPoint custody. See [[risk-profiles]].
   Broker, which unlocks Premium; core access never requires it.
 - **Does SparkPoint quote an SRK price?** No. There is no oracle, so any USD figure
   would be invented.
-- **Are BTC, SOL and NEAR tradeable here?** Not today. Sparky can quote them for
-  context, but the product does not trade or hold them on this network yet.
+- **Are BTC, SOL and NEAR tradeable here?** Yes as **cross-chain destinations via Sparky chat**
+  (NEAR Intents): for example USDC→BTC or USDC→SOL. The manual `/swap` page stays same-network
+  EVM. The product does not custody these assets.

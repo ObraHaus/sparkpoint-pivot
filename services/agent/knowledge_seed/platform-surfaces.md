@@ -3,7 +3,7 @@ title: SparkPoint Platform Surfaces
 source: platform-surfaces
 tags: [trust-center, outcomes, fees, learn, changelog, navigation, product]
 risk_tier: conservative
-updated: 2026-09-16
+updated: 2026-11-05
 ---
 
 # SparkPoint Platform Surfaces
@@ -64,9 +64,9 @@ Information section of the navigation.
 
 ## The rest of the app
 
-- **/portfolio** — positions, allocation and profit and loss.
-- **/vault** — the Aave yield vault: deposit, withdraw, current rate.
-- **/swap** — user-signed swaps, 0.20% routing fee.
+- **/portfolio** — positions, allocation and profit and loss, plus a read-only **Across chains** panel (Base, Solana, NEAR) that aggregates without changing the wallet's network.
+- **/vault** — on the freeze beta, the manual multi-chain earn board: **Morpho (Base/Ethereum), Kamino (Solana), Rhea (NEAR)** from the same registry Sparky reads, with chain filters and honest rail states. On a build with the SparkPoint Aave vault, the Aave vault overview appears above it. See [[multichain-dual-access]].
+- **/swap** — the manual same-network, user-signed EVM swap on the wallet's supported chain (Base or Robinhood Chain in the freeze build), with the 0.20% routing fee where the fee router is wired. **Cross-chain swaps are not this page**: they run in Sparky chat through NEAR Intents. See [[multichain-dual-access]].
 - **/brokers** (Trust & Control → Information → Sparky Broker) — mint a broker and activate it by retiring SRK; also lists the brokers you hold and whether each is activated. **On the Robinhood Chain beta (4663) this page is different**: the collection is a test OpenSea drop and the verbs are clock in / promote / fuse against the broker engine, burning SPARKYTEST. See [[beta-broker-and-revenue]].
 - **/brokers/revenue** — the fee route and what a holder can withdraw. On the beta it shows the real route (trading fees → splitter 90/10 → engine pot → broker vault → your withdraw) and only ever the amounts the contracts actually hold; no projections, no rate. On other networks it is the period-based revenue-share claim.
 - **/premium** — the Premium tier and which source is currently paying for it. Premium comes from an activated Sparky Broker; the old monthly subscription is retired. See

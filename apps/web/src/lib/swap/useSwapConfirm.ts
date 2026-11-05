@@ -28,6 +28,7 @@
 
 import { useMemo } from "react";
 import { useAccount, useBalance, useReadContract } from "wagmi";
+import { isSupportedChain } from "@sparkpoint/shared/chains";
 import { erc20Abi, parseUnits, type Address } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { sparkPointVaultAbi, feeRouterAbi } from "@sparkpoint/shared/abis";
@@ -126,15 +127,13 @@ export interface SwapConfirmResult {
 export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   const { tokenIn: explicitIn, tokenOut: explicitOut, ethToUsdc = true, amount, slippageBps } = params;
   const { address, isConnected, chainId } = useAccount();
-  // The mainnet-beta build registers ONLY Robinhood Chain 4663: a wallet on any other chain resolves
-  // to an unsupported state here. Never let that silently fall back to Base Sepolia (it quoted the
-  // wrong network and printed the wrong label) — clamp the display/quote chain to the build chain
-  // and surface `wrongChain` so the caller asks for a switch instead.
-  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
-  const wrongChain = IS_BETA_BUILD && isConnected && chainId !== undefined && chainId !== APP_DEFAULT_CHAIN_ID;
-  const activeChain = IS_BETA_BUILD
-    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
-    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
+  // The manual swap follows the wallet's chain when that chain is one this app supports. It must
+  // NOT clamp the beta to Robinhood Chain: a tester on Base should be able to swap on Base without
+  // a MetaMask network flip. An unsupported chain still falls back to the build chain for display,
+  // but `wrongChain` makes the surface ask for a switch instead of quoting the wrong network.
+  const supportedConnected = isConnected && isSupportedChain(chainId);
+  const wrongChain = isConnected && chainId !== undefined && !isSupportedChain(chainId);
+  const activeChain = supportedConnected ? chainId : DISPLAY_CHAIN_ID;
 
   const dex = dexById("uniswap_v3");
   const dexLive = dexLiveOn(dex, activeChain);

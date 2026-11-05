@@ -9,6 +9,7 @@ import type { PackedUserOperation } from "@sparkpoint/shared/schemas";
 
 // A fixed (well-known anvil) session key + the exact unsigned op shape the agent emits
 // (`session_userop.py` — signature null, hex-string gas envelope). Deterministic → hashes are stable.
+// gitleaks:allow — the public Hardhat account #1 test key; never funded, never used on-chain.
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const SESSION_ADDR = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const CHAIN = 84532;

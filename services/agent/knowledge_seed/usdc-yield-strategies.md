@@ -3,7 +3,7 @@ title: USDC Yield Strategies on Base
 source: usdc-yield-strategies
 tags: [usdc, yield, strategy, base, mandate]
 risk_tier: moderate
-updated: 2026-07-16
+updated: 2026-11-05
 ---
 
 # USDC Yield Strategies on Base
@@ -44,3 +44,11 @@ isolated-market risk that a single Aave supply position does not have. The board
 discloses the curator, the stored as-of and whether a SparkPoint fee wrapper is
 attached; a vault without a wrapper is deposited directly and carries no
 SparkPoint fee. See [[beta-questions]] for the honest risk comparison.
+
+## Multi-chain yield in the freeze build
+
+The earn registry now also covers **Kamino on Solana** (SOL vaults; the 1Click receipt is the native
+Kamino vault share) and **Rhea (Burrow) lending on NEAR** (USDC supply, variable contract APR, with a
+one-time Rhea account setup fee on a first deposit). These rows appear on the manual `/vault` page and
+in Sparky chat from the same registry. A rail that needs a funded wallet or an unavailable key is
+shown as unavailable rather than hidden. See [[multichain-dual-access]].
