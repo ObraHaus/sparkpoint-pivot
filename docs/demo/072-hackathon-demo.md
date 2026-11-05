@@ -8,6 +8,13 @@ deterministic parsers actually support and is pinned by the offline golden cases
 > **The one-line story:** SparkPoint shows you the whole picture across chains and prepares every
 > move, but **nothing here signs, deposits or withdraws**. You review; your wallet stays yours.
 
+> **Freeze v9 — dual access.** The same multi-chain story is on the manual pages as well as in chat:
+> `/swap` is the user-signed, same-network EVM swap on the wallet's supported chain (Base or
+> Robinhood Chain) and links cross-chain routes to Sparky, while `/vault` shows the same Morpho
+> (Base/Ethereum), Kamino (Solana) and Rhea (NEAR) earn registry Sparky reads. `/portfolio` keeps the
+> read-only **Across chains** panel. Nothing on either surface gains custody; Sparky and the pages
+> can never disagree about a chain, protocol or rail.
+
 ## Status labels used below
 
 | label | meaning |
@@ -18,7 +25,7 @@ deterministic parsers actually support and is pinned by the offline golden cases
 
 ## Prerequisites
 
-- A browser wallet (MetaMask or similar) on **Base**. Use a **throwaway/test wallet only**.
+- A browser wallet (MetaMask or similar) on **Base** or **Robinhood Chain** (the freeze beta). Use a **throwaway/test wallet only**.
 - No private key, seed phrase or API secret is ever entered into the app, this doc, or a terminal.
   Sign-in is a free SIWE message — it proves the wallet is yours and moves nothing on-chain.
 - The beta URL: replace `<BETA_URL>` with your deployment host, e.g.

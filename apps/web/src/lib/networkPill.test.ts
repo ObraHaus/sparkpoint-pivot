@@ -48,6 +48,6 @@ test("settling and wrong-network states win over the NEAR suffix", () => {
       networkName: "Base",
       nearAccountId: "sparky.near",
     }),
-    "Switch network",
+    "Unsupported network",
   );
 });

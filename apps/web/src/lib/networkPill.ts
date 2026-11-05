@@ -23,6 +23,6 @@ export function networkPillLabel({
   nearAccountId,
 }: NetworkPillInput): string {
   if (networkSettling) return "Checking…";
-  if (wrongNetwork) return "Switch network";
+  if (wrongNetwork) return "Unsupported network";
   return `${networkName}${nearAccountId ? " · NEAR" : ""}`;
 }

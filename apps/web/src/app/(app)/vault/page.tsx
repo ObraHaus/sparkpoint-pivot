@@ -35,6 +35,7 @@ import { buildVaultOptions, resolveSelectedVault } from "@/lib/chain/vaultOption
 import { feeBasisShortLabel, vaultFeeChain } from "@/lib/policy/feeCopy";
 import { VaultPicker } from "@/components/ui/VaultPicker";
 import { CuratedBoard } from "@/components/vault/CuratedBoard";
+import { EarnAcrossChains } from "@/components/vault/EarnAcrossChains";
 import { useCuratedBoard } from "@/lib/curation/useCuratedBoard";
 import { capNoun } from "@/lib/stage";
 import "@/components/screens/vault.css";
@@ -190,6 +191,7 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
             <div className="sub">AI-curated vaults · discovered, screened and reviewed</div>
           </div>
         </div>
+        <EarnAcrossChains />
         <CuratedBoard
           board={curated.board}
           state={curated.state}
@@ -454,6 +456,10 @@ function VaultOverview({ selectedParam }: { selectedParam: string | null }) {
           )}
         </div>
       </div>
+
+      {/* 069/070/071 — the manual multi-chain earn registry: Morpho (Base/Ethereum), Kamino
+          (Solana) and Rhea (NEAR), the same rows Sparky's chat card reads. */}
+      <EarnAcrossChains />
 
       {/* 048 — the curated board sits below the SparkPoint vault on vault-bearing chains (Base
           today). It is chain-scoped by the caller's session, so on the alpha build it shows that

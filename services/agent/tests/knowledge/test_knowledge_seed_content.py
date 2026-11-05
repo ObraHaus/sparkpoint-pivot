@@ -151,11 +151,12 @@ def test_the_beta_faq_explains_slippage_and_the_swap_fee() -> None:
     assert "separate" in text.lower()
 
 
-def test_the_beta_faq_places_near_intents_in_the_november_build() -> None:
+def test_the_beta_faq_explains_live_near_intents_cross_chain_swaps() -> None:
     text = _corpus()["beta-questions"].lower()
     assert "near intents" in text
-    assert "november build" in text
-    assert "not live" in text
+    assert "cross-chain swaps in sparky chat" in text
+    assert "usdc→btc" in text or "usdc->btc" in text
+    assert "same-network evm swap" in text
 
 
 def test_the_beta_faq_states_non_custody_and_signing_precisely() -> None:
