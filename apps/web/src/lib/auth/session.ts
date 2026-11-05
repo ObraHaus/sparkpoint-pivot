@@ -17,15 +17,21 @@
 
 export const SESSION_COOKIE = "sp_session";
 export const NONCE_COOKIE = "sp_siwe_nonce";
+/** NEAR NEP-413 nonce cookie (feature 076) — separate from the SIWE nonce. */
+export const NEAR_NONCE_COOKIE = "sp_near_nonce";
 
 /** Session lifetime — 7 days; the wallet re-signs after expiry. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 /** SIWE nonce lifetime — a login must complete within 10 minutes of fetching the nonce. */
 export const NONCE_TTL_SECONDS = 60 * 10;
 
+export type AuthChain = "evm" | "near";
+
 export interface SessionClaims {
-  /** The SIWE-verified wallet (lowercase 0x address). */
+  /** The verified identity: a lowercase 0x address (EVM) or a NEAR account id. */
   readonly address: string;
+  /** Which chain proved control. Missing on pre-076 tokens ⇒ "evm" (backwards compatible). */
+  readonly chain: AuthChain;
   /** May enter the (app) shell (allowlist `beta`, or `admin` which implies beta). */
   readonly beta: boolean;
   /** May open /admin + call admin APIs (allowlist `admin`). */
@@ -97,12 +103,16 @@ export async function signSession(input: {
   address: string;
   beta: boolean;
   admin: boolean;
+  /** Auth chain; defaults to "evm" so every existing caller is unchanged. */
+  chain?: AuthChain;
 }): Promise<string | null> {
   const secret = getSecret();
   if (!secret) return null;
   const now = Math.floor(Date.now() / 1000);
+  const chain: AuthChain = input.chain === "near" ? "near" : "evm";
   const claims: SessionClaims = {
-    address: input.address.toLowerCase(),
+    address: chain === "evm" ? input.address.toLowerCase() : input.address,
+    chain,
     beta: input.beta,
     admin: input.admin,
     iat: now,
@@ -143,10 +153,13 @@ export async function verifySession(
       new Uint8Array(await crypto.subtle.sign({ name: "HMAC" }, key, asBufferSource(encoder.encode(payload)))),
     );
     if (!timingSafeStrEqual(sig, expected)) return null;
-    const claims = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as SessionClaims;
-    if (typeof claims.address !== "string" || typeof claims.exp !== "number") return null;
-    if (claims.exp < Math.floor(Date.now() / 1000)) return null;
-    return claims;
+    const raw = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload))) as Partial<SessionClaims>;
+    if (typeof raw.address !== "string" || typeof raw.exp !== "number") return null;
+    if (raw.exp < Math.floor(Date.now() / 1000)) return null;
+    // Pre-076 tokens have no `chain`; they were all EVM SIWE sessions, so default rather than
+    // invalidating every live cookie on deploy.
+    const chain: AuthChain = raw.chain === "near" ? "near" : "evm";
+    return { ...raw, chain } as SessionClaims;
   } catch {
     return null;
   }

@@ -71,6 +71,7 @@ from .mandate import router as mandate_router
 from .memory import router as memory_router
 from .middleware import RequestContextMiddleware
 from .multichain_portfolio import router as multichain_portfolio_router
+from .near_auth import router as near_auth_router
 from .network_diagnostics import router as network_diagnostics_router
 from .notifications import router as notifications_router
 from .portfolio import router as portfolio_router
@@ -987,6 +988,7 @@ app.include_router(content_router)
 app.include_router(tips_router)
 # SIWE network-gate diagnostics — S2S ingest (POST /diagnostics/ingest, forwarded by the web tier's
 # /api/debug/network) + admin-only list (GET /admin/diagnostics). Client-reported, unverified; N2.
+app.include_router(near_auth_router)
 app.include_router(network_diagnostics_router)
 
 

@@ -32,25 +32,32 @@ export interface AllowlistStatus {
   readonly admin: boolean;
 }
 
-function s2sHeaders(address: string, chainId: number): HeadersInit {
+function s2sHeaders(
+  address: string,
+  chainId: number,
+  chain: "evm" | "near" = "evm",
+): HeadersInit {
   return {
     authorization: `Bearer ${AGENT_S2S_TOKEN}`,
     accept: "application/json",
     "x-account": address,
     "x-owner": address,
     "x-chain-id": String(chainId),
+    // 076 — the agent scopes the same owner string whether it is a 0x address or a NEAR id.
+    "x-auth-chain": chain,
   };
 }
 
 export async function fetchAllowlistStatus(
   address: string,
   chainId: number,
+  chain: "evm" | "near" = "evm",
 ): Promise<AllowlistStatus | null> {
   if (!AGENT_INTERNAL_URL || !AGENT_S2S_TOKEN) return null;
   const base = AGENT_INTERNAL_URL.replace(/\/+$/, "");
   try {
     const resp = await fetch(`${base}/allowlist/status`, {
-      headers: s2sHeaders(address, chainId),
+      headers: s2sHeaders(address, chainId, chain),
       cache: "no-store",
       signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
     });

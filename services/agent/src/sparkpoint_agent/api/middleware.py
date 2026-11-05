@@ -4,7 +4,8 @@ Order per request (non-custody, fail-closed):
     1. Assign a ``requestId`` (correlation id on every response + envelope, §1.5).
     2. Exempt paths (probes/docs) pass straight through — no auth, no header scoping.
     3. ``Authorization: Bearer <web-tier-token>`` (§1.2)         → else UNAUTHENTICATED.
-    4. Parse/validate ``X-Account`` / ``X-Owner`` / ``X-Chain-Id`` → else ACCOUNT_HEADERS_INVALID.
+    4. Parse/validate ``X-Account`` / ``X-Owner`` / ``X-Chain-Id`` / ``X-Auth-Chain``
+       → else ACCOUNT_HEADERS_INVALID.
     5. ``Idempotency-Key`` (§1.3): validate UUID; replay a cached POST response, or
        capture + store the fresh 2xx JSON response so a retry can't double-emit.
 
@@ -78,6 +79,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                         request.headers.get("X-Account"),
                         request.headers.get("X-Owner"),
                         request.headers.get("X-Chain-Id"),
+                        request.headers.get("X-Auth-Chain"),
                     )
                 except ApiError:
                     # 061 — a handful of advisory reads can answer "unavailable" without an

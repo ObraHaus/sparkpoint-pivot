@@ -21,6 +21,11 @@ from dataclasses import dataclass
 from .errors import ApiError, ErrorCode, ErrorReason
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+#: 076 — NEAR account ids: named (2-64 chars, dot/dash/underscore separated) or implicit (64 hex).
+_NEAR_IMPLICIT_RE = re.compile(r"^[0-9a-f]{64}$")
+_NEAR_NAMED_RE = re.compile(r"^(?=.{2,64}$)[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_NEAR_HEX_ONLY_RE = re.compile(r"^[0-9a-f]+$")
+AUTH_CHAINS: tuple[str, ...] = ("evm", "near")
 
 # agent-service-api.md §1.2 — Base mainnet | Base Sepolia | Robinhood testnet (§B3). The policy
 # layer also knows 31337 for the local Anvil fork; the wire header contract lists the reachable
@@ -53,7 +58,14 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
 # absent, so `get_account` raises for anything that needs a user, and a route can only end up here
 # deliberately.
 NO_ACCOUNT_PATHS: frozenset[str] = frozenset(
-    {"/access/public-application", "/access/mint-whitelist"}
+    {
+        "/access/public-application",
+        "/access/mint-whitelist",
+        # 076 — NEAR login nonce issuance/consumption: the sign-in has not established an
+        # identity yet, so there is no account to scope to. Still S2S-authenticated.
+        "/auth/near/nonce",
+        "/auth/near/consume",
+    }
 )
 
 # Routes where a missing/invalid identity is an ANSWER, not an error.
@@ -89,6 +101,10 @@ class AccountContext:
     account: str
     owner: str
     chain_id: int
+    #: 076 — which chain proved control. "evm" for every pre-076 caller (default keeps tests and
+    #: the SIWE path byte-identical). "near" means account/owner are a NEAR account id and the
+    #: EVM-chain-dependent reads are not applicable.
+    auth_chain: str = "evm"
 
 
 def is_exempt(path: str) -> bool:
@@ -133,10 +149,24 @@ def has_valid_s2s(authorization: str | None) -> bool:
     return secrets.compare_digest(presented, expected)
 
 
+def _is_near_account_id(value: str | None) -> bool:
+    """True for a well-formed NEAR named or implicit account id (shape only, never ownership)."""
+    candidate = (value or "").strip()
+    if not candidate:
+        return False
+    if _NEAR_IMPLICIT_RE.match(candidate):
+        return True
+    # A hex-only id is an implicit account by intent; only the exact 64-char form is valid.
+    if _NEAR_HEX_ONLY_RE.match(candidate):
+        return False
+    return bool(_NEAR_NAMED_RE.match(candidate))
+
+
 def parse_account_headers(
     x_account: str | None,
     x_owner: str | None,
     x_chain_id: str | None,
+    x_auth_chain: str | None = None,
 ) -> AccountContext:
     """Parse + validate the §1.2 user-scoping headers into an ``AccountContext``.
 
@@ -146,14 +176,25 @@ def parse_account_headers(
     later, deeper check.
     """
     reasons: list[ErrorReason] = []
+    auth_chain = (x_auth_chain or "evm").strip().lower()
+    if auth_chain not in AUTH_CHAINS:
+        reasons.append(
+            ErrorReason("ACCOUNT_HEADERS_INVALID", f"X-Auth-Chain {auth_chain!r} unsupported.")
+        )
 
     def _bad(message: str) -> None:
         reasons.append(ErrorReason("ACCOUNT_HEADERS_INVALID", message))
 
-    if not x_account or not _ADDRESS_RE.match(x_account):
-        _bad("X-Account is missing or not a 20-byte address.")
-    if not x_owner or not _ADDRESS_RE.match(x_owner):
-        _bad("X-Owner is missing or not a 20-byte address.")
+    if auth_chain == "near":
+        if not _is_near_account_id(x_account):
+            _bad("X-Account is missing or not a NEAR account id.")
+        if not _is_near_account_id(x_owner):
+            _bad("X-Owner is missing or not a NEAR account id.")
+    else:
+        if not x_account or not _ADDRESS_RE.match(x_account):
+            _bad("X-Account is missing or not a 20-byte address.")
+        if not x_owner or not _ADDRESS_RE.match(x_owner):
+            _bad("X-Owner is missing or not a 20-byte address.")
 
     chain_id = 0
     if not x_chain_id:
@@ -181,4 +222,6 @@ def parse_account_headers(
         )
 
     assert x_account is not None and x_owner is not None  # noqa: S101 — guaranteed by the checks above
-    return AccountContext(account=x_account, owner=x_owner, chain_id=chain_id)
+    return AccountContext(
+        account=x_account, owner=x_owner, chain_id=chain_id, auth_chain=auth_chain
+    )

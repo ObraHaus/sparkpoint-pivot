@@ -87,6 +87,20 @@ def _probe_for(config: AgentConfig) -> ChainIdentityProbe | None:
     return probe
 
 
+async def require_evm_account(request: Request) -> None:
+    """076 — the vault quote/build surface is EVM-only.
+
+    A NEAR-only session is a valid app identity, but it has no EVM address to quote or build for.
+    Refuse honestly (400) instead of letting a NEAR account id reach the EVM reader.
+    """
+    account = getattr(request.state, "account", None)
+    if isinstance(account, AccountContext) and account.auth_chain != "evm":
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "Connect an EVM wallet to use the vault; you are signed in with NEAR.",
+        )
+
+
 async def require_verified_chain(request: Request) -> None:
     """023 — refuse to serve the chain-dependent surface unless the RPC proves its chain.
 
@@ -115,7 +129,9 @@ async def require_verified_chain(request: Request) -> None:
         await probe.require_verified()
 
 
-router = APIRouter(tags=["vault"], dependencies=[Depends(require_verified_chain)])
+router = APIRouter(
+    tags=["vault"], dependencies=[Depends(require_verified_chain), Depends(require_evm_account)]
+)
 
 # The 1e18 scale of the on-chain HWM / share price (assets-per-share). SparkPointVault
 # stores ``_highWaterMark`` as ``convertToAssets(1e18)`` — a 1e18-scaled ratio seeded to

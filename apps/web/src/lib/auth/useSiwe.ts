@@ -20,6 +20,8 @@ import { isSessionWalletStale } from "@/lib/auth/session-binding";
 
 export interface Session {
   readonly address: string;
+  /** Which chain proved control (feature 076). Old sessions decode as "evm". */
+  readonly chain: "evm" | "near";
   readonly beta: boolean;
   readonly admin: boolean;
 }
@@ -100,6 +102,7 @@ export function useSiweLogin(): {
         };
         return {
           address: data.address,
+          chain: data.chain ?? "evm",
           beta: data.beta,
           admin: data.admin,
           gateUnavailable: Boolean(data.gateUnavailable),
@@ -178,6 +181,7 @@ export function useSession(): {
   // wallet, keys, or funds, and never gates /exit or /trust.
   useEffect(() => {
     if (address) seenConnectedRef.current = true;
+    if (session?.chain === "near") return; // NEAR sessions are not bound to a wagmi account
     if (!isSessionWalletStale(session, address, seenConnectedRef.current)) return;
     let cancelled = false;
     void (async () => {

@@ -360,6 +360,10 @@ async def _read_vault_position(reader: VaultReader, account: AccountContext) -> 
     turned into ``stale=True`` with zeroed figures — never a hard error and never a
     fabricated balance. The frontend reconciles the true balance via direct RPC (SC-011).
     """
+    # 076 — a NEAR session has no EVM address. Report an honest empty (not a fabricated balance
+    # or a stale read) and let the NEAR-aware surfaces show the account instead.
+    if account.auth_chain != "evm":
+        return _VaultPosition(shares=0, underlying=0, asset_address="", block=0, stale=False)
     try:
         shares = await reader.balance_of(account.account)
         underlying = await reader.convert_to_assets(shares) if shares else 0
@@ -637,6 +641,19 @@ async def get_portfolio(
     hide the user's real funds from the AI.
     """
     sections = _parse_include(include)
+
+    # 076 — NEAR-only identity: no EVM address exists, so there is no EVM portfolio to read.
+    # Return an honest empty shell (200, not an error) so chat/portfolio pages load normally.
+    if account.auth_chain != "evm":
+        return PortfolioResponse(
+            asOfBlock=0,
+            asOf=_now_iso(),
+            stale=False,
+            netWorthUsd="0.00",
+            idleUsdc="0.00",
+            positions=[],
+            dataSources=[DataSource(source="near", status="ok", lastBlock=None)],
+        )
 
     # The launch vault is read only when this chain HAS one configured. Otherwise the position is
     # an honest empty, not a degraded read — the beta's funds live in wrappers + the wallet.
@@ -942,6 +959,19 @@ async def get_outcomes(
     are shown as plainly as gains. Pure read/derive: no key, no fund move, no chain write (N1–N5).
     A chain/index outage DEGRADES to ``stale`` + empty (never a hard error, never a fabricated row).
     """
+    # 076 — NEAR-only identity: an empty realized-outcomes ledger, not an EVM read.
+    if account.auth_chain != "evm":
+        return OutcomesResponse(
+            asOfBlock=0,
+            asOf=_now_iso(),
+            stale=False,
+            reconciles=False,
+            netRealizedUsd=None,
+            wins=0,
+            losses=0,
+            outcomes=[],
+        )
+
     position = await _read_vault_position(reader, account)
 
     # Fetch the COMPLETE flow history whenever the vault read is live — INDEPENDENT of whether the
@@ -1219,6 +1249,14 @@ async def get_position(
     come from the INDEXED on-chain flows (B2) when available; the raw event/PnL time-series
     still needs a per-block sampler → ``[]``.
     """
+    # 076 — a NEAR session has no EVM position.
+    if account.auth_chain != "evm":
+        raise ApiError(
+            ErrorCode.NOT_FOUND,
+            "No EVM position for this NEAR session.",
+            reasons=[ErrorReason("NOT_FOUND", "NEAR session")],
+        )
+
     # 053 — curated-wrapper positions are addressed as `wrapper:<proxy>`.
     if position_id.startswith("wrapper:"):
         return await _wrapper_position_response(

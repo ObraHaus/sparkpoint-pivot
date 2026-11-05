@@ -68,6 +68,39 @@ def test_account_equal_to_owner_accepted(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+def test_near_identity_is_accepted_chain_agnostically(client: TestClient) -> None:
+    """076 — the same owner string may be a NEAR account id; X-Auth-Chain says which chain."""
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "sparkpoint2026.near",
+        "X-Owner": "sparkpoint2026.near",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    resp = client.get("/api/v1/anything", headers=headers)
+    assert resp.status_code == 404  # parsed + authenticated; no route at this path
+
+
+def test_near_identity_rejects_a_malformed_account(client: TestClient) -> None:
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "Invalid Account!",
+        "X-Owner": "Invalid Account!",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    resp = client.get("/api/v1/anything", headers=headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
+
+def test_unknown_auth_chain_rejected(client: TestClient) -> None:
+    headers = dict(GOOD_HEADERS, **{"X-Auth-Chain": "solana"})
+    resp = client.get("/api/v1/anything", headers=headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
+
 def test_unsupported_chain_rejected(client: TestClient) -> None:
     headers = dict(GOOD_HEADERS, **{"X-Chain-Id": "1"})
     resp = client.get("/api/v1/anything", headers=headers)

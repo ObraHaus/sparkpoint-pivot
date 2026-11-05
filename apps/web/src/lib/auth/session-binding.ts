@@ -16,6 +16,8 @@
 /** The only field of a session this rule needs (a full Session is structurally assignable). */
 export interface AddressedSession {
   readonly address: string;
+  /** Optional for older callers/tests; a NEAR session is deliberately not wagmi-bound. */
+  readonly chain?: "evm" | "near";
 }
 
 /**
@@ -40,6 +42,10 @@ export function isSessionWalletStale(
   seenConnected: boolean,
 ): boolean {
   if (session == null) return false; // loading (undefined) or signed out (null) → nothing bound
+  // A NEAR session proves a NEAR account, not an EVM wallet: never log it out just because
+  // wagmi has no account (the whole point of NEAR-only login), and never compare its account id
+  // against a 0x address.
+  if (session.chain === "near") return false;
   if (connectedAddress) {
     return connectedAddress.toLowerCase() !== session.address.toLowerCase(); // switched wallets
   }
