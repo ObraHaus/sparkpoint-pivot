@@ -72,6 +72,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!cookieNonce || cookieNonce !== body.nonce) return bad("nonce_expired");
 
   const test = nearLoginTestMode();
+  const recipient = nearLoginRecipient(req);
+  if (!recipient) return bad("bad_domain");
   const result = await verifyNearLogin(
     {
       accountId: body.accountId,
@@ -81,7 +83,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       nonce: body.nonce,
     },
     {
-      expectedRecipient: nearLoginRecipient(req),
+      expectedRecipient: recipient,
       consumeNonce: consumeNearNonce,
       keyIsFullAccess: isFullAccessKey,
       testMode: test.enabled,
@@ -99,7 +101,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!status) {
     // Test mode exists so CI/Playwright can prove the login path without a funded/allowlisted
     // account. It is server-env gated and account-pinned; production never sets it.
-    if (test.enabled && (!test.accountId || body.accountId === test.accountId)) {
+    if (test.enabled && test.accountId && body.accountId === test.accountId) {
       status = { beta: true, admin: false };
     } else {
       return bad("allowlist_unavailable", 503);

@@ -123,7 +123,9 @@ export async function verifyNearLogin(
   if (!valid) return { ok: false, error: "invalid_signature" };
 
   if (deps.testMode) {
-    if (deps.testAccountId && input.accountId !== deps.testAccountId) {
+    // The test hook is only valid when pinned to ONE throwaway account. An unpinned test mode
+    // would let any account skip the on-chain key check, so it fails closed instead.
+    if (!deps.testAccountId || input.accountId !== deps.testAccountId) {
       return { ok: false, error: "test_account_required" };
     }
     return { ok: true };

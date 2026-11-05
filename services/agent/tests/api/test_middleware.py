@@ -94,6 +94,20 @@ def test_near_identity_rejects_a_malformed_account(client: TestClient) -> None:
     assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
 
 
+def test_near_identity_rejects_an_evm_shaped_account(client: TestClient) -> None:
+    """Defender 076 high: a NEAR name that looks like a 0x address must never alias an EVM owner."""
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "0x1111111111111111111111111111111111111111",
+        "X-Owner": "0x1111111111111111111111111111111111111111",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    resp = client.get("/api/v1/anything", headers=headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
+
 def test_unknown_auth_chain_rejected(client: TestClient) -> None:
     headers = dict(GOOD_HEADERS, **{"X-Auth-Chain": "solana"})
     resp = client.get("/api/v1/anything", headers=headers)

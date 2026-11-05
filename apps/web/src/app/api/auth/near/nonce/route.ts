@@ -22,6 +22,9 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "nonce_unavailable" }, { status: 503 });
   }
   const recipient = nearLoginRecipient(req);
+  if (!recipient) {
+    return NextResponse.json({ ok: false, error: "recipient_unconfigured" }, { status: 503 });
+  }
   const message = buildNearLoginMessage({
     recipient,
     nonce: issued.nonce,

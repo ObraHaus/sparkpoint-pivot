@@ -123,6 +123,33 @@ test("a key that is not on the account is rejected", async () => {
   assert.deepEqual(result, { ok: false, error: "key_not_full_access" });
 });
 
+test("test mode without a pinned account fails closed", async () => {
+  const login = signedLogin();
+  const result = await verifyNearLogin(
+    { accountId: ACCOUNT, publicKey: login.publicKey, signature: login.signature, message: login.message, nonce: login.nonce },
+    deps({
+      consumeNonce: async () => ({ issuedAt: login.issuedAt, expiresAt: login.expiresAt }),
+      keyIsFullAccess: async () => false,
+      testMode: true,
+    }),
+  );
+  assert.deepEqual(result, { ok: false, error: "test_account_required" });
+});
+
+test("test mode only accepts the pinned account", async () => {
+  const login = signedLogin();
+  const result = await verifyNearLogin(
+    { accountId: ACCOUNT, publicKey: login.publicKey, signature: login.signature, message: login.message, nonce: login.nonce },
+    deps({
+      consumeNonce: async () => ({ issuedAt: login.issuedAt, expiresAt: login.expiresAt }),
+      keyIsFullAccess: async () => false,
+      testMode: true,
+      testAccountId: "someone-else.near",
+    }),
+  );
+  assert.deepEqual(result, { ok: false, error: "test_account_required" });
+});
+
 test("the borsh payload starts with the NEP-413 tag", () => {
   const payload = { message: "hi", nonce: new Uint8Array(32), recipient: RECIPIENT };
   const encoded = encodeNep413Payload(payload);

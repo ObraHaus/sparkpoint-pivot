@@ -25,6 +25,9 @@ _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _NEAR_IMPLICIT_RE = re.compile(r"^[0-9a-f]{64}$")
 _NEAR_NAMED_RE = re.compile(r"^(?=.{2,64}$)[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _NEAR_HEX_ONLY_RE = re.compile(r"^[0-9a-f]+$")
+#: An EVM address is also a syntactically valid NEAR named account. Reject it so a NEAR account can
+#: never alias an EVM owner string in the chain-agnostic user key (Defender 076 high finding).
+_NEAR_EVM_SHAPE_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 AUTH_CHAINS: tuple[str, ...] = ("evm", "near")
 
 # agent-service-api.md §1.2 — Base mainnet | Base Sepolia | Robinhood testnet (§B3). The policy
@@ -153,6 +156,8 @@ def _is_near_account_id(value: str | None) -> bool:
     """True for a well-formed NEAR named or implicit account id (shape only, never ownership)."""
     candidate = (value or "").strip()
     if not candidate:
+        return False
+    if _NEAR_EVM_SHAPE_RE.match(candidate):
         return False
     if _NEAR_IMPLICIT_RE.match(candidate):
         return True
