@@ -152,7 +152,7 @@ def has_valid_s2s(authorization: str | None) -> bool:
     return secrets.compare_digest(presented, expected)
 
 
-def _is_near_account_id(value: str | None) -> bool:
+def is_near_account_id(value: str | None) -> bool:
     """True for a well-formed NEAR named or implicit account id (shape only, never ownership)."""
     candidate = (value or "").strip()
     if not candidate:
@@ -165,6 +165,19 @@ def _is_near_account_id(value: str | None) -> bool:
     if _NEAR_HEX_ONLY_RE.match(candidate):
         return False
     return bool(_NEAR_NAMED_RE.match(candidate))
+
+
+def is_valid_account_identifier(value: str | None) -> bool:
+    """True for an EVM 0x address OR a well-formed NEAR account id (shape only, never ownership).
+
+    076 — allowlist/admin/access records may name either chain. An EVM-shaped string is always
+    treated as EVM, and a NEAR account may never be 0x-shaped (see ``is_near_account_id``), so the
+    two identity spaces cannot alias each other.
+    """
+    candidate = (value or "").strip()
+    if not candidate:
+        return False
+    return bool(_ADDRESS_RE.match(candidate)) or is_near_account_id(candidate)
 
 
 def parse_account_headers(
@@ -191,9 +204,9 @@ def parse_account_headers(
         reasons.append(ErrorReason("ACCOUNT_HEADERS_INVALID", message))
 
     if auth_chain == "near":
-        if not _is_near_account_id(x_account):
+        if not is_near_account_id(x_account):
             _bad("X-Account is missing or not a NEAR account id.")
-        if not _is_near_account_id(x_owner):
+        if not is_near_account_id(x_owner):
             _bad("X-Owner is missing or not a NEAR account id.")
     else:
         if not x_account or not _ADDRESS_RE.match(x_account):

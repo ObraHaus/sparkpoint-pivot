@@ -17,7 +17,6 @@ Non-custody: this is an ACCESS gate only. It never returns a signable artifact a
 from __future__ import annotations
 
 import logging
-import re
 import time
 from typing import Annotated, Literal
 
@@ -30,13 +29,12 @@ from ..db import get_database
 from ..db.allowlist import ADMIN_ROLE, BETA_ROLE, AllowlistStore
 from .errors import ApiError, ErrorCode
 from .mandate import get_account
-from .security import AccountContext
+from .security import AccountContext, is_valid_account_identifier
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["allowlist"])
 
-_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 Role = Literal["beta", "admin"]
 
 #: Recorded as the actor on an auto-grant, so the audit log distinguishes it from a human add.
@@ -72,8 +70,8 @@ class AllowlistMutate(BaseModel):
     @classmethod
     def _validate_address(cls, value: str) -> str:
         candidate = value.strip()
-        if not _ADDRESS_RE.match(candidate):
-            raise ValueError("address must be a 20-byte 0x address")
+        if not is_valid_account_identifier(candidate):
+            raise ValueError("address must be a 20-byte 0x address or a NEAR account id")
         return candidate
 
 
@@ -183,8 +181,11 @@ async def _remove_from_role(
     boot, but a mid-session lockout of every admin is never allowed).
     """
     candidate = address.strip()
-    if not _ADDRESS_RE.match(candidate):
-        raise ApiError(ErrorCode.VALIDATION_ERROR, "address must be a 20-byte 0x address")
+    if not is_valid_account_identifier(candidate):
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "address must be a 20-byte 0x address or a NEAR account id",
+        )
     if role == ADMIN_ROLE:
         admins = await store.list_role(ADMIN_ROLE)
         if candidate.lower() in admins and len(admins) <= 1:
