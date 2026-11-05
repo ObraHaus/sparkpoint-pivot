@@ -23,13 +23,12 @@ import { useSessionKeys } from "@/lib/automation/useSessionKey";
 import { useNetwork } from "@/lib/network";
 import { useSession } from "@/lib/auth/useSiwe";
 import { commandActions, matchesQuery, navLeaves, SECONDARY, toHref, type NavItem } from "@/lib/nav";
-import { NetworkLogo } from "@/components/ui/NetworkLogo";
 
 /** Real deployed Base-Sepolia addresses (SoT) — no fabricated address on any trust surface. */
 const _DEPLOYED = getAddresses(84532);
 const _shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
-type MenuKind = "wallet" | "network" | "avatar";
+type MenuKind = "wallet" | "avatar";
 type SheetKind = "proveit" | "notifications";
 type OverlayKind = MenuKind | SheetKind | "cmdk";
 
@@ -51,7 +50,6 @@ interface ToastItem {
 interface OverlayApi {
   openProveIt: () => void;
   openWalletMenu: (e: React.MouseEvent) => void;
-  openNetworkMenu: (e: React.MouseEvent) => void;
   openNotifications: () => void;
   openCommandPalette: () => void;
   openAvatarMenu: (e: React.MouseEvent) => void;
@@ -106,7 +104,6 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     () => ({
       openProveIt: () => open({ kind: "proveit" }),
       openWalletMenu: (e) => open({ kind: "wallet", anchor: anchorOf(e) }),
-      openNetworkMenu: (e) => open({ kind: "network", anchor: anchorOf(e) }),
       openNotifications: () => open({ kind: "notifications" }),
       openCommandPalette: () => open({ kind: "cmdk" }),
       openAvatarMenu: (e) => open({ kind: "avatar", anchor: anchorOf(e) }),
@@ -159,10 +156,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
 
                 {current.kind === "cmdk" && <CommandPalette show={visible} onClose={close} go={go} />}
 
-                {(current.kind === "wallet" || current.kind === "network" || current.kind === "avatar") && current.anchor && (
+                {(current.kind === "wallet" || current.kind === "avatar") && current.anchor && (
                   <Menu show={visible} anchor={current.anchor}>
                     {current.kind === "wallet" && <WalletMenu go={go} toast={toast} close={close} />}
-                    {current.kind === "network" && <NetworkMenu go={go} toast={toast} close={close} />}
                     {current.kind === "avatar" && <AvatarMenu go={go} toast={toast} />}
                   </Menu>
                 )}
@@ -422,43 +418,6 @@ function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: 
       <MenuItem icon="ext" label={`View on ${explorerName}`} onClick={viewOnExplorer} />
       <MenuItem icon="shieldcheck" label="View exact permissions" onClick={() => go("trust/permissions")} />
       <MenuItem icon="logout" label="Disconnect" onClick={disconnect} />
-    </>
-  );
-}
-
-function NetworkMenu({ go, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  // §B3 multi-network: offer the real switchable testnet chains (Base Sepolia + Robinhood Testnet)
-  // and switch by chainId. A single switchChain() also adds the chain to the wallet when unknown,
-  // so a user can actually get ONTO Robinhood testnet from here (not just be recognized on it).
-  const { switchableNetworks, chainId, switchToChain } = useNetwork();
-  return (
-    <>
-      <div style={{ padding: "9px 12px 7px", fontSize: 11, color: "var(--muted-foreground)", fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase" }}>
-        Network
-      </div>
-      {switchableNetworks.map((n) => {
-        const active = chainId === n.chainId;
-        const onClick = () => {
-          close();
-          if (!active) switchToChain(n.chainId);
-        };
-        return (
-          <button key={n.chainId} className="menu-item" onClick={onClick} style={!n.live ? { opacity: 0.7 } : undefined}>
-            <NetworkLogo chainId={n.chainId} color={n.color} size={18} />
-            {n.name}
-            {active ? (
-              <span style={{ marginLeft: "auto", color: "var(--primary)" }}>
-                <Icon name="check" size={15} />
-              </span>
-            ) : (
-              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--caution)" }}>switch</span>
-            )}
-          </button>
-        );
-      })}
-      <div style={{ padding: "8px 12px 4px", borderTop: "1px solid var(--border-soft)", marginTop: 4 }}>
-        <MenuItem icon="refresh" label="Bridge assets between networks" onClick={() => go("bridge")} style={{ color: "var(--primary)" }} />
-      </div>
     </>
   );
 }

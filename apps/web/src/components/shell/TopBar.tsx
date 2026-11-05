@@ -43,16 +43,24 @@ export function TopBar({ active }: { active: string }) {
           <span className="led" />
           Fully self-custodial
         </span>
+        {/* STATUS, not a switcher: this only reports the chain the wallet is actually on.
+            Testers change networks in their wallet (or on the Connect page), never here. */}
         <span
-          className="pill netPill"
-          title={networkSettling ? "Checking network…" : wrongNetwork ? "Switch to a supported network" : "Switch network"}
-          onClick={ov.openNetworkMenu}
+          className="pill netPill statusPill"
+          data-testid="topbar-network-status"
+          aria-live="polite"
+          title={
+            networkSettling
+              ? "Checking which network your wallet is on…"
+              : wrongNetwork
+                ? "Your wallet is on a network this beta does not serve — switch it in your wallet."
+                : "The network your wallet is connected to. Change it in your wallet."
+          }
         >
           <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
           <span data-testid="topbar-network">
             {networkPillLabel({ networkSettling, wrongNetwork, networkName: network.name, nearAccountId })}
           </span>
-          <Icon name="chevd" size={12} />
         </span>
         <NearWalletControl />
         <span className="pill walletPill" onClick={ov.openWalletMenu}>
