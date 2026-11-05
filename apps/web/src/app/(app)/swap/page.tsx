@@ -25,9 +25,10 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { Seg } from "@/components/ui/seg";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
-import { chainName, isSupportedChain } from "@sparkpoint/shared/chains";
+import { chainName } from "@sparkpoint/shared/chains";
 import { useNetwork } from "@/lib/network";
 import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
+import { isSwapChain } from "@/lib/swap/chain";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
@@ -62,7 +63,7 @@ export default function Page() {
   // Follow the wallet's chain when it is supported (Base or Robinhood Chain on the beta build),
   // rather than clamping every tester to one network. An unsupported chain keeps the display
   // chain for labels but surfaces `s.wrongChain` so the page asks for a switch, never a quote.
-  const supportedConnected = isConnected && isSupportedChain(chainId);
+  const supportedConnected = isConnected && isSwapChain(chainId);
   const activeChain = supportedConnected ? chainId : DISPLAY_CHAIN_ID;
 
   const initial = defaultTokens(DISPLAY_CHAIN_ID);

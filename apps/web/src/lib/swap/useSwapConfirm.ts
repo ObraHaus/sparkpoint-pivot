@@ -28,13 +28,13 @@
 
 import { useMemo } from "react";
 import { useAccount, useBalance, useReadContract } from "wagmi";
-import { isSupportedChain } from "@sparkpoint/shared/chains";
 import { erc20Abi, parseUnits, type Address } from "viem";
 import { getAddresses } from "@sparkpoint/shared/addresses";
 import { sparkPointVaultAbi, feeRouterAbi } from "@sparkpoint/shared/abis";
 import { wagmiConfig } from "@/lib/wagmi";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
+import { isSwapChain } from "@/lib/swap/chain";
 import { swapTokens, isConfiguredToken, type SwapToken } from "@/lib/swap/tokens";
 import { useSwapQuote, type SwapQuoteResult } from "@/lib/swap/useSwapQuote";
 import { type SwapExec } from "@/lib/swap/useExecuteSwapTx";
@@ -131,8 +131,8 @@ export function useSwapConfirm(params: SwapConfirmParams): SwapConfirmResult {
   // NOT clamp the beta to Robinhood Chain: a tester on Base should be able to swap on Base without
   // a MetaMask network flip. An unsupported chain still falls back to the build chain for display,
   // but `wrongChain` makes the surface ask for a switch instead of quoting the wrong network.
-  const supportedConnected = isConnected && isSupportedChain(chainId);
-  const wrongChain = isConnected && chainId !== undefined && !isSupportedChain(chainId);
+  const supportedConnected = isConnected && isSwapChain(chainId);
+  const wrongChain = isConnected && chainId !== undefined && !isSwapChain(chainId);
   const activeChain = supportedConnected ? chainId : DISPLAY_CHAIN_ID;
 
   const dex = dexById("uniswap_v3");
