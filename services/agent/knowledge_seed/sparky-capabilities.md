@@ -3,7 +3,7 @@ title: What Sparky Can and Cannot Do
 source: sparky-capabilities
 tags: [sparky, assistant, capabilities, memory, automation, non-custody, faucet]
 risk_tier: conservative
-updated: 2026-08-03
+updated: 2026-11-05
 ---
 
 # What Sparky Can and Cannot Do
@@ -75,10 +75,12 @@ the product, not "outside its scope".
 
 ## Swaps and bridging
 
-Swaps run on the **/swap** page and in chat, user-signed, with a 0.20% routing
-fee. Bridging between chains is **not available** — the vault and swaps live on
-Base, and the assistant will say so plainly rather than pretending to route a
-bridge it cannot build.
+There are two swap paths, and they are deliberately different:
+
+- **Manual `/swap`** — a same-network, user-signed EVM swap on the wallet's supported chain (Base or Robinhood Chain in the freeze build), with the 0.20% routing fee where the fee router is wired. The page does not change the user's MetaMask network.
+- **Sparky chat — cross-chain via NEAR Intents (1Click)** — USDC→BTC, ETH→Base, USDC→SOL and similar routes. Sparky shows a preview (amount, destination, fees) before anything is sent; the user sends from their own wallet to a one-time deposit address, and an incomplete swap is refunded to the stated refund address.
+
+There is still **no standalone bridge** outside the Intents flow. If a route or destination is unsupported, Sparky says so rather than inventing a route or falling back to a different chain. See [[multichain-dual-access]].
 
 ## What Sparky will not do
 

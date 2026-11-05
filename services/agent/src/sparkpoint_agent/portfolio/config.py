@@ -25,6 +25,7 @@ SOLANA_RPC_ENV = "SOLANA_RPC_URL"
 MORPHO_API_ENV = "MORPHO_API_URL"
 SWAP_STATUS_REFRESH_ENV = "PORTFOLIO_SWAP_STATUS_REFRESH"
 
+DEFAULT_BASE_MAINNET_RPC_URL = "https://mainnet.base.org"
 DEFAULT_MORPHO_API_URL = "https://api.morpho.org/graphql"
 DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
@@ -142,9 +143,15 @@ class PortfolioConfig:
 
 
 def config_from_env(env: Mapping[str, str] | None = None) -> PortfolioConfig:
-    """Build the portfolio config from the process environment (or an injected mapping)."""
+    """Build the portfolio config from the process environment (or an injected mapping).
+
+    Base falls back to a keyless public RPC when ``BASE_MAINNET_RPC_URL`` is unset: the beta's
+    /portfolio must aggregate Base + Ethereum without the operator having to provision another
+    secret. It is a read-only VIEW endpoint, and a dead/rate-limited endpoint still degrades to an
+    honest ``unavailable`` section rather than inventing a balance.
+    """
     source = env if env is not None else os.environ
-    base_rpc = (source.get(BASE_MAINNET_RPC_ENV) or "").strip() or None
+    base_rpc = (source.get(BASE_MAINNET_RPC_ENV) or "").strip() or DEFAULT_BASE_MAINNET_RPC_URL
     eth_rpc = (
         source.get(ETHEREUM_RPC_ENV) or source.get(ETHEREUM_RPC_FALLBACK_ENV) or ""
     ).strip() or None
@@ -173,6 +180,7 @@ def config_from_env(env: Mapping[str, str] | None = None) -> PortfolioConfig:
 
 __all__ = [
     "BASE_MAINNET_RPC_ENV",
+    "DEFAULT_BASE_MAINNET_RPC_URL",
     "DEFAULT_MORPHO_API_URL",
     "DEFAULT_SOLANA_RPC_URL",
     "ETHEREUM_RPC_ENV",

@@ -195,6 +195,26 @@ button{font-family:inherit;}
 .pill .led{width:7px;height:7px;border-radius:50%;background:var(--gain);box-shadow:0 0 0 3px var(--gain-subtle);flex:none;}
 .pill .mono{color:var(--muted-foreground);font-size:11.5px;}
 .pill.ghosty{background:transparent;}
+.statusPill{cursor:default;}
+.statusPill:hover{border-color:var(--border);background:var(--card);}
+/* The single top-bar account/status control: network status + wallet + optional NEAR claim. */
+.accountPill{gap:0;padding:3px 7px 3px 10px;cursor:default;}
+.accountPill:hover{border-color:var(--border);background:var(--card);}
+.accountSeg{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--foreground);
+  font:inherit;font-size:12.5px;font-weight:500;padding:4px 4px;cursor:pointer;border-radius:7px;}
+.accountSeg:hover{background:var(--muted);}
+.accountAddr{color:var(--muted-foreground);font-size:11.5px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.accountDivider{width:1px;height:18px;background:var(--border-soft);margin:0 4px;flex:none;}
+.accountCaret{display:grid;place-items:center;border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;padding:4px 2px;border-radius:6px;}
+.accountCaret:hover{background:var(--muted);color:var(--foreground);}
+.nearInline{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--primary);
+  font:inherit;font-size:11px;font-weight:700;padding:4px 5px;border-radius:7px;cursor:pointer;}
+.nearInline:hover{background:var(--spark-subtle);}
+.nearInlineConnect{letter-spacing:.03em;}
+.nearInlineTag{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--primary);}
+.nearInlineId{font-size:10.5px;color:var(--muted-foreground);max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nearInlineX{border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:13px;line-height:1;padding:0 1px;}
+.nearInlineX:hover{color:var(--foreground);}
 .iconbtn{width:36px;height:36px;border-radius:9px;border:1px solid transparent;background:transparent;
   color:var(--muted-foreground);display:grid;place-items:center;cursor:pointer;position:relative;transition:.15s;}
 .iconbtn:hover{background:var(--muted);color:var(--foreground);}
@@ -412,6 +432,7 @@ button{font-family:inherit;}
   .only-desktop{display:none;}
   .topbar{height:54px;padding:0 14px;gap:8px;}
   .netPill{display:none;}        /* Base network → shown in Connect & Settings */
+  .accountPill{display:none;}     /* network + wallet + NEAR → in the avatar/wallet menu */
   .walletPill{display:none;}      /* wallet address → in the avatar menu */
   .topbar .nearPill{display:none;} /* 075 NEAR stays visible on /connect + /portfolio */
   .rightcluster{gap:6px;}

@@ -43,22 +43,37 @@ export function TopBar({ active }: { active: string }) {
           <span className="led" />
           Fully self-custodial
         </span>
-        <span
-          className="pill netPill"
-          title={networkSettling ? "Checking network…" : wrongNetwork ? "Switch to a supported network" : "Switch network"}
-          onClick={ov.openNetworkMenu}
+        {/* STATUS, not a switcher — and ONE control, not three pills. It reports the chain the
+            wallet is actually on, the connected wallet, and the optional NEAR claim. Testers change
+            networks in their wallet; clicking the control opens the wallet menu (copy, explorer,
+            permissions, disconnect). */}
+        <div
+          className="pill statusPill accountPill"
+          data-testid="topbar-network-status"
+          aria-live="polite"
+          title={
+            networkSettling
+              ? "Checking which network your wallet is on…"
+              : wrongNetwork
+                ? "Your wallet is on a network this beta does not serve — switch it in your wallet."
+                : "Network status and wallet. Change the network in your wallet."
+          }
         >
-          <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
-          <span data-testid="topbar-network">
-            {networkPillLabel({ networkSettling, wrongNetwork, networkName: network.name, nearAccountId })}
-          </span>
-          <Icon name="chevd" size={12} />
-        </span>
-        <NearWalletControl />
-        <span className="pill walletPill" onClick={ov.openWalletMenu}>
-          <span className="mono">{wallet}</span>
-          <Icon name="chevd" size={12} />
-        </span>
+          <button type="button" className="accountSeg" onClick={ov.openWalletMenu}>
+            <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
+            <span data-testid="topbar-network">
+              {networkPillLabel({ networkSettling, wrongNetwork, networkName: network.name, nearAccountId })}
+            </span>
+          </button>
+          <span className="accountDivider" aria-hidden />
+          <button type="button" className="accountSeg accountAddr mono" onClick={ov.openWalletMenu}>
+            {wallet}
+          </button>
+          <NearWalletControl inline />
+          <button type="button" className="accountCaret" onClick={ov.openWalletMenu} aria-label="Wallet menu">
+            <Icon name="chevd" size={12} />
+          </button>
+        </div>
         <button className="iconbtn only-desktop" title="Command (⌘K)" onClick={ov.openCommandPalette}>
           <Icon name="command" size={18} />
         </button>

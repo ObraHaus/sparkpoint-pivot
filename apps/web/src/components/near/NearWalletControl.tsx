@@ -12,8 +12,53 @@ import { Icon } from "@/lib/icons";
 import { truncateNearAccount } from "@/lib/near/account";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
 
-export function NearWalletControl({ compact = false }: { compact?: boolean }) {
+export function NearWalletControl({
+  compact = false,
+  inline = false,
+}: {
+  compact?: boolean;
+  /** Top-bar mode: render as a plain segment inside the single account control, not its own pill. */
+  inline?: boolean;
+}) {
   const { accountId, status, error, connect, disconnect } = useNearWallet();
+
+  if (inline) {
+    if (accountId) {
+      return (
+        <span
+          className="nearInline"
+          data-testid="near-wallet-connected"
+          title={accountId}
+        >
+          <span className="nearInlineTag">NEAR</span>
+          <span className="mono nearInlineId">{truncateNearAccount(accountId)}</span>
+          <button
+            type="button"
+            data-testid="near-wallet-disconnect"
+            onClick={() => void disconnect()}
+            title="Disconnect NEAR wallet"
+            aria-label="Disconnect NEAR wallet"
+            className="nearInlineX"
+          >
+            ×
+          </button>
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="nearInline nearInlineConnect"
+        data-testid="near-wallet-connect"
+        onClick={() => void connect()}
+        disabled={status === "connecting"}
+        title="Connect NEAR wallet with Meteor (no access key). Your NEAR account is a client-side claim, never server auth."
+      >
+        <Icon name="wallet" size={13} />
+        <span>{status === "connecting" ? "NEAR…" : "NEAR"}</span>
+      </button>
+    );
+  }
 
   if (accountId) {
     return (

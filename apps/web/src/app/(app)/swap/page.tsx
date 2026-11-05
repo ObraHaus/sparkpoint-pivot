@@ -28,6 +28,7 @@ import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { chainName } from "@sparkpoint/shared/chains";
 import { useNetwork } from "@/lib/network";
 import { dexById, dexDisplayLabel, dexLiveOn } from "@/lib/swap/dex";
+import { isSwapChain } from "@/lib/swap/chain";
 import { swapTokens, type SwapToken } from "@/lib/swap/tokens";
 import { findVerifiedBySymbol } from "@/lib/swap/tokenList";
 import { useSwapConfirm } from "@/lib/swap/useSwapConfirm";
@@ -59,12 +60,11 @@ export default function Page() {
   const router = useRouter();
   const { isConnected, chainId } = useAccount();
   const { switchToChain } = useNetwork();
-  // Beta build = 4663 only (see useSwapConfirm): clamp an unsupported wallet chain to the build
-  // chain and prompt a switch via `s.wrongChain` — never quote a fallback network.
-  const IS_BETA_BUILD = APP_DEFAULT_CHAIN_ID === 4663;
-  const activeChain = IS_BETA_BUILD
-    ? (isConnected && chainId === APP_DEFAULT_CHAIN_ID ? chainId : DISPLAY_CHAIN_ID)
-    : (isConnected ? chainId : DISPLAY_CHAIN_ID);
+  // Follow the wallet's chain when it is supported (Base or Robinhood Chain on the beta build),
+  // rather than clamping every tester to one network. An unsupported chain keeps the display
+  // chain for labels but surfaces `s.wrongChain` so the page asks for a switch, never a quote.
+  const supportedConnected = isConnected && isSwapChain(chainId);
+  const activeChain = supportedConnected ? chainId : DISPLAY_CHAIN_ID;
 
   const initial = defaultTokens(DISPLAY_CHAIN_ID);
   const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(initial.tin);
@@ -97,7 +97,8 @@ export default function Page() {
   // Registry-derived: the swap page must agree with the top bar / settings on what to call the
   // connected network, and unknown chains must never be silently renamed.
   const netLabel = chainName(activeChain);
-  const swapTagTitle = `Real on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet.`;
+  const swapTagTitle = `Manual on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet. Cross-chain swaps use Sparky's NEAR Intents rail.`;
+  const crossChainHref = `${toHref("chat")}?ask=${encodeURIComponent("How do I swap USDC to SOL across chains?")}`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
   const swapCtrl = useExecuteSwapTx(reviewing ? s.exec : undefined);
@@ -162,6 +163,7 @@ export default function Page() {
   if (!isConnected) {
     return (
       <Shell tagTitle={swapTagTitle}>
+        <CrossChainCard href={crossChainHref} networkLabel={netLabel} />
         <div className="card card-pad muted" style={{ padding: "26px 18px" }}>
           Connect your wallet to swap tokens. Your wallet stays in your control — SparkPoint never holds
           your keys or funds.
@@ -177,6 +179,7 @@ export default function Page() {
 
   return (
     <Shell tagTitle={swapTagTitle}>
+      <CrossChainCard href={crossChainHref} networkLabel={netLabel} />
       {pickerFor && (
         <TokenPicker
           chainId={activeChain}
@@ -458,15 +461,58 @@ export default function Page() {
 
 // ── Small presentational helpers ────────────────────────────────────────────
 
+/**
+ * The honest split: this page is the MANUAL same-network EVM swap. The multi-chain product
+ * (USDC→BTC, ETH→Base, USDC→SOL) is Sparky's NEAR Intents rail, so testers never read the
+ * Robinhood Uniswap pool as the whole hackathon swap. Base + Robinhood Chain are wired here;
+ * Ethereum and non-EVM destinations are explicitly routed to chat instead of faked.
+ */
+function CrossChainCard({ href, networkLabel }: { href: string; networkLabel: string }) {
+  return (
+    <div
+      className="card card-pad"
+      data-testid="swap-crosschain-entry"
+      style={{
+        marginBottom: 14,
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 14,
+        flexWrap: "wrap",
+        background: "var(--spark-subtle)",
+        borderColor: "color-mix(in srgb,var(--primary) 28%,transparent)",
+      }}
+    >
+      <div style={{ minWidth: 220, flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7 }}>
+          <Icon name="swap" size={16} /> Cross-chain swaps run through Sparky
+        </div>
+        <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.55 }}>
+          This page swaps on <b>{networkLabel}</b> with a wallet signature. For USDC→BTC, ETH→Base,
+          USDC→SOL, Ethereum, Solana or NEAR routes, ask Sparky — it uses NEAR Intents and shows a
+          preview before anything is sent. Base and Robinhood Chain are wired for manual swaps here;
+          other chains are not faked on this page.
+        </div>
+      </div>
+      <a className="btn btn-primary btn-md" href={href}>
+        Open cross-chain in Sparky
+      </a>
+    </div>
+  );
+}
+
 function Shell({ children, tagTitle }: { children: React.ReactNode; tagTitle: string }) {
   return (
     <div className="page page-narrow">
       <div className="pagehead">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h1>Swap</h1>
-          <StatusTag variant="live" title={tagTitle} />
+          <StatusTag variant="live" label="On-chain EVM" title={tagTitle} />
         </div>
-        <div className="sub">Swap tokens directly on-chain — non-custodial, you sign every trade.</div>
+        <div className="sub">
+          Swap tokens on your connected EVM network — non-custodial, you sign every trade.
+          Cross-chain swaps run through Sparky.
+        </div>
       </div>
       {children}
     </div>
