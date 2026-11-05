@@ -165,6 +165,45 @@ def test_admin_add_then_list_and_audit(ctx: tuple[TestClient, _FakeAllowlist]) -
     assert entries[0]["actor"] == ADMIN_WALLET.lower()  # the caller is recorded
 
 
+def test_admin_can_add_a_near_account(
+    ctx: tuple[TestClient, _FakeAllowlist],
+) -> None:
+    """076 — a NEAR-only user must be grantable beta/admin in production, not just test mode."""
+    client, store = ctx
+    store.admin.add(ADMIN_WALLET.lower())
+    add = client.post(
+        "/admin/allowlist",
+        json={"address": "sparkpoint2026.near", "role": "beta"},
+        headers=_headers(ADMIN_WALLET),
+    )
+    assert add.status_code == 201
+    assert add.json() == {"ok": True, "address": "sparkpoint2026.near", "role": "beta"}
+    assert "sparkpoint2026.near" in store.beta
+
+    near_headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "sparkpoint2026.near",
+        "X-Owner": "sparkpoint2026.near",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    status = client.get("/allowlist/status", headers=near_headers)
+    assert status.json() == {"beta": True, "admin": False}
+
+
+def test_admin_still_rejects_an_evm_shaped_near_id(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
+    client, store = ctx
+    store.admin.add(ADMIN_WALLET.lower())
+    resp = client.post(
+        "/admin/allowlist",
+        json={"address": BETA_WALLET, "role": "beta"},
+        headers=_headers(ADMIN_WALLET),
+    )
+    # It is a valid EVM address, so this is accepted — but it is stored as EVM, never as a NEAR id.
+    assert resp.status_code == 201
+    assert BETA_WALLET.lower() in store.beta
+
+
 def test_admin_remove_beta(ctx: tuple[TestClient, _FakeAllowlist]) -> None:
     client, store = ctx
     store.admin.add(ADMIN_WALLET.lower())
@@ -222,7 +261,9 @@ def test_add_rejects_malformed_address(ctx: tuple[TestClient, _FakeAllowlist]) -
     client, store = ctx
     store.admin.add(ADMIN_WALLET.lower())
     resp = client.post(
-        "/admin/allowlist", json={"address": "nope", "role": "beta"}, headers=_headers(ADMIN_WALLET)
+        "/admin/allowlist",
+        json={"address": "not a wallet!", "role": "beta"},
+        headers=_headers(ADMIN_WALLET),
     )
     assert resp.status_code == 400
 

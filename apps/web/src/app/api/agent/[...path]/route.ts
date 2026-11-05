@@ -151,9 +151,16 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
     const value = req.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  // account == owner (EOA-direct mode; the agent accepts this until AA accounts land).
+  // account == owner (EOA-direct mode; the agent accepts this until AA accounts land). 076: the
+  // SAME owner string is a NEAR account id for a NEAR session, and the chain header tells the
+  // agent to scope it as such (never as a fabricated 0x address).
   headers.set("x-owner", claims.address);
   headers.set("x-account", claims.address);
+  headers.set("x-auth-chain", claims.chain);
+  if (claims.chain === "near" && !headers.get("x-chain-id")) {
+    // NEAR has no EVM chain id; 8453 is the neutral EVM-read default the agent ignores for NEAR.
+    headers.set("x-chain-id", "8453");
+  }
   if (AGENT_S2S_TOKEN) headers.set("authorization", `Bearer ${AGENT_S2S_TOKEN}`);
 
   // Body: the browser sends small JSON bodies (e.g. a /chat turn); read + relay

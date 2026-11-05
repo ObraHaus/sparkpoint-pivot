@@ -6,6 +6,7 @@ const A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const A_MIXED = "0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa"; // same wallet, different case
 const B = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const sess = (address: string) => ({ address });
+const nearSess = (address: string) => ({ address, chain: "near" as const });
 
 test("no session (loading=undefined / signed out=null) is never stale, whatever the wallet", () => {
   assert.equal(isSessionWalletStale(undefined, A, true), false);
@@ -37,4 +38,11 @@ test("disconnected with a session but never-yet-connected → NOT stale (SSR rec
   // First load: cookie resolves before wagmi reconnects (address still undefined, none seen yet).
   // Must NOT drop a valid session here, else every page load would sign the user out pre-reconnect.
   assert.equal(isSessionWalletStale(sess(A), undefined, false), false);
+});
+
+test("a NEAR session is never wagmi-stale (no EVM wallet is required)", () => {
+  // No EVM wallet connected, and even a DIFFERENT EVM wallet must not end a NEAR session: it
+  // proves a NEAR account, not an EVM address. This is what makes NEAR-only login possible.
+  assert.equal(isSessionWalletStale(nearSess("sparkpoint2026.near"), undefined, true), false);
+  assert.equal(isSessionWalletStale(nearSess("sparkpoint2026.near"), A, true), false);
 });

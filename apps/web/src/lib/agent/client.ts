@@ -28,12 +28,14 @@
  * scope reads/derivations and bind proposals to a user.
  */
 export interface AgentIdentity {
-  /** `X-Account` — the user's SparkPointAccount (may be counterfactual/undeployed). */
-  account: `0x${string}`;
-  /** `X-Owner` — the sole admin signer (owner EOA). */
-  owner: `0x${string}`;
-  /** `X-Chain-Id` — 8453 (Base) | 84532 (Base Sepolia). */
+  /** `X-Account` — the user's SparkPointAccount, or a NEAR account id for a NEAR session. */
+  account: string;
+  /** `X-Owner` — the sole admin signer (owner EOA), or the same NEAR account id. */
+  owner: string;
+  /** `X-Chain-Id` — 8453 (Base) | 84532 (Base Sepolia). NEAR sessions send the neutral default. */
   chainId: number;
+  /** 076 — which chain this identity was proved on. Omitted ⇒ evm (pre-076 callers). */
+  authChain?: "evm" | "near";
 }
 
 /** A lazily-resolved identity so call sites can bind to wallet/session state. */
@@ -218,6 +220,7 @@ function buildHeaders(
   const headers = new Headers();
   headers.set("X-Account", identity.account);
   headers.set("X-Owner", identity.owner);
+  if (identity.authChain) headers.set("X-Auth-Chain", identity.authChain);
   // 029, belt-and-braces (kept dependency-free — this module deliberately imports nothing):
   // the identity builder already guards this, but a future identity source must not be able to
   // put a non-finite value on the wire again. `String(NaN)` === "NaN", which the agent refuses
