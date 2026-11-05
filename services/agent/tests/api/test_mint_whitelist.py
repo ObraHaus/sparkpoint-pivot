@@ -147,7 +147,7 @@ def test_malformed_or_missing_addresses_are_refused(
     ctx: tuple[TestClient, _FakeMintWhitelist, _FakeAllowlist],
 ) -> None:
     client, mint, _ = ctx
-    for bad in ("", "nope", "0x123", "sparky.eth", "0x" + "a" * 64):
+    for bad in ("", "Not Valid!", "Sparkpoint2026.near", "bad..near", "0x" + "a" * 64):
         resp = client.post(
             "/access/mint-whitelist", json={**GOOD, "address": bad}, headers=_public_headers()
         )

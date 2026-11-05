@@ -416,7 +416,7 @@ def test_a_malformed_address_is_refused_before_anything_is_stored(
     ctx: tuple[TestClient, _FakeApplications, _FakeAllowlist],
 ) -> None:
     client, apps, _ = ctx
-    for bad in ("", "nope", "0x123", "sparky.eth", "0x" + "a" * 64, " 0x" + "z" * 40):
+    for bad in ("", "Not Valid!", "Sparkpoint2026.near", "bad..near", "0x" + "a" * 64):
         resp = client.post(
             "/access/public-application",
             json={**PUBLIC_GOOD, "address": bad},
@@ -591,7 +591,7 @@ def test_admin_decision_rejects_a_malformed_address(
     allow.admin.add(ADMIN_WALLET.lower())
     resp = client.post(
         "/admin/access/applications/approve",
-        json={"address": "nope"},
+        json={"address": "Not Valid!"},
         headers=_headers(ADMIN_WALLET),
     )
     assert resp.status_code == 400
