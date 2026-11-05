@@ -45,7 +45,7 @@ export function useNearLogin(): {
     setPhase("nonce");
     setError(null);
     try {
-      const nonceRes = await fetch("/api/auth/near/nonce", { cache: "no-store" });
+      const nonceRes = await fetch("/api/auth/near/nonce", { method: "POST", cache: "no-store" });
       if (!nonceRes.ok) {
         const detail = (await nonceRes.json().catch(() => ({}))) as { error?: string };
         throw new Error(detail.error ?? "could not start NEAR sign-in");

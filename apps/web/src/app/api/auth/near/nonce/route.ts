@@ -1,5 +1,5 @@
 /**
- * GET /api/auth/near/nonce — start a NEAR NEP-413 sign-in (076).
+ * POST /api/auth/near/nonce — start a NEAR NEP-413 sign-in (076).
  *
  * The nonce is minted server-side and stored in the agent DB (single-use, 10-minute expiry). The
  * response carries the canonical message the wallet must sign; the nonce is ALSO put in a
@@ -16,14 +16,16 @@ import { nearLoginRecipient } from "@/lib/near/login-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request): Promise<NextResponse> {
-  const issued = await issueNearNonce();
-  if (!issued) {
-    return NextResponse.json({ ok: false, error: "nonce_unavailable" }, { status: 503 });
-  }
+export async function POST(req: Request): Promise<NextResponse> {
+  // Validate the trusted recipient BEFORE minting a nonce: an unconfigured deployment must not
+  // leave an orphan row behind on every request.
   const recipient = nearLoginRecipient(req);
   if (!recipient) {
     return NextResponse.json({ ok: false, error: "recipient_unconfigured" }, { status: 503 });
+  }
+  const issued = await issueNearNonce();
+  if (!issued) {
+    return NextResponse.json({ ok: false, error: "nonce_unavailable" }, { status: 503 });
   }
   const message = buildNearLoginMessage({
     recipient,

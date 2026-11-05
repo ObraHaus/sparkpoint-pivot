@@ -87,6 +87,20 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
+def test_near_session_is_refused_on_the_execution_spine(client: TestClient) -> None:
+    """076 — /build-tx etc. are EVM-only; a NEAR session gets an honest 400, never a 500."""
+    near = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "sparkpoint2026.near",
+        "X-Owner": "sparkpoint2026.near",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    r = client.post("/simulate", headers=near, json={"intentId": str(INTENT)})
+    assert r.status_code == 400
+    assert "EVM wallet" in r.json()["error"]["message"]
+
+
 def test_simulate_refresh_returns_fresh_sim(client: TestClient) -> None:
     app.dependency_overrides[get_bundle_store] = lambda: FakeBundleStore(present=True)
     r = client.post("/simulate", headers=HEADERS, json={"intentId": str(INTENT)})
