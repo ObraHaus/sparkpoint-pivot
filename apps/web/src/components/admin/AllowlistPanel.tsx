@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { isValidNearAccountId } from "@/lib/near/account";
 import { Icon } from "@/lib/icons";
 import { APP_CHAIN_ID_HEADER } from "@/lib/chain/appChain";
 import { MintWhitelistPanel } from "./MintWhitelistPanel";
@@ -265,8 +266,8 @@ export function AllowlistPanel() {
 
   const add = useCallback(async () => {
     const address = addr.trim();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-      setMsg({ kind: "err", text: "Enter a valid 0x wallet address." });
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address) && !isValidNearAccountId(address)) {
+      setMsg({ kind: "err", text: "Enter a valid 0x wallet address or NEAR account id." });
       return;
     }
     setBusy(true);
@@ -403,7 +404,7 @@ export function AllowlistPanel() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "10px 4px", alignItems: "center" }}>
           <input
             className="mono"
-            placeholder="0x… wallet address"
+            placeholder="0x… wallet address or name.near"
             value={addr}
             onChange={(e) => setAddr(e.target.value)}
             style={{

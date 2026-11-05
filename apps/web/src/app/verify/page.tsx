@@ -57,6 +57,8 @@ export default function VerifyPage() {
   // then the gate shows a neutral "checking…" state instead.
   const wrongNetwork = isConnected && status === "connected" && chainId !== undefined && !onSupported;
   const signedIn = session != null; // null|undefined → not signed in / loading
+  // 076 — a NEAR-only session is complete without a wagmi/EVM account.
+  const nearSession = session?.chain === "near" ? session : null;
   const betaOk = signedIn && session.beta;
   const done = betaOk;
   const blocked = signedIn && !session.beta;
@@ -103,9 +105,12 @@ export default function VerifyPage() {
   // flipping the title/CTA as the wallet reconnects, the SIWE session resolves, and the onboarding
   // probe returns. connSettled: wallet done (re)connecting; session!==undefined: session resolved;
   // (done && onboarded===null): the returning-vs-new probe still running.
-  const connSettled = status === "connected" || status === "disconnected";
+  const connSettled =
+    nearSession != null || status === "connected" || status === "disconnected";
   const resolving =
-    !connSettled || (isConnected && session === undefined) || (done && onboarded === null);
+    !connSettled ||
+    (!nearSession && isConnected && session === undefined) ||
+    (done && onboarded === null);
 
   // Snapshot the real wallet/network state for the developer capture (see networkBeacon).
   const diagSnap = useCallback(
@@ -129,11 +134,13 @@ export default function VerifyPage() {
   // Nothing to verify without a wallet — return to connect. Keyed on `disconnected` (NOT `!isConnected`)
   // so a wallet still reconnecting isn't bounced off /verify mid-hydration.
   useEffect(() => {
+    // A NEAR session does not need wagmi to be connected; only a truly signed-out EVM visit bounces.
+    if (nearSession) return;
     if (status === "disconnected") {
       const t = setTimeout(() => router.push("/connect"), 1200);
       return () => clearTimeout(t);
     }
-  }, [status, router]);
+  }, [status, router, nearSession]);
 
   // Auto-capture ONE diagnostic when the gate genuinely settles on an unsupported chain — our window
   // into an otherwise unreproducible report (wallet's real eth_chainId vs the chainId wagmi surfaced,
@@ -142,7 +149,25 @@ export default function VerifyPage() {
     if (wrongNetwork) void captureNetworkDiagnostic("off-network", diagSnap());
   }, [wrongNetwork, diagSnap]);
 
-  const steps: { label: string; ok: boolean; value?: string }[] = [
+  const steps: { label: string; ok: boolean; value?: string }[] = nearSession
+    ? [
+        {
+          label: "NEAR account connected",
+          ok: true,
+          value: nearSession.address,
+        },
+        {
+          label: "Signed in (NEP-413)",
+          ok: true,
+          value: "verified",
+        },
+        {
+          label: `${stageCopy.label} access`,
+          ok: betaOk,
+          value: betaOk ? "eligible" : blocked ? `not in the ${stageCopy.adjective} yet` : undefined,
+        },
+      ]
+    : [
     { label: "Wallet connected", ok: isConnected, value: isConnected ? shortAddr(address) : undefined },
     {
       label: "On a supported network",
@@ -169,7 +194,13 @@ export default function VerifyPage() {
     },
   ];
 
-  const title = !isConnected
+  const title = nearSession
+    ? done
+      ? "You're in."
+      : blocked
+        ? `This account isn’t in the ${stageCopy.adjective} yet`
+        : "Checking your access…"
+    : !isConnected
     ? "Connect a wallet first"
     : wrongNetwork
       ? "Switch to a supported network"
@@ -180,7 +211,15 @@ export default function VerifyPage() {
           : needsSignIn
             ? "Verify it's you"
             : "Checking your access…";
-  const subtitle = !isConnected
+  const subtitle = nearSession
+    ? done
+      ? onboarded
+        ? "Your plan is saved — pick up where you left off."
+        : "Let's build your plan — it takes about 3 minutes."
+      : blocked
+        ? "Apply below and an admin will review it. Your NEAR account can still withdraw anytime via /exit."
+        : "Confirming your session…"
+    : !isConnected
     ? "Taking you back to connect your wallet…"
     : wrongNetwork
       ? `Switch your wallet to ${signinChainNames} to continue.`
@@ -241,7 +280,7 @@ export default function VerifyPage() {
             id="vsteps"
             style={{ margin: "20px 0 4px", textAlign: "left", maxWidth: "280px", marginInline: "auto" }}
           >
-            {isConnected &&
+            {(isConnected || nearSession) &&
               steps.map(({ label, ok, value }, i) => (
                 <div
                   key={i}

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "near-only-login-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Sign in with just a NEAR wallet",
+      "body": "You can now sign in with only a NEAR wallet \u2014 no EVM wallet needed. On the Connect page, choose \"Sign in with NEAR\" (Meteor first), approve the message in your wallet, and the app opens with your NEAR account. SparkPoint verifies the signature on the server and checks that the key belongs to your account. Signing in with MetaMask or another EVM wallet still works exactly as before. If you are signed in with NEAR, vault deposit and withdraw actions still ask for an EVM wallet, since those actions are EVM-only. Signing a message proves you control the account; it does not authorize any transaction or move any funds.",
+      "published_at": "2026-11-05T01:00:00Z"
+    },
+    {
       "slug": "polish-copy-money-2026-11",
       "type": "changelog",
       "tag": "Improved",

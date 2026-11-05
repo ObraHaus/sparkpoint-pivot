@@ -25,6 +25,10 @@ test("NEAR account ids: uppercase, empty, separators and over-long names are rej
   assert.equal(isValidNearAccountId(IMPLICIT.toUpperCase()), false);
   assert.equal(isValidNearAccountId("a".repeat(65)), false);
   assert.equal(isValidNearAccountId("-bad"), false);
+  // An EVM address is syntactically a valid NEAR named account — but accepting it would let a NEAR
+  // account alias an EVM owner string in the chain-agnostic user key (Defender 076 high finding).
+  assert.equal(isValidNearAccountId("0x1111111111111111111111111111111111111111"), false);
+  assert.equal(isValidNearAccountId("0xAbCdEf0000000000000000000000000000000000"), false);
 });
 
 test("truncation keeps short named ids whole and shortens long implicit ids", () => {

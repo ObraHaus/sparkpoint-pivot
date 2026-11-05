@@ -43,10 +43,14 @@ from .vault import (
     get_dry_runner,
     get_sim_config,
     get_vault_reader,
+    require_evm_account,
     require_verified_chain,
 )
 
-router = APIRouter(tags=["execution"], dependencies=[Depends(require_verified_chain)])
+router = APIRouter(
+    tags=["execution"],
+    dependencies=[Depends(require_verified_chain), Depends(require_evm_account)],
+)
 
 
 def get_bundle_store() -> IntentBundleStore:

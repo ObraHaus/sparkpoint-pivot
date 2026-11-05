@@ -85,6 +85,17 @@ Set each app's domain with the **`http://` scheme, NOT `https://`** (TLS termina
 Set per-app in the **Coolify dashboard** (not the repo). Planned keys (names only — see DEVELOPMENT.md `.env.example` for the full list):
 `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` + `OPENAI_BASE_URL` for the OpenAI-compatible path), `ALCHEMY_BASE_RPC_URL`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`, `DATABASE_URL` (Postgres+pgvector), `TENDERLY_*`, `SENTRY_DSN`, `DUNE_API_KEY`, `DEFILLAMA_API_KEY`, `NIXPACKS_NODE_VERSION`, `COOLIFY_URL` (auto-derived from FQDN), `SITE_LOCKED` + `NEXT_PUBLIC_SITE_LOCKED` (construction gate — see below).
 
+### 076 — NEAR-only login env (names only, none set by this change)
+
+| Name | Default | Notes |
+|---|---|---|
+| `NEAR_RPC_URL` | network default | Read-only `view_access_key` RPC for login. No transaction is sent. |
+| `NEAR_LOGIN_RECIPIENT` | request host / `SIWE_DOMAIN` | App domain bound into the NEP-413 message; set to the deployed host. |
+| `NEAR_LOGIN_TEST_MODE` | unset | TEST-ONLY server switch (skips only the on-chain key lookup; signature still verified). **Never set in production.** |
+| `NEAR_LOGIN_TEST_ACCOUNT` | unset | The single account permitted to use test mode. |
+
+The nonce table (`near_login_nonces`, migration 0045) must be applied before the agent serves NEAR logins.
+
 ### 075 — NEAR wallet env (names only, none set by this change)
 
 | variable | default | purpose |

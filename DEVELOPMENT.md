@@ -61,6 +61,17 @@ pnpm dev                        # runs apps/web (and the agent service per the w
 - Real runtime values also live in the **Coolify app** (set in the dashboard) for dev/staging.
 - ⚠️ Scripts read `.env.local` unconditionally — whatever you put there is what they hit.
 
+### 076 — NEAR-only login env (names only)
+
+| Name | Scope | Default | Notes |
+|---|---|---|---|
+| `NEAR_RPC_URL` | web server | network default | Read-only NEAR RPC used by `view_access_key` at login. Falls back to `NEXT_PUBLIC_NEAR_RPC_URL`, then mainnet/testnet by `NEXT_PUBLIC_NEAR_NETWORK`. Never used to send a transaction. |
+| `NEAR_LOGIN_RECIPIENT` | web server | request host / `SIWE_DOMAIN` | The app domain bound into the NEP-413 message. Set it explicitly in deployments (e.g. `beta.sparkpoint.io`). |
+| `NEAR_LOGIN_TEST_MODE` | web server (tests only) | unset | TEST-ONLY: skips the on-chain full-access key lookup. The ed25519 signature is still verified. **Never set in production.** |
+| `NEAR_LOGIN_TEST_ACCOUNT` | web server (tests only) | unset | The one account allowed to use test mode (e.g. `sparkpoint2026.near`). |
+
+The nonce is stored in the agent DB (`near_login_nonces`, migration 0045) so it is single-use across workers. No NEAR key, seed phrase or wallet file is ever read by the app.
+
 ### 075 — NEAR wallet env (names only)
 
 | variable | scope | default | purpose |

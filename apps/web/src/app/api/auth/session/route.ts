@@ -21,6 +21,11 @@ export async function GET(): Promise<NextResponse> {
   // beta was still closed (its cookie says `beta: false`) picks up the open beta without a
   // re-sign. Admin is never widened here.
   return NextResponse.json({
-    session: { address: claims.address, beta: claims.beta || BETA_OPEN, admin: claims.admin },
+    session: {
+      address: claims.address,
+      chain: claims.chain,
+      beta: claims.beta || BETA_OPEN,
+      admin: claims.admin,
+    },
   });
 }

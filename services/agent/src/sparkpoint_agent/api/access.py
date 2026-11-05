@@ -38,11 +38,10 @@ from ..db.mint_whitelist import MintWhitelistStore
 from .allowlist import get_allowlist_store, require_admin
 from .errors import ApiError, ErrorCode
 from .mandate import get_account
-from .security import AccountContext
+from .security import AccountContext, is_valid_account_identifier
 
 router = APIRouter(tags=["access"])
 
-_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 #: Control characters and angle brackets are stripped at the edge: these fields are rendered in the
 #: admin panel, and the only safe input is input that was never dangerous.
 _STRIP_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f<>]")
@@ -84,8 +83,8 @@ class ApplicationDecision(BaseModel):
     @classmethod
     def _validate_address(cls, value: str) -> str:
         candidate = value.strip()
-        if not _ADDRESS_RE.match(candidate):
-            raise ValueError("address must be a 20-byte 0x address")
+        if not is_valid_account_identifier(candidate):
+            raise ValueError("address must be a 20-byte 0x address or a NEAR account id")
         return candidate
 
 
@@ -119,8 +118,8 @@ class PublicApplicationSubmit(ApplicationSubmit):
     @classmethod
     def _validate_address(cls, value: str) -> str:
         candidate = value.strip()
-        if not _ADDRESS_RE.match(candidate):
-            raise ValueError("address must be a 20-byte 0x address")
+        if not is_valid_account_identifier(candidate):
+            raise ValueError("address must be a 20-byte 0x address or a NEAR account id")
         return candidate
 
 
