@@ -6,7 +6,10 @@ deterministic parsers actually support and is pinned by the offline golden cases
 (`services/agent/evals/golden.yaml`).
 
 > **The one-line story:** SparkPoint shows you the whole picture across chains and prepares every
-> move, but **nothing here signs, deposits or withdraws**. You review; your wallet stays yours.
+> move. By default nothing here signs, deposits or withdraws. With the **077 live-earn flags ON**,
+> the deposit/withdraw review is real — Kamino on Solana and Morpho on Base build an **unsigned**
+> transaction you review and sign in your own wallet. SparkPoint never signs, submits or holds
+> funds, and **execution remains simulated until an owner-approved funded test**.
 
 > **Freeze v9 — dual access.** The same multi-chain story is on the manual pages as well as in chat:
 > `/swap` is the user-signed, same-network EVM swap on the wallet's supported chain (Base or
@@ -21,7 +24,8 @@ deterministic parsers actually support and is pinned by the offline golden cases
 |---|---|
 | **Works now** | Read-only or a dry preview. No funds move, nothing is signed. |
 | **Needs funded wallet** | You need a wallet with a balance (and a little gas) to see the *real* numbers. Still no signing in this phase. |
-| **Needs Phase C** | Live deposit, account creation, signing or withdrawal — not built yet. The UI says so. |
+| **Needs Phase C** | Live deposit, account creation, signing or withdrawal — not built yet for this rail. The UI says so. |
+| **Live behind flag** | A real unsigned transaction + review + wallet-sign flow exists, but it is off by default. Until an owner-approved funded test, results are **SIMULATED**. |
 
 ## Prerequisites
 
@@ -78,7 +82,7 @@ deterministic parsers actually support and is pinned by the offline golden cases
   quote, and the card tells you exactly what the receipt is.
 - **Fallback:** “no liquidity” returns an `unavailable` card with a reason; try a smaller amount.
 
-### 4. Kamino SOL vault + Solana recipient (070) — **Works now** · deposit **Needs Phase C**
+### 4. Kamino SOL vault + Solana recipient (070) — **Works now** · live direct deposit **Live behind flag**
 
 - **Type exactly:** `Show Kamino vaults`
 - **Expected on screen:** the Kamino SOL list: `SOL Balanced`, Kamino + Solana badges, TVL, net APY,
@@ -90,6 +94,12 @@ deterministic parsers actually support and is pinned by the offline golden cases
 - **Talking point:** Solana is not the session chain. SparkPoint never reuses your EVM address as a
   Solana address, and the client never supplies an arbitrary Solana address to read positions.
 - **Fallback:** no-liquidity previews say “try a smaller amount”; the recipient step disappears.
+- **077 live direct rail (flag on):** with `NEXT_PUBLIC_EARN_LIVE_KAMINO=true`, the same `/vault`
+  row and the earn card also offer **Live deposit / Live withdraw**, both opening `/vault/live`.
+  A connected Solana wallet (Phantom/Solflare) receives an unsigned Kamino transaction; the review
+  shows the exact amount, vault, share mint, program ids, network fee and ATA rent, then the wallet
+  signs. SOL is supported (native SOL is wrapped in the same transaction). With the flag off this
+  is exactly the 070 preview above.
 
 ### 5. Rhea vault list from a vague NEAR-yield ask (071) — **Works now** · deposit **Needs Phase C**
 
@@ -155,6 +165,23 @@ deterministic parsers actually support and is pinned by the offline golden cases
   “You don't have any cross-chain swaps yet.” instead of an empty table.
 - **Fallback:** if the database is not configured, the swaps section says exactly that.
 
+### 10. Live earn review (077) — **Live behind flag · simulated until funded test**
+
+- **Enable:** build with `NEXT_PUBLIC_EARN_LIVE_KAMINO=true` / `NEXT_PUBLIC_EARN_LIVE_MORPHO=true`
+  (and `EARN_LIVE_KAMINO` / `EARN_LIVE_MORPHO` for the server build proxy). Off by default.
+- **Do:** open `/vault`, find the curated **Kamino SOL Balanced** or **Morpho Gauntlet USDC Prime**
+  row, and click **Live deposit** (or **Live withdraw**).
+- **Expected on screen:** the shared `/vault/live` review. Kamino: exact SOL/USDC amount, vault,
+  share mint, kVault program, network fee and ATA rent, then “Confirm in wallet” (Phantom shows its
+  own confirmation). Morpho: live balances/preview, an approve leg only when needed, a gas estimate,
+  then approve+deposit or redeem in the wallet.
+- **Talking point:** the transaction is **unsigned** until your wallet signs it. SparkPoint never
+  signs, approves, submits or holds funds. The review is not a quote and not a receipt.
+- **Honesty:** no funded execution has been run. The simulation scripts print **SIMULATED**;
+  the Kamino deposit simulates successfully and the unfunded Base probe's deposit fails honestly.
+- **Fallback:** with the flags off, the page says live earn is off and the existing 069/070 previews
+  are unchanged.
+
 ---
 
 ## Fallbacks if a live source is slow or unavailable
@@ -176,7 +203,7 @@ deterministic parsers actually support and is pinned by the offline golden cases
 | 2 | Morpho list | `Show Morpho vaults on Base` | 0:40 | Works now |
 | 3 | Morpho preview | `Deposit 100 USDC into Morpho Gauntlet USDC Prime` | 0:40 | Works now · Phase C to deposit |
 | 4 | Kamino list | `Show Kamino vaults` | 0:30 | Works now |
-| 5 | Kamino preview + recipient | `Deposit 100 USDC into Kamino SOL vault` | 0:50 | Works now · Phase C to deposit |
+| 5 | Kamino preview + recipient | `Deposit 100 USDC into Kamino SOL vault` | 0:50 | Works now · live behind flag (simulated) |
 | 6 | Vague NEAR-yield routing | `earn yield on NEAR` | 0:30 | Works now |
 | 7 | Rhea first-deposit preview | `Deposit 100 USDC into Rhea` | 0:45 | Works now · Phase C to deposit |
 | 8 | Rhea positions | `Show my Rhea positions` | 0:30 | Works now · funded + Phase C for real positions |
@@ -186,15 +213,19 @@ deterministic parsers actually support and is pinned by the offline golden cases
 
 Total ≈ 6–7 minutes with no failures; ~5 minutes if you skip the two long previews.
 
-## What's next (Phase C)
+## What's next (owner approval + Rhea)
 
-- Live 1Click Earn / Rhea deposits, including the Rhea account-creation signature.
-- Kamino deposits to a pasted Solana recipient, plus the copy-address deposit flow for SOL origins.
-- In-app withdraws (today Rhea withdraws link out to `app.rhea.finance`).
+- **Funded test:** the 077 direct Kamino/Morpho flows exist behind flags but have not moved real
+  funds. A small funded, owner-approved test wallet is the gate before any “live” claim.
+- **Rhea live:** the 071 preview, NEP-413 sign-only step and `app.rhea.finance/lending` link-out
+  remain; a live Rhea deposit/withdraw still needs the owner's MPC/relayer decision.
+- **Cross-chain earn:** 1Click Earn / receipt routes stay dry previews; 077 only adds the direct
+  same-chain rail.
 - Wallet signing for every move — still user-signed, still non-custodial, still never SparkPoint
   holding the funds.
 
-Until then every card is a dry preview or a read, and says so.
+Until a funded test is approved, every live-earn card says **SIMULATED** and every other card is a
+dry preview or a read.
 
 ## Prompt verification (why these exact strings)
 

@@ -19,9 +19,18 @@ dist/
 secrets/
 *.pem
 *.key
-# Defense in depth: never commit a wallet/seed note even if someone drops one here.
+# Defense in depth: never commit a wallet/seed note, API-key sheet or key file even if someone
+# drops one under .claude/. Shared Spec Kit skills/templates are deliberately NOT matched.
 .claude/near-wallet.txt
 **/near-wallet*.txt
+.claude/hackathon-apikeys.txt
+**/hackathon-apikeys*.txt
+.claude/**/*apikey*
+.claude/**/*api-key*
+.claude/**/*secret*
+.claude/**/wallet*.txt
+.claude/**/*.key
+.claude/**/*.pem
 
 # ---- Foundry / smart contracts ----
 cache/
