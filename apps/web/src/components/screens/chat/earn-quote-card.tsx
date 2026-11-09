@@ -42,6 +42,14 @@ import {
   rheaApyLine,
   sourceAttribution,
 } from "@/lib/earn/format";
+import {
+  kaminoLiveEnabledFromEnv,
+  liveEarnHref,
+  morphoLiveEnabledFromEnv,
+  rheaLiveEnabledFromEnv,
+} from "@/lib/earn/liveFlags";
+import { findKaminoVault } from "@/lib/earn/kaminoLive";
+import { findMorphoVault } from "@/lib/earn/morphoLive";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -137,6 +145,31 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
           origin: block.origin?.key,
           vault: vault.address,
           amount: amountIn,
+        })
+      : null;
+
+  // 077 — the one live direct rail available for this preview, if the build flag is on. This
+  // bypasses the 1Click receipt and opens the shared /vault/live review flow; it never signs.
+  const liveProtocol =
+    protocol === "kamino" &&
+    kaminoLiveEnabledFromEnv() &&
+    findKaminoVault(vault.address) !== null
+      ? "kamino"
+      : protocol === "morpho" &&
+          vault.chain === "base" &&
+          morphoLiveEnabledFromEnv() &&
+          findMorphoVault(vault.address) !== null
+        ? "morpho"
+        : null;
+  const liveHref = (mode: "deposit" | "withdraw") =>
+    liveProtocol
+      ? liveEarnHref({
+          protocol: liveProtocol,
+          chain: vault.chain,
+          vault: vault.address,
+          asset: vault.asset.symbol,
+          mode,
+          amount: mode === "deposit" ? (amountIn ?? undefined) : undefined,
         })
       : null;
 
@@ -555,8 +588,25 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Deposit
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                Live deposits coming soon (phase C). This preview is not signable.
+                This cross-chain 1Click preview is not signable (phase C deferred). A separate
+                same-chain NEAR rail is available when enabled.
               </div>
+              {rheaLiveEnabledFromEnv() && (
+                <a
+                  data-testid="earn-rhea-live-link"
+                  href={liveEarnHref({
+                    protocol: "rhea",
+                    chain: vault.chain,
+                    vault: vault.address,
+                    asset: vault.asset.symbol,
+                    mode: "deposit",
+                  })}
+                  className="btn btn-primary btn-sm"
+                  style={{ justifySelf: "start" }}
+                >
+                  Supply or withdraw USDC on NEAR (same-chain)
+                </a>
+              )}
             </div>
           )}
 
@@ -582,6 +632,48 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
               </a>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
                 {block.withdraw.note}. Nothing is signed or sent here.
+              </div>
+            </div>
+          )}
+
+          {liveHref("deposit") && block.state === "preview" && (
+            <div
+              data-testid="earn-live-cta"
+              style={{
+                border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
+                background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+                Live direct {protocolLabel(protocol)} (flagged)
+              </div>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                {protocol === "kamino"
+                  ? "Uses your connected Solana wallet. Kamino builds an unsigned transaction; you review the amounts, accounts and fees, then sign in your wallet."
+                  : "Uses your connected Base wallet. Approve (only if needed) + deposit via ERC-4626; you review, then sign in your wallet."}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a
+                  className="btn btn-primary btn-sm"
+                  href={liveHref("deposit")!}
+                  data-testid="earn-live-deposit"
+                >
+                  Review live deposit
+                </a>
+                <a
+                  className="btn btn-outline btn-sm"
+                  href={liveHref("withdraw")!}
+                  data-testid="earn-live-withdraw"
+                >
+                  Live withdraw
+                </a>
+              </div>
+              <div style={{ fontSize: 11, color: MUTED }}>
+                This is the direct same-chain rail — not the 1Click receipt preview above.
               </div>
             </div>
           )}
