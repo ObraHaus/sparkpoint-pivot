@@ -48,6 +48,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Tests use mocked 1Click transports only (no live quote, no funds).
   (`specs/079-rhea-xchain-mca/`, `docs/demo/079-rhea-xchain-mca.md`, `.env.example`)
 
+### Removed (1109 — public landing: brokers section + mint-whitelist CTAs)
+
+- **The public landing no longer pitches Sparky Brokers or the mint whitelist.** Per the GC request
+  (Isma, 2026-11-09), the landing (`NewEraLanding`) drops the entire Sparky Brokers membership
+  section — the broker art, Unactivated/Activated gold-frame preview toggle, OpenSea link and
+  "Membership · not just a collectible" copy — along with every "Apply for mint whitelist" CTA in
+  the hero, that section and the footer. The `/mint-whitelist` page itself, its middleware public
+  allowlists and the admin/apply endpoints are unchanged and still reachable directly. The WebGL
+  pose choreography and progress dots were remapped across the remaining sections (Welcome →
+  Proposes → Guardrails → Sign → Vault → Proof) so there is no dead scroll band. (`apps/web/src/components/screens/landing/{NewEraLanding.tsx,new-era.css}`)
+
 ### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)
 
 - **Live direct deposit/withdraw is built behind flags, and the wallet is the only signer.** A new
