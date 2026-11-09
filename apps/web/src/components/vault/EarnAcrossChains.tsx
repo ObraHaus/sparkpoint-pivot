@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import { useEarnVaults } from "@/lib/earn/useEarnVaults";
+import { publicXchainEnabled, xchainReviewHref } from "@/lib/earn/xchain";
 import {
   chainLabel,
   formatNetApy,
@@ -119,6 +120,11 @@ function VaultRow({ vault }: { vault: EarnVault }) {
   const appUrl = vaultAppUrl(vault);
   const previewHref = `${toHref("chat")}?ask=${encodeURIComponent(previewPrompt(vault))}`;
   const noRail = vault.rails.available.length === 0;
+  // 079 — the cross-chain Rhea review entry point (071 MCA/1Click; NOT 078 same-chain).
+  const xchainHref =
+    protocol === "rhea" && publicXchainEnabled()
+      ? xchainReviewHref({ chain: "near", origin: "base:USDC", vault: vault.address })
+      : null;
 
   return (
     <div
@@ -162,6 +168,15 @@ function VaultRow({ vault }: { vault: EarnVault }) {
           <a className="btn btn-outline btn-sm" href={previewHref}>
             <Icon name="chat" size={13} /> Preview in Sparky
           </a>
+          {xchainHref && (
+            <a
+              className="btn btn-outline btn-sm"
+              href={xchainHref}
+              data-testid="earn-rhea-xchain-review"
+            >
+              Review cross-chain deposit
+            </a>
+          )}
           {appUrl && (
             <a className="btn btn-ghost btn-sm" href={appUrl} target="_blank" rel="noopener noreferrer">
               Open {protocolLabel(protocol)} <Icon name="ext" size={11} />

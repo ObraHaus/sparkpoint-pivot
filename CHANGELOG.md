@@ -10,6 +10,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (079 — cross-chain Rhea / 071 Phase C review + gated live commit)
+
+- **The 071 cross-chain Rhea rail now has a dual-access review and a reversible live slice.** This
+  is the EVM-origin → Rhea (Burrow) on NEAR route through **1Click + Multichain Account (MCA)**;
+  **078's same-chain NEAR → Burrow flow is separate**. `/vault`'s Rhea row and Sparky's Rhea earn
+  card both link to `/vault/rhea-xchain`, which shows origin chain/asset/amount, the refund address,
+  the MCA/`customRecipientMsg`, the one-time MCA fee, routing fee/net supplied and the supply APY.
+  `dry=true` is the default and moves no funds. (`apps/web/src/lib/earn/xchain.ts`,
+  `apps/web/src/components/vault/RheaXchainReview.tsx`,
+  `apps/web/src/app/(app)/vault/rhea-xchain/page.tsx`,
+  `apps/web/src/components/vault/EarnAcrossChains.tsx`,
+  `apps/web/src/components/screens/chat/earn-quote-card.tsx`)
+- **A live `dry=false` commit is server-gated and never signs.** It is refused (403) unless
+  `EARN_LIVE_RHEA_XCHAIN` is exactly `"true"` AND the 1Click credential is present
+  (`ONECLICK_API_KEY`; only its boolean presence is exposed, never the value). When allowed, it
+  returns a live 1Click quote, the deposit address, and an **UNSIGNED** origin ERC-20
+  `transfer(address,uint256)` plan for the user's own wallet. A first deposit needs one off-chain
+  EVM `personal_sign`; without it the route returns `requiresSignature=true` + `messageToSign` and
+  makes no 1Click call. The agent never signs, submits or broadcasts.
+  (`services/agent/src/sparkpoint_agent/earn/rhea_xchain.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`,
+  `services/agent/src/sparkpoint_agent/api/earn.py`,
+  `services/agent/src/sparkpoint_agent/coordinator/chat_blocks.py`,
+  `packages/shared/src/schemas/chat-block.ts`)
+- **Withdraw is an honest review, not a transaction.** The new `/earn/rhea/xchain/withdraw` lists
+  the Rhea app link-out and the documented Rhea SDK `relayer` / `nearMcaWithdrawTx` paths as
+  documented-but-not-implemented, with sources, and states `nep413IsTransaction: false` and
+  `custodian: null`. No fake NEP-413-as-tx and no invented custodian.
+- **Flags default OFF** (`EARN_LIVE_RHEA_XCHAIN`, `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN`); the route
+  404s when both are off. Tests use mocked 1Click transports only (no live quote, no funds).
+  (`specs/079-rhea-xchain-mca/`, `docs/demo/079-rhea-xchain-mca.md`, `.env.example`)
+
 ### Added (feature-freeze dry run v9 — dual-access multi-chain)
 
 - **One credible freeze story on the pages and in Sparky.** The manual `/swap` page now follows the wallet's supported EVM chain (Base or Robinhood Chain on the beta build) instead of clamping every tester to Robinhood Chain, and it says plainly that cross-chain routes (USDC→BTC, ETH→Base, USDC→SOL) run through Sparky's NEAR Intents rail. `/vault` now surfaces the same data-driven earn registry Sparky reads — **Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR** — with chain filters, protocol/chain badges and honest rail states; the curated board remains below it. The top bar reports network **status** only (no switcher/bridge menu), and Connect shows the real Meteor mark, the MetaMask fox when MetaMask is the injected provider, and a distinct Browser-wallet glyph without duplicate rows. (`apps/web/src/app/(app)/swap/page.tsx`, `apps/web/src/lib/swap/useSwapConfirm.ts`, `apps/web/src/app/(app)/vault/page.tsx`, `apps/web/src/components/vault/EarnAcrossChains.tsx`, `apps/web/src/lib/earn/useEarnVaults.ts`, `apps/web/src/components/shell/TopBar.tsx`, `apps/web/src/app/connect/page.tsx`)

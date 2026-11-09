@@ -416,6 +416,32 @@ export const EarnWithdrawSchema = z
 export type EarnWithdraw = z.infer<typeof EarnWithdrawSchema>;
 
 /**
+ * 079 — the UNSIGNED origin ERC-20 transfer plan for a cross-chain Rhea live commit.
+ *
+ * Data only: the agent never signs/sends it. The user's own wallet reviews and confirms the
+ * `transfer(address,uint256)` calldata to the 1Click deposit address. A non-EVM origin is an
+ * honest `unsupported` plan, never an invented transfer.
+ */
+export const EarnXchainTransferPlanSchema = z
+  .object({
+    kind: z.enum(["erc20_transfer", "unsupported"]),
+    unsigned: z.literal(true),
+    chain: z.string(),
+    chainId: z.number().int().nullable(),
+    tokenAddress: z.string().nullable(),
+    from: z.string(),
+    to: z.string(),
+    amount: z.string(),
+    amountRaw: z.string(),
+    symbol: z.string(),
+    functionSignature: z.string().nullable(),
+    calldata: z.string().nullable(),
+    note: z.string(),
+  })
+  .strict();
+export type EarnXchainTransferPlan = z.infer<typeof EarnXchainTransferPlanSchema>;
+
+/**
  * 069 — `earn_quote`, a DRY preview (1Click receipt, direct same-chain hint or an Intents Connect
  * step plan). NON-SIGNABLE: there is no confirm/send button in Phase B. Every optional field is
  * omitted when absent, matching `EarnQuoteBlock.to_wire()`.
@@ -454,6 +480,12 @@ export const EarnQuoteBlockSchema = z
     supplyApy: z.string().optional(),
     source: EarnSourceSchema.optional(),
     withdraw: EarnWithdrawSchema.optional(),
+    // 079 — Phase C cross-chain review. `live` is only true for a gated `dry=false` quote; the
+    // transfer plan is unsigned and the agent never signs/sends it.
+    live: z.boolean().optional(),
+    depositAddress: z.string().optional(),
+    transferPlan: EarnXchainTransferPlanSchema.optional(),
+    requiresSignature: z.boolean().optional(),
   })
   .strict();
 export type EarnQuoteBlock = z.infer<typeof EarnQuoteBlockSchema>;
