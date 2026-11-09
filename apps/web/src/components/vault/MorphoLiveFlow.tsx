@@ -122,6 +122,10 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
   const [error, setError] = useState<string | null>(null);
 
   const wrongChain = isConnected && chainId !== READ_CHAIN_ID;
+  // The reviewed plan pins one account. If the wallet switches after review, the old plan must
+  // never be signed from the new account.
+  const accountChanged =
+    plan !== null && !!address && plan.account.toLowerCase() !== address.toLowerCase();
 
   const amountRaw = useMemo(() => {
     const decimals = mode === "deposit" ? meta.assetDecimals : meta.shareDecimals;
@@ -328,6 +332,10 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
       setError("Connect an EVM wallet on Base first.");
       return;
     }
+    if (wrongChain) {
+      setError("Switch your wallet to Base before reviewing this Morpho transaction.");
+      return;
+    }
     try {
       validateMorphoVaultMetadata(meta, {
         asset: liveAsset ?? null,
@@ -348,7 +356,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That amount could not be prepared.");
     }
-  }, [address, allowance, amount, estimate, liveAsset, liveAssetDecimals, maxDeposit, maxRedeem, maxWithdraw, meta, mode, shareDecimals]);
+  }, [address, allowance, amount, estimate, liveAsset, liveAssetDecimals, maxDeposit, maxRedeem, maxWithdraw, meta, mode, shareDecimals, wrongChain]);
 
   const resetPlan = useCallback(() => {
     setPlan(null);
@@ -515,6 +523,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
               Review {plan.kind} · {amount} {plan.kind === "deposit" ? meta.assetSymbol : meta.symbol}
             </div>
             <Row k="Vault" v={`${meta.name} (${short(meta.address)})`} />
+            <Row k="Signing account" v={short(plan.account, 8, 6)} />
             <Row k={plan.kind === "deposit" ? "You deposit" : "You redeem"} v={`${amount} ${plan.kind === "deposit" ? meta.assetSymbol : meta.symbol}`} />
             <Row
               k="You receive (estimate)"
@@ -566,6 +575,13 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
               <Row k="Gas estimate" v="…" />
             )}
 
+            {accountChanged && (
+              <Notice tone="caution">
+                Your wallet account changed after review. This plan was prepared for{" "}
+                {short(plan.account)}; reconnect that account or go back and review again. Nothing
+                will be signed from the new account.
+              </Notice>
+            )}
             <Notice tone="caution">
               Review only until you confirm. Your wallet signs{plan.kind === "deposit" && plan.needsApprove ? " the approve, then the deposit" : ""}; SparkPoint never signs or submits.
             </Notice>
@@ -591,8 +607,16 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
               <button
                 type="button"
                 className="btn btn-primary btn-md"
-                onClick={() => execCtl.start()}
-                disabled={execCtl.isBusy || execCtl.isDone}
+                onClick={() => {
+                  if (accountChanged) {
+                    setError(
+                      "Your wallet account changed after review. Go back and review again; nothing was signed.",
+                    );
+                    return;
+                  }
+                  execCtl.start();
+                }}
+                disabled={execCtl.isBusy || execCtl.isDone || accountChanged || wrongChain}
               >
                 {execCtl.isBusy ? execCtl.label : execCtl.isDone ? "Confirmed" : "Confirm in wallet"}
               </button>

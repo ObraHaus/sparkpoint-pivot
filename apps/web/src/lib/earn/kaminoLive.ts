@@ -75,19 +75,24 @@ export const CONSERVATIVE_PRIORITY_FEE_LAMPORTS = 100_000n;
 export const MAX_DEPOSIT_ASSUMED_TOKEN_ACCOUNT_CREATIONS = 2;
 
 /**
- * Reference address cited by the 077 hardening brief as "Circle native USDC". It is NOT used as a
- * trust anchor: the Steakhouse vault mint is labelled as the vault's asset mint, and the curated
- * value is pinned to the live Kamino API below. (Note: EPjFWdd5…Dt1v is the widely documented
- * Circle/Solana USDC mint; this constant exists only so the test can assert the brief's
- * "differs from Circle" expectation without presenting either address as native in the UI.)
+ * The `tokenMint` Kamino reports for each curated vault's asset, captured read-only from
+ * `GET /kvaults/vaults/{vault}` on 2026-11-09. Both are standard SPL Token (`Tokenkeg…`) mints:
+ * the SOL vault's asset is wrapped SOL and the Steakhouse vault's asset is the SPL mint above.
+ * The UI shows symbol + shortened mint + token program and never asserts issuer/native status.
  */
-export const TASK_CIRCLE_USDC_MINT_REFERENCE = "EPjFWdd5AufqSSqeM2qN1xn1xmrPayDsJ8EBTyTt1v";
-
-/** Live Kamino metadata tokenMint values, captured from api.kamino.finance (read-only). */
 export const KAMINO_API_TOKEN_MINTS = {
   solBalanced: "So11111111111111111111111111111111111111112",
   steakhouseUsdc: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
 } as const;
+
+export type KaminoAssetTokenStandard = "spl-token" | "token-2022";
+
+/** Map a token program id to the standard the review shows; unknown programs are refused. */
+export function tokenStandardForProgram(programId: string): KaminoAssetTokenStandard | null {
+  if (programId === TOKEN_PROGRAM_ID) return "spl-token";
+  if (programId === TOKEN_2022_PROGRAM_ID) return "token-2022";
+  return null;
+}
 
 export interface KaminoVaultMeta {
   readonly address: string;
@@ -95,6 +100,9 @@ export interface KaminoVaultMeta {
   readonly assetSymbol: string;
   readonly assetMint: string;
   readonly assetDecimals: number;
+  /** The token program that owns `assetMint` according to Kamino's vault metadata. */
+  readonly assetTokenProgram: string;
+  readonly assetTokenStandard: KaminoAssetTokenStandard;
   readonly sharesMint: string;
   readonly sharesDecimals: number;
   readonly managementFeeBps: number;
@@ -108,8 +116,10 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     address: "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
     name: "SOL Balanced",
     assetSymbol: "SOL",
-    assetMint: "So11111111111111111111111111111111111111112",
+    assetMint: KAMINO_API_TOKEN_MINTS.solBalanced,
     assetDecimals: 9,
+    assetTokenProgram: TOKEN_PROGRAM_ID,
+    assetTokenStandard: "spl-token",
     sharesMint: "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
     sharesDecimals: 9,
     managementFeeBps: 0,
@@ -120,8 +130,10 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     address: "HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E",
     name: "Steakhouse USDC",
     assetSymbol: "USDC",
-    assetMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    assetMint: KAMINO_API_TOKEN_MINTS.steakhouseUsdc,
     assetDecimals: 6,
+    assetTokenProgram: TOKEN_PROGRAM_ID,
+    assetTokenStandard: "spl-token",
     sharesMint: "7D8C5pDFxug58L9zkwK7bCiDg4kD4AygzbcZUmf5usHS",
     sharesDecimals: 6,
     managementFeeBps: 0,
@@ -135,15 +147,20 @@ export function findKaminoVault(address: string | null | undefined): KaminoVault
   return KAMINO_VAULTS.find((v) => v.address === address) ?? null;
 }
 
+/** Shorten a base58 mint for display without hiding which mint it is. */
+export function shortMint(mint: string, head = 6, tail = 6): string {
+  return mint.length <= head + tail + 1 ? mint : `${mint.slice(0, head)}…${mint.slice(-tail)}`;
+}
+
 /**
- * Human label for a vault's asset mint. The Steakhouse mint is the vault's asset mint — never
- * silently presented as Circle-native USDC.
+ * Unambiguous label for a vault's asset mint: symbol + shortened mint + token standard. It is
+ * derived from Kamino's vault metadata (`tokenMint` / `tokenProgram`), so the user can verify the
+ * exact mint in their wallet. It never says "USDC mint" alone and never asserts issuer/native
+ * status (the Steakhouse mint is whatever Kamino reports for that vault).
  */
 export function kaminoAssetMintLabel(meta: KaminoVaultMeta): string {
-  if (meta.assetSymbol === "USDC") {
-    return `${meta.name.replace(/\s*USDC$/i, "")} vault USDC mint`;
-  }
-  return `${meta.name} vault ${meta.assetSymbol} mint`;
+  const wrapped = meta.assetMint === WSOL_MINT ? " · wrapped SOL" : "";
+  return `${meta.assetSymbol} · ${shortMint(meta.assetMint)} · ${meta.assetTokenStandard}${wrapped}`;
 }
 
 export type KaminoLiveErrorCode =
@@ -157,6 +174,7 @@ export type KaminoLiveErrorCode =
   | "amount_too_large"
   | "mint_mismatch"
   | "metadata_unavailable"
+  | "position_unavailable"
   | "lookup_unresolved"
   | "wrong_fee_payer"
   | "wrong_vault"
@@ -185,6 +203,7 @@ export function kaminoErrorStatus(code: KaminoLiveErrorCode): number {
       return 404;
     case "invalid_transaction":
     case "metadata_unavailable":
+    case "position_unavailable":
     case "lookup_unresolved":
     case "wrong_fee_payer":
     case "wrong_vault":
@@ -276,8 +295,10 @@ export interface KaminoVaultLimits {
   readonly sharesMint: string;
   readonly assetDecimals: number;
   readonly sharesDecimals: number;
-  readonly tokenVault: string | null;
-  readonly tokenProgram: string | null;
+  /** The vault's own token account; a transfer to/from any other account is refused. */
+  readonly tokenVault: string;
+  /** The token program owning `assetMint`; must match the curated program. */
+  readonly tokenProgram: string;
   readonly vaultFarm: string | null;
   readonly minDepositAmountRaw: bigint;
   readonly minWithdrawAmountRaw: bigint;
@@ -300,6 +321,9 @@ export function parseKaminoVaultLimits(
       : root;
   const assetMint = readString(state.tokenMint);
   const sharesMint = readString(state.sharesMint);
+  const tokenVault = readString(state.tokenVault);
+  const tokenProgram = readString(state.tokenProgram);
+  const vaultFarm = readString(state.vaultFarm);
   const assetDecimals = readInt(state.tokenMintDecimals);
   const sharesDecimals = readInt(state.sharesMintDecimals);
   const minDepositAmountRaw = readBigInt(state.minDepositAmount);
@@ -307,10 +331,24 @@ export function parseKaminoVaultLimits(
   if (
     !assetMint ||
     !sharesMint ||
+    !tokenVault ||
+    !tokenProgram ||
     assetDecimals === null ||
     sharesDecimals === null ||
     minDepositAmountRaw === null ||
     minWithdrawAmountRaw === null
+  ) {
+    return null;
+  }
+  // Identity, not just presence: every account the validator will trust must be a real address and
+  // the token program must be one of the two SPL standards we understand.
+  if (
+    !isValidAddress(assetMint, "sol") ||
+    !isValidAddress(sharesMint, "sol") ||
+    !isValidAddress(tokenVault, "sol") ||
+    !isValidAddress(tokenProgram, "sol") ||
+    tokenStandardForProgram(tokenProgram) === null ||
+    (vaultFarm !== null && !isValidAddress(vaultFarm, "sol"))
   ) {
     return null;
   }
@@ -329,9 +367,9 @@ export function parseKaminoVaultLimits(
     sharesMint,
     assetDecimals,
     sharesDecimals,
-    tokenVault: readString(state.tokenVault),
-    tokenProgram: readString(state.tokenProgram),
-    vaultFarm: readString(state.vaultFarm),
+    tokenVault,
+    tokenProgram,
+    vaultFarm,
     minDepositAmountRaw,
     minWithdrawAmountRaw,
     depositCapRaw,
@@ -359,6 +397,36 @@ export async function fetchKaminoVaultLimits(
     );
     if (!response.ok) return null;
     return parseKaminoVaultLimits(await response.json(), meta);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the wallet's current share balance in a curated vault (read-only).
+ *
+ * Returns `0n` when the wallet has no position (the public endpoint answers `[]`), `null` when the
+ * read failed. The caller must refuse an unverified withdraw-all when this is `null`.
+ */
+export async function fetchKaminoPositionShares(
+  address: string,
+  wallet: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<bigint | null> {
+  if (!findKaminoVault(address)) return null;
+  try {
+    const response = await fetchImpl(
+      `${KAMINO_API_URL}/kvaults/users/${encodeURIComponent(wallet)}/positions`,
+      {
+        headers: { "User-Agent": "sparkpoint-web/1.0" },
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store",
+      },
+    );
+    if (response.status === 404) return 0n;
+    if (!response.ok) return null;
+    const rows = parseKaminoPositions(await response.json());
+    return rows.find((row) => row.vaultAddress === address)?.sharesRaw ?? 0n;
   } catch {
     return null;
   }
@@ -398,12 +466,13 @@ export function validateKaminoBuildInput(
     if (
       limits.assetMint !== vaultMeta.assetMint ||
       limits.sharesMint !== vaultMeta.sharesMint ||
+      limits.tokenProgram !== vaultMeta.assetTokenProgram ||
       limits.assetDecimals !== vaultMeta.assetDecimals ||
       limits.sharesDecimals !== vaultMeta.sharesDecimals
     ) {
       throw new KaminoLiveError(
         "mint_mismatch",
-        "The vault's on-chain mints or decimals no longer match the curated metadata; refusing to build.",
+        "The vault's on-chain mints, token program or decimals no longer match the curated metadata; refusing to build.",
       );
     }
     const minRaw =
@@ -540,8 +609,17 @@ export interface KaminoTokenTransfer {
 }
 
 export interface KaminoAtaCreate {
+  /** The associated token account address the instruction creates. */
+  readonly address: string;
   readonly owner: string;
   readonly mint: string;
+  readonly tokenProgram: string;
+}
+
+export interface KaminoCloseAccount {
+  readonly account: string;
+  readonly destination: string;
+  readonly authority: string;
 }
 
 export interface KaminoTxReview {
@@ -563,6 +641,7 @@ export interface KaminoTxReview {
   readonly systemTransfers: readonly KaminoLamportTransfer[];
   readonly tokenTransfers: readonly KaminoTokenTransfer[];
   readonly ataCreates: readonly KaminoAtaCreate[];
+  readonly closeAccounts: readonly KaminoCloseAccount[];
   readonly kaminoAction: { readonly kind: LiveEarnMode; readonly amountRaw: bigint } | null;
   readonly hasKaminoDeposit: boolean;
   readonly hasKaminoWithdraw: boolean;
@@ -613,6 +692,7 @@ interface DescribedInstruction {
   readonly lamportTransfer: KaminoLamportTransfer | null;
   readonly tokenTransfer: KaminoTokenTransfer | null;
   readonly ataCreate: KaminoAtaCreate | null;
+  readonly closeAccount: KaminoCloseAccount | null;
   readonly priorityMicroLamports: bigint | null;
   readonly computeUnitLimit: bigint | null;
   readonly action: { kind: LiveEarnMode; amountRaw: bigint } | null;
@@ -632,6 +712,7 @@ function describeInstruction(
     lamportTransfer: null,
     tokenTransfer: null,
     ataCreate: null,
+    closeAccount: null,
     priorityMicroLamports: null,
     computeUnitLimit: null,
     action: null,
@@ -690,7 +771,12 @@ function describeInstruction(
         ...base,
         label: kind === 1 ? "create idempotent associated token account" : "create associated token account",
         isTokenAccountCreate: true,
-        ataCreate: { owner: accounts[2] ?? "", mint: accounts[3] ?? "" },
+        ataCreate: {
+          address: accounts[1] ?? "",
+          owner: accounts[2] ?? "",
+          mint: accounts[3] ?? "",
+          tokenProgram: accounts[5] ?? "",
+        },
       };
     }
     return reject(
@@ -703,7 +789,16 @@ function describeInstruction(
     if (kind === 17) return { ...base, label: "sync native (wrap SOL)" };
     if (kind === 9) {
       const owner = accounts[2] ?? null;
-      return { ...base, label: "close token account (unwrap SOL)", authority: owner };
+      return {
+        ...base,
+        label: "close token account (unwrap SOL)",
+        authority: owner,
+        closeAccount: {
+          account: accounts[0] ?? "",
+          destination: accounts[1] ?? "",
+          authority: owner ?? "",
+        },
+      };
     }
     if (kind === 3) {
       const amount = data.length >= 9 ? readU64LE(data, 1) : 0n;
@@ -766,17 +861,18 @@ function describeInstruction(
   }
   if (programId === KAMINO_FARMS_PROGRAM_ID && data.length >= 8) {
     const discriminator = hex(data.slice(0, 8));
-    // The farm stake/unstake discriminators observed in the API fixtures are documented, but the
-    // farm program may add variants (e.g. reward accounts). The program allowlist + the vault-farm
-    // account check below are the security boundary; an unknown farm instruction is still shown in
-    // the review rather than silently trusted.
-    const known =
+    // Only the stake/unstake bookkeeping variants observed in the API's unsigned txs are allowed.
+    // A new/unknown variant is refused rather than shown and trusted.
+    if (
       discriminator === KAMINO_FARM_STAKE_DISCRIMINATOR ||
-      discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR;
-    return {
-      ...base,
-      label: `Kamino farm instruction ${discriminator}${known ? "" : " (unrecognised variant)"}`,
-    };
+      discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR
+    ) {
+      return { ...base, label: `Kamino farm instruction ${discriminator}` };
+    }
+    return reject(
+      `Kamino farm instruction ${discriminator}`,
+      `Unexpected Kamino farms instruction ${discriminator} (only the observed stake/unstake bookkeeping is allowed).`,
+    );
   }
   return reject(
     `program instruction ${hex(data.slice(0, 8))}`,
@@ -833,6 +929,7 @@ export function summarizeKaminoTransaction(
   const systemTransfers: KaminoLamportTransfer[] = [];
   const tokenTransfers: KaminoTokenTransfer[] = [];
   const ataCreates: KaminoAtaCreate[] = [];
+  const closeAccounts: KaminoCloseAccount[] = [];
 
   const instructions = message.compiledInstructions.map((instruction): KaminoInstructionSummary => {
     const programId = keyAt(instruction.programIdIndex) || "lookup-table-program";
@@ -850,6 +947,7 @@ export function summarizeKaminoTransaction(
     if (described.lamportTransfer) systemTransfers.push(described.lamportTransfer);
     if (described.tokenTransfer) tokenTransfers.push(described.tokenTransfer);
     if (described.ataCreate) ataCreates.push(described.ataCreate);
+    if (described.closeAccount) closeAccounts.push(described.closeAccount);
     if (described.priorityMicroLamports !== null) {
       priorityMicroLamportsPerCu = described.priorityMicroLamports;
     }
@@ -901,6 +999,7 @@ export function summarizeKaminoTransaction(
     systemTransfers,
     tokenTransfers,
     ataCreates,
+    closeAccounts,
     kaminoAction,
     hasKaminoDeposit,
     hasKaminoWithdraw,
@@ -975,13 +1074,16 @@ export interface KaminoTransactionExpectation {
   readonly mode: LiveEarnMode;
   readonly vault: KaminoVaultMeta;
   readonly amountRaw: bigint;
-  /** Vault's token account, used to validate any token transfer destination/source. */
-  readonly tokenVault?: string | null;
+  /**
+   * Vault's token account, used to validate token transfer destination/source. Required: a build
+   * without it cannot prove where the funds go, so it is refused rather than trusted blindly.
+   */
+  readonly tokenVault: string;
   /** Vault farm account, used to validate Kamino farm instructions. */
   readonly vaultFarm?: string | null;
   /**
-   * The wallet's full share balance. When supplied, a withdraw-all (`u64::MAX`) tx is only
-   * accepted if the requested amount equals that full balance.
+   * The wallet's full share balance. A withdraw-all (`u64::MAX`) tx is only accepted if this is
+   * known and equals the requested amount; `undefined` refuses the sentinel.
    */
   readonly positionSharesRaw?: bigint | null;
 }
@@ -1042,16 +1144,20 @@ export function assertKaminoTransactionMatches(
     }
     if (action.amountRaw === U64_MAX) {
       const positionShares = expectation.positionSharesRaw;
-      if (positionShares !== undefined) {
-        if (positionShares === null || positionShares <= 0n) {
-          fail("zero_shares", "You have no shares to withdraw from this vault.");
-        }
-        if (positionShares !== expectation.amountRaw) {
-          fail(
-            "wrong_amount",
-            "Kamino built a withdraw-ALL transaction, but the requested amount is not your full share balance. Refusing to sign.",
-          );
-        }
+      if (positionShares === undefined) {
+        fail(
+          "wrong_amount",
+          "Kamino built a withdraw-ALL transaction, but your current share balance could not be verified. Refusing to sign.",
+        );
+      }
+      if (positionShares === null || positionShares <= 0n) {
+        fail("zero_shares", "You have no shares to withdraw from this vault.");
+      }
+      if (positionShares !== expectation.amountRaw) {
+        fail(
+          "wrong_amount",
+          "Kamino built a withdraw-ALL transaction, but the requested amount is not your full share balance. Refusing to sign.",
+        );
       }
     } else if (action.amountRaw !== expectation.amountRaw) {
       fail("wrong_amount", "The transaction share amount does not match the amount you requested.");
@@ -1081,6 +1187,7 @@ export function assertKaminoTransactionMatches(
   const expectedAta = deriveAssociatedTokenAddress(
     expectation.feePayer,
     expectation.vault.assetMint,
+    expectation.vault.assetTokenProgram,
   );
   for (const transfer of review.systemTransfers) {
     if (transfer.from !== expectation.feePayer) {
@@ -1103,6 +1210,13 @@ export function assertKaminoTransactionMatches(
     }
   }
 
+  if (!expectation.tokenVault || !isValidAddress(expectation.tokenVault, "sol")) {
+    fail(
+      "metadata_unavailable",
+      "The vault's token account is missing or invalid, so the transfer cannot be verified. Refusing to sign.",
+    );
+  }
+
   for (const transfer of review.tokenTransfers) {
     if (transfer.mint !== null && transfer.mint !== expectation.vault.assetMint) {
       fail("mint_mismatch", "A token transfer in this transaction uses a different mint.");
@@ -1110,25 +1224,40 @@ export function assertKaminoTransactionMatches(
     if (transfer.amount <= 0n) {
       fail("wrong_amount", "A token transfer in this transaction has a zero amount.");
     }
-    if (expectation.tokenVault) {
-      if (expectation.mode === "deposit") {
-        if (transfer.destination !== expectation.tokenVault) {
-          fail("unexpected_transfer", "Tokens are not being sent to the vault's token account.");
-        }
-        if (transfer.source !== expectedAta) {
-          fail("wrong_recipient", "Tokens are being sent from an account that is not yours.");
-        }
-        if (transfer.amount !== expectation.amountRaw) {
-          fail("wrong_amount", "The token transfer amount does not match the amount you requested.");
-        }
-      } else {
-        if (transfer.source !== expectation.tokenVault) {
-          fail("unexpected_transfer", "Tokens are not coming from the vault's token account.");
-        }
-        if (transfer.destination !== expectedAta) {
-          fail("wrong_recipient", "Tokens are not being sent to your wallet's token account.");
-        }
+    if (expectation.mode === "deposit") {
+      if (transfer.destination !== expectation.tokenVault) {
+        fail("unexpected_transfer", "Tokens are not being sent to the vault's token account.");
       }
+      if (transfer.source !== expectedAta) {
+        fail("wrong_recipient", "Tokens are being sent from an account that is not yours.");
+      }
+      if (transfer.amount !== expectation.amountRaw) {
+        fail("wrong_amount", "The token transfer amount does not match the amount you requested.");
+      }
+    } else {
+      if (transfer.source !== expectation.tokenVault) {
+        fail("unexpected_transfer", "Tokens are not coming from the vault's token account.");
+      }
+      if (transfer.destination !== expectedAta) {
+        fail("wrong_recipient", "Tokens are not being sent to your wallet's token account.");
+      }
+    }
+  }
+
+  // Closing a token account pays its remaining lamports to `destination`. Only the wallet's own
+  // wSOL account may be closed, and the lamports must return to the same wallet.
+  for (const close of review.closeAccounts) {
+    if (close.authority !== expectation.feePayer) {
+      fail("wrong_recipient", "A token account is being closed by a different authority.");
+    }
+    if (expectation.mode !== "withdraw" || expectation.vault.assetMint !== WSOL_MINT) {
+      fail("unexpected_transfer", "Unexpected token-account close in this transaction.");
+    }
+    if (close.account !== expectedAta) {
+      fail("unexpected_transfer", "A token account other than your wSOL account is being closed.");
+    }
+    if (close.destination !== expectation.feePayer) {
+      fail("unexpected_transfer", "A closed token account's lamports are going to a different address.");
     }
   }
 
@@ -1142,6 +1271,20 @@ export function assertKaminoTransactionMatches(
     ) {
       fail("mint_mismatch", "A token account is being created for an unexpected mint.");
     }
+    if (tokenStandardForProgram(create.tokenProgram) === null) {
+      fail("wrong_program", "A token account is being created under an unexpected token program.");
+    }
+    const derived = deriveAssociatedTokenAddress(
+      create.owner,
+      create.mint,
+      create.tokenProgram,
+    );
+    if (create.address !== derived) {
+      fail(
+        "wrong_recipient",
+        "A token account is being created at a non-canonical address.",
+      );
+    }
   }
 
   for (const instruction of review.instructions) {
@@ -1152,17 +1295,39 @@ export function assertKaminoTransactionMatches(
       if (instruction.accounts[1] !== expectation.vault.address) {
         fail("wrong_vault", "The Kamino action targets a different vault.");
       }
+      if (!instruction.accounts.includes(expectation.vault.sharesMint)) {
+        fail("mint_mismatch", "The Kamino action does not reference the vault's share mint.");
+      }
+      if (!instruction.accounts.includes(expectation.vault.assetMint)) {
+        fail("mint_mismatch", "The Kamino action does not reference the vault's asset mint.");
+      }
+      if (!instruction.accounts.includes(expectation.tokenVault)) {
+        fail("unexpected_transfer", "The Kamino action does not reference the vault's token account.");
+      }
+      if (!instruction.accounts.includes(expectedAta)) {
+        fail("wrong_recipient", "The Kamino action does not reference your wallet's asset token account.");
+      }
     }
     if (instruction.authority && instruction.authority !== expectation.feePayer) {
       fail("wrong_recipient", "A token authority on this transaction is not your wallet.");
     }
   }
 
-  const hasFarmInstruction = review.instructions.some(
+  const farmInstructions = review.instructions.filter(
     (instruction) => instruction.programId === KAMINO_FARMS_PROGRAM_ID,
   );
-  if (hasFarmInstruction && expectation.vaultFarm && !keys.has(expectation.vaultFarm)) {
-    fail("wrong_vault", "A Kamino farm instruction does not reference the selected vault's farm.");
+  if (farmInstructions.length > 0) {
+    if (!expectation.vaultFarm) {
+      fail(
+        "wrong_vault",
+        "The vault has no farm account, but the transaction includes a Kamino farm instruction.",
+      );
+    }
+    for (const instruction of farmInstructions) {
+      if (!instruction.accounts.includes(expectation.vaultFarm)) {
+        fail("wrong_vault", "A Kamino farm instruction does not reference the selected vault's farm.");
+      }
+    }
   }
 }
 
@@ -1184,8 +1349,13 @@ export function parseKaminoPositions(raw: unknown): KaminoPositionRow[] {
     if (!vaultAddress) continue;
     const meta = findKaminoVault(vaultAddress);
     if (!meta) continue;
-    const total = value.totalShares;
-    if (typeof total !== "string") continue;
+    const total =
+      typeof value.totalShares === "string"
+        ? value.totalShares
+        : typeof value.totalShares === "number" && Number.isFinite(value.totalShares)
+          ? String(value.totalShares)
+          : null;
+    if (total === null) continue;
     const sharesRaw = parseTokenAmount(total, meta.sharesDecimals);
     if (sharesRaw === null) continue;
     rows.push({

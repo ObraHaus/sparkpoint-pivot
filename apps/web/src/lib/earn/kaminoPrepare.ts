@@ -13,6 +13,7 @@ import {
   assertKaminoTransactionMatches,
   decodeKaminoTransaction,
   deriveKaminoEstimate,
+  fetchKaminoPositionShares,
   fetchKaminoVaultLimits,
   kaminoApiRequest,
   kaminoErrorStatus,
@@ -101,6 +102,7 @@ export async function prepareKaminoTransaction(
 
   let input: KaminoBuildInput;
   let limits: KaminoVaultLimits | null;
+  let positionShares: bigint | null | undefined = undefined;
   try {
     input = parseKaminoPrepareBody(rawBody);
     const basic = kaminoApiRequest(input);
@@ -111,6 +113,23 @@ export async function prepareKaminoTransaction(
         "metadata_unavailable",
         "Kamino vault metadata is unavailable right now; refusing to build without limits.",
       );
+    }
+    if (input.mode === "withdraw") {
+      positionShares = await fetchKaminoPositionShares(
+        basic.vaultMeta.address,
+        basic.body.wallet,
+        deps.fetchImpl,
+      );
+      if (positionShares === null) {
+        return error(
+          502,
+          "position_unavailable",
+          "Your current Kamino share balance could not be read, so a withdraw-ALL transaction cannot be verified. Refusing to build.",
+        );
+      }
+      if (positionShares <= 0n) {
+        return error(400, "zero_shares", "You have no shares to withdraw from this vault.");
+      }
     }
   } catch (cause) {
     if (cause instanceof KaminoLiveError) return errorFromKamino(cause);
@@ -168,6 +187,7 @@ export async function prepareKaminoTransaction(
       amountRaw: built.amountRaw,
       tokenVault: limits.tokenVault,
       vaultFarm: limits.vaultFarm,
+      positionSharesRaw: positionShares,
     });
     review = summary;
   } catch (cause) {

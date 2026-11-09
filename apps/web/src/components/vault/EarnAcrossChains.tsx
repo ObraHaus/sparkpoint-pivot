@@ -31,6 +31,8 @@ import {
   liveEarnHref,
   morphoLiveEnabledFromEnv,
 } from "@/lib/earn/liveFlags";
+import { findKaminoVault } from "@/lib/earn/kaminoLive";
+import { findMorphoVault } from "@/lib/earn/morphoLive";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -121,8 +123,24 @@ function RailChips({ vault }: { vault: EarnVault }) {
 
 function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | null {
   const protocol = protocolOf(vault);
-  if (protocol === "kamino" && vault.chain === "sol" && kaminoLiveEnabledFromEnv()) return "kamino";
-  if (protocol === "morpho" && vault.chain === "base" && morphoLiveEnabledFromEnv()) return "morpho";
+  // Only link to the one shared live flow when this exact registry row is on the curated
+  // allowlist; otherwise the CTA would silently open a different vault/asset.
+  if (
+    protocol === "kamino" &&
+    vault.chain === "sol" &&
+    kaminoLiveEnabledFromEnv() &&
+    findKaminoVault(vault.address) !== null
+  ) {
+    return "kamino";
+  }
+  if (
+    protocol === "morpho" &&
+    vault.chain === "base" &&
+    morphoLiveEnabledFromEnv() &&
+    findMorphoVault(vault.address) !== null
+  ) {
+    return "morpho";
+  }
   return null;
 }
 

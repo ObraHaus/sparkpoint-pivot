@@ -10,15 +10,17 @@ import {
 } from "@solana/web3.js";
 
 import {
+  ATA_PROGRAM_ID,
   KAMINO_API_TOKEN_MINTS,
   KAMINO_DEPOSIT_DISCRIMINATOR,
+  KAMINO_FARMS_PROGRAM_ID,
   KAMINO_KVAULT_PROGRAM_ID,
   KAMINO_VAULTS,
   KAMINO_WITHDRAW_DISCRIMINATOR,
   KaminoLiveError,
   SOL_SAFETY_BUFFER_LAMPORTS,
-  TASK_CIRCLE_USDC_MINT_REFERENCE,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   U64_MAX,
   WSOL_MINT,
   assertKaminoTransactionMatches,
@@ -170,6 +172,8 @@ function validSolDepositInstructions(payer = PROBE, amount = 10_000_000n): Trans
     kvaultInstruction("deposit", payer, SOL_VAULT, amount, [
       new PublicKey(SOL_META.sharesMint),
       new PublicKey(SOL_META.assetMint),
+      new PublicKey(SOL_TOKEN_VAULT),
+      new PublicKey(wsolAta),
     ]),
   ];
 }
@@ -316,15 +320,23 @@ test("SOL reserve math reserves fees, rent and a >=0.005 SOL safety buffer", () 
   assert.equal(short.shortfallLamports, 1n);
 });
 
-test("Steakhouse mint is labelled as the vault's asset mint, not native/Circle USDC", () => {
-  // Curated metadata must equal the live Kamino API tokenMint (captured read-only).
+test("Steakhouse asset label is the real metadata symbol + shortened mint + token standard", () => {
+  // Curated metadata must equal the live Kamino API tokenMint/tokenProgram (captured read-only).
   assert.equal(STEAK_META.assetMint, KAMINO_API_TOKEN_MINTS.steakhouseUsdc);
-  // The 077 brief cites this as the Circle reference; the vault mint differs from it.
-  assert.notEqual(STEAK_META.assetMint, TASK_CIRCLE_USDC_MINT_REFERENCE);
+  assert.equal(STEAK_META.assetTokenProgram, TOKEN_PROGRAM_ID);
+  assert.equal(STEAK_META.assetTokenStandard, "spl-token");
+
   const label = kaminoAssetMintLabel(STEAK_META);
-  assert.equal(label, "Steakhouse vault USDC mint");
+  assert.match(label, /^USDC · /);
+  assert.match(label, /EPjFWd…yTDt1v/);
+  assert.match(label, /spl-token/);
+  // Never a bare "USDC mint", and never an issuer/native claim.
+  assert.doesNotMatch(label, /USDC mint/i);
   assert.doesNotMatch(label, /native|Circle/i);
-  assert.equal(kaminoAssetMintLabel(SOL_META), "SOL Balanced vault SOL mint");
+
+  const solLabel = kaminoAssetMintLabel(SOL_META);
+  assert.match(solLabel, /^SOL · So1111…111112 · spl-token · wrapped SOL$/);
+  assert.doesNotMatch(solLabel, /native|Circle/i);
 });
 
 test("a real unsigned SOL deposit passes full shape validation with resolved lookups", () => {
@@ -365,6 +377,148 @@ test("Kamino's withdraw-all sentinel requires the requested amount to equal full
       ),
     (error: unknown) => error instanceof KaminoLiveError && error.code === "zero_shares",
   );
+});
+
+test("a withdraw-all without a verified full-share balance is refused", () => {
+  const review = summarizeKaminoTransaction(WITHDRAW_TX, { lookupAddresses: WITHDRAW_LOOKUPS });
+  assert.throws(
+    () =>
+      assertKaminoTransactionMatches(
+        review,
+        expectation({ mode: "withdraw", amountRaw: 10_000_000n }),
+      ),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "wrong_amount",
+  );
+});
+
+test("the asset token program must match the curated metadata", () => {
+  assert.throws(
+    () =>
+      validateKaminoBuildInput(
+        { mode: "deposit", wallet: PROBE, vault: SOL_VAULT, amount: "0.01" },
+        limitsWith({ tokenProgram: TOKEN_2022_PROGRAM_ID }),
+      ),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "mint_mismatch",
+  );
+});
+
+test("a close instruction must close the wallet's own wSOL ATA and pay the wallet", () => {
+  const wsolAta = deriveAssociatedTokenAddress(PROBE, WSOL_MINT);
+  const attacker = Keypair.generate().publicKey.toBase58();
+  const closeTx = (destination: string) =>
+    buildTransaction(PROBE, [
+      kvaultInstruction("withdraw", PROBE, SOL_VAULT, U64_MAX, [
+        new PublicKey(SOL_META.sharesMint),
+        new PublicKey(SOL_META.assetMint),
+        new PublicKey(SOL_TOKEN_VAULT),
+        new PublicKey(wsolAta),
+      ]),
+      new TransactionInstruction({
+        programId: new PublicKey(TOKEN_PROGRAM_ID),
+        keys: [
+          { pubkey: new PublicKey(wsolAta), isSigner: false, isWritable: true },
+          { pubkey: new PublicKey(destination), isSigner: false, isWritable: true },
+          { pubkey: new PublicKey(PROBE), isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([9]),
+      }),
+    ]);
+  const exp = expectation({ mode: "withdraw", amountRaw: U64_MAX, positionSharesRaw: U64_MAX });
+  assert.throws(
+    () => assertKaminoTransactionMatches(summarizeKaminoTransaction(closeTx(attacker)), exp),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "unexpected_transfer",
+  );
+  assert.doesNotThrow(() =>
+    assertKaminoTransactionMatches(summarizeKaminoTransaction(closeTx(PROBE)), exp),
+  );
+});
+
+test("an ATA create at a non-canonical address is refused", () => {
+  const wrongAta = Keypair.generate().publicKey;
+  const tx = buildTransaction(PROBE, [
+    ...validSolDepositInstructions(),
+    new TransactionInstruction({
+      programId: new PublicKey(ATA_PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
+        { pubkey: wrongAta, isSigner: false, isWritable: true },
+        { pubkey: new PublicKey(PROBE), isSigner: false, isWritable: false },
+        { pubkey: new PublicKey(SOL_META.assetMint), isSigner: false, isWritable: false },
+        { pubkey: new PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+        { pubkey: new PublicKey(TOKEN_PROGRAM_ID), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([1]),
+    }),
+  ]);
+  assert.throws(
+    () => assertKaminoTransactionMatches(summarizeKaminoTransaction(tx), expectation()),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "wrong_recipient",
+  );
+});
+
+test("an unknown Kamino farms instruction is refused, not trusted", () => {
+  const tx = buildTransaction(PROBE, [
+    ...validSolDepositInstructions(),
+    new TransactionInstruction({
+      programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
+        { pubkey: new PublicKey(SOL_VAULT_FARM), isSigner: false, isWritable: true },
+      ],
+      data: Buffer.from("deadbeefdeadbeef", "hex"),
+    }),
+  ]);
+  assert.throws(
+    () => assertKaminoTransactionMatches(summarizeKaminoTransaction(tx), expectation()),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "authority_change",
+  );
+});
+
+test("prepare handler refuses a partial withdraw and an unreadable position", async () => {
+  const withdrawBody = { mode: "withdraw", wallet: PROBE, vault: SOL_VAULT, amount: "0.005" };
+  const withdrawFetch = (positions: unknown) =>
+    (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/ktx/kvault/withdraw")) return jsonResponse({ transaction: WITHDRAW_TX });
+      if (url.includes("/positions")) return jsonResponse(positions);
+      if (url.includes("/metrics")) return jsonResponse({ tokensPerShare: "1.05" });
+      if (url.includes("/kvaults/vaults/")) return jsonResponse(SOL_LIMITS_RAW);
+      return jsonResponse({}, 404);
+    }) as typeof fetch;
+
+  // 0.005 shares < the wallet's full 0.01 shares → the all-shares tx is refused.
+  const partial = await prepareKaminoTransaction(withdrawBody, {
+    enabled: true,
+    fetchImpl: withdrawFetch([{ vaultAddress: SOL_VAULT, totalShares: "0.01" }]),
+    resolveLookupAddresses: async () => WITHDRAW_LOOKUPS,
+  });
+  assert.equal(partial.status, 502);
+  assert.equal((partial.body.error as { code: string }).code, "wrong_amount");
+
+  // Full balance → the same fixture passes.
+  const full = await prepareKaminoTransaction(
+    { ...withdrawBody, amount: "0.01" },
+    {
+      enabled: true,
+      fetchImpl: withdrawFetch([{ vaultAddress: SOL_VAULT, totalShares: "0.01" }]),
+      resolveLookupAddresses: async () => WITHDRAW_LOOKUPS,
+    },
+  );
+  assert.equal(full.status, 200);
+  assert.equal(full.body.withdrawsAllShares, true);
+
+  // Position unreadable → refuse rather than sign an unverified withdraw-all.
+  const unreadable = await prepareKaminoTransaction(withdrawBody, {
+    enabled: true,
+    fetchImpl: (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/positions")) return jsonResponse({}, 500);
+      return withdrawFetch([])(input);
+    }) as typeof fetch,
+    resolveLookupAddresses: async () => WITHDRAW_LOOKUPS,
+  });
+  assert.equal(unreadable.status, 502);
+  assert.equal((unreadable.body.error as { code: string }).code, "position_unavailable");
 });
 
 test("malicious fixtures are refused before signing", () => {

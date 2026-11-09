@@ -69,6 +69,15 @@ function short(value: string, head = 6, tail = 6): string {
   return value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
+/** The wallet's current public address; re-read before signing to catch an account switch. */
+function providerAddress(provider: SolanaInjectedProvider): string | null {
+  try {
+    return provider.publicKey?.toBase58?.().trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function Row({ k, v, tone }: { k: string; v: string; tone?: "caution" | "gain" }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
@@ -183,18 +192,27 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   const isSolDeposit = mode === "deposit" && meta.assetMint === SOL_MINT;
   const positionShares = position ? BigInt(position.sharesRaw) : 0n;
 
-  const refreshPositions = useCallback(async (owner: string) => {
+  const readPositions = useCallback(async (owner: string): Promise<KaminoPositionView[] | null> => {
     try {
       const response = await fetch(`/api/earn/kamino/positions?wallet=${encodeURIComponent(owner)}`, {
         cache: "no-store",
       });
-      if (!response.ok) return;
+      if (!response.ok) return null;
       const body = (await response.json()) as { positions?: KaminoPositionView[] };
-      setPositions(Array.isArray(body.positions) ? body.positions : []);
+      return Array.isArray(body.positions) ? body.positions : [];
     } catch {
-      // A failed read-back is not a failed action; the next refresh can retry.
+      // A failed read-back is not a failed action; callers decide whether to proceed.
+      return null;
     }
   }, []);
+
+  const refreshPositions = useCallback(
+    async (owner: string) => {
+      const rows = await readPositions(owner);
+      if (rows !== null) setPositions(rows);
+    },
+    [readPositions],
+  );
 
   const connect = useCallback(async () => {
     setError(null);
@@ -240,6 +258,13 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
     const requestedAmountRaw = parseTokenAmount(amount, decimals);
     if (requestedAmountRaw === null) {
       setError(`Enter a valid ${mode === "deposit" ? meta.assetSymbol : "share"} amount.`);
+      return;
+    }
+    if (mode === "withdraw" && requestedAmountRaw !== positionShares) {
+      setError(
+        "Kamino's public API only builds a withdraw-ALL-shares transaction. " +
+          `Enter your full share balance (${formatTokenAmount(positionShares, meta.sharesDecimals)} shares) or press Max; partial withdraws are refused.`,
+      );
       return;
     }
     if (isSolDeposit) {
@@ -300,7 +325,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         mode,
         vault: meta,
         amountRaw: requestedAmountRaw,
-        tokenVault: body.vaultLimits?.tokenVault ?? null,
+        tokenVault: body.vaultLimits?.tokenVault ?? "",
         vaultFarm: body.vaultLimits?.vaultFarm ?? null,
         positionSharesRaw: mode === "withdraw" ? positionShares : undefined,
       });
@@ -344,15 +369,45 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   ]);
 
   const confirm = useCallback(async () => {
+    if (phase !== "review") return;
     if (!provider || !transaction || !review || !build || expectedAmountRaw === null) return;
     setError(null);
+    // The wallet provider can switch accounts between prepare and confirm. Refuse a stale review
+    // instead of handing the old transaction to a different signer.
+    const currentWallet = providerAddress(provider);
+    if (!currentWallet || currentWallet !== wallet) {
+      reset();
+      setError(
+        "Your Solana wallet account changed after review. Nothing was signed — reconnect and review again.",
+      );
+      return;
+    }
+    // Kamino's API always builds a withdraw-ALL transaction. Re-read the balance so a stale review
+    // can never sign an all-shares withdrawal that no longer matches what the user reviewed.
+    if (mode === "withdraw") {
+      const fresh = await readPositions(wallet);
+      if (fresh === null) {
+        setError(
+          "Your current share balance could not be re-read, so the withdraw-ALL transaction cannot be verified. Nothing was signed.",
+        );
+        return;
+      }
+      const freshShares = fresh.find((row) => row.vaultAddress === vaultAddress)?.sharesRaw ?? "0";
+      if (BigInt(freshShares) !== positionShares || positionShares <= 0n) {
+        reset();
+        setError(
+          "Your share balance changed since review. Nothing was signed — review the full-share withdraw again.",
+        );
+        return;
+      }
+    }
     try {
       assertKaminoTransactionMatches(review, {
         feePayer: wallet ?? "",
         mode,
         vault: meta,
         amountRaw: expectedAmountRaw,
-        tokenVault: build.vaultLimits?.tokenVault ?? null,
+        tokenVault: build.vaultLimits?.tokenVault ?? "",
         vaultFarm: build.vaultLimits?.vaultFarm ?? null,
         positionSharesRaw: mode === "withdraw" ? positionShares : undefined,
       });
@@ -384,11 +439,15 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
     expectedAmountRaw,
     meta,
     mode,
+    phase,
     positionShares,
     provider,
+    readPositions,
     refreshPositions,
+    reset,
     review,
     transaction,
+    vaultAddress,
     wallet,
   ]);
 
@@ -408,10 +467,20 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         ? formatTokenAmount(maxDepositRaw, meta.assetDecimals)
         : null;
   const withdrawBlocked = mode === "withdraw" && positionShares <= 0n;
+  const typedAmountRaw = parseTokenAmount(
+    amount,
+    mode === "deposit" ? meta.assetDecimals : meta.sharesDecimals,
+  );
+  const withdrawPartial =
+    mode === "withdraw" &&
+    typedAmountRaw !== null &&
+    positionShares > 0n &&
+    typedAmountRaw !== positionShares;
   const canReview =
     !!wallet &&
     amount.trim() !== "" &&
     !withdrawBlocked &&
+    !withdrawPartial &&
     phase !== "building" &&
     phase !== "submitting" &&
     phase !== "confirming";
@@ -425,8 +494,8 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
           <div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Kamino · {meta.name}</div>
             <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
-              Direct kVault {mode} on Solana · {meta.assetSymbol} · asset mint{" "}
-              {short(meta.assetMint)} · share mint {short(meta.sharesMint)}
+              Direct kVault {mode} on Solana · asset {kaminoAssetMintLabel(meta)} · share mint{" "}
+              {short(meta.sharesMint)}
             </div>
           </div>
           <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
@@ -539,6 +608,18 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                     No shares to withdraw in this vault — withdraw is disabled.
                   </div>
                 )}
+                {mode === "withdraw" && !withdrawBlocked && (
+                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4, lineHeight: 1.5 }}>
+                    Kamino&apos;s public API only builds a <b>withdraw-ALL-shares</b> transaction. Enter
+                    your full share balance ({formatTokenAmount(positionShares, meta.sharesDecimals)}{" "}
+                    shares) or press Max; partial withdraws are refused.
+                  </div>
+                )}
+                {withdrawPartial && (
+                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
+                    That is a partial amount. Use Max (or type your full share balance) to review.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -590,8 +671,13 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
 
           <div style={{ display: "grid", gap: 5 }}>
             <Row k="Fee payer / owner" v={short(review.feePayer, 8, 8)} />
-            <Row k="Asset mint" v={`${short(meta.assetMint, 8, 6)} · ${kaminoAssetMintLabel(meta)}`} />
+            <Row k="Asset" v={kaminoAssetMintLabel(meta)} />
             <Row k="Share mint" v={short(meta.sharesMint, 8, 8)} />
+            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+              Asset symbol, mint and token program come from Kamino&apos;s vault metadata. SparkPoint
+              does not claim an issuer or &quot;native&quot; status — verify the mint in your wallet
+              before signing.
+            </div>
             <Row k="Min deposit (vault)" v={`${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}`} />
             <Row k="Min withdraw (vault)" v={`${build.vaultLimits.minWithdrawAmount} shares`} />
             {build.vaultLimits.depositCap && (
@@ -618,9 +704,10 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
 
           {build.withdrawsAllShares && (
             <Notice tone="caution">
-              Kamino built a <b>withdraw-ALL-shares</b> transaction. It only proceeds because the
-              amount you entered equals your full share balance. If your balance changed, go back
-              and review again.
+              Kamino&apos;s public API always builds a <b>withdraw-ALL-shares</b> transaction. This
+              one only proceeds because the amount you entered equals your current full share
+              balance; partial withdraws are refused. If your balance changed, go back and review
+              again — nothing has been signed yet.
             </Notice>
           )}
 
@@ -663,12 +750,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
               type="button"
               className="btn btn-primary btn-md"
               onClick={() => void confirm()}
-              disabled={
-                phase === "submitting" ||
-                phase === "confirming" ||
-                phase === "confirmed" ||
-                phase === "failed"
-              }
+              disabled={phase !== "review"}
             >
               {phase === "submitting"
                 ? "Waiting for your wallet…"

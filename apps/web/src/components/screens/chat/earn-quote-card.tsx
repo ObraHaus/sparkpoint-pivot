@@ -46,6 +46,8 @@ import {
   liveEarnHref,
   morphoLiveEnabledFromEnv,
 } from "@/lib/earn/liveFlags";
+import { findKaminoVault } from "@/lib/earn/kaminoLive";
+import { findMorphoVault } from "@/lib/earn/morphoLive";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -137,9 +139,14 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
   // 077 — the one live direct rail available for this preview, if the build flag is on. This
   // bypasses the 1Click receipt and opens the shared /vault/live review flow; it never signs.
   const liveProtocol =
-    protocol === "kamino" && kaminoLiveEnabledFromEnv()
+    protocol === "kamino" &&
+    kaminoLiveEnabledFromEnv() &&
+    findKaminoVault(vault.address) !== null
       ? "kamino"
-      : protocol === "morpho" && vault.chain === "base" && morphoLiveEnabledFromEnv()
+      : protocol === "morpho" &&
+          vault.chain === "base" &&
+          morphoLiveEnabledFromEnv() &&
+          findMorphoVault(vault.address) !== null
         ? "morpho"
         : null;
   const liveHref = (mode: "deposit" | "withdraw") =>

@@ -60,10 +60,18 @@ Status legend: [x] done · [~] in progress · [ ] pending · [!] blocked/owner d
 - [x] Full unsigned-tx shape validation (program allowlist, instruction-kind allowlist, System
       transfers only to the derived wSOL ATA, amount/vault/mint/owner checks, lookup tables resolved)
       in the BFF **and** re-run in the browser before wallet sign.
-- [x] Steakhouse mint labelled as the vault's USDC asset mint (not native/Circle USDC).
+- [x] Steakhouse asset labelled with the live metadata symbol + shortened mint + token standard
+      (`USDC · EPjFWd…yTDt1v · spl-token`); token program validated, no issuer/native claim, and the
+      bogus "Circle" lookalike reference removed.
+- [x] Close-account identity/destination, canonical ATA address, per-instruction farm account and
+      unknown farm discriminator checks added.
+- [x] Server-side withdraw-all verification: the prepare handler reads the wallet's share balance
+      and refuses partial/unreadable withdraws (not only the browser re-check).
+- [x] Wallet-account switch between prepare and confirm is refused (Solana re-reads the provider
+      pubkey; Morpho pins and re-checks the reviewed account).
 - [x] Signature-status tracking after confirm (`confirmed`/`failed`/`pending`, never fake success).
-- [x] Withdraw shows real shares + estimated assets; disabled at zero shares; withdraw-all sentinel
-      only accepted when the typed amount equals full shares.
+- [x] Withdraw shows real shares + estimated assets; disabled at zero shares; the public API always
+      withdraws all shares, partial input is refused before/after build, and the review says so.
 - [x] Morpho asset/share decimals validated and `maxDeposit`/`maxRedeem`/`maxWithdraw` enforced.
 - [x] Malicious fixtures + boundary/reserve/flags tests; full web suite green.
 - [x] Simulations re-run with SIMULATED labels; expected reverts/zero-share redeem are explicitly
