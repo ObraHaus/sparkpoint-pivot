@@ -8,6 +8,7 @@ is one the deterministic parsers actually support and is pinned by the offline g
 
 > **Beta:** <https://beta.sparkpoint.io> — `/connect` to sign in, `/chat` for Sparky, `/swap`,
 > `/vault` and `/portfolio` for the manual surfaces.
+> **Deploy note:** `https://beta.sparkpoint.io` is the production Coolify web app deployed from the **`main`** branch. There is **no** separate develop web environment — merging to `develop` alone does not update beta.
 
 > **The one-line story:** SparkPoint shows you the whole picture across chains and prepares every
 > move. By default nothing here signs, deposits or withdraws. With the **live-earn flags ON**, the

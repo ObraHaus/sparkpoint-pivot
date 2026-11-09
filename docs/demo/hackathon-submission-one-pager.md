@@ -4,7 +4,10 @@
 portfolio across chains, answers in plain language, and prepares every move for you to review and
 sign in your own wallet. It never holds keys, funds or custody.
 
-**Beta:** <https://beta.sparkpoint.io> · **Docs:** [`docs/demo/072-hackathon-demo.md`](./072-hackathon-demo.md)
+**Beta:** <https://beta.sparkpoint.io> · **Docs:**
+
+**Deploy note:** `https://beta.sparkpoint.io` is the production Coolify web app deployed from the **`main`** branch. There is **no** separate develop web environment — merging to `develop` alone does not update beta.
+ [`docs/demo/072-hackathon-demo.md`](./072-hackathon-demo.md)
 
 ---
 

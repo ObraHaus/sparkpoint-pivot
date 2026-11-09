@@ -96,7 +96,7 @@ is refused honestly. See [[multichain-dual-access]].
 
 ## Where is the beta, and is live earn on?
 
-The beta is at **https://beta.sparkpoint.io**. Sign in at `/connect`, chat at `/chat`,
+The beta is at **https://beta.sparkpoint.io** (production Coolify deploy from the `main` branch; there is no separate develop web environment). Sign in at `/connect`, chat at `/chat`,
 and use the manual surfaces at `/swap`, `/vault` and `/portfolio`. The manual pages
 and Sparky read the same registry, so they describe the same chains, protocols and
 rails.

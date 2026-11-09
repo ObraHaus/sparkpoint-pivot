@@ -11,7 +11,7 @@ updated: 2026-11-09
 Where things live in the app, and what each page can actually tell a user. When
 someone asks a question a page answers better than prose can, point them at it.
 
-The beta is at **https://beta.sparkpoint.io**. Manual surfaces are `/swap`, `/vault` and
+The beta is at **https://beta.sparkpoint.io** (production Coolify deploy from the `main` branch; there is no separate develop web environment). Manual surfaces are `/swap`, `/vault` and
 `/portfolio`; the same capabilities are also available in Sparky chat at `/chat`.
 
 ## Trust Center (/trust)

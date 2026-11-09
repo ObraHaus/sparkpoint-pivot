@@ -12,7 +12,7 @@ SparkPoint's freeze build is deliberately **dual access**: every core capability
 manual page and again in Sparky chat. Neither surface owns the user's funds; both prepare actions the
 user reviews and signs.
 
-The beta is at **https://beta.sparkpoint.io** — `/connect` to sign in, `/chat` for Sparky, and
+The beta is at **https://beta.sparkpoint.io** (production Coolify deploy from the `main` branch; there is no separate develop web environment) — `/connect` to sign in, `/chat` for Sparky, and
 `/swap`, `/vault` and `/portfolio` for the manual surfaces. The same story is on both surfaces.
 
 ## Swaps: two honest paths
