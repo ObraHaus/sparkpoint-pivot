@@ -26,6 +26,11 @@ import {
   vaultAppUrl,
 } from "@/lib/earn/format";
 import type { EarnProtocol, EarnVault } from "@sparkpoint/shared/schemas";
+import {
+  kaminoLiveEnabledFromEnv,
+  liveEarnHref,
+  morphoLiveEnabledFromEnv,
+} from "@/lib/earn/liveFlags";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -114,11 +119,29 @@ function RailChips({ vault }: { vault: EarnVault }) {
   );
 }
 
+function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | null {
+  const protocol = protocolOf(vault);
+  if (protocol === "kamino" && vault.chain === "sol" && kaminoLiveEnabledFromEnv()) return "kamino";
+  if (protocol === "morpho" && vault.chain === "base" && morphoLiveEnabledFromEnv()) return "morpho";
+  return null;
+}
+
 function VaultRow({ vault }: { vault: EarnVault }) {
   const protocol = protocolOf(vault);
   const appUrl = vaultAppUrl(vault);
   const previewHref = `${toHref("chat")}?ask=${encodeURIComponent(previewPrompt(vault))}`;
   const noRail = vault.rails.available.length === 0;
+  const liveProtocol = liveProtocolFor(vault);
+  const liveHref = (mode: "deposit" | "withdraw") =>
+    liveProtocol
+      ? liveEarnHref({
+          protocol: liveProtocol,
+          chain: vault.chain,
+          vault: vault.address,
+          asset: vault.asset.symbol,
+          mode,
+        })
+      : null;
 
   return (
     <div
@@ -159,6 +182,16 @@ function VaultRow({ vault }: { vault: EarnVault }) {
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <RailChips vault={vault} />
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {liveHref("deposit") && (
+            <>
+              <a className="btn btn-primary btn-sm" href={liveHref("deposit")!} data-testid="earn-live-deposit">
+                Live deposit
+              </a>
+              <a className="btn btn-outline btn-sm" href={liveHref("withdraw")!} data-testid="earn-live-withdraw">
+                Live withdraw
+              </a>
+            </>
+          )}
           <a className="btn btn-outline btn-sm" href={previewHref}>
             <Icon name="chat" size={13} /> Preview in Sparky
           </a>
@@ -212,7 +245,8 @@ export function EarnAcrossChains() {
           <span className="t">Earn across chains</span>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.55, maxWidth: 720 }}>
             Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR — the same registry Sparky
-            reads. Rows are previews only; nothing signs or sends from this page.
+            reads. Rows are previews; where a live direct rail is flagged on, the row links to the
+            one shared review+confirm flow. Nothing signs or sends from this page.
           </div>
         </div>
         <span className="lbl" data-testid="earn-snapshot" title="Stored registry snapshot — never a live quote">

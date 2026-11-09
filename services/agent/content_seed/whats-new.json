@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "live-earn-kamino-morpho-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Live earn review: Kamino on Solana and Morpho on Base (behind a flag)",
+      "body": "Live direct earn now has one shared review screen, reachable from the Vault page and from Sparky's earn card. It builds an unsigned transaction, shows the exact amount, accounts, network fee and token-account rent (plus an approve step for Morpho only when needed), and then you sign in your own browser wallet. SparkPoint never signs, submits or holds funds. Kamino supports SOL (native SOL is wrapped inside the same transaction) and USDC; Morpho uses Gauntlet USDC Prime on Base. The feature is off by default (flags) and every simulation is labelled SIMULATED \u2014 no funded execution has been run yet.",
+      "published_at": "2026-11-09T00:00:00Z"
+    },
+    {
       "slug": "freeze-dual-access-multichain-2026-11",
       "type": "changelog",
       "tag": "Improved",

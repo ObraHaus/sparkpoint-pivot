@@ -13,7 +13,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "dev": "turbo run dev",
-    "preflight": "bash scripts/preflight.sh"
+    "preflight": "bash scripts/preflight.sh",
+    "earn:sim:kamino": "node scripts/earn-sim/kamino-sim.mjs",
+    "earn:sim:morpho": "node scripts/earn-sim/morpho-sim.mjs"
   },
   "pnpm": {
     "overrides": {

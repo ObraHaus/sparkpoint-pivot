@@ -10,6 +10,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)
+
+- **Live direct deposit/withdraw is built behind flags, and the wallet is the only signer.** A new
+  shared `/vault/live` review+confirm route is reachable from both the `/vault` earn rows and
+  Sparky's earn card. It builds **unsigned** transactions, shows the exact amount, accounts and
+  network fee (plus ATA rent / approve leg where relevant), and then the user's browser wallet
+  signs. SparkPoint holds no key and the BFF never signs, approves or broadcasts. Off by default:
+  `NEXT_PUBLIC_EARN_LIVE_KAMINO` + `EARN_LIVE_KAMINO`, `NEXT_PUBLIC_EARN_LIVE_MORPHO` +
+  `EARN_LIVE_MORPHO`. (`apps/web/src/app/(app)/vault/live/page.tsx`,
+  `apps/web/src/components/vault/{LiveEarnFlow,KaminoLiveFlow,MorphoLiveFlow}.tsx`,
+  `apps/web/src/app/api/earn/kamino/{prepare,positions}/route.ts`,
+  `apps/web/src/lib/earn/{liveFlags,kaminoLive,morphoLive}.ts`, `apps/web/src/lib/solana/wallet.ts`)
+- **Kamino SOL is depositable, not just USDC.** The curated slice is SOL Balanced (native SOL,
+  wrapped in the same unsigned transaction) and Steakhouse USDC. Only the curated vaults can be
+  built server-side; any other vault is refused. Position read-back uses Kamino's public
+  user-positions endpoint.
+- **Morpho on Base uses plain ERC-4626.** Gauntlet USDC Prime (6-dp USDC, 18-dp shares) supports
+  approve (only when the allowance is short) + deposit and redeem via the existing user-signed
+  `useExecuteVaultTx`; the review reads live balances/previews and shows a gas estimate.
+- **Tests + simulations.** Unit tests cover the flags, request validation, tx summary (against real
+  unsigned Kamino fixtures), position parsing, Morpho approve/decimals logic and the injected
+  Solana wallet adapter. `scripts/earn-sim/{kamino,morpho}-sim.mjs` are read-only/SIMULATED:
+  Kamino simulates the unsigned txs on a public RPC, and the unfunded Base probe's deposit fails
+  honestly. **No funded execution is claimed.** (`scripts/earn-sim/*`,
+  `apps/web/src/lib/earn/*.test.ts`, `apps/web/src/lib/solana/wallet.test.ts`)
+- **Docs/spec:** `specs/077-live-earn/{research,plan,tasks}.md`. Live execution remains simulated
+  until the owner approves a funded test wallet; Rhea stays the 071 preview/link-out.
+
 ### Added (feature-freeze dry run v9 — dual-access multi-chain)
 
 - **One credible freeze story on the pages and in Sparky.** The manual `/swap` page now follows the wallet's supported EVM chain (Base or Robinhood Chain on the beta build) instead of clamping every tester to Robinhood Chain, and it says plainly that cross-chain routes (USDC→BTC, ETH→Base, USDC→SOL) run through Sparky's NEAR Intents rail. `/vault` now surfaces the same data-driven earn registry Sparky reads — **Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR** — with chain filters, protocol/chain badges and honest rail states; the curated board remains below it. The top bar reports network **status** only (no switcher/bridge menu), and Connect shows the real Meteor mark, the MetaMask fox when MetaMask is the injected provider, and a distinct Browser-wallet glyph without duplicate rows. (`apps/web/src/app/(app)/swap/page.tsx`, `apps/web/src/lib/swap/useSwapConfirm.ts`, `apps/web/src/app/(app)/vault/page.tsx`, `apps/web/src/components/vault/EarnAcrossChains.tsx`, `apps/web/src/lib/earn/useEarnVaults.ts`, `apps/web/src/components/shell/TopBar.tsx`, `apps/web/src/app/connect/page.tsx`)
