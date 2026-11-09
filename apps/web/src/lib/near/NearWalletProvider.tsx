@@ -26,7 +26,9 @@ import {
   type NearSignMessageParams,
   type NearSignedMessage,
   type NearWalletAdapter,
+  type SendTransactionsOptions,
 } from "./adapter";
+import type { NearTransaction, NearTransactionOutcome } from "./burrow.ts";
 import { nearNetworkFromEnv, nearRpcUrlFromEnv, type NearNetwork } from "./network";
 
 export type NearWalletStatus = "idle" | "connecting" | "connected";
@@ -40,6 +42,12 @@ export interface NearWalletContextValue {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   signMessage: (params: NearSignMessageParams) => Promise<NearSignedMessage>;
+  /** 078 — live earn confirm only. Re-checks the connected account immediately before the wallet call. */
+  getConnectedAccount: () => Promise<NearAccount | null>;
+  sendTransactions: (
+    transactions: readonly NearTransaction[],
+    options?: SendTransactionsOptions,
+  ) => Promise<NearTransactionOutcome[]>;
 }
 
 const NearWalletContext = createContext<NearWalletContextValue | null>(null);
@@ -111,9 +119,38 @@ export function NearWalletProvider({ children }: { children: ReactNode }) {
     [adapter],
   );
 
+  const getConnectedAccount = useCallback(async () => adapter().getConnectedAccount(), [adapter]);
+  const sendTransactions = useCallback(
+    async (transactions: readonly NearTransaction[], options?: SendTransactionsOptions) =>
+      adapter().sendTransactions(transactions, options),
+    [adapter],
+  );
+
   const value = useMemo<NearWalletContextValue>(
-    () => ({ accountId, network, rpcUrl, status, error, connect, disconnect, signMessage }),
-    [accountId, network, rpcUrl, status, error, connect, disconnect, signMessage],
+    () => ({
+      accountId,
+      network,
+      rpcUrl,
+      status,
+      error,
+      connect,
+      disconnect,
+      signMessage,
+      getConnectedAccount,
+      sendTransactions,
+    }),
+    [
+      accountId,
+      network,
+      rpcUrl,
+      status,
+      error,
+      connect,
+      disconnect,
+      signMessage,
+      getConnectedAccount,
+      sendTransactions,
+    ],
   );
 
   return <NearWalletContext.Provider value={value}>{children}</NearWalletContext.Provider>;

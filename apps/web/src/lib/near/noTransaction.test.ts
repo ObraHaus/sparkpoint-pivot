@@ -157,10 +157,20 @@ test("the injected e2e mock is the adapter and its throwing transaction methods 
   assert.deepEqual(log.calls, ["connect", "signMessage", "disconnect"]);
 });
 
-test("source guard: no NEAR module or surface calls a transaction method", () => {
-  const files = ["adapter.ts", "NearWalletProvider.tsx", "recipient.ts", "rhea.ts", "phaseC.ts"];
+test("source guard: login/preview modules never call a transaction method", () => {
+  // 078 adds ONE explicit transaction capability (`adapter.ts` → wallet). Everything on the login,
+  // NEP-413 and preview paths stays transaction-free.
+  const loginPathFiles = [
+    "NearWalletProvider.tsx",
+    "recipient.ts",
+    "rhea.ts",
+    "phaseC.ts",
+    "useNearLogin.ts",
+    "login.ts",
+    "login-server.ts",
+  ];
   const here = fileURLToPath(new URL(".", import.meta.url));
-  for (const file of files) {
+  for (const file of loginPathFiles) {
     const source = readFileSync(resolve(here, file), "utf8");
     assert.equal(
       /\.(signAndSendTransaction|signAndSendTransactions|signTransaction)\s*\(/.test(source),
@@ -168,4 +178,21 @@ test("source guard: no NEAR module or surface calls a transaction method", () =>
       `${file} must not call a NEAR transaction method`,
     );
   }
+});
+
+test("source guard: the only wallet transaction call is inside adapter sendTransactions", () => {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const source = readFileSync(resolve(here, "adapter.ts"), "utf8");
+  const calls = source.match(/\.(signAndSendTransaction|signAndSendTransactions)\s*\(/g) ?? [];
+  assert.equal(calls.length, 2, "adapter has exactly the wallet mock + wallet transaction calls");
+  assert.match(
+    source,
+    /async sendTransactions\([\s\S]*signAndSendTransactions\s*\(/,
+    "the transaction calls live inside the explicit sendTransactions boundary",
+  );
+  const signMessageStart = source.indexOf("async signMessage(");
+  assert.notEqual(signMessageStart, -1);
+  const nextMethod = source.indexOf("\n  async ", signMessageStart + 1);
+  const signMessageBody = source.slice(signMessageStart, nextMethod === -1 ? undefined : nextMethod);
+  assert.doesNotMatch(signMessageBody, /signAndSend/, "signMessage must not call a transaction method");
 });

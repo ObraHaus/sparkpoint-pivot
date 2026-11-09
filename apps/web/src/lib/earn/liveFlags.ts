@@ -4,11 +4,13 @@
  * Both access points (the /vault page's earn rows and Sparky's earn card) build their links with
  * `liveEarnHref`, so they can never drift into two different flows. The flags are OFF by default:
  * a live deposit/withdraw surface only appears when the build explicitly opts in with
- * `NEXT_PUBLIC_EARN_LIVE_KAMINO` / `NEXT_PUBLIC_EARN_LIVE_MORPHO` set to exactly "true". The
- * server-side build proxy additionally requires `EARN_LIVE_KAMINO` / `EARN_LIVE_MORPHO`.
+ * `NEXT_PUBLIC_EARN_LIVE_KAMINO` / `NEXT_PUBLIC_EARN_LIVE_MORPHO` / `NEXT_PUBLIC_EARN_LIVE_RHEA`
+ * set to exactly "true". The server-side build proxy additionally requires `EARN_LIVE_KAMINO` /
+ * `EARN_LIVE_MORPHO`, and the Rhea preflight/receipt routes require `EARN_LIVE_RHEA`. The flags are
+ * independent and all default off.
  */
 
-export type LiveEarnProtocol = "kamino" | "morpho";
+export type LiveEarnProtocol = "kamino" | "morpho" | "rhea";
 export type LiveEarnMode = "deposit" | "withdraw";
 
 /** True only for the exact string "true" (case/whitespace tolerant). Anything else is off. */
@@ -26,9 +28,16 @@ export function morphoLiveEnabledFromEnv(): boolean {
   return liveEarnEnabled(process.env.NEXT_PUBLIC_EARN_LIVE_MORPHO);
 }
 
+/** The build-time Rhea switch (Next inlines the `NEXT_PUBLIC_*` read). Server gate stays separate. */
+export function rheaLiveEnabledFromEnv(): boolean {
+  return liveEarnEnabled(process.env.NEXT_PUBLIC_EARN_LIVE_RHEA);
+}
+
 /** True when the build has the live entry points for this protocol enabled. */
 export function protocolLiveEnabled(protocol: LiveEarnProtocol): boolean {
-  return protocol === "kamino" ? kaminoLiveEnabledFromEnv() : morphoLiveEnabledFromEnv();
+  if (protocol === "kamino") return kaminoLiveEnabledFromEnv();
+  if (protocol === "morpho") return morphoLiveEnabledFromEnv();
+  return rheaLiveEnabledFromEnv();
 }
 
 /**

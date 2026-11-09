@@ -30,6 +30,7 @@ import {
   kaminoLiveEnabledFromEnv,
   liveEarnHref,
   morphoLiveEnabledFromEnv,
+  rheaLiveEnabledFromEnv,
 } from "@/lib/earn/liveFlags";
 import { findKaminoVault } from "@/lib/earn/kaminoLive";
 import { findMorphoVault } from "@/lib/earn/morphoLive";
@@ -121,7 +122,7 @@ function RailChips({ vault }: { vault: EarnVault }) {
   );
 }
 
-function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | null {
+function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | "rhea" | null {
   const protocol = protocolOf(vault);
   // Only link to the one shared live flow when this exact registry row is on the curated
   // allowlist; otherwise the CTA would silently open a different vault/asset.
@@ -140,6 +141,10 @@ function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | null {
     findMorphoVault(vault.address) !== null
   ) {
     return "morpho";
+  }
+  // 078 — Rhea same-chain NEAR rail. Its /vault/live branch is server-gated too.
+  if (protocol === "rhea" && vault.chain === "near" && rheaLiveEnabledFromEnv()) {
+    return "rhea";
   }
   return null;
 }

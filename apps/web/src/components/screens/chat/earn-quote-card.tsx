@@ -45,6 +45,7 @@ import {
   kaminoLiveEnabledFromEnv,
   liveEarnHref,
   morphoLiveEnabledFromEnv,
+  rheaLiveEnabledFromEnv,
 } from "@/lib/earn/liveFlags";
 import { findKaminoVault } from "@/lib/earn/kaminoLive";
 import { findMorphoVault } from "@/lib/earn/morphoLive";
@@ -549,8 +550,25 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Deposit
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                Live deposits coming soon (phase C). This preview is not signable.
+                This cross-chain 1Click preview is not signable (phase C deferred). A separate
+                same-chain NEAR rail is available when enabled.
               </div>
+              {rheaLiveEnabledFromEnv() && (
+                <a
+                  data-testid="earn-rhea-live-link"
+                  href={liveEarnHref({
+                    protocol: "rhea",
+                    chain: vault.chain,
+                    vault: vault.address,
+                    asset: vault.asset.symbol,
+                    mode: "deposit",
+                  })}
+                  className="btn btn-primary btn-sm"
+                  style={{ justifySelf: "start" }}
+                >
+                  Supply or withdraw USDC on NEAR (same-chain)
+                </a>
+              )}
             </div>
           )}
 
