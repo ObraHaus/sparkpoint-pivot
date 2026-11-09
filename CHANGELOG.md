@@ -14,6 +14,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The current demo run of show now matches the dual-access, multi-chain beta.** `docs/demo/072-hackathon-demo.md` names the real beta URL (`https://beta.sparkpoint.io`), maps each capability to its manual page and Sparky prompt, and separates what works now from what is preview-only, built-behind-a-flag, or simulated. It adds the 078 same-chain Rhea flow, the 079 cross-chain Rhea review (withdraw as a guided review of the documented Rhea SDK paths), and a withdraw-posture table. A new `docs/demo/hackathon-submission-one-pager.md` is the public-safe submission summary: dual access, NEAR Intents 1Click swaps, Morpho/Kamino/Rhea rails, the read-only portfolio, flags-off live earn, non-custody, and the honest preview-vs-live line. Sparky's knowledge seeds and tips now carry the same beta URL, dual-access map, live-earn flag list (all default off) and withdraw postures. (`docs/demo/072-hackathon-demo.md`, `docs/demo/hackathon-submission-one-pager.md`, `services/agent/knowledge_seed/{multichain-dual-access,sparky-capabilities,platform-surfaces,beta-questions}.md`, `services/agent/knowledge_seed_tips/{multichain-earn,hackathon-demo}.md`)
 
+### Removed (1109 — public landing: brokers section + mint-whitelist CTAs)
+
+- **The public landing no longer pitches Sparky Brokers or the mint whitelist.** Per the GC request
+  (Isma, 2026-11-09), the landing (`NewEraLanding`) drops the entire Sparky Brokers membership
+  section — the broker art, Unactivated/Activated gold-frame preview toggle, OpenSea link and
+  "Membership · not just a collectible" copy — along with every "Apply for mint whitelist" CTA in
+  the hero, that section and the footer. The `/mint-whitelist` page itself, its middleware public
+  allowlists and the admin/apply endpoints are unchanged and still reachable directly. The WebGL
+  pose choreography and progress dots were remapped across the remaining sections (Welcome →
+  Proposes → Guardrails → Sign → Vault → Proof) so there is no dead scroll band. (`apps/web/src/components/screens/landing/{NewEraLanding.tsx,new-era.css}`)
+
+
 ### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)
 
 - **Live direct deposit/withdraw is built behind flags, and the wallet is the only signer.** A new

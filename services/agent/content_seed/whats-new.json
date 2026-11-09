@@ -10,6 +10,14 @@
       "published_at": "2026-11-09T09:47:47Z"
     },
     {
+      "slug": "landing-remove-brokers-1109-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A cleaner public landing: no Brokers pitch or mint-whitelist buttons",
+      "body": "The public landing page now focuses on the product itself. The Sparky Brokers membership section \u2014 the broker artwork, the Unactivated/Activated preview, the OpenSea link and the mint-whitelist buttons in the hero and footer \u2014 has been removed at the team's request. The page still walks through how Sparky proposes moves, checks guardrails, lets you sign, and keeps the vaults self-custodial, with a smoother scroll sequence across the remaining sections. If you already have a mint-whitelist link, the /mint-whitelist page still works. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "published_at": "2026-11-09T04:00:00Z"
+    },
+    {
       "slug": "live-earn-kamino-morpho-2026-11",
       "type": "changelog",
       "tag": "New",
