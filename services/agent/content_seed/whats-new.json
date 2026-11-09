@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "rhea-near-direct-earn-078-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Supply and withdraw USDC on NEAR directly with your NEAR wallet",
+      "body": "A new same-chain NEAR rail lets you supply native USDC to Rhea (Burrow) and withdraw it using your own NEAR wallet. The flow is review-first: you see the exact amount, the Burrow contract, the USDC token, any one-time storage deposit, the gas reserve and the current block before anything is signed. You must tick a confirmation and approve in your wallet; if the connected NEAR account changes in between, the app refuses to send. After sending, the app checks the chain and reports confirmed, failed or still pending honestly. This is same-chain NEAR only \u2014 it is not the cross-chain Rhea/1Click deposit, which remains deferred. The feature is off by default in this build, and SparkPoint never holds your funds or adds an access key.",
+      "published_at": "2026-11-09T12:00:00Z"
+    },
+    {
       "slug": "freeze-dual-access-multichain-2026-11",
       "type": "changelog",
       "tag": "Improved",

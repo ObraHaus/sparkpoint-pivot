@@ -29,6 +29,8 @@ import {
   shouldOfferRheaSign,
 } from "@/lib/near/phaseC";
 import { rheaAccountSourceLabel, selectRheaAccount } from "@/lib/near/rhea";
+import { publicLiveRheaEnabled } from "@/lib/near/liveEarn";
+import { toHref } from "@/lib/nav";
 import { formatEta, formatHumanAmount, formatUsd } from "@/lib/crosschain/format";
 import {
   chainLabel,
@@ -517,8 +519,19 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Deposit
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                Live deposits coming soon (phase C). This preview is not signable.
+                This cross-chain 1Click preview is not signable (phase C deferred). A separate
+                same-chain NEAR rail is available when enabled.
               </div>
+              {publicLiveRheaEnabled() && (
+                <a
+                  data-testid="earn-rhea-live-link"
+                  href={toHref("vault/live")}
+                  className="btn btn-primary btn-sm"
+                  style={{ justifySelf: "start" }}
+                >
+                  Supply or withdraw USDC on NEAR (same-chain)
+                </a>
+              )}
             </div>
           )}
 

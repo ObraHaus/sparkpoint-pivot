@@ -26,6 +26,7 @@ import {
   vaultAppUrl,
 } from "@/lib/earn/format";
 import type { EarnProtocol, EarnVault } from "@sparkpoint/shared/schemas";
+import { publicLiveRheaEnabled } from "@/lib/near/liveEarn";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -119,6 +120,8 @@ function VaultRow({ vault }: { vault: EarnVault }) {
   const appUrl = vaultAppUrl(vault);
   const previewHref = `${toHref("chat")}?ask=${encodeURIComponent(previewPrompt(vault))}`;
   const noRail = vault.rails.available.length === 0;
+  // 078 — the same-chain NEAR rail, shown only when this build opted in. Its page is server-gated too.
+  const liveRheaHref = protocol === "rhea" && vault.chain === "near" && publicLiveRheaEnabled() ? toHref("vault/live") : null;
 
   return (
     <div
@@ -162,6 +165,11 @@ function VaultRow({ vault }: { vault: EarnVault }) {
           <a className="btn btn-outline btn-sm" href={previewHref}>
             <Icon name="chat" size={13} /> Preview in Sparky
           </a>
+          {liveRheaHref && (
+            <a className="btn btn-primary btn-sm" href={liveRheaHref} data-testid="earn-rhea-live">
+              <Icon name="door" size={13} /> Live supply / withdraw
+            </a>
+          )}
           {appUrl && (
             <a className="btn btn-ghost btn-sm" href={appUrl} target="_blank" rel="noopener noreferrer">
               Open {protocolLabel(protocol)} <Icon name="ext" size={11} />
