@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Docs (081 — hackathon demo + submission one-pager)
+
+- **The current demo run of show now matches the dual-access, multi-chain beta.** `docs/demo/072-hackathon-demo.md` names the real beta URL (`https://beta.sparkpoint.io`), maps each capability to its manual page and Sparky prompt, and separates what works now from what is preview-only, built-behind-a-flag, or simulated. It adds the 078 same-chain Rhea flow, the 079 cross-chain Rhea review (withdraw as a guided review of the documented Rhea SDK paths), and a withdraw-posture table. A new `docs/demo/hackathon-submission-one-pager.md` is the public-safe submission summary: dual access, NEAR Intents 1Click swaps, Morpho/Kamino/Rhea rails, the read-only portfolio, flags-off live earn, non-custody, and the honest preview-vs-live line. Sparky's knowledge seeds and tips now carry the same beta URL, dual-access map, live-earn flag list (all default off) and withdraw postures. (`docs/demo/072-hackathon-demo.md`, `docs/demo/hackathon-submission-one-pager.md`, `services/agent/knowledge_seed/{multichain-dual-access,sparky-capabilities,platform-surfaces,beta-questions}.md`, `services/agent/knowledge_seed_tips/{multichain-earn,hackathon-demo}.md`)
+
 ### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)
 
 - **Live direct deposit/withdraw is built behind flags, and the wallet is the only signer.** A new

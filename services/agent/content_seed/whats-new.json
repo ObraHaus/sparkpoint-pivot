@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "hackathon-demo-beta-map-081-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "A clearer map of the multi-chain beta",
+      "body": "The beta at beta.sparkpoint.io now tells one consistent multi-chain story on the manual pages and in Sparky chat. The Swap page is the same-network EVM swap on your connected wallet, while cross-chain routes (USDC to BTC, ETH to Base, USDC to SOL) run through NEAR Intents in chat with a preview first. The Vault page shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana, and Rhea on NEAR, with honest notes when a rail is a preview or needs a funded wallet. Portfolio keeps reading across chains without asking you to switch networks. Live deposit and withdraw reviews for Kamino, Morpho and Rhea are built but off by default; when an operator enables a flag you review an unsigned transaction and sign it in your own wallet. SparkPoint never signs, submits or holds your funds, and no funded execution is claimed until an owner-approved funded test.",
+      "published_at": "2026-11-09T09:47:47Z"
+    },
+    {
       "slug": "live-earn-kamino-morpho-2026-11",
       "type": "changelog",
       "tag": "New",
