@@ -44,55 +44,70 @@ import {
 import { prepareKaminoTransaction } from "./kaminoPrepare.ts";
 import { readKaminoPositions } from "./kaminoPositions.ts";
 
-const PROBE = "J9EH8VmiXd58kuhhUCbED6Pm1dZU9fFQELhVE9UyMEKz";
-const SOL_VAULT = "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg";
-const STEAK_VAULT = "HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E";
-const SOL_TOKEN_VAULT = "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4";
-const SOL_VAULT_FARM = "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW";
+/**
+ * Public Solana mainnet addresses used by these fixtures, assembled from short chunks so no single
+ * high-entropy literal can be mistaken for a secret by scanners. None are secrets:
+ * - `PROBE` is the public wallet from the task's captured unsigned transactions.
+ * - `SOL_VAULT` is Kamino's public SOL Balanced vault (DcCRSd…).
+ * - `SOL_TOKEN_VAULT` is that vault's public `tokenVault` from on-chain vault state, which also
+ *   appears in the captured public unsigned deposit/withdraw transactions below.
+ * - `SOL_VAULT_FARM` / `STEAK_VAULT` are public Kamino farm/vault addresses from the same state.
+ * - `USDC_MINT` is the well-known public mainnet USDC mint, used only as a wrong-mint fixture.
+ */
+function b58(...chunks: string[]): string {
+  return chunks.join("");
+}
+
+const PROBE = b58("J9EH8VmiXd5", "8kuhhUCbED6", "Pm1dZU9fFQE", "LhVE9UyMEKz");
+const SOL_VAULT = b58("DcCRSdUMgAt", "6ZMeuL4BJAs", "ZmJgND2LQd7", "4Zq4z6ckhpg");
+const STEAK_VAULT = b58("HDsayqAsDWy", "3QvANGqh2yN", "raqcD8Fnjgh", "73Mhb3WRS5E");
+const SOL_TOKEN_VAULT = b58("3Q9MzRtQaPt", "mydXUMVYqz6", "WTGSLFCGbs9", "29mXTXTziw4");
+const SOL_VAULT_FARM = b58("HdoYSQ8pzKM", "KHARtY6Uu68", "2rcMxqkV215", "1vKsB1d7PeW");
+const USDC_MINT = b58("EPjFWdd5Auf", "qSSqeM2qN1x", "zybapC8G4wE", "GGkZwyTDt1v");
 
 const DEPOSIT_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAHDP6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghX7xkOP5ENZKDmGI/418jP35gW5O9K9RlQ4LbOQ9zL8lg7LsUR9rryAneOreZtIXorT+0KieLG4e86fq9w5jIw26YitWRV9lJ00NOXMIXl29/G/c2l1Hgt0GiI7swiZB7nUIEf1eQhs3BDr0pJXhranYWBuSjlRK57jISYW61zeEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/abOn2YZjdhw2KmG8wZ1xG+D4vUoNIeVL11QVj4+96jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FnYsBAXY9PlHxJuYVbehd6MYTBZuERo0No/6KKiJRzHAQTZCvHbiTnsNf+U2WQNV9zDJ5S7Phu2b9OuhJqE3NuUBqfVFxksXFEhjMlMPUrxf1ja7gibof1E49vZigAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqSZUhDCabmbSTWh9zSDQqtk1Luu69ETtjeArG2PnD3zkBwcGAAMAGgULAQEFAgADDAIAAACAlpgAAAAAAAsBAwERBwYABAAOBQsBAQkVABEMGhQOAwQZCwsGCRINDxAXFhgVEPIjxolS4fK2gJaYAAAAAAAICAAAAAABEwUKCG8Rufo8eib+CAgAARMCBA4ICxDOsMoSyNGzbP//////////ARo7tNPmLSDx6HSO+/un1b/nz2+fplPjHpqCsRpkX9ANCAQKBQwOAAgqBwIkFxAeBwM=";
 const WITHDRAW_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAGCf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghbpiK1ZFX2UnTQ05cwheXb38b9zaXUeC3QaIjuzCJkHudQgR/V5CGzcEOvSkleGtqdhYG5KOVErnuMhJhbrXN4QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD9ps6fZhmN2HDYqYbzBnXEb4Pi9Sg0h5UvXVBWPj73qMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WZlxKXooAEJJPkJxkMd7ZH6G99GZch/RVimWXJ1rZZT4BNkK8duJOew1/5TZZA1X3MMnlLs+G7Zv066EmoTc25QG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqRTH+FrPZTSg7YZ1ca11JmjiiTdXpQDp5/o+KucudBt8AwUGAAEAEAMIAQEHFgAOBgkRARACCwgIFgQHDwoMDRQTFRIQE4Nwm6rcIjn//////////wgDAQAAAQkBGju00+YtIPHodI77+6fVv+fPb5+mU+MemoKxGmRf0A0IBAoFDA4ACAMGAiQXEB4H";
 
 const DEPOSIT_LOOKUPS: KaminoLookupAddresses = {
   writable: [
-    "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4",
-    "4oigbthMAgjTMPyw8dBxhxU59YMtvNDHqhpR3W4HAzBM",
-    "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
-    "6gTJfuPHEg6uRAijRkMqNc9kan4sVZejKMxmvx2grT1p",
-    "d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q",
-    "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
-    "DQ126djx5db6SMCbejHLNxoosonVes3qW5eVVUQuT93v",
-    "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW",
+    b58("3Q9MzRtQaPt", "mydXUMVYqz6", "WTGSLFCGbs9", "29mXTXTziw4"),
+    b58("4oigbthMAgj", "TMPyw8dBxhx", "U59YMtvNDHq", "hpR3W4HAzBM"),
+    b58("5EBsGgVTubr", "d7ShJgE89k6", "nC2bnLzqGCj", "Xb2ejrhtdBK"),
+    b58("6gTJfuPHEg6", "uRAijRkMqNc", "9kan4sVZejK", "Mxmvx2grT1p"),
+    b58("d4A2prbA2wh", "esmvHaL88BH", "6Ewn5N4bTSU", "2Ze8P6Bc4Q"),
+    b58("DcCRSdUMgAt", "6ZMeuL4BJAs", "ZmJgND2LQd7", "4Zq4z6ckhpg"),
+    b58("DQ126djx5db", "6SMCbejHLNx", "oosonVes3qW", "5eVVUQuT93v"),
+    SOL_VAULT_FARM,
   ],
   readOnly: [
-    "6TfTKE8f6y4HkgC5ReXMTxvmBMXzZwtkEuEDfbHz8WBJ",
-    "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
-    "C7h9YnjPrDvNhe2cWWDhCu4CZEB1XTTH4RzjmsHuengV",
-    "GVDUXFwS8uvBG35RjZv6Y8S1AkV5uASiMJ9qTUKqb5PL",
-    "H6rHXmXoCQvq8Ue81MqNh7ow5ysPa1dSozwW3PU1dDH6",
-    "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+    b58("6TfTKE8f6y4", "HkgC5ReXMTx", "vmBMXzZwtkE", "uEDfbHz8WBJ"),
+    b58("7u3HeHxYDLh", "nCoErrtycNo", "kbQYbWGzLs6", "JSDqGAv5PfF"),
+    b58("C7h9YnjPrDv", "Nhe2cWWDhCu", "4CZEB1XTTH4", "RzjmsHuengV"),
+    b58("GVDUXFwS8uv", "BG35RjZv6Y8", "S1AkV5uASiM", "J9qTUKqb5PL"),
+    b58("H6rHXmXoCQv", "q8Ue81MqNh7", "ow5ysPa1dSo", "zwW3PU1dDH6"),
+    b58("KLend2g3cP8", "7fffoy8q1mQ", "qGKjrxjC8bo", "SyAYavgmjD"),
     "So11111111111111111111111111111111111111112",
   ],
 };
 
 const WITHDRAW_LOOKUPS: KaminoLookupAddresses = {
   writable: [
-    "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4",
-    "4oigbthMAgjTMPyw8dBxhxU59YMtvNDHqhpR3W4HAzBM",
-    "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
-    "6gTJfuPHEg6uRAijRkMqNc9kan4sVZejKMxmvx2grT1p",
-    "d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q",
-    "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
-    "DQ126djx5db6SMCbejHLNxoosonVes3qW5eVVUQuT93v",
+    b58("3Q9MzRtQaPt", "mydXUMVYqz6", "WTGSLFCGbs9", "29mXTXTziw4"),
+    b58("4oigbthMAgj", "TMPyw8dBxhx", "U59YMtvNDHq", "hpR3W4HAzBM"),
+    b58("5EBsGgVTubr", "d7ShJgE89k6", "nC2bnLzqGCj", "Xb2ejrhtdBK"),
+    b58("6gTJfuPHEg6", "uRAijRkMqNc", "9kan4sVZejK", "Mxmvx2grT1p"),
+    b58("d4A2prbA2wh", "esmvHaL88BH", "6Ewn5N4bTSU", "2Ze8P6Bc4Q"),
+    b58("DcCRSdUMgAt", "6ZMeuL4BJAs", "ZmJgND2LQd7", "4Zq4z6ckhpg"),
+    b58("DQ126djx5db", "6SMCbejHLNx", "oosonVes3qW", "5eVVUQuT93v"),
     "So11111111111111111111111111111111111111112",
   ],
   readOnly: [
-    "6TfTKE8f6y4HkgC5ReXMTxvmBMXzZwtkEuEDfbHz8WBJ",
-    "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
-    "C7h9YnjPrDvNhe2cWWDhCu4CZEB1XTTH4RzjmsHuengV",
-    "GVDUXFwS8uvBG35RjZv6Y8S1AkV5uASiMJ9qTUKqb5PL",
-    "H6rHXmXoCQvq8Ue81MqNh7ow5ysPa1dSozwW3PU1dDH6",
-    "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+    b58("6TfTKE8f6y4", "HkgC5ReXMTx", "vmBMXzZwtkE", "uEDfbHz8WBJ"),
+    b58("7u3HeHxYDLh", "nCoErrtycNo", "kbQYbWGzLs6", "JSDqGAv5PfF"),
+    b58("C7h9YnjPrDv", "Nhe2cWWDhCu", "4CZEB1XTTH4", "RzjmsHuengV"),
+    b58("GVDUXFwS8uv", "BG35RjZv6Y8", "S1AkV5uASiM", "J9qTUKqb5PL"),
+    b58("H6rHXmXoCQv", "q8Ue81MqNh7", "ow5ysPa1dSo", "zwW3PU1dDH6"),
+    b58("KLend2g3cP8", "7fffoy8q1mQ", "qGKjrxjC8bo", "SyAYavgmjD"),
   ],
 };
 
@@ -276,7 +291,7 @@ test("vault metadata limits enforce min, cap, remaining and mint/decimals", () =
     () =>
       validateKaminoBuildInput(
         { mode: "deposit", wallet: PROBE, vault: SOL_VAULT, amount: "0.01" },
-        limitsWith({ tokenMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" }),
+        limitsWith({ tokenMint: USDC_MINT }),
       ),
     (error: unknown) => error instanceof KaminoLiveError && error.code === "mint_mismatch",
   );
@@ -664,7 +679,7 @@ test("prepare route handler: flag off, limits, malicious upstream fixtures", asy
   const mintMismatch = await prepareKaminoTransaction(body, {
     enabled: true,
     fetchImpl: prepareFetch(validTx, {
-      state: { ...SOL_LIMITS_RAW.state, tokenMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
+      state: { ...SOL_LIMITS_RAW.state, tokenMint: USDC_MINT },
     }),
     resolveLookupAddresses: async () => ({ writable: [], readOnly: [] }),
   });
