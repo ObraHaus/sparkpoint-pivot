@@ -14,7 +14,9 @@ import { isValidNearAccountId } from "./account.ts";
 
 /** Pinned authoritative IDs. Anything else is refused, never swapped in silently. */
 export const BURROW_CONTRACT = "contract.main.burrow.near";
-export const USDC_TOKEN_ID = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+// Official public NEAR native USDC NEP-141 mainnet contract id (from the Rhea/Burrow docs) — a
+// production constant, NOT a secret. Kept as the full literal so it stays auditable.
+export const USDC_TOKEN_ID = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"; // gitleaks:allow (public USDC NEP-141 contract id, not a secret)
 export const USDC_SYMBOL = "USDC";
 export const USDC_DECIMALS = 6;
 /** Burrow inner units = token decimals + `config.extra_decimals` (verified live: 12). */

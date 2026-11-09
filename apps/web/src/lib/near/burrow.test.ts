@@ -31,7 +31,8 @@ const ACCOUNT = "sparkpoint2026.near";
 
 test("pinned IDs verified live: Burrow contract and native USDC", () => {
   assert.equal(BURROW_CONTRACT, "contract.main.burrow.near");
-  assert.equal(USDC_TOKEN_ID, "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1");
+  // Official public NEAR native USDC NEP-141 mainnet contract id — pinned here on purpose.
+  assert.equal(USDC_TOKEN_ID, "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"); // gitleaks:allow (public USDC NEP-141 contract id, not a secret)
   assert.equal(USDC_DECIMALS, 6);
   assert.equal(isAllowedContract(BURROW_CONTRACT), true);
   assert.equal(isAllowedContract(USDC_TOKEN_ID), true);

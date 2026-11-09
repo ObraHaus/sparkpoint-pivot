@@ -15,7 +15,8 @@ const RPC_URL = process.env.NEAR_RPC_URL || "https://rpc.mainnet.near.org";
 const ACCOUNT = process.argv[2] || "sparkpoint2026.near";
 
 const BURROW = "contract.main.burrow.near";
-const USDC = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+// Official public NEAR native USDC NEP-141 mainnet contract id (Rhea/Burrow docs) — not a secret.
+const USDC = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"; // gitleaks:allow (public USDC NEP-141 contract id, not a secret)
 const USDC_DECIMALS = 6;
 const EXTRA_DECIMALS = 12;
 const GAS_STORAGE = "30000000000000";

@@ -13,6 +13,7 @@ import {
   serverLiveRheaEnabled,
   type PreflightReview,
 } from "./liveEarn.ts";
+import { USDC_TOKEN_ID } from "./burrow.ts";
 
 const review: PreflightReview = {
   action: "supply",
@@ -25,9 +26,9 @@ const review: PreflightReview = {
   supplied: null,
   storage: { registersBurrowAccount: false, registersTokenReceiver: false, totalNear: "0" },
   contract: "contract.main.burrow.near",
-  token: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+  token: USDC_TOKEN_ID,
   blockHeight: 223_700_000,
-  blockHash: "43TqrXAK1bVLtpYFbETsM9zKkLYH2PygXhGg9s3v3g2U",
+  blockHash: "TestBlockHash111111111111111111111111111",
   checkedAtMs: 1_000,
 };
 
@@ -68,7 +69,7 @@ test("the market pins the same-chain contract/token and names the deferred path"
   assert.equal(RHEA_LIVE_MARKET.protocol, "rhea");
   assert.equal(RHEA_LIVE_MARKET.chain, "near");
   assert.equal(RHEA_LIVE_MARKET.contract, "contract.main.burrow.near");
-  assert.equal(RHEA_LIVE_MARKET.token, "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1");
+  assert.equal(RHEA_LIVE_MARKET.token, USDC_TOKEN_ID);
   assert.equal(RHEA_LIVE_MARKET.appUrl, "https://app.rhea.finance/lending");
 });
 
@@ -98,7 +99,7 @@ test("review lines show the signer, contract, token, balances and freshness", ()
   assert.equal(byKey.account, "sparkpoint2026.near");
   assert.equal(byKey.amount, "25 USDC");
   assert.equal(byKey.contract, "contract.main.burrow.near");
-  assert.match(byKey.token, /^17208628/);
+  assert.equal(byKey.token, USDC_TOKEN_ID);
   assert.match(byKey["token-balance"], /100 USDC/);
   assert.match(byKey["near-balance"], /1\.5 NEAR/);
   assert.match(byKey.freshness, /223700000/);
