@@ -34,12 +34,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `services/agent/src/sparkpoint_agent/api/earn.py`,
   `services/agent/src/sparkpoint_agent/coordinator/chat_blocks.py`,
   `packages/shared/src/schemas/chat-block.ts`)
-- **Withdraw is an honest review, not a transaction.** The new `/earn/rhea/xchain/withdraw` lists
-  the Rhea app link-out and the documented Rhea SDK `relayer` / `nearMcaWithdrawTx` paths as
-  documented-but-not-implemented, with sources, and states `nep413IsTransaction: false` and
-  `custodian: null`. No fake NEP-413-as-tx and no invented custodian.
-- **Flags default OFF** (`EARN_LIVE_RHEA_XCHAIN`, `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN`); the route
-  404s when both are off. Tests use mocked 1Click transports only (no live quote, no funds).
+- **Withdraw is a guided review, not a transaction.** `/earn/rhea/xchain/withdraw` lists the
+  documented Rhea SDK `relayer` / `nearMcaWithdrawTx` paths first and the Rhea app link-out only as
+  the last resort, with sources, required wallet/chain and step-by-step copy. It states
+  `nep413IsTransaction: false`, `custodian: null`, `signedBySparkPoint: false`, and says explicitly
+  that a link-out is NOT a SparkPoint-signed transaction. No fake NEP-413-as-tx and no invented
+  custodian. An unsigned in-app withdraw is not shipped because it needs a Rhea relayer credential
+  we do not hold; inventing one would be dishonest.
+- **Flags default OFF** (`EARN_LIVE_RHEA_XCHAIN`, `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN`); the page
+  and the review-only agent routes 404 when both are off, and live `dry=false` is a 403 unless the
+  server flag is on and `ONECLICK_API_KEY` is present. The browser validates the USDC amount and
+  only enables the wallet confirm when the connected wallet and chain match the prepared plan.
+  Tests use mocked 1Click transports only (no live quote, no funds).
   (`specs/079-rhea-xchain-mca/`, `docs/demo/079-rhea-xchain-mca.md`, `.env.example`)
 
 ### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)

@@ -42,6 +42,7 @@ from sparkpoint_agent.earn.rhea_xchain import (
     origin_token_address,
     withdraw_review,
     xchain_live_enabled,
+    xchain_surface_enabled,
 )
 from sparkpoint_agent.earn.service import EarnService
 
@@ -137,6 +138,14 @@ def test_xchain_flag_defaults_off_and_only_exact_on_values_enable() -> None:
     assert xchain_live_enabled({"EARN_LIVE_RHEA_XCHAIN": " TRUE "}) is True
 
 
+def test_surface_is_enabled_by_either_exact_true_flag() -> None:
+    assert xchain_surface_enabled({}) is False
+    assert xchain_surface_enabled({"EARN_LIVE_RHEA_XCHAIN": "false"}) is False
+    assert xchain_surface_enabled({"NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN": "1"}) is False
+    assert xchain_surface_enabled({"EARN_LIVE_RHEA_XCHAIN": "true"}) is True
+    assert xchain_surface_enabled({"NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN": "TRUE"}) is True
+
+
 def test_key_presence_is_a_boolean_only() -> None:
     assert oneclick_key_present({}) is False
     assert oneclick_key_present({"ONECLICK_API_KEY": "   "}) is False
@@ -223,8 +232,18 @@ def test_withdraw_review_is_honest_about_nep413_and_custody() -> None:
     review = withdraw_review()
     assert review["nep413IsTransaction"] is False
     assert review["custodian"] is None
-    ids = {path["id"] for path in review["paths"]}
-    assert ids == {"rhea_app", "rhea_relayer", "near_mca_withdraw_tx"}
+    assert review["signedBySparkPoint"] is False
+    assert review["inAppUnsigned"] is False
+    assert "relayer" in review["inAppUnsignedReason"]
+    assert review["requiredWallet"] and review["requiredChain"]
+    assert len(review["steps"]) >= 3
+    ids = [path["id"] for path in review["paths"]]
+    assert set(ids) == {"rhea_app", "rhea_relayer", "near_mca_withdraw_tx"}
+    # Documented SDK paths come first; the Rhea app link-out is the last resort.
+    assert ids[-1] == "rhea_app"
+    link = review["paths"][-1]
+    assert link["status"] == "link_out"
+    assert "not a SparkPoint-signed transaction" in link["note"]
     assert all("signature" not in path for path in review["paths"])
     assert any("rhea-sdk-docs" in source["url"] for source in review["sources"])
 
@@ -234,6 +253,7 @@ def test_withdraw_review_is_honest_about_nep413_and_custody() -> None:
 
 async def test_dry_review_still_works_with_flags_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EARN_LIVE_RHEA_XCHAIN", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN", raising=False)
     service, calls = _service(FakeViews(mca=MCA))
     outcome = await service.rhea_xchain_quote(
         chain="near",
@@ -255,6 +275,7 @@ async def test_live_commit_is_refused_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("EARN_LIVE_RHEA_XCHAIN", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN", raising=False)
     service, calls = _service(FakeViews(mca=MCA), api_key="presence-only")
     with pytest.raises(RheaXchainDisabled):
         await service.rhea_xchain_quote(
@@ -415,6 +436,7 @@ def _client(service: EarnService) -> TestClient:
 
 def test_api_gate_is_key_free(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EARN_LIVE_RHEA_XCHAIN", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN", raising=False)
     service, _ = _service(FakeViews(mca=MCA))
     client = _client(service)
     response = client.get("/earn/rhea/xchain")
@@ -430,6 +452,7 @@ def test_api_live_commit_is_403_when_the_flag_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("EARN_LIVE_RHEA_XCHAIN", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN", raising=False)
     service, _ = _service(FakeViews(mca=MCA), api_key="presence-only")
     client = _client(service)
     response = client.post(
@@ -468,7 +491,8 @@ def test_api_first_live_deposit_asks_for_a_signature(
     assert calls == []
 
 
-def test_api_withdraw_review_is_not_a_transaction() -> None:
+def test_api_withdraw_review_is_not_a_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EARN_LIVE_RHEA_XCHAIN", "true")
     service, _ = _service(FakeViews(mca=MCA))
     client = _client(service)
     response = client.get("/earn/rhea/xchain/withdraw")
@@ -476,3 +500,15 @@ def test_api_withdraw_review_is_not_a_transaction() -> None:
     body = response.json()
     assert body["nep413IsTransaction"] is False
     assert body["custodian"] is None
+    assert body["signedBySparkPoint"] is False
+    assert body["paths"][-1]["id"] == "rhea_app"
+
+
+def test_api_withdraw_review_is_404_when_the_surface_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EARN_LIVE_RHEA_XCHAIN", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN", raising=False)
+    service, _ = _service(FakeViews(mca=MCA))
+    client = _client(service)
+    assert client.get("/earn/rhea/xchain/withdraw").status_code == 404

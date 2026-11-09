@@ -19,6 +19,9 @@
   public flag is on.
 - [x] T008 Env example, specs, docs/demo note, CHANGELOG.
 - [x] T009 Tests: agent flags/gate/plan/withdraw/API; web flags/review/plan. Lint + unit tests.
+- [x] T015 Withdraw guided review (documented SDK paths first, Rhea app link-out last, required
+  wallet/chain + steps, `signedBySparkPoint=false`); review-only routes 404 when both flags off;
+  browser validates the amount and requires the connected wallet+chain to match the prepared plan.
 
 ## Funded acceptance (blocked, not coding)
 

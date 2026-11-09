@@ -27,6 +27,7 @@ from ..earn.rhea_xchain import (
     RheaXchainDisabled,
     RheaXchainError,
     RheaXchainSignatureRequired,
+    xchain_surface_enabled,
 )
 from ..earn.service import EarnService, build_service_from_env
 from .errors import ApiError, ErrorCode
@@ -305,7 +306,13 @@ async def rhea_xchain_withdraw_review(
     account: Annotated[AccountContext, Depends(get_account)],
     service: Annotated[EarnService | None, Depends(get_earn_service)],
 ) -> dict[str, Any]:
-    """The honest withdraw review (link-out + documented Rhea SDK paths). Nothing is signable."""
+    """The honest withdraw review (documented paths, link-out last). Nothing is signable.
+
+    Hidden (404) like 078's server-gated routes when neither cross-chain flag is on, so a browser
+    cannot reach the review surface on a deployment where the feature is disabled.
+    """
+    if not xchain_surface_enabled():
+        raise ApiError(ErrorCode.NOT_FOUND, "Not found.")
     svc = _require_service(service)
     return svc.rhea_xchain_withdraw_review()
 
@@ -319,6 +326,8 @@ async def rhea_xchain_status(
     limiter: Annotated[SlidingWindowLimiter, Depends(get_earn_limiter)],
 ) -> dict[str, Any]:
     """Read-only 1Click status for a deposit this caller prepared. Never submits anything."""
+    if not xchain_surface_enabled():
+        raise ApiError(ErrorCode.NOT_FOUND, "Not found.")
     _check_limit(limiter, account)
     svc = _require_service(service)
     try:

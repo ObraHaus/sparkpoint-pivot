@@ -44,9 +44,12 @@ It is **not** 078. **078 is the same-chain NEAR → Burrow rail** (a connected N
 - **R4 — Unsigned origin plan.** Derive the origin ERC-20 from the 1Click `nep141:<chain>-0x…` id,
   encode `transfer(depositAddress, amountRaw)`, and return it as data (`unsigned: true`). A
   non-EVM origin is an honest `unsupported` plan, not an invented transfer.
-- **R5 — Withdraw is honest.** No NEP-413-as-transaction and no invented custodian/relayer. The
-  review lists the Rhea app link-out and the documented SDK paths (`relayer`,
-  `nearMcaWithdrawTx`) as *documented but not implemented* here, with sources.
+- **R5 — Withdraw is a guided review.** No NEP-413-as-transaction and no invented custodian/relayer.
+  The review lists the documented SDK paths (`relayer`, `nearMcaWithdrawTx`) **first**, then the
+  Rhea app link-out **last**, with sources, required wallet/chain and step-by-step copy. It states
+  `nep413IsTransaction=false`, `custodian=null`, `signedBySparkPoint=false`, and that a link-out is
+  not a SparkPoint-signed transaction. An unsigned in-app withdraw is deliberately not shipped: it
+  would need a Rhea relayer credential the project does not hold.
 - **R6 — Status is read-only and owner-scoped.** `GET /earn/rhea/xchain/status` proxies 1Click
   status only for a deposit address this agent process prepared for the signed-in wallet.
 
@@ -67,8 +70,10 @@ It is **not** 078. **078 is the same-chain NEAR → Burrow rail** (a connected N
 4. A first-deposit live request without `signature` returns `requiresSignature=true` and makes no
    1Click call; with a signature it quotes and plans.
 5. `/vault` + Sparky both link to the same review when the public flag is on.
-6. Withdraw review has `nep413IsTransaction=false`, `custodian=null`, documented sources.
-7. Agent tests, web unit tests and lint pass (the pre-existing
+6. Withdraw review is a guided review: `nep413IsTransaction=false`, `custodian=null`,
+   `signedBySparkPoint=false`, documented SDK paths first, Rhea app link-out last, with sources.
+7. The review-only agent routes 404 when both flags are off; the page 404s too.
+8. Agent tests, web unit tests and lint pass (the pre-existing
    `SparkLogo.tsx` PNG-declaration typecheck error excepted).
 
 ## Funded acceptance blockers (not coding)
@@ -76,4 +81,4 @@ It is **not** 078. **078 is the same-chain NEAR → Burrow rail** (a connected N
 - A funded EVM wallet on Base/Ethereum (USDC + gas) to exercise a real origin transfer.
 - A live `ONECLICK_API_KEY` (value in the secret store only) and the Rhea/1Click credential wiring.
 - An owner decision to enable the flags after a funded test.
-- Sources: see `research.md` and `/home/hello/project/jobs/sparkpoint/1109-rhea-xchain/STATUS.md`.
+- Sources: see `research.md` and `/home/hello/project/jobs/sparkpoint/1109-079-finish/STATUS.md`.

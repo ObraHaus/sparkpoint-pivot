@@ -27,6 +27,7 @@ from typing import Any, Final
 from ..crosschain.config import CrossChainAsset
 
 XCHAIN_LIVE_FLAG_ENV: Final = "EARN_LIVE_RHEA_XCHAIN"
+XCHAIN_PUBLIC_FLAG_ENV: Final = "NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN"
 ONECLICK_KEY_ENV: Final = "ONECLICK_API_KEY"
 
 #: ERC-20 ``transfer(address,uint256)`` selector — a public constant, not a secret.
@@ -72,6 +73,16 @@ def _flag(source: Mapping[str, str], name: str, *, default: bool = False) -> boo
 def xchain_live_enabled(env: Mapping[str, str] | None = None) -> bool:
     """The server switch. Default OFF. Only the exact non-off spellings enable it."""
     return _flag(env if env is not None else os.environ, XCHAIN_LIVE_FLAG_ENV, default=False)
+
+
+def xchain_surface_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether the cross-chain review surface is enabled at all (either flag, exact "true").
+
+    Used to hide/404 the review-only routes on a deployment where the feature is off. It is NOT
+    an authorisation for a live commit — that still needs :func:`live_gate`.
+    """
+    source = env if env is not None else os.environ
+    return _flag(source, XCHAIN_LIVE_FLAG_ENV) or _flag(source, XCHAIN_PUBLIC_FLAG_ENV)
 
 
 def oneclick_key_present(env: Mapping[str, str] | None = None) -> bool:
@@ -225,28 +236,46 @@ def build_origin_transfer_plan(
 def withdraw_review(*, app_url: str = RHEA_APP_SOURCE) -> dict[str, Any]:
     """The documented withdraw options — no fake NEP-413 transaction, no invented custodian.
 
-    The shipped beta keeps withdraw as a link-out. The Rhea SDK separately documents a relayer
-    business message and a direct ``nearMcaWithdrawTx`` path *when the recipient/NEAR conditions
-    match*; both are recorded as documented-but-not-implemented here rather than pretended.
+    The shipped beta keeps withdraw as a **guided review**, not an in-app transaction. Building an
+    unsigned in-app withdraw would need either Rhea's relayer API (a bearer credential we do not
+    hold) or a ``nearMcaWithdrawTx`` that only applies when the recipient/NEAR conditions match;
+    inventing a custodian or relayer to fake it would be dishonest. So the documented paths come
+    first, and the Rhea app link-out is the last resort — with explicit copy that a link-out is
+    **not** a SparkPoint-signed transaction.
     """
     return {
-        "state": "documented",
-        "kind": "external_link_and_documented_paths",
+        "state": "guided",
+        "kind": "guided_review",
         "nep413IsTransaction": False,
         "custodian": None,
-        "note": (
-            "NEP-413 is off-chain authentication, not a Burrow/MCA transaction. SparkPoint does "
-            "not custody funds and does not invent a relayer. Nothing here signs or sends."
+        "signedBySparkPoint": False,
+        "inAppUnsigned": False,
+        "inAppUnsignedReason": (
+            "An unsigned in-app withdraw is not built: the relayer path needs a Rhea API "
+            "credential we do not hold, and nearMcaWithdrawTx needs a NEAR transaction surface "
+            "this build does not expose. We do not invent a custodian or relayer to fake it."
         ),
+        "requiredWallet": (
+            "The same wallet you supplied with: your EVM wallet (Base/Ethereum) for the origin "
+            "leg and your Rhea Multichain Account (MCA) on NEAR for the supplied balance."
+        ),
+        "requiredChain": "Origin leg on Base or Ethereum; supplied balance on NEAR (Burrow).",
+        "note": (
+            "In-app cross-chain withdraw is not implemented in this beta. This is a guided review: "
+            "NEP-413 is off-chain authentication, never a Burrow/MCA transaction; SparkPoint does "
+            "not custody funds and does not invent a relayer. A URL link-out opens Rhea's own app "
+            "and is NOT a SparkPoint-signed transaction. Nothing here signs or sends."
+        ),
+        "steps": [
+            "Confirm which Rhea Multichain Account (MCA) / NEAR wallet holds the supplied USDC.",
+            "Pick one documented Rhea SDK withdraw path below: an "
+            '`executionPreference: "relayer"` business message or the direct `nearMcaWithdrawTx` '
+            "route. Both need Rhea API access and are documented-but-not-implemented in this beta.",
+            "If neither documented path is available to you, open the Rhea app with the same "
+            "wallet and withdraw there. The link-out is not a SparkPoint-signed transaction.",
+            "Verify the result in Rhea and your own wallet; SparkPoint cannot recover funds.",
+        ],
         "paths": [
-            {
-                "id": "rhea_app",
-                "label": "Withdraw in the Rhea app",
-                "status": "link_out",
-                "url": app_url,
-                "note": "Connect the same wallet you supplied with and withdraw there.",
-                "source": RHEA_APP_SOURCE,
-            },
             {
                 "id": "rhea_relayer",
                 "label": "Rhea SDK relayer withdrawal",
@@ -270,10 +299,22 @@ def withdraw_review(*, app_url: str = RHEA_APP_SOURCE) -> dict[str, Any]:
                 ),
                 "source": RHEA_SDK_SOURCE,
             },
+            {
+                "id": "rhea_app",
+                "label": "Withdraw in the Rhea app (link-out)",
+                "status": "link_out",
+                "url": app_url,
+                "note": (
+                    "Connect the same wallet you supplied with and withdraw there. This opens "
+                    "Rhea's own app; it is not a SparkPoint-signed transaction and SparkPoint "
+                    "does not submit anything for you."
+                ),
+                "source": RHEA_APP_SOURCE,
+            },
         ],
         "sources": [
-            {"id": "rhea_app", "url": RHEA_APP_SOURCE},
             {"id": "rhea_sdk", "url": RHEA_SDK_SOURCE},
+            {"id": "rhea_app", "url": RHEA_APP_SOURCE},
             {"id": "multica", "url": MCA_SOURCE},
             {"id": "nep413", "url": NEP413_SOURCE},
         ],
@@ -289,6 +330,7 @@ __all__ = [
     "RheaXchainError",
     "RheaXchainSignatureRequired",
     "XCHAIN_LIVE_FLAG_ENV",
+    "XCHAIN_PUBLIC_FLAG_ENV",
     "build_origin_transfer_plan",
     "erc20_transfer_calldata",
     "gate_wire",
@@ -297,4 +339,5 @@ __all__ = [
     "origin_token_address",
     "withdraw_review",
     "xchain_live_enabled",
+    "xchain_surface_enabled",
 ]

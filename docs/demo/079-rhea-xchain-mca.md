@@ -13,8 +13,10 @@
      are enabled;
    - **Dry review (dry=true)** shows origin chain/asset/amount, refund address, MCA/recipient
      message, one-time MCA fee, routing fee, net supplied and supply APY;
-   - the withdraw card states `NEP-413 is a transaction: no`, `custodian: none`, and lists the Rhea
-     app link-out plus the documented SDK relayer/`nearMcaWithdrawTx` paths.
+   - the withdraw card is a **guided review**: it lists the documented Rhea SDK paths
+     (`relayer`, `nearMcaWithdrawTx`) first and the Rhea app link-out last, with `NEP-413 is a
+     transaction: no`, `custodian: none` and `signed by SparkPoint: no`. A link-out opens Rhea's
+     own app and is **not** a SparkPoint-signed transaction.
 
 ## What is deliberately NOT done
 

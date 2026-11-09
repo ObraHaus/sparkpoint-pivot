@@ -6,8 +6,10 @@ import type { EarnQuoteBlock, EarnXchainTransferPlan } from "@sparkpoint/shared/
 import {
   gateAllowsLive,
   originLabel,
+  parseXchainAmount,
   parseXchainFlag,
   planIsOfferable,
+  planSignerMatches,
   serverXchainEnabled,
   transferPlanLine,
   xchainReviewHref,
@@ -151,7 +153,32 @@ test("only a real unsigned ERC-20 plan is offerable to the wallet", () => {
   assert.equal(planIsOfferable(plan()), true);
   assert.equal(planIsOfferable(plan({ kind: "unsupported", calldata: null })), false);
   assert.equal(planIsOfferable(plan({ calldata: "not-hex" })), false);
+  assert.equal(planIsOfferable(plan({ tokenAddress: null })), false);
+  assert.equal(planIsOfferable(plan({ tokenAddress: "0xnot-a-token" })), false);
   assert.equal(planIsOfferable(null), false);
+});
+
+test("the plan is only signable by the wallet it was prepared for", () => {
+  assert.equal(
+    planSignerMatches(plan(), "0xd8da6bf26964af9d7eed9e03e53415d37aa96045"),
+    true,
+  );
+  assert.equal(planSignerMatches(plan(), "0x" + "9".repeat(40)), false);
+  assert.equal(planSignerMatches(plan(), null), false);
+  assert.equal(planSignerMatches(null, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), false);
+});
+
+test("amount validation accepts only a positive USDC decimal", () => {
+  assert.equal(parseXchainAmount("100"), "100");
+  assert.equal(parseXchainAmount(" 12.5 "), "12.5");
+  assert.equal(parseXchainAmount("0.000001"), "0.000001");
+  assert.equal(parseXchainAmount(""), null);
+  assert.equal(parseXchainAmount("0"), null);
+  assert.equal(parseXchainAmount("-5"), null);
+  assert.equal(parseXchainAmount("1e6"), null);
+  assert.equal(parseXchainAmount("1.1234567"), null);
+  assert.equal(parseXchainAmount("abc"), null);
+  assert.equal(parseXchainAmount(null), null);
 });
 
 test("the transfer plan summary is explicit about being unsigned", () => {

@@ -21,7 +21,9 @@ import type { WagmiChainId } from "@/lib/wagmi";
 import {
   gateAllowsLive,
   originLabel,
+  parseXchainAmount,
   planIsOfferable,
+  planSignerMatches,
   transferPlanLine,
   xchainReviewLines,
   type XchainGate,
@@ -45,7 +47,13 @@ interface WithdrawReview {
   state: string;
   nep413IsTransaction: boolean;
   custodian: string | null;
+  signedBySparkPoint?: boolean;
+  inAppUnsigned?: boolean;
+  inAppUnsignedReason?: string;
+  requiredWallet?: string;
+  requiredChain?: string;
   note: string;
+  steps?: string[];
   paths: WithdrawPath[];
   sources: { id: string; url: string }[];
 }
@@ -111,6 +119,7 @@ export function RheaXchainReview({
   const [status, setStatus] = useState<string | null>(null);
 
   const liveAllowed = gateAllowsLive(gate);
+  const amountValid = parseXchainAmount(amount) !== null;
 
   useEffect(() => {
     if (!client) return;
@@ -144,6 +153,10 @@ export function RheaXchainReview({
     if (!client) return;
     if (!vaultAddress) {
       setError("No Rhea USDC vault is available in the registry yet.");
+      return;
+    }
+    if (!amountValid) {
+      setError("Enter a positive USDC amount with at most 6 decimal places.");
       return;
     }
     setBusy(true);
@@ -201,6 +214,18 @@ export function RheaXchainReview({
   async function confirmTransfer() {
     const plan = block?.transferPlan;
     if (!block?.live || !planIsOfferable(plan) || !plan || !acknowledged) return;
+    if (!planSignerMatches(plan, address)) {
+      setError(
+        "The connected wallet is not the wallet this plan was prepared for. Reconnect the origin wallet and review again. Nothing was signed or sent.",
+      );
+      return;
+    }
+    if (plan.chainId != null && chainId != null && plan.chainId !== chainId) {
+      setError(
+        `Switch your wallet to chain ${plan.chainId} before confirming. Nothing was signed or sent.`,
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -236,6 +261,10 @@ export function RheaXchainReview({
 
   const lines = useMemo(() => (block ? xchainReviewLines(block, address) : []), [address, block]);
   const plan = block?.transferPlan;
+  const planOfferable = planIsOfferable(plan);
+  const signerMatches = planSignerMatches(plan, address);
+  const chainMatches = plan?.chainId == null || chainId == null || plan.chainId === chainId;
+  const canConfirm = planOfferable && signerMatches && chainMatches && acknowledged;
 
   return (
     <div className="page page-wide" data-testid="rhea-xchain-review">
@@ -302,7 +331,7 @@ export function RheaXchainReview({
               type="button"
               className="btn btn-outline btn-sm"
               data-testid="rhea-xchain-dry"
-              disabled={!online || busy}
+              disabled={!online || busy || !amountValid}
               onClick={() => void quote(true)}
             >
               {busy ? "Reviewing…" : "Dry review (dry=true)"}
@@ -311,13 +340,18 @@ export function RheaXchainReview({
               type="button"
               className="btn btn-primary btn-sm"
               data-testid="rhea-xchain-live"
-              disabled={!online || busy || !liveAllowed}
+              disabled={!online || busy || !liveAllowed || !amountValid}
               title={!liveAllowed ? "Live commit needs the server flag and a configured 1Click key." : undefined}
               onClick={() => void quote(false)}
             >
               Prepare live commit (dry=false)
             </button>
           </div>
+          {!amountValid && (
+            <div style={{ fontSize: 11.5, color: "var(--caution)" }}>
+              Enter a positive USDC amount with at most 6 decimal places.
+            </div>
+          )}
           {!online && (
             <div style={{ fontSize: 12, color: "var(--caution)" }}>
               Connect a wallet to scope the review to you. Nothing is signed by connecting.
@@ -445,7 +479,7 @@ export function RheaXchainReview({
                   type="button"
                   className="btn btn-primary btn-sm"
                   data-testid="rhea-xchain-confirm"
-                  disabled={busy || !acknowledged || !planIsOfferable(plan)}
+                  disabled={busy || !canConfirm}
                   onClick={() => void confirmTransfer()}
                 >
                   Confirm transfer in my wallet
@@ -460,6 +494,17 @@ export function RheaXchainReview({
                   Check 1Click status
                 </button>
               </div>
+              {planOfferable && !signerMatches && (
+                <div style={{ fontSize: 11.5, color: "var(--caution)" }}>
+                  The connected wallet is not the wallet this plan was prepared for. Reconnect the
+                  origin wallet and review again.
+                </div>
+              )}
+              {planOfferable && signerMatches && !chainMatches && (
+                <div style={{ fontSize: 11.5, color: "var(--caution)" }}>
+                  Switch your wallet to chain {plan?.chainId} to confirm this transfer.
+                </div>
+              )}
               {txHash && (
                 <div data-testid="rhea-xchain-tx" style={{ fontSize: 12, color: "var(--gain)", wordBreak: "break-all" }}>
                   Submitted from your wallet: {txHash}. The agent did not sign or submit it.
@@ -488,8 +533,35 @@ export function RheaXchainReview({
             <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>{withdraw.note}</div>
             <div style={{ fontSize: 12, color: MUTED }}>
               NEP-413 is a transaction: <strong>{withdraw.nep413IsTransaction ? "yes" : "no"}</strong> ·
-              custodian: <strong>{withdraw.custodian ?? "none"}</strong>
+              custodian: <strong>{withdraw.custodian ?? "none"}</strong> · signed by SparkPoint:{" "}
+              <strong>{withdraw.signedBySparkPoint ? "yes" : "no"}</strong> · in-app unsigned
+              withdraw: <strong>{withdraw.inAppUnsigned ? "yes" : "no"}</strong>
             </div>
+            {withdraw.inAppUnsignedReason && (
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                {withdraw.inAppUnsignedReason}
+              </div>
+            )}
+            {withdraw.requiredWallet && (
+              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                <strong>Required wallet:</strong> {withdraw.requiredWallet}
+              </div>
+            )}
+            {withdraw.requiredChain && (
+              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                <strong>Required chain:</strong> {withdraw.requiredChain}
+              </div>
+            )}
+            {withdraw.steps && withdraw.steps.length > 0 && (
+              <ol
+                data-testid="rhea-xchain-withdraw-steps"
+                style={{ margin: 0, paddingLeft: 20, fontSize: 12, color: MUTED, lineHeight: 1.6 }}
+              >
+                {withdraw.steps.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+            )}
             <div style={{ display: "grid", gap: 8 }}>
               {withdraw.paths.map((path) => (
                 <div key={path.id} style={{ border: "1px solid var(--border-soft)", borderRadius: 9, padding: "9px 11px" }}>
@@ -505,7 +577,7 @@ export function RheaXchainReview({
                       rel="noopener noreferrer"
                       style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}
                     >
-                      Open Rhea ↗
+                      Open Rhea ↗ (not a SparkPoint-signed transaction)
                     </a>
                   )}
                 </div>

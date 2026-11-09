@@ -87,6 +87,24 @@ export function originLabel(key: string | null | undefined): string {
   return ORIGIN_LABELS[key] ?? key;
 }
 
+/**
+ * Validate an origin USDC amount in the browser before calling the agent. Accepts a plain
+ * positive decimal with at most `decimals` places; returns the trimmed text or `null`. The agent
+ * re-validates, so this is UX only — never a security boundary.
+ */
+export function parseXchainAmount(
+  raw: string | null | undefined,
+  decimals = 6,
+): string | null {
+  const text = (raw ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  const fraction = text.split(".")[1] ?? "";
+  if (fraction.length > decimals) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return text;
+}
+
 export interface ReviewLine {
   readonly key: string;
   readonly label: string;
@@ -163,7 +181,17 @@ export function planIsOfferable(plan: EarnXchainTransferPlan | null | undefined)
     plan?.kind === "erc20_transfer" &&
     plan.unsigned === true &&
     !!plan.to &&
+    /^0x[0-9a-fA-F]{40}$/.test(plan.tokenAddress ?? "") &&
     !!plan.calldata &&
     /^0x[0-9a-fA-F]*$/.test(plan.calldata)
   );
+}
+
+/** The wallet the plan was prepared for must be the connected signer (case-insensitive). */
+export function planSignerMatches(
+  plan: EarnXchainTransferPlan | null | undefined,
+  connected: string | null | undefined,
+): boolean {
+  if (!plan?.from || !connected) return false;
+  return plan.from.toLowerCase() === connected.toLowerCase();
 }

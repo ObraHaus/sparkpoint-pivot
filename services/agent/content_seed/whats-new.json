@@ -2,6 +2,14 @@
   "_comment": "Feature 006 \u2014 the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest \u2014 seed-owned rows only, including pre-slug legacy rows \u2014 so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "rhea-xchain-mca-review-079-2026-11",
+      "type": "changelog",
+      "tag": "New",
+      "title": "Review a cross-chain deposit into Rhea from your own EVM wallet",
+      "body": "A new review screen covers the cross-chain Rhea deposit: USDC from your Base or Ethereum wallet into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click and Rhea's Multichain Account. You can always open a dry review that shows the origin chain, amount, refund address, the one-time Rhea account fee, the routing fee, the net amount supplied and the supply APY \u2014 and it moves no funds. A live preparation step stays off by default in this build. When an operator enables it, a first deposit asks for one off-chain signature (not a transaction), then shows the exact unsigned USDC transfer for your own wallet to confirm; SparkPoint never signs, submits or holds funds. This is the cross-chain rail and is separate from the same-chain NEAR supply flow. Withdraw is a guided review for now: it lists the documented Rhea SDK paths first and only then links out to the Rhea app, and that link is not a SparkPoint-signed transaction. No funded cross-chain execution has been run yet.",
+      "published_at": "2026-11-09T08:40:21Z"
+    },
+    {
       "slug": "live-earn-kamino-morpho-2026-11",
       "type": "changelog",
       "tag": "New",

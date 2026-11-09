@@ -14,8 +14,9 @@
    - `origin_token_address()` derives the EVM ERC-20 from `nep141:<chain>-0x…omft.near`.
    - `erc20_transfer_calldata()` / `build_origin_transfer_plan()` produce an **unsigned**
      `transfer(address,uint256)` plan (or an honest `unsupported` plan for non-EVM origins).
-   - `withdraw_review()` returns the link-out + documented Rhea SDK paths with sources, and
-     explicitly `nep413IsTransaction: false`, `custodian: null`.
+   - `withdraw_review()` returns a guided review: the documented Rhea SDK paths first, the Rhea app
+     link-out last, required wallet/chain + steps, and explicitly `nep413IsTransaction: false`,
+     `custodian: null`, `signedBySparkPoint: false`.
 2. **`earn/service.py`.**
    - `_rhea_preview` gains `dry=False` / `signature` support:
      - gate on flag + key before any live quote;
