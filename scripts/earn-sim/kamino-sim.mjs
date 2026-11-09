@@ -60,9 +60,9 @@ async function simulate(label, base64) {
   console.log(`  units      : ${value.unitsConsumed ?? "n/a"}`);
   console.log(`  logs (tail): ${logs.slice(-4).join(" | ") || "(none)"}`);
   if (value.err) {
-    console.log("  expected   : the public probe has no position / not enough balance — a revert here is the honest result.");
+    console.log("  expected   : the public probe has no position / not enough balance — this revert is the honest result, NOT a pass.");
   } else {
-    console.log("  note       : simulation only — this transaction was NOT signed or sent.");
+    console.log("  note       : simulation only — this transaction was NOT signed or sent, so it is NOT funded-execution proof.");
   }
 }
 
@@ -79,7 +79,7 @@ async function main() {
   await simulate("deposit 0.01 SOL", deposit);
   await simulate("withdraw 0.01 shares", withdraw);
 
-  console.log("\nSIMULATED only. No transaction was signed or sent.");
+  console.log("\nSIMULATED only. No transaction was signed or sent. An expected withdraw failure is NOT a success.");
 }
 
 main().catch((error) => {

@@ -119,3 +119,31 @@ insufficient funds / a balance revert** — that is the correct simulated result
   `previewDeposit`), 2026-11-08.
 - Morpho GraphQL `vaults(where:{address_in:[…]})`, 2026-11-08.
 - Repo: specs/069, 070, 071, 072 research; `apps/web/src/lib/chain/useExecuteVaultTx.ts`.
+
+## 5. Hardening pass (2026-11-09)
+
+Authoritative values captured read-only from `GET /kvaults/vaults/{vault}`:
+
+| vault | tokenMint (asset) | sharesMint | minDeposit | minWithdraw | depositCap |
+|---|---|---|---|---|---|
+| SOL Balanced | `So111…112` (wSOL) | `5EBs…tdBK` | `1000000` raw (0.001 SOL) | `1000` raw | `0` = uncapped |
+| Steakhouse USDC | `EPjFWdd5…Dt1v` (the **vault's** USDC asset mint) | `7D8C…usHS` | `100000` raw (0.1 USDC) | `1000` raw | `0` = uncapped |
+
+- **Steakhouse mint labelling:** the Steakhouse vault's `tokenMint` is shown as
+  `Steakhouse vault USDC mint` (shortened) and is never presented as Circle-native USDC. The
+  brief's "Circle" reference address is kept only as a test constant; the curated mint is pinned to
+  the live Kamino API value.
+- **Withdraw amount semantics:** the public `POST /ktx/kvault/withdraw` always encodes
+  `u64::MAX` (redeem **all** shares) even for a partial `amount` request. The UI now refuses to
+  sign unless the typed amount equals the wallet's full share balance, and the review says so
+  explicitly. This is an API limitation, not a claim of partial-withdraw support.
+- **SOL reserve:** Max and pre-build checks reserve network+priority fee, token-account rent for up
+  to 2 ATAs, and a 0.005 SOL safety buffer (`SOL_SAFETY_BUFFER_LAMPORTS`).
+- **Tx shape:** program allowlist (kVault, Farms, System, Token, Token-2022, ATA, ComputeBudget);
+  strict instruction-kind allowlist (no SetAuthority/Assign/Approve-style); System transfers only to
+  the wallet's derived wSOL ATA and exactly the requested amount; vault/mints must be present and
+  other curated vaults/mints absent; ATA owner/mint, action owner/vault and token authority must
+  match the connected wallet; v0 lookup tables are resolved before validation.
+- **Morpho:** `vault.asset()` → Base USDC, `vault.decimals()` → 18 (shares), USDC → 6; mismatch is
+  refused. `maxDeposit(owner)`, `maxRedeem(owner)` and `maxWithdraw(owner)` bound the plan; zero
+  shares disables withdraw.

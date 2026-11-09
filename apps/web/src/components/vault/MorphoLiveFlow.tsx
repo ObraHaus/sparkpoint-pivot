@@ -24,6 +24,7 @@ import {
   buildMorphoDepositPlan,
   buildMorphoWithdrawPlan,
   findMorphoVault,
+  validateMorphoVaultMetadata,
   MORPHO_VAULTS,
   parseMorphoAmount,
   type MorphoPlan,
@@ -43,6 +44,9 @@ const morphoVaultAbi = parseAbi([
   "function convertToAssets(uint256) view returns (uint256)",
   "function previewDeposit(uint256) view returns (uint256)",
   "function previewRedeem(uint256) view returns (uint256)",
+  "function maxDeposit(address receiver) view returns (uint256)",
+  "function maxRedeem(address owner) view returns (uint256)",
+  "function maxWithdraw(address owner) view returns (uint256)",
 ]);
 
 function short(value: string, head = 6, tail = 4): string {
@@ -137,6 +141,14 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
   const totalAssets = vaultReads.data?.[2]?.result as bigint | undefined;
   const shareDecimals = liveShareDecimals ?? meta.shareDecimals;
 
+  const assetDecimalsRead = useReadContract({
+    address: meta.asset,
+    abi: erc20Abi,
+    chainId: READ_CHAIN_ID,
+    functionName: "decimals",
+  });
+  const liveAssetDecimals = assetDecimalsRead.data as number | undefined;
+
   const accountReads = useReadContracts({
     allowFailure: true,
     contracts: [
@@ -161,12 +173,36 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
         functionName: "allowance",
         args: [address as Address, meta.address],
       },
+      {
+        address: meta.address,
+        abi: morphoVaultAbi,
+        chainId: READ_CHAIN_ID,
+        functionName: "maxDeposit",
+        args: [address as Address],
+      },
+      {
+        address: meta.address,
+        abi: morphoVaultAbi,
+        chainId: READ_CHAIN_ID,
+        functionName: "maxRedeem",
+        args: [address as Address],
+      },
+      {
+        address: meta.address,
+        abi: morphoVaultAbi,
+        chainId: READ_CHAIN_ID,
+        functionName: "maxWithdraw",
+        args: [address as Address],
+      },
     ],
     query: { enabled: !!address },
   });
   const shareBalance = (accountReads.data?.[0]?.result as bigint | undefined) ?? 0n;
   const assetBalance = (accountReads.data?.[1]?.result as bigint | undefined) ?? 0n;
   const allowance = accountReads.data?.[2]?.result as bigint | undefined;
+  const maxDeposit = accountReads.data?.[3]?.result as bigint | undefined;
+  const maxRedeem = accountReads.data?.[4]?.result as bigint | undefined;
+  const maxWithdraw = accountReads.data?.[5]?.result as bigint | undefined;
 
   const positionAssetsRead = useReadContract({
     address: meta.address,
@@ -293,16 +329,26 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
       return;
     }
     try {
+      validateMorphoVaultMetadata(meta, {
+        asset: liveAsset ?? null,
+        assetDecimals: liveAssetDecimals ?? null,
+        shareDecimals: shareDecimals ?? null,
+      });
+      const limits = {
+        maxDeposit: maxDeposit ?? null,
+        maxRedeem: maxRedeem ?? null,
+        maxWithdraw: maxWithdraw ?? null,
+      };
       const nextPlan =
         mode === "deposit"
-          ? buildMorphoDepositPlan({ vault: meta.address, account: address, amount, allowance: allowance ?? null })
-          : buildMorphoWithdrawPlan({ vault: meta.address, account: address, amount });
+          ? buildMorphoDepositPlan({ vault: meta.address, account: address, amount, allowance: allowance ?? null, limits })
+          : buildMorphoWithdrawPlan({ vault: meta.address, account: address, amount, limits });
       setPlan(nextPlan);
       await estimate(nextPlan);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That amount could not be prepared.");
     }
-  }, [address, allowance, amount, estimate, meta.address, mode]);
+  }, [address, allowance, amount, estimate, liveAsset, liveAssetDecimals, maxDeposit, maxRedeem, maxWithdraw, meta, mode, shareDecimals]);
 
   const resetPlan = useCallback(() => {
     setPlan(null);
@@ -315,6 +361,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
     mode === "deposit"
       ? formatUnits(assetBalance, meta.assetDecimals)
       : formatUnits(shareBalance, shareDecimals);
+  const withdrawBlocked = mode === "withdraw" && shareBalance === 0n;
 
   const totalGas =
     gas?.main !== undefined ? (gas.main + (gas.approve ?? 0n)).toString() : undefined;
@@ -412,9 +459,11 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
                     onChange={(event) => setAmount(event.target.value)}
                     style={{ flex: 1 }}
                   />
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(maxAmount)}>
-                    Max
-                  </button>
+                  {!withdrawBlocked && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(maxAmount)}>
+                      Max
+                    </button>
+                  )}
                 </div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
                   {mode === "deposit"
@@ -423,6 +472,11 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
                         positionAssets !== undefined ? ` ≈ ${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}` : ""
                       }`}
                 </div>
+                {withdrawBlocked && (
+                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
+                    No shares to redeem in this vault — withdraw is disabled.
+                  </div>
+                )}
               </div>
 
               {mode === "deposit" && amountRaw !== null && (
@@ -449,7 +503,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
               type="button"
               className="btn btn-primary btn-lg"
               style={{ width: "100%", marginTop: 14 }}
-              disabled={!isConnected || wrongChain || amount.trim() === ""}
+              disabled={!isConnected || wrongChain || amount.trim() === "" || withdrawBlocked}
               onClick={() => void review()}
             >
               Review transaction
@@ -476,8 +530,18 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
             />
             <Row
               k="Asset"
-              v={`${meta.assetSymbol} (${meta.assetDecimals} dp) · ${short(liveAsset ?? meta.asset)}`}
+              v={`${meta.assetSymbol} (${liveAssetDecimals ?? meta.assetDecimals} dp) · ${short(liveAsset ?? meta.asset)}`}
             />
+            <Row
+              k="Vault max deposit (now)"
+              v={maxDeposit === undefined ? "…" : `${formatUnits(maxDeposit, meta.assetDecimals)} ${meta.assetSymbol}`}
+            />
+            {mode === "withdraw" && (
+              <Row
+                k="Your max redeem"
+                v={maxRedeem === undefined ? "…" : `${formatUnits(maxRedeem, shareDecimals)} ${meta.symbol} shares`}
+              />
+            )}
             <Row k="Shares" v={`${meta.symbol} (${shareDecimals} dp)`} />
             <Row k="Vault total assets" v={totalAssets === undefined ? "…" : formatUnits(totalAssets, meta.assetDecimals)} />
             <Row k="SparkPoint fee" v="0% — none on a direct deposit" tone="gain" />

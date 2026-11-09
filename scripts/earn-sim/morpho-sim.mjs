@@ -93,6 +93,7 @@ async function main() {
   );
   const oneUsdc = 1_000_000n;
   const preview = await call(VAULT, SELECTOR.previewDeposit + uintWord(oneUsdc), "previewDeposit(1 USDC)");
+  const probeShares = vaultBalance ? asBigInt(vaultBalance) : null;
 
   console.log(`  asset   : ${asset ?? "unavailable"}`);
   console.log(`  decimals: ${decimals ? Number(asBigInt(decimals)) : "unavailable"}`);
@@ -113,13 +114,17 @@ async function main() {
     to: VAULT,
     data: SELECTOR.deposit + uintWord(oneUsdc) + addressWord(PROBE),
   });
-  await estimate("redeem 0 shares", {
-    from: PROBE,
-    to: VAULT,
-    data: SELECTOR.redeem + uintWord(0) + addressWord(PROBE) + addressWord(PROBE),
-  });
+  if (probeShares !== null && probeShares > 0n) {
+    await estimate(`redeem ${probeShares} shares`, {
+      from: PROBE,
+      to: VAULT,
+      data: SELECTOR.redeem + uintWord(probeShares) + addressWord(PROBE) + addressWord(PROBE),
+    });
+  } else {
+    console.log("  redeem                      SKIPPED — probe holds 0 shares; a zero-share redeem is not a withdrawal and proves nothing.");
+  }
 
-  console.log("\nSIMULATED only. Nothing was signed or sent.");
+  console.log("\nSIMULATED only. Nothing was signed or sent. Expected reverts (allowance/balance) are NOT passes for funded execution.");
 }
 
 main().catch((error) => {

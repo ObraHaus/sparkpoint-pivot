@@ -4,10 +4,11 @@
  * 077 — Kamino (Solana) live deposit/withdraw flow.
  *
  * Amount → build (our BFF asks Kamino for an UNSIGNED transaction) → review every amount/account/
- * fee → the user explicitly confirms in their own Solana wallet → read the position back.
+ * fee → the user explicitly confirms in their own Solana wallet → confirm the on-chain signature.
  *
  * The wallet is the only signer. SparkPoint never holds a key and never submits anything itself;
- * `submitSolanaTransaction` is called only from the confirm button below.
+ * `submitSolanaTransaction` is called only from the confirm button below. The returned transaction
+ * is re-validated here (not just trusted from the server) before the wallet is asked to sign.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -18,12 +19,22 @@ import {
   KAMINO_VAULTS,
   SOLANA_MAINNET_RPC,
   apyPercent,
+  assertKaminoTransactionMatches,
+  checkSolDepositCapacity,
+  conservativeSolDepositReserveLamports,
   decodeKaminoTransaction,
   findKaminoVault,
   formatLamports,
   formatTokenAmount,
+  kaminoAssetMintLabel,
+  maxSolDepositLamports,
+  parseTokenAmount,
+  resolveKaminoLookupAddresses,
+  signatureOutcome,
+  solDepositReserveLamports,
   summarizeKaminoTransaction,
   type KaminoBuildResponse,
+  type KaminoLookupAddresses,
   type KaminoPositionView,
   type KaminoTxReview,
 } from "@/lib/earn/kaminoLive";
@@ -39,7 +50,16 @@ import {
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const MUTED = "var(--muted-foreground)";
 
-type Phase = "idle" | "building" | "review" | "submitting" | "done";
+type Phase =
+  | "idle"
+  | "building"
+  | "review"
+  | "submitting"
+  | "confirming"
+  | "confirmed"
+  | "failed";
+
+type SignatureOutcome = "confirmed" | "failed" | "pending";
 
 function solanaRpcUrl(): string {
   return process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() || SOLANA_MAINNET_RPC;
@@ -87,12 +107,16 @@ function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?:
   );
 }
 
-async function readAssetBalance(owner: string, assetMint: string, decimals: number): Promise<string | null> {
+async function readAssetBalance(
+  owner: string,
+  assetMint: string,
+  decimals: number,
+): Promise<{ text: string; raw: bigint } | null> {
   try {
     const connection = new Connection(solanaRpcUrl(), "confirmed");
     if (assetMint === SOL_MINT) {
       const lamports = await connection.getBalance(new PublicKey(owner));
-      return formatTokenAmount(BigInt(lamports), 9);
+      return { text: formatTokenAmount(BigInt(lamports), 9), raw: BigInt(lamports) };
     }
     const accounts = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), {
       mint: new PublicKey(assetMint),
@@ -103,10 +127,31 @@ async function readAssetBalance(owner: string, assetMint: string, decimals: numb
         .parsed?.info?.tokenAmount?.amount;
       if (typeof amount === "string") total += BigInt(amount);
     }
-    return formatTokenAmount(total, decimals);
+    return { text: formatTokenAmount(total, decimals), raw: total };
   } catch {
     return null;
   }
+}
+
+/**
+ * Wait for the wallet's signature to reach a terminal state. Returns `pending` (never a fake
+ * success) when the RPC cannot tell us within the window.
+ */
+async function waitForSignature(signature: string): Promise<SignatureOutcome> {
+  const connection = new Connection(solanaRpcUrl(), "confirmed");
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      const status = await connection.getSignatureStatus(signature, {
+        searchTransactionHistory: true,
+      });
+      const outcome = signatureOutcome(status.value);
+      if (outcome !== "pending") return outcome;
+    } catch {
+      // Keep polling; a transient RPC error is not a confirmed success.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return "pending";
 }
 
 export interface KaminoLiveFlowProps {
@@ -125,14 +170,18 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   const [phase, setPhase] = useState<Phase>("idle");
   const [build, setBuild] = useState<KaminoBuildResponse | null>(null);
   const [transaction, setTransaction] = useState<VersionedTransaction | null>(null);
+  const [expectedAmountRaw, setExpectedAmountRaw] = useState<bigint | null>(null);
   const [review, setReview] = useState<KaminoTxReview | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
+  const [signatureOutcomeState, setSignatureOutcomeState] = useState<SignatureOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [positions, setPositions] = useState<KaminoPositionView[]>([]);
-  const [balance, setBalance] = useState<string | null>(null);
+  const [balanceRaw, setBalanceRaw] = useState<bigint | null>(null);
 
   const meta = findKaminoVault(vaultAddress) ?? KAMINO_VAULTS[0]!;
   const position = positions.find((row) => row.vaultAddress === vaultAddress) ?? null;
+  const isSolDeposit = mode === "deposit" && meta.assetMint === SOL_MINT;
+  const positionShares = position ? BigInt(position.sharesRaw) : 0n;
 
   const refreshPositions = useCallback(async (owner: string) => {
     try {
@@ -159,7 +208,9 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       setProvider(injected);
       setWallet(address);
       void refreshPositions(address);
-      void readAssetBalance(address, meta.assetMint, meta.assetDecimals).then(setBalance);
+      void readAssetBalance(address, meta.assetMint, meta.assetDecimals).then((value) =>
+        setBalanceRaw(value?.raw ?? null),
+      );
     } catch (cause) {
       setError(solanaWalletErrorMessage(cause));
     }
@@ -169,8 +220,10 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
     setPhase("idle");
     setBuild(null);
     setTransaction(null);
+    setExpectedAmountRaw(null);
     setReview(null);
     setSignature(null);
+    setSignatureOutcomeState(null);
     setError(null);
   }, []);
 
@@ -179,6 +232,36 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       setError("Connect a Solana wallet first.");
       return;
     }
+    if (mode === "withdraw" && positionShares <= 0n) {
+      setError("You have no shares to withdraw from this vault.");
+      return;
+    }
+    const decimals = mode === "deposit" ? meta.assetDecimals : meta.sharesDecimals;
+    const requestedAmountRaw = parseTokenAmount(amount, decimals);
+    if (requestedAmountRaw === null) {
+      setError(`Enter a valid ${mode === "deposit" ? meta.assetSymbol : "share"} amount.`);
+      return;
+    }
+    if (isSolDeposit) {
+      if (balanceRaw === null) {
+        setError("Could not read your SOL balance; refusing to build a deposit blind.");
+        return;
+      }
+      const reserve = conservativeSolDepositReserveLamports();
+      const capacity = checkSolDepositCapacity({
+        balanceLamports: balanceRaw,
+        amountLamports: requestedAmountRaw,
+        reserveLamports: reserve,
+      });
+      if (!capacity.ok) {
+        setError(
+          `Insufficient SOL: this deposit needs ${formatLamports(capacity.requiredLamports)} SOL ` +
+            `(amount + fees + rent + safety buffer) and you are short ${formatLamports(capacity.shortfallLamports)} SOL.`,
+        );
+        return;
+      }
+    }
+
     setError(null);
     setPhase("building");
     try {
@@ -191,8 +274,57 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       if (!response.ok) {
         throw new Error(body?.error?.message ?? "Kamino could not build that transaction.");
       }
+      if (
+        body.vault?.address !== meta.address ||
+        body.wallet !== wallet ||
+        body.mode !== mode ||
+        body.amountRaw !== requestedAmountRaw.toString()
+      ) {
+        throw new Error("Kamino returned a transaction for a different vault, wallet, mode or amount.");
+      }
+
       const decoded = decodeKaminoTransaction(body.transaction);
-      setReview(summarizeKaminoTransaction(body.transaction));
+
+      let resolved: KaminoLookupAddresses | null = null;
+      if (decoded.message.addressTableLookups.length > 0) {
+        resolved = await resolveKaminoLookupAddresses(
+          new Connection(solanaRpcUrl(), "confirmed"),
+          decoded,
+        );
+        if (!resolved) throw new Error("Could not resolve the transaction's address lookup tables.");
+      }
+
+      const summary = summarizeKaminoTransaction(body.transaction, { lookupAddresses: resolved });
+      assertKaminoTransactionMatches(summary, {
+        feePayer: wallet,
+        mode,
+        vault: meta,
+        amountRaw: requestedAmountRaw,
+        tokenVault: body.vaultLimits?.tokenVault ?? null,
+        vaultFarm: body.vaultLimits?.vaultFarm ?? null,
+        positionSharesRaw: mode === "withdraw" ? positionShares : undefined,
+      });
+
+      if (isSolDeposit && balanceRaw !== null) {
+        const actualReserve = solDepositReserveLamports({
+          networkFeeLamports: summary.networkFeeLamports,
+          tokenAccountRentLamports: summary.tokenAccountRentLamports,
+        });
+        const capacity = checkSolDepositCapacity({
+          balanceLamports: balanceRaw,
+          amountLamports: requestedAmountRaw,
+          reserveLamports: actualReserve,
+        });
+        if (!capacity.ok) {
+          throw new Error(
+            `Insufficient SOL after review: need ${formatLamports(capacity.requiredLamports)} SOL, ` +
+              `short ${formatLamports(capacity.shortfallLamports)} SOL.`,
+          );
+        }
+      }
+
+      setExpectedAmountRaw(requestedAmountRaw);
+      setReview(summary);
       setTransaction(decoded);
       setBuild(body);
       setPhase("review");
@@ -200,28 +332,91 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       setPhase("idle");
       setError(cause instanceof Error ? cause.message : "Kamino could not build that transaction.");
     }
-  }, [amount, mode, vaultAddress, wallet]);
+  }, [
+    amount,
+    balanceRaw,
+    isSolDeposit,
+    meta,
+    mode,
+    positionShares,
+    vaultAddress,
+    wallet,
+  ]);
 
   const confirm = useCallback(async () => {
-    if (!provider || !transaction) return;
+    if (!provider || !transaction || !review || !build || expectedAmountRaw === null) return;
     setError(null);
+    try {
+      assertKaminoTransactionMatches(review, {
+        feePayer: wallet ?? "",
+        mode,
+        vault: meta,
+        amountRaw: expectedAmountRaw,
+        tokenVault: build.vaultLimits?.tokenVault ?? null,
+        vaultFarm: build.vaultLimits?.vaultFarm ?? null,
+        positionSharesRaw: mode === "withdraw" ? positionShares : undefined,
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The transaction changed; refusing to sign.");
+      return;
+    }
+
     setPhase("submitting");
     try {
       const submitted = await submitSolanaTransaction(provider, transaction);
       setSignature(submitted);
-      setPhase("done");
+      setPhase("confirming");
+      const outcome = await waitForSignature(submitted);
+      setSignatureOutcomeState(outcome);
+      setPhase(outcome === "failed" ? "failed" : "confirmed");
       if (wallet) {
         await refreshPositions(wallet);
-        void readAssetBalance(wallet, meta.assetMint, meta.assetDecimals).then(setBalance);
+        void readAssetBalance(wallet, meta.assetMint, meta.assetDecimals).then((value) =>
+          setBalanceRaw(value?.raw ?? null),
+        );
       }
     } catch (cause) {
       setPhase("review");
       setError(solanaWalletErrorMessage(cause));
     }
-  }, [meta.assetDecimals, meta.assetMint, provider, refreshPositions, transaction, wallet]);
+  }, [
+    build,
+    expectedAmountRaw,
+    meta,
+    mode,
+    positionShares,
+    provider,
+    refreshPositions,
+    review,
+    transaction,
+    wallet,
+  ]);
 
-  const maxAmount = mode === "withdraw" ? (position?.shares ?? "") : (balance ?? "");
-  const canReview = !!wallet && amount.trim() !== "" && phase !== "building" && phase !== "submitting";
+  const depositReserve = conservativeSolDepositReserveLamports();
+  const maxDepositRaw =
+    balanceRaw === null
+      ? null
+      : isSolDeposit
+        ? maxSolDepositLamports(balanceRaw, depositReserve)
+        : balanceRaw;
+  const maxAmount =
+    mode === "withdraw"
+      ? positionShares > 0n
+        ? formatTokenAmount(positionShares, meta.sharesDecimals)
+        : null
+      : maxDepositRaw !== null && maxDepositRaw > 0n
+        ? formatTokenAmount(maxDepositRaw, meta.assetDecimals)
+        : null;
+  const withdrawBlocked = mode === "withdraw" && positionShares <= 0n;
+  const canReview =
+    !!wallet &&
+    amount.trim() !== "" &&
+    !withdrawBlocked &&
+    phase !== "building" &&
+    phase !== "submitting" &&
+    phase !== "confirming";
+  const balanceText =
+    balanceRaw === null ? null : formatTokenAmount(balanceRaw, meta.assetDecimals);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -230,7 +425,8 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
           <div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>Kamino · {meta.name}</div>
             <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
-              Direct kVault {mode} on Solana · {meta.assetSymbol} · share mint {short(meta.sharesMint)}
+              Direct kVault {mode} on Solana · {meta.assetSymbol} · asset mint{" "}
+              {short(meta.assetMint)} · share mint {short(meta.sharesMint)}
             </div>
           </div>
           <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
@@ -272,7 +468,9 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                     reset();
                     const nextMeta = findKaminoVault(next);
                     if (wallet && nextMeta) {
-                      void readAssetBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals).then(setBalance);
+                      void readAssetBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals).then(
+                        (value) => setBalanceRaw(value?.raw ?? null),
+                      );
                     }
                   }}
                 >
@@ -323,13 +521,24 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                 </div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
                   {mode === "deposit"
-                    ? balance
-                      ? `Wallet balance ≈ ${balance} ${meta.assetSymbol}`
+                    ? balanceText
+                      ? `Wallet balance ≈ ${balanceText} ${meta.assetSymbol}`
                       : "Reading your wallet balance…"
                     : position
                       ? `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
                       : "No position read yet for this vault."}
                 </div>
+                {isSolDeposit && (
+                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
+                    Max reserves ≈ {formatLamports(depositReserve)} SOL for network/priority fees,
+                    token-account rent and a 0.005 SOL safety buffer.
+                  </div>
+                )}
+                {withdrawBlocked && (
+                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
+                    No shares to withdraw in this vault — withdraw is disabled.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -381,7 +590,16 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
 
           <div style={{ display: "grid", gap: 5 }}>
             <Row k="Fee payer / owner" v={short(review.feePayer, 8, 8)} />
+            <Row k="Asset mint" v={`${short(meta.assetMint, 8, 6)} · ${kaminoAssetMintLabel(meta)}`} />
             <Row k="Share mint" v={short(meta.sharesMint, 8, 8)} />
+            <Row k="Min deposit (vault)" v={`${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}`} />
+            <Row k="Min withdraw (vault)" v={`${build.vaultLimits.minWithdrawAmount} shares`} />
+            {build.vaultLimits.depositCap && (
+              <Row k="Vault deposit cap" v={`${build.vaultLimits.depositCap} ${meta.assetSymbol}`} />
+            )}
+            {build.vaultLimits.remainingDeposit && (
+              <Row k="Vault cap remaining" v={`${build.vaultLimits.remainingDeposit} ${meta.assetSymbol}`} />
+            )}
             <Row k="kVault program" v={short(review.instructions.find((ix) => ix.programLabel === "Kamino kVault")?.programId ?? "—", 8, 8)} />
             <Row k="Signatures" v={String(review.signatures)} />
             <Row k="Network fee" v={`≈ ${formatLamports(review.networkFeeLamports)} SOL`} />
@@ -397,6 +615,14 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
               <Row k="SOL wrapped in this tx" v={`${formatLamports(review.transferredLamports)} SOL`} />
             )}
           </div>
+
+          {build.withdrawsAllShares && (
+            <Notice tone="caution">
+              Kamino built a <b>withdraw-ALL-shares</b> transaction. It only proceeds because the
+              amount you entered equals your full share balance. If your balance changed, go back
+              and review again.
+            </Notice>
+          )}
 
           <details style={{ marginTop: 12 }} open>
             <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
@@ -425,16 +651,34 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
           {error && <Notice tone="caution">{error}</Notice>}
 
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-ghost btn-md" onClick={reset} disabled={phase === "submitting"}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-md"
+              onClick={reset}
+              disabled={phase === "submitting" || phase === "confirming"}
+            >
               Back
             </button>
             <button
               type="button"
               className="btn btn-primary btn-md"
               onClick={() => void confirm()}
-              disabled={phase === "submitting" || phase === "done"}
+              disabled={
+                phase === "submitting" ||
+                phase === "confirming" ||
+                phase === "confirmed" ||
+                phase === "failed"
+              }
             >
-              {phase === "submitting" ? "Waiting for your wallet…" : phase === "done" ? "Confirmed" : "Confirm in wallet"}
+              {phase === "submitting"
+                ? "Waiting for your wallet…"
+                : phase === "confirming"
+                  ? "Confirming on-chain…"
+                  : phase === "confirmed"
+                    ? "Confirmed"
+                    : phase === "failed"
+                      ? "Failed"
+                      : "Confirm in wallet"}
             </button>
           </div>
           <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
@@ -444,12 +688,32 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         </div>
       )}
 
-      {phase === "done" && signature && (
+      {signature && (phase === "confirming" || phase === "confirmed" || phase === "failed") && (
         <div className="card card-pad" data-testid="kamino-live-done">
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Transaction submitted</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>
+            {phase === "confirming"
+              ? "Submitted · waiting for confirmation"
+              : phase === "failed"
+                ? "Transaction failed on-chain"
+                : signatureOutcomeState === "confirmed"
+                  ? "Transaction confirmed"
+                  : "Submitted · confirmation pending"}
+          </div>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>
             Signature <span className="mono" style={{ wordBreak: "break-all" }}>{signature}</span>
           </div>
+          {phase === "failed" && (
+            <Notice tone="caution">
+              The network reported this transaction as failed. Nothing was credited to your
+              position. Check the explorer for the exact error.
+            </Notice>
+          )}
+          {phase === "confirmed" && signatureOutcomeState === "pending" && (
+            <Notice tone="caution">
+              The wallet submitted the transaction, but the RPC has not confirmed it yet. Refresh
+              the position to check again — this is not a success claim.
+            </Notice>
+          )}
           <a
             href={`https://solscan.io/tx/${signature}`}
             target="_blank"

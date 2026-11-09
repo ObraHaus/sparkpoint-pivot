@@ -47,7 +47,14 @@ export function findMorphoVault(address: string | null | undefined): MorphoVault
   return MORPHO_VAULTS.find((v) => v.address.toLowerCase() === target) ?? null;
 }
 
-export type MorphoLiveErrorCode = "unknown_vault" | "invalid_account" | "invalid_amount";
+export type MorphoLiveErrorCode =
+  | "unknown_vault"
+  | "invalid_account"
+  | "invalid_amount"
+  | "mint_mismatch"
+  | "decimals_mismatch"
+  | "amount_too_small"
+  | "amount_too_large";
 
 export class MorphoLiveError extends Error {
   readonly code: MorphoLiveErrorCode;
@@ -68,6 +75,59 @@ export function parseMorphoAmount(input: string, decimals: number): bigint | nul
   const fractionRaw = fraction === "" ? 0n : BigInt(fraction.padEnd(decimals, "0"));
   const raw = wholeRaw * 10n ** BigInt(decimals) + fractionRaw;
   return raw > 0n ? raw : null;
+}
+
+export interface MorphoVaultReads {
+  readonly asset?: string | null;
+  readonly assetDecimals?: number | null;
+  readonly shareDecimals?: number | null;
+}
+
+/**
+ * The curated vault metadata must agree with the live `asset()` / `decimals()` reads. A wrong
+ * asset or a changed decimal count is refused before any amount is parsed.
+ */
+export function validateMorphoVaultMetadata(
+  meta: MorphoVaultMeta,
+  reads: MorphoVaultReads,
+): void {
+  if (reads.asset != null && reads.asset.toLowerCase() !== meta.asset.toLowerCase()) {
+    throw new MorphoLiveError(
+      "mint_mismatch",
+      "The vault's on-chain asset does not match the curated metadata; refusing to build.",
+    );
+  }
+  if (reads.assetDecimals != null && reads.assetDecimals !== meta.assetDecimals) {
+    throw new MorphoLiveError(
+      "decimals_mismatch",
+      `The vault asset reports ${reads.assetDecimals} decimals, not the curated ${meta.assetDecimals}.`,
+    );
+  }
+  if (reads.shareDecimals != null && reads.shareDecimals !== meta.shareDecimals) {
+    throw new MorphoLiveError(
+      "decimals_mismatch",
+      `The vault shares report ${reads.shareDecimals} decimals, not the curated ${meta.shareDecimals}.`,
+    );
+  }
+}
+
+export interface MorphoLiveLimits {
+  readonly maxDeposit?: bigint | null;
+  readonly maxRedeem?: bigint | null;
+  readonly maxWithdraw?: bigint | null;
+}
+
+/** Format raw units without floats (shared shape with the Kamino formatter). */
+export function formatMorphoAmount(raw: bigint, decimals: number): string {
+  const negative = raw < 0n;
+  const value = negative ? -raw : raw;
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = value % scale;
+  const fractionText =
+    decimals === 0 ? "" : fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  const text = fractionText ? `${whole}.${fractionText}` : `${whole}`;
+  return negative ? `-${text}` : text;
 }
 
 export interface MorphoDepositPlan {
@@ -109,12 +169,25 @@ export function buildMorphoDepositPlan(input: {
   account: string;
   amount: string;
   allowance: bigint | null | undefined;
+  limits?: MorphoLiveLimits | null;
 }): MorphoDepositPlan {
   const vault = requireVault(input.vault);
   const account = requireAccount(input.account);
   const assets = parseMorphoAmount(input.amount, vault.assetDecimals);
   if (assets === null) {
     throw new MorphoLiveError("invalid_amount", `Enter a ${vault.assetSymbol} amount with at most ${vault.assetDecimals} decimals.`);
+  }
+  const maxDeposit = input.limits?.maxDeposit;
+  if (maxDeposit !== undefined && maxDeposit !== null) {
+    if (maxDeposit === 0n) {
+      throw new MorphoLiveError("amount_too_small", "This vault is not accepting deposits right now.");
+    }
+    if (assets > maxDeposit) {
+      throw new MorphoLiveError(
+        "amount_too_large",
+        `The vault can accept at most ${formatMorphoAmount(maxDeposit, vault.assetDecimals)} ${vault.assetSymbol} right now.`,
+      );
+    }
   }
   return {
     kind: "deposit",
@@ -132,12 +205,28 @@ export function buildMorphoWithdrawPlan(input: {
   vault: string;
   account: string;
   amount: string;
+  limits?: MorphoLiveLimits | null;
 }): MorphoWithdrawPlan {
   const vault = requireVault(input.vault);
   const account = requireAccount(input.account);
   const shares = parseMorphoAmount(input.amount, vault.shareDecimals);
   if (shares === null) {
     throw new MorphoLiveError("invalid_amount", `Enter a share amount with at most ${vault.shareDecimals} decimals.`);
+  }
+  const maxRedeem = input.limits?.maxRedeem;
+  if (maxRedeem !== undefined && maxRedeem !== null) {
+    if (maxRedeem === 0n) {
+      throw new MorphoLiveError("amount_too_small", "You have no shares to redeem in this vault.");
+    }
+    if (shares > maxRedeem) {
+      throw new MorphoLiveError(
+        "amount_too_large",
+        `You can redeem at most ${formatMorphoAmount(maxRedeem, vault.shareDecimals)} ${vault.symbol} shares.`,
+      );
+    }
+  }
+  if (input.limits?.maxWithdraw === 0n) {
+    throw new MorphoLiveError("amount_too_small", "The vault cannot pay out assets right now.");
   }
   return {
     kind: "withdraw",

@@ -50,3 +50,21 @@ Status legend: [x] done · [~] in progress · [ ] pending · [!] blocked/owner d
       **simulated only**.
 - [!] Confirm whether production should use a keyed Kamino API or the public endpoints (today
       public, keyless).
+
+## 7. Harden milestone (2026-11-09)
+- [x] Kamino vault metadata limits (`minDepositAmount`, `minWithdrawAmount`, `depositCap`/remaining,
+      `tokenMint`, `sharesMint`, decimals) parsed and enforced in validation + prepare.
+- [x] Mint/decimals mismatch refused (`mint_mismatch`); honest min/cap messages.
+- [x] SOL Max/submit reserve (fees + ATA rent + 0.005 SOL buffer); `insufficient_balance` refused
+      before prepare and again before sign.
+- [x] Full unsigned-tx shape validation (program allowlist, instruction-kind allowlist, System
+      transfers only to the derived wSOL ATA, amount/vault/mint/owner checks, lookup tables resolved)
+      in the BFF **and** re-run in the browser before wallet sign.
+- [x] Steakhouse mint labelled as the vault's USDC asset mint (not native/Circle USDC).
+- [x] Signature-status tracking after confirm (`confirmed`/`failed`/`pending`, never fake success).
+- [x] Withdraw shows real shares + estimated assets; disabled at zero shares; withdraw-all sentinel
+      only accepted when the typed amount equals full shares.
+- [x] Morpho asset/share decimals validated and `maxDeposit`/`maxRedeem`/`maxWithdraw` enforced.
+- [x] Malicious fixtures + boundary/reserve/flags tests; full web suite green.
+- [x] Simulations re-run with SIMULATED labels; expected reverts/zero-share redeem are explicitly
+      **not** passes for funded execution.

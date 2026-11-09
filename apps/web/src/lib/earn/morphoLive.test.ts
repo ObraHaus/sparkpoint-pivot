@@ -8,7 +8,9 @@ import {
   buildMorphoWithdrawPlan,
   feeBpsLabel,
   findMorphoVault,
+  formatMorphoAmount,
   parseMorphoAmount,
+  validateMorphoVaultMetadata,
 } from "./morphoLive.ts";
 
 const VAULT = "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61";
@@ -77,4 +79,101 @@ test("fee copy never rounds a real fee down to zero", () => {
   assert.equal(feeBpsLabel(500), "5%");
   assert.equal(feeBpsLabel(50), "0.5%");
   assert.equal(feeBpsLabel(1), "0.01%");
+});
+
+
+test("live vault reads must match the curated asset and decimals", () => {
+  assert.doesNotThrow(() =>
+    validateMorphoVaultMetadata(
+      { ...findMorphoVault(VAULT)!, asset: BASE_USDC_ADDRESS, assetDecimals: 6, shareDecimals: 18 },
+      {},
+    ),
+  );
+  assert.throws(
+    () => validateMorphoVaultMetadata(findMorphoVault(VAULT)!, { asset: ACCOUNT }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "mint_mismatch",
+  );
+  assert.throws(
+    () => validateMorphoVaultMetadata(findMorphoVault(VAULT)!, { assetDecimals: 18 }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "decimals_mismatch",
+  );
+  assert.throws(
+    () => validateMorphoVaultMetadata(findMorphoVault(VAULT)!, { shareDecimals: 6 }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "decimals_mismatch",
+  );
+});
+
+test("ERC-4626 maxDeposit/maxRedeem/maxWithdraw bound the plan", () => {
+  const meta = findMorphoVault(VAULT)!;
+  const atCap = buildMorphoDepositPlan({
+    vault: VAULT,
+    account: ACCOUNT,
+    amount: "100",
+    allowance: 0n,
+    limits: { maxDeposit: 100_000_000n },
+  });
+  assert.equal(atCap.assets, 100_000_000n);
+  assert.throws(
+    () =>
+      buildMorphoDepositPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: "100.000001",
+        allowance: 0n,
+        limits: { maxDeposit: 100_000_000n },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_large",
+  );
+  assert.throws(
+    () =>
+      buildMorphoDepositPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: "1",
+        allowance: 0n,
+        limits: { maxDeposit: 0n },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_small",
+  );
+
+  const shares = parseMorphoAmount("0.5", meta.shareDecimals)!;
+  const atShares = buildMorphoWithdrawPlan({
+    vault: VAULT,
+    account: ACCOUNT,
+    amount: "0.5",
+    limits: { maxRedeem: shares },
+  });
+  assert.equal(atShares.shares, shares);
+  assert.throws(
+    () =>
+      buildMorphoWithdrawPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: "0.5",
+        limits: { maxRedeem: shares - 1n },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_large",
+  );
+  assert.throws(
+    () =>
+      buildMorphoWithdrawPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: "0.5",
+        limits: { maxRedeem: 0n },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_small",
+  );
+  assert.throws(
+    () =>
+      buildMorphoWithdrawPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: "0.5",
+        limits: { maxRedeem: shares, maxWithdraw: 0n },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_small",
+  );
+  assert.equal(formatMorphoAmount(1_000_000n, 6), "1");
+  assert.equal(formatMorphoAmount(1n, 6), "0.000001");
 });
