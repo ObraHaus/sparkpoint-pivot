@@ -10,6 +10,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (077 — first live earn slice: Kamino on Solana, Morpho on Base)
+
+- **Live direct deposit/withdraw is built behind flags, and the wallet is the only signer.** A new
+  shared `/vault/live` review+confirm route is reachable from both the `/vault` earn rows and
+  Sparky's earn card. It builds **unsigned** transactions, shows the exact amount, accounts and
+  network fee (plus ATA rent / approve leg where relevant), and then the user's browser wallet
+  signs. SparkPoint holds no key and the BFF never signs, approves or broadcasts. Off by default:
+  `NEXT_PUBLIC_EARN_LIVE_KAMINO` + `EARN_LIVE_KAMINO`, `NEXT_PUBLIC_EARN_LIVE_MORPHO` +
+  `EARN_LIVE_MORPHO`. (`apps/web/src/app/(app)/vault/live/page.tsx`,
+  `apps/web/src/components/vault/{LiveEarnFlow,KaminoLiveFlow,MorphoLiveFlow}.tsx`,
+  `apps/web/src/app/api/earn/kamino/{prepare,positions}/route.ts`,
+  `apps/web/src/lib/earn/{liveFlags,kaminoLive,morphoLive}.ts`, `apps/web/src/lib/solana/wallet.ts`)
+- **Kamino SOL is depositable, not just USDC.** The curated slice is SOL Balanced (native SOL,
+  wrapped in the same unsigned transaction) and Steakhouse USDC. Only the curated vaults can be
+  built server-side; any other vault is refused. Position read-back uses Kamino's public
+  user-positions endpoint.
+- **Morpho on Base uses plain ERC-4626.** Gauntlet USDC Prime (6-dp USDC, 18-dp shares) supports
+  approve (only when the allowance is short) + deposit and redeem via the existing user-signed
+  `useExecuteVaultTx`; the review reads live balances/previews and shows a gas estimate.
+- **Tests + simulations.** Unit tests cover the flags, request validation, tx summary (against real
+  unsigned Kamino fixtures), position parsing, Morpho approve/decimals logic and the injected
+  Solana wallet adapter. `scripts/earn-sim/{kamino,morpho}-sim.mjs` are read-only/SIMULATED:
+  Kamino simulates the unsigned txs on a public RPC, and the unfunded Base probe's deposit fails
+  honestly. **No funded execution is claimed.** (`scripts/earn-sim/*`,
+  `apps/web/src/lib/earn/*.test.ts`, `apps/web/src/lib/solana/wallet.test.ts`)
+- **Docs/spec:** `specs/077-live-earn/{research,plan,tasks}.md`. Live execution remains simulated
+  until the owner approves a funded test wallet; Rhea stays the 071 preview/link-out.
+
+### Added (078 — Rhea same-chain NEAR supply/withdraw, flags off)
+
+- **Same-chain NEAR → Burrow (Rhea) USDC supply and withdraw, signed by the user's own NEAR wallet.** A self-contained `/vault/live` flow (because 077's live route is not on develop) connects Meteor/NEAR, requests a **read-only** preflight of unsigned actions, shows an explicit review (account, amount, Burrow contract, native USDC token, storage/gas reserve, block), requires an acknowledgement, then asks the wallet to sign. Supply uses the documented Burrow `ft_transfer_call` with an empty msg and exact 1 yoctoNEAR, adding `storage_deposit` only when the Burrow account or token receiver is unregistered; withdraw uses Burrow `execute` → `Withdraw` with the exact `token_id` and 18-dp `max_amount`. A separate adapter capability (`sendTransactions`) re-checks the connected account immediately before the send and refuses a wallet switch; the login/NEP-413 path stays transaction-free. Receipts are polled read-only and reported confirmed/failed/pending honestly. (`apps/web/src/lib/near/{burrow,liveEarn,adapter,rpc}.ts`, `apps/web/src/app/(app)/vault/live/`, `apps/web/src/app/api/earn/rhea/`, `apps/web/src/components/vault/RheaLiveEarn.tsx`)
+- **Honest scope.** This is **not** 071's cross-chain MCA/1Click Phase C rail — that path remains deferred. It refuses unknown contracts/assets, bounds amounts, enforces storage/gas reserves, and never adds an allowance/access key. Gated by `EARN_LIVE_RHEA` (server) and `NEXT_PUBLIC_EARN_LIVE_RHEA` (browser), both default off; entry points link from `/vault` and Sparky's Rhea card only when enabled. Read-only simulation: `scripts/earn-sim/rhea-near-sim.mjs` (`SIMULATED`, never sends; expected insufficient-balance/no-position refusals are not passes). Specs: `specs/078-rhea-near-direct/`. (`CHANGELOG.md`, `services/agent/content_seed/whats-new.json`, `docs/demo/078-rhea-near-direct.md`)
+
 ### Added (feature-freeze dry run v9 — dual-access multi-chain)
 
 - **One credible freeze story on the pages and in Sparky.** The manual `/swap` page now follows the wallet's supported EVM chain (Base or Robinhood Chain on the beta build) instead of clamping every tester to Robinhood Chain, and it says plainly that cross-chain routes (USDC→BTC, ETH→Base, USDC→SOL) run through Sparky's NEAR Intents rail. `/vault` now surfaces the same data-driven earn registry Sparky reads — **Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR** — with chain filters, protocol/chain badges and honest rail states; the curated board remains below it. The top bar reports network **status** only (no switcher/bridge menu), and Connect shows the real Meteor mark, the MetaMask fox when MetaMask is the injected provider, and a distinct Browser-wallet glyph without duplicate rows. (`apps/web/src/app/(app)/swap/page.tsx`, `apps/web/src/lib/swap/useSwapConfirm.ts`, `apps/web/src/app/(app)/vault/page.tsx`, `apps/web/src/components/vault/EarnAcrossChains.tsx`, `apps/web/src/lib/earn/useEarnVaults.ts`, `apps/web/src/components/shell/TopBar.tsx`, `apps/web/src/app/connect/page.tsx`)

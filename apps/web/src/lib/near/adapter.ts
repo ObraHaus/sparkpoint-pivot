@@ -1,9 +1,14 @@
 /**
- * 075 — the small NEAR wallet adapter.
+ * 075/078 — the small NEAR wallet adapter.
  *
- * Deliberately narrow: connect / disconnect / read the account / sign a NEP-413 message. There is
- * NO transaction surface here — no signAndSendTransaction, no signTransaction, no broadcast — and
- * the production client never adds an access key (`signInWithoutAddKey` only; no `contractId`).
+ * 075 surface: connect / disconnect / read the account / sign a NEP-413 message. Those methods
+ * never build or broadcast a transaction.
+ *
+ * 078 adds ONE explicit transaction capability, `sendTransactions`, used ONLY by the Rhea
+ * same-chain live earn confirm step after a reviewed, acknowledged plan. It re-checks the connected
+ * account immediately before asking the wallet, so a wallet switch refuses instead of sending from
+ * a different account. No login/NEP-413 path calls it. The production client still never adds an
+ * access key (`signInWithoutAddKey` only; no `contractId`).
  *
  * Library: `@hot-labs/near-connect` (pinned). It is imported lazily and client-side only, so SSR
  * never touches `window`/IndexedDB. Meteor is attempted first; if it is not in the manifest the
@@ -14,6 +19,7 @@
  * branch is dead code there and the hook cannot exist.
  */
 
+import type { NearTransaction, NearTransactionOutcome } from "./burrow.ts";
 import type { NearNetwork } from "./network";
 
 export interface NearAccount {
@@ -33,17 +39,37 @@ export interface NearSignMessageParams {
   readonly nonce: Uint8Array;
 }
 
+export interface SendTransactionsOptions {
+  /** Refuse if the wallet's connected account is no longer this id (checked immediately before send). */
+  readonly expectedAccountId?: string;
+}
+
 export interface NearWalletAdapter {
   connect(): Promise<NearAccount>;
   disconnect(): Promise<void>;
   getAccount(): Promise<NearAccount | null>;
+  /** 078 — read the wallet's CURRENT account (not the stored display id) before a send. */
+  getConnectedAccount(): Promise<NearAccount | null>;
   signMessage(params: NearSignMessageParams): Promise<NearSignedMessage>;
+  /**
+   * 078 — explicit transaction capability for the live earn confirm step only. The adapter verifies
+   * the connected account immediately before calling the wallet and refuses a wallet switch.
+   */
+  sendTransactions(
+    transactions: readonly NearTransaction[],
+    options?: SendTransactionsOptions,
+  ): Promise<NearTransactionOutcome[]>;
 }
 
-/** The minimal shape of a connected wallet we use — transaction methods are intentionally absent. */
+/** The minimal shape of a connected wallet we use. Transaction methods are touched only by `sendTransactions`. */
 export interface NearWalletHandle {
   getAccounts(data?: { network?: NearNetwork }): Promise<NearAccount[]>;
   signMessage(params: NearSignMessageParams): Promise<NearSignedMessage>;
+  signAndSendTransactions?(params: {
+    network?: NearNetwork;
+    signerId?: string;
+    transactions: Array<{ receiverId: string; actions: unknown[] }>;
+  }): Promise<NearTransactionOutcome[]>;
   signOut?(data?: { network?: NearNetwork }): Promise<void>;
 }
 
@@ -60,6 +86,11 @@ export interface NearWalletMock {
   disconnect(): Promise<void>;
   getAccount(): Promise<NearAccount | null>;
   signMessage(params: NearSignMessageParams): Promise<NearSignedMessage>;
+  /** Optional on purpose: login-path mocks do not implement transaction methods. */
+  signAndSendTransactions?(params: {
+    network?: NearNetwork;
+    transactions: Array<{ receiverId: string; actions: unknown[] }>;
+  }): Promise<NearTransactionOutcome[]>;
 }
 
 export interface NearAccountStorage {
@@ -98,8 +129,9 @@ async function loadNearConnector(network: NearNetwork): Promise<NearConnectorHan
   const connector = new NearConnector({
     network,
     autoConnect: false,
-    // No access key at sign-in: this feature is account-read + message-signature only.
-    features: { signInWithoutAddKey: true, signMessage: true },
+    // 075 login needs account-read + message-signature; 078's live earn confirm additionally
+    // advertises the transaction capability, but nothing invokes it on the login path.
+    features: { signInWithoutAddKey: true, signMessage: true, signAndSendTransactions: true },
     cspNonce: nonce,
     footerBranding: null,
   });
@@ -195,6 +227,21 @@ export class NearWalletClient implements NearWalletAdapter {
     return stored ? { accountId: stored } : null;
   }
 
+  async getConnectedAccount(): Promise<NearAccount | null> {
+    if (this.mock) return this.mock.getAccount();
+    const connector = await this.ensureConnector();
+    if (!this.wallet) {
+      try {
+        const connected = await connector.getConnectedWallet();
+        this.wallet = connected.wallet;
+      } catch {
+        return null;
+      }
+    }
+    const accounts = await this.wallet.getAccounts({ network: this.network });
+    return accounts[0] ?? null;
+  }
+
   async signMessage(params: NearSignMessageParams): Promise<NearSignedMessage> {
     if (this.mock) return this.mock.signMessage(params);
     const connector = await this.ensureConnector();
@@ -203,6 +250,50 @@ export class NearWalletClient implements NearWalletAdapter {
       this.wallet = connected.wallet;
     }
     return this.wallet.signMessage(params);
+  }
+
+  /**
+   * 078 — the ONLY transaction call in the web app. It is separate from connect/signMessage and is
+   * used solely by the reviewed live earn confirm step. The connected account is re-read from the
+   * wallet immediately before the signature request; a switch (or a vanished account) refuses.
+   */
+  async sendTransactions(
+    transactions: readonly NearTransaction[],
+    options?: SendTransactionsOptions,
+  ): Promise<NearTransactionOutcome[]> {
+    if (transactions.length === 0) throw new Error("No transactions to send.");
+    if (this.mock) {
+      const account = await this.mock.getAccount();
+      if (options?.expectedAccountId && account?.accountId !== options.expectedAccountId) {
+        throw new Error("The connected NEAR account changed. Refusing to send; nothing was signed.");
+      }
+      if (!this.mock.signAndSendTransactions) {
+        throw new Error("This NEAR wallet mock has no transaction capability.");
+      }
+      return this.mock.signAndSendTransactions({
+        network: this.network,
+        transactions: transactions.map((tx) => ({ receiverId: tx.receiverId, actions: [...tx.actions] })),
+      });
+    }
+
+    const connector = await this.ensureConnector();
+    if (!this.wallet) {
+      const connected = await connector.getConnectedWallet();
+      this.wallet = connected.wallet;
+    }
+    const accounts = await this.wallet.getAccounts({ network: this.network });
+    const currentAccountId = accounts[0]?.accountId ?? null;
+    if (options?.expectedAccountId && currentAccountId !== options.expectedAccountId) {
+      throw new Error("The connected NEAR account changed. Refusing to send; nothing was signed.");
+    }
+    if (!this.wallet.signAndSendTransactions) {
+      throw new Error("The connected NEAR wallet does not support sending transactions.");
+    }
+    return this.wallet.signAndSendTransactions({
+      network: this.network,
+      signerId: options?.expectedAccountId ?? undefined,
+      transactions: transactions.map((tx) => ({ receiverId: tx.receiverId, actions: [...tx.actions] })),
+    });
   }
 }
 

@@ -26,6 +26,14 @@ import {
   vaultAppUrl,
 } from "@/lib/earn/format";
 import type { EarnProtocol, EarnVault } from "@sparkpoint/shared/schemas";
+import {
+  kaminoLiveEnabledFromEnv,
+  liveEarnHref,
+  morphoLiveEnabledFromEnv,
+  rheaLiveEnabledFromEnv,
+} from "@/lib/earn/liveFlags";
+import { findKaminoVault } from "@/lib/earn/kaminoLive";
+import { findMorphoVault } from "@/lib/earn/morphoLive";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -114,11 +122,49 @@ function RailChips({ vault }: { vault: EarnVault }) {
   );
 }
 
+function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | "rhea" | null {
+  const protocol = protocolOf(vault);
+  // Only link to the one shared live flow when this exact registry row is on the curated
+  // allowlist; otherwise the CTA would silently open a different vault/asset.
+  if (
+    protocol === "kamino" &&
+    vault.chain === "sol" &&
+    kaminoLiveEnabledFromEnv() &&
+    findKaminoVault(vault.address) !== null
+  ) {
+    return "kamino";
+  }
+  if (
+    protocol === "morpho" &&
+    vault.chain === "base" &&
+    morphoLiveEnabledFromEnv() &&
+    findMorphoVault(vault.address) !== null
+  ) {
+    return "morpho";
+  }
+  // 078 — Rhea same-chain NEAR rail. Its /vault/live branch is server-gated too.
+  if (protocol === "rhea" && vault.chain === "near" && rheaLiveEnabledFromEnv()) {
+    return "rhea";
+  }
+  return null;
+}
+
 function VaultRow({ vault }: { vault: EarnVault }) {
   const protocol = protocolOf(vault);
   const appUrl = vaultAppUrl(vault);
   const previewHref = `${toHref("chat")}?ask=${encodeURIComponent(previewPrompt(vault))}`;
   const noRail = vault.rails.available.length === 0;
+  const liveProtocol = liveProtocolFor(vault);
+  const liveHref = (mode: "deposit" | "withdraw") =>
+    liveProtocol
+      ? liveEarnHref({
+          protocol: liveProtocol,
+          chain: vault.chain,
+          vault: vault.address,
+          asset: vault.asset.symbol,
+          mode,
+        })
+      : null;
 
   return (
     <div
@@ -159,6 +205,16 @@ function VaultRow({ vault }: { vault: EarnVault }) {
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <RailChips vault={vault} />
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {liveHref("deposit") && (
+            <>
+              <a className="btn btn-primary btn-sm" href={liveHref("deposit")!} data-testid="earn-live-deposit">
+                Live deposit
+              </a>
+              <a className="btn btn-outline btn-sm" href={liveHref("withdraw")!} data-testid="earn-live-withdraw">
+                Live withdraw
+              </a>
+            </>
+          )}
           <a className="btn btn-outline btn-sm" href={previewHref}>
             <Icon name="chat" size={13} /> Preview in Sparky
           </a>
@@ -212,7 +268,8 @@ export function EarnAcrossChains() {
           <span className="t">Earn across chains</span>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.55, maxWidth: 720 }}>
             Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR — the same registry Sparky
-            reads. Rows are previews only; nothing signs or sends from this page.
+            reads. Rows are previews; where a live direct rail is flagged on, the row links to the
+            one shared review+confirm flow. Nothing signs or sends from this page.
           </div>
         </div>
         <span className="lbl" data-testid="earn-snapshot" title="Stored registry snapshot — never a live quote">
