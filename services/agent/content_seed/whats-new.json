@@ -7,6 +7,11 @@
       "tag": "Fixed",
       "title": "Kamino withdrawals now pass the safety check",
       "body": "Behind the scenes: the pre-sign safety check for live Kamino earn now recognises the real withdraw transaction Kamino builds (unstake, withdraw, and closing your empty share account), so a withdraw is no longer wrongly refused. Unknown instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "slug": "sparky-earn-options-all-protocols-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Ask Sparky \"What earn options do I have?\" and see every protocol",
+      "body": "Sparky now answers general earn questions like \"What earn options do I have?\" or \"Where can I earn?\" with the current options from every protocol it tracks: Kamino on Solana, Morpho on Base and Ethereum, and Rhea on NEAR. Before, these questions could get a \"no move I can build\" reply. Asking for one protocol's options, such as \"Show Rhea options\", also works now. The same options are on the Vault page.",
       "published_at": "2026-11-10T03:00:00Z"
     },
         {
