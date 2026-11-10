@@ -607,14 +607,18 @@ class EarnService:
             if not allowed:
                 raise RheaXchainDisabled(reason or "Live cross-chain Rhea deposits are disabled.")
 
-        # MCA + one-off fee. A lookup failure is fail-open: the preview still renders, assuming a
-        # first deposit, and the text says the account read was unavailable.
+        # MCA + one-off fee. Fail CLOSED: if the account read errors we do not know whether this
+        # is a first deposit, so we must not prepare a first-deposit plan (duplicate MCA / fee).
         mca: str | None = None
-        lookup_failed = False
         try:
             mca = await self.rhea_views.mca_for_wallet(wallet)
         except RheaRpcError:
-            lookup_failed = True
+            return self._unavailable(
+                entry,
+                vault,
+                "oneclick_rhea",
+                "I couldn't read your Rhea account just now, so I won't prepare a deposit plan.",
+            )
         first_deposit = mca is None
         fee_amount = Decimal(0)
         dapp_fee_amount = Decimal(0)
@@ -757,11 +761,6 @@ class EarnService:
             )
         if supply_apy:
             text = f"{text} Supply APY {supply_apy} (Rhea, variable)."
-        if lookup_failed:
-            text = (
-                f"{text} I couldn't read your Rhea account just now, so this preview assumes a "
-                "first deposit."
-            )
         block = EarnQuoteBlock(
             state="preview",
             rail="oneclick_rhea",

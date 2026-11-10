@@ -23,6 +23,7 @@ from sparkpoint_agent.earn.rhea import (
     DRY_PLACEHOLDER_SIGNATURE,
     NearRpcClient,
     RheaRpcError,
+    RheaViews,
     custom_recipient_msg,
     dapp_registration_fee_amount,
     inner_units_to_decimal,
@@ -215,6 +216,65 @@ def test_custom_recipient_messages_match_the_rhea_sdk_wire() -> None:
     )
 
 
+def test_messages_checksum_a_lowercased_session_wallet() -> None:
+    """The web session lowercases the owner; the wire must carry the EIP-55 form."""
+    lower = WALLET.lower()
+    assert supply_message(lower)["w"][0]["EVM"] == WALLET_NO_0X
+    assert message_to_sign(lower) == f'[{{"EVM":"{WALLET_NO_0X}"}}]'
+    assert register_message(lower, "ab" * 65)["w"][0]["EVM"] == WALLET_NO_0X
+
+
+async def test_mca_lookup_uses_checksummed_address_for_a_lowercased_owner() -> None:
+    """A checksummed hit must be the FIRST lookup, even when the session owner is lowercase."""
+    seen: list[str] = []
+
+    class Rpc:
+        async def view(self, contract: str, method: str, args: dict[str, Any]) -> Any:
+            seen.append(args["wallet"]["EVM"])
+            return MCA if args["wallet"]["EVM"] == WALLET_NO_0X else None
+
+    views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
+    assert await views.mca_for_wallet(WALLET.lower()) == MCA
+    assert seen == [WALLET_NO_0X]
+
+
+async def test_mca_lookup_falls_back_to_lowercase_registered_wallet() -> None:
+    """A legacy lowercase-registered MCA is still an existing MCA (never a first deposit)."""
+    seen: list[str] = []
+
+    class Rpc:
+        async def view(self, contract: str, method: str, args: dict[str, Any]) -> Any:
+            seen.append(args["wallet"]["EVM"])
+            return MCA if args["wallet"]["EVM"] == WALLET_NO_0X.lower() else None
+
+    views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
+    assert await views.mca_for_wallet(WALLET) == MCA
+    assert seen == [WALLET_NO_0X, WALLET_NO_0X.lower()]
+
+
+async def test_mca_lookup_miss_is_a_first_deposit() -> None:
+    seen: list[str] = []
+
+    class Rpc:
+        async def view(self, contract: str, method: str, args: dict[str, Any]) -> Any:
+            seen.append(args["wallet"]["EVM"])
+            return None
+
+    views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
+    assert await views.mca_for_wallet(WALLET.lower()) is None
+    assert seen == [WALLET_NO_0X, WALLET_NO_0X.lower()]
+
+
+async def test_mca_lookup_rpc_failure_raises_instead_of_assuming_first_deposit() -> None:
+    class Rpc:
+        async def view(self, contract: str, method: str, args: dict[str, Any]) -> Any:
+            raise RheaRpcError("offline")
+
+    views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
+    with pytest.raises(RheaRpcError):
+        await views.mca_for_wallet(WALLET.lower())
+
+
 # ── previews ──────────────────────────────────────────────────────────────────
 
 
@@ -305,13 +365,15 @@ async def test_no_liquidity_is_an_unavailable_card_with_a_smaller_amount_hint() 
     assert "smaller amount" in (outcome.block.unavailable_reason or "")
 
 
-async def test_rpc_down_still_renders_a_preview_and_flags_stale_apy() -> None:
+async def test_rpc_down_fails_closed_instead_of_assuming_a_first_deposit() -> None:
     stale = EarnSnapshot(
         fetched_at=datetime.now(UTC) - timedelta(hours=24),
         source="registry",
         vaults=(make_rhea_vault(),),
     )
-    service, _ = _service(FakeRheaViews(mca=None, fail_mca=True, fail_fee=True), snapshot=stale)
+    service, calls = _service(
+        FakeRheaViews(mca=None, fail_mca=True, fail_fee=True), snapshot=stale
+    )
     outcome = await service.preview_for(
         chain="near",
         address=RHEA_TOKEN_ID,
@@ -321,10 +383,11 @@ async def test_rpc_down_still_renders_a_preview_and_flags_stale_apy() -> None:
         wallet=WALLET,
     )
     wire = outcome.block.to_wire()
-    assert wire["state"] == "preview"
-    assert wire["firstDeposit"] is True
-    assert wire["source"]["stale"] is True
-    assert "assumes a first deposit" in outcome.text
+    assert wire["state"] == "unavailable"
+    assert "couldn't read your Rhea account" in (wire["unavailableReason"] or "")
+    assert "firstDeposit" not in wire
+    assert "messageToSign" not in wire
+    assert calls == []  # never quote / prepare a first-deposit plan
 
 
 # ── positions ─────────────────────────────────────────────────────────────────
