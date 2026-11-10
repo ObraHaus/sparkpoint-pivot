@@ -317,6 +317,31 @@ def get_registry_store() -> VaultRegistryStore | None:
     return VaultRegistryStore(db=get_database())
 
 
+async def build_vault_reader(
+    request: Request,
+    store: VaultRegistryStore | None = None,
+) -> VaultReader:
+    """Construct the fail-closed chain-read client for the request's chain (T030 · §B3).
+
+    Shared by :func:`get_vault_reader` (strict: construction errors are a 503) and chat's
+    degraded variant (a missing RPC must not take down a whole chat turn).
+    """
+    config = AgentConfig.from_env()
+    home_chain_id = config.chain_id
+    account = getattr(request.state, "account", None)
+    if isinstance(account, AccountContext):
+        config = config.for_chain(account.chain_id)
+    # `for_chain` clears the vault on every non-home chain (the vault is Base-only) and the resolver
+    # must NOT undo that — otherwise a request on Robinhood 46630 could be handed a Base vault
+    # address, which is exactly the cross-chain vault read this dependency exists to prevent. So the
+    # registry is only consulted for the chain the vault actually lives on.
+    if config.chain_id == home_chain_id:
+        resolved = await resolve_vault_address(config, store)
+        if resolved != config.vault_address:
+            config = replace(config, vault_address=resolved)
+    return VaultReader.from_config(config)
+
+
 async def get_vault_reader(
     request: Request,
     store: Annotated[VaultRegistryStore | None, Depends(get_registry_store)] = None,
@@ -337,20 +362,7 @@ async def get_vault_reader(
     transaction. With the flag off this is byte-identical to the previous behaviour and does not
     touch the database.
     """
-    config = AgentConfig.from_env()
-    home_chain_id = config.chain_id
-    account = getattr(request.state, "account", None)
-    if isinstance(account, AccountContext):
-        config = config.for_chain(account.chain_id)
-    # `for_chain` clears the vault on every non-home chain (the vault is Base-only) and the resolver
-    # must NOT undo that — otherwise a request on Robinhood 46630 could be handed a Base vault
-    # address, which is exactly the cross-chain vault read this dependency exists to prevent. So the
-    # registry is only consulted for the chain the vault actually lives on.
-    if config.chain_id == home_chain_id:
-        resolved = await resolve_vault_address(config, store)
-        if resolved != config.vault_address:
-            config = replace(config, vault_address=resolved)
-    return VaultReader.from_config(config)
+    return await build_vault_reader(request, store)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -28,7 +28,12 @@ _PORTFOLIO_PATTERNS = tuple(
     for pattern in (
         r"^show (?:me )?my portfolio$",
         r"^my portfolio$",
+        # 1110 — the multi-chain ask was answered by the chain-scoped vault snapshot instead of
+        # the existing `/portfolio/multichain` aggregation because these phrasings missed.
+        r"^(?:what(?:'s| is) )?my multi[ -]?chain portfolio$",
+        r"^(?:show (?:me )?)?my multi[ -]?chain portfolio$",
         r"^show (?:me )?my portfolio across (?:all )?(?:the )?chains$",
+        r"^(?:what(?:'s| is) )?my portfolio across (?:all )?(?:the )?chains$",
         r"^my portfolio across (?:all )?(?:the )?chains$",
         r"^(?:show (?:me )?)?my (?:positions|holdings|balances) everywhere$",
         r"^(?:what )?do i (?:have|own|hold) across (?:all )?(?:the )?chains$",

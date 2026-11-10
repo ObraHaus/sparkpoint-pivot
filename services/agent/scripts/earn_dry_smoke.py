@@ -174,8 +174,11 @@ async def main() -> int:
         views = RheaViews(rhea)
         probe_wallet = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
         try:
-            mca = await views.mca_for_wallet(probe_wallet)
-            print(f"get_mca_by_wallet({probe_wallet}) -> {mca!r}")
+            lookup = await views.mca_for_wallet(probe_wallet)
+            print(
+                f"get_mca_by_wallet({probe_wallet}) -> {lookup.mca!r} "
+                f"(wallet form {lookup.wallet_form})"
+            )
         except Exception as exc:  # noqa: BLE001 - advisory smoke output
             print(f"get_mca_by_wallet -> ERR {type(exc).__name__}")
         try:

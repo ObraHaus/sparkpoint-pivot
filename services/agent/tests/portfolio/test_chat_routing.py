@@ -128,6 +128,10 @@ async def _wires(dag: CoordinatorDag, message: str) -> list[dict[str, Any]]:
     [
         ("show my portfolio", "all"),
         ("show me my portfolio", "all"),
+        ("what is my multi-chain portfolio?", "all"),
+        ("what's my multichain portfolio?", "all"),
+        ("show me my multi chain portfolio", "all"),
+        ("what is my portfolio across all chains?", "all"),
         ("what do I have across chains", "all"),
         ("my balances", "all"),
         ("show me my balances", "all"),
@@ -183,6 +187,15 @@ async def test_show_my_portfolio_emits_the_overview_without_the_planner() -> Non
 
 
 @pytest.mark.asyncio
+async def test_multichain_portfolio_question_uses_the_aggregation() -> None:
+    service = _PortfolioService()
+    wires = await _wires(_dag(portfolio=service), "what is my multi-chain portfolio?")
+    block = next(wire for wire in wires if wire["type"] == "portfolio_overview")
+    assert block["focus"] == "all"
+    assert len(block["sections"]) == 5
+    assert service.calls == [(OWNER, "all")]
+
+
 async def test_swap_history_uses_the_swaps_focus() -> None:
     service = _PortfolioService()
     wires = await _wires(_dag(portfolio=service), "my swap history")

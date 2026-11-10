@@ -277,7 +277,11 @@ async def test_from_config_uses_configured_transport_and_reads() -> None:
 
 
 def test_from_config_without_rpc_fails_closed() -> None:
-    cfg = AgentConfig.from_env({"SPARKPOINT_VAULT_ADDRESS": _VAULT})  # no RPC url anywhere
+    # 8453 now has Base's own public default; 4663 deliberately has no public fallback, so it is
+    # the chain that still proves the fail-closed construction path.
+    cfg = AgentConfig.from_env(
+        {"CHAIN_ID": "4663", "SPARKPOINT_VAULT_ADDRESS": _VAULT}
+    )  # no RPC url anywhere
     with pytest.raises(VaultUnavailable) as exc:
         VaultReader.from_config(cfg)
     assert exc.value.reason is VaultUnavailableReason.RPC_UNREACHABLE

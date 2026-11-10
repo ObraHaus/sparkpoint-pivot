@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
+from urllib.parse import urlencode
 
 from ..coordinator.chat_blocks import EarnPositionsBlock, EarnQuoteBlock, EarnVaultsBlock
 from ..crosschain.addresses import placeholder_for
@@ -240,6 +241,114 @@ class EarnService:
             candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
             return candidates[0]
         return None
+
+    def resolve_withdraw_vault(
+        self, request: EarnRequest, protocol: str
+    ) -> tuple[VaultEntry | None, bool]:
+        """Resolve the withdraw target, honouring the asset the user named.
+
+        Returns ``(entry, asset_matched)``. A named asset restricts the search to curated vaults
+        of the SAME protocol+chain whose asset symbol matches (case-insensitive); when none
+        matches the result is ``(None, False)`` so the caller says "no such vault" instead of
+        deep-linking to a different asset's vault with the amount misread in that asset's units.
+        Only when no asset is named does the existing default selection apply.
+        """
+        snapshot = self.registry.current()
+        if snapshot is None or request.chain is None:
+            return None, False
+        candidates = [
+            entry
+            for entry in snapshot.vaults
+            if entry.chain == request.chain and entry.protocol == protocol
+        ]
+        named = (request.asset or "").strip().upper()
+        if named:
+            matches = [
+                entry for entry in candidates if entry.asset.symbol.strip().upper() == named
+            ]
+            if not matches:
+                return None, False
+            matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+            return matches[0], True
+        # No asset named: an explicit vault hint, then the curated default, then top TVL.
+        if request.vault_query:
+            query = request.vault_query.strip()
+            wanted = query.lower().removesuffix(" vault").strip()
+            for entry in candidates:
+                if addresses_equal(entry.address, query):
+                    return entry, False
+            named_matches = [
+                entry for entry in candidates if wanted and wanted in entry.name.lower()
+            ]
+            if named_matches:
+                named_matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+                return named_matches[0], False
+        default = self.config.default_vault(request.chain)
+        if default:
+            for entry in candidates:
+                if addresses_equal(entry.address, default):
+                    return entry, False
+        candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+        return (candidates[0], False) if candidates else (None, False)
+
+    def withdraw_outcome(self, request: EarnRequest) -> EarnOutcome:
+        """Route an explicit Morpho/Kamino withdraw to the existing ``/vault/live`` card.
+
+        No new execution surface: the card is the same review+confirm flow the Vault page uses
+        (``mode=withdraw``). It only links there; nothing is signed, built or sent here.
+        """
+        protocol = request.protocol or "morpho"
+        label = {"kamino": "Kamino"}.get(protocol, "Morpho")
+        entry, asset_matched = self.resolve_withdraw_vault(request, protocol)
+        if entry is None:
+            return EarnOutcome(
+                text=(
+                    f"I can't find a {label} vault to withdraw from in the current snapshot — "
+                    f"nothing was signed or sent. Ask me to list {label} vaults and I'll show "
+                    "what is live."
+                ),
+                block=EarnVaultsBlock(
+                    state="unavailable",
+                    unavailable_reason=f"No {label} vault is live in the current snapshot.",
+                ),
+            )
+        params: list[tuple[str, str]] = [
+            ("protocol", protocol),
+            ("chain", entry.chain),
+            ("vault", entry.address),
+            ("asset", entry.asset.symbol),
+            ("mode", "withdraw"),
+        ]
+        # Only prefill when the user named an asset that MATCHES this vault: otherwise the amount
+        # was parsed in units of an asset this fallback vault does not hold.
+        prefill_amount = request.amount_human if asset_matched else None
+        if prefill_amount is not None:
+            params.append(("amount", prefill_amount))
+        url = f"/vault/live?{urlencode(params)}"
+        same_chain = _chain_label(self.config, entry)
+        amount_line = (
+            f" for {prefill_amount} {entry.asset.symbol}" if prefill_amount is not None else ""
+        )
+        text = (
+            f"Open the live {label} withdraw card for {entry.name} on {same_chain}{amount_line} "
+            "to review and sign in your own wallet. Nothing was signed or sent here."
+        )
+        block = EarnQuoteBlock(
+            state="preview",
+            rail="direct",
+            vault=vault_wire(self.config, entry, self._rails(entry)),
+            protocol=protocol,
+            withdraw={
+                "kind": "external_link",
+                "url": url,
+                "note": (
+                    "Opens the same review-and-sign withdraw card as the Vault page. You review "
+                    "the amounts and fees, then sign in your own wallet."
+                ),
+            },
+            quoted_at=_now_iso(),
+        )
+        return EarnOutcome(text=text, block=block)
 
     # ── chat list ─────────────────────────────────────────────────────────────────────────────
 
@@ -607,14 +716,21 @@ class EarnService:
             if not allowed:
                 raise RheaXchainDisabled(reason or "Live cross-chain Rhea deposits are disabled.")
 
-        # MCA + one-off fee. A lookup failure is fail-open: the preview still renders, assuming a
-        # first deposit, and the text says the account read was unavailable.
-        mca: str | None = None
-        lookup_failed = False
+        # MCA + one-off fee. Fail CLOSED: if the account read errors we do not know whether this
+        # is a first deposit, so we must not prepare a first-deposit plan (duplicate MCA / fee).
         try:
-            mca = await self.rhea_views.mca_for_wallet(wallet)
+            lookup = await self.rhea_views.mca_for_wallet(wallet)
         except RheaRpcError:
-            lookup_failed = True
+            return self._unavailable(
+                entry,
+                vault,
+                "oneclick_rhea",
+                "I couldn't read your Rhea account just now, so I won't prepare a deposit plan.",
+            )
+        mca = lookup.mca
+        # Multica keys by the EXACT registered string. Reuse the form the lookup matched so a
+        # legacy lowercase MCA is never addressed by a different (checksummed) wallet string.
+        wallet_form = lookup.wallet_form
         first_deposit = mca is None
         fee_amount = Decimal(0)
         dapp_fee_amount = Decimal(0)
@@ -641,20 +757,24 @@ class EarnService:
 
         requires_signature = False
         if first_deposit:
-            message_text: str | None = message_to_sign(wallet)
+            message_text: str | None = message_to_sign(wallet, wallet_form=wallet_form)
             if dry:
-                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+                message = register_message(
+                    wallet, DRY_PLACEHOLDER_SIGNATURE, wallet_form=wallet_form
+                )
             elif signature and signature.strip():
                 # The web obtained this from the user's own wallet ``personal_sign``; it is
                 # off-chain auth, never a transaction. The agent still never signs.
-                message = register_message(wallet, signature)
+                message = register_message(wallet, signature, wallet_form=wallet_form)
             else:
                 # Live first deposit without the off-chain signature: return the review and ask
                 # for it. Do NOT call 1Click with dry=false yet.
                 requires_signature = True
-                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+                message = register_message(
+                    wallet, DRY_PLACEHOLDER_SIGNATURE, wallet_form=wallet_form
+                )
         else:
-            message = supply_message(wallet)
+            message = supply_message(wallet, wallet_form=wallet_form)
             message_text = None
         message_json = custom_recipient_msg(message)
         recipient = mca or rhea.am_contract
@@ -757,11 +877,6 @@ class EarnService:
             )
         if supply_apy:
             text = f"{text} Supply APY {supply_apy} (Rhea, variable)."
-        if lookup_failed:
-            text = (
-                f"{text} I couldn't read your Rhea account just now, so this preview assumes a "
-                "first deposit."
-            )
         block = EarnQuoteBlock(
             state="preview",
             rail="oneclick_rhea",
@@ -819,7 +934,7 @@ class EarnService:
             "fetchedAt": _now_iso(),
         }
         try:
-            mca = await self.rhea_views.mca_for_wallet(wallet)
+            lookup = await self.rhea_views.mca_for_wallet(wallet)
         except RheaRpcError:
             return EarnOutcome(
                 text=(
@@ -833,6 +948,7 @@ class EarnService:
                     unavailable_reason="The NEAR RPC read is unavailable right now.",
                 ),
             )
+        mca = lookup.mca
         if mca is None:
             fee_asset = next(iter(rhea.enabled_assets()), None)
             fee_value = (

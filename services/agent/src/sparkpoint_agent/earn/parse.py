@@ -79,7 +79,12 @@ _TRAILING_NOISE_RE = re.compile(r"\b(?:please|now|today|thanks|asap)\b.*$", re.I
 _RHEA_RE = re.compile(r"\b(?:rhea(?:\s+finance)?|burrow)\b", re.IGNORECASE)
 _POSITION_RE = re.compile(r"\bpositions?\b", re.IGNORECASE)
 _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
-_WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
+# Verb forms only: "withdraw", "withdrawing", "take out", "pull out". The NOUNS
+# ("withdrawal"/"withdrawals") must NOT hijack an informational ask ("how do withdrawals work?",
+# "are withdrawals instant on Morpho?") into the withdraw card.
+_WITHDRAW_RE = re.compile(
+    r"\bwithdraw(?:ing)?\b|\btake\s+out\b|\bpull\s+out\b", re.IGNORECASE
+)
 _OPTIONS_RE = re.compile(r"\boptions?\b", re.IGNORECASE)
 # A protocol-agnostic "what earn options do I have?" / "where can I invest?" turn lists every
 # protocol in the live registry (Kamino + Morpho + Rhea). Deliberately narrow so existing
@@ -447,6 +452,32 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
             protocol=protocol,
         )
 
+    if _WITHDRAW_RE.search(text) is not None:
+        # B (1110) — an explicit exit command must honour the chain the user names ("on Base",
+        # "on Solana") instead of the request header's chain. A comparative turn still belongs to
+        # the planner's comparison flow, exactly like the deposit branch below.
+        if (
+            _COMPARATIVE_RE.search(text) is not None
+            or _OR_COMPARATIVE_RE.search(text) is not None
+        ):
+            return None
+        chain = _chain_from(text)
+        if chain is None and protocol == "kamino":
+            chain = "sol"
+        if chain is None:
+            chain = "base"
+        parsed = _amount(text)
+        return EarnRequest(
+            kind="withdraw",
+            chain=chain,
+            asset=parsed[2] if parsed is not None else _named_asset(text),
+            amount=parsed[0] if parsed is not None else None,
+            amount_raw=parsed[1] if parsed is not None else None,
+            vault_query=None,
+            sort="tvl",
+            message=message,
+            protocol=protocol,
+        )
     if _DEPOSIT_VERB_RE.search(text) is None:
         return None
     amount = _amount(text)

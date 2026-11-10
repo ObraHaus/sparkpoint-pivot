@@ -24,6 +24,7 @@ from sparkpoint_agent.earn.config import default_config
 from sparkpoint_agent.earn.parse import EarnRequest
 from sparkpoint_agent.earn.rails import LIVE, NO_LIQUIDITY, ReceiptLivenessCache
 from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot
+from sparkpoint_agent.earn.rhea import McaLookup, evm_wallet_string
 from sparkpoint_agent.earn.service import EarnService
 
 from .helpers import RHEA_TOKEN_ID, make_kamino_vault, make_rhea_vault, make_vault
@@ -357,8 +358,8 @@ class _RheaViews:
         self.mca = mca
         self.portfolio = portfolio
 
-    async def mca_for_wallet(self, wallet: str) -> str | None:  # noqa: ARG002
-        return self.mca
+    async def mca_for_wallet(self, wallet: str) -> McaLookup:
+        return McaLookup(mca=self.mca, wallet_form=evm_wallet_string(wallet))
 
     async def create_mca_fee(self) -> dict[str, str]:
         return {RHEA_TOKEN_ID: "300000"}
