@@ -10,6 +10,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (1110 — Defender scan-action pin)
+
+- **The OH Defender PR scan now pins `ObraHaus/obrahaus-defender/ci/scan-action` to `2b46e3dc`
+  (obrahaus-defender PR #122, AI-review timeout/progress repair).** Internal CI only — no gate,
+  input, timeout or coverage change. (`.github/workflows/oh-defender.yml`)
+
+### Fixed (1110 — Kamino withdraw_from_available guard, security)
+
+- **Kamino partial withdrawals are no longer refused when Kamino builds the `withdraw_from_available`
+  kVault instruction (`1383709baadc2239`).** Kamino's API sometimes services a withdraw entirely from
+  already-available vault liquidity and returns that variant instead of `withdraw` (`b712…`), which
+  the pre-sign guard rejected as `authority_change`, surfacing as a prod prepare `502`. The guard now
+  accepts the variant **only in withdraw mode** and only as the single kVault action, and validates
+  the fixed IDL account prefix positionally — `user` = the signer, `vault_state` = the selected
+  curated vault, `global_config` = the `["global_config"]` kVault PDA, `token_vault` = the vault's
+  allowlisted token account, `base_vault_authority` = the `["authority", vault_state]` PDA,
+  `user_token_ata` / `user_shares_ata` = the signer's canonical asset/share ATAs, `token_mint` /
+  `shares_mint` = the curated asset/share mints, the asset and share token programs (SPL Token or
+  Token-2022, asset program pinned to the curated metadata), `klend_program`, `event_authority` =
+  the `["__event_authority"]` PDA, and `program` = the kVault program. The amount must be non-zero and,
+  for a partial redeem, no greater than the verified share balance; the existing `u64::MAX` all-shares
+  rule is unchanged, as are the transfer scan, ATA create/close checks, farm guard, vault/mint
+  allowlists and authority checks. The older `withdraw` path is deliberately untouched in this PR.
+  (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoLive.test.ts`)
+
+### Fixed (1110 — Rhea MCA lookup is case-insensitive across the checksum form)
+
+- **An existing Rhea Multichain Account (MCA) is now detected even though the web session lowercases
+  the EVM owner.** `multica.near::get_mca_by_wallet` matches the exact registered string, and an MCA
+  created from a wallet is registered EIP-55 checksummed (`BddA…4f13`), while the agent asked with the
+  lowercased owner (`bdda…4f13`) and got `null`. The consequences were a blank Rhea portfolio section,
+  `/earn/rhea/positions` claiming "no account", and a cross-chain quote that reported
+  `firstDeposit:true` with the 0.60 USDC one-time fee (and a lowercase `customRecipientMsg`), risking a
+  duplicate MCA on a live first deposit. The canonical EIP-55 checksum is now tried first for
+  `get_mca_by_wallet`; when the checksummed lookup misses, a single read-only lowercase lookup still
+  treats any hit as an existing MCA. The exact wallet form that matched (checksum or legacy lowercase)
+  is carried into `customRecipientMsg` / `messageToSign`, so a deposit for a lowercase-registered MCA
+  is never addressed by the checksummed string; a first deposit keeps the checksum form. An RPC
+  error/timeout now fails closed (an unavailable preview) instead of assuming a first deposit. No
+  signature, nonce, allowlist or amount check was weakened. (`services/agent/src/sparkpoint_agent/earn/rhea.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`, `services/agent/tests/earn/test_rhea.py`)
+
 ### Fixed (1110 — Sparky chain routing, RPC defaults, multichain portfolio)
 
 - **Chat no longer hard-fails on a chain whose read RPC is unset, and Base mainnet now has a

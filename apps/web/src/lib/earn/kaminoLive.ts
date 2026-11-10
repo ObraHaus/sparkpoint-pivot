@@ -23,6 +23,11 @@ export const KAMINO_API_URL = "https://api.kamino.finance";
 /** Pinned program ids (read-only constants; never derived). */
 export const KAMINO_KVAULT_PROGRAM_ID = "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd";
 export const KAMINO_FARMS_PROGRAM_ID = "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr";
+/**
+ * Kamino Lend program the kVault withdraw instructions CPI into. It is an *account* of the kVault
+ * instruction, not an invoked program, so it is pinned separately from the allowed program list.
+ */
+export const KAMINO_KLEND_PROGRAM_ID = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
 export const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
 export const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 export const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
@@ -49,6 +54,18 @@ export const ALLOWED_KAMINO_PROGRAMS: readonly string[] = [
 /** Kamino kVault instruction discriminators observed in the public API's unsigned txs. */
 export const KAMINO_DEPOSIT_DISCRIMINATOR = "f223c68952e1f2b6";
 export const KAMINO_WITHDRAW_DISCRIMINATOR = "b712469c946da122";
+/**
+ * Partial-withdraw variant Kamino sometimes builds when the shares are already available (there is
+ * no reserve funding needed). `sha256("global:withdraw_from_available")[0..8]`, verified against
+ * the kVault IDL codegen and a captured unsigned partial-withdraw transaction.
+ */
+export const KAMINO_WITHDRAW_FROM_AVAILABLE_DISCRIMINATOR = "1383709baadc2239";
+/**
+ * Fixed accounts of the kVault `withdraw_from_available` IDL instruction. Kamino may append
+ * remaining reserve accounts after these (8 in the observed txs); the fixed prefix is positional
+ * and validated exactly.
+ */
+export const KAMINO_WITHDRAW_FROM_AVAILABLE_ACCOUNT_COUNT = 14;
 /**
  * Kamino farm discriminators observed in the same deposit/withdraw txs. Deposits initialise the
  * user's farm position and stake; withdraws unstake and then pull the unstaked deposits back out.
@@ -128,6 +145,8 @@ export interface KaminoVaultMeta {
   readonly assetTokenProgram: string;
   readonly assetTokenStandard: KaminoAssetTokenStandard;
   readonly sharesMint: string;
+  /** The token program that owns `sharesMint`; kVault shares are standard SPL Token. */
+  readonly sharesTokenProgram: string;
   readonly sharesDecimals: number;
   readonly managementFeeBps: number;
   readonly performanceFeeBps: number;
@@ -145,6 +164,7 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     assetTokenProgram: TOKEN_PROGRAM_ID,
     assetTokenStandard: "spl-token",
     sharesMint: "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+    sharesTokenProgram: TOKEN_PROGRAM_ID,
     sharesDecimals: 9,
     managementFeeBps: 0,
     performanceFeeBps: 0,
@@ -159,6 +179,7 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     assetTokenProgram: TOKEN_PROGRAM_ID,
     assetTokenStandard: "spl-token",
     sharesMint: "7D8C5pDFxug58L9zkwK7bCiDg4kD4AygzbcZUmf5usHS",
+    sharesTokenProgram: TOKEN_PROGRAM_ID,
     sharesDecimals: 6,
     managementFeeBps: 0,
     performanceFeeBps: 500,
@@ -616,6 +637,8 @@ export interface KaminoInstructionSummary {
   readonly rejectReason: string | null;
   readonly authority: string | null;
   readonly action: { readonly kind: LiveEarnMode; readonly amountRaw: bigint } | null;
+  /** True when this kVault action is the `withdraw_from_available` variant. */
+  readonly withdrawFromAvailable: boolean;
   /** The farms variant when this instruction targets the Kamino farms program, else null. */
   readonly farmKind: KaminoFarmInstructionKind | null;
   /** Decoded farm amount: u64 stake amount, or u128 scaled unstake amount; null otherwise. */
@@ -732,6 +755,8 @@ interface DescribedInstruction {
   readonly priorityMicroLamports: bigint | null;
   readonly computeUnitLimit: bigint | null;
   readonly action: { kind: LiveEarnMode; amountRaw: bigint } | null;
+  /** True when the kVault action is the `withdraw_from_available` variant. */
+  readonly withdrawFromAvailable: boolean;
   readonly authority: string | null;
   readonly rejectReason: string | null;
   readonly farmKind: KaminoFarmInstructionKind | null;
@@ -754,6 +779,7 @@ function describeInstruction(
     priorityMicroLamports: null,
     computeUnitLimit: null,
     action: null,
+    withdrawFromAvailable: false,
     authority: null,
     rejectReason: null,
     farmKind: null,
@@ -883,20 +909,30 @@ function describeInstruction(
         action: { kind: "deposit", amountRaw: amount },
       };
     }
-    if (discriminator === KAMINO_WITHDRAW_DISCRIMINATOR) {
+    if (
+      discriminator === KAMINO_WITHDRAW_DISCRIMINATOR ||
+      discriminator === KAMINO_WITHDRAW_FROM_AVAILABLE_DISCRIMINATOR
+    ) {
       const amount = data.length >= 16 ? readU64LE(data, 8) : 0n;
+      const fromAvailable =
+        discriminator === KAMINO_WITHDRAW_FROM_AVAILABLE_DISCRIMINATOR;
       return {
         ...base,
         label:
           amount === U64_MAX
-            ? "kVault withdraw ALL shares"
-            : `kVault withdraw ${amount} raw shares`,
+            ? fromAvailable
+              ? "kVault withdraw_from_available ALL shares"
+              : "kVault withdraw ALL shares"
+            : fromAvailable
+              ? `kVault withdraw_from_available ${amount} raw shares`
+              : `kVault withdraw ${amount} raw shares`,
         action: { kind: "withdraw", amountRaw: amount },
+        withdrawFromAvailable: fromAvailable,
       };
     }
     return reject(
       `kVault instruction ${discriminator}`,
-      `Unexpected kVault instruction ${discriminator} (only deposit/withdraw are allowed).`,
+      `Unexpected kVault instruction ${discriminator} (only deposit/withdraw/withdraw_from_available are allowed).`,
     );
   }
   if (programId === KAMINO_FARMS_PROGRAM_ID && data.length >= 8) {
@@ -1035,6 +1071,7 @@ export function summarizeKaminoTransaction(
       rejectReason: described.rejectReason,
       authority: described.authority,
       action: described.action,
+      withdrawFromAvailable: described.withdrawFromAvailable,
       farmKind: described.farmKind,
       farmAmount: described.farmAmount,
     };
@@ -1115,6 +1152,31 @@ export function deriveAssociatedTokenAddress(
 const FARM_SEED = new TextEncoder().encode("user");
 const FARM_VAULT_SEED = new TextEncoder().encode("fvault");
 const FARM_AUTHORITY_SEED = new TextEncoder().encode("authority");
+
+const KVAULT_GLOBAL_CONFIG_SEED = new TextEncoder().encode("global_config");
+const KVAULT_BASE_VAULT_AUTHORITY_SEED = new TextEncoder().encode("authority");
+const KVAULT_EVENT_AUTHORITY_SEED = new TextEncoder().encode("__event_authority");
+
+/**
+ * Derive a kVault PDA (program `KvauGMsp…`) from its IDL seeds. Returns `null` instead of throwing
+ * so an undecodable seed fails closed.
+ */
+export function deriveKaminoKvaultPda(
+  seeds: readonly (string | Uint8Array)[],
+): string | null {
+  try {
+    const encoded = seeds.map((seed) =>
+      typeof seed === "string" ? new PublicKey(seed).toBuffer() : seed,
+    );
+    const [address] = PublicKey.findProgramAddressSync(
+      encoded,
+      new PublicKey(KAMINO_KVAULT_PROGRAM_ID),
+    );
+    return address.toBase58();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Derive a Kamino farms PDA. Seeds are either literal byte strings (already encoded) or base58
@@ -1295,6 +1357,12 @@ export function assertKaminoTransactionMatches(
     expectation.vault.assetMint,
     expectation.vault.assetTokenProgram,
   );
+  const kvaultGlobalConfig = deriveKaminoKvaultPda([KVAULT_GLOBAL_CONFIG_SEED]);
+  const kvaultBaseVaultAuthority = deriveKaminoKvaultPda([
+    KVAULT_BASE_VAULT_AUTHORITY_SEED,
+    expectation.vault.address,
+  ]);
+  const kvaultEventAuthority = deriveKaminoKvaultPda([KVAULT_EVENT_AUTHORITY_SEED]);
   for (const transfer of review.systemTransfers) {
     if (transfer.from !== expectation.feePayer) {
       fail("unexpected_transfer", "A lamport transfer on this transaction is not from your wallet.");
@@ -1421,6 +1489,94 @@ export function assertKaminoTransactionMatches(
       }
       if (!instruction.accounts.includes(expectedAta)) {
         fail("wrong_recipient", "The Kamino action does not reference your wallet's asset token account.");
+      }
+      if (instruction.withdrawFromAvailable) {
+        // `withdraw_from_available` has a fixed, positional account layout in the kVault IDL:
+        // [user, vault_state, global_config, token_vault, base_vault_authority, user_token_ata,
+        //  token_mint, user_shares_ata, shares_mint, token_program, shares_token_program,
+        //  klend_program, event_authority, program], followed by Kamino's remaining reserve
+        // accounts. The fixed prefix is compared positionally so no account can be swapped.
+        if (expectation.mode !== "withdraw") {
+          fail(
+            "wrong_instruction",
+            "Kamino built a withdraw_from_available instruction for a deposit.",
+          );
+        }
+        const accounts = instruction.accounts;
+        if (accounts.length < KAMINO_WITHDRAW_FROM_AVAILABLE_ACCOUNT_COUNT) {
+          fail(
+            "wrong_instruction",
+            "The Kamino withdraw_from_available instruction is missing required accounts.",
+          );
+        }
+        const assetTokenProgram = accounts[9] ?? "";
+        const sharesTokenProgram = accounts[10] ?? "";
+        if (
+          assetTokenProgram !== expectation.vault.assetTokenProgram ||
+          tokenStandardForProgram(assetTokenProgram) === null
+        ) {
+          fail(
+            "wrong_program",
+            "The Kamino withdraw_from_available instruction uses an unexpected asset token program.",
+          );
+        }
+        if (sharesTokenProgram !== expectation.vault.sharesTokenProgram) {
+          fail(
+            "wrong_program",
+            "The Kamino withdraw_from_available instruction uses an unexpected share token program.",
+          );
+        }
+        const expectedSharesAta = deriveAssociatedTokenAddress(
+          expectation.feePayer,
+          expectation.vault.sharesMint,
+          expectation.vault.sharesTokenProgram,
+        );
+        const layout: readonly {
+          readonly expected: string | null;
+          readonly code: KaminoLiveErrorCode;
+          readonly what: string;
+        }[] = [
+          { expected: expectation.feePayer, code: "wrong_recipient", what: "user" },
+          { expected: expectation.vault.address, code: "wrong_vault", what: "vault state" },
+          { expected: kvaultGlobalConfig, code: "wrong_program", what: "global config" },
+          { expected: expectation.tokenVault, code: "unexpected_transfer", what: "vault token account" },
+          { expected: kvaultBaseVaultAuthority, code: "wrong_vault", what: "base vault authority" },
+          { expected: expectedAta, code: "wrong_recipient", what: "user asset token account" },
+          { expected: expectation.vault.assetMint, code: "mint_mismatch", what: "asset mint" },
+          { expected: expectedSharesAta, code: "wrong_recipient", what: "user share token account" },
+          { expected: expectation.vault.sharesMint, code: "mint_mismatch", what: "share mint" },
+          { expected: expectation.vault.assetTokenProgram, code: "wrong_program", what: "asset token program" },
+          { expected: expectation.vault.sharesTokenProgram, code: "wrong_program", what: "share token program" },
+          { expected: KAMINO_KLEND_PROGRAM_ID, code: "wrong_program", what: "klend program" },
+          { expected: kvaultEventAuthority, code: "wrong_program", what: "event authority" },
+          { expected: KAMINO_KVAULT_PROGRAM_ID, code: "wrong_program", what: "kVault program" },
+        ];
+        layout.forEach((entry, index) => {
+          if (!entry.expected || accounts[index] !== entry.expected) {
+            fail(
+              entry.code,
+              `The Kamino withdraw_from_available instruction has an unexpected ${entry.what} account.`,
+            );
+          }
+        });
+        if (action.amountRaw <= 0n) {
+          fail("wrong_amount", "The Kamino withdraw_from_available amount is zero.");
+        }
+        if (action.amountRaw !== U64_MAX) {
+          const positionShares = expectation.positionSharesRaw;
+          if (positionShares === undefined || positionShares === null) {
+            fail(
+              "position_unavailable",
+              "Your current share balance could not be verified, so a partial withdraw_from_available cannot be signed.",
+            );
+          }
+          if (action.amountRaw > positionShares) {
+            fail(
+              "wrong_amount",
+              "The Kamino withdraw_from_available amount is larger than your share balance.",
+            );
+          }
+        }
       }
     }
     if (instruction.authority && instruction.authority !== expectation.feePayer) {

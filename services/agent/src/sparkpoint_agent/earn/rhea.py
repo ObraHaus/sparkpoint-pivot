@@ -60,6 +60,45 @@ def strip_0x(value: str) -> str:
     return text[2:] if text[:2].lower() == "0x" else text
 
 
+def is_evm_address(value: str) -> bool:
+    """A 20-byte ``0x``-prefixed EVM address (case-insensitive, no checksum validation)."""
+    text = value.strip()
+    return len(text) == 42 and text[:2].lower() == "0x"
+
+
+def evm_wallet_string(value: str) -> str:
+    """Canonical EVM wallet string for Multica (no ``0x``, EIP-55 checksummed).
+
+    ``multica.near`` keys wallets by the EXACT string it was registered with (EIP-55 from the
+    user's wallet), so the lowercased owner the web session carries must be checksummed before
+    ``get_mca_by_wallet``/``customRecipientMsg``. Non-EVM values (e.g. a NEAR account id) pass
+    through unchanged.
+    """
+    text = value.strip()
+    if is_evm_address(text):
+        from eth_utils import to_checksum_address
+
+        try:
+            return strip_0x(to_checksum_address(text))
+        except ValueError:
+            pass
+    return strip_0x(text)
+
+
+@dataclass(frozen=True, slots=True)
+class McaLookup:
+    """A resolved Multica account lookup.
+
+    ``mca`` is ``None`` only for a genuine first deposit (both lookups missed). ``wallet_form``
+    is the EXACT string to reuse in outgoing Multica messages (``customRecipientMsg`` /
+    ``messageToSign``): the checksummed form when that matched, the legacy lowercase form when
+    that is what matched, and the checksummed form on a miss (what a first registration uses).
+    """
+
+    mca: str | None
+    wallet_form: str
+
+
 def _decode_view_result(body: Any) -> Any:
     """Decode a JSON-RPC ``query`` response's base64-ish byte array into JSON (or ``None``)."""
     if not isinstance(body, Mapping):
@@ -171,27 +210,48 @@ class RheaViews:
         self._clock = clock
         self._assets: dict[str, tuple[float, Mapping[str, Any] | None]] = {}
         self._fee: tuple[float, dict[str, str]] | None = None
-        self._mca: dict[str, tuple[float, str | None]] = {}
+        self._mca: dict[str, tuple[float, McaLookup]] = {}
 
     @property
     def rpc(self) -> NearRpcClient:
         return self._rpc
 
-    async def mca_for_wallet(self, wallet: str) -> str | None:
-        """The user's Multichain Account id, or ``None`` (first deposit). Cached ~60s."""
+    async def _lookup_mca(self, wallet: str) -> str | None:
+        value = await self._rpc.view(
+            self.config.am_contract,
+            "get_mca_by_wallet",
+            {"wallet": {"EVM": wallet}},
+        )
+        return value if isinstance(value, str) and value else None
+
+    async def mca_for_wallet(self, wallet: str) -> McaLookup:
+        """The user's Multichain Account lookup. Cached ~60s.
+
+        ``multica.near`` matches wallets by the exact registered string, so the canonical EIP-55
+        checksummed form is always tried first. A lowercase-only hit (an MCA registered by an
+        older lowercase path) is still treated as existing: the second lookup is read-only and
+        prevents a duplicate MCA / a bogus one-time fee. The exact form that matched is returned
+        with the MCA so every outgoing message uses the same string Multica keyed the account on;
+        a first deposit gets the checksummed form. Any RPC failure raises ``RheaRpcError`` so the
+        caller can fail closed instead of assuming a first deposit.
+        """
         key = wallet.strip().lower()
         now = self._clock()
         cached = self._mca.get(key)
         if cached is not None and now - cached[0] < self.config.mca_ttl_s:
             return cached[1]
-        value = await self._rpc.view(
-            self.config.am_contract,
-            "get_mca_by_wallet",
-            {"wallet": {"EVM": strip_0x(wallet)}},
-        )
-        mca = value if isinstance(value, str) and value else None
-        self._mca[key] = (now, mca)
-        return mca
+        canonical = evm_wallet_string(wallet)
+        wallet_form = canonical
+        mca = await self._lookup_mca(canonical)
+        if mca is None and is_evm_address(wallet):
+            legacy = strip_0x(wallet).lower()
+            if legacy != canonical:
+                mca = await self._lookup_mca(legacy)
+                if mca is not None:
+                    wallet_form = legacy
+        lookup = McaLookup(mca=mca, wallet_form=wallet_form)
+        self._mca[key] = (now, lookup)
+        return lookup
 
     async def create_mca_fee(self) -> dict[str, str]:
         """``get_create_mca_fee_paged`` as ``{token_id: raw_amount}``. Cached ~5 min."""
@@ -235,27 +295,43 @@ class RheaViews:
 # ── customRecipientMsg (exact wire shape) ────────────────────────────────────────────────────
 
 
-def supply_message(wallet: str) -> dict[str, Any]:
+def _message_wallet(wallet: str, wallet_form: str | None) -> str:
+    """The Multica wallet string for an outgoing message.
+
+    ``wallet_form`` is the exact form a lookup matched (checksum or legacy lowercase); when it is
+    absent this is a first deposit and the checksummed form is used.
+    """
+    if wallet_form:
+        return strip_0x(wallet_form)
+    return evm_wallet_string(wallet)
+
+
+def supply_message(wallet: str, *, wallet_form: str | None = None) -> dict[str, Any]:
     """Existing-MCA supply: ``{"w":[{"EVM":"<addr no 0x>"}],"b":{"r":"BurrowSupply"}}``."""
-    return {"w": [{"EVM": strip_0x(wallet)}], "b": {"r": SUPPLY_BUSINESS}}
+    return {
+        "w": [{"EVM": _message_wallet(wallet, wallet_form)}],
+        "b": {"r": SUPPLY_BUSINESS},
+    }
 
 
-def register_message(wallet: str, signature: str) -> dict[str, Any]:
+def register_message(
+    wallet: str, signature: str, *, wallet_form: str | None = None
+) -> dict[str, Any]:
     """First deposit: register the MCA and supply in one 1Click leg."""
     return {
-        "w": [{"EVM": strip_0x(wallet)}],
+        "w": [{"EVM": _message_wallet(wallet, wallet_form)}],
         "b": {"r": REGISTER_AND_SUPPLY_BUSINESS},
         "s": [strip_0x(signature)],
     }
 
 
-def message_to_sign(wallet: str) -> str:
+def message_to_sign(wallet: str, *, wallet_form: str | None = None) -> str:
     """The exact string the web must ``personal_sign`` on a first deposit.
 
     Matches the Rhea SDK's ``JSON.stringify([{EVM: "<addr without 0x>"}])`` — compact separators,
     original address case.
     """
-    return json.dumps([{"EVM": strip_0x(wallet)}], separators=(",", ":"))
+    return json.dumps([{"EVM": _message_wallet(wallet, wallet_form)}], separators=(",", ":"))
 
 
 def custom_recipient_msg(message: Mapping[str, Any]) -> str:
@@ -476,15 +552,18 @@ async def fetch_rhea_vaults(
 
 __all__ = [
     "DRY_PLACEHOLDER_SIGNATURE",
+    "McaLookup",
     "NearRpcClient",
     "RheaPosition",
     "RheaRpcError",
     "RheaViews",
     "custom_recipient_msg",
+    "evm_wallet_string",
     "extra_decimals_for",
     "fetch_rhea_vaults",
     "human_string",
     "inner_units_to_decimal",
+    "is_evm_address",
     "dapp_registration_fee_amount",
     "mca_fee_amount",
     "message_to_sign",

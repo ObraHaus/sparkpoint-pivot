@@ -30,6 +30,7 @@ from sparkpoint_agent.crosschain.oneclick import OneClickClient
 from sparkpoint_agent.earn.config import default_config
 from sparkpoint_agent.earn.rails import ReceiptLivenessCache
 from sparkpoint_agent.earn.registry import EarnRegistry
+from sparkpoint_agent.earn.rhea import McaLookup, evm_wallet_string
 from sparkpoint_agent.earn.rhea_xchain import (
     ERC20_TRANSFER_SELECTOR,
     RheaXchainDisabled,
@@ -80,11 +81,13 @@ def _payload(*, out: str = "99.9808", deposit: str | None = None) -> dict[str, A
 
 
 class FakeViews:
-    def __init__(self, *, mca: str | None = None) -> None:
+    def __init__(self, *, mca: str | None = None, wallet_form: str | None = None) -> None:
         self.mca = mca
+        self.wallet_form = wallet_form
 
-    async def mca_for_wallet(self, wallet: str) -> str | None:
-        return self.mca
+    async def mca_for_wallet(self, wallet: str) -> McaLookup:
+        form = self.wallet_form if self.wallet_form is not None else evm_wallet_string(wallet)
+        return McaLookup(mca=self.mca, wallet_form=form)
 
     async def create_mca_fee(self) -> dict[str, str]:
         return {RHEA_TOKEN_ID: "300000"}
@@ -269,6 +272,26 @@ async def test_dry_review_still_works_with_flags_off(monkeypatch: pytest.MonkeyP
     assert "live" not in wire
     assert "transferPlan" not in wire
     assert calls[0]["dry"] is True
+
+
+async def test_existing_mca_preview_reuses_a_lowercase_registered_wallet_form() -> None:
+    """A legacy lowercase MCA must be addressed by the exact string that matched."""
+    lower = WALLET_NO_0X.lower()
+    service, calls = _service(FakeViews(mca=MCA, wallet_form=lower))
+    outcome = await service.rhea_xchain_quote(
+        chain="near",
+        address=RHEA_TOKEN_ID,
+        origin_key="base:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+        wallet=WALLET.lower(),
+        dry=True,
+    )
+    wire = outcome.block.to_wire()
+    assert wire["firstDeposit"] is False
+    assert f'{{"EVM":"{lower}"}}' in wire["customRecipientMsg"]
+    assert WALLET_NO_0X not in wire["customRecipientMsg"]
+    assert calls[0]["customRecipientMsg"] == wire["customRecipientMsg"]
 
 
 async def test_live_commit_is_refused_when_the_flag_is_off(

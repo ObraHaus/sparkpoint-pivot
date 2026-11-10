@@ -663,14 +663,21 @@ class EarnService:
             if not allowed:
                 raise RheaXchainDisabled(reason or "Live cross-chain Rhea deposits are disabled.")
 
-        # MCA + one-off fee. A lookup failure is fail-open: the preview still renders, assuming a
-        # first deposit, and the text says the account read was unavailable.
-        mca: str | None = None
-        lookup_failed = False
+        # MCA + one-off fee. Fail CLOSED: if the account read errors we do not know whether this
+        # is a first deposit, so we must not prepare a first-deposit plan (duplicate MCA / fee).
         try:
-            mca = await self.rhea_views.mca_for_wallet(wallet)
+            lookup = await self.rhea_views.mca_for_wallet(wallet)
         except RheaRpcError:
-            lookup_failed = True
+            return self._unavailable(
+                entry,
+                vault,
+                "oneclick_rhea",
+                "I couldn't read your Rhea account just now, so I won't prepare a deposit plan.",
+            )
+        mca = lookup.mca
+        # Multica keys by the EXACT registered string. Reuse the form the lookup matched so a
+        # legacy lowercase MCA is never addressed by a different (checksummed) wallet string.
+        wallet_form = lookup.wallet_form
         first_deposit = mca is None
         fee_amount = Decimal(0)
         dapp_fee_amount = Decimal(0)
@@ -697,20 +704,24 @@ class EarnService:
 
         requires_signature = False
         if first_deposit:
-            message_text: str | None = message_to_sign(wallet)
+            message_text: str | None = message_to_sign(wallet, wallet_form=wallet_form)
             if dry:
-                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+                message = register_message(
+                    wallet, DRY_PLACEHOLDER_SIGNATURE, wallet_form=wallet_form
+                )
             elif signature and signature.strip():
                 # The web obtained this from the user's own wallet ``personal_sign``; it is
                 # off-chain auth, never a transaction. The agent still never signs.
-                message = register_message(wallet, signature)
+                message = register_message(wallet, signature, wallet_form=wallet_form)
             else:
                 # Live first deposit without the off-chain signature: return the review and ask
                 # for it. Do NOT call 1Click with dry=false yet.
                 requires_signature = True
-                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+                message = register_message(
+                    wallet, DRY_PLACEHOLDER_SIGNATURE, wallet_form=wallet_form
+                )
         else:
-            message = supply_message(wallet)
+            message = supply_message(wallet, wallet_form=wallet_form)
             message_text = None
         message_json = custom_recipient_msg(message)
         recipient = mca or rhea.am_contract
@@ -813,11 +824,6 @@ class EarnService:
             )
         if supply_apy:
             text = f"{text} Supply APY {supply_apy} (Rhea, variable)."
-        if lookup_failed:
-            text = (
-                f"{text} I couldn't read your Rhea account just now, so this preview assumes a "
-                "first deposit."
-            )
         block = EarnQuoteBlock(
             state="preview",
             rail="oneclick_rhea",
@@ -875,7 +881,7 @@ class EarnService:
             "fetchedAt": _now_iso(),
         }
         try:
-            mca = await self.rhea_views.mca_for_wallet(wallet)
+            lookup = await self.rhea_views.mca_for_wallet(wallet)
         except RheaRpcError:
             return EarnOutcome(
                 text=(
@@ -889,6 +895,7 @@ class EarnService:
                     unavailable_reason="The NEAR RPC read is unavailable right now.",
                 ),
             )
+        mca = lookup.mca
         if mca is None:
             fee_asset = next(iter(rhea.enabled_assets()), None)
             fee_value = (

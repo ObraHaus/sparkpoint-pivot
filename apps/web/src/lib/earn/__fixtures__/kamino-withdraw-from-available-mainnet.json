@@ -1,0 +1,36 @@
+{
+  "note": "Public, unsigned Solana mainnet transaction Kamino built for a partial withdraw against the SOL Balanced vault. It uses the withdraw_from_available discriminator (1383709baadc2239) instead of withdraw. Signatures zeroed (unsigned shape); public data only.",
+  "wallet": "J9EH8VmiXd58kuhhUCbED6Pm1dZU9fFQELhVE9UyMEKz",
+  "vault": "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+  "vaultAccount": "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4",
+  "vaultFarm": "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW",
+  "sharesMint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+  "otherVault": "HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E",
+  "foreignOwner": "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
+  "withdrawFromAvailable": {
+    "encoding": "base64",
+    "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAIDf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghX7xkOP5ENZKDmGI/418jP35gW5O9K9RlQ4LbOQ9zL8lg7LsUR9rryAneOreZtIXorT+0KieLG4e86fq9w5jIw26YitWRV9lJ00NOXMIXl29/G/c2l1Hgt0GiI7swiZB7nUIEf1eQhs3BDr0pJXhranYWBuSjlRK57jISYW61zeEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/abOn2YZjdhw2KmG8wZ1xG+D4vUoNIeVL11QVj4+96jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FmZcSl6KABCST5CcZDHe2R+hvfRmXIf0VYpllyda2WU+NiwEBdj0+UfEm5hVt6F3oxhMFm4RGjQ2j/ooqIlHMcB3KjKHtkJHTSaoYg4W6GkMgfILByfsQxkptCYRo9ioMEE2Qrx24k57DX/lNlkDVfcwyeUuz4btm/TroSahNzblAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpDXXN+g3Z0L9W7taCoAY6Ed34BOVKpChAjUxm6B58JAQGBwYABAAPBQwBAQkEAAEUCRhaX2sqzXwy4QAAsMYJWG2OkrIEAAAAAAAJBwABFAQCCgwIJGa7MdwkhEMHBgADABUFDAEBCxYAEggNFgMVBA8MDBsGCxMOEBEZGBoXEBODcJuq3CI5jKdWAAAAAAAMAwMAAAEJARo7tNPmLSDx6HSO+/un1b/nz2+fplPjHpqCsRpkX9ANCQQKBQwOAAgqAwYCJBcQHgc=",
+    "signatures": 1,
+    "lookupAddresses": {
+      "writable": [
+        "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4",
+        "4oigbthMAgjTMPyw8dBxhxU59YMtvNDHqhpR3W4HAzBM",
+        "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+        "6gTJfuPHEg6uRAijRkMqNc9kan4sVZejKMxmvx2grT1p",
+        "d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q",
+        "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
+        "DQ126djx5db6SMCbejHLNxoosonVes3qW5eVVUQuT93v",
+        "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW",
+        "So11111111111111111111111111111111111111112"
+      ],
+      "readOnly": [
+        "6TfTKE8f6y4HkgC5ReXMTxvmBMXzZwtkEuEDfbHz8WBJ",
+        "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
+        "C7h9YnjPrDvNhe2cWWDhCu4CZEB1XTTH4RzjmsHuengV",
+        "GVDUXFwS8uvBG35RjZv6Y8S1AkV5uASiMJ9qTUKqb5PL",
+        "H6rHXmXoCQvq8Ue81MqNh7ow5ysPa1dSozwW3PU1dDH6",
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD"
+      ]
+    }
+  }
+}
