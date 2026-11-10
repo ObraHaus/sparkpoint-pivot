@@ -15,6 +15,7 @@ import {
   KAMINO_DEPOSIT_DISCRIMINATOR,
   KAMINO_FARMS_PROGRAM_ID,
   KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR,
+  KAMINO_FARM_SHARE_SCALE,
   KAMINO_FARM_STAKE_DISCRIMINATOR,
   KAMINO_FARM_UNSTAKE_DISCRIMINATOR,
   KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR,
@@ -150,6 +151,13 @@ function limitsWith(overrides: Record<string, unknown>, meta = SOL_META): Kamino
 function u64(value: bigint): Buffer {
   const buffer = Buffer.alloc(8);
   buffer.writeBigUInt64LE(value);
+  return buffer;
+}
+
+function u128(value: bigint): Buffer {
+  const buffer = Buffer.alloc(16);
+  buffer.writeBigUInt64LE(value & 0xffffffffffffffffn, 0);
+  buffer.writeBigUInt64LE(value >> 64n, 8);
   return buffer;
 }
 
@@ -559,7 +567,10 @@ test("a withdraw's unstake + withdraw-unstaked farm bookkeeping is allowed", () 
       key(SOL_VAULT_FARM),
       key(KAMINO_FARMS_PROGRAM_ID),
     ],
-    data: Buffer.concat([Buffer.from(KAMINO_FARM_UNSTAKE_DISCRIMINATOR, "hex"), Buffer.alloc(16)]),
+    data: Buffer.concat([
+      Buffer.from(KAMINO_FARM_UNSTAKE_DISCRIMINATOR, "hex"),
+      u128(U64_MAX * KAMINO_FARM_SHARE_SCALE),
+    ]),
   });
   const withdrawUnstaked = new TransactionInstruction({
     programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
@@ -625,7 +636,10 @@ test("the deposit farm bookkeeping (initialize + stake) is allowed", () => {
       key(KAMINO_FARMS_PROGRAM_ID),
       key(TOKEN_PROGRAM_ID),
     ],
-    data: Buffer.concat([Buffer.from(KAMINO_FARM_STAKE_DISCRIMINATOR, "hex"), u64(10_000_000n)]),
+    data: Buffer.concat([
+      Buffer.from(KAMINO_FARM_STAKE_DISCRIMINATOR, "hex"),
+      u64(U64_MAX),
+    ]),
   });
   const tx = buildTransaction(PROBE, [...validSolDepositInstructions(), initialize, stake]);
   assert.doesNotThrow(() =>

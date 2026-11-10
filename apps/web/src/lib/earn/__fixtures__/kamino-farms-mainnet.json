@@ -1,5 +1,5 @@
 {
-  "note": "Public Solana mainnet transactions used as fixtures. Signatures zeroed (unsigned shape), no secrets. Source RPC: getTransaction with maxSupportedTransactionVersion 0, encoding base64.",
+  "note": "Public Solana mainnet transactions used as fixtures. Signatures zeroed (unsigned shape); public data only. Source RPC: getTransaction with maxSupportedTransactionVersion 0, encoding base64.",
   "wallet": "J9EH8VmiXd58kuhhUCbED6Pm1dZU9fFQELhVE9UyMEKz",
   "vaultFarm": "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW",
   "sharesMint": "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",

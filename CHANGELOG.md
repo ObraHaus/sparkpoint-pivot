@@ -26,7 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `["fvault", farm_state, mint]` / `["authority", farm_state]` PDAs. Stake is only allowed in a deposit
   flow, unstake/withdraw-unstaked only in a withdraw flow. Any mismatch or unknown farms discriminator
   fails closed with the existing reason codes (`wrong_recipient` / `wrong_vault` / `wrong_program` /
-  `mint_mismatch` / `wrong_instruction` / `authority_change`). Nothing else was loosened.
+  `mint_mismatch` / `wrong_instruction` / `authority_change`). Farm amounts are now decoded and
+  enforced as well: `stake` must use the `u64::MAX` stake-all sentinel, and `unstake`'s u128
+  `stake_shares_scaled` must be `u64::MAX × WAD` for an all-shares withdraw (or not exceed the
+  shares being withdrawn). The optional `scope_prices` slot must be the program-id sentinel the real
+  transactions pass, and `initialize_user` is deposit-only. Nothing else was loosened.
   (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoFarmGuard.test.ts`,
   `apps/web/src/lib/earn/__fixtures__/kamino-farms-mainnet.json`)
 

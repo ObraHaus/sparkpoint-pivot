@@ -72,6 +72,13 @@ export type KaminoFarmInstructionKind =
 /** u64::MAX — Kamino's withdraw endpoint encodes "redeem all shares" as this sentinel. */
 export const U64_MAX = 18_446_744_073_709_551_615n;
 
+/**
+ * Kamino farms stores staked share amounts scaled by WAD (1e18). The `stake` instruction takes an
+ * unscaled u64 amount, while `unstake` takes a u128 `stake_shares_scaled` value; a withdraw-all
+ * encodes `u64::MAX × WAD`.
+ */
+export const KAMINO_FARM_SHARE_SCALE = 1_000_000_000_000_000_000n;
+
 /** Rent-exempt minimum for a standard 165-byte SPL token account (lamports). */
 export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
 
@@ -611,6 +618,8 @@ export interface KaminoInstructionSummary {
   readonly action: { readonly kind: LiveEarnMode; readonly amountRaw: bigint } | null;
   /** The farms variant when this instruction targets the Kamino farms program, else null. */
   readonly farmKind: KaminoFarmInstructionKind | null;
+  /** Decoded farm amount: u64 stake amount, or u128 scaled unstake amount; null otherwise. */
+  readonly farmAmount: bigint | null;
 }
 
 export interface KaminoLamportTransfer {
@@ -680,6 +689,14 @@ function readU64LE(bytes: Uint8Array, offset: number): bigint {
   return value;
 }
 
+function readU128LE(bytes: Uint8Array, offset: number): bigint {
+  let value = 0n;
+  for (let i = 15; i >= 0; i -= 1) {
+    value = (value << 8n) | BigInt(bytes[offset + i] ?? 0);
+  }
+  return value;
+}
+
 function readU32LE(bytes: Uint8Array, offset: number): number {
   return (
     ((bytes[offset] ?? 0) |
@@ -718,6 +735,7 @@ interface DescribedInstruction {
   readonly authority: string | null;
   readonly rejectReason: string | null;
   readonly farmKind: KaminoFarmInstructionKind | null;
+  readonly farmAmount: bigint | null;
 }
 
 function describeInstruction(
@@ -739,6 +757,7 @@ function describeInstruction(
     authority: null,
     rejectReason: null,
     farmKind: null,
+    farmAmount: null,
   };
   const reject = (label: string, reason: string): DescribedInstruction => ({
     ...base,
@@ -896,10 +915,24 @@ function describeInstruction(
               ? "withdraw_unstaked"
               : null;
     if (farmKind !== null) {
+      // stake data = 8-byte discriminator + u64 amount; unstake = + u128 stake_shares_scaled.
+      const farmAmount =
+        farmKind === "stake" && data.length >= 16
+          ? readU64LE(data, 8)
+          : farmKind === "unstake" && data.length >= 24
+            ? readU128LE(data, 8)
+            : null;
+      const label =
+        farmKind === "stake"
+          ? `Kamino farm stake ${farmAmount === null ? "(unreadable amount)" : `${farmAmount} raw units`}`
+          : farmKind === "unstake"
+            ? `Kamino farm unstake ${farmAmount === null ? "(unreadable amount)" : `${farmAmount} scaled shares`}`
+            : `Kamino farm instruction ${discriminator} (${farmKind})`;
       return {
         ...base,
-        label: `Kamino farm instruction ${discriminator} (${farmKind})`,
+        label,
         farmKind,
+        farmAmount,
       };
     }
     return reject(
@@ -1003,6 +1036,7 @@ export function summarizeKaminoTransaction(
       authority: described.authority,
       action: described.action,
       farmKind: described.farmKind,
+      farmAmount: described.farmAmount,
     };
   });
 
@@ -1430,7 +1464,13 @@ export function assertKaminoTransactionMatches(
       if (kind === "stake" && expectation.mode !== "deposit") {
         fail("wrong_instruction", "A Kamino stake instruction is only allowed in a deposit.");
       }
-      if (kind !== "stake" && kind !== "initialize_user" && expectation.mode !== "withdraw") {
+      if (kind === "initialize_user" && expectation.mode !== "deposit") {
+        fail(
+          "wrong_instruction",
+          "A Kamino initialize-user instruction is only allowed in a deposit.",
+        );
+      }
+      if ((kind === "unstake" || kind === "withdraw_unstaked") && expectation.mode !== "withdraw") {
         fail(
           "wrong_instruction",
           "A Kamino unstake/withdraw-unstaked instruction is only allowed in a withdraw.",
@@ -1482,6 +1522,14 @@ export function assertKaminoTransactionMatches(
         if (accounts.length !== 8) {
           fail("wrong_instruction", "A Kamino stake instruction has an unexpected account layout.");
         }
+        // Index 6 is the optional `scope_prices` account. The real txs omit it, which Anchor
+        // encodes as the program id; require exactly that sentinel (an unexpected oracle fails).
+        if (accounts[6] !== KAMINO_FARMS_PROGRAM_ID) {
+          fail(
+            "wrong_program",
+            "A Kamino stake instruction passes an unexpected scope-prices account.",
+          );
+        }
         const tokenProgram = accounts[7] ?? "";
         if (tokenStandardForProgram(tokenProgram) === null) {
           fail("wrong_program", "A Kamino stake instruction uses an unexpected token program.");
@@ -1510,6 +1558,17 @@ export function assertKaminoTransactionMatches(
         if (accounts[5] !== expectation.vault.sharesMint) {
           fail("mint_mismatch", "A Kamino stake instruction uses a different stake token mint.");
         }
+        if (instruction.farmAmount === null) {
+          fail("wrong_amount", "A Kamino stake instruction has no readable amount.");
+        }
+        // Kamino's deposit flow stakes every share it just minted; the API sends the u64::MAX
+        // sentinel rather than a concrete amount (confirmed in the real deposit fixture).
+        if (instruction.farmAmount !== U64_MAX) {
+          fail(
+            "wrong_amount",
+            "A Kamino stake instruction must stake all newly minted shares (u64::MAX sentinel).",
+          );
+        }
         const expectedUserAta = deriveAssociatedTokenAddress(
           expectation.feePayer,
           expectation.vault.sharesMint,
@@ -1532,6 +1591,13 @@ export function assertKaminoTransactionMatches(
             "A Kamino unstake instruction has an unexpected account layout.",
           );
         }
+        // Index 3 is the optional `scope_prices` account; real txs pass the program-id sentinel.
+        if (accounts[3] !== KAMINO_FARMS_PROGRAM_ID) {
+          fail(
+            "wrong_program",
+            "A Kamino unstake instruction passes an unexpected scope-prices account.",
+          );
+        }
         if (accounts[0] !== expectation.feePayer) {
           fail("wrong_recipient", "A Kamino unstake instruction is not for your connected wallet.");
         }
@@ -1545,6 +1611,28 @@ export function assertKaminoTransactionMatches(
           fail(
             "wrong_vault",
             "A Kamino unstake instruction does not reference the selected vault's farm.",
+          );
+        }
+        if (instruction.farmAmount === null) {
+          fail("wrong_amount", "A Kamino unstake instruction has no readable amount.");
+        }
+        // `stake_shares_scaled` is the staked share amount × WAD. A withdraw-all unstakes the
+        // whole position (u64::MAX × WAD, as in the real withdraw fixture); a partial withdraw may
+        // not unstake more scaled shares than the kVault is withdrawing.
+        if (action.amountRaw === U64_MAX) {
+          if (instruction.farmAmount !== U64_MAX * KAMINO_FARM_SHARE_SCALE) {
+            fail(
+              "wrong_amount",
+              "A Kamino unstake for a withdraw-all must unstake the full farm position (u64::MAX × WAD).",
+            );
+          }
+        } else if (
+          instruction.farmAmount <= 0n ||
+          instruction.farmAmount > action.amountRaw * KAMINO_FARM_SHARE_SCALE
+        ) {
+          fail(
+            "wrong_amount",
+            "A Kamino unstake amount does not match the shares being withdrawn.",
           );
         }
         continue;

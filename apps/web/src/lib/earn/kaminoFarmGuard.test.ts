@@ -10,8 +10,10 @@ import {
 
 import {
   KAMINO_FARMS_PROGRAM_ID,
+  KAMINO_FARM_SHARE_SCALE,
   KAMINO_KVAULT_PROGRAM_ID,
   KaminoLiveError,
+  U64_MAX,
   assertKaminoTransactionMatches,
   deriveAssociatedTokenAddress,
   findKaminoVault,
@@ -24,7 +26,7 @@ import {
 } from "./kaminoLive.ts";
 
 /**
- * Fixtures captured from public Solana mainnet transactions (no secrets, signatures zeroed):
+ * Fixtures captured from public Solana mainnet transactions (public data only, signatures zeroed):
  * - withdraw 3yNBmWZ23CAwa7dGi8dpkRACX8CKeGUsb8grai8KydkqSSgZmLwLRwPwyJwLveBwGvbEgU2sf8mE2tqeyKnXh2YQ
  * - deposit  3cgt69V2GvTC5WGhxnZ7xupeCVSBMv1KnLXWcjhPxnQdwVhNTJ2dd212YggmHwLoYDvgN3Pfw8fPE4XxHrPdWMGC
  * They carry the real Kamino farms account layouts for the SOL Balanced vault.
@@ -47,7 +49,7 @@ const FIXTURE = JSON.parse(
 ) as FarmFixture;
 
 const SOL_VAULT = "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg";
-const SOL_TOKEN_VAULT = "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4";
+const SOL_VAULT_ACCOUNT = "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4";
 const WALLET = FIXTURE.wallet;
 const VAULT_FARM = FIXTURE.vaultFarm;
 const SOL_META: KaminoVaultMeta = findKaminoVault(SOL_VAULT)!;
@@ -60,7 +62,7 @@ function expectation(
     mode: "deposit",
     vault: SOL_META,
     amountRaw: 10_000_000n,
-    tokenVault: SOL_TOKEN_VAULT,
+    tokenVault: SOL_VAULT_ACCOUNT,
     vaultFarm: VAULT_FARM,
     ...overrides,
   };
@@ -95,6 +97,25 @@ function withFarmAccounts(
       if (!done && instruction.farmKind === kind) {
         done = true;
         return { ...instruction, accounts: mutate(instruction.accounts) };
+      }
+      return instruction;
+    }),
+  };
+}
+
+/** Clone a review replacing the decoded amount of the first farm instruction of `kind`. */
+function withFarmAmount(
+  review: KaminoTxReview,
+  kind: string,
+  amount: bigint | null,
+): KaminoTxReview {
+  let done = false;
+  return {
+    ...review,
+    instructions: review.instructions.map((instruction) => {
+      if (!done && instruction.farmKind === kind) {
+        done = true;
+        return { ...instruction, farmAmount: amount };
       }
       return instruction;
     }),
@@ -273,6 +294,91 @@ test("a wrong token mint on the stake instruction is refused", () => {
   assert.equal(
     errorCode(() => assertKaminoTransactionMatches(tampered, expectation())),
     "mint_mismatch",
+  );
+});
+
+test("a stake amount that is not the stake-all sentinel is refused", () => {
+  const review = summarize(FIXTURE.deposit);
+  assert.equal(review.instructions.find((ix) => ix.farmKind === "stake")?.farmAmount, U64_MAX);
+  const tampered = withFarmAmount(review, "stake", 10_000_000n);
+  assert.equal(
+    errorCode(() => assertKaminoTransactionMatches(tampered, expectation())),
+    "wrong_amount",
+  );
+});
+
+test("an inflated unstake amount is refused", () => {
+  const review = summarize(FIXTURE.withdraw);
+  const withdraw = expectation({
+    mode: "withdraw",
+    amountRaw: 10_000_000n,
+    positionSharesRaw: 10_000_000n,
+  });
+  assert.equal(
+    errorCode(() => assertKaminoTransactionMatches(review, withdraw)),
+    null,
+  );
+  const tampered = withFarmAmount(
+    review,
+    "unstake",
+    U64_MAX * KAMINO_FARM_SHARE_SCALE + 1n,
+  );
+  assert.equal(
+    errorCode(() => assertKaminoTransactionMatches(tampered, withdraw)),
+    "wrong_amount",
+  );
+  const missing = withFarmAmount(review, "unstake", null);
+  assert.equal(errorCode(() => assertKaminoTransactionMatches(missing, withdraw)), "wrong_amount");
+});
+
+test("an unexpected optional scope-prices account is refused", () => {
+  const depositReview = summarize(FIXTURE.deposit);
+  const stakeTampered = withFarmAccounts(depositReview, "stake", (accounts) => {
+    const next = [...accounts];
+    next[6] = attacker; // optional scope_prices slot
+    return next;
+  });
+  assert.equal(
+    errorCode(() => assertKaminoTransactionMatches(stakeTampered, expectation())),
+    "wrong_program",
+  );
+
+  const withdrawReview = summarize(FIXTURE.withdraw);
+  const unstakeTampered = withFarmAccounts(withdrawReview, "unstake", (accounts) => {
+    const next = [...accounts];
+    next[3] = attacker;
+    return next;
+  });
+  assert.equal(
+    errorCode(() =>
+      assertKaminoTransactionMatches(
+        unstakeTampered,
+        expectation({ mode: "withdraw", amountRaw: 10_000_000n, positionSharesRaw: 10_000_000n }),
+      ),
+    ),
+    "wrong_program",
+  );
+});
+
+test("initialize_user is only allowed in a deposit flow", () => {
+  const withdrawReview = summarize(FIXTURE.withdraw);
+  const depositReview = summarize(FIXTURE.deposit);
+  const initialize = depositReview.instructions.find(
+    (instruction) => instruction.farmKind === "initialize_user",
+  );
+  assert.ok(initialize);
+  const tampered: KaminoTxReview = {
+    ...withdrawReview,
+    instructions: [...withdrawReview.instructions, initialize],
+  };
+  assert.equal(
+    errorCode(() =>
+      assertKaminoTransactionMatches(
+        tampered,
+        expectation({ mode: "withdraw", amountRaw: 10_000_000n, positionSharesRaw: 10_000_000n }),
+      ),
+    ),
+    "wrong_instruction",
   );
 });
 
