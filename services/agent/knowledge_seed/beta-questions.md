@@ -3,7 +3,7 @@ title: Common Beta Questions, Answered Plainly
 source: beta-questions
 tags: [faq, morpho, aave, apy, slippage, fees, near, non-custody, quota, mandate, beta]
 risk_tier: all
-updated: 2026-11-05
+updated: 2026-11-09
 ---
 
 # Common Beta Questions, Answered Plainly
@@ -93,6 +93,32 @@ address, and an incomplete swap is refunded to the stated refund address. The
 **manual `/swap` page is the same-network EVM swap**, not the cross-chain product.
 There is no standalone bridge outside the Intents flow, and an unsupported route
 is refused honestly. See [[multichain-dual-access]].
+
+## Where is the beta, and is live earn on?
+
+The beta is at **https://beta.sparkpoint.io** (production Coolify deploy from the `main` branch; there is no separate develop web environment). Sign in at `/connect`, chat at `/chat`,
+and use the manual surfaces at `/swap`, `/vault` and `/portfolio`. The manual pages
+and Sparky read the same registry, so they describe the same chains, protocols and
+rails.
+
+**Live earn is off by default.** The live deposit/withdraw reviews for Kamino on
+Solana, Morpho on Base and Rhea on NEAR are built, but they appear only when an owner
+enables the matching flags (`NEXT_PUBLIC_EARN_LIVE_KAMINO` / `EARN_LIVE_KAMINO`,
+`NEXT_PUBLIC_EARN_LIVE_MORPHO` / `EARN_LIVE_MORPHO`, `NEXT_PUBLIC_EARN_LIVE_RHEA` /
+`EARN_LIVE_RHEA`, and `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN` / `EARN_LIVE_RHEA_XCHAIN`
+for the cross-chain Rhea live commit). With the flags off, the beta shows dry previews
+and reads only.
+
+When a flag is on, the review is still unsigned: SparkPoint builds the transaction,
+shows the exact amount, accounts and fees, and your own wallet signs. SparkPoint never
+signs, approves, submits or broadcasts. No funded execution is claimed until an
+owner-approved funded test, and simulations are labelled **SIMULATED**.
+
+Rhea has two rails: **same-chain** NEAR USDC supply/withdraw (078), signed by your
+NEAR wallet, and **cross-chain** EVM USDC → Rhea on NEAR through 1Click plus a
+Multichain Account (079), whose withdraw is a **guided review** of the documented Rhea
+SDK paths and the Rhea app link-out — not an in-app signed transaction. See
+[[multichain-dual-access]].
 
 ## Non-custody and signing: who can move my funds?
 

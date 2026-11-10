@@ -3,7 +3,7 @@ title: What Sparky Can and Cannot Do
 source: sparky-capabilities
 tags: [sparky, assistant, capabilities, memory, automation, non-custody, faucet]
 risk_tier: conservative
-updated: 2026-11-05
+updated: 2026-11-09
 ---
 
 # What Sparky Can and Cannot Do
@@ -80,7 +80,32 @@ There are two swap paths, and they are deliberately different:
 - **Manual `/swap`** — a same-network, user-signed EVM swap on the wallet's supported chain (Base or Robinhood Chain in the freeze build), with the 0.20% routing fee where the fee router is wired. The page does not change the user's MetaMask network.
 - **Sparky chat — cross-chain via NEAR Intents (1Click)** — USDC→BTC, ETH→Base, USDC→SOL and similar routes. Sparky shows a preview (amount, destination, fees) before anything is sent; the user sends from their own wallet to a one-time deposit address, and an incomplete swap is refunded to the stated refund address.
 
-There is still **no standalone bridge** outside the Intents flow. If a route or destination is unsupported, Sparky says so rather than inventing a route or falling back to a different chain. See [[multichain-dual-access]].
+There is still **no standalone bridge** outside the Intents flow. If a route or destination is
+unsupported, Sparky says so rather than inventing a route or falling back to a different chain. See [[multichain-dual-access]].
+
+## Earn and live reviews: previews by default
+
+Sparky reads the same earn registry as the `/vault` page: **Morpho** on Base and Ethereum, **Kamino**
+on Solana, and **Rhea (Burrow)** on NEAR. It can list vaults and build dry previews that show the
+estimated receipt, fees, destination and APY provenance, but a preview does not sign or send.
+
+Live deposit/withdraw reviews are built but **off by default**. They appear only when an owner
+enables the matching flags: `NEXT_PUBLIC_EARN_LIVE_KAMINO` / `EARN_LIVE_KAMINO`,
+`NEXT_PUBLIC_EARN_LIVE_MORPHO` / `EARN_LIVE_MORPHO`, `NEXT_PUBLIC_EARN_LIVE_RHEA` /
+`EARN_LIVE_RHEA`, and `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN` / `EARN_LIVE_RHEA_XCHAIN` for the
+cross-chain Rhea live commit. With the flags off, only previews and reads are available.
+
+When enabled, the review builds an **unsigned** transaction and the user's own wallet signs it.
+SparkPoint never signs, approves, submits or broadcasts. No funded execution is claimed until an
+owner-approved funded test, and simulations are labelled **SIMULATED**.
+
+Rhea has two separate rails: **same-chain** NEAR USDC supply/withdraw (078), signed by the user's
+NEAR wallet, and **cross-chain** EVM USDC → Rhea on NEAR through 1Click plus a Multichain Account
+(079), whose withdraw is a **guided review** of the documented Rhea SDK paths and the Rhea app
+link-out — not an in-app signed transaction.
+
+The beta is at **https://beta.sparkpoint.io**. See [[multichain-dual-access]] for the rail-by-rail
+detail and withdraw postures.
 
 ## What Sparky will not do
 
