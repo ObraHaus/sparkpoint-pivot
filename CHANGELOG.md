@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (1110 — Defender scan-action pin)
+
+- **The OH Defender PR scan now pins `ObraHaus/obrahaus-defender/ci/scan-action` to `2b46e3dc`
+  (obrahaus-defender PR #122, AI-review timeout/progress repair).** Internal CI only — no gate,
+  input, timeout or coverage change. (`.github/workflows/oh-defender.yml`)
+
 ### Fixed (1110 — Kamino withdraw_from_available guard, security)
 
 - **Kamino partial withdrawals are no longer refused when Kamino builds the `withdraw_from_available`
