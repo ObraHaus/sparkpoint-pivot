@@ -29,6 +29,7 @@ import {
   shouldOfferRheaSign,
 } from "@/lib/near/phaseC";
 import { rheaAccountSourceLabel, selectRheaAccount } from "@/lib/near/rhea";
+import { publicXchainEnabled, xchainReviewHref } from "@/lib/earn/xchain";
 import { formatEta, formatHumanAmount, formatUsd } from "@/lib/crosschain/format";
 import {
   chainLabel,
@@ -136,6 +137,16 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
   const feeLine = isRhea ? oneTimeFeeLine(block.oneTimeFee) : null;
   const netLine = isRhea ? netSuppliedLine(block.netSupplied, vault.asset.symbol) : null;
   const amountIn = block.amountIn ?? block.origin?.amount;
+  // 079 — cross-chain Rhea (071 MCA/1Click) review entry point, off unless the public flag is on.
+  const xchainReview =
+    isRhea && publicXchainEnabled()
+      ? xchainReviewHref({
+          chain: "near",
+          origin: block.origin?.key,
+          vault: vault.address,
+          amount: amountIn,
+        })
+      : null;
 
   // 077 — the one live direct rail available for this preview, if the build flag is on. This
   // bypasses the 1Click receipt and opens the shared /vault/live review flow; it never signs.
@@ -527,6 +538,33 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 </div>
               )}
             </details>
+          )}
+
+          {isRhea && xchainReview && (
+            <div
+              data-testid="earn-rhea-xchain-review"
+              style={{
+                border: "1px solid var(--border-soft)",
+                borderRadius: 10,
+                padding: "10px 11px",
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Review the cross-chain deposit</div>
+              <a
+                className="btn btn-outline btn-sm"
+                href={xchainReview}
+                style={{ justifySelf: "start" }}
+              >
+                Open cross-chain review
+              </a>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                The 071 MCA/1Click rail: Base/Ethereum USDC into your Rhea account on NEAR. Dry by
+                default; a live commit only prepares an unsigned origin transfer for your own
+                wallet. The agent never signs.
+              </div>
+            </div>
           )}
 
           {isRhea && (

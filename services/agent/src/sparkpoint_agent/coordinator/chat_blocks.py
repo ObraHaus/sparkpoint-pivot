@@ -542,6 +542,13 @@ class EarnQuoteBlock(ChatBlock):
     supply_apy: str | None = None
     source: dict[str, Any] | None = None
     withdraw: dict[str, Any] | None = None
+    # 079 — Phase C cross-chain review. ``live`` is only ever true after a gated ``dry=false``
+    # 1Click quote; ``transfer_plan`` is an UNSIGNED origin ERC-20 transfer for the user's own
+    # wallet. None of these fields is a signature and the agent never submits the plan.
+    live: bool | None = None
+    deposit_address: str | None = None
+    transfer_plan: dict[str, Any] | None = None
+    requires_signature: bool | None = None
 
     def to_wire(self) -> dict[str, Any]:
         wire: dict[str, Any] = {
@@ -576,6 +583,10 @@ class EarnQuoteBlock(ChatBlock):
             ("supply_apy", "supplyApy"),
             ("source", "source"),
             ("withdraw", "withdraw"),
+            ("live", "live"),
+            ("deposit_address", "depositAddress"),
+            ("transfer_plan", "transferPlan"),
+            ("requires_signature", "requiresSignature"),
         ):
             value = getattr(self, attr)
             if value is not None:
