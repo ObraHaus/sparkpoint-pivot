@@ -273,6 +273,36 @@ def test_explicit_withdraw_honours_protocol_and_chain(
     assert request.amount == (Decimal(amount) if amount is not None else None)
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "How do withdrawals work on Morpho?",
+        "Are withdrawals instant on Morpho?",
+        "How do withdrawals work on Kamino?",
+        "Are withdrawals instant on Kamino?",
+    ],
+)
+def test_withdrawal_nouns_do_not_hijack_informational_asks(prompt: str) -> None:
+    # "withdrawal"/"withdrawals" is a NOUN, not an exit command: these must fall through to the
+    # existing informational path instead of opening the withdraw card.
+    assert parse_earn_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "withdraw 0.5 USDC from Morpho",
+        "withdrawing 0.5 USDC from Morpho",
+        "take out 0.5 USDC from Morpho",
+        "pull out 0.5 USDC from Morpho",
+    ],
+)
+def test_withdraw_verb_forms_still_parse(prompt: str) -> None:
+    request = parse_earn_request(prompt, default_config())
+    assert request is not None
+    assert request.kind == "withdraw"
+
+
 def test_kamino_deposit_in_sol_keeps_the_sol_asset_and_chain() -> None:
     request = parse_earn_request("deposit 0.015 SOL into Kamino", default_config())
     assert request is not None

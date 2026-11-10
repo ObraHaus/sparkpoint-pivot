@@ -54,14 +54,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed (1110 — Sparky chain routing, RPC defaults, multichain portfolio)
 
-- **Chat no longer hard-fails on a chain whose read RPC is unset, and Base mainnet now has a
-  correct-chain public default.** With `X-Chain-Id: 8453` every turn returned
-  `503 RPC_UNREACHABLE "no RPC url configured for the vault read surface"` because
-  `BASE_MAINNET_RPC_URL` was unset and 8453 had no default. `_resolve_rpc_url` now falls back to
-  Base's own keyless `https://mainnet.base.org` (never the fork/Sepolia), and the chat surface
-  builds a fail-closed reader instead of 503-ing the whole turn: a missing RPC degrades only the
-  affected reads (the portfolio/gate already treat `VaultUnavailable` as stale). 4663 keeps its
-  explicit-archive requirement. (`services/agent/src/sparkpoint_agent/config.py`,
+- **Chat no longer hard-fails on a chain whose read RPC is unset; Base mainnet keeps its
+  explicit-RPC 023 fail-closed posture.** With `X-Chain-Id: 8453` every turn returned
+  `503 RPC_UNREACHABLE "no RPC url configured for the vault read surface"` when
+  `BASE_MAINNET_RPC_URL` was unset. The chat surface now builds a fail-closed reader instead of
+  503-ing the whole turn: a missing RPC degrades only the affected reads (the portfolio/gate
+  already treat `VaultUnavailable` as stale), so the answer still streams. 8453 still requires an
+  explicit `SPARKPOINT_RPC_URL`/`BASE_MAINNET_RPC_URL` — there is **no public default** (the
+  deployment sets it explicitly); 4663 keeps its explicit-archive requirement.
+  (`services/agent/src/sparkpoint_agent/config.py`,
   `services/agent/src/sparkpoint_agent/api/vault.py`,
   `services/agent/src/sparkpoint_agent/api/chat.py`)
 - **Explicit chain wording wins over the request header for earn actions.** "withdraw 0.5 USDC
@@ -70,8 +71,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   withdraws are now parsed deterministically (honouring "on Base"/"on Solana", defaulting to Base
   and Solana respectively) and route to the SAME live review card the Vault page uses —
   `/vault/live?protocol=…&chain=…&vault=…&asset=…&mode=withdraw[&amount=…]` — with no new
-  execution surface. The existing `earn_quote` chat card renders a withdraw-only variant for the
-  deep link. (`services/agent/src/sparkpoint_agent/earn/parse.py`,
+  execution surface. The target vault is resolved by the asset the user names (case-insensitive)
+  among that protocol+chain's curated vaults; a non-matching asset (e.g. CBBTC where only a USDC
+  vault is live) degrades to the honest "no such vault" outcome instead of linking the default
+  USDC vault, and an amount is prefilled only when the named asset matches the vault. The
+  withdraw noun ("withdrawal"/"withdrawals") no longer hijacks informational asks ("how do
+  withdrawals work?") into the card. The existing `earn_quote` chat card renders a withdraw-only
+  variant for the deep link. (`services/agent/src/sparkpoint_agent/earn/parse.py`,
   `services/agent/src/sparkpoint_agent/earn/service.py`,
   `services/agent/src/sparkpoint_agent/coordinator/dag.py`,
   `apps/web/src/components/screens/chat/earn-quote-card.tsx`)

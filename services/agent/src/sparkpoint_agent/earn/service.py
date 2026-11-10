@@ -242,6 +242,55 @@ class EarnService:
             return candidates[0]
         return None
 
+    def resolve_withdraw_vault(
+        self, request: EarnRequest, protocol: str
+    ) -> tuple[VaultEntry | None, bool]:
+        """Resolve the withdraw target, honouring the asset the user named.
+
+        Returns ``(entry, asset_matched)``. A named asset restricts the search to curated vaults
+        of the SAME protocol+chain whose asset symbol matches (case-insensitive); when none
+        matches the result is ``(None, False)`` so the caller says "no such vault" instead of
+        deep-linking to a different asset's vault with the amount misread in that asset's units.
+        Only when no asset is named does the existing default selection apply.
+        """
+        snapshot = self.registry.current()
+        if snapshot is None or request.chain is None:
+            return None, False
+        candidates = [
+            entry
+            for entry in snapshot.vaults
+            if entry.chain == request.chain and entry.protocol == protocol
+        ]
+        named = (request.asset or "").strip().upper()
+        if named:
+            matches = [
+                entry for entry in candidates if entry.asset.symbol.strip().upper() == named
+            ]
+            if not matches:
+                return None, False
+            matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+            return matches[0], True
+        # No asset named: an explicit vault hint, then the curated default, then top TVL.
+        if request.vault_query:
+            query = request.vault_query.strip()
+            wanted = query.lower().removesuffix(" vault").strip()
+            for entry in candidates:
+                if addresses_equal(entry.address, query):
+                    return entry, False
+            named_matches = [
+                entry for entry in candidates if wanted and wanted in entry.name.lower()
+            ]
+            if named_matches:
+                named_matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+                return named_matches[0], False
+        default = self.config.default_vault(request.chain)
+        if default:
+            for entry in candidates:
+                if addresses_equal(entry.address, default):
+                    return entry, False
+        candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
+        return (candidates[0], False) if candidates else (None, False)
+
     def withdraw_outcome(self, request: EarnRequest) -> EarnOutcome:
         """Route an explicit Morpho/Kamino withdraw to the existing ``/vault/live`` card.
 
@@ -250,7 +299,7 @@ class EarnService:
         """
         protocol = request.protocol or "morpho"
         label = {"kamino": "Kamino"}.get(protocol, "Morpho")
-        entry = self.resolve_vault(request.chain, request.vault_query)
+        entry, asset_matched = self.resolve_withdraw_vault(request, protocol)
         if entry is None:
             return EarnOutcome(
                 text=(
@@ -270,12 +319,16 @@ class EarnService:
             ("asset", entry.asset.symbol),
             ("mode", "withdraw"),
         ]
-        amount = request.amount_human
-        if amount is not None:
-            params.append(("amount", amount))
+        # Only prefill when the user named an asset that MATCHES this vault: otherwise the amount
+        # was parsed in units of an asset this fallback vault does not hold.
+        prefill_amount = request.amount_human if asset_matched else None
+        if prefill_amount is not None:
+            params.append(("amount", prefill_amount))
         url = f"/vault/live?{urlencode(params)}"
         same_chain = _chain_label(self.config, entry)
-        amount_line = f" for {amount} {entry.asset.symbol}" if amount is not None else ""
+        amount_line = (
+            f" for {prefill_amount} {entry.asset.symbol}" if prefill_amount is not None else ""
+        )
         text = (
             f"Open the live {label} withdraw card for {entry.name} on {same_chain}{amount_line} "
             "to review and sign in your own wallet. Nothing was signed or sent here."

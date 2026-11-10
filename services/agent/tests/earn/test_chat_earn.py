@@ -267,6 +267,61 @@ async def test_withdraw_from_kamino_on_solana_routes_to_the_live_withdraw_card()
     assert _ExplodingPlanner.calls == 0
 
 
+async def test_withdraw_a_named_non_matching_asset_does_not_link_the_usdc_vault() -> None:
+    # The snapshot only has the USDC default; naming CBBTC must NOT deep-link to that USDC vault
+    # with "5" misread as 5 USDC. It degrades to the honest "no such vault" outcome.
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_service(), _ExplodingPlanner()),
+        "withdraw 5 CBBTC from Morpho on Base",
+    )
+    assert wires[-1]["type"] == "earn_vaults"
+    assert wires[-1]["state"] == "unavailable"
+    assert "withdraw" not in wires[-1]
+    assert _ExplodingPlanner.calls == 0
+
+
+async def test_withdraw_a_named_asset_resolves_that_vault_not_the_default() -> None:
+    from .helpers import make_vault
+
+    cbbtc = make_vault(
+        address="0x0000000000000000000000000000000000000cbb",
+        name="Moonwell Flagship cbBTC",
+        symbol="MWCBBTC",
+        asset="cbBTC",
+        tvl=1,
+    )
+    config = default_config()
+    registry = EarnRegistry(config, writable_path="/nonexistent/earn.json")
+    registry.install(make_snapshot(VAULT, cbbtc))  # USDC default has the far larger TVL
+    client = OneClickClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(500)),
+        clock=lambda: 1000.0,
+    )
+    service = EarnService(config, registry, oneclick=client)
+    wires = await _collect(
+        _dag(service, _ExplodingPlanner()),
+        "withdraw 5 cbBTC from Morpho on Base",
+    )
+    url = wires[-1]["withdraw"]["url"]
+    assert f"vault={cbbtc.address}" in url
+    assert "asset=cbBTC" in url
+    assert "amount=5" in url
+
+
+async def test_withdraw_without_a_named_asset_uses_the_default_without_a_prefilled_amount() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_service(), _ExplodingPlanner()),
+        "withdraw everything from Morpho on Base",
+    )
+    url = wires[-1]["withdraw"]["url"]
+    assert f"vault={VAULT.address}" in url
+    assert "mode=withdraw" in url
+    assert "amount=" not in url
+    assert _ExplodingPlanner.calls == 0
+
+
 async def test_kamino_deposit_in_sol_is_not_misparsed_as_a_usd_stable() -> None:
     _ExplodingPlanner.calls = 0
     wires = await _collect(

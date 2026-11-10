@@ -79,7 +79,12 @@ _TRAILING_NOISE_RE = re.compile(r"\b(?:please|now|today|thanks|asap)\b.*$", re.I
 _RHEA_RE = re.compile(r"\b(?:rhea(?:\s+finance)?|burrow)\b", re.IGNORECASE)
 _POSITION_RE = re.compile(r"\bpositions?\b", re.IGNORECASE)
 _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
-_WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
+# Verb forms only: "withdraw", "withdrawing", "take out", "pull out". The NOUNS
+# ("withdrawal"/"withdrawals") must NOT hijack an informational ask ("how do withdrawals work?",
+# "are withdrawals instant on Morpho?") into the withdraw card.
+_WITHDRAW_RE = re.compile(
+    r"\bwithdraw(?:ing)?\b|\btake\s+out\b|\bpull\s+out\b", re.IGNORECASE
+)
 _OPTIONS_RE = re.compile(r"\boptions?\b", re.IGNORECASE)
 # A protocol-agnostic "what earn options do I have?" / "where can I invest?" turn lists every
 # protocol in the live registry (Kamino + Morpho + Rhea). Deliberately narrow so existing
