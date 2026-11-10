@@ -7,7 +7,7 @@
       "tag": "Fixed",
       "title": "Ask Sparky \"What earn options do I have?\" and see every protocol",
       "body": "Sparky now answers general earn questions like \"What earn options do I have?\" or \"Where can I earn?\" with the current options from every protocol it tracks: Kamino on Solana, Morpho on Base and Ethereum, and Rhea on NEAR. Before, these questions could get a \"no move I can build\" reply. Asking for one protocol's options, such as \"Show Rhea options\", also works now. The same options are on the Vault page.",
-      "published_at": "2026-11-10T04:35:00Z"
+      "published_at": "2026-11-10T03:00:00Z"
     },
         {
       "slug": "rhea-xchain-mca-review-079-2026-11",
