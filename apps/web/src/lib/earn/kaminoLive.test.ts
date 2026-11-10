@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   KAMINO_VAULTS,
   KaminoLiveError,
+  TOKEN_2022_PROGRAM_ID,
   apyPercent,
   assertKaminoTransactionMatches,
   base64ToBytes,
   decodeKaminoTransaction,
+  deriveAssociatedTokenAddress,
   deriveKaminoEstimate,
   findKaminoVault,
   formatLamports,
@@ -17,6 +20,7 @@ import {
   parseTokenAmount,
   summarizeKaminoTransaction,
   validateKaminoBuildInput,
+  type KaminoLookupAddresses,
   type KaminoTransactionExpectation,
 } from "./kaminoLive.ts";
 
@@ -25,45 +29,44 @@ import {
 const DEPOSIT_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAHDP6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghX7xkOP5ENZKDmGI/418jP35gW5O9K9RlQ4LbOQ9zL8lg7LsUR9rryAneOreZtIXorT+0KieLG4e86fq9w5jIw26YitWRV9lJ00NOXMIXl29/G/c2l1Hgt0GiI7swiZB7nUIEf1eQhs3BDr0pJXhranYWBuSjlRK57jISYW61zeEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/abOn2YZjdhw2KmG8wZ1xG+D4vUoNIeVL11QVj4+96jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FnYsBAXY9PlHxJuYVbehd6MYTBZuERo0No/6KKiJRzHAQTZCvHbiTnsNf+U2WQNV9zDJ5S7Phu2b9OuhJqE3NuUBqfVFxksXFEhjMlMPUrxf1ja7gibof1E49vZigAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqSZUhDCabmbSTWh9zSDQqtk1Luu69ETtjeArG2PnD3zkBwcGAAMAGgULAQEFAgADDAIAAACAlpgAAAAAAAsBAwERBwYABAAOBQsBAQkVABEMGhQOAwQZCwsGCRINDxAXFhgVEPIjxolS4fK2gJaYAAAAAAAICAAAAAABEwUKCG8Rufo8eib+CAgAARMCBA4ICxDOsMoSyNGzbP//////////ARo7tNPmLSDx6HSO+/un1b/nz2+fplPjHpqCsRpkX9ANCAQKBQwOAAgqBwIkFxAeBwM=";
 const WITHDRAW_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAGCf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghbpiK1ZFX2UnTQ05cwheXb38b9zaXUeC3QaIjuzCJkHudQgR/V5CGzcEOvSkleGtqdhYG5KOVErnuMhJhbrXN4QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD9ps6fZhmN2HDYqYbzBnXEb4Pi9Sg0h5UvXVBWPj73qMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WZlxKXooAEJJPkJxkMd7ZH6G99GZch/RVimWXJ1rZZT4BNkK8duJOew1/5TZZA1X3MMnlLs+G7Zv066EmoTc25QG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqRTH+FrPZTSg7YZ1ca11JmjiiTdXpQDp5/o+KucudBt8AwUGAAEAEAMIAQEHFgAOBgkRARACCwgIFgQHDwoMDRQTFRIQtxJGnJRtoSL//////////wgDAQAAAQkBGju00+YtIPHodI77+6fVv+fPb5+mU+MemoKxGmRf0A0IBAoFDA4ACAMGAiQXEB4H";
 
-// Public, UNSIGNED transaction Kamino built for a partial withdraw (5,678,988 of 14,197,470 shares)
-// against the SOL Balanced vault. It uses the `withdraw_from_available` discriminator
-// (1383709baadc2239) instead of `withdraw`; the pre-sign guard must accept it as a normal withdraw.
-const WITHDRAW_FROM_AVAILABLE_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAIDf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghX7xkOP5ENZKDmGI/418jP35gW5O9K9RlQ4LbOQ9zL8lg7LsUR9rryAneOreZtIXorT+0KieLG4e86fq9w5jIw26YitWRV9lJ00NOXMIXl29/G/c2l1Hgt0GiI7swiZB7nUIEf1eQhs3BDr0pJXhranYWBuSjlRK57jISYW61zeEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/abOn2YZjdhw2KmG8wZ1xG+D4vUoNIeVL11QVj4+96jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FmZcSl6KABCST5CcZDHe2R+hvfRmXIf0VYpllyda2WU+NiwEBdj0+UfEm5hVt6F3oxhMFm4RGjQ2j/ooqIlHMcB3KjKHtkJHTSaoYg4W6GkMgfILByfsQxkptCYRo9ioMEE2Qrx24k57DX/lNlkDVfcwyeUuz4btm/TroSahNzblAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpDXXN+g3Z0L9W7taCoAY6Ed34BOVKpChAjUxm6B58JAQGBwYABAAPBQwBAQkEAAEUCRhaX2sqzXwy4QAAsMYJWG2OkrIEAAAAAAAJBwABFAQCCgwIJGa7MdwkhEMHBgADABUFDAEBCxYAEggNFgMVBA8MDBsGCxMOEBEZGBoXEBODcJuq3CI5jKdWAAAAAAAMAwMAAAEJARo7tNPmLSDx6HSO+/un1b/nz2+fplPjHpqCsRpkX9ANCQQKBQwOAAgqAwYCJBcQHgc=";
-const WITHDRAW_FROM_AVAILABLE_LOOKUPS = {
-  writable: [
-    "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4",
-    "4oigbthMAgjTMPyw8dBxhxU59YMtvNDHqhpR3W4HAzBM",
-    "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
-    "6gTJfuPHEg6uRAijRkMqNc9kan4sVZejKMxmvx2grT1p",
-    "d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q",
-    "DcCRSdUMgAt6ZMeuL4BJAsZmJgND2LQd74Zq4z6ckhpg",
-    "DQ126djx5db6SMCbejHLNxoosonVes3qW5eVVUQuT93v",
-    "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW",
-    "So11111111111111111111111111111111111111112",
-  ],
-  readOnly: [
-    "6TfTKE8f6y4HkgC5ReXMTxvmBMXzZwtkEuEDfbHz8WBJ",
-    "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
-    "C7h9YnjPrDvNhe2cWWDhCu4CZEB1XTTH4RzjmsHuengV",
-    "GVDUXFwS8uvBG35RjZv6Y8S1AkV5uASiMJ9qTUKqb5PL",
-    "H6rHXmXoCQvq8Ue81MqNh7ow5ysPa1dSozwW3PU1dDH6",
-    "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
-  ],
-};
-
-// Public Solana mainnet addresses from the captured unsigned transactions, assembled from short
-// chunks so no single high-entropy literal is mistaken for a secret. Neither is a secret: PROBE
-// is the public probe wallet and SOL_VAULT is Kamino's public SOL Balanced vault (DcCRSd…).
-function b58(...chunks: string[]): string {
-  return chunks.join("");
+/**
+ * Public, unsigned transaction Kamino built for a partial withdraw (5,678,988 of 14,197,470 shares)
+ * against the SOL Balanced vault. It uses the `withdraw_from_available` discriminator
+ * (1383709baadc2239) instead of `withdraw`; the pre-sign guard must accept it as a normal withdraw.
+ * The base64, lookup table and public addresses live in the JSON fixture (public data only).
+ */
+interface WithdrawFromAvailableFixture {
+  readonly wallet: string;
+  readonly vault: string;
+  readonly vaultAccount: string;
+  readonly vaultFarm: string;
+  readonly sharesMint: string;
+  readonly otherVault: string;
+  readonly foreignOwner: string;
+  readonly withdrawFromAvailable: {
+    readonly encoding: "base64";
+    readonly transaction: string;
+    readonly signatures: number;
+    readonly lookupAddresses: KaminoLookupAddresses;
+  };
 }
 
-const PROBE = b58("J9EH8VmiXd5", "8kuhhUCbED6", "Pm1dZU9fFQE", "LhVE9UyMEKz");
-const SOL_VAULT = b58("DcCRSdUMgAt", "6ZMeuL4BJAs", "ZmJgND2LQd7", "4Zq4z6ckhpg");
-const SOL_TOKEN_VAULT = "3Q9MzRtQaPtmydXUMVYqz6WTGSLFCGbs929mXTXTziw4";
-const SOL_VAULT_FARM = "HdoYSQ8pzKMKHARtY6Uu682rcMxqkV2151vKsB1d7PeW";
-const OTHER_VAULT = b58("HDsayqAsDWy", "3QvANGqh2yN", "raqcD8Fnjgh", "73Mhb3WRS5E");
-const FOREIGN_OWNER = b58("7u3HeHxYDLh", "nCoErrtycNo", "kbQYbWGzLs6", "JSDqGAv5PfF");
+const FIXTURE = JSON.parse(
+  readFileSync(
+    new URL("./__fixtures__/kamino-withdraw-from-available-mainnet.json", import.meta.url),
+    "utf8",
+  ),
+) as WithdrawFromAvailableFixture;
+
+const WITHDRAW_FROM_AVAILABLE_TX = FIXTURE.withdrawFromAvailable.transaction;
+const WITHDRAW_FROM_AVAILABLE_LOOKUPS = FIXTURE.withdrawFromAvailable.lookupAddresses;
+
+const PROBE = FIXTURE.wallet;
+const SOL_VAULT = FIXTURE.vault;
+const SOL_TOKEN_VAULT = FIXTURE.vaultAccount;
+const SOL_VAULT_FARM = FIXTURE.vaultFarm;
+const OTHER_VAULT = FIXTURE.otherVault;
+const FOREIGN_OWNER = FIXTURE.foreignOwner;
 
 const SHARE_AMOUNT = 5_678_988n;
 const POSITION_SHARES = 14_197_470n;
@@ -250,6 +253,32 @@ test("withdraw_from_available refuses positional account swaps", () => {
       `account ${entry.index} swap should fail`,
     );
   }
+});
+
+test("withdraw_from_available pins the share token program from curated metadata", () => {
+  const expectation = withdrawExpectation();
+  const review = withdrawFromAvailableReview();
+  const expectedSharesAta = deriveAssociatedTokenAddress(
+    expectation.feePayer,
+    expectation.vault.sharesMint,
+    TOKEN_2022_PROGRAM_ID,
+  );
+  const instructions = review.instructions.map((instruction) =>
+    instruction.withdrawFromAvailable
+      ? {
+          ...instruction,
+          accounts: instruction.accounts.map((account, index) => {
+            if (index === 10) return TOKEN_2022_PROGRAM_ID;
+            if (index === 7) return expectedSharesAta;
+            return account;
+          }),
+        }
+      : instruction,
+  );
+  assert.throws(
+    () => assertKaminoTransactionMatches({ ...review, instructions }, expectation),
+    rejectsWith("wrong_program"),
+  );
 });
 
 test("withdraw_from_available requires the fixed IDL account prefix", () => {

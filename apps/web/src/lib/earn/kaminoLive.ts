@@ -145,6 +145,8 @@ export interface KaminoVaultMeta {
   readonly assetTokenProgram: string;
   readonly assetTokenStandard: KaminoAssetTokenStandard;
   readonly sharesMint: string;
+  /** The token program that owns `sharesMint`; kVault shares are standard SPL Token. */
+  readonly sharesTokenProgram: string;
   readonly sharesDecimals: number;
   readonly managementFeeBps: number;
   readonly performanceFeeBps: number;
@@ -162,6 +164,7 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     assetTokenProgram: TOKEN_PROGRAM_ID,
     assetTokenStandard: "spl-token",
     sharesMint: "5EBsGgVTubrd7ShJgE89k6nC2bnLzqGCjXb2ejrhtdBK",
+    sharesTokenProgram: TOKEN_PROGRAM_ID,
     sharesDecimals: 9,
     managementFeeBps: 0,
     performanceFeeBps: 0,
@@ -176,6 +179,7 @@ export const KAMINO_VAULTS: readonly KaminoVaultMeta[] = [
     assetTokenProgram: TOKEN_PROGRAM_ID,
     assetTokenStandard: "spl-token",
     sharesMint: "7D8C5pDFxug58L9zkwK7bCiDg4kD4AygzbcZUmf5usHS",
+    sharesTokenProgram: TOKEN_PROGRAM_ID,
     sharesDecimals: 6,
     managementFeeBps: 0,
     performanceFeeBps: 500,
@@ -1516,7 +1520,7 @@ export function assertKaminoTransactionMatches(
             "The Kamino withdraw_from_available instruction uses an unexpected asset token program.",
           );
         }
-        if (tokenStandardForProgram(sharesTokenProgram) === null) {
+        if (sharesTokenProgram !== expectation.vault.sharesTokenProgram) {
           fail(
             "wrong_program",
             "The Kamino withdraw_from_available instruction uses an unexpected share token program.",
@@ -1525,7 +1529,7 @@ export function assertKaminoTransactionMatches(
         const expectedSharesAta = deriveAssociatedTokenAddress(
           expectation.feePayer,
           expectation.vault.sharesMint,
-          sharesTokenProgram,
+          expectation.vault.sharesTokenProgram,
         );
         const layout: readonly {
           readonly expected: string | null;
@@ -1542,7 +1546,7 @@ export function assertKaminoTransactionMatches(
           { expected: expectedSharesAta, code: "wrong_recipient", what: "user share token account" },
           { expected: expectation.vault.sharesMint, code: "mint_mismatch", what: "share mint" },
           { expected: expectation.vault.assetTokenProgram, code: "wrong_program", what: "asset token program" },
-          { expected: sharesTokenProgram, code: "wrong_program", what: "share token program" },
+          { expected: expectation.vault.sharesTokenProgram, code: "wrong_program", what: "share token program" },
           { expected: KAMINO_KLEND_PROGRAM_ID, code: "wrong_program", what: "klend program" },
           { expected: kvaultEventAuthority, code: "wrong_program", what: "event authority" },
           { expected: KAMINO_KVAULT_PROGRAM_ID, code: "wrong_program", what: "kVault program" },
