@@ -1423,9 +1423,20 @@ class CoordinatorDag:
                     yield earn_outcome.block
                     return
                 if earn_request.kind == "withdraw":
-                    yield ToolStepBlock("Finding the Rhea withdraw link", "running")
-                    yield ToolStepBlock("Finding the Rhea withdraw link", "done")
-                    yield TextBlock(self.earn.rhea_withdraw_text())
+                    if protocol == "rhea":
+                        yield ToolStepBlock("Finding the Rhea withdraw link", "running")
+                        yield ToolStepBlock("Finding the Rhea withdraw link", "done")
+                        yield TextBlock(self.earn.rhea_withdraw_text())
+                        return
+                    # B (1110) — Morpho/Kamino withdrawals route to the SAME live review card
+                    # the Vault page uses. The link only opens /vault/live?mode=withdraw; nothing
+                    # is signed, built or sent in chat.
+                    step = f"Finding the {label} withdraw card"
+                    yield ToolStepBlock(step, "running")
+                    withdraw_outcome = self.earn.withdraw_outcome(earn_request)
+                    yield ToolStepBlock(step, "done")
+                    yield TextBlock(withdraw_outcome.text)
+                    yield withdraw_outcome.block
                     return
                 if earn_request.kind == "list":
                     yield ToolStepBlock(f"Checking {label} vaults", "running")

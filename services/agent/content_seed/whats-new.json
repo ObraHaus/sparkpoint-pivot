@@ -10,6 +10,14 @@
       "published_at": "2026-11-10T11:00:00Z"
     },
     {
+      "slug": "sparky-chain-routing-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now follows the chain you name and reads Base and your multichain portfolio",
+      "body": "Behind the scenes: a few chat requests were answered for the wrong network or failed to load at all. On a Base session, every message could stop with an \"RPC unavailable\" error when the Base read endpoint was not configured; that no longer takes down the whole reply \u2014 if a network read is ever unavailable, only that section is marked unavailable. Base still needs its read endpoint set explicitly (BASE_MAINNET_RPC_URL; there is no public default), which production does. When you name a network explicitly, Sparky honours it: \"withdraw 0.5 USDC from Morpho on Base\" now opens the same live withdraw review card as the Vault page instead of saying withdrawals aren't supported on another chain, and the same works for Kamino on Solana. Sparky also targets the asset you name \u2014 \"withdraw 5 CBBTC from Morpho\" will not open a USDC vault, and it only prefills an amount when the asset matches that vault. Asking how withdrawals work no longer opens a withdraw card by mistake. Asking \"what is my multi-chain portfolio?\" now shows your holdings across Base, Solana and NEAR instead of only the current network's balance. Nothing about signing or custody changes: you still review and sign every transaction in your own wallet.",
+      "published_at": "2026-11-10T10:40:00Z"
+    },
+    {
       "slug": "rhea-mca-case-lookup-fix-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",

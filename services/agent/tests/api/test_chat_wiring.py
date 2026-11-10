@@ -9,6 +9,8 @@ cause ("not supported on this network" vs "couldn't build") instead of one byte-
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -17,6 +19,7 @@ from sparkpoint_agent.api.chat import (
     _NoopMemorySink,
     _VaultChatChainProvider,
     _VaultChatPortfolioProvider,
+    get_chat_vault_reader,
     get_coordinator_dag,
     get_memory_sink,
 )
@@ -342,3 +345,28 @@ async def test_an_unreadable_rate_leaves_the_context_honest(
     chain = await provider.context(_account(), surface="chat")
     assert chain.market.gross_apy_bps is None
     assert chain.market.projected_apy_bps is None, "never derive a projection from nothing"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("chain_id", "rpc_env"),
+    [(8453, "BASE_MAINNET_RPC_URL"), (4663, "ROBINHOOD_MAINNET_RPC_URL")],
+)
+async def test_chat_reader_degrades_a_missing_rpc_instead_of_503(
+    monkeypatch: pytest.MonkeyPatch, chain_id: int, rpc_env: str
+) -> None:
+    """1110 — a chain with no read RPC must not cost the whole chat turn its answer.
+
+    Construction used to raise RPC_UNREACHABLE before FastAPI entered the route (a 503 on every
+    turn). The chat reader now returns a fail-closed reader; each read degrades to
+    VaultUnavailable, which the portfolio/gate providers already handle per section. 8453 has no
+    public default (023 fail-closed), so Base relies on this degradation when its RPC is unset.
+    """
+    monkeypatch.setenv("CHAIN_ID", str(chain_id))
+    monkeypatch.delenv(rpc_env, raising=False)
+    monkeypatch.delenv("SPARKPOINT_RPC_URL", raising=False)
+    request = SimpleNamespace(state=SimpleNamespace(account=_account(chain_id=chain_id)))
+    reader = await get_chat_vault_reader(cast(Any, request), None)
+    with pytest.raises(VaultUnavailable) as excinfo:
+        await reader.token_balance_of(USDC, OWNER)
+    assert excinfo.value.reason is VaultUnavailableReason.RPC_UNREACHABLE

@@ -52,6 +52,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   signature, nonce, allowlist or amount check was weakened. (`services/agent/src/sparkpoint_agent/earn/rhea.py`,
   `services/agent/src/sparkpoint_agent/earn/service.py`, `services/agent/tests/earn/test_rhea.py`)
 
+### Fixed (1110 — Sparky chain routing, RPC defaults, multichain portfolio)
+
+- **Chat no longer hard-fails on a chain whose read RPC is unset; Base mainnet keeps its
+  explicit-RPC 023 fail-closed posture.** With `X-Chain-Id: 8453` every turn returned
+  `503 RPC_UNREACHABLE "no RPC url configured for the vault read surface"` when
+  `BASE_MAINNET_RPC_URL` was unset. The chat surface now builds a fail-closed reader instead of
+  503-ing the whole turn: a missing RPC degrades only the affected reads (the portfolio/gate
+  already treat `VaultUnavailable` as stale), so the answer still streams. 8453 still requires an
+  explicit `SPARKPOINT_RPC_URL`/`BASE_MAINNET_RPC_URL` — there is **no public default** (the
+  deployment sets it explicitly); 4663 keeps its explicit-archive requirement.
+  (`services/agent/src/sparkpoint_agent/config.py`,
+  `services/agent/src/sparkpoint_agent/api/vault.py`,
+  `services/agent/src/sparkpoint_agent/api/chat.py`)
+- **Explicit chain wording wins over the request header for earn actions.** "withdraw 0.5 USDC
+  from Morpho on Base" previously fell through to the planner, which answered "Vault withdrawals
+  aren't supported on Robinhood Chain yet" for an `X-Chain-Id: 4663` session. Morpho/Kamino
+  withdraws are now parsed deterministically (honouring "on Base"/"on Solana", defaulting to Base
+  and Solana respectively) and route to the SAME live review card the Vault page uses —
+  `/vault/live?protocol=…&chain=…&vault=…&asset=…&mode=withdraw[&amount=…]` — with no new
+  execution surface. The target vault is resolved by the asset the user names (case-insensitive)
+  among that protocol+chain's curated vaults; a non-matching asset (e.g. CBBTC where only a USDC
+  vault is live) degrades to the honest "no such vault" outcome instead of linking the default
+  USDC vault, and an amount is prefilled only when the named asset matches the vault. The
+  withdraw noun ("withdrawal"/"withdrawals") no longer hijacks informational asks ("how do
+  withdrawals work?") into the card. The existing `earn_quote` chat card renders a withdraw-only
+  variant for the deep link. (`services/agent/src/sparkpoint_agent/earn/parse.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`,
+  `services/agent/src/sparkpoint_agent/coordinator/dag.py`,
+  `apps/web/src/components/screens/chat/earn-quote-card.tsx`)
+- **"What is my multi-chain portfolio?" now uses the multichain aggregation.** The phrasing missed
+  the deterministic portfolio router, so the turn fell through to the chain-scoped vault snapshot
+  (0.0096 ETH on 4663 only). The router now recognises the multi-chain/multichain and
+  "portfolio across all chains" forms and answers from the existing `GET /portfolio/multichain`
+  service. (`services/agent/src/sparkpoint_agent/portfolio/chat.py`)
+
 ### Fixed (1110 — Kamino farm account guard, security)
 
 - **Kamino farm bookkeeping instructions are now validated account-by-account instead of only checking

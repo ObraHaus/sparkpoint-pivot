@@ -40,7 +40,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Annotated, Any, Literal, Protocol
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -49,7 +49,7 @@ from ..agents.literacy import Literacy
 from ..agents.planner import Planner
 from ..agents.recommender import Recommender
 from ..agents.sparky import Sparky
-from ..chain import VaultReader, VaultUnavailable
+from ..chain import VaultReader, VaultUnavailable, VaultUnavailableReason
 from ..chain.faucet_probe import FaucetProbe
 from ..config import (
     SPARKY_SINGLE_CALL_ENV,
@@ -79,6 +79,7 @@ from ..db.executions import ExecutionStore
 from ..db.swap_fees import PgSwapFeeEventStore
 from ..db.user_memory import MemoryStore
 from ..db.vault_flows import VaultFlowReader
+from ..db.vault_registry import VaultRegistryStore
 from ..db.wrapper_whitelist import PgWhitelistStore
 from ..earn.service import build_service_from_env as build_earn_service_from_env
 from ..knowledge import KnowledgeRetriever, default_citation_retriever
@@ -100,7 +101,7 @@ from .recommendations import (
     get_mandate_provider,
 )
 from .security import AccountContext
-from .vault import get_account, get_vault_reader
+from .vault import build_vault_reader, get_account, get_registry_store
 
 router = APIRouter(tags=["chat"])
 
@@ -548,8 +549,39 @@ def _safe_citation_retriever() -> KnowledgeRetriever | None:
         return None
 
 
+class _UnavailableRpcTransport:
+    """Fail-closed transport for a chain with no configured RPC.
+
+    A missing read RPC degrades the portfolio/gate reads to ``VaultUnavailable`` (the existing
+    per-section handling) instead of 503-ing the whole chat turn before a single token streams.
+    """
+
+    async def call(self, method: str, params: Sequence[Any]) -> str:
+        raise VaultUnavailable(
+            VaultUnavailableReason.RPC_UNREACHABLE,
+            "no RPC url configured for the vault read surface.",
+        )
+
+
+async def get_chat_vault_reader(
+    request: Request,
+    store: Annotated[VaultRegistryStore | None, Depends(get_registry_store)] = None,
+) -> VaultReader:
+    """Chat's reader: same construction as :func:`get_vault_reader`, but never hard-fails.
+
+    The reported 1110 defect was every ``X-Chain-Id: 8453`` chat turn returning 503
+    RPC_UNREACHABLE before any section could degrade. A missing RPC is a per-section read
+    outage, not a reason to lose the whole answer; the gate already treats an unreadable vault
+    as stale and fails closed.
+    """
+    try:
+        return await build_vault_reader(request, store)
+    except VaultUnavailable:
+        return VaultReader(vault_address=None, transport=_UnavailableRpcTransport())
+
+
 def get_coordinator_dag(
-    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    reader: Annotated[VaultReader, Depends(get_chat_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
     mandate_provider: Annotated[MandateProvider, Depends(get_mandate_provider)],
     wrapper_store: Annotated[PgWhitelistStore | None, Depends(get_wrapper_store)],
@@ -620,7 +652,7 @@ def get_coordinator_dag(
 
 
 def get_chain_provider(
-    reader: Annotated[VaultReader, Depends(get_vault_reader)],
+    reader: Annotated[VaultReader, Depends(get_chat_vault_reader)],
     config: Annotated[AgentConfig, Depends(get_agent_config)],
 ) -> ChatChainProvider:
     """The per-request :class:`ChainContext` builder — REAL (resolves the deployed vault target +
