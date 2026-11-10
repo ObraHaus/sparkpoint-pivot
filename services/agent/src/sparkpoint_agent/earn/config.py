@@ -142,6 +142,15 @@ class RheaAsset:
     enabled: bool = True
 
 
+#: A first Rhea deposit pays TWO one-off Multica fees in the same receipt: the create-MCA fee
+#: (read live from ``get_create_mca_fee_paged``) AND a DApp registration fee. Multica exposes no
+#: public view for the second one, so it is a documented fallback. Observed on-chain on 2026-11-10
+#: in a funded cross-chain Rhea test: ``collect_create_mca_fee`` 300000 plus
+#: ``collect_dapp_registration_fee`` 300000 for 6-dp USDC (= 0.30 + 0.30 USDC); only 0.399798 of a
+#: 0.999798 deposit was supplied.
+DEFAULT_DAPP_REGISTRATION_FEE: Mapping[str, str] = {"USDC": "0.30", "USDT": "0.30"}
+
+
 @dataclass(frozen=True, slots=True)
 class RheaConfig:
     """Rhea Finance (Burrow) lending on NEAR — feature 071.
@@ -161,6 +170,9 @@ class RheaConfig:
     app_url: str = "https://app.rhea.finance/lending"
     assets: tuple[RheaAsset, ...] = ()
     mca_fee_fallback: Mapping[str, str] = field(default_factory=dict)
+    dapp_registration_fee_fallback: Mapping[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_DAPP_REGISTRATION_FEE)
+    )
     use_as_collateral: bool = False
     origins: tuple[str, ...] = ("base:USDC", "eth:USDC", "sol:USDC")
     default_origin: str = "base:USDC"
@@ -433,6 +445,12 @@ def _rhea_from_json(raw: Mapping[str, Any]) -> RheaConfig:
         mca_fee_fallback={
             str(key).upper(): str(value)
             for key, value in (raw.get("mca_fee_fallback") or {}).items()
+        },
+        dapp_registration_fee_fallback={
+            str(key).upper(): str(value)
+            for key, value in (
+                raw.get("dapp_registration_fee_fallback") or DEFAULT_DAPP_REGISTRATION_FEE
+            ).items()
         },
         use_as_collateral=bool(raw.get("use_as_collateral", False)),
         origins=tuple(

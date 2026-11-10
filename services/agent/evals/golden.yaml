@@ -1168,7 +1168,7 @@ cases:
       route: earn_preview
       blocks_present: [text, earn_quote]
       blocks_absent: [action, recommendation, earn_positions]
-      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.60 usdc", "dapp registration", "99.3808"]
       must_not_contain: ["traceback"]
     offline:
       intent: {kind: other}
@@ -1250,7 +1250,7 @@ cases:
       route: earn_preview
       blocks_present: [text, earn_quote]
       blocks_absent: [action, recommendation, earn_positions]
-      must_contain: ["preview only", "100 usdc", "rhea", "0.30 usdc", "99.6808"]
+      must_contain: ["preview only", "100 usdc", "rhea", "0.60 usdc", "dapp registration", "99.3808"]
       must_not_contain: ["traceback"]
     offline:
       intent: {kind: other}

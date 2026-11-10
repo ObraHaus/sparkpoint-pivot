@@ -49,6 +49,30 @@ def test_amount_less_protocol_earn_is_a_list(
     assert request.protocol == ("kamino" if "Kamino" in prompt else "morpho")
 
 
+def test_generic_earn_options_lists_every_protocol() -> None:
+    request = parse_earn_request("What earn options do I have?", default_config())
+    assert request is not None
+    assert request.kind == "list"
+    assert request.protocol is None
+    assert request.chain is None
+    assert request.asset is None
+
+
+@pytest.mark.parametrize(
+    ("prompt", "protocol"),
+    [
+        ("Show Rhea options", "rhea"),
+        ("Show Morpho options", "morpho"),
+        ("Show Kamino options", "kamino"),
+    ],
+)
+def test_protocol_options_lists_that_protocol(prompt: str, protocol: str) -> None:
+    request = parse_earn_request(prompt, default_config())
+    assert request is not None
+    assert request.kind == "list"
+    assert request.protocol == protocol
+
+
 @pytest.mark.parametrize(
     "prompt",
     [

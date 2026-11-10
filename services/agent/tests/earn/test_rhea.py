@@ -24,6 +24,7 @@ from sparkpoint_agent.earn.rhea import (
     NearRpcClient,
     RheaRpcError,
     custom_recipient_msg,
+    dapp_registration_fee_amount,
     inner_units_to_decimal,
     mca_fee_amount,
     message_to_sign,
@@ -193,6 +194,10 @@ def test_extra_decimals_math_is_unit_safe() -> None:
         Decimal("0.3")
     )
     assert mca_fee_amount({}, default_config().rhea.assets[0], {"USDC": "0.30"}) == Decimal("0.30")
+    asset = default_config().rhea.assets[0]
+    assert dapp_registration_fee_amount(asset, {"USDC": "0.30"}) == Decimal("0.30")
+    assert dapp_registration_fee_amount(asset, {}) == Decimal(0)
+    assert dapp_registration_fee_amount(asset, {"USDC": "not a number"}) == Decimal(0)
 
 
 def test_custom_recipient_messages_match_the_rhea_sdk_wire() -> None:
@@ -230,9 +235,11 @@ async def test_first_deposit_preview_shows_the_one_time_fee_and_message() -> Non
     assert wire["firstDeposit"] is True
     assert wire["mca"] is None
     assert wire["recipient"] == "multica.near"
-    assert wire["oneTimeFee"]["amount"] == "0.30"
+    # Both one-off Multica fees are disclosed and subtracted: create-MCA 0.30 + DApp 0.30.
+    assert wire["oneTimeFee"]["amount"] == "0.60"
     assert wire["oneTimeFee"]["symbol"] == "USDC"
-    assert wire["netSupplied"] == "99.6808"
+    assert "DApp registration" in wire["oneTimeFee"]["reason"]
+    assert wire["netSupplied"] == "99.3808"
     assert wire["messageToSign"] == f'[{{"EVM":"{WALLET_NO_0X}"}}]'
     assert "BurrowRegisterAndSupply" in wire["customRecipientMsg"]
     assert wire["supplyApy"] == "14.05%"
@@ -241,7 +248,9 @@ async def test_first_deposit_preview_shows_the_one_time_fee_and_message() -> Non
     assert wire["withdraw"]["url"] == "https://app.rhea.finance/lending"
     assert calls and calls[0]["dry"] is True
     assert calls[0]["customRecipientMsg"] == wire["customRecipientMsg"]
-    assert "0.30 USDC" in outcome.text
+    assert "0.60 USDC" in outcome.text
+    assert "DApp registration fee" in outcome.text
+    assert "99.3808" in outcome.text
 
 
 async def test_existing_mca_preview_omits_the_fee_and_signs_nothing() -> None:
@@ -276,7 +285,7 @@ async def test_fee_read_failure_uses_the_configured_fallback() -> None:
         amount_raw=100_000_000,
         wallet=WALLET,
     )
-    assert outcome.block.to_wire()["oneTimeFee"]["amount"] == "0.30"
+    assert outcome.block.to_wire()["oneTimeFee"]["amount"] == "0.60"
 
 
 async def test_no_liquidity_is_an_unavailable_card_with_a_smaller_amount_hint() -> None:
@@ -750,7 +759,7 @@ def test_api_preview_rhea_is_dry_only(
     assert wire["rail"] == "oneclick_rhea"
     assert wire["firstDeposit"] is True
     assert wire["mca"] is None
-    assert wire["oneTimeFee"]["amount"] == "0.30"
+    assert wire["oneTimeFee"]["amount"] == "0.60"
     assert wire["messageToSign"]
 
     live = client.post("/earn/preview", json={**body, "dry": False})

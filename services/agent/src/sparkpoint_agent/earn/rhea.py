@@ -13,6 +13,9 @@ Wire facts (verified 2026-11-01, see ``specs/071-rhea-near-earn/research.md``):
 
 * ``get_mca_by_wallet {"wallet":{"EVM":"<addr without 0x>"}}`` → an account id or ``null``.
 * ``get_create_mca_fee_paged {}`` → ``{token_id: raw_amount}`` (USDC = 300000 → 0.30).
+* A first deposit ALSO pays a DApp registration fee in the same receipt
+  (``collect_dapp_registration_fee`` 300000 = 0.30 USDC, funded run 2026-11-10). Multica has no
+  public view for it, so it comes from ``RheaConfig.dapp_registration_fee_fallback``.
 * ``get_asset {"token_id": ...}`` → ``supply_apr`` fraction + ``config.extra_decimals``.
 * ``get_account_all_positions {"account_id": mca}`` → ``supplied[]`` (inner units) or ``null``.
 """
@@ -293,6 +296,22 @@ def extra_decimals_for(asset_detail: Mapping[str, Any] | None) -> int:
         return 0
 
 
+def dapp_registration_fee_amount(asset: RheaAsset, fallback: Mapping[str, str]) -> Decimal:
+    """The one-off DApp registration fee charged with a first deposit's create-MCA fee.
+
+    There is no on-chain view for it (``multica.near`` only emits a
+    ``collect_dapp_registration_fee`` event), so the configured per-symbol fallback is
+    authoritative. Unknown symbols are 0.
+    """
+    raw = fallback.get(asset.symbol) or fallback.get(asset.symbol.upper())
+    if raw is None:
+        return Decimal(0)
+    try:
+        return max(Decimal(str(raw)), Decimal(0)).quantize(Decimal("0.01"))
+    except (ArithmeticError, ValueError):
+        return Decimal(0)
+
+
 def mca_fee_amount(
     fees: Mapping[str, str], asset: RheaAsset, fallback: Mapping[str, str]
 ) -> Decimal:
@@ -466,6 +485,7 @@ __all__ = [
     "fetch_rhea_vaults",
     "human_string",
     "inner_units_to_decimal",
+    "dapp_registration_fee_amount",
     "mca_fee_amount",
     "message_to_sign",
     "parse_supplied_positions",
