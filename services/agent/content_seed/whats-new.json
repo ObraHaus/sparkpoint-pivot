@@ -10,6 +10,14 @@
       "published_at": "2026-11-10T11:00:00Z"
     },
     {
+      "slug": "rhea-mca-case-lookup-fix-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now recognises your existing Rhea account after you sign in",
+      "body": "Behind the scenes: your Rhea account on NEAR is registered with your wallet address written in a specific mixed-case form. Signing in with your EVM wallet could hand the assistant the same address in lowercase, and Rhea's account lookup treats those as different strings \u2014 so the assistant thought you had no Rhea account yet. That made your Rhea positions look empty and showed the one-time account fee on what should have been a normal deposit, with a risk of creating a second account. The assistant now looks up the correctly formatted address first, still recognises an older lowercase registration as your account, and shows the correct preview without the one-time fee. It also reuses the exact address form that matched when it prepares a deposit, so an older lowercase registration is not addressed by the mixed-case string. If the account lookup itself is unavailable, the assistant now says so and prepares nothing, instead of guessing that this is your first deposit. Nothing about signing or custody changes.",
+      "published_at": "2026-11-10T10:30:00Z"
+    },
+    {
       "slug": "kamino-farm-account-guard-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",

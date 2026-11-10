@@ -29,6 +29,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   allowlists and authority checks. The older `withdraw` path is deliberately untouched in this PR.
   (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoLive.test.ts`)
 
+### Fixed (1110 — Rhea MCA lookup is case-insensitive across the checksum form)
+
+- **An existing Rhea Multichain Account (MCA) is now detected even though the web session lowercases
+  the EVM owner.** `multica.near::get_mca_by_wallet` matches the exact registered string, and an MCA
+  created from a wallet is registered EIP-55 checksummed (`BddA…4f13`), while the agent asked with the
+  lowercased owner (`bdda…4f13`) and got `null`. The consequences were a blank Rhea portfolio section,
+  `/earn/rhea/positions` claiming "no account", and a cross-chain quote that reported
+  `firstDeposit:true` with the 0.60 USDC one-time fee (and a lowercase `customRecipientMsg`), risking a
+  duplicate MCA on a live first deposit. The canonical EIP-55 checksum is now tried first for
+  `get_mca_by_wallet`; when the checksummed lookup misses, a single read-only lowercase lookup still
+  treats any hit as an existing MCA. The exact wallet form that matched (checksum or legacy lowercase)
+  is carried into `customRecipientMsg` / `messageToSign`, so a deposit for a lowercase-registered MCA
+  is never addressed by the checksummed string; a first deposit keeps the checksum form. An RPC
+  error/timeout now fails closed (an unavailable preview) instead of assuming a first deposit. No
+  signature, nonce, allowlist or amount check was weakened. (`services/agent/src/sparkpoint_agent/earn/rhea.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`, `services/agent/tests/earn/test_rhea.py`)
+
 ### Fixed (1110 — Kamino farm account guard, security)
 
 - **Kamino farm bookkeeping instructions are now validated account-by-account instead of only checking
