@@ -40,6 +40,7 @@ from sparkpoint_agent.crosschain.oneclick import OneClickClient
 from sparkpoint_agent.crosschain.service import CrossChainService
 from sparkpoint_agent.earn.config import default_config as earn_config
 from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot, VaultAsset, VaultEntry
+from sparkpoint_agent.earn.rhea import McaLookup, evm_wallet_string
 from sparkpoint_agent.earn.service import EarnService
 from sparkpoint_agent.llm import LlmResult, StructuredResult
 from sparkpoint_agent.persona import get_persona
@@ -351,8 +352,8 @@ _EARN_VAULTS = (
 class _EvalRheaViews:
     """A fixed Rhea view double: no wallet has an MCA in the eval fixture."""
 
-    async def mca_for_wallet(self, wallet: str) -> str | None:
-        return None
+    async def mca_for_wallet(self, wallet: str) -> McaLookup:
+        return McaLookup(mca=None, wallet_form=evm_wallet_string(wallet))
 
     async def create_mca_fee(self) -> dict[str, str]:
         return {RHEA_TOKEN_ID: "300000"}

@@ -21,11 +21,13 @@ from sparkpoint_agent.earn.rails import ReceiptLivenessCache
 from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot
 from sparkpoint_agent.earn.rhea import (
     DRY_PLACEHOLDER_SIGNATURE,
+    McaLookup,
     NearRpcClient,
     RheaRpcError,
     RheaViews,
     custom_recipient_msg,
     dapp_registration_fee_amount,
+    evm_wallet_string,
     inner_units_to_decimal,
     mca_fee_amount,
     message_to_sign,
@@ -76,6 +78,7 @@ class FakeRheaViews:
         fees: dict[str, str] | None = None,
         detail: dict[str, Any] | None = None,
         portfolio: dict[str, Any] | None = None,
+        wallet_form: str | None = None,
         fail_mca: bool = False,
         fail_fee: bool = False,
         fail_positions: bool = False,
@@ -84,16 +87,18 @@ class FakeRheaViews:
         self.fees = fees if fees is not None else {RHEA_TOKEN_ID: "300000"}
         self.detail = detail if detail is not None else USDC_DETAIL
         self.portfolio = portfolio
+        self.wallet_form = wallet_form
         self.fail_mca = fail_mca
         self.fail_fee = fail_fee
         self.fail_positions = fail_positions
         self.wallets: list[str] = []
 
-    async def mca_for_wallet(self, wallet: str) -> str | None:
+    async def mca_for_wallet(self, wallet: str) -> McaLookup:
         self.wallets.append(wallet)
         if self.fail_mca:
             raise RheaRpcError("offline")
-        return self.mca
+        form = self.wallet_form if self.wallet_form is not None else evm_wallet_string(wallet)
+        return McaLookup(mca=self.mca, wallet_form=form)
 
     async def create_mca_fee(self) -> dict[str, str]:
         if self.fail_fee:
@@ -224,6 +229,14 @@ def test_messages_checksum_a_lowercased_session_wallet() -> None:
     assert register_message(lower, "ab" * 65)["w"][0]["EVM"] == WALLET_NO_0X
 
 
+def test_messages_reuse_a_wallet_form_matched_by_the_lookup() -> None:
+    """A legacy lowercase registration must be addressed by its exact registered string."""
+    lower = WALLET_NO_0X.lower()
+    assert supply_message(WALLET, wallet_form=lower)["w"][0]["EVM"] == lower
+    assert message_to_sign(WALLET, wallet_form=lower) == f'[{{"EVM":"{lower}"}}]'
+    assert register_message(WALLET, "ab" * 65, wallet_form=lower)["w"][0]["EVM"] == lower
+
+
 async def test_mca_lookup_uses_checksummed_address_for_a_lowercased_owner() -> None:
     """A checksummed hit must be the FIRST lookup, even when the session owner is lowercase."""
     seen: list[str] = []
@@ -234,7 +247,9 @@ async def test_mca_lookup_uses_checksummed_address_for_a_lowercased_owner() -> N
             return MCA if args["wallet"]["EVM"] == WALLET_NO_0X else None
 
     views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
-    assert await views.mca_for_wallet(WALLET.lower()) == MCA
+    lookup = await views.mca_for_wallet(WALLET.lower())
+    assert lookup.mca == MCA
+    assert lookup.wallet_form == WALLET_NO_0X
     assert seen == [WALLET_NO_0X]
 
 
@@ -248,7 +263,9 @@ async def test_mca_lookup_falls_back_to_lowercase_registered_wallet() -> None:
             return MCA if args["wallet"]["EVM"] == WALLET_NO_0X.lower() else None
 
     views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
-    assert await views.mca_for_wallet(WALLET) == MCA
+    lookup = await views.mca_for_wallet(WALLET)
+    assert lookup.mca == MCA
+    assert lookup.wallet_form == WALLET_NO_0X.lower()
     assert seen == [WALLET_NO_0X, WALLET_NO_0X.lower()]
 
 
@@ -261,7 +278,9 @@ async def test_mca_lookup_miss_is_a_first_deposit() -> None:
             return None
 
     views = RheaViews(default_config().rhea, rpc=Rpc())  # type: ignore[arg-type]
-    assert await views.mca_for_wallet(WALLET.lower()) is None
+    lookup = await views.mca_for_wallet(WALLET.lower())
+    assert lookup.mca is None
+    assert lookup.wallet_form == WALLET_NO_0X
     assert seen == [WALLET_NO_0X, WALLET_NO_0X.lower()]
 
 
@@ -331,8 +350,30 @@ async def test_existing_mca_preview_omits_the_fee_and_signs_nothing() -> None:
     assert "messageToSign" not in wire
     assert wire["netSupplied"] == "99.9808"
     assert "BurrowSupply" in wire["customRecipientMsg"]
+    assert WALLET_NO_0X in wire["customRecipientMsg"]
+    assert calls[0]["customRecipientMsg"] == wire["customRecipientMsg"]
     assert calls[0]["recipient"] == MCA
     assert calls[0]["refundTo"] == WALLET
+
+
+async def test_existing_lowercase_mca_preview_reuses_the_matched_wallet_form() -> None:
+    """A legacy lowercase registration must keep the lowercase string in every outgoing message."""
+    lower = WALLET_NO_0X.lower()
+    service, calls = _service(FakeRheaViews(mca=MCA, wallet_form=lower))
+    outcome = await service.preview_for(
+        chain="near",
+        address=RHEA_TOKEN_ID,
+        origin_key="base:USDC",
+        amount=Decimal("100"),
+        amount_raw=100_000_000,
+        wallet=WALLET.lower(),
+    )
+    wire = outcome.block.to_wire()
+    assert wire["firstDeposit"] is False
+    assert wire["mca"] == MCA
+    assert f'{{"EVM":"{lower}"}}' in wire["customRecipientMsg"]
+    assert WALLET_NO_0X not in wire["customRecipientMsg"]
+    assert calls[0]["customRecipientMsg"] == wire["customRecipientMsg"]
 
 
 async def test_fee_read_failure_uses_the_configured_fallback() -> None:
