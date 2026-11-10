@@ -28,6 +28,7 @@ export const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 export const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 export const ATA_PROGRAM_ID = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 export const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+export const RENT_SYSVAR_ID = "SysvarRent111111111111111111111111111111111";
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
 
 /**
@@ -56,6 +57,17 @@ export const KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR = "6f11b9fa3c7a26fe";
 export const KAMINO_FARM_STAKE_DISCRIMINATOR = "ceb0ca12c8d1b36c";
 export const KAMINO_FARM_UNSTAKE_DISCRIMINATOR = "5a5f6b2acd7c32e1";
 export const KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR = "2466bb31dc248443";
+
+/**
+ * The only Kamino farms variants the pre-sign guard understands. Each variant has a fixed,
+ * positional account layout taken from the farms program IDL (`@kamino-finance/farms-sdk` v5)
+ * and confirmed against real mainnet deposit/withdraw transactions (see __fixtures__).
+ */
+export type KaminoFarmInstructionKind =
+  | "initialize_user"
+  | "stake"
+  | "unstake"
+  | "withdraw_unstaked";
 
 /** u64::MAX — Kamino's withdraw endpoint encodes "redeem all shares" as this sentinel. */
 export const U64_MAX = 18_446_744_073_709_551_615n;
@@ -597,6 +609,8 @@ export interface KaminoInstructionSummary {
   readonly rejectReason: string | null;
   readonly authority: string | null;
   readonly action: { readonly kind: LiveEarnMode; readonly amountRaw: bigint } | null;
+  /** The farms variant when this instruction targets the Kamino farms program, else null. */
+  readonly farmKind: KaminoFarmInstructionKind | null;
 }
 
 export interface KaminoLamportTransfer {
@@ -703,6 +717,7 @@ interface DescribedInstruction {
   readonly action: { kind: LiveEarnMode; amountRaw: bigint } | null;
   readonly authority: string | null;
   readonly rejectReason: string | null;
+  readonly farmKind: KaminoFarmInstructionKind | null;
 }
 
 function describeInstruction(
@@ -723,6 +738,7 @@ function describeInstruction(
     action: null,
     authority: null,
     rejectReason: null,
+    farmKind: null,
   };
   const reject = (label: string, reason: string): DescribedInstruction => ({
     ...base,
@@ -869,13 +885,22 @@ function describeInstruction(
     // Only the farm bookkeeping variants observed in the API's unsigned txs are allowed:
     // deposit → initialize_user + stake; withdraw → unstake + withdraw_unstaked_deposits.
     // A new/unknown variant is refused rather than shown and trusted.
-    if (
-      discriminator === KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR ||
-      discriminator === KAMINO_FARM_STAKE_DISCRIMINATOR ||
-      discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR ||
-      discriminator === KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR
-    ) {
-      return { ...base, label: `Kamino farm instruction ${discriminator}` };
+    const farmKind: KaminoFarmInstructionKind | null =
+      discriminator === KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR
+        ? "initialize_user"
+        : discriminator === KAMINO_FARM_STAKE_DISCRIMINATOR
+          ? "stake"
+          : discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR
+            ? "unstake"
+            : discriminator === KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR
+              ? "withdraw_unstaked"
+              : null;
+    if (farmKind !== null) {
+      return {
+        ...base,
+        label: `Kamino farm instruction ${discriminator} (${farmKind})`,
+        farmKind,
+      };
     }
     return reject(
       `Kamino farm instruction ${discriminator}`,
@@ -977,6 +1002,7 @@ export function summarizeKaminoTransaction(
       rejectReason: described.rejectReason,
       authority: described.authority,
       action: described.action,
+      farmKind: described.farmKind,
     };
   });
 
@@ -1050,6 +1076,44 @@ export function deriveAssociatedTokenAddress(
     new PublicKey(ATA_PROGRAM_ID),
   );
   return address.toBase58();
+}
+
+const FARM_SEED = new TextEncoder().encode("user");
+const FARM_VAULT_SEED = new TextEncoder().encode("fvault");
+const FARM_AUTHORITY_SEED = new TextEncoder().encode("authority");
+
+/**
+ * Derive a Kamino farms PDA. Seeds are either literal byte strings (already encoded) or base58
+ * addresses. Returns `null` instead of throwing so an invalid farm/owner fails closed.
+ */
+function deriveKaminoFarmAddress(seeds: readonly (string | Uint8Array)[]): string | null {
+  try {
+    const encoded = seeds.map((seed) =>
+      typeof seed === "string" ? new PublicKey(seed).toBuffer() : seed,
+    );
+    const [address] = PublicKey.findProgramAddressSync(
+      encoded,
+      new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+    );
+    return address.toBase58();
+  } catch {
+    return null;
+  }
+}
+
+/** PDA seeds: ["user", farm_state, owner]. */
+function deriveFarmUserState(farmState: string, owner: string): string | null {
+  return deriveKaminoFarmAddress([FARM_SEED, farmState, owner]);
+}
+
+/** PDA seeds: ["fvault", farm_state, token_mint]. */
+function deriveFarmVault(farmState: string, tokenMint: string): string | null {
+  return deriveKaminoFarmAddress([FARM_VAULT_SEED, farmState, tokenMint]);
+}
+
+/** PDA seeds: ["authority", farm_state]. */
+function deriveFarmAuthority(farmState: string): string | null {
+  return deriveKaminoFarmAddress([FARM_AUTHORITY_SEED, farmState]);
 }
 
 /** Resolve the v0 address lookup tables of an unsigned tx via read-only RPC. */
@@ -1334,15 +1398,213 @@ export function assertKaminoTransactionMatches(
     (instruction) => instruction.programId === KAMINO_FARMS_PROGRAM_ID,
   );
   if (farmInstructions.length > 0) {
-    if (!expectation.vaultFarm) {
+    const farm = expectation.vaultFarm;
+    if (!farm) {
       fail(
         "wrong_vault",
         "The vault has no farm account, but the transaction includes a Kamino farm instruction.",
       );
     }
+    // The farms program only moves the wallet's own farm position and its canonical stake token
+    // account. Every account is derived here and compared positionally below, so a farm CPI can
+    // never silently redirect shares or act for another wallet.
+    const expectedUserState = deriveFarmUserState(farm, expectation.feePayer);
+    const expectedFarmVault = deriveFarmVault(farm, expectation.vault.sharesMint);
+    const expectedFarmAuthority = deriveFarmAuthority(farm);
+    if (!expectedUserState || !expectedFarmVault || !expectedFarmAuthority) {
+      fail(
+        "wrong_vault",
+        "The vault's farm account could not be verified, so its farm instructions cannot be trusted. Refusing to sign.",
+      );
+    }
+
     for (const instruction of farmInstructions) {
-      if (!instruction.accounts.includes(expectation.vaultFarm)) {
-        fail("wrong_vault", "A Kamino farm instruction does not reference the selected vault's farm.");
+      const kind = instruction.farmKind;
+      const accounts = instruction.accounts;
+      if (!kind) {
+        fail(
+          "wrong_instruction",
+          "A Kamino farms instruction could not be identified; refusing to sign.",
+        );
+      }
+      if (kind === "stake" && expectation.mode !== "deposit") {
+        fail("wrong_instruction", "A Kamino stake instruction is only allowed in a deposit.");
+      }
+      if (kind !== "stake" && kind !== "initialize_user" && expectation.mode !== "withdraw") {
+        fail(
+          "wrong_instruction",
+          "A Kamino unstake/withdraw-unstaked instruction is only allowed in a withdraw.",
+        );
+      }
+
+      if (kind === "initialize_user") {
+        // [authority, payer, owner, delegatee, user_state, farm_state, system_program, rent]
+        if (accounts.length !== 8) {
+          fail(
+            "wrong_instruction",
+            "A Kamino initialize-user instruction has an unexpected account layout.",
+          );
+        }
+        if (
+          accounts[0] !== expectation.feePayer ||
+          accounts[1] !== expectation.feePayer ||
+          accounts[2] !== expectation.feePayer ||
+          accounts[3] !== expectation.feePayer
+        ) {
+          fail(
+            "wrong_recipient",
+            "A Kamino farm position is being initialised for a different wallet.",
+          );
+        }
+        if (accounts[4] !== expectedUserState) {
+          fail(
+            "wrong_recipient",
+            "A Kamino farm instruction targets a non-canonical user state account.",
+          );
+        }
+        if (accounts[5] !== farm) {
+          fail(
+            "wrong_vault",
+            "A Kamino farm instruction does not reference the selected vault's farm.",
+          );
+        }
+        if (accounts[6] !== SYSTEM_PROGRAM_ID) {
+          fail("wrong_program", "A Kamino farm instruction does not use the system program.");
+        }
+        if (accounts[7] !== RENT_SYSVAR_ID) {
+          fail("wrong_program", "A Kamino farm instruction does not use the rent sysvar.");
+        }
+        continue;
+      }
+
+      if (kind === "stake") {
+        // [owner, user_state, farm_state, farm_vault, user_ata, token_mint, scope_prices, token_program]
+        if (accounts.length !== 8) {
+          fail("wrong_instruction", "A Kamino stake instruction has an unexpected account layout.");
+        }
+        const tokenProgram = accounts[7] ?? "";
+        if (tokenStandardForProgram(tokenProgram) === null) {
+          fail("wrong_program", "A Kamino stake instruction uses an unexpected token program.");
+        }
+        if (accounts[0] !== expectation.feePayer) {
+          fail("wrong_recipient", "A Kamino stake instruction is not for your connected wallet.");
+        }
+        if (accounts[1] !== expectedUserState) {
+          fail(
+            "wrong_recipient",
+            "A Kamino stake instruction targets a non-canonical user state account.",
+          );
+        }
+        if (accounts[2] !== farm) {
+          fail(
+            "wrong_vault",
+            "A Kamino stake instruction does not reference the selected vault's farm.",
+          );
+        }
+        if (accounts[3] !== expectedFarmVault) {
+          fail(
+            "wrong_vault",
+            "A Kamino stake instruction does not reference the farm's token vault.",
+          );
+        }
+        if (accounts[5] !== expectation.vault.sharesMint) {
+          fail("mint_mismatch", "A Kamino stake instruction uses a different stake token mint.");
+        }
+        const expectedUserAta = deriveAssociatedTokenAddress(
+          expectation.feePayer,
+          expectation.vault.sharesMint,
+          tokenProgram,
+        );
+        if (accounts[4] !== expectedUserAta) {
+          fail(
+            "wrong_recipient",
+            "A Kamino stake instruction uses a token account that is not yours.",
+          );
+        }
+        continue;
+      }
+
+      if (kind === "unstake") {
+        // [owner, user_state, farm_state, scope_prices]
+        if (accounts.length !== 4) {
+          fail(
+            "wrong_instruction",
+            "A Kamino unstake instruction has an unexpected account layout.",
+          );
+        }
+        if (accounts[0] !== expectation.feePayer) {
+          fail("wrong_recipient", "A Kamino unstake instruction is not for your connected wallet.");
+        }
+        if (accounts[1] !== expectedUserState) {
+          fail(
+            "wrong_recipient",
+            "A Kamino unstake instruction targets a non-canonical user state account.",
+          );
+        }
+        if (accounts[2] !== farm) {
+          fail(
+            "wrong_vault",
+            "A Kamino unstake instruction does not reference the selected vault's farm.",
+          );
+        }
+        continue;
+      }
+
+      // withdraw_unstaked
+      // [owner, user_state, farm_state, user_ata, farm_vault, farm_vaults_authority, token_program]
+      if (accounts.length !== 7) {
+        fail(
+          "wrong_instruction",
+          "A Kamino withdraw-unstaked instruction has an unexpected account layout.",
+        );
+      }
+      const tokenProgram = accounts[6] ?? "";
+      if (tokenStandardForProgram(tokenProgram) === null) {
+        fail(
+          "wrong_program",
+          "A Kamino withdraw-unstaked instruction uses an unexpected token program.",
+        );
+      }
+      if (accounts[0] !== expectation.feePayer) {
+        fail(
+          "wrong_recipient",
+          "A Kamino withdraw-unstaked instruction is not for your connected wallet.",
+        );
+      }
+      if (accounts[1] !== expectedUserState) {
+        fail(
+          "wrong_recipient",
+          "A Kamino withdraw-unstaked instruction targets a non-canonical user state account.",
+        );
+      }
+      if (accounts[2] !== farm) {
+        fail(
+          "wrong_vault",
+          "A Kamino withdraw-unstaked instruction does not reference the selected vault's farm.",
+        );
+      }
+      if (accounts[4] !== expectedFarmVault) {
+        fail(
+          "wrong_vault",
+          "A Kamino withdraw-unstaked instruction does not reference the farm's token vault.",
+        );
+      }
+      if (accounts[5] !== expectedFarmAuthority) {
+        fail(
+          "wrong_vault",
+          "A Kamino withdraw-unstaked instruction does not reference the farm authority.",
+        );
+      }
+      const expectedUserAta = deriveAssociatedTokenAddress(
+        expectation.feePayer,
+        expectation.vault.sharesMint,
+        tokenProgram,
+      );
+      if (accounts[3] !== expectedUserAta) {
+        fail(
+          "wrong_recipient",
+          "A Kamino withdraw-unstaked instruction sends tokens to an account that is not yours.",
+        );
       }
     }
   }

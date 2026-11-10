@@ -22,7 +22,9 @@ import {
   KAMINO_VAULTS,
   KAMINO_WITHDRAW_DISCRIMINATOR,
   KaminoLiveError,
+  RENT_SYSVAR_ID,
   SOL_SAFETY_BUFFER_LAMPORTS,
+  SYSTEM_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   U64_MAX,
@@ -179,6 +181,20 @@ function buildTransaction(payer: string, instructions: TransactionInstruction[])
   });
   return Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
 }
+
+function farmPda(seeds: (string | Uint8Array)[]): string {
+  return PublicKey.findProgramAddressSync(
+    seeds.map((seed) => (typeof seed === "string" ? new PublicKey(seed).toBuffer() : seed)),
+    new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+  )[0].toBase58();
+}
+
+const USER_SEED = new TextEncoder().encode("user");
+const FARM_VAULT_SEED = new TextEncoder().encode("fvault");
+const FARM_AUTHORITY_SEED = new TextEncoder().encode("authority");
+const USER_STATE = farmPda([USER_SEED, SOL_VAULT_FARM, PROBE]);
+const FARM_VAULT = farmPda([FARM_VAULT_SEED, SOL_VAULT_FARM, SOL_META.sharesMint]);
+const FARM_AUTHORITY = farmPda([FARM_AUTHORITY_SEED, SOL_VAULT_FARM]);
 
 function validSolDepositInstructions(payer = PROBE, amount = 10_000_000n): TransactionInstruction[] {
   const wsolAta = deriveAssociatedTokenAddress(payer, WSOL_MINT);
@@ -529,15 +545,35 @@ test("an unknown Kamino farms instruction is refused, not trusted", () => {
 
 test("a withdraw's unstake + withdraw-unstaked farm bookkeeping is allowed", () => {
   const wsolAta = deriveAssociatedTokenAddress(PROBE, WSOL_MINT);
-  const farmInstruction = (discriminator: string) =>
-    new TransactionInstruction({
-      programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
-      keys: [
-        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
-        { pubkey: new PublicKey(SOL_VAULT_FARM), isSigner: false, isWritable: true },
-      ],
-      data: Buffer.concat([Buffer.from(discriminator, "hex"), Buffer.alloc(16)]),
-    });
+  const sharesAta = deriveAssociatedTokenAddress(PROBE, SOL_META.sharesMint);
+  const key = (pubkey: string, isSigner = false) => ({
+    pubkey: new PublicKey(pubkey),
+    isSigner,
+    isWritable: true,
+  });
+  const unstake = new TransactionInstruction({
+    programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+    keys: [
+      key(PROBE, true),
+      key(USER_STATE),
+      key(SOL_VAULT_FARM),
+      key(KAMINO_FARMS_PROGRAM_ID),
+    ],
+    data: Buffer.concat([Buffer.from(KAMINO_FARM_UNSTAKE_DISCRIMINATOR, "hex"), Buffer.alloc(16)]),
+  });
+  const withdrawUnstaked = new TransactionInstruction({
+    programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+    keys: [
+      key(PROBE, true),
+      key(USER_STATE),
+      key(SOL_VAULT_FARM),
+      key(sharesAta),
+      key(FARM_VAULT),
+      key(FARM_AUTHORITY),
+      key(TOKEN_PROGRAM_ID),
+    ],
+    data: Buffer.from(KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR, "hex"),
+  });
   const tx = buildTransaction(PROBE, [
     kvaultInstruction("withdraw", PROBE, SOL_VAULT, U64_MAX, [
       new PublicKey(SOL_META.sharesMint),
@@ -545,8 +581,8 @@ test("a withdraw's unstake + withdraw-unstaked farm bookkeeping is allowed", () 
       new PublicKey(SOL_TOKEN_VAULT),
       new PublicKey(wsolAta),
     ]),
-    farmInstruction(KAMINO_FARM_UNSTAKE_DISCRIMINATOR),
-    farmInstruction(KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR),
+    unstake,
+    withdrawUnstaked,
   ]);
   assert.doesNotThrow(() =>
     assertKaminoTransactionMatches(
@@ -557,20 +593,41 @@ test("a withdraw's unstake + withdraw-unstaked farm bookkeeping is allowed", () 
 });
 
 test("the deposit farm bookkeeping (initialize + stake) is allowed", () => {
-  const farmInstruction = (discriminator: string) =>
-    new TransactionInstruction({
-      programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
-      keys: [
-        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
-        { pubkey: new PublicKey(SOL_VAULT_FARM), isSigner: false, isWritable: true },
-      ],
-      data: Buffer.concat([Buffer.from(discriminator, "hex"), Buffer.alloc(16)]),
-    });
-  const tx = buildTransaction(PROBE, [
-    ...validSolDepositInstructions(),
-    farmInstruction(KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR),
-    farmInstruction(KAMINO_FARM_STAKE_DISCRIMINATOR),
-  ]);
+  const sharesAta = deriveAssociatedTokenAddress(PROBE, SOL_META.sharesMint);
+  const key = (pubkey: string, isSigner = false) => ({
+    pubkey: new PublicKey(pubkey),
+    isSigner,
+    isWritable: true,
+  });
+  const initialize = new TransactionInstruction({
+    programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+    keys: [
+      key(PROBE, true),
+      key(PROBE, true),
+      key(PROBE),
+      key(PROBE),
+      key(USER_STATE),
+      key(SOL_VAULT_FARM),
+      key(SYSTEM_PROGRAM_ID),
+      key(RENT_SYSVAR_ID),
+    ],
+    data: Buffer.from(KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR, "hex"),
+  });
+  const stake = new TransactionInstruction({
+    programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+    keys: [
+      key(PROBE, true),
+      key(USER_STATE),
+      key(SOL_VAULT_FARM),
+      key(FARM_VAULT),
+      key(sharesAta),
+      key(SOL_META.sharesMint),
+      key(KAMINO_FARMS_PROGRAM_ID),
+      key(TOKEN_PROGRAM_ID),
+    ],
+    data: Buffer.concat([Buffer.from(KAMINO_FARM_STAKE_DISCRIMINATOR, "hex"), u64(10_000_000n)]),
+  });
+  const tx = buildTransaction(PROBE, [...validSolDepositInstructions(), initialize, stake]);
   assert.doesNotThrow(() =>
     assertKaminoTransactionMatches(summarizeKaminoTransaction(tx), expectation()),
   );
