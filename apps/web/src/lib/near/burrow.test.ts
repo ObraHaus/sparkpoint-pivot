@@ -74,14 +74,14 @@ test("formatUsdc and Burrow inner-unit conversion are exact", () => {
   assert.equal(fromBurrowInnerUnits(1_000_000_000_000_000_000n), 1_000_000n);
 });
 
-test("supply without pending registration is one exact ft_transfer_call", () => {
+test("supply without pending registration is one exact ft_transfer_call to the USDC token", () => {
   const plan = buildSupplyPlan({
     accountId: ACCOUNT,
     amount6: 25_000_000n,
     storage: { burrowRegistered: true, tokenReceiverRegistered: true },
   });
   assert.equal(plan.transactions.length, 1);
-  assert.equal(plan.transactions[0].receiverId, ACCOUNT);
+  assert.equal(plan.transactions[0].receiverId, USDC_TOKEN_ID);
   assert.equal(plan.transactions[0].actions.length, 1);
   assert.deepEqual(plan.transactions[0].actions[0], {
     type: "FunctionCall",
@@ -96,25 +96,46 @@ test("supply without pending registration is one exact ft_transfer_call", () => 
   assert.equal(plan.nearRequiredYocto, NEAR_GAS_RESERVE_YOCTO);
 });
 
-test("supply adds exact storage_deposit actions only when registration is missing", () => {
+test("supply emits one transaction per target contract when registration is missing", () => {
   const plan = buildSupplyPlan({
     accountId: ACCOUNT,
     amount6: 10_000n,
     storage: { burrowRegistered: false, tokenReceiverRegistered: false },
   });
-  const actions = plan.transactions[0].actions;
-  assert.equal(actions.length, 3);
-  assert.equal(actions[0].params.methodName, "storage_deposit");
-  assert.deepEqual(actions[0].params.args, {});
-  assert.equal(actions[0].params.deposit, BURROW_STORAGE_MIN_YOCTO.toString());
-  assert.equal(actions[1].params.methodName, "storage_deposit");
-  assert.deepEqual(actions[1].params.args, { account_id: BURROW_CONTRACT, registration_only: true });
-  assert.equal(actions[1].params.deposit, TOKEN_STORAGE_MIN_YOCTO.toString());
-  assert.equal(actions[2].params.methodName, "ft_transfer_call");
+  assert.equal(plan.transactions.length, 2);
+  assert.deepEqual(
+    plan.transactions.map((tx) => tx.receiverId),
+    [BURROW_CONTRACT, USDC_TOKEN_ID],
+  );
+  const [burrowTx, tokenTx] = plan.transactions;
+  assert.equal(burrowTx.actions.length, 1);
+  assert.equal(burrowTx.actions[0].params.methodName, "storage_deposit");
+  assert.deepEqual(burrowTx.actions[0].params.args, {});
+  assert.equal(burrowTx.actions[0].params.deposit, BURROW_STORAGE_MIN_YOCTO.toString());
+  assert.equal(tokenTx.actions.length, 2);
+  assert.equal(tokenTx.actions[0].params.methodName, "storage_deposit");
+  assert.deepEqual(tokenTx.actions[0].params.args, { account_id: BURROW_CONTRACT, registration_only: true });
+  assert.equal(tokenTx.actions[0].params.deposit, TOKEN_STORAGE_MIN_YOCTO.toString());
+  assert.equal(tokenTx.actions[1].params.methodName, "ft_transfer_call");
   assert.equal(plan.storage.registersBurrowAccount, true);
   assert.equal(plan.storage.registersTokenReceiver, true);
   assert.equal(plan.storage.totalYocto, BURROW_STORAGE_MIN_YOCTO + TOKEN_STORAGE_MIN_YOCTO);
   assert.equal(plan.nearRequiredYocto, BURROW_STORAGE_MIN_YOCTO + TOKEN_STORAGE_MIN_YOCTO + NEAR_GAS_RESERVE_YOCTO);
+});
+
+test("no supply transaction targets the signing account (a NEAR tx has one receiver)", () => {
+  for (const storage of [
+    { burrowRegistered: true, tokenReceiverRegistered: true },
+    { burrowRegistered: false, tokenReceiverRegistered: true },
+    { burrowRegistered: true, tokenReceiverRegistered: false },
+    { burrowRegistered: false, tokenReceiverRegistered: false },
+  ]) {
+    const plan = buildSupplyPlan({ accountId: ACCOUNT, amount6: 10_000n, storage });
+    for (const tx of plan.transactions) {
+      assert.notEqual(tx.receiverId, ACCOUNT);
+      for (const action of tx.actions) assert.equal(action.type, "FunctionCall");
+    }
+  }
 });
 
 test("supply refuses invalid accounts, sub-minimum and over-maximum amounts", () => {
@@ -164,7 +185,8 @@ test("withdraw builds Burrow execute Withdraw with token_id and 18-dp max_amount
     suppliedInnerUnits: 20_000_000_000_000_000_000n,
     canWithdraw: true,
   });
-  assert.equal(plan.transactions[0].receiverId, ACCOUNT);
+  assert.equal(plan.transactions.length, 1);
+  assert.equal(plan.transactions[0].receiverId, BURROW_CONTRACT);
   const action = plan.transactions[0].actions[0];
   assert.equal(action.params.methodName, "execute");
   assert.equal(action.params.gas, "100000000000000");
