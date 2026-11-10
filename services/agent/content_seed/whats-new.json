@@ -23,6 +23,14 @@
       "published_at": "2026-11-10T04:20:00Z"
     },
         {
+      "slug": "near-rpc-default-fix-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "NEAR features work again on a fresh deployment",
+      "body": "The default NEAR network endpoint the app used for read-only lookups was retired by its operator and answered every request with a \"deprecated\" error. That could make NEAR screens look empty or unavailable on a deployment that had not set its own endpoint. The app now ships with a working public NEAR endpoint by default, and an operator can still point it at their own RPC with the existing settings. Nothing about signing, amounts or custody changes.",
+      "published_at": "2026-11-10T04:25:00Z"
+    },
+        {
       "slug": "rhea-xchain-mca-review-079-2026-11",
       "type": "changelog",
       "tag": "New",
