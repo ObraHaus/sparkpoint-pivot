@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (078 — Rhea same-chain supply/withdraw transactions target the right contracts)
+
+- **A funded NEAR supply to Rhea (Burrow) proved the plan could never execute: every action was
+  packed into one transaction addressed to the user's own account.** A NEAR transaction has exactly
+  one receiver, so `storage_deposit` on Burrow plus `ft_transfer_call` on the USDC token inside a
+  transaction sent to `sparkpoint2026.near` fails with
+  `CompilationError: CodeDoesNotExist`. `buildSupplyPlan` now emits one transaction per target
+  contract (Burrow storage, then the token's storage + `ft_transfer_call`) and `buildWithdrawPlan`
+  addresses the Burrow contract; the signer nonce keeps the order. The same funded run then
+  supplied 1.000000 USDC and withdrew it back with the app's own plan. No limit, allowlist or
+  amount check was loosened. (`apps/web/src/lib/near/burrow.ts`, `apps/web/src/lib/near/burrow.test.ts`)
+
 ### Changed (081 — demo docs clarify beta deploy)
 
 - **Demo/hackathon docs now state that `beta.sparkpoint.io` is the production Coolify web app from `main`.** There is no separate develop web environment; merging to `develop` alone does not update beta. (`docs/demo/`, Sparky knowledge seeds/tips)

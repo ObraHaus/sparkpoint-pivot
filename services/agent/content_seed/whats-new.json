@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
         {
+      "slug": "rhea-same-chain-plan-fix-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Supplying and withdrawing on Rhea with a NEAR wallet now sends correctly",
+      "body": "A funded test of the same-chain NEAR supply to Rhea (Burrow) found that the prepared transaction addressed the wrong contract, so the network could not execute it even though the review looked correct. The plan now sends one transaction per contract it needs to talk to \u2014 the Burrow account registration, then the USDC supply, and the Burrow withdraw \u2014 and keeps the same review, amount limits and confirmation step as before. The same funded run supplied 1 USDC and withdrew it back to the wallet using the app's own plan. Nothing about who signs changes: you still review and sign in your own NEAR wallet, and SparkPoint never holds your funds.",
+      "published_at": "2026-11-10T04:20:00Z"
+    },
+        {
       "slug": "rhea-xchain-mca-review-079-2026-11",
       "type": "changelog",
       "tag": "New",

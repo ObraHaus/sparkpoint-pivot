@@ -6,6 +6,9 @@
  * holds a key. The only transaction call in the codebase lives in `adapter.ts`'s explicit
  * `sendTransactions` boundary, used solely by the live earn confirm step.
  *
+ * A NEAR transaction has exactly one receiver, so a plan is a list of transactions — one per
+ * target contract — all signed by the user's own account. The signer nonce orders them.
+ *
  * Scope honesty: this is the same-chain rail (the user's own NEAR account + native USDC). It is
  * NOT 071's cross-chain MCA/1Click Phase C path, which remains deferred.
  */
@@ -162,12 +165,19 @@ export function buildSupplyPlan(input: SupplyPlanInput): BuiltPlan {
   const burrowDeposit = input.storage.burrowRegistered ? 0n : burrowMin;
   const tokenDeposit = input.storage.tokenReceiverRegistered ? 0n : tokenMin;
 
-  const actions: FunctionCallAction[] = [];
+  // A NEAR transaction has exactly ONE receiver: every action in it runs against that account.
+  // So the plan emits one transaction per target contract, each signed by the user's own account.
+  // Registrations must land before the ft_transfer_call; the shared signer nonce orders them.
+  const transactions: NearTransaction[] = [];
   if (!input.storage.burrowRegistered) {
-    actions.push(functionCall(BURROW_CONTRACT, "storage_deposit", {}, STORAGE_DEPOSIT_GAS, burrowDeposit));
+    transactions.push({
+      receiverId: BURROW_CONTRACT,
+      actions: [functionCall(BURROW_CONTRACT, "storage_deposit", {}, STORAGE_DEPOSIT_GAS, burrowDeposit)],
+    });
   }
+  const tokenActions: FunctionCallAction[] = [];
   if (!input.storage.tokenReceiverRegistered) {
-    actions.push(
+    tokenActions.push(
       functionCall(
         USDC_TOKEN_ID,
         "storage_deposit",
@@ -179,7 +189,7 @@ export function buildSupplyPlan(input: SupplyPlanInput): BuiltPlan {
   }
   // Documented Burrow supply: an ordinary `ft_transfer_call` with an empty msg. Burrow has no
   // separate `Deposit` action; empty msg is the supply instruction. 1 yoctoNEAR is required by NEP-141.
-  actions.push(
+  tokenActions.push(
     functionCall(
       USDC_TOKEN_ID,
       "ft_transfer_call",
@@ -188,10 +198,11 @@ export function buildSupplyPlan(input: SupplyPlanInput): BuiltPlan {
       ONE_YOCTO,
     ),
   );
+  transactions.push({ receiverId: USDC_TOKEN_ID, actions: tokenActions });
 
   const totalStorage = burrowDeposit + tokenDeposit;
   return {
-    transactions: [{ receiverId: input.accountId, actions }],
+    transactions,
     storage: {
       burrowDepositYocto: burrowDeposit,
       tokenDepositYocto: tokenDeposit,
@@ -243,7 +254,7 @@ export function buildWithdrawPlan(input: WithdrawPlanInput): BuiltPlan {
   );
 
   return {
-    transactions: [{ receiverId: input.accountId, actions: [action] }],
+    transactions: [{ receiverId: BURROW_CONTRACT, actions: [action] }],
     storage: {
       burrowDepositYocto: 0n,
       tokenDepositYocto: 0n,
