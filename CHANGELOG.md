@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1110 — live Kamino withdraw validation)
+
+- **Kamino withdraw no longer refuses real mainnet transactions.** The pre-sign validator had stale
+  instruction discriminators: it used a non-existent kVault withdraw selector and only allowed the
+  deposit-side farm bookkeeping. A real withdraw tx (verified by simulation) carries the kVault
+  `withdraw` selector `b712469c946da122` plus the `unstake` and `withdraw_unstaked_deposits` farm
+  instructions, and closes the now-empty share account alongside wSOL. Those shapes are now
+  recognised, the misnamed farm constants are corrected, and the strict account/amount checks
+  (canonical wSOL/share ATAs, wallet authority/destination, vault farm, exact share balance) are
+  unchanged. Unknown farm or kVault instructions are still refused. (`apps/web/src/lib/earn/kaminoLive.ts`)
+
 ### Added (079 — cross-chain Rhea / 071 Phase C review + gated live commit)
 
 - **The 071 cross-chain Rhea rail now has a dual-access review and a reversible live slice.** This

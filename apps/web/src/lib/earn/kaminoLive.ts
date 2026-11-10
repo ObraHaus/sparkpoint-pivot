@@ -47,10 +47,15 @@ export const ALLOWED_KAMINO_PROGRAMS: readonly string[] = [
 
 /** Kamino kVault instruction discriminators observed in the public API's unsigned txs. */
 export const KAMINO_DEPOSIT_DISCRIMINATOR = "f223c68952e1f2b6";
-export const KAMINO_WITHDRAW_DISCRIMINATOR = "1383709baadc2239";
-/** Kamino farm discriminators observed in the same deposit/withdraw txs (stake / unstake-ish). */
-export const KAMINO_FARM_STAKE_DISCRIMINATOR = "6f11b9fa3c7a26fe";
-export const KAMINO_FARM_UNSTAKE_DISCRIMINATOR = "ceb0ca12c8d1b36c";
+export const KAMINO_WITHDRAW_DISCRIMINATOR = "b712469c946da122";
+/**
+ * Kamino farm discriminators observed in the same deposit/withdraw txs. Deposits initialise the
+ * user's farm position and stake; withdraws unstake and then pull the unstaked deposits back out.
+ */
+export const KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR = "6f11b9fa3c7a26fe";
+export const KAMINO_FARM_STAKE_DISCRIMINATOR = "ceb0ca12c8d1b36c";
+export const KAMINO_FARM_UNSTAKE_DISCRIMINATOR = "5a5f6b2acd7c32e1";
+export const KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR = "2466bb31dc248443";
 
 /** u64::MAX — Kamino's withdraw endpoint encodes "redeem all shares" as this sentinel. */
 export const U64_MAX = 18_446_744_073_709_551_615n;
@@ -861,17 +866,20 @@ function describeInstruction(
   }
   if (programId === KAMINO_FARMS_PROGRAM_ID && data.length >= 8) {
     const discriminator = hex(data.slice(0, 8));
-    // Only the stake/unstake bookkeeping variants observed in the API's unsigned txs are allowed.
+    // Only the farm bookkeeping variants observed in the API's unsigned txs are allowed:
+    // deposit → initialize_user + stake; withdraw → unstake + withdraw_unstaked_deposits.
     // A new/unknown variant is refused rather than shown and trusted.
     if (
+      discriminator === KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR ||
       discriminator === KAMINO_FARM_STAKE_DISCRIMINATOR ||
-      discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR
+      discriminator === KAMINO_FARM_UNSTAKE_DISCRIMINATOR ||
+      discriminator === KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR
     ) {
       return { ...base, label: `Kamino farm instruction ${discriminator}` };
     }
     return reject(
       `Kamino farm instruction ${discriminator}`,
-      `Unexpected Kamino farms instruction ${discriminator} (only the observed stake/unstake bookkeeping is allowed).`,
+      `Unexpected Kamino farms instruction ${discriminator} (only the observed initialize/stake/unstake/withdraw-unstaked bookkeeping is allowed).`,
     );
   }
   return reject(
@@ -1244,17 +1252,26 @@ export function assertKaminoTransactionMatches(
     }
   }
 
-  // Closing a token account pays its remaining lamports to `destination`. Only the wallet's own
-  // wSOL account may be closed, and the lamports must return to the same wallet.
+  // Closing a token account pays its remaining lamports to `destination`. On a withdraw Kamino
+  // closes the wallet's own wSOL account and, once every share has been redeemed, its empty share
+  // account too. Only those canonical accounts may be closed, by the wallet, back to the wallet.
+  const expectedSharesAta = deriveAssociatedTokenAddress(
+    expectation.feePayer,
+    expectation.vault.sharesMint,
+  );
+  const closableAccounts = new Set([expectedAta, expectedSharesAta]);
   for (const close of review.closeAccounts) {
     if (close.authority !== expectation.feePayer) {
       fail("wrong_recipient", "A token account is being closed by a different authority.");
     }
-    if (expectation.mode !== "withdraw" || expectation.vault.assetMint !== WSOL_MINT) {
+    if (expectation.mode !== "withdraw") {
       fail("unexpected_transfer", "Unexpected token-account close in this transaction.");
     }
-    if (close.account !== expectedAta) {
-      fail("unexpected_transfer", "A token account other than your wSOL account is being closed.");
+    if (!closableAccounts.has(close.account)) {
+      fail(
+        "unexpected_transfer",
+        "A token account other than your wSOL or share account is being closed.",
+      );
     }
     if (close.destination !== expectation.feePayer) {
       fail("unexpected_transfer", "A closed token account's lamports are going to a different address.");

@@ -62,6 +62,13 @@ with `@solana/web3.js`:
 **Withdraw 0.01 shares** (498 bytes): create SOL ATA → kVault **withdraw** (disc
 `1383709baadc2239` + u64 shares) → `closeAccount` (9) on the wSOL ATA (unwraps to native SOL).
 
+> **Correction (1110).** That discriminator was never valid on mainnet. A simulated mainnet
+> withdraw (SOL Balanced, all shares) decodes as: create share ATA → farm `unstake`
+> (`5a5f6b2acd7c32e1`) → farm `withdraw_unstaked_deposits` (`2466bb31dc248443`) → create wSOL ATA
+> → kVault **withdraw** `b712469c946da122` + u64 (u64::MAX = all shares) → `closeAccount` on wSOL →
+> `closeAccount` on the now-empty share ATA. The deposit's farm calls are `initialize_user`
+> (`6f11b9fa3c7a26fe`) + `stake` (`ceb0ca12c8d1b36c`). See `apps/web/src/lib/earn/kaminoLive.ts`.
+
 So the transaction the user signs contains **no swap and no Kamino fee instruction**, only the
 vault's configured mgmt/performance fee (0/0 on SOL Balanced) plus Solana network fees and
 associated-token-account rent. That is the honest review we show.
