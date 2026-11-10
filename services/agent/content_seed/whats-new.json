@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "sparky-chain-routing-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky now follows the chain you name and reads Base and your multichain portfolio",
+      "body": "Behind the scenes: a few chat requests were answered for the wrong network or failed to load at all. On a Base session, every message could stop with an \"RPC unavailable\" error because the app had no default Base read endpoint; it now uses a working public Base endpoint and, if a network read is ever unavailable, only that section is marked unavailable instead of losing the whole reply. When you name a network explicitly, Sparky honours it: \"withdraw 0.5 USDC from Morpho on Base\" now opens the same live withdraw review card as the Vault page instead of saying withdrawals aren't supported on another chain, and the same works for Kamino on Solana. Asking \"what is my multi-chain portfolio?\" now shows your holdings across Base, Solana and NEAR instead of only the current network's balance. Nothing about signing or custody changes: you still review and sign every transaction in your own wallet.",
+      "published_at": "2026-11-10T10:40:00Z"
+    },
+    {
       "slug": "kamino-farm-account-guard-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",

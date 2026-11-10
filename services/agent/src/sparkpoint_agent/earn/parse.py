@@ -447,6 +447,32 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
             protocol=protocol,
         )
 
+    if _WITHDRAW_RE.search(text) is not None:
+        # B (1110) — an explicit exit command must honour the chain the user names ("on Base",
+        # "on Solana") instead of the request header's chain. A comparative turn still belongs to
+        # the planner's comparison flow, exactly like the deposit branch below.
+        if (
+            _COMPARATIVE_RE.search(text) is not None
+            or _OR_COMPARATIVE_RE.search(text) is not None
+        ):
+            return None
+        chain = _chain_from(text)
+        if chain is None and protocol == "kamino":
+            chain = "sol"
+        if chain is None:
+            chain = "base"
+        parsed = _amount(text)
+        return EarnRequest(
+            kind="withdraw",
+            chain=chain,
+            asset=parsed[2] if parsed is not None else _named_asset(text),
+            amount=parsed[0] if parsed is not None else None,
+            amount_raw=parsed[1] if parsed is not None else None,
+            vault_query=None,
+            sort="tvl",
+            message=message,
+            protocol=protocol,
+        )
     if _DEPOSIT_VERB_RE.search(text) is None:
         return None
     amount = _amount(text)

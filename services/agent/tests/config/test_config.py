@@ -12,6 +12,7 @@ import pytest
 
 from sparkpoint_agent.config import (
     ALLOWED_ENV_KEYS,
+    BASE_MAINNET_PUBLIC_RPC,
     BASE_MAINNET_RPC_URL_ENV,
     DEFAULT_CHAIN_ID,
     FEE_WALLET_ADDRESS_ENV,
@@ -64,17 +65,14 @@ def test_mainnet_never_falls_back_to_fork_or_sepolia() -> None:
 
     Chain 8453 previously resolved ``SPARKPOINT_RPC_URL → SIM_FORK_RPC_URL → BASE_SEPOLIA_RPC_URL``,
     so a mainnet deployment missing one env var read the fork (or Sepolia) and presented it as
-    mainnet — a bundle approved against one chain's state and signed on another. Both must now
-    resolve to ``None`` (fail closed), and ``require_rpc_url`` must name 8453's real candidates.
+    mainnet — a bundle approved against one chain's state and signed on another. A missing
+    BASE_MAINNET_RPC_URL now uses Base's own keyless public mainnet RPC — never the fork/Sepolia.
     """
     for env in ({"SIM_FORK_RPC_URL": _SIM}, {"BASE_SEPOLIA_RPC_URL": _SEPOLIA}):
         cfg = AgentConfig.from_env({"CHAIN_ID": "8453", **env})
-        assert cfg.rpc_url is None
-        with pytest.raises(ConfigError) as excinfo:
-            cfg.require_rpc_url()
-        message = str(excinfo.value)
-        assert "BASE_MAINNET_RPC_URL" in message  # names what to set…
-        assert _SIM not in message and _SEPOLIA not in message  # …never a url (may carry a key)
+        assert cfg.rpc_url == BASE_MAINNET_PUBLIC_RPC
+        assert cfg.require_rpc_url() == BASE_MAINNET_PUBLIC_RPC
+        assert _SIM not in cfg.require_rpc_url() and _SEPOLIA not in cfg.require_rpc_url()
 
 
 def test_sepolia_never_falls_back_to_the_mainnet_fork() -> None:
@@ -160,9 +158,18 @@ def test_rpc_precedence_fork_prefers_sim_fork_url() -> None:
 
 
 def test_missing_rpc_getter_fails_closed() -> None:
-    cfg = AgentConfig.from_env({})  # nothing configured
+    # 4663 has no public default (its public node prunes state), so an unset ARCHIVE endpoint must
+    # still fail closed. 8453 uses Base's own public mainnet RPC now (see test_below).
+    cfg = AgentConfig.from_env({"CHAIN_ID": "4663"})
     with pytest.raises(ConfigError):
         cfg.require_rpc_url()
+
+
+def test_base_mainnet_defaults_to_its_own_public_rpc() -> None:
+    cfg = AgentConfig.from_env({})  # nothing configured
+    assert cfg.chain_id == 8453
+    assert cfg.require_rpc_url() == BASE_MAINNET_PUBLIC_RPC
+    assert cfg.require_rpc_url() == "https://mainnet.base.org"
 
 
 # ── §B3 Robinhood testnet (46630) multi-network ────────────────────────────────

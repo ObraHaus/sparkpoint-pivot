@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
+from urllib.parse import urlencode
 
 from ..coordinator.chat_blocks import EarnPositionsBlock, EarnQuoteBlock, EarnVaultsBlock
 from ..crosschain.addresses import placeholder_for
@@ -240,6 +241,61 @@ class EarnService:
             candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
             return candidates[0]
         return None
+
+    def withdraw_outcome(self, request: EarnRequest) -> EarnOutcome:
+        """Route an explicit Morpho/Kamino withdraw to the existing ``/vault/live`` card.
+
+        No new execution surface: the card is the same review+confirm flow the Vault page uses
+        (``mode=withdraw``). It only links there; nothing is signed, built or sent here.
+        """
+        protocol = request.protocol or "morpho"
+        label = {"kamino": "Kamino"}.get(protocol, "Morpho")
+        entry = self.resolve_vault(request.chain, request.vault_query)
+        if entry is None:
+            return EarnOutcome(
+                text=(
+                    f"I can't find a {label} vault to withdraw from in the current snapshot — "
+                    f"nothing was signed or sent. Ask me to list {label} vaults and I'll show "
+                    "what is live."
+                ),
+                block=EarnVaultsBlock(
+                    state="unavailable",
+                    unavailable_reason=f"No {label} vault is live in the current snapshot.",
+                ),
+            )
+        params: list[tuple[str, str]] = [
+            ("protocol", protocol),
+            ("chain", entry.chain),
+            ("vault", entry.address),
+            ("asset", entry.asset.symbol),
+            ("mode", "withdraw"),
+        ]
+        amount = request.amount_human
+        if amount is not None:
+            params.append(("amount", amount))
+        url = f"/vault/live?{urlencode(params)}"
+        same_chain = _chain_label(self.config, entry)
+        amount_line = f" for {amount} {entry.asset.symbol}" if amount is not None else ""
+        text = (
+            f"Open the live {label} withdraw card for {entry.name} on {same_chain}{amount_line} "
+            "to review and sign in your own wallet. Nothing was signed or sent here."
+        )
+        block = EarnQuoteBlock(
+            state="preview",
+            rail="direct",
+            vault=vault_wire(self.config, entry, self._rails(entry)),
+            protocol=protocol,
+            withdraw={
+                "kind": "external_link",
+                "url": url,
+                "note": (
+                    "Opens the same review-and-sign withdraw card as the Vault page. You review "
+                    "the amounts and fees, then sign in your own wallet."
+                ),
+            },
+            quoted_at=_now_iso(),
+        )
+        return EarnOutcome(text=text, block=block)
 
     # ── chat list ─────────────────────────────────────────────────────────────────────────────
 

@@ -82,9 +82,9 @@ def _dag(service: EarnService | None, planner: Any) -> CoordinatorDag:
     )
 
 
-def _chain() -> ChainContext:
+def _chain(chain_id: int = 8453) -> ChainContext:
     return ChainContext(
-        chain_id=8453,
+        chain_id=chain_id,
         user_account=USER,
         owner=USER,
         resolved_targets={},
@@ -92,8 +92,10 @@ def _chain() -> ChainContext:
     )
 
 
-async def _collect(dag: CoordinatorDag, prompt: str) -> list[dict[str, Any]]:
-    return [block.to_wire() async for block in dag.run_chat(prompt, _chain())]
+async def _collect(
+    dag: CoordinatorDag, prompt: str, *, chain_id: int = 8453
+) -> list[dict[str, Any]]:
+    return [block.to_wire() async for block in dag.run_chat(prompt, _chain(chain_id))]
 
 
 async def test_show_morpho_vaults_emits_a_list_block_without_the_llm() -> None:
@@ -228,3 +230,64 @@ async def test_deposit_into_kamino_sol_vault_emits_a_native_shares_preview() -> 
     assert wires[-1]["receiptKind"] == "native_shares"
     assert wires[-1]["walletSupport"]["recipient"] == "paste_solana_address"
     assert _ExplodingPlanner.calls == 0
+
+
+async def test_withdraw_from_morpho_on_base_routes_to_the_live_withdraw_card() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_service(), _ExplodingPlanner()),
+        "withdraw 0.5 USDC from Morpho on Base",
+    )
+    assert wires[-1]["type"] == "earn_quote"
+    assert wires[-1]["protocol"] == "morpho"
+    url = wires[-1]["withdraw"]["url"]
+    assert url.startswith("/vault/live?")
+    assert "protocol=morpho" in url
+    assert "chain=base" in url
+    assert "asset=USDC" in url
+    assert "mode=withdraw" in url
+    assert "amount=0.5" in url
+    assert _ExplodingPlanner.calls == 0
+
+
+async def test_withdraw_from_kamino_on_solana_routes_to_the_live_withdraw_card() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_kamino_service(), _ExplodingPlanner()),
+        "withdraw 0.01 SOL from Kamino on Solana",
+    )
+    assert wires[-1]["type"] == "earn_quote"
+    assert wires[-1]["protocol"] == "kamino"
+    url = wires[-1]["withdraw"]["url"]
+    assert "protocol=kamino" in url
+    assert "chain=sol" in url
+    assert "asset=SOL" in url
+    assert "mode=withdraw" in url
+    assert "amount=0.01" in url
+    assert _ExplodingPlanner.calls == 0
+
+
+async def test_kamino_deposit_in_sol_is_not_misparsed_as_a_usd_stable() -> None:
+    _ExplodingPlanner.calls = 0
+    wires = await _collect(
+        _dag(_kamino_service(), _ExplodingPlanner()),
+        "deposit 0.015 SOL into Kamino",
+    )
+    assert wires[-1]["type"] == "earn_quote"
+    assert wires[-1]["vault"]["chain"] == "sol"
+    assert wires[-1]["vault"]["asset"]["symbol"] == "SOL"
+    assert wires[-1]["amountIn"] == "0.015"
+    assert _ExplodingPlanner.calls == 0
+
+
+async def test_explicit_chain_overrides_the_request_header_chain() -> None:
+    # The prod session header was 4663 (Robinhood) while the user said "on Base"; the parser must
+    # honour the explicit chain, not the header, or the withdraw dead-ends on the wrong network.
+    wires = await _collect(
+        _dag(_service(), _ExplodingPlanner()),
+        "withdraw 0.5 USDC from Morpho on Base",
+        chain_id=4663,
+    )
+    assert wires[-1]["type"] == "earn_quote"
+    assert wires[-1]["protocol"] == "morpho"
+    assert "chain=base" in wires[-1]["withdraw"]["url"]

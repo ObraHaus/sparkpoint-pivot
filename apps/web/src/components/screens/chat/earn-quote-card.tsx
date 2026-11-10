@@ -173,6 +173,51 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
         })
       : null;
 
+  // 1110 — a Morpho/Kamino withdraw request routes here with a `withdraw` deep link. Render a
+  // compact withdraw card instead of the deposit-preview sections (which describe the wrong move).
+  const withdrawOnly = block.withdraw && !isRhea ? block.withdraw : null;
+  if (withdrawOnly) {
+    return (
+      <div
+        className="ccard cf-card"
+        data-card="earn-quote"
+        data-state="preview"
+        data-rail={block.rail}
+        data-protocol={protocol}
+        data-mode="withdraw"
+        style={{ padding: 0, overflow: "hidden", maxWidth: 600 }}
+      >
+        <div className="cf-hd">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{protocolLabel(protocol)} withdraw</div>
+            <span style={{ fontSize: 11.5, color: MUTED }}>Review in your wallet</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>
+            {vaultName} on {chainLabel(vault.chain)} · {vault.asset.symbol}. Nothing is signed or
+            sent here.
+          </div>
+        </div>
+        <div className="cf-sec" style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
+            Open the same live withdraw card the Vault page uses: you review the amount, accounts
+            and fees, then sign in your own wallet.
+          </div>
+          <a
+            className="btn btn-primary btn-sm"
+            href={withdrawOnly.url}
+            data-testid="earn-withdraw-link"
+            style={{ justifySelf: "start" }}
+          >
+            Review withdraw on {protocolLabel(protocol)}
+          </a>
+          <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+            {withdrawOnly.note} Nothing is signed or sent here.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const recipientRequired = needsSolanaRecipient(block);
   const recipientValue = recipient.trim();
   const recipientValid = recipientRequired && isValidAddress(recipientValue, "sol");

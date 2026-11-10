@@ -44,9 +44,10 @@ FEE_WALLET_ADDRESS_ENV = "FEE_WALLET_ADDRESS"  # 014 — fee-treasury Safe addre
 RPC_URL_ENV = "SPARKPOINT_RPC_URL"  # explicit override; wins over the chain-specific vars
 SIM_FORK_RPC_URL_ENV = "SIM_FORK_RPC_URL"
 BASE_SEPOLIA_RPC_URL_ENV = "BASE_SEPOLIA_RPC_URL"
-# 023 — Base MAINNET (8453) gets its own var. Mainnet MUST be configured explicitly: there is no
-# fallback to the fork or to Sepolia (see _CHAIN_RPC_ENVS), so a missing value fails closed rather
-# than silently serving another chain's state as mainnet.
+# 023 — Base MAINNET (8453) gets its own var. There is still NO fallback to the fork or to Sepolia
+# (see _CHAIN_RPC_ENVS); when the var is unset we use Base's own keyless public mainnet RPC — the
+# same correct-chain default pattern as the Robinhood testnet / NEAR fixes, so a read surface can
+# never mistake another chain's state for mainnet.
 BASE_MAINNET_RPC_URL_ENV = "BASE_MAINNET_RPC_URL"
 ROBINHOOD_RPC_URL_ENV = "ROBINHOOD_RPC_URL"  # §B3 Robinhood testnet (46630); keyless public default
 # §B Robinhood MAINNET (4663); ARCHIVE only, NO public default.
@@ -87,6 +88,11 @@ def _stable_token_for(chain_id: int, source: Mapping[str, str] | None = None) ->
 # has no official Aave/USDC (vault stays Base-only); powers read-only chat + wallet balance only.
 ROBINHOOD_TESTNET_CHAIN_ID = 46630
 _ROBINHOOD_PUBLIC_RPC = "https://rpc.testnet.chain.robinhood.com"
+
+# Base mainnet's keyless public RPC, used when BASE_MAINNET_RPC_URL is unset. It is the SAME
+# chain (8453), so this is not a cross-chain fallback; it just stops a missing var from turning
+# every chat turn into a hard RPC_UNREACHABLE on Base (the 1110 prod finding).
+BASE_MAINNET_PUBLIC_RPC = "https://mainnet.base.org"
 
 # §B — Robinhood MAINNET (4663). Unlike the testnet there is NO keyless public default: the public
 # mainnet RPC prunes state after ~3h and breaks history/fork reads, so 4663 MUST be given an
@@ -229,6 +235,13 @@ def _resolve_rpc_url(source: Mapping[str, str], chain_id: int) -> str | None:
     if chain_id == ROBINHOOD_TESTNET_CHAIN_ID:  # §B3 Robinhood testnet (46630)
         # Explicit override wins; else the keyless public RPC (this chain needs no key).
         return source.get(RPC_URL_ENV) or source.get(ROBINHOOD_RPC_URL_ENV) or _ROBINHOOD_PUBLIC_RPC
+    if chain_id == DEFAULT_CHAIN_ID:  # Base mainnet (8453)
+        # Explicit override wins; else Base's own keyless public RPC. Never the fork/Sepolia.
+        return (
+            source.get(RPC_URL_ENV)
+            or source.get(BASE_MAINNET_RPC_URL_ENV)
+            or BASE_MAINNET_PUBLIC_RPC
+        )
     for name in rpc_env_candidates(chain_id):
         value = source.get(name)
         if value:

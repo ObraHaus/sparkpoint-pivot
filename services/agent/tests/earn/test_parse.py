@@ -249,3 +249,35 @@ def test_kamino_deposit_positives(
 )
 def test_kamino_negatives_keep_existing_flows(prompt: str) -> None:
     assert parse_earn_request(prompt, default_config()) is None
+
+
+@pytest.mark.parametrize(
+    ("prompt", "protocol", "chain", "asset", "amount"),
+    [
+        ("withdraw 0.5 USDC from Morpho on Base", "morpho", "base", "USDC", "0.5"),
+        ("withdraw 0.5 USDC from Morpho", "morpho", "base", "USDC", "0.5"),
+        ("withdraw 0.01 SOL from Kamino on Solana", "kamino", "sol", "SOL", "0.01"),
+        ("withdraw 0.01 SOL from Kamino", "kamino", "sol", "SOL", "0.01"),
+        ("withdraw everything from Kamino", "kamino", "sol", None, None),
+    ],
+)
+def test_explicit_withdraw_honours_protocol_and_chain(
+    prompt: str, protocol: str, chain: str, asset: str | None, amount: str | None
+) -> None:
+    request = parse_earn_request(prompt, default_config())
+    assert request is not None
+    assert request.kind == "withdraw"
+    assert request.protocol == protocol
+    assert request.chain == chain
+    assert request.asset == asset
+    assert request.amount == (Decimal(amount) if amount is not None else None)
+
+
+def test_kamino_deposit_in_sol_keeps_the_sol_asset_and_chain() -> None:
+    request = parse_earn_request("deposit 0.015 SOL into Kamino", default_config())
+    assert request is not None
+    assert request.kind == "deposit"
+    assert request.protocol == "kamino"
+    assert request.chain == "sol"
+    assert request.asset == "SOL"
+    assert request.amount == Decimal("0.015")
