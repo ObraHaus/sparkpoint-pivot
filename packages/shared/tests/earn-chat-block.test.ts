@@ -226,7 +226,7 @@ test("earn_vaults Rhea fixture validates with the near chain and the Rhea rail",
   assert.equal(vault?.rails.oneclickRhea?.available, true);
   assert.equal(vault?.rails.oneclickRhea?.liveness, "live");
   assert.match(vault?.rails.oneclickRhea?.assetId ?? "", /^nep141:/);
-  assert.match(vault?.rails.oneclickRhea?.feeNote ?? "", /one-time 0\.30 USDC/);
+  assert.match(vault?.rails.oneclickRhea?.feeNote ?? "", /one-time 0\.60 USDC.*DApp registration/);
   assert.equal(vault?.rails.intentsConnect.available, false);
 });
 
@@ -241,9 +241,10 @@ test("earn_quote Rhea first deposit carries the fee, net supplied and message to
   assert.equal(parsed.data.mca, null);
   assert.equal(parsed.data.recipient, "multica.near");
   assert.equal(parsed.data.amountOut, "99.9808");
-  assert.equal(parsed.data.oneTimeFee?.amount, "0.30");
+  assert.equal(parsed.data.oneTimeFee?.amount, "0.60");
   assert.equal(parsed.data.oneTimeFee?.symbol, "USDC");
-  assert.equal(parsed.data.netSupplied, "99.6808");
+  assert.match(parsed.data.oneTimeFee?.reason ?? "", /DApp registration/);
+  assert.equal(parsed.data.netSupplied, "99.3808");
   assert.match(parsed.data.customRecipientMsg ?? "", /BurrowRegisterAndSupply/);
   assert.match(parsed.data.messageToSign ?? "", /^\[\{"EVM"/);
   assert.equal(parsed.data.supplyApy, "14.05%");

@@ -130,13 +130,13 @@ is one the deterministic parsers actually support and is pinned by the offline g
 - **Fallback:** if the Rhea read is stale/unavailable, the list says so; the source link still shows
   where the rate comes from.
 
-### 6. Rhea first-deposit preview with the 0.30 USDC fee (071) — **Works now** · deposit **Preview only**
+### 6. Rhea first-deposit preview with the 0.60 USDC one-time fees (071) — **Works now** · deposit **Preview only**
 
 - **Type exactly:** `Deposit 100 USDC into Rhea`
 - **Expected on screen:** an `earn_quote` preview with:
   - estimated supplied amount **99.9808 USDC**;
-  - **One-time Rhea account setup fee: 0.30 USDC (first deposit only)**;
-  - **Net supplied ≈ 99.6808 USDC**;
+  - **One-time Rhea account setup fee: 0.60 USDC (first deposit only)** — 0.30 create-account + 0.30 DApp registration;
+  - **Net supplied ≈ 99.3808 USDC**;
   - the supply APY line and its exact contract source
     (`contract.main.burrow.near get_asset.supply_apr`);
   - the Rhea account manager recipient (`multica.near`) and the message your wallet will sign in a

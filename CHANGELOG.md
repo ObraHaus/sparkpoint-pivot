@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (071/079 — the Rhea first-deposit preview now shows both one-time fees)
+
+- **A funded cross-chain Rhea deposit proved the first-deposit cost was understated by 0.30 USDC.**
+  Multica charges two one-off fees in the same receipt — `collect_create_mca_fee` and
+  `collect_dapp_registration_fee`, 0.30 + 0.30 USDC — but only the create-MCA fee has a public view
+  (`get_create_mca_fee_paged`), so the preview said "one-time 0.30 USDC" and a net supplied 0.30
+  higher than reality (a 0.999798 USDC deposit supplied 0.399798, not 0.699798). The preview now
+  discloses the DApp registration fee (documented fallback per symbol, configurable via
+  `rhea.dapp_registration_fee_fallback`), subtracts both from the net supplied, and says
+  "account + DApp registration fee". The empty-positions explainer and the vault fee note carry the
+  same total, and the shared web/agent fixtures + golden evals were updated.
+  (`services/agent/src/sparkpoint_agent/earn/{config,rhea,service,rails}.py`,
+  `services/agent/src/sparkpoint_agent/earn/earn.json`, `packages/shared/tests/fixtures/earn/`,
+  `services/agent/evals/golden.yaml`, `docs/demo/072-hackathon-demo.md`)
+
 ### Changed (081 — demo docs clarify beta deploy)
 
 - **Demo/hackathon docs now state that `beta.sparkpoint.io` is the production Coolify web app from `main`.** There is no separate develop web environment; merging to `develop` alone does not update beta. (`docs/demo/`, Sparky knowledge seeds/tips)

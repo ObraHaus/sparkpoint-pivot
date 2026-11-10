@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
         {
+      "slug": "rhea-first-deposit-fee-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The Rhea first-deposit preview now shows the full one-time cost",
+      "body": "Opening your first Rhea account on NEAR involves two one-time charges at the account manager: creating the account and registering the DApp. The preview only knew about the first one, so it promised a smaller fee and a bigger net deposit than you actually received \u2014 a funded test showed 0.60 USDC in total fees, not 0.30. The preview now shows the combined one-time fee, subtracts both from the net amount supplied, and names the DApp registration fee; the positions explainer and the vault fee note say the same. Supply APY, the transaction you sign and custody are unchanged.",
+      "published_at": "2026-11-10T04:35:00Z"
+    },
+        {
       "slug": "rhea-xchain-mca-review-079-2026-11",
       "type": "changelog",
       "tag": "New",

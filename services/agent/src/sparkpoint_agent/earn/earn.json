@@ -234,6 +234,10 @@
     "mca_fee_fallback": {
       "USDC": "0.30"
     },
+    "dapp_registration_fee_fallback": {
+      "USDC": "0.30",
+      "USDT": "0.30"
+    },
     "use_as_collateral": false,
     "origins": [
       "base:USDC",
