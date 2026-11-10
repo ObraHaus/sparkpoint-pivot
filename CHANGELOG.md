@@ -10,6 +10,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added (079 — cross-chain Rhea / 071 Phase C review + gated live commit)
+
+- **The 071 cross-chain Rhea rail now has a dual-access review and a reversible live slice.** This
+  is the EVM-origin → Rhea (Burrow) on NEAR route through **1Click + Multichain Account (MCA)**;
+  **078's same-chain NEAR → Burrow flow is separate**. `/vault`'s Rhea row and Sparky's Rhea earn
+  card both link to `/vault/rhea-xchain`, which shows origin chain/asset/amount, the refund address,
+  the MCA/`customRecipientMsg`, the one-time MCA fee, routing fee/net supplied and the supply APY.
+  `dry=true` is the default and moves no funds. (`apps/web/src/lib/earn/xchain.ts`,
+  `apps/web/src/components/vault/RheaXchainReview.tsx`,
+  `apps/web/src/app/(app)/vault/rhea-xchain/page.tsx`,
+  `apps/web/src/components/vault/EarnAcrossChains.tsx`,
+  `apps/web/src/components/screens/chat/earn-quote-card.tsx`)
+- **A live `dry=false` commit is server-gated and never signs.** It is refused (403) unless
+  `EARN_LIVE_RHEA_XCHAIN` is exactly `"true"` AND the 1Click credential is present
+  (`ONECLICK_API_KEY`; only its boolean presence is exposed, never the value). When allowed, it
+  returns a live 1Click quote, the deposit address, and an **UNSIGNED** origin ERC-20
+  `transfer(address,uint256)` plan for the user's own wallet. A first deposit needs one off-chain
+  EVM `personal_sign`; without it the route returns `requiresSignature=true` + `messageToSign` and
+  makes no 1Click call. The agent never signs, submits or broadcasts.
+  (`services/agent/src/sparkpoint_agent/earn/rhea_xchain.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`,
+  `services/agent/src/sparkpoint_agent/api/earn.py`,
+  `services/agent/src/sparkpoint_agent/coordinator/chat_blocks.py`,
+  `packages/shared/src/schemas/chat-block.ts`)
+- **Withdraw is a guided review, not a transaction.** `/earn/rhea/xchain/withdraw` lists the
+  documented Rhea SDK `relayer` / `nearMcaWithdrawTx` paths first and the Rhea app link-out only as
+  the last resort, with sources, required wallet/chain and step-by-step copy. It states
+  `nep413IsTransaction: false`, `custodian: null`, `signedBySparkPoint: false`, and says explicitly
+  that a link-out is NOT a SparkPoint-signed transaction. No fake NEP-413-as-tx and no invented
+  custodian. An unsigned in-app withdraw is not shipped because it needs a Rhea relayer credential
+  we do not hold; inventing one would be dishonest.
+- **Flags default OFF** (`EARN_LIVE_RHEA_XCHAIN`, `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN`); the page
+  and the review-only agent routes 404 when both are off, and live `dry=false` is a 403 unless the
+  server flag is on and `ONECLICK_API_KEY` is present. The browser validates the USDC amount and
+  only enables the wallet confirm when the connected wallet and chain match the prepared plan.
+  Tests use mocked 1Click transports only (no live quote, no funds).
+  (`specs/079-rhea-xchain-mca/`, `docs/demo/079-rhea-xchain-mca.md`, `.env.example`)
+
 ### Removed (1109 — public landing: brokers section + mint-whitelist CTAs)
 
 - **The public landing no longer pitches Sparky Brokers or the mint whitelist.** Per the GC request
