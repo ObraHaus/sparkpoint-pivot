@@ -10,6 +10,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1110 — Kamino farm account guard, security)
+
+- **Kamino farm bookkeeping instructions are now validated account-by-account instead of only checking
+  that the selected farm appears somewhere in the instruction.** An OH Defender AI review (MEDIUM) noted
+  that `initialize_user`, `stake`, `unstake`, and `withdraw_unstaked_deposits` were allowed by
+  discriminator alone; token movements inside those farm CPIs are invisible to the generic transfer
+  scan, so a tampered transaction could stake/unstake or withdraw to an attacker-controlled account.
+  The pre-sign guard now pins each variant's exact positional layout from the farms program IDL
+  (`@kamino-finance/farms-sdk` v5), confirms it against real mainnet deposit/withdraw transactions, and
+  requires: the farms program id; the exact account count; authority/payer/owner/delegatee = the signer
+  wallet; `farm_state` = the selected curated vault's allowlisted farm (refused when the vault has no
+  farm); `user_state` = the `["user", farm_state, owner]` PDA; the canonical wallet stake-token ATA
+  (vault share mint) under SPL Token/Token-2022; and `farm_vault` / `farm_vaults_authority` = the
+  `["fvault", farm_state, mint]` / `["authority", farm_state]` PDAs. Stake is only allowed in a deposit
+  flow, unstake/withdraw-unstaked only in a withdraw flow. Any mismatch or unknown farms discriminator
+  fails closed with the existing reason codes (`wrong_recipient` / `wrong_vault` / `wrong_program` /
+  `mint_mismatch` / `wrong_instruction` / `authority_change`). Farm amounts are now decoded and
+  enforced as well: `stake` must use the `u64::MAX` stake-all sentinel, and `unstake`'s u128
+  `stake_shares_scaled` must be `u64::MAX × WAD` for an all-shares withdraw (or not exceed the
+  shares being withdrawn). The optional `scope_prices` slot must be the program-id sentinel the real
+  transactions pass, and `initialize_user` is deposit-only. Nothing else was loosened.
+  (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoFarmGuard.test.ts`,
+  `apps/web/src/lib/earn/__fixtures__/kamino-farms-mainnet.json`)
+
 ### Fixed (1110 — live Kamino withdraw validation)
 
 - **Kamino withdraw no longer refuses real mainnet transactions.** The pre-sign validator had stale

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "kamino-farm-account-guard-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Kamino earn review now checks every farm account before you sign",
+      "body": "Behind the scenes: live Kamino earn adds or removes your staked position through the Kamino farms program, and the pre-sign safety check used to allow those steps as long as the correct vault farm appeared somewhere in the transaction. A security review flagged that a tampered transaction could point the stake or unstake steps at another owner or another token account. The check now verifies each account by its exact position \u2014 your wallet as the owner, the selected vault's farm, the wallet's own farm position, your own share token account, and the program-derived farm vault and authority \u2014 and refuses anything that does not match. It also refuses staking during a withdraw and unstaking during a deposit. Unknown farm instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "published_at": "2026-11-10T07:30:00Z"
+    },
+    {
       "slug": "kamino-withdraw-guard-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",
