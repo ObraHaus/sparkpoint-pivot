@@ -1,6 +1,46 @@
 {
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
+    {
+      "slug": "kamino-withdraw-guard-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Kamino withdrawals now pass the safety check",
+      "body": "Behind the scenes: the pre-sign safety check for live Kamino earn now recognises the real withdraw transaction Kamino builds (unstake, withdraw, and closing your empty share account), so a withdraw is no longer wrongly refused. Unknown instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "published_at": "2026-11-10T03:00:00Z"
+    },
+    {
+      "slug": "sparky-earn-options-all-protocols-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Ask Sparky \"What earn options do I have?\" and see every protocol",
+      "body": "Sparky now answers general earn questions like \"What earn options do I have?\" or \"Where can I earn?\" with the current options from every protocol it tracks: Kamino on Solana, Morpho on Base and Ethereum, and Rhea on NEAR. Before, these questions could get a \"no move I can build\" reply. Asking for one protocol's options, such as \"Show Rhea options\", also works now. The same options are on the Vault page.",
+      "published_at": "2026-11-10T03:00:00Z"
+    },
+        {
+      "slug": "rhea-same-chain-plan-fix-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Supplying and withdrawing on Rhea with a NEAR wallet now sends correctly",
+      "body": "A funded test of the same-chain NEAR supply to Rhea (Burrow) found that the prepared transaction addressed the wrong contract, so the network could not execute it even though the review looked correct. The plan now sends one transaction per contract it needs to talk to \u2014 the Burrow account registration, then the USDC supply, and the Burrow withdraw \u2014 and keeps the same review, amount limits and confirmation step as before. The same funded run supplied 1 USDC and withdrew it back to the wallet using the app's own plan. Nothing about who signs changes: you still review and sign in your own NEAR wallet, and SparkPoint never holds your funds.",
+      "published_at": "2026-11-10T04:20:00Z"
+    },
+        {
+      "slug": "near-rpc-default-fix-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "NEAR features work again on a fresh deployment",
+      "body": "The default NEAR network endpoint the app used for read-only lookups was retired by its operator and answered every request with a \"deprecated\" error. That could make NEAR screens look empty or unavailable on a deployment that had not set its own endpoint. The app now ships with a working public NEAR endpoint by default, and an operator can still point it at their own RPC with the existing settings. Nothing about signing, amounts or custody changes.",
+      "published_at": "2026-11-10T04:25:00Z"
+    },
+        {
+      "slug": "rhea-first-deposit-fee-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "The Rhea first-deposit preview now shows the full one-time cost",
+      "body": "Opening your first Rhea account on NEAR involves two one-time charges at the account manager: creating the account and registering the DApp. The preview only knew about the first one, so it promised a smaller fee and a bigger net deposit than you actually received \u2014 a funded test showed 0.60 USDC in total fees, not 0.30. The preview now shows the combined one-time fee, subtracts both from the net amount supplied, and names the DApp registration fee; the positions explainer and the vault fee note say the same. Supply APY, the transaction you sign and custody are unchanged.",
+      "published_at": "2026-11-10T04:35:00Z"
+    },
         {
       "slug": "rhea-xchain-mca-review-079-2026-11",
       "type": "changelog",

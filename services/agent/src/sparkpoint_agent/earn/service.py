@@ -41,6 +41,7 @@ from .rhea import (
     RheaRpcError,
     RheaViews,
     custom_recipient_msg,
+    dapp_registration_fee_amount,
     fee_string,
     human_string,
     mca_fee_amount,
@@ -243,19 +244,36 @@ class EarnService:
     # ── chat list ─────────────────────────────────────────────────────────────────────────────
 
     def list_outcome(self, request: EarnRequest, *, limit: int = 5) -> EarnOutcome:
-        vaults, snapshot = self.list_vaults(
-            chain=request.chain,
-            asset=request.asset,
-            protocol=getattr(request, "protocol", None),
-            limit=limit,
-            sort=request.sort,
-        )
+        protocol = getattr(request, "protocol", None)
+        # A protocol-agnostic "what earn options do I have?" lists the top rows of every protocol
+        # in the live registry (Kamino + Morpho + Rhea) instead of one protocol's vaults.
+        combined = protocol is None and request.chain is None and request.asset is None
+        combined_labels: list[str] = []
+        if combined:
+            snapshot = self.registry.current()
+            vaults: list[dict[str, Any]] = []
+            for name in ("morpho", "kamino", "rhea"):
+                rows, _ = self.list_vaults(protocol=name, limit=2, sort=request.sort)
+                if not rows:
+                    continue
+                combined_labels.append(name.title())
+                for row in rows:
+                    row = dict(row)
+                    row["protocol"] = name
+                    vaults.append(row)
+        else:
+            vaults, snapshot = self.list_vaults(
+                chain=request.chain,
+                asset=request.asset,
+                protocol=protocol,
+                limit=limit,
+                sort=request.sort,
+            )
         if snapshot is None:
             return EarnOutcome(
                 text=_UNKNOWN_SNAPSHOT,
                 block=EarnVaultsBlock(state="unavailable", unavailable_reason="no snapshot"),
             )
-        protocol = getattr(request, "protocol", None)
         if protocol == "rhea" and request.asset:
             # USDT (or any other Burrow market) is config-disabled: say so plainly instead of
             # leaking into the generic no-match copy.
@@ -289,7 +307,12 @@ class EarnService:
         protocol_label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
             protocol or "", ""
         )
-        if protocol == "kamino":
+        if combined:
+            note = (
+                "Kamino runs on Solana, Morpho on Base/Ethereum, and Rhea on NEAR. Each row "
+                "lists the rails enabled for that vault; nothing here is a transaction."
+            )
+        elif protocol == "kamino":
             note = (
                 "Kamino's vault list is data-driven. The 1Click rail uses a configured receipt "
                 "whose underlying vault matches; the native kVault share is what the user receives."
@@ -312,21 +335,42 @@ class EarnService:
             snapshot_source=self.registry.loaded_from,
             note=note,
         )
-        lines = [
-            f"Here are the top {protocol_label + ' ' if protocol_label else ''}vaults"
-            f"{f' on {_chain_label_for_key(self.config, request.chain)}' if request.chain else ''}"
-            f"{f' for {request.asset}' if request.asset else ''}, by "
-            f"{'net APY' if request.sort == 'apy' else 'TVL'} (snapshot {snapshot.age_minutes()} "
-            "min old):"
-        ]
+        if combined:
+            across = ", ".join(combined_labels) if combined_labels else "the live registry"
+            lines = [
+                f"Here are the top earn options across {across}, by "
+                f"{'net APY' if request.sort == 'apy' else 'TVL'} "
+                f"(snapshot {snapshot.age_minutes()} min old):"
+            ]
+        else:
+            chain_label = _chain_label_for_key(self.config, request.chain) if request.chain else ""
+            asset_label = f" for {request.asset}" if request.asset else ""
+            lines = [
+                f"Here are the top {protocol_label + ' ' if protocol_label else ''}vaults"
+                f"{f' on {chain_label}' if chain_label else ''}{asset_label}, by "
+                f"{'net APY' if request.sort == 'apy' else 'TVL'} "
+                f"(snapshot {snapshot.age_minutes()} min old):"
+            ]
         for vault in vaults:
             rails = ", ".join(vault["rails"]["available"]) or "no enabled rail"
-            lines.append(
-                f"- {vault['name'] or vault['symbol'] or vault['address']} on "
-                f"{vault['chain'].title()} — {vault['netApy'] or 'APY n/a'}% net APY, "
-                f"{_usd(Decimal(vault['tvlUsd'])) if vault['tvlUsd'] else 'TVL n/a'} "
-                f"({rails})"
-            )
+            if combined:
+                label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
+                    str(vault.get("protocol") or "morpho"), "Morpho"
+                )
+                lines.append(
+                    f"- {vault['name'] or vault['symbol'] or vault['address']} — {label} on "
+                    f"{_chain_label_for_key(self.config, vault['chain'])} — "
+                    f"{vault['netApy'] or 'APY n/a'}% net APY, "
+                    f"{_usd(Decimal(vault['tvlUsd'])) if vault['tvlUsd'] else 'TVL n/a'} "
+                    f"({rails})"
+                )
+            else:
+                lines.append(
+                    f"- {vault['name'] or vault['symbol'] or vault['address']} on "
+                    f"{vault['chain'].title()} — {vault['netApy'] or 'APY n/a'}% net APY, "
+                    f"{_usd(Decimal(vault['tvlUsd'])) if vault['tvlUsd'] else 'TVL n/a'} "
+                    f"({rails})"
+                )
         if protocol == "rhea":
             lines.append(
                 "Rhea Lending is the supported NEAR yield — USDC only for now. Tell me an "
@@ -573,6 +617,7 @@ class EarnService:
             lookup_failed = True
         first_deposit = mca is None
         fee_amount = Decimal(0)
+        dapp_fee_amount = Decimal(0)
         one_time_fee: dict[str, Any] | None = None
         if first_deposit:
             try:
@@ -580,10 +625,18 @@ class EarnService:
             except RheaRpcError:
                 fees = {}
             fee_amount = mca_fee_amount(fees, asset, rhea.mca_fee_fallback)
+            # Multica also charges a DApp registration fee in the same receipt; the preview must
+            # disclose and subtract it or the "net supplied" is a 0.30-USDC lie (found in a funded
+            # cross-chain test on 2026-11-10).
+            dapp_fee_amount = dapp_registration_fee_amount(
+                asset, rhea.dapp_registration_fee_fallback
+            )
             one_time_fee = {
-                "amount": fee_string(fee_amount),
+                "amount": fee_string(fee_amount + dapp_fee_amount),
                 "symbol": asset.symbol,
-                "reason": "one-time Rhea account fee — first deposit only",
+                "reason": (
+                    "one-time Rhea account fee plus DApp registration fee — first deposit only"
+                ),
             }
 
         requires_signature = False
@@ -637,7 +690,7 @@ class EarnService:
 
         human = _human(amount)
         out_amount = _decimal(quote.amount_out_formatted) if quote is not None else None
-        net = (out_amount - fee_amount) if out_amount is not None else None
+        net = (out_amount - fee_amount - dapp_fee_amount) if out_amount is not None else None
         eta = (
             f"about {max(1, round(quote.time_estimate_sec / 60))} min"
             if quote is not None and quote.time_estimate_sec
@@ -672,8 +725,8 @@ class EarnService:
             "stale": self.registry.is_stale(),
         }
         fee_line = (
-            f" A one-time {fee_string(fee_amount)} {asset.symbol} Rhea account fee applies on "
-            "this first deposit."
+            f" A one-time {fee_string(fee_amount + dapp_fee_amount)} {asset.symbol} Rhea account "
+            "+ DApp registration fee applies on this first deposit."
             if first_deposit
             else ""
         )
@@ -784,13 +837,15 @@ class EarnService:
             fee_asset = next(iter(rhea.enabled_assets()), None)
             fee_value = (
                 mca_fee_amount({}, fee_asset, rhea.mca_fee_fallback)
+                + dapp_registration_fee_amount(fee_asset, rhea.dapp_registration_fee_fallback)
                 if fee_asset is not None
-                else Decimal("0.30")
+                else Decimal("0.60")
             )
             fee_symbol = fee_asset.symbol if fee_asset is not None else "USDC"
             explainer = (
                 "You don't have a Rhea account yet. Your first deposit creates one (a one-time "
-                f"{fee_string(fee_value)} {fee_symbol} fee) and starts earning on NEAR."
+                f"{fee_string(fee_value)} {fee_symbol} account + DApp registration fee) and "
+                "starts earning on NEAR."
             )
             return EarnOutcome(
                 text=(

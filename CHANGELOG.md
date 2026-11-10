@@ -10,6 +10,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1110 — live Kamino withdraw validation)
+
+- **Kamino withdraw no longer refuses real mainnet transactions.** The pre-sign validator had stale
+  instruction discriminators: it used a non-existent kVault withdraw selector and only allowed the
+  deposit-side farm bookkeeping. A real withdraw tx (verified by simulation) carries the kVault
+  `withdraw` selector `b712469c946da122` plus the `unstake` and `withdraw_unstaked_deposits` farm
+  instructions, and closes the now-empty share account alongside wSOL. Those shapes are now
+  recognised, the misnamed farm constants are corrected, and the strict account/amount checks
+  (canonical wSOL/share ATAs, wallet authority/destination, vault farm, exact share balance) are
+  unchanged. Unknown farm or kVault instructions are still refused. (`apps/web/src/lib/earn/kaminoLive.ts`)
+### Fixed (078 — Rhea same-chain supply/withdraw transactions target the right contracts)
+
+- **A funded NEAR supply to Rhea (Burrow) proved the plan could never execute: every action was
+  packed into one transaction addressed to the user's own account.** A NEAR transaction has exactly
+  one receiver, so `storage_deposit` on Burrow plus `ft_transfer_call` on the USDC token inside a
+  transaction sent to `sparkpoint2026.near` fails with
+  `CompilationError: CodeDoesNotExist`. `buildSupplyPlan` now emits one transaction per target
+  contract (Burrow storage, then the token's storage + `ft_transfer_call`) and `buildWithdrawPlan`
+  addresses the Burrow contract; the signer nonce keeps the order. The same funded run then
+  supplied 1.000000 USDC and withdrew it back with the app's own plan. No limit, allowlist or
+  amount check was loosened. (`apps/web/src/lib/near/burrow.ts`, `apps/web/src/lib/near/burrow.test.ts`)
+### Fixed (076/078 — NEAR reads use a working default RPC)
+
+- **The built-in NEAR mainnet RPC (`https://rpc.mainnet.near.org`) now answers every request with
+  HTTP 429 "THIS ENDPOINT IS DEPRECATED! STOP USING IT NOW!", which broke every read-only NEAR call
+  (Rhea same-chain preflight, login key check, block lookups) whenever no override was configured.**
+  The default is now NEAR's FastNear public endpoint (`https://free.rpc.fastnear.com`); testnet is
+  unchanged, and `NEAR_RPC_URL` / `NEXT_PUBLIC_NEAR_RPC_URL` still override both.
+  (`apps/web/src/lib/near/network.ts`, `apps/web/src/lib/near/rpc.ts`)
+### Fixed (071/079 — the Rhea first-deposit preview now shows both one-time fees)
+
+- **A funded cross-chain Rhea deposit proved the first-deposit cost was understated by 0.30 USDC.**
+  Multica charges two one-off fees in the same receipt — `collect_create_mca_fee` and
+  `collect_dapp_registration_fee`, 0.30 + 0.30 USDC — but only the create-MCA fee has a public view
+  (`get_create_mca_fee_paged`), so the preview said "one-time 0.30 USDC" and a net supplied 0.30
+  higher than reality (a 0.999798 USDC deposit supplied 0.399798, not 0.699798). The preview now
+  discloses the DApp registration fee (documented fallback per symbol, configurable via
+  `rhea.dapp_registration_fee_fallback`), subtracts both from the net supplied, and says
+  "account + DApp registration fee". The empty-positions explainer and the vault fee note carry the
+  same total, and the shared web/agent fixtures + golden evals were updated.
+  (`services/agent/src/sparkpoint_agent/earn/{config,rhea,service,rails}.py`,
+  `services/agent/src/sparkpoint_agent/earn/earn.json`, `packages/shared/tests/fixtures/earn/`,
+  `services/agent/evals/golden.yaml`, `docs/demo/072-hackathon-demo.md`)
+
 ### Changed (081 — demo docs clarify beta deploy)
 
 - **Demo/hackathon docs now state that `beta.sparkpoint.io` is the production Coolify web app from `main`.** There is no separate develop web environment; merging to `develop` alone does not update beta. (`docs/demo/`, Sparky knowledge seeds/tips)
@@ -17,6 +61,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Docs (081 — hackathon demo + submission one-pager)
 
 - **The current demo run of show now matches the dual-access, multi-chain beta.** `docs/demo/072-hackathon-demo.md` names the real beta URL (`https://beta.sparkpoint.io`), maps each capability to its manual page and Sparky prompt, and separates what works now from what is preview-only, built-behind-a-flag, or simulated. It adds the 078 same-chain Rhea flow, the 079 cross-chain Rhea review (withdraw as a guided review of the documented Rhea SDK paths), and a withdraw-posture table. A new `docs/demo/hackathon-submission-one-pager.md` is the public-safe submission summary: dual access, NEAR Intents 1Click swaps, Morpho/Kamino/Rhea rails, the read-only portfolio, flags-off live earn, non-custody, and the honest preview-vs-live line. Sparky's knowledge seeds and tips now carry the same beta URL, dual-access map, live-earn flag list (all default off) and withdraw postures. (`docs/demo/072-hackathon-demo.md`, `docs/demo/hackathon-submission-one-pager.md`, `services/agent/knowledge_seed/{multichain-dual-access,sparky-capabilities,platform-surfaces,beta-questions}.md`, `services/agent/knowledge_seed_tips/{multichain-earn,hackathon-demo}.md`)
+
+### Fixed (1110 — Sparky routes protocol-agnostic earn questions)
+
+- **"What earn options do I have?" now answers with the live earn options instead of falling
+  through to the planner's single-move reply ("I don't have a move I can build…").** A
+  protocol-agnostic earn question (also "where can I earn?", "ways to earn", "earn options")
+  is recognised as a deterministic list request and returns the top rows of **every** protocol in
+  the live snapshot — Kamino (Solana), Morpho (Base/Ethereum) and Rhea (NEAR) — with each row's
+  real rails. "Show Rhea/Morpho/Kamino options" (previously not a list trigger for Rhea/Morpho)
+  is also handled. Existing narrow behaviours are preserved: explicit-protocol deposits, the
+  comparative "A or B"/"vs" turns, and "What vaults are available right now?" still reach their
+  previous routes. (`services/agent/src/sparkpoint_agent/earn/{parse,service}.py`)
 
 ### Added (079 — cross-chain Rhea / 071 Phase C review + gated live commit)
 

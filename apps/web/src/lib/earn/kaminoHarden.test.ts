@@ -14,6 +14,10 @@ import {
   KAMINO_API_TOKEN_MINTS,
   KAMINO_DEPOSIT_DISCRIMINATOR,
   KAMINO_FARMS_PROGRAM_ID,
+  KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR,
+  KAMINO_FARM_STAKE_DISCRIMINATOR,
+  KAMINO_FARM_UNSTAKE_DISCRIMINATOR,
+  KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR,
   KAMINO_KVAULT_PROGRAM_ID,
   KAMINO_VAULTS,
   KAMINO_WITHDRAW_DISCRIMINATOR,
@@ -66,7 +70,7 @@ const SOL_VAULT_FARM = b58("HdoYSQ8pzKM", "KHARtY6Uu68", "2rcMxqkV215", "1vKsB1d
 const USDC_MINT = b58("EPjFWdd5Auf", "qSSqeM2qN1x", "zybapC8G4wE", "GGkZwyTDt1v");
 
 const DEPOSIT_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAHDP6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghX7xkOP5ENZKDmGI/418jP35gW5O9K9RlQ4LbOQ9zL8lg7LsUR9rryAneOreZtIXorT+0KieLG4e86fq9w5jIw26YitWRV9lJ00NOXMIXl29/G/c2l1Hgt0GiI7swiZB7nUIEf1eQhs3BDr0pJXhranYWBuSjlRK57jISYW61zeEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/abOn2YZjdhw2KmG8wZ1xG+D4vUoNIeVL11QVj4+96jJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FnYsBAXY9PlHxJuYVbehd6MYTBZuERo0No/6KKiJRzHAQTZCvHbiTnsNf+U2WQNV9zDJ5S7Phu2b9OuhJqE3NuUBqfVFxksXFEhjMlMPUrxf1ja7gibof1E49vZigAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqSZUhDCabmbSTWh9zSDQqtk1Luu69ETtjeArG2PnD3zkBwcGAAMAGgULAQEFAgADDAIAAACAlpgAAAAAAAsBAwERBwYABAAOBQsBAQkVABEMGhQOAwQZCwsGCRINDxAXFhgVEPIjxolS4fK2gJaYAAAAAAAICAAAAAABEwUKCG8Rufo8eib+CAgAARMCBA4ICxDOsMoSyNGzbP//////////ARo7tNPmLSDx6HSO+/un1b/nz2+fplPjHpqCsRpkX9ANCAQKBQwOAAgqBwIkFxAeBwM=";
-const WITHDRAW_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAGCf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghbpiK1ZFX2UnTQ05cwheXb38b9zaXUeC3QaIjuzCJkHudQgR/V5CGzcEOvSkleGtqdhYG5KOVErnuMhJhbrXN4QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD9ps6fZhmN2HDYqYbzBnXEb4Pi9Sg0h5UvXVBWPj73qMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WZlxKXooAEJJPkJxkMd7ZH6G99GZch/RVimWXJ1rZZT4BNkK8duJOew1/5TZZA1X3MMnlLs+G7Zv066EmoTc25QG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqRTH+FrPZTSg7YZ1ca11JmjiiTdXpQDp5/o+KucudBt8AwUGAAEAEAMIAQEHFgAOBgkRARACCwgIFgQHDwoMDRQTFRIQE4Nwm6rcIjn//////////wgDAQAAAQkBGju00+YtIPHodI77+6fVv+fPb5+mU+MemoKxGmRf0A0IBAoFDA4ACAMGAiQXEB4H";
+const WITHDRAW_TX = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAGCf6yVnpnrNFfE1EzXBUnXC3c/t+j1VliPjsgxCv5iyghbpiK1ZFX2UnTQ05cwheXb38b9zaXUeC3QaIjuzCJkHudQgR/V5CGzcEOvSkleGtqdhYG5KOVErnuMhJhbrXN4QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD9ps6fZhmN2HDYqYbzBnXEb4Pi9Sg0h5UvXVBWPj73qMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4WZlxKXooAEJJPkJxkMd7ZH6G99GZch/RVimWXJ1rZZT4BNkK8duJOew1/5TZZA1X3MMnlLs+G7Zv066EmoTc25QG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqRTH+FrPZTSg7YZ1ca11JmjiiTdXpQDp5/o+KucudBt8AwUGAAEAEAMIAQEHFgAOBgkRARACCwgIFgQHDwoMDRQTFRIQtxJGnJRtoSL//////////wgDAQAAAQkBGju00+YtIPHodI77+6fVv+fPb5+mU+MemoKxGmRf0A0IBAoFDA4ACAMGAiQXEB4H";
 
 const DEPOSIT_LOOKUPS: KaminoLookupAddresses = {
   writable: [
@@ -448,6 +452,40 @@ test("a close instruction must close the wallet's own wSOL ATA and pay the walle
   );
 });
 
+test("a withdraw may also close the wallet's own share account", () => {
+  const wsolAta = deriveAssociatedTokenAddress(PROBE, WSOL_MINT);
+  const sharesAta = deriveAssociatedTokenAddress(PROBE, SOL_META.sharesMint);
+  const closeIx = (account: string) =>
+    new TransactionInstruction({
+      programId: new PublicKey(TOKEN_PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(account), isSigner: false, isWritable: true },
+        { pubkey: new PublicKey(PROBE), isSigner: false, isWritable: true },
+        { pubkey: new PublicKey(PROBE), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([9]),
+    });
+  const tx = (account: string) =>
+    buildTransaction(PROBE, [
+      kvaultInstruction("withdraw", PROBE, SOL_VAULT, U64_MAX, [
+        new PublicKey(SOL_META.sharesMint),
+        new PublicKey(SOL_META.assetMint),
+        new PublicKey(SOL_TOKEN_VAULT),
+        new PublicKey(wsolAta),
+      ]),
+      closeIx(account),
+    ]);
+  const exp = expectation({ mode: "withdraw", amountRaw: U64_MAX, positionSharesRaw: U64_MAX });
+  assert.doesNotThrow(() =>
+    assertKaminoTransactionMatches(summarizeKaminoTransaction(tx(sharesAta)), exp),
+  );
+  const other = deriveAssociatedTokenAddress(PROBE, USDC_MINT);
+  assert.throws(
+    () => assertKaminoTransactionMatches(summarizeKaminoTransaction(tx(other)), exp),
+    (error: unknown) => error instanceof KaminoLiveError && error.code === "unexpected_transfer",
+  );
+});
+
 test("an ATA create at a non-canonical address is refused", () => {
   const wrongAta = Keypair.generate().publicKey;
   const tx = buildTransaction(PROBE, [
@@ -486,6 +524,55 @@ test("an unknown Kamino farms instruction is refused, not trusted", () => {
   assert.throws(
     () => assertKaminoTransactionMatches(summarizeKaminoTransaction(tx), expectation()),
     (error: unknown) => error instanceof KaminoLiveError && error.code === "authority_change",
+  );
+});
+
+test("a withdraw's unstake + withdraw-unstaked farm bookkeeping is allowed", () => {
+  const wsolAta = deriveAssociatedTokenAddress(PROBE, WSOL_MINT);
+  const farmInstruction = (discriminator: string) =>
+    new TransactionInstruction({
+      programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
+        { pubkey: new PublicKey(SOL_VAULT_FARM), isSigner: false, isWritable: true },
+      ],
+      data: Buffer.concat([Buffer.from(discriminator, "hex"), Buffer.alloc(16)]),
+    });
+  const tx = buildTransaction(PROBE, [
+    kvaultInstruction("withdraw", PROBE, SOL_VAULT, U64_MAX, [
+      new PublicKey(SOL_META.sharesMint),
+      new PublicKey(SOL_META.assetMint),
+      new PublicKey(SOL_TOKEN_VAULT),
+      new PublicKey(wsolAta),
+    ]),
+    farmInstruction(KAMINO_FARM_UNSTAKE_DISCRIMINATOR),
+    farmInstruction(KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR),
+  ]);
+  assert.doesNotThrow(() =>
+    assertKaminoTransactionMatches(
+      summarizeKaminoTransaction(tx),
+      expectation({ mode: "withdraw", amountRaw: U64_MAX, positionSharesRaw: U64_MAX }),
+    ),
+  );
+});
+
+test("the deposit farm bookkeeping (initialize + stake) is allowed", () => {
+  const farmInstruction = (discriminator: string) =>
+    new TransactionInstruction({
+      programId: new PublicKey(KAMINO_FARMS_PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(PROBE), isSigner: true, isWritable: true },
+        { pubkey: new PublicKey(SOL_VAULT_FARM), isSigner: false, isWritable: true },
+      ],
+      data: Buffer.concat([Buffer.from(discriminator, "hex"), Buffer.alloc(16)]),
+    });
+  const tx = buildTransaction(PROBE, [
+    ...validSolDepositInstructions(),
+    farmInstruction(KAMINO_FARM_INITIALIZE_USER_DISCRIMINATOR),
+    farmInstruction(KAMINO_FARM_STAKE_DISCRIMINATOR),
+  ]);
+  assert.doesNotThrow(() =>
+    assertKaminoTransactionMatches(summarizeKaminoTransaction(tx), expectation()),
   );
 });
 

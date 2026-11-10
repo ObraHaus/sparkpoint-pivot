@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_NEAR_NETWORK, parseNearNetwork, parseNearRpcUrl } from "./network.ts";
+import {
+  DEFAULT_NEAR_MAINNET_RPC,
+  DEFAULT_NEAR_NETWORK,
+  DEFAULT_NEAR_TESTNET_RPC,
+  defaultNearRpcUrl,
+  parseNearNetwork,
+  parseNearRpcUrl,
+} from "./network.ts";
 
 test("NEAR network parsing defaults to mainnet and never guesses testnet", () => {
   assert.equal(DEFAULT_NEAR_NETWORK, "mainnet");
@@ -24,4 +31,11 @@ test("NEAR RPC URL is optional and only an absolute http(s) URL is accepted", ()
   assert.equal(parseNearRpcUrl("ftp://rpc.example"), undefined);
   assert.equal(parseNearRpcUrl("https://rpc.mainnet.near.org"), "https://rpc.mainnet.near.org/");
   assert.equal(parseNearRpcUrl("http://127.0.0.1:3030"), "http://127.0.0.1:3030/");
+});
+
+test("the built-in mainnet RPC is not the deprecated near.org endpoint", () => {
+  assert.equal(defaultNearRpcUrl("mainnet"), DEFAULT_NEAR_MAINNET_RPC);
+  assert.equal(defaultNearRpcUrl("testnet"), DEFAULT_NEAR_TESTNET_RPC);
+  assert.notEqual(DEFAULT_NEAR_MAINNET_RPC, "https://rpc.mainnet.near.org");
+  assert.match(DEFAULT_NEAR_MAINNET_RPC, /^https:\/\//);
 });

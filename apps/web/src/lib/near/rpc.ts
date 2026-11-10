@@ -1,5 +1,7 @@
 import "server-only";
 
+import { defaultNearRpcUrl, parseNearNetwork } from "./network";
+
 /**
  * 076/078 — read-only NEAR RPC lookups.
  *
@@ -13,8 +15,7 @@ const RPC_TIMEOUT_MS = 5_000;
 function rpcUrl(): string {
   const explicit = process.env.NEAR_RPC_URL ?? process.env.NEXT_PUBLIC_NEAR_RPC_URL;
   if (explicit) return explicit;
-  const network = (process.env.NEXT_PUBLIC_NEAR_NETWORK ?? "").trim().toLowerCase();
-  return network === "testnet" ? "https://rpc.testnet.near.org" : "https://rpc.mainnet.near.org";
+  return defaultNearRpcUrl(parseNearNetwork(process.env.NEXT_PUBLIC_NEAR_NETWORK));
 }
 
 async function rpcCall<T>(body: Record<string, unknown>, timeoutMs = RPC_TIMEOUT_MS): Promise<T> {

@@ -53,8 +53,8 @@ RHEA_NOTE = (
     "wallet, gas or chain switch. Withdraw on app.rhea.finance with the same wallet."
 )
 RHEA_FEE_NOTE = (
-    "Includes 1Click's 0.25% keyless routing fee. A one-time 0.30 USDC Rhea account fee applies "
-    "on the first deposit only."
+    "Includes 1Click's 0.25% keyless routing fee. A one-time 0.60 USDC Rhea account + DApp "
+    "registration fee applies on the first deposit only."
 )
 INTENTS_MISSING_KEY = (
     "Aurora Intents Connect is not configured on this deployment (requires Aurora API access)."
