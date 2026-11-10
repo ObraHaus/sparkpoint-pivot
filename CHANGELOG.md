@@ -18,6 +18,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The current demo run of show now matches the dual-access, multi-chain beta.** `docs/demo/072-hackathon-demo.md` names the real beta URL (`https://beta.sparkpoint.io`), maps each capability to its manual page and Sparky prompt, and separates what works now from what is preview-only, built-behind-a-flag, or simulated. It adds the 078 same-chain Rhea flow, the 079 cross-chain Rhea review (withdraw as a guided review of the documented Rhea SDK paths), and a withdraw-posture table. A new `docs/demo/hackathon-submission-one-pager.md` is the public-safe submission summary: dual access, NEAR Intents 1Click swaps, Morpho/Kamino/Rhea rails, the read-only portfolio, flags-off live earn, non-custody, and the honest preview-vs-live line. Sparky's knowledge seeds and tips now carry the same beta URL, dual-access map, live-earn flag list (all default off) and withdraw postures. (`docs/demo/072-hackathon-demo.md`, `docs/demo/hackathon-submission-one-pager.md`, `services/agent/knowledge_seed/{multichain-dual-access,sparky-capabilities,platform-surfaces,beta-questions}.md`, `services/agent/knowledge_seed_tips/{multichain-earn,hackathon-demo}.md`)
 
+### Fixed (1110 — Sparky routes protocol-agnostic earn questions)
+
+- **"What earn options do I have?" now answers with the live earn options instead of falling
+  through to the planner's single-move reply ("I don't have a move I can build…").** A
+  protocol-agnostic earn question (also "where can I earn?", "ways to earn", "earn options")
+  is recognised as a deterministic list request and returns the top rows of **every** protocol in
+  the live snapshot — Kamino (Solana), Morpho (Base/Ethereum) and Rhea (NEAR) — with each row's
+  real rails. "Show Rhea/Morpho/Kamino options" (previously not a list trigger for Rhea/Morpho)
+  is also handled. Existing narrow behaviours are preserved: explicit-protocol deposits, the
+  comparative "A or B"/"vs" turns, and "What vaults are available right now?" still reach their
+  previous routes. (`services/agent/src/sparkpoint_agent/earn/{parse,service}.py`)
+
 ### Added (079 — cross-chain Rhea / 071 Phase C review + gated live commit)
 
 - **The 071 cross-chain Rhea rail now has a dual-access review and a reversible live slice.** This

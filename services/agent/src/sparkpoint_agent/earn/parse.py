@@ -80,6 +80,17 @@ _RHEA_RE = re.compile(r"\b(?:rhea(?:\s+finance)?|burrow)\b", re.IGNORECASE)
 _POSITION_RE = re.compile(r"\bpositions?\b", re.IGNORECASE)
 _APY_RE = re.compile(r"\b(?:apy|apr|rate|yield)\b", re.IGNORECASE)
 _WITHDRAW_RE = re.compile(r"\bwithdraw(?:al|als|ing)?\b", re.IGNORECASE)
+_OPTIONS_RE = re.compile(r"\boptions?\b", re.IGNORECASE)
+# A protocol-agnostic "what earn options do I have?" / "where can I invest?" turn lists every
+# protocol in the live registry (Kamino + Morpho + Rhea). Deliberately narrow so existing
+# vault/deposit phrasing still reaches the planner unchanged.
+_GENERIC_EARN_OPTIONS_RE = re.compile(
+    r"\b(?:earn|earning|yield|invest|investing)\b[^.?!]{0,24}\boptions?\b"
+    r"|\boptions?\b[^.?!]{0,24}\b(?:earn|yield|invest)\b"
+    r"|\b(?:ways?|how|where|what)\b[^.?!]{0,32}\bto\s+(?:earn|yield|invest)\b"
+    r"|\bwhat\s+(?:can|could)\s+(?:i|we)\s+(?:earn|invest)\b",
+    re.IGNORECASE,
+)
 _RHEA_TARGET_RE = re.compile(r"\b(?:into|in|on|to|with|via)\s+(?P<target>.+)$", re.IGNORECASE)
 _STABLE_RE = re.compile(r"\b(USDC|USDT)\b", re.IGNORECASE)
 _ASSET_RE = re.compile(r"\b(USDC|USDT|WETH|ETH|cbBTC|SOL)\b", re.IGNORECASE)
@@ -309,7 +320,11 @@ def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | No
     if _POSITION_RE.search(text) is not None:
         return _positions_request(message)
     if _DEPOSIT_VERB_RE.search(text) is None:
-        if _LIST_RE.search(text) is not None or _APY_RE.search(text) is not None:
+        if (
+            _LIST_RE.search(text) is not None
+            or _APY_RE.search(text) is not None
+            or _OPTIONS_RE.search(text) is not None
+        ):
             return _list_request(
                 message, _stable_symbol(text), best=_BEST_RE.search(text) is not None
             )
@@ -320,6 +335,7 @@ def _parse_rhea(text: str, message: str, config: EarnConfig) -> EarnRequest | No
         if (
             _LIST_RE.search(text) is not None
             or _APY_RE.search(text) is not None
+            or _OPTIONS_RE.search(text) is not None
             or _NEAR_YIELD_RE.search(text) is not None
         ):
             return _list_request(
@@ -390,11 +406,27 @@ def parse_earn_request(message: str, config: EarnConfig) -> EarnRequest | None:
         return None
     protocol = config.known_protocol(text)
     if protocol is None:
+        # "What earn options do I have?" names no protocol: list every protocol in the live
+        # registry instead of falling through to the planner's single-move recommendation.
+        if _GENERIC_EARN_OPTIONS_RE.search(text) is not None:
+            return EarnRequest(
+                kind="list",
+                chain=_chain_from(text),
+                asset=_named_asset(text),
+                amount=None,
+                amount_raw=None,
+                vault_query=None,
+                sort="apy" if _BEST_RE.search(text) is not None else "tvl",
+                message=message,
+                protocol=None,
+            )
         return _parse_near_yield(text, message, config)
     if protocol == "rhea":
         return _parse_rhea(text, message, config)
 
-    if _LIST_RE.search(text) is not None and _LIST_VERB_RE.search(text) is not None:
+    if (_LIST_RE.search(text) is not None and _LIST_VERB_RE.search(text) is not None) or (
+        _OPTIONS_RE.search(text) is not None
+    ):
         chain = _chain_from(text)
         if chain is None and protocol == "kamino":
             chain = "sol"

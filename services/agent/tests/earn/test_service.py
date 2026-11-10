@@ -179,6 +179,38 @@ def test_list_outcome_names_the_filtered_set_and_marks_the_curated_default() -> 
     assert "Gauntlet USDC Prime" in outcome.text
 
 
+def test_generic_list_outcome_covers_kamino_morpho_and_rhea() -> None:
+    from sparkpoint_agent.earn.parse import EarnRequest
+
+    from .helpers import make_kamino_vault, make_rhea_vault
+
+    service, _ = _service(lambda request: httpx.Response(201, json=_payload()))
+    service.registry.install(
+        make_snapshot(make_vault(), make_kamino_vault(), make_rhea_vault())
+    )
+    request = EarnRequest(
+        kind="list",
+        chain=None,
+        asset=None,
+        amount=None,
+        amount_raw=None,
+        vault_query=None,
+        sort="tvl",
+        message="What earn options do I have?",
+        protocol=None,
+    )
+    outcome = service.list_outcome(request)
+    wire = outcome.block.to_wire()
+    assert wire["type"] == "earn_vaults"
+    assert wire["state"] == "ready"
+    protocols = {vault.get("protocol", "morpho") for vault in wire["vaults"]}
+    assert protocols == {"morpho", "kamino", "rhea"}
+    assert "Kamino" in outcome.text
+    assert "Morpho" in outcome.text
+    assert "Rhea" in outcome.text
+    assert "Nothing here is a transaction" in outcome.text
+
+
 def _kamino_service(handler) -> tuple[EarnService, list]:
     from .helpers import KV_VAULT, make_kamino_vault
 
