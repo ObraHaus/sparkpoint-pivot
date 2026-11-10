@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "kamino-withdraw-from-available-guard-1110-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Kamino withdrawals are no longer wrongly refused",
+      "body": "Behind the scenes: Kamino sometimes prepares a withdrawal from liquidity that is already available in the vault. That version of the transaction was not recognised by our pre-sign safety check, so a valid partial withdrawal could be stopped with an error. The check now recognises it and still verifies every important account by its exact position \u2014 your wallet as the owner, the selected vault and its token account, the program-derived vault and event authorities, your own asset and share token accounts, the vault's asset and share mints, and the token and lending programs \u2014 plus that the amount is not larger than your share balance. Anything that does not match is still refused, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "published_at": "2026-11-10T11:00:00Z"
+    },
+    {
       "slug": "rhea-mca-case-lookup-fix-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",
