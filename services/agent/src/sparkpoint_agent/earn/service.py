@@ -50,6 +50,15 @@ from .rhea import (
     register_message,
     supply_message,
 )
+from .rhea_xchain import (
+    RheaXchainDisabled,
+    RheaXchainError,
+    build_origin_transfer_plan,
+    gate_wire,
+    live_gate,
+    withdraw_review,
+    xchain_live_enabled,
+)
 
 logger = logging.getLogger("sparkpoint_agent.earn.service")
 
@@ -128,6 +137,10 @@ class EarnService:
         self.liveness = liveness or default_liveness()
         self._aurora_key = aurora_key
         self.rhea_views = rhea_views or RheaViews(config.rhea)
+        # 079 — in-process ownership of live Rhea deposit addresses (read-only status). A
+        # multi-instance deploy should move this to the crosschain_quotes store; documented in
+        # the spec. Holds only public 0x addresses, never a key.
+        self._xchain_deposits: dict[str, str] = {}
 
     @property
     def feature_enabled(self) -> bool:
@@ -508,6 +521,9 @@ class EarnService:
         amount: Decimal,
         amount_raw: int | None,
         wallet: str | None,
+        *,
+        dry: bool = True,
+        signature: str | None = None,
     ) -> EarnOutcome:
         rhea = self.config.rhea
         if not rhea.enabled:
@@ -538,6 +554,15 @@ class EarnService:
                 raise ValueError("amount has too many decimal places")
             raw = parsed[1]
 
+        # 079 — a live (dry=false) commit is gated on the server flag AND key presence. The
+        # key VALUE is never read here; only the client's boolean capability.
+        if not dry:
+            allowed, reason = live_gate(
+                server_enabled=xchain_live_enabled(), key_present=self.oneclick.has_api_key
+            )
+            if not allowed:
+                raise RheaXchainDisabled(reason or "Live cross-chain Rhea deposits are disabled.")
+
         # MCA + one-off fee. A lookup failure is fail-open: the preview still renders, assuming a
         # first deposit, and the text says the account read was unavailable.
         mca: str | None = None
@@ -561,9 +586,20 @@ class EarnService:
                 "reason": "one-time Rhea account fee — first deposit only",
             }
 
+        requires_signature = False
         if first_deposit:
-            message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
             message_text: str | None = message_to_sign(wallet)
+            if dry:
+                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
+            elif signature and signature.strip():
+                # The web obtained this from the user's own wallet ``personal_sign``; it is
+                # off-chain auth, never a transaction. The agent still never signs.
+                message = register_message(wallet, signature)
+            else:
+                # Live first deposit without the off-chain signature: return the review and ask
+                # for it. Do NOT call 1Click with dry=false yet.
+                requires_signature = True
+                message = register_message(wallet, DRY_PLACEHOLDER_SIGNATURE)
         else:
             message = supply_message(wallet)
             message_text = None
@@ -577,34 +613,54 @@ class EarnService:
                 or placeholder_for(origin.address_kind)
             )
         )
-        try:
-            quote = await self.oneclick.quote(
-                dry=True,
-                origin_asset=origin.asset_id,
-                destination_asset=asset.asset_id,
-                amount=str(raw),
-                slippage_bps=self.crosschain.slippage_bps,
-                deadline=deadline_at(self.crosschain.deadline_minutes),
-                refund_to=refund_to,
-                recipient=recipient,
-                custom_recipient_msg=message_json,
-            )
-        except QuoteUnavailable as exc:
-            self.liveness.set(entry.address, NO_LIQUIDITY)
-            reason = exc.reason
-            if "liquidity" in reason.lower() and "smaller" not in reason.lower():
-                reason = f"{reason} — try a smaller amount."
-            return self._unavailable(entry, vault, "oneclick_rhea", reason)
-        self.liveness.set(entry.address, LIVE)
+        quote = None
+        if not requires_signature:
+            try:
+                quote = await self.oneclick.quote(
+                    dry=dry,
+                    origin_asset=origin.asset_id,
+                    destination_asset=asset.asset_id,
+                    amount=str(raw),
+                    slippage_bps=self.crosschain.slippage_bps,
+                    deadline=deadline_at(self.crosschain.deadline_minutes),
+                    refund_to=refund_to,
+                    recipient=recipient,
+                    custom_recipient_msg=message_json,
+                )
+            except QuoteUnavailable as exc:
+                self.liveness.set(entry.address, NO_LIQUIDITY)
+                reason = exc.reason
+                if "liquidity" in reason.lower() and "smaller" not in reason.lower():
+                    reason = f"{reason} — try a smaller amount."
+                return self._unavailable(entry, vault, "oneclick_rhea", reason)
+            self.liveness.set(entry.address, LIVE)
 
         human = _human(amount)
-        out_amount = _decimal(quote.amount_out_formatted)
+        out_amount = _decimal(quote.amount_out_formatted) if quote is not None else None
         net = (out_amount - fee_amount) if out_amount is not None else None
         eta = (
             f"about {max(1, round(quote.time_estimate_sec / 60))} min"
-            if quote.time_estimate_sec
+            if quote is not None and quote.time_estimate_sec
             else "a short time"
         )
+        deposit_address = (
+            quote.deposit_address if quote is not None and not dry else None
+        )
+        transfer_plan: dict[str, Any] | None = None
+        if not dry and not requires_signature:
+            if not deposit_address:
+                raise RheaXchainError(
+                    "1Click did not return a deposit address for that live quote. Nothing was "
+                    "signed or sent."
+                )
+            transfer_plan = build_origin_transfer_plan(
+                asset=origin,
+                wallet=wallet,
+                deposit_address=deposit_address,
+                amount_human=human,
+                amount_raw=raw,
+            )
+            self._xchain_deposits[deposit_address.lower()] = wallet.lower()
         supply_apy = f"{entry.net_apy_percent}%" if entry.net_apy_percent else None
         source = {
             "kind": "contract",
@@ -626,11 +682,26 @@ class EarnService:
             if first_deposit and net is not None
             else ""
         )
-        text = (
-            f"Preview only — nothing is signed or sent. {human} {origin.symbol} on "
-            f"{origin.chain_label} → about {quote.amount_out_formatted} {asset.symbol} supplied to "
-            f"Rhea Lending on NEAR, settling in {eta}.{fee_line}{net_line} {RHEA_NOTE}"
-        )
+        if requires_signature:
+            text = (
+                "Live first-deposit review — nothing is signed or sent yet. Sign the message below "
+                "in your own wallet (EVM personal_sign, off-chain) so I can prepare an unsigned "
+                f"{origin.symbol} transfer from {origin.chain_label}.{fee_line} {RHEA_NOTE}"
+            )
+        elif dry:
+            text = (
+                f"Preview only — nothing is signed or sent. {human} {origin.symbol} on "
+                f"{origin.chain_label} → about {out_amount} {asset.symbol} supplied to "
+                f"Rhea Lending on NEAR, settling in {eta}.{fee_line}{net_line} {RHEA_NOTE}"
+            )
+        else:
+            text = (
+                f"Live quote prepared — no funds have moved. Send exactly {human} {origin.symbol} "
+                f"on {origin.chain_label} to the 1Click deposit address using the unsigned "
+                "transfer plan, confirmed from your own wallet; the agent never signs or sends. "
+                f"About {out_amount} {asset.symbol} is then supplied to Rhea Lending on NEAR, "
+                f"settling in {eta}.{fee_line}{net_line} {RHEA_NOTE}"
+            )
         if supply_apy:
             text = f"{text} Supply APY {supply_apy} (Rhea, variable)."
         if lookup_failed:
@@ -644,9 +715,9 @@ class EarnService:
             vault=vault,
             origin=origin.origin_wire(human),
             amount_in=human,
-            amount_out=quote.amount_out_formatted,
-            amount_out_usd=quote.amount_out_usd,
-            time_estimate_sec=quote.time_estimate_sec,
+            amount_out=quote.amount_out_formatted if quote is not None else None,
+            amount_out_usd=quote.amount_out_usd if quote is not None else None,
+            time_estimate_sec=quote.time_estimate_sec if quote is not None else None,
             fee_note=None if self.oneclick.has_api_key else FEE_NOTE,
             receipt_note=RHEA_NOTE,
             protocol="rhea",
@@ -664,6 +735,10 @@ class EarnService:
                 "url": rhea.app_url,
                 "note": "Withdraw on Rhea with the same wallet",
             },
+            live=True if (not dry and not requires_signature) else None,
+            deposit_address=deposit_address,
+            transfer_plan=transfer_plan,
+            requires_signature=True if requires_signature else None,
             quoted_at=_now_iso(),
         )
         return EarnOutcome(text=text, block=block)
@@ -798,6 +873,66 @@ class EarnService:
             f"To withdraw from Rhea, open {url} and connect the same wallet you supplied with. "
             "In-app Rhea withdrawals aren't enabled in this beta yet — nothing was signed or sent."
         )
+
+    # ── 079 cross-chain Phase C (review + gated live commit, never signs) ─────────────────────
+
+    def rhea_xchain_gate(self) -> dict[str, Any]:
+        """Key-free gate metadata for the dual-access review UI."""
+        return gate_wire(
+            server_enabled=xchain_live_enabled(), key_present=self.oneclick.has_api_key
+        )
+
+    async def rhea_xchain_quote(
+        self,
+        *,
+        chain: str,
+        address: str,
+        origin_key: str,
+        amount: Decimal,
+        amount_raw: int | None,
+        wallet: str,
+        dry: bool,
+        signature: str | None = None,
+    ) -> EarnOutcome:
+        """A Rhea cross-chain review (``dry=true``) or a gated live commit (``dry=false``).
+
+        The live path only *prepares* an unsigned origin ERC-20 transfer. It never signs,
+        submits or broadcasts; the user's own wallet confirms the plan.
+        """
+        snapshot = self.registry.current()
+        found = self.get_vault(chain, address) if snapshot is not None else None
+        if found is None:
+            raise ValueError("unknown vault")
+        vault, _ = found
+        entry = self._entry(chain, address)
+        assert entry is not None  # noqa: S101 - get_vault just proved it
+        if entry.protocol != "rhea":
+            raise ValueError("not a Rhea vault")
+        return await self._rhea_preview(
+            entry,
+            vault,
+            origin_key,
+            amount,
+            amount_raw,
+            wallet,
+            dry=dry,
+            signature=signature,
+        )
+
+    def rhea_xchain_withdraw_review(self) -> dict[str, Any]:
+        """Honest withdraw review: link-out + documented Rhea SDK paths, no fake NEP-413 tx."""
+        return withdraw_review(app_url=self.config.rhea.app_url)
+
+    async def rhea_xchain_status(
+        self, *, wallet: str, deposit_address: str
+    ) -> dict[str, Any]:
+        """Live 1Click status for a deposit address this process prepared for ``wallet``."""
+        owner = self._xchain_deposits.get(deposit_address.strip().lower())
+        if not wallet or owner != wallet.strip().lower():
+            raise RheaXchainError(
+                "That deposit address was not prepared for the signed-in wallet."
+            )
+        return dict(await self.oneclick.status(deposit_address=deposit_address))
 
     def _intents_preview(
         self, entry: VaultEntry, vault: dict[str, Any], rails: RailResolution

@@ -3,7 +3,7 @@ title: Dual Access and the Multi-Chain Freeze Story
 source: multichain-dual-access
 tags: [multichain, swap, earn, portfolio, near-intents, morpho, kamino, rhea, dual-access, freeze]
 risk_tier: conservative
-updated: 2026-11-05
+updated: 2026-11-09
 ---
 
 # Dual Access and the Multi-Chain Freeze Story
@@ -11,6 +11,9 @@ updated: 2026-11-05
 SparkPoint's freeze build is deliberately **dual access**: every core capability is available on a
 manual page and again in Sparky chat. Neither surface owns the user's funds; both prepare actions the
 user reviews and signs.
+
+The beta is at **https://beta.sparkpoint.io** (production Coolify deploy from the `main` branch; there is no separate develop web environment) — `/connect` to sign in, `/chat` for Sparky, and
+`/swap`, `/vault` and `/portfolio` for the manual surfaces. The same story is on both surfaces.
 
 ## Swaps: two honest paths
 
@@ -41,6 +44,42 @@ same-chain deposit, the 1Click Earn receipt route, or the Rhea rail. A rail that
 wallet, an Aurora key, or a deployment this build does not have is shown as unavailable — never as a
 silently missing badge and never as a fabricated success. Previews are dry: they show the estimated
 receipt, fees and destination, but they do not sign or send.
+
+Rhea has **two different rails**, and they must not be confused:
+
+- **Same-chain Rhea (078).** A connected NEAR wallet supplies native USDC to Burrow (Rhea) on NEAR
+  and withdraws it with an unsigned `execute → Withdraw` review. No access key is added.
+- **Cross-chain Rhea (079).** EVM USDC on Base or Ethereum reaches Rhea on NEAR through NEAR Intents
+  1Click plus Rhea's Multichain Account. The dry review shows the origin, refund address, MCA
+  message, one-time MCA fee, routing fee, net supplied and APY. A live commit is server-gated and
+  returns an unsigned origin ERC-20 transfer plan; it is not the same-chain flow.
+
+## Live earn is off by default
+
+The live deposit/withdraw reviews are built but **off by default**. They appear only when an owner
+explicitly enables the matching flags: `NEXT_PUBLIC_EARN_LIVE_KAMINO` / `EARN_LIVE_KAMINO`,
+`NEXT_PUBLIC_EARN_LIVE_MORPHO` / `EARN_LIVE_MORPHO`, `NEXT_PUBLIC_EARN_LIVE_RHEA` /
+`EARN_LIVE_RHEA`, and `NEXT_PUBLIC_EARN_LIVE_RHEA_XCHAIN` / `EARN_LIVE_RHEA_XCHAIN` for the
+cross-chain review's live commit. With the flags off, the beta shows previews and reads only.
+
+When a flag is on, the review is still **unsigned**: SparkPoint builds the transaction, shows the
+exact amount, accounts, network fee and rent, and your own wallet signs. SparkPoint never signs,
+approves, submits or broadcasts, and no funded execution is claimed until an owner-approved funded
+test. Simulations are labelled **SIMULATED**.
+
+## Withdrawals: what each rail does
+
+- **Kamino on Solana / Morpho on Base (077):** an in-wallet unsigned withdraw/redeem review; your
+  wallet signs. No custody.
+- **Rhea same-chain on NEAR (078):** an in-wallet unsigned Burrow withdraw review; your NEAR wallet
+  signs. No custody.
+- **Rhea cross-chain (079):** a **guided review** only. It lists the documented Rhea SDK paths
+  (`relayer`, `nearMcaWithdrawTx`) first and the Rhea app link-out last, and states
+  `nep413IsTransaction=false`, `custodian=null`, `signedBySparkPoint=false`. A link-out is not a
+  SparkPoint-signed transaction.
+- **Rhea preview (071):** an external link to `app.rhea.finance`.
+
+No rail gives SparkPoint the ability to move, freeze or withhold a user's funds.
 
 ## Portfolio: read across chains, no network flip
 

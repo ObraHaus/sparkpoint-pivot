@@ -23,6 +23,12 @@ from ..crosschain.config import AddressKind
 from ..crosschain.oneclick import CrossChainError
 from ..earn.config import EarnConfig, default_config
 from ..earn.registry import EarnSnapshot
+from ..earn.rhea_xchain import (
+    RheaXchainDisabled,
+    RheaXchainError,
+    RheaXchainSignatureRequired,
+    xchain_surface_enabled,
+)
 from ..earn.service import EarnService, build_service_from_env
 from .errors import ApiError, ErrorCode
 from .rate_limit import SlidingWindowLimiter
@@ -69,6 +75,12 @@ class PreviewBody(BaseModel):
     amount: str = Field(min_length=1, max_length=40)
     recipient: str | None = Field(default=None, max_length=80)
     dry: bool = True
+
+
+class XChainQuoteBody(PreviewBody):
+    """079 — optional off-chain EVM ``personal_sign`` for a live first deposit."""
+
+    signature: str | None = Field(default=None, max_length=200)
 
 
 def _require_service(service: EarnService | None) -> EarnService:
@@ -252,6 +264,144 @@ async def preview_earn_vault(
             recipient=body.recipient,
             wallet=account.owner,
         )
+    except ValueError as exc:
+        raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.") from exc
+    except CrossChainError as exc:
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            "The routing service is unavailable right now.",
+        ) from exc
+    wire = outcome.block.to_wire()
+    wire["text"] = outcome.text
+    return wire
+
+
+# ── 079 — cross-chain Rhea Phase C (review + gated live commit) ────────────────────────────────
+#
+# Everything here is non-custodial. ``dry=true`` is always available and never moves funds.
+# ``dry=false`` is rejected (403) unless ``EARN_LIVE_RHEA_XCHAIN`` is on AND the 1Click key is
+# present; even then it only *prepares* an unsigned origin ERC-20 transfer. The agent never signs,
+# submits or broadcasts, and the key VALUE is never read into a response or log.
+
+
+@router.get("/earn/rhea/xchain")
+async def rhea_xchain_gate(
+    account: Annotated[AccountContext, Depends(get_account)],
+    service: Annotated[EarnService | None, Depends(get_earn_service)],
+) -> dict[str, Any]:
+    """Key-free gate metadata for the dual-access review UI (flags + key PRESENCE only)."""
+    svc = _require_service(service)
+    gate = svc.rhea_xchain_gate()
+    return {
+        **gate,
+        "appUrl": svc.config.rhea.app_url,
+        "logicContract": svc.config.rhea.logic_contract,
+        "amContract": svc.config.rhea.am_contract,
+        "origins": list(svc.config.rhea.origins),
+    }
+
+
+@router.get("/earn/rhea/xchain/withdraw")
+async def rhea_xchain_withdraw_review(
+    account: Annotated[AccountContext, Depends(get_account)],
+    service: Annotated[EarnService | None, Depends(get_earn_service)],
+) -> dict[str, Any]:
+    """The honest withdraw review (documented paths, link-out last). Nothing is signable.
+
+    Hidden (404) like 078's server-gated routes when neither cross-chain flag is on, so a browser
+    cannot reach the review surface on a deployment where the feature is disabled.
+    """
+    if not xchain_surface_enabled():
+        raise ApiError(ErrorCode.NOT_FOUND, "Not found.")
+    svc = _require_service(service)
+    return svc.rhea_xchain_withdraw_review()
+
+
+@router.get("/earn/rhea/xchain/status")
+async def rhea_xchain_status(
+    depositAddress: Annotated[str, Query(min_length=8, max_length=120)],
+    account: Annotated[AccountContext, Depends(get_account)],
+    wallet: Annotated[str, Depends(get_rhea_wallet)],
+    service: Annotated[EarnService | None, Depends(get_earn_service)],
+    limiter: Annotated[SlidingWindowLimiter, Depends(get_earn_limiter)],
+) -> dict[str, Any]:
+    """Read-only 1Click status for a deposit this caller prepared. Never submits anything."""
+    if not xchain_surface_enabled():
+        raise ApiError(ErrorCode.NOT_FOUND, "Not found.")
+    _check_limit(limiter, account)
+    svc = _require_service(service)
+    try:
+        payload = await svc.rhea_xchain_status(
+            wallet=wallet, deposit_address=depositAddress
+        )
+    except RheaXchainError as exc:
+        raise ApiError(ErrorCode.NOT_FOUND, str(exc)) from exc
+    except CrossChainError as exc:
+        raise ApiError(
+            ErrorCode.UPSTREAM_UNAVAILABLE,
+            "The routing service is unavailable right now.",
+        ) from exc
+    return {"state": "ready", "depositAddress": depositAddress, "status": payload}
+
+
+@router.post("/earn/rhea/xchain/quote")
+async def rhea_xchain_quote(
+    body: XChainQuoteBody,
+    account: Annotated[AccountContext, Depends(get_account)],
+    service: Annotated[EarnService | None, Depends(get_earn_service)],
+    limiter: Annotated[SlidingWindowLimiter, Depends(get_earn_limiter)],
+) -> dict[str, Any]:
+    """A cross-chain Rhea review (``dry=true``) or a gated ``dry=false`` live commit.
+
+    A live first deposit without ``signature`` returns ``requiresSignature=true`` plus the exact
+    message to ``personal_sign``; it does NOT call 1Click. With a signature it returns a live quote
+    and an UNSIGNED origin ERC-20 transfer plan for the user's own wallet. Never signs or sends.
+    """
+    _check_limit(limiter, account)
+    svc = _require_service(service)
+    if svc.config.chain(body.chain) is None:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown chain {body.chain!r}")
+    origin = svc.crosschain.asset(body.originKey)
+    if origin is None:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, f"unknown origin asset {body.originKey!r}")
+    if svc.get_vault(body.chain, body.vaultAddress) is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.")
+    if body.recipient:
+        receipt = svc.config.receipt_for_vault(body.vaultAddress)
+        if receipt is not None:
+            kind: AddressKind = "sol" if receipt.chain == "sol" else "evm"
+            if not is_valid_address(body.recipient, kind):
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"recipient must be {expected_address_description(kind)}",
+                )
+
+    from ..crosschain.service import amount_from_human
+
+    parsed = amount_from_human(body.amount, origin.decimals)
+    if parsed is None:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            f"amount must be a positive number with at most {origin.decimals} decimal places",
+        )
+    amount, amount_raw = parsed
+    try:
+        outcome = await svc.rhea_xchain_quote(
+            chain=body.chain,
+            address=body.vaultAddress,
+            origin_key=body.originKey,
+            amount=amount,
+            amount_raw=amount_raw,
+            wallet=account.owner,
+            dry=body.dry,
+            signature=body.signature,
+        )
+    except RheaXchainDisabled as exc:
+        raise ApiError(ErrorCode.BETA_NOT_ENABLED, str(exc)) from exc
+    except RheaXchainSignatureRequired as exc:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
+    except RheaXchainError as exc:
+        raise ApiError(ErrorCode.UPSTREAM_UNAVAILABLE, str(exc)) from exc
     except ValueError as exc:
         raise ApiError(ErrorCode.NOT_FOUND, "No earn vault at that address.") from exc
     except CrossChainError as exc:
