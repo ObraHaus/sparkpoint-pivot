@@ -7,6 +7,9 @@
       "tag": "Fixed",
       "title": "Kamino withdrawals now pass the safety check",
       "body": "Behind the scenes: the pre-sign safety check for live Kamino earn now recognises the real withdraw transaction Kamino builds (unstake, withdraw, and closing your empty share account), so a withdraw is no longer wrongly refused. Unknown instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "published_at": "2026-11-10T03:00:00Z"
+    },
+    {
       "slug": "sparky-earn-options-all-protocols-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",
