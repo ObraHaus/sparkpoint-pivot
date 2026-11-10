@@ -10,6 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1110 — Kamino withdraw_from_available guard, security)
+
+- **Kamino partial withdrawals are no longer refused when Kamino builds the `withdraw_from_available`
+  kVault instruction (`1383709baadc2239`).** Kamino's API sometimes services a withdraw entirely from
+  already-available vault liquidity and returns that variant instead of `withdraw` (`b712…`), which
+  the pre-sign guard rejected as `authority_change`, surfacing as a prod prepare `502`. The guard now
+  accepts the variant **only in withdraw mode** and only as the single kVault action, and validates
+  the fixed IDL account prefix positionally — `user` = the signer, `vault_state` = the selected
+  curated vault, `global_config` = the `["global_config"]` kVault PDA, `token_vault` = the vault's
+  allowlisted token account, `base_vault_authority` = the `["authority", vault_state]` PDA,
+  `user_token_ata` / `user_shares_ata` = the signer's canonical asset/share ATAs, `token_mint` /
+  `shares_mint` = the curated asset/share mints, the asset and share token programs (SPL Token or
+  Token-2022, asset program pinned to the curated metadata), `klend_program`, `event_authority` =
+  the `["__event_authority"]` PDA, and `program` = the kVault program. The amount must be non-zero and,
+  for a partial redeem, no greater than the verified share balance; the existing `u64::MAX` all-shares
+  rule is unchanged, as are the transfer scan, ATA create/close checks, farm guard, vault/mint
+  allowlists and authority checks. The older `withdraw` path is deliberately untouched in this PR.
+  (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoLive.test.ts`)
+
 ### Fixed (1110 — Kamino farm account guard, security)
 
 - **Kamino farm bookkeeping instructions are now validated account-by-account instead of only checking
