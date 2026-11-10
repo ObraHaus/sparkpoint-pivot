@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (076/078 — NEAR reads use a working default RPC)
+
+- **The built-in NEAR mainnet RPC (`https://rpc.mainnet.near.org`) now answers every request with
+  HTTP 429 "THIS ENDPOINT IS DEPRECATED! STOP USING IT NOW!", which broke every read-only NEAR call
+  (Rhea same-chain preflight, login key check, block lookups) whenever no override was configured.**
+  The default is now NEAR's FastNear public endpoint (`https://free.rpc.fastnear.com`); testnet is
+  unchanged, and `NEAR_RPC_URL` / `NEXT_PUBLIC_NEAR_RPC_URL` still override both.
+  (`apps/web/src/lib/near/network.ts`, `apps/web/src/lib/near/rpc.ts`)
+
 ### Changed (081 — demo docs clarify beta deploy)
 
 - **Demo/hackathon docs now state that `beta.sparkpoint.io` is the production Coolify web app from `main`.** There is no separate develop web environment; merging to `develop` alone does not update beta. (`docs/demo/`, Sparky knowledge seeds/tips)

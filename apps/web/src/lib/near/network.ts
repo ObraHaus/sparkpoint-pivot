@@ -41,3 +41,18 @@ export function parseNearRpcUrl(value: string | null | undefined): string | unde
 export function nearRpcUrlFromEnv(): string | undefined {
   return parseNearRpcUrl(process.env.NEXT_PUBLIC_NEAR_RPC_URL);
 }
+
+/**
+ * The built-in read-only RPC per network.
+ *
+ * `https://rpc.mainnet.near.org` now answers every request with HTTP 429
+ * ("THIS ENDPOINT IS DEPRECATED! STOP USING IT NOW!") — verified on 2026-11-10 while running the
+ * funded Rhea test — so the mainnet default is NEAR's FastNear public endpoint. An operator can
+ * always override it with `NEAR_RPC_URL` / `NEXT_PUBLIC_NEAR_RPC_URL`.
+ */
+export const DEFAULT_NEAR_MAINNET_RPC = "https://free.rpc.fastnear.com";
+export const DEFAULT_NEAR_TESTNET_RPC = "https://rpc.testnet.near.org";
+
+export function defaultNearRpcUrl(network: NearNetwork): string {
+  return network === "testnet" ? DEFAULT_NEAR_TESTNET_RPC : DEFAULT_NEAR_MAINNET_RPC;
+}
