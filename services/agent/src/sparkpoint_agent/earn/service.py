@@ -41,6 +41,7 @@ from .rhea import (
     RheaRpcError,
     RheaViews,
     custom_recipient_msg,
+    dapp_registration_fee_amount,
     fee_string,
     human_string,
     mca_fee_amount,
@@ -616,6 +617,7 @@ class EarnService:
             lookup_failed = True
         first_deposit = mca is None
         fee_amount = Decimal(0)
+        dapp_fee_amount = Decimal(0)
         one_time_fee: dict[str, Any] | None = None
         if first_deposit:
             try:
@@ -623,10 +625,18 @@ class EarnService:
             except RheaRpcError:
                 fees = {}
             fee_amount = mca_fee_amount(fees, asset, rhea.mca_fee_fallback)
+            # Multica also charges a DApp registration fee in the same receipt; the preview must
+            # disclose and subtract it or the "net supplied" is a 0.30-USDC lie (found in a funded
+            # cross-chain test on 2026-11-10).
+            dapp_fee_amount = dapp_registration_fee_amount(
+                asset, rhea.dapp_registration_fee_fallback
+            )
             one_time_fee = {
-                "amount": fee_string(fee_amount),
+                "amount": fee_string(fee_amount + dapp_fee_amount),
                 "symbol": asset.symbol,
-                "reason": "one-time Rhea account fee — first deposit only",
+                "reason": (
+                    "one-time Rhea account fee plus DApp registration fee — first deposit only"
+                ),
             }
 
         requires_signature = False
@@ -680,7 +690,7 @@ class EarnService:
 
         human = _human(amount)
         out_amount = _decimal(quote.amount_out_formatted) if quote is not None else None
-        net = (out_amount - fee_amount) if out_amount is not None else None
+        net = (out_amount - fee_amount - dapp_fee_amount) if out_amount is not None else None
         eta = (
             f"about {max(1, round(quote.time_estimate_sec / 60))} min"
             if quote is not None and quote.time_estimate_sec
@@ -715,8 +725,8 @@ class EarnService:
             "stale": self.registry.is_stale(),
         }
         fee_line = (
-            f" A one-time {fee_string(fee_amount)} {asset.symbol} Rhea account fee applies on "
-            "this first deposit."
+            f" A one-time {fee_string(fee_amount + dapp_fee_amount)} {asset.symbol} Rhea account "
+            "+ DApp registration fee applies on this first deposit."
             if first_deposit
             else ""
         )
@@ -827,13 +837,15 @@ class EarnService:
             fee_asset = next(iter(rhea.enabled_assets()), None)
             fee_value = (
                 mca_fee_amount({}, fee_asset, rhea.mca_fee_fallback)
+                + dapp_registration_fee_amount(fee_asset, rhea.dapp_registration_fee_fallback)
                 if fee_asset is not None
-                else Decimal("0.30")
+                else Decimal("0.60")
             )
             fee_symbol = fee_asset.symbol if fee_asset is not None else "USDC"
             explainer = (
                 "You don't have a Rhea account yet. Your first deposit creates one (a one-time "
-                f"{fee_string(fee_value)} {fee_symbol} fee) and starts earning on NEAR."
+                f"{fee_string(fee_value)} {fee_symbol} account + DApp registration fee) and "
+                "starts earning on NEAR."
             )
             return EarnOutcome(
                 text=(

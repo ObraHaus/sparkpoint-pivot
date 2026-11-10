@@ -39,6 +39,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   The default is now NEAR's FastNear public endpoint (`https://free.rpc.fastnear.com`); testnet is
   unchanged, and `NEAR_RPC_URL` / `NEXT_PUBLIC_NEAR_RPC_URL` still override both.
   (`apps/web/src/lib/near/network.ts`, `apps/web/src/lib/near/rpc.ts`)
+### Fixed (071/079 — the Rhea first-deposit preview now shows both one-time fees)
+
+- **A funded cross-chain Rhea deposit proved the first-deposit cost was understated by 0.30 USDC.**
+  Multica charges two one-off fees in the same receipt — `collect_create_mca_fee` and
+  `collect_dapp_registration_fee`, 0.30 + 0.30 USDC — but only the create-MCA fee has a public view
+  (`get_create_mca_fee_paged`), so the preview said "one-time 0.30 USDC" and a net supplied 0.30
+  higher than reality (a 0.999798 USDC deposit supplied 0.399798, not 0.699798). The preview now
+  discloses the DApp registration fee (documented fallback per symbol, configurable via
+  `rhea.dapp_registration_fee_fallback`), subtracts both from the net supplied, and says
+  "account + DApp registration fee". The empty-positions explainer and the vault fee note carry the
+  same total, and the shared web/agent fixtures + golden evals were updated.
+  (`services/agent/src/sparkpoint_agent/earn/{config,rhea,service,rails}.py`,
+  `services/agent/src/sparkpoint_agent/earn/earn.json`, `packages/shared/tests/fixtures/earn/`,
+  `services/agent/evals/golden.yaml`, `docs/demo/072-hackathon-demo.md`)
 
 ### Changed (081 — demo docs clarify beta deploy)
 
