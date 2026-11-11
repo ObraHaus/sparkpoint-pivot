@@ -32,7 +32,7 @@ import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/m
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { strategiesNavVisible } from "@/lib/strategies/navVisibility";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
-import { DEFAULT_CHAIN_ID, resolveChainId } from "@/lib/agent/identity";
+import { resolveAgentIdentity } from "@/lib/agent/identity";
 import { PortfolioOverviewBlockSchema, type PortfolioOverviewBlock } from "@sparkpoint/shared/schemas";
 import {
   toOutcomesView,
@@ -67,28 +67,13 @@ export function useAgentIdentity(): AgentIdentity | null {
   // 076 — a NEAR-only session has no wagmi account. The BFF derives identity from the verified
   // session anyway; this keeps the client hooks "online" and gives them a stable query key.
   const { session } = useSession();
-  return useMemo<AgentIdentity | null>(() => {
-    if (!address && session?.chain === "near") {
-      return {
-        account: session.address,
-        owner: session.address,
-        chainId: DEFAULT_CHAIN_ID,
-        authChain: "near",
-      };
-    }
-    if (!address) return null;
-    // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the
-    // service token server-side, so the browser never holds a credential (§1.2).
-    // 029: `?? DEFAULT` does NOT catch NaN — wagmi reported NaN mid-reconnect and the client
-    // sent `x-chain-id: NaN` on every request, which the agent refuses (and the refusal was
-    // rendered as an assistant message). resolveChainId covers absent/NaN/unsupported alike.
-    return {
-      account: address,
-      owner: address,
-      chainId: resolveChainId(chainId),
-      authChain: "evm",
-    };
-  }, [address, chainId, session]);
+  // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the service token
+  // server-side, so the browser never holds a credential (§1.2). The mapper also covers a
+  // server-verified NEAR session (no wagmi account) and the 029 NaN-chain guard.
+  return useMemo<AgentIdentity | null>(
+    () => resolveAgentIdentity(address, chainId, session),
+    [address, chainId, session],
+  );
 }
 
 export interface AgentConnection {

@@ -42,8 +42,9 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <NetworkProvider>
-            {/* 075 — a separate client-side NEAR connection (Meteor first). It never touches the
-                EVM/SIWE session; its account id is a claim, never server authentication. */}
+            {/* 075/076 — the NEAR wallet connection (Meteor first). The connection itself never
+                touches the EVM/SIWE session; signing in with NEP-413 creates a separate verified
+                NEAR session. Before that sign-in the account id is only a client-side claim. */}
             <NearWalletProvider>
               <OverlayProvider>
                 {children}

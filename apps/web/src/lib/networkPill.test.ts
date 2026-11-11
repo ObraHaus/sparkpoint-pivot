@@ -51,3 +51,15 @@ test("settling and wrong-network states win over the NEAR suffix", () => {
     "Unsupported network",
   );
 });
+
+test("a verified NEAR session shows NEAR, never Unsupported network", () => {
+  assert.equal(
+    networkPillLabel({
+      networkSettling: false,
+      wrongNetwork: false,
+      networkName: "NEAR",
+      nearAccountId: null,
+    }),
+    "NEAR",
+  );
+});

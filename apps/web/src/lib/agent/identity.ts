@@ -44,3 +44,45 @@ export function resolveChainId(raw: unknown, fallback: number = DEFAULT_CHAIN_ID
   if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
   return isSupportedChain(n) ? n : fallback;
 }
+
+/**
+ * 076/1111 — the agent identity for the current browser state.
+ *
+ * A server-verified NEAR session has no wagmi account, but it IS a signed-in identity the agent
+ * scopes reads to. Mapping it here keeps `useAgentClient()` non-null (so no "Demo mode" banner and
+ * live replies work) while still sending `authChain: "near"` so EVM-only reads stay disabled
+ * server-side. Never invents an EVM address for a NEAR account.
+ */
+export interface AgentIdentitySession {
+  readonly address: string;
+  readonly chain: "evm" | "near";
+}
+
+export interface ResolvedAgentIdentity {
+  readonly account: string;
+  readonly owner: string;
+  readonly chainId: number;
+  readonly authChain: "evm" | "near";
+}
+
+export function resolveAgentIdentity(
+  address: string | undefined | null,
+  rawChainId: unknown,
+  session: AgentIdentitySession | null | undefined,
+): ResolvedAgentIdentity | null {
+  if (!address && session?.chain === "near") {
+    return {
+      account: session.address,
+      owner: session.address,
+      chainId: DEFAULT_CHAIN_ID,
+      authChain: "near",
+    };
+  }
+  if (!address) return null;
+  return {
+    account: address,
+    owner: address,
+    chainId: resolveChainId(rawChainId),
+    authChain: "evm",
+  };
+}

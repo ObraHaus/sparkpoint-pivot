@@ -3,18 +3,24 @@
 /**
  * 075 — the connected NEAR account on portfolio surfaces.
  *
- * 072 has no NEAR-account input or NEAR-balance read path (its Rhea read is scoped to the session
- * EVM wallet's MCA), so this is an honest display with a "balances coming soon" note — never an
- * invented NEAR balance. The id is a client-side claim and is not server authentication.
+ * There is still no NEAR wallet-token balance read, so balances are not shown (never invented).
+ * Rhea positions are read for a NEAR NEP-413 session's account id directly. Before sign-in the
+ * local Meteor account is only a client-side claim; the note says which state it is in.
  */
 
-import { truncateNearAccount } from "@/lib/near/account";
+import { nearPortfolioNote, truncateNearAccount } from "@/lib/near/account";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { useSession } from "@/lib/auth/useSiwe";
 
 const MUTED = "var(--muted-foreground)";
 
 export function NearWalletPortfolioLine() {
-  const { accountId } = useNearWallet();
+  const { accountId: localAccountId } = useNearWallet();
+  const { session } = useSession();
+  // 1111 — a server-verified NEAR session is a real sign-in. The local Meteor connection may not
+  // be restored on every device, so fall back to the session's account for display only.
+  const verifiedNear = session?.chain === "near";
+  const accountId = localAccountId ?? (verifiedNear ? session?.address ?? null : null);
   return (
     <div
       data-testid="near-portfolio-account"
@@ -54,10 +60,7 @@ export function NearWalletPortfolioLine() {
           </span>
         )}
       </div>
-      <div data-testid="near-portfolio-note">
-        NEAR balances are coming soon. Rhea positions are read through your connected EVM wallet.
-        Your NEAR account is a client-side claim, never server authentication.
-      </div>
+      <div data-testid="near-portfolio-note">{nearPortfolioNote(verifiedNear)}</div>
     </div>
   );
 }

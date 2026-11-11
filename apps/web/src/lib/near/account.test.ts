@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isValidNearAccountId, truncateNearAccount } from "./account.ts";
+import { isValidNearAccountId, nearPortfolioNote, truncateNearAccount } from "./account.ts";
 
 const IMPLICIT = "93a4f6f8c1a9d3b7e2f5a8c4d6b1e9f3a7c2d8b5e4f1a6c9d3b7e2f5a8c4d6b1";
 
@@ -37,4 +37,18 @@ test("truncation keeps short named ids whole and shortens long implicit ids", ()
   assert.equal(truncateNearAccount(IMPLICIT), "93a4f6f8c1…c4d6b1");
   assert.equal(truncateNearAccount("abcdefghijklmnopqrstuvwxyz"), "abcdefghij…uvwxyz");
   assert.equal(truncateNearAccount("", 4, 2), "");
+});
+
+test("portfolio note: a NEP-413 sign-in is not called a client-side claim", () => {
+  const verified = nearPortfolioNote(true);
+  assert.match(verified, /verified with NEP-413/);
+  assert.match(verified, /not a client-side claim/);
+  assert.doesNotMatch(verified, /never server authentication/);
+  assert.match(verified, /Rhea positions are read for this NEAR account/);
+});
+
+test("portfolio note: the pre-sign-in local connection is still only a claim", () => {
+  const unverified = nearPortfolioNote(false);
+  assert.match(unverified, /only a local wallet connection, not a verified sign-in/);
+  assert.match(unverified, /Sign in with NEP-413/);
 });

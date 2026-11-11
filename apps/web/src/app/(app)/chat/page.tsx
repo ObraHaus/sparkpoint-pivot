@@ -75,6 +75,8 @@ import { useVault } from "@/lib/chain/useVault";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { chainName } from "@sparkpoint/shared/chains";
 import { derivePortfolio } from "@/lib/portfolio/derive";
+import { useNetwork } from "@/lib/network";
+import { railPortfolioNote, railShowsMockPreview } from "@/lib/portfolio/liveState";
 import "@/components/screens/chat.css";
 
 /** Read the deployed vault on Base Sepolia even before a wallet connects (mirrors portfolio/page). */
@@ -320,6 +322,7 @@ export default function ChatPage() {
   // shows a dash + honest note. Unrealized PnL comes from the agent's flow index and only when
   // it's live and non-stale (avoids the phantom-PnL window flagged in the R5 audit).
   const { isConnected: railConnected } = useAccount();
+  const { nearSignedIn: railNearSignedIn } = useNetwork();
   const railVault = useVault({ chainId: railConnected ? undefined : CHAT_DISPLAY_CHAIN_ID });
   const railEth = useBalance({
     address: railVault.account,
@@ -336,7 +339,12 @@ export default function ChatPage() {
     railConnected && !railWrongNetwork && (railVault.isLoading || (railEth.isLoading && !!railVault.account));
   const railError = railConnected && !railWrongNetwork && !railLoading && railVault.isError;
   const railLive = railConnected && railVault.isDeployed && !railLoading && !railError && !railWrongNetwork;
-  const railPreview = !railConnected;
+  // A verified NEAR session is signed in but has no EVM wallet: never show the illustrative
+  // preview figure, and never pretend the EVM vault position is readable.
+  const railPreview = railShowsMockPreview({
+    evmConnected: railConnected,
+    nearSignedIn: railNearSignedIn,
+  });
   const railAgent = usePortfolioView();
   const mandate = useMandate();
   const railUnrealized = railLive && railAgent && !railAgent.stale ? railAgent.unrealizedUsd : undefined;
@@ -1457,7 +1465,9 @@ export default function ChatPage() {
               {mandate.status === "loading"
                 ? "Loading your plan…"
                 : mandate.status === "disconnected"
-                  ? "Connect to see your plan."
+                  ? railNearSignedIn
+                    ? "Your NEAR sign-in is active — the plan read is unavailable right now."
+                    : "Sign in to see your plan."
                   : "Plan unavailable right now."}
             </div>
           )}
@@ -1478,13 +1488,12 @@ export default function ChatPage() {
             </div>
           ) : (
             <div style={{ fontSize: 11.5, color: "var(--muted-foreground)", marginTop: 3 }}>
-              {railPreview
-                ? "Preview — connect for your position"
-                : railLive
-                  ? "USDC · vault + wallet"
-                  : railLoading
-                    ? "…"
-                    : "Position unavailable right now"}
+              {railPortfolioNote({
+                nearSignedIn: railNearSignedIn,
+                preview: railPreview,
+                live: railLive,
+                loading: railLoading,
+              })}
             </div>
           )}
         </div>

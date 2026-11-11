@@ -774,6 +774,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **No testnet/faucet copy on the beta.** The testnet funding tip and the vault tips are gone; the SRK page no longer offers a faucet, states that SRK is a placeholder token, and links to its Pons launchpad.
 - **The Sparky Broker page links to OpenSea** and says the collection is a placeholder for testing.
 
+### Fixed (1111-nearui — truthful NEAR-signed-in UI)
+
+- **A verified NEAR session now renders as signed in.** The network pill shows `NEAR` (not
+  "Unsupported network"), the account label shows the NEAR account (not "Not connected"), and the
+  chat sidebar no longer shows the illustrative `$12,184.42` preview: it says the vault position is
+  EVM-only and to connect an EVM wallet. The chat Demo banner remains tied to the agent client
+  (`useAgentClient` is non-null for a NEAR session, so live replies are used), and EVM-only actions
+  still require an EVM wallet — a NEAR session is never presented as one. `/portfolio` copy and the
+  "Across chains" note now state that NEP-413 is server-verified, and the Phase C Solana hint is no
+  longer shown for the NEAR/EVM-only sections. (`apps/web/src/lib/{network.tsx,networkPill.ts,
+  auth/viewerState.ts,portfolio/liveState.ts}`, `apps/web/src/components/{shell/TopBar.tsx,
+  overlays/OverlayProvider.tsx,near/NearWalletPortfolioLine.tsx,
+  screens/chat/portfolio-overview-card.tsx}`, `apps/web/src/app/(app)/{chat,portfolio}/page.tsx`)
+
 ## [0.3.0] — 2026-09-18 — Beta launch (Robinhood Chain)
 
 ### Added
