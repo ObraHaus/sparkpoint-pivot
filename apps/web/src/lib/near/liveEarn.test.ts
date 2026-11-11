@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   RHEA_LIVE_ENV_NAMES,
   RHEA_LIVE_MARKET,
+  amountAfterActionChange,
   confirmBlocker,
   confirmBlockerCopy,
   formatNearYocto,
@@ -105,6 +106,23 @@ test("review lines show the signer, contract, token, balances and freshness", ()
   assert.match(byKey.freshness, /223700000/);
   assert.equal(byKey.storage, undefined);
   assert.equal(byKey.supplied, undefined);
+});
+
+test("switching Supply and Withdraw clears the other tab's amount", () => {
+  assert.equal(amountAfterActionChange("supply", "withdraw", "0.05"), "");
+  assert.equal(amountAfterActionChange("withdraw", "supply", "10"), "");
+  assert.equal(amountAfterActionChange("supply", "supply", "25"), "25");
+});
+
+test("withdraw review reads as money received, never a negative debit", () => {
+  const lines = reviewLines({ ...review, action: "withdraw", amount: "-0.05", supplied: "0.05" });
+  const byKey = Object.fromEntries(lines.map((line) => [line.key, line.value]));
+  assert.equal(byKey.amount, "0.05 USDC to your wallet");
+  assert.doesNotMatch(byKey.amount, /^-/);
+  assert.match(byKey.amount, /to your wallet/);
+  const supply = reviewLines({ ...review, action: "supply", amount: "-0.05" });
+  const supplyByKey = Object.fromEntries(supply.map((line) => [line.key, line.value]));
+  assert.equal(supplyByKey.amount, "0.05 USDC");
 });
 
 test("withdraw review adds the supplied balance and storage notice when applicable", () => {

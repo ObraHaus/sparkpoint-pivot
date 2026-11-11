@@ -17,6 +17,7 @@ import {
   formatUsdc,
   planIsFresh,
   refusedWalletSwitch,
+  withdrawAmountText,
 } from "./burrow.ts";
 
 export function parseLiveFlag(value: string | null | undefined): boolean {
@@ -45,6 +46,15 @@ export const RHEA_LIVE_MARKET = {
 } as const;
 
 export type LiveEarnAction = "supply" | "withdraw";
+
+/** Switching Supply ↔ Withdraw must never carry the previous tab's amount into the new one. */
+export function amountAfterActionChange(
+  previous: LiveEarnAction,
+  next: LiveEarnAction,
+  current: string,
+): string {
+  return previous === next ? current : "";
+}
 
 export interface ReviewAck {
   readonly acknowledged: boolean;
@@ -111,12 +121,19 @@ export interface PreflightReview {
 }
 
 export function reviewLines(review: PreflightReview): ReviewLine[] {
+  const amount = withdrawAmountText(review.amount);
   const lines: ReviewLine[] = [
-    { key: "action", label: "Action", value: review.action === "supply" ? "Supply USDC to Burrow/Rhea" : "Withdraw USDC from Burrow/Rhea" },
-    { key: "amount", label: "Amount", value: `${review.amount} USDC` },
+    {
+      key: "action",
+      label: "Action",
+      value: review.action === "supply" ? "Supply USDC to Rhea" : "Withdraw USDC from Rhea",
+    },
+    review.action === "withdraw"
+      ? { key: "amount", label: "You receive", value: `${amount} USDC to your wallet`, tone: "gain" }
+      : { key: "amount", label: "You supply", value: `${amount} USDC` },
     { key: "account", label: "Signing NEAR account", value: review.accountId },
-    { key: "contract", label: "Burrow contract", value: review.contract },
-    { key: "token", label: "Token (NEP-141)", value: review.token },
+    { key: "contract", label: "Rhea contract", value: review.contract },
+    { key: "token", label: "USDC token", value: review.token },
     { key: "token-balance", label: "Wallet USDC balance", value: `${review.tokenBalance} USDC` },
     {
       key: "near-balance",
