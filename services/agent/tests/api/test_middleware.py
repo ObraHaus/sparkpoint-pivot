@@ -170,3 +170,90 @@ async def test_idempotency_store_replays_first_write() -> None:
     await store.put(idem_key, StoredResponse(200, "application/json", b'{"ok":false}'))
     again = await store.get(idem_key)
     assert again is not None and again.body == b'{"ok":true}'
+
+
+# ── 1113 — EVM SIWE + cross-chain source-chain headers ─────────────────────────────────────────
+#
+# The reported defect: a wallet SIWE-signed on Robinhood (4663) then switched to Base (8453) for a
+# 1Click swap. "Get deposit address" sent no X-Chain-Id at all, so this gate rejected it before
+# 1Click was asked. The agent never compares the header chain to the SIWE chain (it has no session
+# chain); it only requires a SUPPORTED chain id and an EVM-shaped account. The web unit tests cover
+# "session 4663 + source 8453"; these prove the gate accepts that exact on-the-wire combination.
+
+EVM_CHECKSUM = "0xBddA41D11014FdD9a656386e29Af1a1349f94f13"
+EVM_LOWER = EVM_CHECKSUM.lower()
+
+
+def _evm_headers(
+    chain_id: str = "8453",
+    account: str = EVM_CHECKSUM,
+    owner: str = EVM_LOWER,
+) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": account,
+        "X-Owner": owner,
+        "X-Chain-Id": chain_id,
+        "X-Auth-Chain": "evm",
+    }
+
+
+def test_evm_robinhood_session_can_request_a_base_source_chain(client: TestClient) -> None:
+    """SIWE proved the account on 4663; the swap source (X-Chain-Id) is Base 8453."""
+    resp = client.get("/crosschain/assets", headers=_evm_headers("8453"))
+    assert resp.status_code == 200
+
+
+def test_evm_base_session_can_request_a_base_source_chain(client: TestClient) -> None:
+    resp = client.get("/crosschain/assets", headers=_evm_headers("8453"))
+    assert resp.status_code == 200
+
+
+def test_checksum_account_with_lowercase_owner_is_accepted(client: TestClient) -> None:
+    """Same address, different EIP-55 casing — accepted (hex compare is case-insensitive)."""
+    resp = client.get(
+        "/crosschain/assets",
+        headers=_evm_headers(account=EVM_CHECKSUM, owner=EVM_LOWER),
+    )
+    assert resp.status_code == 200
+    resp = client.get(
+        "/crosschain/assets",
+        headers=_evm_headers(account=EVM_LOWER, owner=EVM_CHECKSUM),
+    )
+    assert resp.status_code == 200
+
+
+def test_near_session_can_request_a_crosschain_read(client: TestClient) -> None:
+    """076 — a NEP-413 session keeps working for the (chain-agnostic) cross-chain read."""
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Account": "sparkpoint2026.near",
+        "X-Owner": "sparkpoint2026.near",
+        "X-Chain-Id": "8453",
+        "X-Auth-Chain": "near",
+    }
+    resp = client.get("/crosschain/assets", headers=headers)
+    assert resp.status_code == 200
+
+
+def test_missing_chain_id_is_still_rejected(client: TestClient) -> None:
+    """The exact regression: no X-Chain-Id must never be silently accepted."""
+    headers = _evm_headers()
+    del headers["X-Chain-Id"]
+    resp = client.get("/crosschain/assets", headers=headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
+
+def test_caip_chain_id_format_is_rejected(client: TestClient) -> None:
+    """Only the decimal chain id is the wire contract (`eip155:8453` is not)."""
+    resp = client.get("/crosschain/assets", headers=_evm_headers("eip155:8453"))
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
+
+def test_malformed_evm_account_is_still_rejected(client: TestClient) -> None:
+    resp = client.get("/crosschain/assets", headers=_evm_headers(account="0x1234"))
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ACCOUNT_HEADERS_INVALID"
+
