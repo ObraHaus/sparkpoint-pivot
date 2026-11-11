@@ -704,6 +704,14 @@
       "title": "SparkPoint beta is live on Robinhood Chain",
       "body": "The beta is open at beta.sparkpoint.io on Robinhood Chain. Connect a wallet, sign a message to prove it is yours (nothing on-chain moves), and you can:\n\n• chat with Sparky about your portfolio;\n• swap ETH and USDG on the network's own Uniswap V3;\n• if you hold a Sparky Broker, clock it in and collect its share of trading revenue — promote or fuse brokers too.\n\nThe swap charges the advertised 0.20% fee, and the confirm screen shows the exact amount and where it goes before you sign. Everything is non-custodial: you sign from your own wallet, and SparkPoint never holds your funds.\n\nThis is a beta — the token and the collection are test assets. Try it, and tell us what to improve.",
       "published_at": "2026-09-18T07:21:00Z"
+    },
+    {
+      "slug": "session-loading-neutral-preview-1111-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "No more sample portfolio or Demo banner while we check your sign-in",
+      "body": "Behind the scenes: when the app opens, it checks with the server whether you are already signed in with a NEAR wallet. During that brief check it used to assume you were signed out, so a NEAR-signed-in visitor could see a sample portfolio figure that was not theirs, prompts to connect a wallet, and the chat's \"Demo mode\" banner. The app now waits for that check to finish and shows a neutral loading state first: no sample figures, no connect prompts and no Demo banner until it knows. If you are signed out it still shows the signed-out preview and Demo mode exactly as before; if you are signed in with NEAR you go straight to your real session. EVM wallet behaviour is unchanged, and nothing about signing or custody changes.",
+      "published_at": "2026-11-11T08:00:00Z"
     }
   ]
 }

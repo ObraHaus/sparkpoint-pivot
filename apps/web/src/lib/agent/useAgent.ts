@@ -32,7 +32,7 @@ import { classifyMandateSaveError, type MandateSaveOutcome } from "@/lib/agent/m
 import { toRecView, type RecView, type RecommendationDto } from "@/lib/agent/recView";
 import { strategiesNavVisible } from "@/lib/strategies/navVisibility";
 import { toPortfolioPnl, type PositionPnl } from "@/lib/agent/portfolioPnl";
-import { DEFAULT_CHAIN_ID, resolveChainId } from "@/lib/agent/identity";
+import { resolveAgentConnection, resolveAgentIdentity } from "@/lib/agent/identity";
 import { PortfolioOverviewBlockSchema, type PortfolioOverviewBlock } from "@sparkpoint/shared/schemas";
 import {
   toOutcomesView,
@@ -67,28 +67,13 @@ export function useAgentIdentity(): AgentIdentity | null {
   // 076 — a NEAR-only session has no wagmi account. The BFF derives identity from the verified
   // session anyway; this keeps the client hooks "online" and gives them a stable query key.
   const { session } = useSession();
-  return useMemo<AgentIdentity | null>(() => {
-    if (!address && session?.chain === "near") {
-      return {
-        account: session.address,
-        owner: session.address,
-        chainId: DEFAULT_CHAIN_ID,
-        authChain: "near",
-      };
-    }
-    if (!address) return null;
-    // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the
-    // service token server-side, so the browser never holds a credential (§1.2).
-    // 029: `?? DEFAULT` does NOT catch NaN — wagmi reported NaN mid-reconnect and the client
-    // sent `x-chain-id: NaN` on every request, which the agent refuses (and the refusal was
-    // rendered as an assistant message). resolveChainId covers absent/NaN/unsupported alike.
-    return {
-      account: address,
-      owner: address,
-      chainId: resolveChainId(chainId),
-      authChain: "evm",
-    };
-  }, [address, chainId, session]);
+  // Identity ONLY — no bearer. The same-origin BFF (`/api/agent`) injects the service token
+  // server-side, so the browser never holds a credential (§1.2). The mapper also covers a
+  // server-verified NEAR session (no wagmi account) and the 029 NaN-chain guard.
+  return useMemo<AgentIdentity | null>(
+    () => resolveAgentIdentity(address, chainId, session),
+    [address, chainId, session],
+  );
 }
 
 export interface AgentConnection {
@@ -97,24 +82,34 @@ export interface AgentConnection {
   /** `true` iff a wallet identity is resolved (the BFF is always same-origin reachable). */
   online: boolean;
   identity: AgentIdentity | null;
+  /**
+   * The server session is still being fetched and no EVM wallet is connected. Consumers must
+   * show a neutral loading state — NOT the signed-out "Demo mode"/preview — until this is false.
+   */
+  loading: boolean;
 }
 
 /**
  * Resolve the agent client for the current identity. The client targets the
  * same-origin BFF (`/api/agent`) — there is no client-side base-URL override. Returns
  * `client: null` (and
- * `online: false`) until a wallet is connected — the signal every surface uses to
+ * `online: false`) until a wallet identity is connected — the signal every surface uses to
  * fall back to its mock rendering. An agent that is down does NOT read as offline
  * here: the call still fires and the BFF's error envelope surfaces as an error card.
  */
 export function useAgentClient(): AgentConnection {
-  const identity = useAgentIdentity();
+  const { address, chainId } = useAccount();
+  const { session } = useSession();
+  const { loading, identity } = useMemo(
+    () => resolveAgentConnection(address, chainId, session),
+    [address, chainId, session],
+  );
   const client = useMemo<AgentClient | null>(() => {
     if (!identity) return null;
     // Always the same-origin BFF (`/api/agent`) — no client-side base-URL override exists.
     return createAgentClient({ identity });
   }, [identity]);
-  return { client, online: client !== null, identity };
+  return { client, online: client !== null, identity, loading };
 }
 
 /* ── small parse helpers (defensive; the wire is validated fail-closed elsewhere) ─ */
@@ -225,7 +220,7 @@ export interface MultichainPortfolioState {
  * validated fail-closed against the same shared schema the chat block uses.
  */
 export function useMultichainPortfolio(): MultichainPortfolioState {
-  const { client, online, identity } = useAgentClient();
+  const { client, online, identity, loading: sessionLoading } = useAgentClient();
   const query = useQuery({
     queryKey: ["agent", "portfolio", "multichain", identity?.account, identity?.chainId],
     enabled: online,
@@ -243,7 +238,9 @@ export function useMultichainPortfolio(): MultichainPortfolioState {
 
   return {
     block: query.data ?? null,
-    loading: online && query.isLoading,
+    // While the session is still resolving we are neither offline nor loading real data — but a
+    // neutral loading state is the honest render (never the signed-out connect prompt).
+    loading: sessionLoading || (online && query.isLoading),
     error: query.error ? query.error.message : null,
     online,
     refetch: () => void query.refetch(),
@@ -757,7 +754,7 @@ export type MandateState =
  * GET carries no body, so the BFF's GET forward handles it. Advisory only (non-custody).
  */
 export function useMandate(): MandateState {
-  const { client, online, identity } = useAgentClient();
+  const { client, online, identity, loading } = useAgentClient();
   const query = useQuery({
     queryKey: ["agent", "mandate", identity?.account, identity?.chainId],
     enabled: online,
@@ -766,6 +763,9 @@ export function useMandate(): MandateState {
     queryFn: ({ signal }) => client!.request<MandateResponse>("/mandate", { signal }),
   });
 
+  // Session still resolving with no wallet: no plan read is possible yet, but this is not the
+  // honest "disconnected" state — show loading so the card never prompts to sign in mid-fetch.
+  if (loading) return { status: "loading" };
   if (!online) return { status: "disconnected" };
   if (query.isLoading) return { status: "loading" };
   if (query.isError) return { status: "error" };

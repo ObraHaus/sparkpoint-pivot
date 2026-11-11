@@ -36,3 +36,24 @@ export function truncateNearAccount(value: string, head = 10, tail = 6): string 
   if (candidate.length <= Math.max(24, head + tail + 1)) return candidate;
   return `${candidate.slice(0, head)}…${candidate.slice(-tail)}`;
 }
+
+/**
+ * 1111 — the truthful note under the NEAR account on the portfolio surfaces.
+ *
+ * A NEP-413 sign-in is server-verified by SparkPoint, so the old blanket "client-side claim, never
+ * server authentication" copy was false for it. Before sign-in the local Meteor connection is still
+ * only a claim, and the wording says exactly that. In both cases there is no NEAR wallet-token
+ * balance reader yet, so balances are not shown.
+ */
+export function nearPortfolioNote(verified: boolean): string {
+  if (verified) {
+    return (
+      "NEAR wallet balances aren't shown yet. Rhea positions are read for this NEAR account. " +
+      "This NEAR sign-in is verified with NEP-413 by SparkPoint — not a client-side claim."
+    );
+  }
+  return (
+    "NEAR wallet balances aren't shown yet. Sign in with NEP-413 to read this NEAR account's " +
+    "Rhea positions. Until then this is only a local wallet connection, not a verified sign-in."
+  );
+}

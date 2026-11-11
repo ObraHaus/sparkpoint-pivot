@@ -387,19 +387,27 @@ function MenuItem({ icon, label, onClick, style }: { icon: string; label: ReactN
 }
 
 function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: string) => void; close: () => void }) {
-  const { wallet, network, address, explorerBase, isConnected, disconnectWallet } = useNetwork();
+  const { wallet, network, address, explorerBase, isConnected, nearSignedIn, nearAccount, disconnectWallet } =
+    useNetwork();
 
   const copyAddress = () => {
     close();
-    if (!address) return toast("No wallet connected");
+    const value = address ?? nearAccount;
+    if (!value) return toast("No wallet connected");
     navigator.clipboard
-      ?.writeText(address)
+      ?.writeText(value)
       .then(() => toast("Address copied"))
       .catch(() => toast("Couldn't copy address"));
   };
   const viewOnExplorer = () => {
     close();
-    if (!address) return toast("No wallet connected");
+    if (!address) {
+      return toast(
+        nearSignedIn
+          ? "NEAR accounts don't have an EVM explorer — connect an EVM wallet to view one."
+          : "No wallet connected",
+      );
+    }
     window.open(`${explorerBase}/address/${address}`, "_blank", "noopener,noreferrer");
   };
   // §B3: the explorer differs by chain (Basescan on Base; Blockscout on Robinhood testnet) — name it
@@ -413,7 +421,16 @@ function WalletMenu({ go, toast, close }: { go: (r: string) => void; toast: (m: 
 
   return (
     <>
-      <MenuHeader title={isConnected ? `Connected · ${network.name}` : "Not connected"} sub={wallet} />
+      <MenuHeader
+        title={
+          isConnected
+            ? `Connected · ${network.name}`
+            : nearSignedIn
+              ? "Signed in · NEAR"
+              : "Not connected"
+        }
+        sub={wallet}
+      />
       <MenuItem icon="copy" label="Copy address" onClick={copyAddress} />
       <MenuItem icon="ext" label={`View on ${explorerName}`} onClick={viewOnExplorer} />
       <MenuItem icon="shieldcheck" label="View exact permissions" onClick={() => go("trust/permissions")} />
