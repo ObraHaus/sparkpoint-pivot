@@ -39,6 +39,7 @@ from ..crosschain.service import (
     CrossChainService,
     amount_from_human,
     build_service_from_env,
+    format_quote_error_amount,
     format_raw_units,
 )
 from ..db import CrossChainQuoteStore, get_database
@@ -185,7 +186,9 @@ def _unavailable_wire(
         amount_human=amount_human,
         slippage_bps=slippage_bps,
     )
-    wire["unavailableReason"] = reason
+    wire["unavailableReason"] = format_quote_error_amount(
+        reason, decimals=origin.decimals, symbol=origin.symbol
+    )
     return wire
 
 

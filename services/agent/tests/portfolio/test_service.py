@@ -8,8 +8,9 @@ from dataclasses import replace
 
 import pytest
 
-from sparkpoint_agent.portfolio.models import PortfolioSection
+from sparkpoint_agent.portfolio.models import PortfolioOverview, PortfolioRow, PortfolioSection
 from sparkpoint_agent.portfolio.service import MultichainPortfolioService
+from sparkpoint_agent.portfolio.text import render_text
 
 from .helpers import config, row, section
 
@@ -113,3 +114,97 @@ async def test_negative_swap_value_is_never_added_to_totals() -> None:
     service = _service(swaps=swaps)
     overview = await service.read(OWNER)
     assert overview.totals()["totalUsd"] is None
+
+
+# ── 1112 — totals count each priced dollar once; optional wire fields never become null ──
+
+
+@pytest.mark.asyncio
+async def test_priced_eth_and_rhea_are_each_counted_once() -> None:
+    """The live beta numbers: 0.61 USDC + 0.44 ETH on Base + 0.40 Rhea on NEAR = 1.45.
+
+    ETH is part of the 072 priced sum (the Portfolio Net worth card excludes it by design), and
+    the same Rhea row is never also rolled into the Base bucket.
+    """
+    native_eth = PortfolioRow(
+        chain="base",
+        chain_label="Base",
+        protocol="wallet",
+        kind="native",
+        symbol="ETH",
+        amount="0.000213927837960603",
+        value_usd="0.44",
+        price_source="CoinGecko",
+    )
+    base_usdc = row(symbol="USDC", amount="0.614711", value="0.61")
+    rhea = row(
+        chain="near",
+        label="NEAR",
+        protocol="rhea",
+        symbol="USDC",
+        amount="0.399983623927626587",
+        value="0.40",
+    )
+    service = _service(
+        balances=_Stub(section("balances", rows=(native_eth, base_usdc))),
+        rhea=_Stub(section("rhea", rows=(rhea,))),
+    )
+    totals = (await service.read(OWNER)).totals()
+
+    assert totals["totalUsd"] == "1.45"
+    assert totals["byChain"] == [
+        {"chain": "base", "label": "Base", "valueUsd": "1.05"},
+        {"chain": "near", "label": "NEAR", "valueUsd": "0.40"},
+    ]
+    assert totals["byProtocol"] == [
+        {"protocol": "wallet", "valueUsd": "1.05"},
+        {"protocol": "rhea", "valueUsd": "0.40"},
+    ]
+
+
+def test_row_and_section_wire_omit_absent_optionals_instead_of_null() -> None:
+    """A missing APY/status must be ABSENT, because the strict TS schema rejects null."""
+    wire = PortfolioRow(
+        chain="near",
+        chain_label="NEAR",
+        protocol="rhea",
+        kind="lending_position",
+        symbol="USDC",
+        amount="0.4",
+        value_usd="0.40",
+        extra={"apy": None, "mca": "rhea001598.multica.near"},
+    ).to_wire()
+    assert "apy" not in wire
+    assert wire["mca"] == "rhea001598.multica.near"
+
+    section_wire = PortfolioSection(
+        key="rhea",
+        label="Rhea",
+        status="ok",
+        rows=(),
+        meta={"mca": None, "appUrl": "https://app.rhea.finance/lending"},
+    ).to_wire()
+    assert "mca" not in section_wire
+    assert section_wire["appUrl"] == "https://app.rhea.finance/lending"
+
+
+def test_text_explains_why_the_priced_total_includes_eth_but_net_worth_does_not() -> None:
+    native_eth = PortfolioRow(
+        chain="base",
+        chain_label="Base",
+        protocol="wallet",
+        kind="native",
+        symbol="ETH",
+        amount="0.000213927837960603",
+        value_usd="0.44",
+        price_source="CoinGecko",
+    )
+    overview = PortfolioOverview(
+        wallet=OWNER,
+        focus="all",
+        as_of="2026-11-11T00:00:00+00:00",
+        sections=(section("balances", rows=(native_eth, row(value="0.61"))),),
+    )
+    text = render_text(overview, "all")
+    assert "That includes 0.000213927837960603 ETH (~$0.44)" in text
+    assert "excludes ETH" in text

@@ -973,6 +973,7 @@ _PERSISTED_BLOCK_TYPES = frozenset(
         "recommendation",
         "action",
         "portfolio_snapshot",
+        "portfolio_overview",
         "outcome",
         "citation",
         "crosschain_quote",
@@ -986,7 +987,15 @@ _PERSISTED_BLOCK_TYPES = frozenset(
 # ``tool_step`` / ``citation`` excluded). Used by the 054 refund path to distinguish a degraded
 # turn that ended in ``UPSTREAM_UNAVAILABLE`` from one that already answered before failing.
 _ANSWER_BLOCK_TYPES = frozenset(
-    {"text", "tip", "recommendation", "action", "portfolio_snapshot", "outcome"}
+    {
+        "text",
+        "tip",
+        "recommendation",
+        "action",
+        "portfolio_snapshot",
+        "portfolio_overview",
+        "outcome",
+    }
 )
 
 
@@ -1005,6 +1014,8 @@ def _assistant_summary(block_wire: dict[str, Any]) -> str:
         return f"[proposed action: {pa.get('type', 'action')}]"
     if t == "portfolio_snapshot":
         return "[showed your portfolio]"
+    if t == "portfolio_overview":
+        return "[showed your multi-chain portfolio]"
     if t == "earn_vaults":
         return "[showed Morpho vaults]"
     if t == "earn_quote":

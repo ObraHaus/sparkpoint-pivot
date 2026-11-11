@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1112-sparky — portfolio chat, swap minimums, portfolio totals)
+
+- **Asking Sparky "What's my portfolio?" now uses the read-only multi-chain overview instead of the
+  old chain-scoped vault snapshot.** The deterministic 072 router only recognised "show my
+  portfolio"/"multi-chain portfolio", so the plain ask fell through to the legacy snapshot path.
+  The plain "what's/what is my portfolio" phrasing now routes to the same `/portfolio/multichain`
+  read as the other 072 asks. The streamed block is also persisted/replayed like every other answer
+  card. (`services/agent/src/sparkpoint_agent/portfolio/chat.py`,
+  `services/agent/src/sparkpoint_agent/api/chat.py`)
+- **The 072 card can no longer be made inert by an absent APY/status.** Optional row and section
+  extras (e.g. Rhea `apy`, Morpho `netApy`, swap `lastStatus`/`createdAt`) were serialized as
+  literal `null`, but the shared strict TS schema declares them optional strings — so one missing
+  value failed `safeParse` and the whole overview rendered inert. Absent optional fields are now
+  omitted, exactly like the other wire models. (`services/agent/src/sparkpoint_agent/portfolio/models.py`)
+- **A 1Click bridge minimum is shown in human token units, not raw base units.** "Amount is too low
+  for bridge, try at least 150000" now reads "…try at least 0.15 USDC", using the sending asset's
+  decimals and symbol (USDC 6 / ETH 18 / SOL 9 / NEAR 24); already-human and unrelated numbers are
+  left untouched. Applied to the chat swap preview, the cross-chain quote endpoint and the
+  Morpho/Rhea 1Click earn previews — no quote math, custody or signing changed.
+  (`services/agent/src/sparkpoint_agent/crosschain/service.py`,
+  `services/agent/src/sparkpoint_agent/api/crosschain.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`)
+- **The "Net worth" and "Across chains" totals no longer look contradictory.** The `/portfolio`
+  Net worth card deliberately counts stablecoins/vault positions only (ETH is shown separately),
+  while the 072 "Priced positions" total includes priced ETH too; the panel and chat prose now say
+  so explicitly. The live read was verified: $0.61 USDC + $0.44 ETH = $1.05 Base, plus $0.40 Rhea
+  on NEAR = $1.45, with each dollar counted exactly once. A Rhea row for an EVM sign-in now states
+  it comes from the linked Multichain Account, so it no longer looks like a connected Meteor/NEAR
+  wallet. (`services/agent/src/sparkpoint_agent/portfolio/{models,rhea,text}.py`,
+  `apps/web/src/components/screens/chat/portfolio-overview-card.tsx`)
+
 ### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
 
 - **Sign-in no longer fails instantly with `4100 UnauthorizedProviderError` (no wallet prompt) after

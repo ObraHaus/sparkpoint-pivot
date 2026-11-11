@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "sparky-portfolio-and-swap-minimum-1112-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sparky reads your full portfolio, swap minimums read clearly, and the two totals are explained",
+      "body": "Behind the scenes: asking Sparky \"What's my portfolio?\" could fall back to the old single-network view instead of your full Base + Solana + NEAR read, and a missing rate or status on one holding could make the whole portfolio card fail to display. The plain question now takes the full multi-chain read, and a holding with no published rate still shows honestly without breaking the rest of the card. Separately, a cross-chain swap minimum used to be shown in raw base units (for example \"150000\"); it now reads in the asset you are sending, such as \"0.15 USDC\" or the equivalent in ETH, SOL or NEAR. Finally, the portfolio page's Net worth and the Across chains \"Priced positions\" total are intentionally different: Net worth counts stablecoins and vault positions only and shows ETH separately, while Priced positions includes priced ETH too — the panel now says this, and the live figures were checked so each dollar is counted once. A Rhea position reached through your signed-in EVM wallet also says it is read from your linked Multichain Account, so it does not look like a connected NEAR wallet. Nothing about signing or custody changes: every transaction is still reviewed and signed in your own wallet.",
+      "published_at": "2026-11-11T23:50:00Z"
+    },
+    {
       "slug": "near-signed-in-portfolio-and-ui-truth-1111-2026-11",
       "type": "changelog",
       "tag": "Fixed",
