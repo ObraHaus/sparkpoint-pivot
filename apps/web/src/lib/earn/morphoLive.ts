@@ -130,6 +130,18 @@ export function formatMorphoAmount(raw: bigint, decimals: number): string {
   return negative ? `-${text}` : text;
 }
 
+/**
+ * ERC-4626 dust: `balanceOf(owner)` can exceed `maxRedeem(owner)` (the vault's redeemable cap).
+ * `Max` must fill the SAME lower number the withdraw validation enforces, never the full balance.
+ */
+export function morphoMaxWithdrawShares(
+  shareBalance: bigint,
+  maxRedeem: bigint | null | undefined,
+): bigint {
+  if (maxRedeem === null || maxRedeem === undefined) return shareBalance;
+  return maxRedeem < shareBalance ? maxRedeem : shareBalance;
+}
+
 export interface MorphoDepositPlan {
   readonly kind: "deposit";
   readonly chainId: number;
