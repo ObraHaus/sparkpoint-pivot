@@ -85,7 +85,7 @@ export default function Page() {
   const [range, setRange] = useState("1M");
 
   const { isConnected, chainId } = useAccount();
-  const { nearSignedIn } = useNetwork();
+  const { nearSignedIn, sessionLoading } = useNetwork();
   // The chain to READ: the connected one, or the display chain before a wallet connects.
   const readChainId = isConnected ? chainId : DISPLAY_CHAIN_ID;
   const v = useVault({ chainId: isConnected ? undefined : DISPLAY_CHAIN_ID });
@@ -180,7 +180,8 @@ export default function Page() {
   const live = isConnected && !loading && !error;
   const preview = !isConnected;
   // A verified NEAR session is signed in but has no EVM wallet: no illustrative EVM preview.
-  const previewMock = preview && !nearSignedIn && VAULT_CHAIN_AVAILABLE;
+  // An unresolved session is neither — show dashes and a neutral note, not the mock figures.
+  const previewMock = preview && !nearSignedIn && !sessionLoading && VAULT_CHAIN_AVAILABLE;
 
   // §B2 DERIVED (non-custody) figures — real cost basis + unrealized PnL from the agent's on-chain
   // flow index. Custody balances above stay on direct RPC; this only fills the PnL slots. Trusted
@@ -421,7 +422,7 @@ export default function Page() {
             </div>
           ) : (
             <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
-              {loading ? "Reading your balances…" : error ? "Live figures hidden — tap Retry above." : portfolioConnectCopy({ nearSignedIn, area: "portfolio" })}
+              {loading ? "Reading your balances…" : error ? "Live figures hidden — tap Retry above." : portfolioConnectCopy({ nearSignedIn, sessionLoading, area: "portfolio" })}
             </div>
           )}
           <div className="pf-spark-area" style={{ position: "relative", minHeight: 150 }}>
@@ -442,7 +443,7 @@ export default function Page() {
               <div className="muted" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 150, fontSize: 12.5 }}>
                 {live ? "No history yet — it appears after your first deposit."
                   : loading ? "Reading your history…"
-                  : portfolioConnectCopy({ nearSignedIn, area: "history" })}
+                  : portfolioConnectCopy({ nearSignedIn, sessionLoading, area: "history" })}
               </div>
             )}
             {realChart ? (
@@ -588,7 +589,7 @@ export default function Page() {
             </div>
           ) : (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your allocation…" : error ? "Couldn’t read your allocation — tap Retry above." : portfolioConnectCopy({ nearSignedIn, area: "allocation" })}
+              {loading ? "Reading your allocation…" : error ? "Couldn’t read your allocation — tap Retry above." : portfolioConnectCopy({ nearSignedIn, sessionLoading, area: "allocation" })}
             </div>
           )}
         </div>
@@ -690,7 +691,7 @@ export default function Page() {
             </table>
           ) : (
             <div className="muted" style={{ padding: "22px 4px", fontSize: 13 }}>
-              {loading ? "Reading your positions…" : error ? "Couldn’t read your positions — tap Retry above." : portfolioConnectCopy({ nearSignedIn, area: "positions" })}
+              {loading ? "Reading your positions…" : error ? "Couldn’t read your positions — tap Retry above." : portfolioConnectCopy({ nearSignedIn, sessionLoading, area: "positions" })}
             </div>
           )}
         </div>

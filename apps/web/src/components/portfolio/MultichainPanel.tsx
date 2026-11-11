@@ -32,13 +32,13 @@ export function MultichainPanel() {
 
       <NearWalletPortfolioLine />
 
-      {!online ? (
-        <div className="muted" style={{ padding: "18px 4px", fontSize: 13 }} data-testid="multichain-offline">
-          Connect your wallet to read your multi-chain portfolio. Nothing here moves funds.
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="muted" style={{ padding: "18px 4px", fontSize: 13 }} data-testid="multichain-loading">
           Reading your balances, earn positions and swap history…
+        </div>
+      ) : !online ? (
+        <div className="muted" style={{ padding: "18px 4px", fontSize: 13 }} data-testid="multichain-offline">
+          Connect your wallet to read your multi-chain portfolio. Nothing here moves funds.
         </div>
       ) : error ? (
         <div data-testid="multichain-error" style={{ padding: "14px 4px", fontSize: 13, lineHeight: 1.55 }}>

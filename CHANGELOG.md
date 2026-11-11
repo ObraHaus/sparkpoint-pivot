@@ -787,6 +787,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   auth/viewerState.ts,portfolio/liveState.ts}`, `apps/web/src/components/{shell/TopBar.tsx,
   overlays/OverlayProvider.tsx,near/NearWalletPortfolioLine.tsx,
   screens/chat/portfolio-overview-card.tsx}`, `apps/web/src/app/(app)/{chat,portfolio}/page.tsx`)
+- **A brief session check no longer flashes a mock signed-out UI.** While `/api/auth/session` is
+  in flight and no EVM wallet is connected, the app now has an explicit `loading` viewer state: the
+  chat rail and `/portfolio` render neutral placeholders — no illustrative `$12,184.42`, no
+  "Connect your wallet" prompts, the mandate card reads "Loading your plan…", the "Across chains"
+  panel says it is reading, and the chat "Demo mode" banner stays hidden. Only once the session
+  resolves to `null` does the signed-out preview/demo return; a resolved NEAR session goes straight
+  to the live session. EVM wallet behaviour (including EVM winning over a NEAR session) is
+  unchanged. (`apps/web/src/lib/auth/viewerState.ts`,
+  `apps/web/src/lib/agent/{identity,useAgent}.ts`, `apps/web/src/lib/network.tsx`,
+  `apps/web/src/lib/portfolio/liveState.ts`)
 
 ## [0.3.0] — 2026-09-18 — Beta launch (Robinhood Chain)
 

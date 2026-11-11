@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_CHAIN_ID, resolveAgentIdentity, resolveChainId } from "./identity.ts";
+import { DEFAULT_CHAIN_ID, resolveAgentConnection, resolveAgentIdentity, resolveChainId } from "./identity.ts";
 
 test("NaN — the value that actually shipped — never reaches the wire", () => {
   // The Aug-3 regression: wagmi reported NaN mid-reconnect, `?? DEFAULT` did not catch it, and
@@ -97,4 +97,34 @@ test("a connected EVM wallet stays an EVM identity even with a NEAR session obje
     chainId: 84532,
     authChain: "evm",
   });
+});
+
+test("an in-flight session with no wallet is loading, not signed out (no demo/connect yet)", () => {
+  const state = resolveAgentConnection(undefined, undefined, undefined);
+  assert.equal(state.loading, true);
+  assert.equal(state.identity, null);
+});
+
+test("a resolved null session with no wallet is signed out (demo/preview is honest)", () => {
+  const state = resolveAgentConnection(undefined, 84532, null);
+  assert.equal(state.loading, false);
+  assert.equal(state.identity, null);
+});
+
+test("a resolved NEAR session is online with no demo, even without a wallet", () => {
+  const state = resolveAgentConnection(undefined, undefined, {
+    address: "sparkpoint2026.near",
+    chain: "near",
+  });
+  assert.equal(state.loading, false);
+  assert.equal(state.identity?.authChain, "near");
+  assert.equal(state.identity?.account, "sparkpoint2026.near");
+});
+
+test("a connected EVM wallet is online and never loading, even mid session fetch", () => {
+  const evm = "0x1234567890abcdef1234567890abcdef12345678";
+  const state = resolveAgentConnection(evm, 84532, undefined);
+  assert.equal(state.loading, false);
+  assert.equal(state.identity?.account, evm);
+  assert.equal(state.identity?.authChain, "evm");
 });

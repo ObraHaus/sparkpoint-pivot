@@ -35,3 +35,46 @@ test("anonymous copy is unchanged", () => {
     "Connect your wallet to see your portfolio.",
   );
 });
+
+test("an unresolved session with no wallet is a neutral loading state, never a preview", () => {
+  assert.equal(
+    railShowsMockPreview({ evmConnected: false, nearSignedIn: false, sessionLoading: true }),
+    false,
+  );
+  assert.equal(
+    railPortfolioNote({
+      nearSignedIn: false,
+      preview: false,
+      live: false,
+      loading: false,
+      sessionLoading: true,
+    }),
+    "Checking your session…",
+  );
+  assert.equal(
+    portfolioConnectCopy({ nearSignedIn: false, area: "portfolio", sessionLoading: true }),
+    "Checking your session…",
+  );
+});
+
+test("after the session resolves null the signed-out preview returns", () => {
+  assert.equal(
+    railShowsMockPreview({ evmConnected: false, nearSignedIn: false, sessionLoading: false }),
+    true,
+  );
+  assert.equal(
+    portfolioConnectCopy({ nearSignedIn: false, area: "portfolio", sessionLoading: false }),
+    "Connect your wallet to see your portfolio.",
+  );
+});
+
+test("a loaded NEAR or EVM identity is never the loading state", () => {
+  assert.equal(
+    railShowsMockPreview({ evmConnected: false, nearSignedIn: true, sessionLoading: false }),
+    false,
+  );
+  assert.equal(
+    railShowsMockPreview({ evmConnected: true, nearSignedIn: false, sessionLoading: false }),
+    false,
+  );
+});

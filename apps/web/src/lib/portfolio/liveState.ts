@@ -9,12 +9,13 @@
 
 export type PortfolioArea = "portfolio" | "history" | "allocation" | "positions";
 
-/** The rail may show the illustrative preview ONLY when nobody is signed in. */
+/** The rail may show the illustrative preview ONLY when nobody is signed in AND the session resolved. */
 export function railShowsMockPreview(input: {
   evmConnected: boolean;
   nearSignedIn: boolean;
+  sessionLoading?: boolean;
 }): boolean {
-  return !input.evmConnected && !input.nearSignedIn;
+  return !input.evmConnected && !input.nearSignedIn && !input.sessionLoading;
 }
 
 /** The honest sub-line under the rail's Portfolio figure. */
@@ -23,7 +24,9 @@ export function railPortfolioNote(input: {
   preview: boolean;
   live: boolean;
   loading: boolean;
+  sessionLoading?: boolean;
 }): string {
+  if (input.sessionLoading) return "Checking your session…";
   if (input.loading) return "…";
   if (input.live) return "USDC · vault + wallet";
   if (input.preview) return "Preview — connect for your position";
@@ -35,7 +38,11 @@ export function railPortfolioNote(input: {
 export function portfolioConnectCopy(input: {
   nearSignedIn: boolean;
   area: PortfolioArea;
+  sessionLoading?: boolean;
 }): string {
+  // The session is still resolving: this is neither an anonymous browser nor a NEAR session, so
+  // never prompt a connect that may be wrong. A neutral check is the honest state.
+  if (input.sessionLoading) return "Checking your session…";
   if (!input.nearSignedIn) {
     switch (input.area) {
       case "history":

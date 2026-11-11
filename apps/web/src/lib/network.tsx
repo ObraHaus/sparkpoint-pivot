@@ -80,6 +80,8 @@ interface NetworkContextValue {
   nearSignedIn: boolean;
   /** Any signed-in identity (EVM wallet or verified NEAR session). */
   signedIn: boolean;
+  /** The server session is still resolving and no EVM wallet is connected — render a neutral state. */
+  sessionLoading: boolean;
   /** The NEAR account id for a verified NEAR session, else undefined. */
   nearAccount?: string;
   /** The full connected address (undefined when disconnected). */
@@ -174,12 +176,14 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       wallet: viewer.walletLabel,
       nearSignedIn: viewer.nearSignedIn,
       signedIn: viewer.signedIn,
+      sessionLoading: viewer.loading,
       nearAccount: viewer.nearAccount ?? undefined,
       address,
       isConnected,
       chainId,
       onSupportedChain,
-      networkSettling: isConnected && status !== "connected",
+      // A session still resolving with no wallet is not "wrong network" — it is not yet known.
+      networkSettling: viewer.loading || (isConnected && status !== "connected"),
       explorerBase: explorerRoot(chainId) ?? explorerRoot(PREFERRED_CHAIN_ID) ?? "",
       setActiveNetwork: () => undefined,
       switchableNetworks: SWITCHABLE,

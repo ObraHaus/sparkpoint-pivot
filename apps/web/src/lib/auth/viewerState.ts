@@ -10,6 +10,8 @@
  * - `evmConnected` is TRUE only for a wagmi wallet. EVM-only actions must keep gating on it.
  * - `nearSignedIn` is TRUE only for a server-verified NEAR session with no EVM wallet. It is a
  *   real sign-in, not a client-side claim, but it never pretends an EVM wallet exists.
+ * - `loading` is TRUE while the server session is still being fetched and no EVM wallet is
+ *   connected. It is deliberately neither "signed in" nor "unconnected".
  *
  * Leaf module: no React, no Next, no wagmi — so `node --test` can pin the mapping directly.
  */
@@ -39,13 +41,18 @@ export interface ViewerState {
   nearSignedIn: boolean;
   /** Either identity exists. */
   signedIn: boolean;
+  /**
+   * The server session is still in flight and no EVM wallet is connected. This is NOT "signed
+   * out": neither a mock preview nor a connect prompt may show until the session resolves.
+   */
+  loading: boolean;
   /** The NEAR account id for a verified NEAR session, else `null`. */
   nearAccount: string | null;
   /** Network indicator: "NEAR" for a NEAR session, else the EVM chain name. */
   networkLabel: string;
   /** Account label (shortened), or "Not connected". */
   walletLabel: string;
-  /** True only when NEITHER identity exists — the only state allowed a mock preview. */
+  /** True only when NEITHER identity exists AND the session has resolved — the only state allowed a mock preview. */
   unconnected: boolean;
 }
 
@@ -61,18 +68,25 @@ export function viewerState(input: ViewerInput): ViewerState {
   const nearSignedIn = !input.evmConnected && input.session?.chain === "near";
   const nearAccount = nearSignedIn ? input.session?.address ?? null : null;
   const signedIn = input.evmConnected || nearSignedIn;
-  const label = input.evmConnected
-    ? shortAccount(input.evmAddress ?? "")
-    : nearAccount
-      ? shortAccount(nearAccount)
-      : "Not connected";
+  // `useSession()` returns `undefined` while `/api/auth/session` is in flight. With no EVM wallet
+  // to report an identity, that window is neither signed in nor signed out — it must stay neutral
+  // (no mock preview, no connect prompt) until the session resolves to `null` or a real session.
+  const loading = !input.evmConnected && input.session === undefined;
+  const label = loading
+    ? "…"
+    : input.evmConnected
+      ? shortAccount(input.evmAddress ?? "")
+      : nearAccount
+        ? shortAccount(nearAccount)
+        : "Not connected";
   return {
     evmConnected: input.evmConnected,
     nearSignedIn,
     signedIn,
+    loading,
     nearAccount,
     networkLabel: nearSignedIn ? "NEAR" : input.evmChainName,
     walletLabel: label,
-    unconnected: !signedIn,
+    unconnected: !signedIn && !loading,
   };
 }

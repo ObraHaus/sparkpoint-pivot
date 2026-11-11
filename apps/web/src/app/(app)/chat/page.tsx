@@ -237,7 +237,7 @@ export default function ChatPage() {
 
   // Live agent seam. `online` ⇒ base URL configured AND wallet connected; otherwise
   // every send falls back to the mock keyword router (graceful "assistant offline").
-  const { client: agentClient, online } = useAgentClient();
+  const { client: agentClient, online, loading: agentLoading } = useAgentClient();
   const convRef = useRef<string | undefined>(undefined);
 
   const [turns, setTurns] = useState<Turn[]>(coldThread);
@@ -322,7 +322,7 @@ export default function ChatPage() {
   // shows a dash + honest note. Unrealized PnL comes from the agent's flow index and only when
   // it's live and non-stale (avoids the phantom-PnL window flagged in the R5 audit).
   const { isConnected: railConnected } = useAccount();
-  const { nearSignedIn: railNearSignedIn } = useNetwork();
+  const { nearSignedIn: railNearSignedIn, sessionLoading: railSessionLoading } = useNetwork();
   const railVault = useVault({ chainId: railConnected ? undefined : CHAT_DISPLAY_CHAIN_ID });
   const railEth = useBalance({
     address: railVault.account,
@@ -336,14 +336,17 @@ export default function ChatPage() {
   });
   const railWrongNetwork = railConnected && railVault.unavailable?.kind === "vault_not_deployed";
   const railLoading =
-    railConnected && !railWrongNetwork && (railVault.isLoading || (railEth.isLoading && !!railVault.account));
+    railSessionLoading ||
+    (railConnected && !railWrongNetwork && (railVault.isLoading || (railEth.isLoading && !!railVault.account)));
   const railError = railConnected && !railWrongNetwork && !railLoading && railVault.isError;
   const railLive = railConnected && railVault.isDeployed && !railLoading && !railError && !railWrongNetwork;
   // A verified NEAR session is signed in but has no EVM wallet: never show the illustrative
-  // preview figure, and never pretend the EVM vault position is readable.
+  // preview figure, and never pretend the EVM vault position is readable. An unresolved session
+  // is neither: keep it neutral.
   const railPreview = railShowsMockPreview({
     evmConnected: railConnected,
     nearSignedIn: railNearSignedIn,
+    sessionLoading: railSessionLoading,
   });
   const railAgent = usePortfolioView();
   const mandate = useMandate();
@@ -1245,7 +1248,7 @@ export default function ChatPage() {
       <div className="chatcol">
         <div className="chatscroll" ref={scrollerRef}>
           <div className="chatstream">
-            {!online && (
+            {!online && !agentLoading && (
               <div
                 className="cturn ai"
                 style={{
@@ -1493,6 +1496,7 @@ export default function ChatPage() {
                 preview: railPreview,
                 live: railLive,
                 loading: railLoading,
+                sessionLoading: railSessionLoading,
               })}
             </div>
           )}

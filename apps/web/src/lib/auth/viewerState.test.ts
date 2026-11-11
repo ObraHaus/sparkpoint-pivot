@@ -46,6 +46,36 @@ test("a signed-out browser is the only mock-preview state", () => {
   });
 
   assert.equal(v.nearSignedIn, false);
+  assert.equal(v.loading, false);
   assert.equal(v.unconnected, true);
   assert.equal(v.walletLabel, "Not connected");
+});
+
+test("an in-flight session with no wallet is loading, not signed out", () => {
+  const v = viewerState({
+    evmConnected: false,
+    evmAddress: undefined,
+    evmChainName: "Unsupported network",
+    session: undefined,
+  });
+
+  assert.equal(v.loading, true);
+  assert.equal(v.signedIn, false);
+  assert.equal(v.nearSignedIn, false);
+  assert.equal(v.unconnected, false); // must NOT be treated as the mock-preview state
+  assert.equal(v.walletLabel, "…");
+});
+
+test("a connected EVM wallet is never held in the session-loading state", () => {
+  const v = viewerState({
+    evmConnected: true,
+    evmAddress: EVM,
+    evmChainName: "Base Sepolia",
+    session: undefined,
+  });
+
+  assert.equal(v.loading, false);
+  assert.equal(v.unconnected, false);
+  assert.equal(v.networkLabel, "Base Sepolia");
+  assert.equal(v.walletLabel, shortAccount(EVM));
 });

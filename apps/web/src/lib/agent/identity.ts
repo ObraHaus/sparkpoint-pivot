@@ -86,3 +86,33 @@ export function resolveAgentIdentity(
     authChain: "evm",
   };
 }
+
+/**
+ * The agent's connection state for the current browser identity.
+ *
+ * `useSession()` is `undefined` while `/api/auth/session` is in flight. With no wagmi account that
+ * window used to look exactly like a signed-out browser: no identity ⇒ `online: false` ⇒ the chat
+ * page showed "Demo mode" and every surface offered a connect prompt. This resolver keeps the
+ * three states distinct so the UI can show a neutral loading state instead of a lie:
+ *
+ * - {@link loading} — no identity is known YET; show a skeleton, not demo/preview.
+ * - `identity === null` after loading — genuinely signed out; the demo/preview is honest.
+ * - `identity !== null` — an EVM wallet OR a server-verified NEAR session; the agent is online.
+ *
+ * An EVM wallet wins regardless of the session, so connected-wallet behaviour is unchanged.
+ */
+export interface ResolvedAgentConnection {
+  readonly loading: boolean;
+  readonly identity: ResolvedAgentIdentity | null;
+}
+
+export function resolveAgentConnection(
+  address: string | undefined | null,
+  rawChainId: unknown,
+  session: AgentIdentitySession | null | undefined,
+): ResolvedAgentConnection {
+  return {
+    loading: !address && session === undefined,
+    identity: resolveAgentIdentity(address, rawChainId, session),
+  };
+}
