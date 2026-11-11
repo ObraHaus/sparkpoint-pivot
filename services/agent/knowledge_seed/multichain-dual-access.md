@@ -3,7 +3,7 @@ title: Dual Access and the Multi-Chain Freeze Story
 source: multichain-dual-access
 tags: [multichain, swap, earn, portfolio, near-intents, morpho, kamino, rhea, dual-access, freeze]
 risk_tier: conservative
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # Dual Access and the Multi-Chain Freeze Story
@@ -94,10 +94,21 @@ The read is **read-only and not signable**, and it does not require the user to 
 another network.
 
 A **NEAR-only session** still gets this multi-chain read (including its NEAR/Rhea rows), plus earn
-options, Rhea links, swap quotes, the changelog and tips. Reads that only make sense for an EVM
-vault — the SparkPoint vault balance, Aave market data and EVM notifications — are marked
-unavailable with plain text (for example "the SparkPoint vault is EVM-only"), never shown as a
-fabricated `$0` balance. Chat and the portfolio page still load instead of erroring.
+options, Rhea links, swap quotes, the changelog and tips. The Rhea section reads the existing Burrow
+`get_account_all_positions` view with the NEAR account id directly, so no EVM address or
+EVM-keyed MCA lookup is involved. The EVM-only sections (`balances`, `morpho`) are marked
+`not_linked` with "No EVM wallet is linked to this NEAR sign-in" — never an RPC error, an invalid
+address, or a fabricated zero row. NEAR wallet-token balances are not read yet, and the read says
+so. Reads that only make sense for an EVM vault — the SparkPoint vault balance, Aave market data
+and EVM notifications — are marked unavailable with plain text (for example "the SparkPoint vault
+is EVM-only"), never shown as a fabricated `$0` balance. Chat and the portfolio page still load
+instead of erroring.
+
+A **NEP-413 NEAR session is server-verified**, so the web shell treats it as signed in: the network
+pill shows `NEAR` and the account segment shows the NEAR account, and the chat sidebar does not show
+the illustrative preview figure (it says the vault position is EVM-only). It still is **not** an
+EVM wallet: EVM-only actions and direct-RPC EVM balances keep requiring a connected EVM wallet, and
+the UI never presents the NEAR account as one.
 
 ## What stays true
 

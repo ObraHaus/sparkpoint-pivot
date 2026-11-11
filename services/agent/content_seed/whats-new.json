@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "near-signed-in-portfolio-and-ui-truth-1111-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Signed in with NEAR now looks signed in \u2014 and the portfolio no longer leaks EVM errors",
+      "body": "Behind the scenes: a NEAR sign-in is verified by SparkPoint, but parts of the app were still treating it as if no wallet were connected. The header could say \"Unsupported network\" and \"Not connected\" beside your NEAR account, the chat sidebar could show a sample portfolio figure that was not yours, and the multi-chain portfolio asked EVM-only readers about your NEAR account name \u2014 which surfaced as \"RPC error\" or \"invalid address\". Signing in with NEAR now shows NEAR as the network and your account as connected, the sidebar says plainly that the SparkPoint vault position is EVM-only, and EVM-only sections of the multi-chain portfolio say \"No EVM wallet is linked to this NEAR sign-in\" instead of showing an error or a fake zero. Your Rhea (Burrow) positions on NEAR are read directly for your NEAR account, so they still appear. Nothing about signing or custody changes: a NEAR sign-in never pretends to be an EVM wallet, and every EVM action still asks you to connect an EVM wallet and approve it yourself.",
+      "published_at": "2026-11-11T03:30:00Z"
+    },
+    {
       "slug": "near-session-and-held-vault-withdraw-1111-2026-11",
       "type": "changelog",
       "tag": "Fixed",

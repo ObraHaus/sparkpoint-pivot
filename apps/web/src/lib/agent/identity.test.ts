@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_CHAIN_ID, resolveChainId } from "./identity.ts";
+import { DEFAULT_CHAIN_ID, resolveAgentIdentity, resolveChainId } from "./identity.ts";
 
 test("NaN — the value that actually shipped — never reaches the wire", () => {
   // The Aug-3 regression: wagmi reported NaN mid-reconnect, `?? DEFAULT` did not catch it, and
@@ -64,4 +64,37 @@ test("a chain the user is genuinely on is passed through, even a gated one", () 
   // Honesty cuts both ways: if the wallet really is on Base mainnet, say so and let the agent
   // and the network gate respond. Only the FALLBACK was ever wrong.
   assert.equal(resolveChainId(8453), 8453);
+});
+
+test("a server-verified NEAR session resolves an online agent identity", () => {
+  // No wagmi account (Meteor Mobile). The BFF derives the same owner from the verified session;
+  // the client must still be non-null so the chat is live, not "Demo mode".
+  const id = resolveAgentIdentity(undefined, undefined, {
+    address: "sparkpoint2026.near",
+    chain: "near",
+  });
+  assert.deepEqual(id, {
+    account: "sparkpoint2026.near",
+    owner: "sparkpoint2026.near",
+    chainId: DEFAULT_CHAIN_ID,
+    authChain: "near",
+  });
+});
+
+test("a signed-out browser still has no agent identity", () => {
+  assert.equal(resolveAgentIdentity(undefined, 84532, null), null);
+  assert.equal(resolveAgentIdentity(undefined, 84532, { address: "0xabc", chain: "evm" }), null);
+});
+
+test("a connected EVM wallet stays an EVM identity even with a NEAR session object", () => {
+  const id = resolveAgentIdentity("0x1234567890abcdef1234567890abcdef12345678", 84532, {
+    address: "sparkpoint2026.near",
+    chain: "near",
+  });
+  assert.deepEqual(id, {
+    account: "0x1234567890abcdef1234567890abcdef12345678",
+    owner: "0x1234567890abcdef1234567890abcdef12345678",
+    chainId: 84532,
+    authChain: "evm",
+  });
 });

@@ -264,10 +264,12 @@ class EvalPortfolioService:
     def __init__(self, mode: str) -> None:
         self.mode = mode
         self.overview = portfolio_overview(mode)
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str]] = []
 
-    async def read(self, wallet: str, *, focus: str = "all") -> PortfolioOverview:
-        self.calls.append((wallet, focus))
+    async def read(
+        self, wallet: str, *, focus: str = "all", auth_chain: str = "evm"
+    ) -> PortfolioOverview:
+        self.calls.append((wallet, focus, auth_chain))
         return replace(self.overview, wallet=wallet, focus=focus)  # type: ignore[arg-type]
 
 

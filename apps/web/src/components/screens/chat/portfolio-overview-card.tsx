@@ -212,7 +212,7 @@ function SectionState({ section }: { section: PortfolioSection }) {
         <div style={{ marginTop: 3 }}>
           {section.reason ?? "This source is unavailable."}
         </div>
-        {section.status === "not_linked" && (
+        {section.status === "not_linked" && section.key === "kamino" && (
           <div style={{ marginTop: 4, fontSize: 11.5 }}>
             Phase C: deposits to a linked Solana address from SparkPoint will populate this section.
           </div>
