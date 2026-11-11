@@ -11,9 +11,12 @@ surface: 200 with NEAR-appropriate content, no EVM read attempted, auth unchange
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -57,6 +60,11 @@ from sparkpoint_agent.api.vault import (
 )
 from sparkpoint_agent.config import AgentConfig
 from sparkpoint_agent.coordinator.dag import ChainContext, CoordinatorDag, TextBlock
+from sparkpoint_agent.crosschain.config import default_config as crosschain_config
+from sparkpoint_agent.crosschain.oneclick import OneClickClient
+from sparkpoint_agent.earn.config import default_config as earn_config
+from sparkpoint_agent.earn.registry import EarnRegistry, EarnSnapshot, VaultAsset, VaultEntry
+from sparkpoint_agent.earn.service import EarnService
 from sparkpoint_agent.policy import CAPS, GOVERNANCE
 from sparkpoint_agent.portfolio.models import PortfolioOverview, PortfolioRow, PortfolioSection
 
@@ -304,3 +312,103 @@ async def test_near_multichain_phrase_routes_to_the_multichain_service() -> None
     ]
     wires = [block.to_wire() for block in blocks]
     assert "portfolio_overview" in {wire["type"] for wire in wires}
+
+
+# ── NEAR still keeps the deterministic earn-list and cross-chain quote routes ─────
+
+
+def _earn_service() -> EarnService:
+    cfg = earn_config()
+    registry = EarnRegistry(cfg, writable_path="/nonexistent/earn.json")
+    registry.install(
+        EarnSnapshot(
+            fetched_at=datetime.now(UTC),
+            source="morpho_api",
+            vaults=(
+                VaultEntry(
+                    chain="base",
+                    chain_id=8453,
+                    address="0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+                    version="v1",
+                    name="Gauntlet USDC Prime",
+                    symbol="GTUSDC",
+                    asset=VaultAsset(
+                        address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                        symbol="USDC",
+                        decimals=6,
+                    ),
+                    listed=True,
+                    tvl_usd=Decimal("420000000"),
+                    net_apy=Decimal("0.0441"),
+                    fetched_at="2026-11-01T00:00:00+00:00",
+                ),
+            ),
+        )
+    )
+    client = OneClickClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(500)),
+        clock=lambda: 1000.0,
+    )
+    return EarnService(cfg, registry, oneclick=client)
+
+
+@pytest.mark.asyncio
+async def test_near_earn_options_route_still_lists_vaults() -> None:
+    unreachable = _Unreachable()
+    dag = CoordinatorDag(
+        planner=_PortfolioPlanner(),
+        recommender=unreachable,
+        literacy=unreachable,
+        portfolio_provider=unreachable,
+        mandate_provider=unreachable,
+        earn=_earn_service(),
+    )
+
+    blocks = [
+        block async for block in dag.run_chat("What earn options do I have?", _near_chain())
+    ]
+    wires = [block.to_wire() for block in blocks]
+
+    assert "earn_vaults" in {wire["type"] for wire in wires}
+    listed = next(wire for wire in wires if wire["type"] == "earn_vaults")
+    assert listed["state"] == "ready"
+    assert any(vault["name"] == "Gauntlet USDC Prime" for vault in listed["vaults"])
+
+
+class _CrosschainQuote:
+    def __init__(self) -> None:
+        self.text = "You could swap about 0.05 NEAR into USDC on Base."
+        self.block = TextBlock(self.text)
+
+
+class _NearCrosschain:
+    feature_enabled = True
+
+    def __init__(self) -> None:
+        self.config = crosschain_config()
+
+    async def preview(self, request: Any) -> _CrosschainQuote:
+        assert request.origin_key == "near:wNEAR"
+        assert request.destination_key == "base:USDC"
+        return _CrosschainQuote()
+
+
+@pytest.mark.asyncio
+async def test_near_swap_quote_route_still_answers() -> None:
+    unreachable = _Unreachable()
+    dag = CoordinatorDag(
+        planner=_PortfolioPlanner(),
+        recommender=unreachable,
+        literacy=unreachable,
+        portfolio_provider=unreachable,
+        mandate_provider=unreachable,
+        crosschain=_NearCrosschain(),  # type: ignore[arg-type]
+    )
+
+    blocks = [
+        block
+        async for block in dag.run_chat("How do I swap 0.05 NEAR to USDC?", _near_chain())
+    ]
+    text = "\n".join(block.to_wire().get("markdown", "") for block in blocks)
+    assert "0.05 NEAR" in text
+    assert "USDC" in text
