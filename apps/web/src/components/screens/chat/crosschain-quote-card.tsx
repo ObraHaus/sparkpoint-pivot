@@ -50,6 +50,7 @@ import {
   writeDepositSnapshot,
   type DepositSnapshot,
 } from "@/lib/crosschain/depositStorage";
+import { crosschainChainIdHeader } from "@/lib/crosschain/requestHeaders";
 import "@/components/screens/confirm.css";
 
 const MUTED = "var(--muted-foreground)";
@@ -178,6 +179,10 @@ export function CrossChainQuoteCard({
 
   const originKind = addressKindForOrigin(block.origin.chain, block.origin.evmChainId);
   const destinationKind = block.destination.addressKind;
+  // The agent requires X-Chain-Id on every scoped request. Send the SWAP SOURCE chain (e.g. Base
+  // 8453), which may legitimately differ from the chain this SIWE session was created on (e.g.
+  // Robinhood 4663). The BFF still derives X-Account from the verified session.
+  const requestChainId = crosschainChainIdHeader(block.origin.evmChainId, chainId);
   const evmOrigin = originKind === "evm";
 
   // The destination defaults to the connected wallet for the matching family (EVM as before, and
@@ -244,7 +249,11 @@ export function CrossChainQuoteCard({
       try {
         const res = await fetch(
           `/api/agent/crosschain/status?depositAddress=${encodeURIComponent(deposit.depositAddress)}`,
-          { cache: "no-store", signal: controller.signal },
+          {
+            cache: "no-store",
+            signal: controller.signal,
+            headers: { "x-chain-id": requestChainId },
+          },
         );
         if (!res.ok) throw new Error(await errorMessage(res));
         const body = (await res.json()) as { status?: unknown; swapDetails?: unknown };
@@ -269,7 +278,7 @@ export function CrossChainQuoteCard({
       if (timer) clearTimeout(timer);
       controller?.abort();
     };
-  }, [deposit]);
+  }, [deposit, requestChainId]);
 
   const originToken = useMemo(() => {
     if (typeof block.origin.evmChainId !== "number") return undefined;
@@ -311,7 +320,7 @@ export function CrossChainQuoteCard({
     try {
       const res = await fetch("/api/agent/crosschain/quote", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-chain-id": requestChainId },
         body: JSON.stringify({
           originKey: block.origin.key,
           destinationKey: block.destination.key,
@@ -364,7 +373,7 @@ export function CrossChainQuoteCard({
     try {
       const res = await fetch("/api/agent/crosschain/deposit/submit", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-chain-id": requestChainId },
         body: JSON.stringify({ depositAddress: deposit.depositAddress, txHash: hash }),
       });
       if (!res.ok) {
