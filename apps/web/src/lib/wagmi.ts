@@ -4,6 +4,7 @@ import { injected } from "wagmi/connectors";
 import { CHAIN_IDS, isSupportedChain } from "@sparkpoint/shared/chains";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import { robinhoodMainnet } from "@/lib/chain/clients";
+import { requestMetaMaskProvider } from "@/lib/wallet/metamaskProvider";
 
 /**
  * Wagmi config — Base (launch) + Base Sepolia (testnet) + Robinhood testnet (§B3, chat + read-only
@@ -62,9 +63,18 @@ if (!REGISTERED_CHAINS.some((c) => c.id === REQUIRED_CHAIN_ID)) {
   );
 }
 
+const metaMaskConnector = injected({
+  target: {
+    id: "metaMask",
+    name: "MetaMask",
+    provider: () => requestMetaMaskProvider() ?? undefined,
+  },
+});
+
 export const wagmiConfig = createConfig({
   chains: REGISTERED_CHAINS,
-  connectors: [injected()],
+  connectors: [metaMaskConnector],
+  multiInjectedProviderDiscovery: false,
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
   // Transports for every chain any build MAY register (the chain list above is build-conditional).
