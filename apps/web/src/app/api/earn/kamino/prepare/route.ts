@@ -11,16 +11,16 @@ import { NextResponse } from "next/server";
 
 import { kaminoServerLiveEnabled } from "@/lib/earn/liveFlags";
 import {
-  SOLANA_MAINNET_RPC,
   decodeKaminoTransaction,
   resolveKaminoLookupAddresses,
 } from "@/lib/earn/kaminoLive";
 import { prepareKaminoTransaction } from "@/lib/earn/kaminoPrepare";
+import { solanaRpcUrls } from "@/lib/solana/rpcProxy";
 
 export const dynamic = "force-dynamic";
 
 function solanaRpcUrl(): string {
-  return process.env.SOLANA_RPC_URL?.trim() || SOLANA_MAINNET_RPC;
+  return solanaRpcUrls(process.env)[0]!;
 }
 
 export async function POST(request: Request) {

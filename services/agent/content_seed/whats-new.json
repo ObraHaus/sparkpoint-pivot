@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "kamino-balance-server-read-1112-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Kamino deposits no longer get stuck reading your Solana balance",
+      "body": "Behind the scenes: when you connect Phantom (or another Solana wallet) on the Kamino live deposit page, SparkPoint now reads your SOL balance through its own server instead of asking your browser to contact Solana's public endpoint directly. That public endpoint was refusing browser requests, which left the page saying \"Reading your wallet balance\u2026\" and stopped a deposit from being prepared. The page now shows your balance when the read succeeds, and if it cannot read it in time it says so and offers Retry instead of spinning forever. Nothing about signing or custody changes: your wallet is still the only signer, and you still review and approve every transaction yourself.",
+      "published_at": "2026-11-12T00:30:00Z"
+    },
+    {
       "slug": "near-signed-in-portfolio-and-ui-truth-1111-2026-11",
       "type": "changelog",
       "tag": "Fixed",
