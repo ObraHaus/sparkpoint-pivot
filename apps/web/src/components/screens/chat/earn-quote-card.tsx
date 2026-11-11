@@ -54,7 +54,7 @@ import { findMorphoVault } from "@/lib/earn/morphoLive";
 const MUTED = "var(--muted-foreground)";
 
 const RAIL_LABEL: Record<EarnQuoteBlock["rail"], string> = {
-  direct: "Direct same-chain deposit",
+  direct: "Direct deposit",
   oneclick_earn: "NEAR Intents 1Click Earn",
   oneclick_rhea: "NEAR Intents 1Click → Rhea lending",
   intents_connect: "Aurora Intents Connect",
@@ -286,12 +286,13 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
         <div className="cf-sec" data-testid="earn-quote-unavailable">
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>This vault can&apos;t be previewed right now</div>
           <div style={{ fontSize: 13, color: MUTED, marginTop: 6, lineHeight: 1.55 }}>
-            {block.unavailableReason ?? "No enabled rail can reach this vault."} Nothing was signed or sent.
+            {block.unavailableReason ?? "No live route is available for this vault right now."} Nothing
+            was signed or sent.
           </div>
           <Notice tone="info" testId="earn-quote-unavailable-hint">
             {/no liquidity/i.test(block.unavailableReason ?? "")
               ? "1Click has no liquidity for this size right now — try a smaller amount."
-              : `You can try another vault or rail, or ask Sparky to list the ${protocolLabel(protocol)} vaults that are live today.`}
+              : `You can try another vault or route, or ask Sparky to list the ${protocolLabel(protocol)} vaults that are live today.`}
           </Notice>
         </div>
       ) : (
@@ -360,7 +361,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
               <Row k="Estimated time" v={formatEta(block.timeEstimateSec)} />
             )}
             <Row k="Vault" v={`${vaultName} (${vault.symbol})`} />
-            <Row k="Rail" v={RAIL_LABEL[block.rail]} />
+            <Row k="Route" v={RAIL_LABEL[block.rail]} />
             {isReceipt && (
               <Row
                 k="Receipt"
@@ -442,8 +443,8 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
             >
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>
                 {block.firstDeposit
-                  ? "Rhea account (MCA) — created on your first deposit"
-                  : "Your Rhea account (MCA)"}
+                  ? "Rhea account — created on your first deposit"
+                  : "Your Rhea account"}
               </div>
               <div
                 data-testid="earn-rhea-recipient-value"
@@ -454,8 +455,8 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
                 Read-only and derived from your connected wallet — not user-entered.{" "}
                 {block.firstDeposit
-                  ? "The first deposit is addressed to Rhea's account manager (multica.near), which creates your MCA."
-                  : "Supplies are addressed to this existing Rhea account."}
+                  ? "Your first deposit creates your Rhea account automatically."
+                  : "Supplies go to this existing Rhea account."}
               </div>
             </div>
           )}
@@ -527,7 +528,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
               }}
             >
               <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-                Phase C: you will sign this message in your wallet to create your Rhea account
+                You&apos;ll sign this message in your wallet to create your Rhea account
               </summary>
               <pre
                 data-testid="earn-rhea-message-text"
@@ -605,9 +606,9 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Open cross-chain review
               </a>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                The 071 MCA/1Click rail: Base/Ethereum USDC into your Rhea account on NEAR. Dry by
-                default; a live commit only prepares an unsigned origin transfer for your own
-                wallet. The agent never signs.
+                Deposit USDC from Base or Ethereum into your Rhea account on NEAR. Start with a
+                preview that moves no funds; a live step only prepares a transfer for your own wallet
+                to approve. SparkPoint never signs for you.
               </div>
             </div>
           )}
@@ -633,8 +634,8 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Deposit
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                This cross-chain 1Click preview is not signable (phase C deferred). A separate
-                same-chain NEAR rail is available when enabled.
+                This cross-chain preview can&apos;t be signed yet. You can supply or withdraw USDC
+                directly on NEAR when the live option is available.
               </div>
               {rheaLiveEnabledFromEnv() && (
                 <a
@@ -649,7 +650,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                   className="btn btn-primary btn-sm"
                   style={{ justifySelf: "start" }}
                 >
-                  Supply or withdraw USDC on NEAR (same-chain)
+                  Supply or withdraw USDC on NEAR
                 </a>
               )}
             </div>
@@ -694,7 +695,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
               }}
             >
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>
-                Live direct {protocolLabel(protocol)} (flagged)
+                Live {protocolLabel(protocol)}
               </div>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
                 {protocol === "kamino"
@@ -718,7 +719,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 </a>
               </div>
               <div style={{ fontSize: 11, color: MUTED }}>
-                This is the direct same-chain rail — not the 1Click receipt preview above.
+                This is the direct deposit flow, separate from the 1Click preview above.
               </div>
             </div>
           )}

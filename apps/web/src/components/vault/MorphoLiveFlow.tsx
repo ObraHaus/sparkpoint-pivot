@@ -391,7 +391,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
             </div>
           </div>
           <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
-            Live · flagged
+            Live
           </span>
         </div>
 
@@ -421,8 +421,8 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
 
         {chain && chain !== "base" && (
           <Notice tone="caution">
-            This link came from a {chain} rail. The live slice is same-chain Base only — the
-            cross-chain route stays a dry preview in Sparky.
+            This link came from {chain}. Live Morpho deposits are on Base only for now; the
+            cross-chain option remains a preview in Sparky.
           </Notice>
         )}
         {asset && asset.toUpperCase() !== meta.assetSymbol.toUpperCase() && (
