@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
+
+- **Sign-in no longer fails instantly with `4100 UnauthorizedProviderError` (no wallet prompt) after
+  the wallet's site permission was revoked or re-granted on a newly added chain.** The signing step
+  now retries exactly once after re-requesting account permission with the explicit intended
+  account; it verifies the wallet is still on the message's chain, aborts if a different account is
+  authorized, and never retries a user rejection (`4001`) or a second `4100`. (`apps/web/src/lib/auth/useSiwe.ts`,
+  `apps/web/src/lib/auth/siweAuthz.ts`)
+
 ### Changed (1111-wfclean — Defender temp overrides removed)
 
 - **Removed temporary PR-specific OH Defender overrides (PR #388 number, split branch-name literals)
