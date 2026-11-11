@@ -17,6 +17,7 @@ import { useAccount, useSignMessage } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
 import { useHoldCriticalOp } from "@/lib/ui/useCriticalOp";
 import { isSessionWalletStale } from "@/lib/auth/session-binding";
+import { signSiweWithRecovery, type Eip1193ProviderLike } from "@/lib/auth/siweAuthz";
 
 export interface Session {
   readonly address: string;
@@ -54,6 +55,7 @@ export function useSiweLogin(): {
   error: string | null;
 } {
   const { signMessageAsync } = useSignMessage();
+  const { connector } = useAccount();
   const [phase, setPhase] = useState<SiwePhase>("idle");
   const pending = phase !== "idle";
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,21 @@ export function useSiweLogin(): {
         });
 
         setPhase("signing");
-        const signature = await signMessageAsync({ message });
+        // 4100 = the wallet no longer authorizes this origin for the account we are asking it to
+        // sign with (e.g. its permission was revoked by our own disconnect, or a stale/reconnected
+        // account outlived the permission). It arrives instantly with no popup and will never
+        // succeed on its own, so re-request authorization and retry the signature ONCE. The helper
+        // signs as the explicit intended `address`, verifies the wallet's chain, and rethrows a
+        // user rejection (4001) or a second 4100 unchanged.
+        const signature = await signSiweWithRecovery(
+          {
+            sign: ({ message: signMessage, account }) =>
+              signMessageAsync({ message: signMessage, account }),
+            getProvider: async () =>
+              (await connector?.getProvider()) as unknown as Eip1193ProviderLike | undefined,
+          },
+          { message, address, chainId },
+        );
 
         // The wallet has answered; from here the user is waiting on US, not the other way round.
         setPhase("verifying");
@@ -115,7 +131,7 @@ export function useSiweLogin(): {
         setPhase("idle");
       }
     },
-    [signMessageAsync],
+    [signMessageAsync, connector],
   );
 
   // Feature 006: pause the force-refresh while a sign-in signature is in flight (BUSY — no funds move,

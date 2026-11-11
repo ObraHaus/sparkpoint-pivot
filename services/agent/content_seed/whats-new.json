@@ -712,6 +712,14 @@
       "title": "No more sample portfolio or Demo banner while we check your sign-in",
       "body": "Behind the scenes: when the app opens, it checks with the server whether you are already signed in with a NEAR wallet. During that brief check it used to assume you were signed out, so a NEAR-signed-in visitor could see a sample portfolio figure that was not theirs, prompts to connect a wallet, and the chat's \"Demo mode\" banner. The app now waits for that check to finish and shows a neutral loading state first: no sample figures, no connect prompts and no Demo banner until it knows. If you are signed out it still shows the signed-out preview and Demo mode exactly as before; if you are signed in with NEAR you go straight to your real session. EVM wallet behaviour is unchanged, and nothing about signing or custody changes.",
       "published_at": "2026-11-11T08:00:00Z"
+    },
+    {
+      "slug": "siwe-4100-reauth-recovery-1112-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Sign-in recovers when your wallet no longer authorizes the site",
+      "body": "Sign-in recovers when your wallet no longer authorizes the site: if a sign-in is refused without a wallet prompt, SparkPoint re-requests wallet permission once and retries, only for the same account and network.",
+      "published_at": "2026-11-11T22:10:00Z"
     }
   ]
 }
