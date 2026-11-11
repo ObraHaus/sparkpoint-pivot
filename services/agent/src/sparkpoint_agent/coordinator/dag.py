@@ -710,6 +710,9 @@ class ChainContext:
     chain_id: int
     user_account: str
     owner: str | None = None
+    #: 1111 — which chain proved control. "evm" for every EVM session (default, byte-identical);
+    #: "near" means there is no EVM address/chain to read or act on.
+    auth_chain: str = "evm"
     resolved_targets: dict[str, str] = field(default_factory=dict)
     caps: CapHeadroom = field(default_factory=CapHeadroom)
     kill_switch_paused: bool = False
@@ -1433,7 +1436,13 @@ class CoordinatorDag:
                     # is signed, built or sent in chat.
                     step = f"Finding the {label} withdraw card"
                     yield ToolStepBlock(step, "running")
-                    withdraw_outcome = self.earn.withdraw_outcome(earn_request)
+                    # 1111 — pick the Morpho vault from the wallet's ACTUAL held positions (the
+                    # same reader as the multi-chain portfolio), never the top-TVL snapshot row.
+                    withdraw_outcome = await self.earn.withdraw_outcome(
+                        earn_request,
+                        wallet=wallet,
+                        non_evm=chain.auth_chain != "evm",
+                    )
                     yield ToolStepBlock(step, "done")
                     yield TextBlock(withdraw_outcome.text)
                     yield withdraw_outcome.block
@@ -1858,6 +1867,23 @@ class CoordinatorDag:
                 yield CitationBlock(sources=tuple(p.citation for p in citable))
             return
 
+        # 1111 — a NEAR login is a valid identity with NO EVM address. A "what is my portfolio"
+        # ask must not be answered with an invented $0.00 EVM shell, but it must also not hide the
+        # multi-chain (NEAR/Rhea) portfolio the 072 service already reads. Route the NEAR PORTFOLIO
+        # intent to that service when it is available; otherwise say exactly why nothing is read.
+        if intent.kind is IntentKind.PORTFOLIO and chain.auth_chain != "evm":
+            if self.portfolio is not None:
+                portfolio_wallet = chain.owner or chain.user_account
+                yield ToolStepBlock("Reading your multi-chain portfolio", "running")
+                overview = await self.portfolio.read(portfolio_wallet, focus="all")
+                yield ToolStepBlock("Reading your multi-chain portfolio", "done")
+                portfolio_outcome = build_portfolio_outcome(overview, "all")
+                yield TextBlock(portfolio_outcome.text)
+                yield portfolio_outcome.block
+                return
+            yield TextBlock(_NEAR_SESSION_PORTFOLIO_ANSWER)
+            return
+
         yield ToolStepBlock("Reading your portfolio", "running")
         gathered = await self.gather(chain)
         yield ToolStepBlock("Reading your portfolio", "done")
@@ -1987,6 +2013,8 @@ class CoordinatorDag:
     ) -> list[ChatBlock]:
         chain = gathered.chain
         if intent.kind is IntentKind.BUILD_ACTION:
+            if chain.auth_chain != "evm":
+                return [TextBlock(_NEAR_SESSION_ACTION_ANSWER)]
             if not stamped:
                 return [TextBlock(_build_action_refusal(chain.chain_id, intent.action_type))]
             first = stamped[0]
@@ -2162,6 +2190,21 @@ def _offers_vault(chain: ChainContext) -> bool:
     so canned "open the Vault page" copy is never shown where there is no vault.
     """
     return _VAULT_TARGET_REF in chain.resolved_targets
+
+
+#: 1111 — a NEAR login is a valid identity but has no EVM address, so the EVM vault/portfolio reads
+#: do not apply. Say that plainly instead of showing an invented $0.00 EVM portfolio.
+_NEAR_SESSION_PORTFOLIO_ANSWER = (
+    "You're signed in with a NEAR wallet. I couldn't load the multi-chain portfolio view for this "
+    "session just now; the SparkPoint vault position is EVM-only, so there's no EVM balance to "
+    "show. Ask \"what's my multi-chain portfolio\" to retry the NEAR/Rhea read. Nothing was signed "
+    "or changed."
+)
+_NEAR_SESSION_ACTION_ANSWER = (
+    "You're signed in with a NEAR wallet, so Sparky can't prepare an EVM vault action for this "
+    "session. You can still ask questions and explore strategies, or connect an EVM wallet to "
+    "review and sign a move. Nothing was signed or changed."
+)
 
 
 # Human nouns for the "not supported on this network" message (kept out of the byte-identical

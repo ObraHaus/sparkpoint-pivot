@@ -26,10 +26,10 @@ Non-custody invariants enforced here
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import replace
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 import eth_abi
 from fastapi import APIRouter, Depends, Request
@@ -101,6 +101,22 @@ async def require_evm_account(request: Request) -> None:
         )
 
 
+class _NoEvmChainTransport:
+    """Fail-closed transport for a session with no EVM chain (a NEAR login).
+
+    A NEAR identity has no EVM address and no EVM chain to read, so every chain read must fail
+    closed. Returning a reader over this transport lets the shared dependencies (chat, portfolio,
+    notifications) resolve WITHOUT raising at construction — each NEAR-aware surface then answers
+    honestly from its own guard instead of turning a valid app identity into a 503/500.
+    """
+
+    async def call(self, method: str, params: Sequence[Any]) -> str:  # noqa: ARG002
+        raise VaultUnavailable(
+            VaultUnavailableReason.RPC_UNREACHABLE,
+            "no EVM chain read for a NEAR session.",
+        )
+
+
 async def require_verified_chain(request: Request) -> None:
     """023 — refuse to serve the chain-dependent surface unless the RPC proves its chain.
 
@@ -123,6 +139,8 @@ async def require_verified_chain(request: Request) -> None:
     config = AgentConfig.from_env()
     account = getattr(request.state, "account", None)
     if isinstance(account, AccountContext):
+        if account.auth_chain != "evm":
+            return
         config = config.for_chain(account.chain_id)
     probe = _probe_for(config)
     if probe is not None:
@@ -330,6 +348,11 @@ async def build_vault_reader(
     home_chain_id = config.chain_id
     account = getattr(request.state, "account", None)
     if isinstance(account, AccountContext):
+        # 1111 — a NEAR session has no EVM chain to read. Never construct an EVM reader (or probe a
+        # chain it never asserted) for it: hand back a fail-closed, vaultless reader so the
+        # NEAR-aware handlers can answer honestly without a dependency-level 503/500.
+        if account.auth_chain != "evm":
+            return VaultReader(vault_address=None, transport=_NoEvmChainTransport())
         config = config.for_chain(account.chain_id)
     # `for_chain` clears the vault on every non-home chain (the vault is Base-only) and the resolver
     # must NOT undo that — otherwise a request on Robinhood 46630 could be handed a Base vault

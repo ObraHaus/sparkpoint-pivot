@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1111 — NEAR-session chat/portfolio degradation + Morpho withdraw uses the held vault)
+
+- **A valid NEAR (NEP-413) session no longer 500s chat or 503s notifications/portfolio.**
+  The EVM chain-read dependencies were receiving the NEAR account id (`sparkpoint2026.near`) and
+  `VaultReader._normalize_address` raised an uncaught `ValueError`; the router-level
+  `require_verified_chain` also probed an EVM chain the session never asserted. A NEAR session now
+  gets a fail-closed, vaultless reader and skips the EVM chain-identity probe, so `/chat` streams,
+  `/notifications` returns an honest empty feed (no EVM notifications exist for a NEAR identity)
+  and `/portfolio` returns its existing NEAR shell without probing Sepolia. The multi-chain
+  portfolio (072), earn lists, Rhea same-chain/links, swap/cross-chain quotes, changelog and tips
+  are unchanged for NEAR; only EVM-vault-specific reads (SparkPoint vault balance, gate inputs,
+  Aave, EVM notifications) degrade with explicit text, never a fabricated `$0.00`.
+  (`services/agent/src/sparkpoint_agent/api/{vault,chat,notifications,recommendations}.py`,
+  `services/agent/src/sparkpoint_agent/coordinator/dag.py`)
+- **Chat "withdraw … from Morpho" now targets the vault the wallet actually holds.** The named
+  asset used to pick the largest-TVL matching vault, so prod linked Grove x Steakhouse USDC
+  (`0xbeef…`) although the wallet only held Gauntlet USDC Prime (`0xeE8F…`). The withdraw path now
+  reads the same 072 Morpho position source as the multi-chain portfolio and selects from the
+  wallet's real positions on that chain/asset: exactly one held → that vault's review card (amount
+  validation unchanged); several held → no auto-pick, each listed with its own link; none held →
+  honest "no … Morpho position on …"; an unreadable position source, or a non-EVM (NEAR) identity,
+  fails closed with no prefilled vault. Kamino/Rhea withdraw paths are unchanged; no TVL fallback
+  remains for Morpho. (`services/agent/src/sparkpoint_agent/earn/service.py`,
+  `services/agent/src/sparkpoint_agent/coordinator/dag.py`)
+
 ### Changed (1110 — Defender scan-action pin)
 
 - **The OH Defender PR scan now pins `ObraHaus/obrahaus-defender/ci/scan-action` to `2b46e3dc`

@@ -2,6 +2,14 @@
   "_comment": "Feature 006 — the committed source of the in-app client changelog. Ingested at agent boot and via POST /admin/content/reingest. Each entry upserts by `slug` (idempotent); entries the seed no longer lists are PRUNED on ingest — seed-owned rows only, including pre-slug legacy rows — so a reset leaves exactly this file. An operator's live Admin -> Updates edit wins and is preserved; an unreadable/empty file never prunes. Client-facing register: keep it tester-friendly, no dev detail.",
   "entries": [
     {
+      "slug": "near-session-and-held-vault-withdraw-1111-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "NEAR sign-in no longer breaks chat, and Morpho withdrawals use the vault you hold",
+      "body": "Behind the scenes: signing in with a NEAR wallet is valid, but the assistant was handing that NEAR account name to reads that only understand EVM addresses. Chat could stop with a generic error, notifications could fail to load, and the portfolio page could briefly report an unavailable network. Those surfaces now degrade honestly for a NEAR session: chat answers, notifications load as an empty feed, and the portfolio page opens. Everything a NEAR session can legitimately use still works \u2014 the multi-chain portfolio including NEAR/Rhea, earn options, Rhea links, swap quotes, the changelog and tips \u2014 while reads that only make sense for an EVM vault (the SparkPoint vault balance, Aave and EVM notifications) say so plainly instead of inventing a zero balance. Separately, when you ask Sparky to withdraw from Morpho, it now chooses from the Morpho vaults your wallet actually holds on the chain and asset you named instead of the largest vault in the list. If you hold more than one it lists them and asks which; if you hold none it says so and links nothing. Nothing about signing or custody changes: you still review and sign every transaction in your own wallet.",
+      "published_at": "2026-11-10T23:00:00Z"
+    },
+    {
       "slug": "kamino-withdraw-from-available-guard-1110-2026-11",
       "type": "changelog",
       "tag": "Fixed",
