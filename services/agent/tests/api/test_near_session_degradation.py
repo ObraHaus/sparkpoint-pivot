@@ -221,7 +221,9 @@ async def test_near_reader_is_vaultless_and_chain_verification_is_skipped() -> N
 class _NearPortfolioService:
     """A stand-in for the 072 service: a NEAR/Rhea row, no EVM read."""
 
-    async def read(self, wallet: str, *, focus: str = "all") -> PortfolioOverview:
+    async def read(
+        self, wallet: str, *, focus: str = "all", auth_chain: str = "evm"
+    ) -> PortfolioOverview:
         return PortfolioOverview(
             wallet=wallet,
             focus=focus,  # type: ignore[arg-type]

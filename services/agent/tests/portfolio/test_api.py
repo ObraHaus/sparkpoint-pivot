@@ -49,10 +49,12 @@ def _overview() -> PortfolioOverview:
 class _Service:
     def __init__(self, overview: PortfolioOverview) -> None:
         self.overview = overview
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str]] = []
 
-    async def read(self, wallet: str, *, focus: str = "all") -> PortfolioOverview:
-        self.calls.append((wallet, focus))
+    async def read(
+        self, wallet: str, *, focus: str = "all", auth_chain: str = "evm"
+    ) -> PortfolioOverview:
+        self.calls.append((wallet, focus, auth_chain))
         return self.overview
 
 
@@ -98,7 +100,7 @@ def test_reads_the_session_wallet_and_returns_the_block(
     assert len(body["sections"]) == 5
     assert body["totals"]["totalUsd"] == "100.00"
     assert body["text"]
-    assert service.calls == [(OWNER, "all")]
+    assert service.calls == [(OWNER, "all", "evm")]
 
 
 def test_a_wallet_query_parameter_is_rejected_and_never_read(
@@ -129,3 +131,20 @@ def test_rate_limit_returns_429(service: _Service) -> None:
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "RATE_LIMITED"
     assert service.calls == []
+
+
+def test_a_near_session_is_passed_through_as_the_auth_chain(service: _Service) -> None:
+    near = "sparkpoint2026.near"
+    app = FastAPI()
+    app.add_exception_handler(ApiError, api_error_handler)
+    app.include_router(router)
+    app.dependency_overrides[get_account] = lambda: AccountContext(
+        account=near, owner=near, chain_id=84532, auth_chain="near"
+    )
+    app.dependency_overrides[get_portfolio_service] = lambda: service
+    app.dependency_overrides[get_portfolio_limiter] = lambda: _AllowAll()
+
+    response = TestClient(app).get("/portfolio/multichain")
+
+    assert response.status_code == 200
+    assert service.calls == [(near, "all", "near")]

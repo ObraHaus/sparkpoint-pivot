@@ -868,3 +868,16 @@ def test_api_preview_rhea_is_dry_only(
 
     live = client.post("/earn/preview", json={**body, "dry": False})
     assert live.status_code == 400
+
+
+async def test_a_near_account_id_reads_burrow_without_an_mca_lookup() -> None:
+    near = "sparkpoint2026.near"
+    views = FakeRheaViews(mca=None, portfolio=_portfolio())
+    service, _ = _service(views)
+
+    outcome = await service.rhea_positions(wallet=near, account_id=near)
+
+    wire = outcome.block.to_wire()
+    assert wire["state"] == "ready"
+    assert wire["mca"] == near
+    assert views.wallets == []  # no EVM-keyed MCA lookup for a NEAR sign-in

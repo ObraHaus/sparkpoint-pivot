@@ -28,6 +28,8 @@ def _row_line(row: PortfolioRow) -> str:
 
 
 def _balances_lines(section: PortfolioSection) -> list[str]:
+    if section.status == "not_linked":
+        return [f"Wallet balances: not shown — {section.reason or 'no wallet is linked'}."]
     if section.status != "ok":
         return [f"Wallet balances: {section.status} — {section.reason or 'unavailable'}."]
     grouped: dict[str, list[str]] = defaultdict(list)
@@ -53,6 +55,8 @@ def _balances_lines(section: PortfolioSection) -> list[str]:
 
 
 def _morpho_lines(section: PortfolioSection) -> list[str]:
+    if section.status == "not_linked":
+        return [f"Morpho: not shown — {section.reason or 'no EVM wallet is linked'}."]
     if section.status != "ok":
         return [f"Morpho: unavailable — {section.reason or 'read failed'}."]
     if not section.rows:
