@@ -9,6 +9,7 @@ import {
   feeBpsLabel,
   findMorphoVault,
   formatMorphoAmount,
+  morphoMaxWithdrawShares,
   parseMorphoAmount,
   validateMorphoVaultMetadata,
 } from "./morphoLive.ts";
@@ -176,4 +177,41 @@ test("ERC-4626 maxDeposit/maxRedeem/maxWithdraw bound the plan", () => {
   );
   assert.equal(formatMorphoAmount(1_000_000n, 6), "1");
   assert.equal(formatMorphoAmount(1n, 6), "0.000001");
+});
+
+test("withdraw Max uses maxRedeem when ERC-4626 dust makes it lower than balanceOf", () => {
+  const balance = 8_931_212_377_877_767n;
+  const maxRedeem = 8_931_132_758_923_418n;
+  const max = morphoMaxWithdrawShares(balance, maxRedeem);
+  assert.equal(max, maxRedeem);
+  assert.ok(max < balance);
+
+  const amount = formatMorphoAmount(max, 18);
+  assert.equal(amount, "0.008931132758923418");
+  const plan = buildMorphoWithdrawPlan({
+    vault: VAULT,
+    account: ACCOUNT,
+    amount,
+    limits: { maxRedeem },
+  });
+  assert.equal(plan.shares, maxRedeem);
+
+  assert.throws(
+    () =>
+      buildMorphoWithdrawPlan({
+        vault: VAULT,
+        account: ACCOUNT,
+        amount: formatMorphoAmount(balance, 18),
+        limits: { maxRedeem },
+      }),
+    (error: unknown) => error instanceof MorphoLiveError && error.code === "amount_too_large",
+  );
+});
+
+test("withdraw Max never exceeds balanceOf and falls back to it when maxRedeem is unread", () => {
+  assert.equal(morphoMaxWithdrawShares(100n, 120n), 100n);
+  assert.equal(morphoMaxWithdrawShares(100n, 40n), 40n);
+  assert.equal(morphoMaxWithdrawShares(100n, null), 100n);
+  assert.equal(morphoMaxWithdrawShares(100n, undefined), 100n);
+  assert.equal(morphoMaxWithdrawShares(0n, 0n), 0n);
 });

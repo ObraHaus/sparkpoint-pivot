@@ -20,6 +20,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   wallet. (`apps/web/src/lib/wagmi.ts`, `apps/web/src/app/connect/page.tsx`,
   `apps/web/src/lib/wallet/metamaskProvider.ts`)
 
+### Fixed (1112-morpho — Morpho Withdraw Max uses maxRedeem, not full share balance)
+
+- **Morpho Withdraw → Max no longer fills more shares than the vault will redeem.** ERC-4626 dust
+  can leave `balanceOf(owner)` slightly above `maxRedeem(owner)`; Max now fills `maxRedeem` (the
+  same cap validation enforces), and the amount field/labels say the unit is vault shares (e.g.
+  `gtUSDCp shares`) rather than USDC. Deposit behavior is unchanged.
+  (`apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/components/vault/MorphoLiveFlow.tsx`)
+
 ### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
 
 - **Sign-in no longer fails instantly with `4100 UnauthorizedProviderError` (no wallet prompt) after
