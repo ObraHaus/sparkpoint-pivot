@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (1111-wfclean — Defender temp overrides removed)
+
+- **Removed temporary PR-specific OH Defender overrides (PR #388 number, split branch-name literals)
+  flagged by Defender AI as Medium — branch-name keyed review settings were attacker-controllable;
+  all PRs use the action defaults.** Internal CI only — no gate, pin, model, permissions or input
+  change. (`.github/workflows/oh-defender.yml`)
+
 ### Fixed (1111-nearbe — no EVM reads for a NEAR owner)
 
 - **The multi-chain portfolio never hands a NEAR account id to an EVM reader.** For a NEP-413
