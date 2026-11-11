@@ -225,7 +225,10 @@ class _VaultChatChainProvider:
         # ever answer "I can't read it right now" — while /recommendations, one call away, was
         # quoting 0.44%. Best-effort and non-raising by contract: an unreadable rate stays None
         # and the answer stays honest rather than fabricated.
-        gross_bps = await _read_aave_gross_bps(self._config)
+        # 1111 — skip the EVM market read for a NEAR session (there is no EVM chain to quote).
+        gross_bps = (
+            await _read_aave_gross_bps(self._config) if account.auth_chain == "evm" else None
+        )
         return _build_chain_context(
             account, self._config, caps, fee_bps, stale, gross_bps=gross_bps
         )
@@ -311,6 +314,11 @@ class _VaultChatPortfolioProvider:
         self._wrapper_store = wrapper_store
 
     async def read(self, chain: ChainContext) -> PortfolioView:
+        # 1111 — a NEAR identity has no EVM address to read. Report an honest stale/empty view
+        # instead of letting the account id reach the EVM reader (ValueError → 500 mid-turn) or
+        # inventing an EVM balance the user does not have.
+        if chain.auth_chain != "evm":
+            return PortfolioView(stale=True)
         owner = chain.owner or chain.user_account
         # 053 — a chain WITHOUT the launch vault (the Robinhood Chain beta) still has a real
         # portfolio: the idle stable + every whitelisted curated wrapper the wallet holds. The

@@ -302,6 +302,18 @@ async def get_notifications(
     never fabricated. Advisory read: a degraded read yields a partial or empty feed (fail-open),
     never a hard error nor on the withdraw/exit path (N2). Unread is computed vs the read cursor.
     """
+    # 1111 — the feed is DERIVED from EVM vault flows/executions/session keys, and a NEAR account
+    # id is not an EVM address. Return the honest empty feed instead of letting the account id
+    # reach the EVM reader (which raised ValueError → 500) or fabricating EVM notifications.
+    if account.auth_chain != "evm":
+        return NotificationsResponse(
+            asOf=datetime.now(UTC).isoformat(),
+            asOfBlock=0,
+            stale=False,
+            unreadCount=0,
+            notifications=[],
+        )
+
     position = await _read_position(reader, account)
     derived: list[_Derived] = []
 

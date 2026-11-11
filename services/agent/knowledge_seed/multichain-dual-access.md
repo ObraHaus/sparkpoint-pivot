@@ -70,7 +70,10 @@ test. Simulations are labelled **SIMULATED**.
 ## Withdrawals: what each rail does
 
 - **Kamino on Solana / Morpho on Base (077):** an in-wallet unsigned withdraw/redeem review; your
-  wallet signs. No custody.
+  wallet signs. No custody. For Morpho, Sparky chooses from the vaults your wallet **actually
+  holds** on the chain and asset you named — never the largest vault by TVL. If you hold more than
+  one, it lists them and asks which; if you hold none, it says so and links nothing. A NEAR-only
+  session cannot prepare an EVM Morpho withdraw and says so instead of prefilling a vault.
 - **Rhea same-chain on NEAR (078):** an in-wallet unsigned Burrow withdraw review; your NEAR wallet
   signs. No custody.
 - **Rhea cross-chain (079):** a **guided review** only. It lists the documented Rhea SDK paths
@@ -89,6 +92,12 @@ recorded Solana address, Rhea lending positions and recent cross-chain swaps. Ea
 on its own, so one slow or unconfigured source says so in that section instead of hiding the rest.
 The read is **read-only and not signable**, and it does not require the user to switch MetaMask to
 another network.
+
+A **NEAR-only session** still gets this multi-chain read (including its NEAR/Rhea rows), plus earn
+options, Rhea links, swap quotes, the changelog and tips. Reads that only make sense for an EVM
+vault — the SparkPoint vault balance, Aave market data and EVM notifications — are marked
+unavailable with plain text (for example "the SparkPoint vault is EVM-only"), never shown as a
+fabricated `$0` balance. Chat and the portfolio page still load instead of erroring.
 
 ## What stays true
 

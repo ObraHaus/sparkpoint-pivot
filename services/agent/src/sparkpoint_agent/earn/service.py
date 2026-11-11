@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from urllib.parse import urlencode
 
 from ..coordinator.chat_blocks import EarnPositionsBlock, EarnQuoteBlock, EarnVaultsBlock
@@ -22,6 +22,7 @@ from ..crosschain.config import CrossChainAsset, CrossChainConfig
 from ..crosschain.config import default_config as cc_config
 from ..crosschain.oneclick import OneClickClient, QuoteUnavailable, deadline_at
 from ..crosschain.service import amount_from_human
+from ..portfolio.models import PortfolioRow, PortfolioSection
 from .config import EarnConfig, addresses_equal
 from .parse import EarnRequest
 from .rails import (
@@ -36,7 +37,7 @@ from .rails import (
     default_liveness,
     resolve_rails,
 )
-from .registry import EarnRegistry, EarnSnapshot, VaultEntry
+from .registry import EarnRegistry, EarnSnapshot, VaultAsset, VaultEntry
 from .rhea import (
     DRY_PLACEHOLDER_SIGNATURE,
     RheaRpcError,
@@ -70,6 +71,16 @@ _UNKNOWN_SNAPSHOT = (
     "nothing was signed or sent."
 )
 _NO_MATCH = "No vault matched those filters in the current snapshot."
+
+
+class MorphoPositionReader(Protocol):
+    """The read-only Morpho position source (``portfolio.morpho.MorphoPositionsSource``).
+
+    ``withdraw_outcome`` uses this to pick the vault the wallet ACTUALLY holds instead of the
+    largest-TVL vault that matched the named asset. Never writes, signs or submits.
+    """
+
+    async def collect(self, wallet: str) -> PortfolioSection: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,9 +142,13 @@ class EarnService:
         liveness: ReceiptLivenessCache | None = None,
         aurora_key: str | None = None,
         rhea_views: RheaViews | None = None,
+        morpho_positions: MorphoPositionReader | None = None,
     ) -> None:
         self.config = config
         self.registry = registry
+        # 1111 — the read-only Morpho position source (072's reader). Injected in production so a
+        # withdraw picks a vault the wallet holds; ``None`` fails closed rather than guessing.
+        self.morpho_positions = morpho_positions
         self.oneclick = oneclick or OneClickClient.from_env()
         self.crosschain = crosschain or cc_config()
         self.liveness = liveness or default_liveness()
@@ -291,13 +306,224 @@ class EarnService:
         candidates.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
         return (candidates[0], False) if candidates else (None, False)
 
-    def withdraw_outcome(self, request: EarnRequest) -> EarnOutcome:
+    async def withdraw_outcome(
+        self,
+        request: EarnRequest,
+        *,
+        wallet: str | None = None,
+        non_evm: bool = False,
+    ) -> EarnOutcome:
         """Route an explicit Morpho/Kamino withdraw to the existing ``/vault/live`` card.
 
         No new execution surface: the card is the same review+confirm flow the Vault page uses
         (``mode=withdraw``). It only links there; nothing is signed, built or sent here.
+
+        1111 — a Morpho withdraw targets the vault the wallet ACTUALLY holds on that chain and in
+        the named asset, read from the same Morpho position source the multi-chain portfolio uses.
+        It NEVER falls back to the largest-TVL vault: a card for a vault the user has no position
+        in is a dead end at best and a wrong-vault link at worst. Ambiguity, an unreadable position
+        source, or a non-EVM identity all fail closed with truthful text and no prefill.
         """
         protocol = request.protocol or "morpho"
+        if protocol == "morpho":
+            return await self._morpho_withdraw_outcome(
+                request, wallet=wallet, non_evm=non_evm
+            )
+        return self._snapshot_withdraw_outcome(request, protocol)
+
+    async def _morpho_withdraw_outcome(
+        self, request: EarnRequest, *, wallet: str | None, non_evm: bool
+    ) -> EarnOutcome:
+        chain_key = request.chain or "base"
+        chain_label = _chain_label_for_key(self.config, chain_key)
+        named = (request.asset or "").strip().upper()
+        asset_text = named or "Morpho"
+        label = "Morpho"
+
+        if non_evm:
+            return EarnOutcome(
+                text=(
+                    "A Morpho position is an EVM position, and you're signed in with a NEAR "
+                    f"wallet, so I can't read or prepare a {chain_label} Morpho withdraw for this "
+                    "session. Nothing was signed or sent. Connect an EVM wallet to review a "
+                    "Morpho withdraw."
+                ),
+                block=EarnVaultsBlock(
+                    state="unavailable",
+                    unavailable_reason=(
+                        "Morpho positions are EVM-only; this session has no EVM address."
+                    ),
+                ),
+            )
+
+        if self.morpho_positions is None:
+            reason = "I couldn't read your Morpho positions just now."
+            return self._withdraw_unavailable(reason)
+
+        if not wallet:
+            return self._withdraw_unavailable(
+                "I couldn't identify your wallet to read your Morpho positions."
+            )
+
+        try:
+            section = await self.morpho_positions.collect(wallet)
+        except Exception:  # noqa: BLE001 - a position read failure must fail CLOSED, not raise
+            return self._withdraw_unavailable("I couldn't read your Morpho positions just now.")
+        if section.status != "ok":
+            return self._withdraw_unavailable(
+                section.reason or "I couldn't read your Morpho positions just now."
+            )
+
+        held = self._held_morpho_positions(section.rows, chain_key, named)
+        if not held:
+            target = f"{named} " if named else ""
+            reason = f"No {target}Morpho position on {chain_label} for this wallet."
+            return EarnOutcome(
+                text=(
+                    f"I don't see a {target}Morpho position on {chain_label} for this wallet, so "
+                    "there's no vault to withdraw from. I won't link a vault you don't hold. "
+                    "Nothing was signed or sent."
+                ),
+                block=EarnVaultsBlock(state="unavailable", unavailable_reason=reason),
+            )
+
+        if len(held) > 1:
+            # Ambiguity is NOT a reason to fall back to TVL: list every held matching vault with
+            # its own withdraw link and ask which one, so the user chooses from positions they own.
+            lines = []
+            wires = []
+            for row, entry in held:
+                url = self._withdraw_card_url(entry, request, prefill=None)
+                lines.append(
+                    f"- {entry.name} on {chain_label} — you hold {row.amount} "
+                    f"{entry.asset.symbol}: [Open withdraw card]({url})"
+                )
+                wires.append(vault_wire(self.config, entry, self._rails(entry)))
+            return EarnOutcome(
+                text=(
+                    f"You hold more than one {asset_text} Morpho position on {chain_label}, so I "
+                    "won't guess which vault to withdraw from. Tell me which one, or open the one "
+                    "you mean:\n" + "\n".join(lines) + "\nNothing was signed or sent."
+                ),
+                block=EarnVaultsBlock(
+                    state="ready",
+                    vaults=tuple(wires),
+                    note=(
+                        "Multiple held Morpho positions matched — pick one before withdrawing."
+                    ),
+                ),
+            )
+
+        row, entry = held[0]
+        # The named asset already matched this held vault, so prefilling the parsed amount is safe.
+        prefill = request.amount_human if named else None
+        url = self._withdraw_card_url(entry, request, prefill=prefill)
+        amount_line = f" for {prefill} {entry.asset.symbol}" if prefill is not None else ""
+        return EarnOutcome(
+            text=(
+                f"Open the live {label} withdraw card for {entry.name} on {chain_label}"
+                f"{amount_line} to review and sign in your own wallet. You hold {row.amount} "
+                f"{entry.asset.symbol} in this vault. Nothing was signed or sent here."
+            ),
+            block=EarnQuoteBlock(
+                state="preview",
+                rail="direct",
+                vault=vault_wire(self.config, entry, self._rails(entry)),
+                protocol=label.lower(),
+                withdraw={
+                    "kind": "external_link",
+                    "url": url,
+                    "note": (
+                        "Opens the same review-and-sign withdraw card as the Vault page. You "
+                        "review the amounts and fees, then sign in your own wallet."
+                    ),
+                },
+                quoted_at=_now_iso(),
+            ),
+        )
+
+    def _withdraw_unavailable(self, reason: str) -> EarnOutcome:
+        return EarnOutcome(
+            text=(
+                f"{reason} I won't guess a Morpho vault to withdraw from — nothing was signed or "
+                "sent. Please try again in a moment."
+            ),
+            block=EarnVaultsBlock(state="unavailable", unavailable_reason=reason),
+        )
+
+    def _held_morpho_positions(
+        self, rows: tuple[PortfolioRow, ...], chain_key: str, named: str
+    ) -> list[tuple[PortfolioRow, VaultEntry]]:
+        """The wallet's real Morpho vault positions on ``chain_key`` (and named asset)."""
+        held: list[tuple[PortfolioRow, VaultEntry]] = []
+        seen: set[str] = set()
+        for row in rows:
+            if row.protocol != "morpho" or row.chain != chain_key:
+                continue
+            vault_address = str(row.extra.get("vaultAddress") or "")
+            if not vault_address.startswith("0x"):
+                continue  # 1Click receipts are wrappers, not direct Morpho vault positions
+            asset_symbol = str(row.extra.get("assetSymbol") or row.symbol or "")
+            if named and asset_symbol.strip().upper() != named:
+                continue
+            try:
+                amount = Decimal(str(row.amount)) if row.amount is not None else Decimal(0)
+            except (InvalidOperation, ValueError):
+                amount = Decimal(0)
+            if amount <= 0:
+                continue
+            key = vault_address.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            held.append((row, self._entry_for_held(row, chain_key, vault_address, asset_symbol)))
+        return held
+
+    def _entry_for_held(
+        self, row: PortfolioRow, chain_key: str, vault_address: str, asset_symbol: str
+    ) -> VaultEntry:
+        snapshot = self.registry.current()
+        if snapshot is not None:
+            for entry in snapshot.vaults:
+                if entry.chain == chain_key and addresses_equal(entry.address, vault_address):
+                    return entry
+        chain = self.config.chain(chain_key)
+        try:
+            decimals = int(row.extra.get("decimals") or 0)
+        except (TypeError, ValueError):
+            decimals = 0
+        return VaultEntry(
+            chain=chain_key,
+            chain_id=chain.chain_id if chain is not None else 0,
+            address=vault_address,
+            version="vault",
+            name=str(row.extra.get("vaultName") or row.symbol or "Morpho vault"),
+            symbol=str(row.symbol or asset_symbol),
+            asset=VaultAsset(address="", symbol=asset_symbol, decimals=decimals),
+            listed=True,
+            tvl_usd=None,
+            net_apy=None,
+            source="morpho_api",
+            fetched_at="",
+            protocol="morpho",
+        )
+
+    def _withdraw_card_url(
+        self, entry: VaultEntry, request: EarnRequest, *, prefill: str | None
+    ) -> str:
+        params: list[tuple[str, str]] = [
+            ("protocol", "morpho"),
+            ("chain", entry.chain),
+            ("vault", entry.address),
+            ("asset", entry.asset.symbol),
+            ("mode", "withdraw"),
+        ]
+        if prefill is not None:
+            params.append(("amount", prefill))
+        return f"/vault/live?{urlencode(params)}"
+
+    def _snapshot_withdraw_outcome(self, request: EarnRequest, protocol: str) -> EarnOutcome:
+        """The snapshot-based selection for protocols that are not Morpho (Kamino unchanged)."""
         label = {"kamino": "Kamino"}.get(protocol, "Morpho")
         entry, asset_matched = self.resolve_withdraw_vault(request, protocol)
         if entry is None:
@@ -1181,7 +1407,21 @@ def build_service_from_env() -> EarnService | None:
     config = default_config()
     if not config.feature_enabled:
         return None
-    return EarnService(config, build_registry_from_env())
+    registry = build_registry_from_env()
+    # 1111 — reuse 072's read-only Morpho position reader so a chat withdraw resolves the vault
+    # the wallet actually holds. Imported lazily: portfolio imports this module for its own earn
+    # service, and this keeps the module import graph acyclic.
+    from ..data.prices import PriceService
+    from ..portfolio.config import config_from_env as portfolio_config_from_env
+    from ..portfolio.morpho import MorphoPositionsSource
+
+    positions = MorphoPositionsSource(
+        portfolio_config_from_env(),
+        registry=registry,
+        earn_config=config,
+        pricer=PriceService(),
+    )
+    return EarnService(config, registry, morpho_positions=positions)
 
 
 def build_service_for_registry(

@@ -276,6 +276,19 @@ async def _read_gate_inputs(
     ``stale=True`` (which the gate's freshness step rejects on for inflows) — never a
     fabricated headroom that could let an unverified strategy surface.
     """
+    # 1111 — a NEAR session has no EVM address. Reading ``balanceOf(<near id>)`` raised a
+    # ValueError that escaped the ``VaultUnavailable`` handler and 500'd the whole chat turn.
+    # Report stale (which fails closed on inflows) with full caps; no fabricated balance.
+    if account.auth_chain != "evm":
+        return (
+            CapHeadroom(
+                per_user=CAPS.per_user_tvl.amount,
+                total=CAPS.total_protocol.amount,
+                vault=CAPS.vault_deposit.amount,
+            ),
+            GOVERNANCE.performance_fee.default_bps,
+            True,
+        )
     try:
         shares = await reader.balance_of(account.account)
         user_assets = await reader.convert_to_assets(shares) if shares else 0
@@ -328,7 +341,9 @@ def _build_chain_context(
     read the rate (e.g. the chat context provider) unchanged and honest (no fabricated APY).
     """
     resolved_targets: dict[str, str] = {}
-    if config.vault_address:
+    # 1111 — only an EVM session can build an EVM vault action. A NEAR identity must NOT be handed
+    # a vault target it cannot sign for (the gate would also reject it as stale).
+    if config.vault_address and account.auth_chain == "evm":
         resolved_targets[_VAULT_TARGET_REF] = config.vault_address
     # NOTE (030): only the VAULT belongs here. Every other allowlisted target — the Aave pool
     # included — resolves from the static address book inside `resolve_target_ref`; this map is
@@ -341,6 +356,7 @@ def _build_chain_context(
         chain_id=account.chain_id,
         user_account=account.account,
         owner=account.owner,
+        auth_chain=account.auth_chain,
         resolved_targets=resolved_targets,
         caps=caps,
         data_stale=stale,
