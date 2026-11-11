@@ -25,6 +25,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `apps/web/src/components/screens/chat/crosschain-quote-card.tsx`,
   `apps/web/src/lib/agent/sessionIdentity.ts`, `apps/web/src/app/api/agent/[...path]/route.ts`)
 
+### Fixed (1112-rheamax — Rhea/Burrow Withdraw Max + plain user copy)
+
+- **Rhea/Burrow NEAR Withdraw → Max now fills the withdrawable supplied USDC amount.** The button
+  only toggled a boolean and cleared/disabled the input, so a real Meteor session (`sparkpoint2026.near`,
+  ~0.05 USDC supplied) saw no change and had to type the amount by hand. Max now reads the live
+  Burrow position and fills the amount, converting `get_account[_all_positions]` inner units
+  (USDC 6 decimals + Burrow `extra_decimals` 12 = 18-scale) to a human amount (`0.05`, not a
+  scale-wrong value or `NaN`). The Withdraw tab's "Available" now shows the withdrawable supplied
+  balance, Supply shows idle wallet USDC, and switching tabs clears the other tab's amount.
+  (`apps/web/src/lib/near/burrow.ts`, `apps/web/src/lib/near/liveEarn.ts`,
+  `apps/web/src/components/vault/RheaLiveEarn.tsx`, `apps/web/src/app/api/earn/rhea/live/route.ts`)
+- **The Rhea withdraw review reads as money received, not a second debit.** A withdraw row no longer
+  shows a leading minus (`-0.05 USDC`); it reads `0.05 USDC to your wallet`.
+- **Removed developer/internal copy from user-facing Vault, Rhea and Sparky surfaces.** Phase/ticket
+  references, "rail", "MCA", "deferred", "flagged", "flow floor", "high-path", build-flag names and
+  similar internal language are gone from rendered UI, empty states, helper text and the in-app
+  changelog; the concise funds-safety line remains. The Rhea row no longer links mobile users to the
+  blank external `app.rhea.finance/lending` page. (`apps/web/src/components/vault/*`,
+  `apps/web/src/components/screens/chat/{portfolio-overview,earn-quote}-card.tsx`,
+  `services/agent/src/sparkpoint_agent/earn/{rails,service,rhea_xchain}.py`,
+  `services/agent/src/sparkpoint_agent/portfolio/kamino.py`,
+  `services/agent/content_seed/whats-new.json`)
+
 ### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
 
 - **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The

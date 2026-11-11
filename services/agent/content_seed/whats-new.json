@@ -62,7 +62,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Kamino earn review now checks every farm account before you sign",
-      "body": "Behind the scenes: live Kamino earn adds or removes your staked position through the Kamino farms program, and the pre-sign safety check used to allow those steps as long as the correct vault farm appeared somewhere in the transaction. A security review flagged that a tampered transaction could point the stake or unstake steps at another owner or another token account. The check now verifies each account by its exact position — your wallet as the owner, the selected vault's farm, the wallet's own farm position, your own share token account, and the program-derived farm vault and authority — and refuses anything that does not match. It also refuses staking during a withdraw and unstaking during a deposit. Unknown farm instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
+      "body": "Behind the scenes: live Kamino earn adds or removes your staked position through the Kamino farms program, and the pre-sign safety check used to allow those steps as long as the correct vault farm appeared somewhere in the transaction. A security review found that a tampered transaction could point the stake or unstake steps at another owner or another token account. The check now verifies each account by its exact position — your wallet as the owner, the selected vault's farm, the wallet's own farm position, your own share token account, and the program-derived farm vault and authority — and refuses anything that does not match. It also refuses staking during a withdraw and unstaking during a deposit. Unknown farm instructions are still blocked, and you still review and sign everything in your own wallet. Live Kamino earn stays off by default in this build.",
       "published_at": "2026-11-10T07:30:00Z"
     },
     {
@@ -86,7 +86,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Supplying and withdrawing on Rhea with a NEAR wallet now sends correctly",
-      "body": "A funded test of the same-chain NEAR supply to Rhea (Burrow) found that the prepared transaction addressed the wrong contract, so the network could not execute it even though the review looked correct. The plan now sends one transaction per contract it needs to talk to — the Burrow account registration, then the USDC supply, and the Burrow withdraw — and keeps the same review, amount limits and confirmation step as before. The same funded run supplied 1 USDC and withdrew it back to the wallet using the app's own plan. Nothing about who signs changes: you still review and sign in your own NEAR wallet, and SparkPoint never holds your funds.",
+      "body": "A funded test of the NEAR supply to Rhea (Burrow) found that the prepared transaction addressed the wrong contract, so the network could not execute it even though the review looked correct. The plan now sends one transaction per contract it needs to talk to — the Burrow account registration, then the USDC supply, and the Burrow withdraw — and keeps the same review, amount limits and confirmation step as before. The same funded run supplied 1 USDC and withdrew it back to the wallet using the app's own plan. Nothing about who signs changes: you still review and sign in your own NEAR wallet, and SparkPoint never holds your funds.",
       "published_at": "2026-11-10T04:20:00Z"
     },
     {
@@ -110,7 +110,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Review a cross-chain deposit into Rhea from your own EVM wallet",
-      "body": "A new review screen covers the cross-chain Rhea deposit: USDC from your Base or Ethereum wallet into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click and Rhea's Multichain Account. You can always open a dry review that shows the origin chain, amount, refund address, the one-time Rhea account fee, the routing fee, the net amount supplied and the supply APY — and it moves no funds. A live preparation step stays off by default in this build. When an operator enables it, a first deposit asks for one off-chain signature (not a transaction), then shows the exact unsigned USDC transfer for your own wallet to confirm; SparkPoint never signs, submits or holds funds. This is the cross-chain rail and is separate from the same-chain NEAR supply flow. Withdraw is a guided review for now: it lists the documented Rhea SDK paths first and only then links out to the Rhea app, and that link is not a SparkPoint-signed transaction. No funded cross-chain execution has been run yet.",
+      "body": "A new review screen covers the cross-chain Rhea deposit: USDC from your Base or Ethereum wallet into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click and Rhea's Multichain Account. You can always open a dry review that shows the origin chain, amount, refund address, the one-time Rhea account fee, the routing fee, the net amount supplied and the supply APY — and it moves no funds. A live preparation step stays off by default in this build. When an operator enables it, a first deposit asks for one off-chain signature (not a transaction), then shows the exact unsigned USDC transfer for your own wallet to confirm; SparkPoint never signs, submits or holds funds. This is a separate option from supplying directly on NEAR. Withdraw is a guided review for now: it lists the documented Rhea SDK paths first and only then links out to the Rhea app, and that link is not a SparkPoint-signed transaction. No funded cross-chain execution has been run yet.",
       "published_at": "2026-11-09T08:40:21Z"
     },
     {
@@ -118,7 +118,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "A clearer map of the multi-chain beta",
-      "body": "The beta at beta.sparkpoint.io now tells one consistent multi-chain story on the manual pages and in Sparky chat. The Swap page is the same-network EVM swap on your connected wallet, while cross-chain routes (USDC to BTC, ETH to Base, USDC to SOL) run through NEAR Intents in chat with a preview first. The Vault page shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana, and Rhea on NEAR, with honest notes when a rail is a preview or needs a funded wallet. Portfolio keeps reading across chains without asking you to switch networks. Live deposit and withdraw reviews for Kamino, Morpho and Rhea are built but off by default; when an operator enables a flag you review an unsigned transaction and sign it in your own wallet. SparkPoint never signs, submits or holds your funds, and no funded execution is claimed until an owner-approved funded test. The public beta at beta.sparkpoint.io is the production Coolify app from the main branch; there is no separate develop web environment.",
+      "body": "The beta at beta.sparkpoint.io now tells one consistent multi-chain story on the manual pages and in Sparky chat. The Swap page is the same-network EVM swap on your connected wallet, while cross-chain routes (USDC to BTC, ETH to Base, USDC to SOL) run through NEAR Intents in chat with a preview first. The Vault page shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana, and Rhea on NEAR, with clear notes when an option is a preview or needs a funded wallet. Portfolio keeps reading across chains without asking you to switch networks. Live deposit and withdraw reviews for Kamino, Morpho and Rhea are built but off by default; when live access is enabled you review an unsigned transaction and sign it in your own wallet. SparkPoint never signs, submits or holds your funds, and no funded execution is claimed until an owner-approved funded test. The public beta at beta.sparkpoint.io is the production Coolify app from the main branch; there is no separate develop web environment.",
       "published_at": "2026-11-09T09:47:47Z"
     },
     {
@@ -142,7 +142,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Supply and withdraw USDC on NEAR directly with your NEAR wallet",
-      "body": "A new same-chain NEAR rail lets you supply native USDC to Rhea (Burrow) and withdraw it using your own NEAR wallet. The flow is review-first: you see the exact amount, the Burrow contract, the USDC token, any one-time storage deposit, the gas reserve and the current block before anything is signed. You must tick a confirmation and approve in your wallet; if the connected NEAR account changes in between, the app refuses to send. After sending, the app checks the chain and reports confirmed, failed or still pending honestly. This is same-chain NEAR only — it is not the cross-chain Rhea/1Click deposit, which remains deferred. The feature is off by default in this build, and SparkPoint never holds your funds or adds an access key.",
+      "body": "A new NEAR flow lets you supply native USDC to Rhea (Burrow) and withdraw it using your own NEAR wallet. The flow is review-first: you see the exact amount, the Burrow contract, the USDC token, any one-time storage deposit, the gas reserve and the current block before anything is signed. You must tick a confirmation and approve in your wallet; if the connected NEAR account changes in between, the app refuses to send. After sending, the app checks the chain and reports confirmed, failed or still pending honestly. This is a direct NEAR flow; the cross-chain Rhea deposit is a separate option that is not available in this build. The feature is off by default in this build, and SparkPoint never holds your funds or adds an access key.",
       "published_at": "2026-11-09T02:04:17Z"
     },
     {
@@ -150,7 +150,7 @@
       "type": "changelog",
       "tag": "Improved",
       "title": "One multi-chain story: pages and Sparky both show swaps, earn and portfolio",
-      "body": "The freeze build tells one consistent story. The Swap page is the manual on-chain swap on your connected EVM network (Base or Robinhood Chain) and points cross-chain routes — USDC to BTC, ETH to Base, USDC to SOL — to Sparky, where they run through NEAR Intents with a preview first. The Vault page now shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana and Rhea on NEAR, with chain filters and an honest note when a rail needs a funded wallet or is not available yet. Portfolio keeps aggregating across chains without asking you to flip networks in MetaMask, and the top bar now shows network status only. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
+      "body": "The freeze build tells one consistent story. The Swap page is the manual on-chain swap on your connected EVM network (Base or Robinhood Chain) and points cross-chain routes — USDC to BTC, ETH to Base, USDC to SOL — to Sparky, where they run through NEAR Intents with a preview first. The Vault page now shows the same earn registry Sparky reads: Morpho on Base and Ethereum, Kamino on Solana and Rhea on NEAR, with chain filters and a clear note when an option needs a funded wallet or is not available yet. Portfolio keeps aggregating across chains without asking you to flip networks in MetaMask, and the top bar now shows network status only. Nothing about reviewing, signing or your funds changes: SparkPoint never holds your funds.",
       "published_at": "2026-11-05T16:00:00Z"
     },
     {
@@ -262,7 +262,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "See your whole portfolio across chains — read-only",
-      "body": "Ask Sparky to show your portfolio and you get one read-only view of the signed-in wallet across Base, Solana and NEAR: wallet balances with chain badges, Morpho vault positions, Kamino shares on a Solana address already linked to you, Rhea lending positions, and your recent cross-chain swap history. Each section reads on its own, so a slow source or a missing Solana link only says so in that section instead of hiding the rest. You also get a priced total with per-chain and per-protocol breakdowns, the source of each read and when it was taken. 'Show my portfolio', 'what do I have across chains', 'my balances' and 'show my positions everywhere' open the full overview, 'my swap history' focuses on swaps, and 'how much am I earning' focuses on the earn positions. The Portfolio page has the same 'Across chains' panel. Nothing here is signable: this release reads only, and live deposits, signing and withdraws are coming in the next phase. SparkPoint never holds your funds.",
+      "body": "Ask Sparky to show your portfolio and you get one read-only view of the signed-in wallet across Base, Solana and NEAR: wallet balances with chain badges, Morpho vault positions, Kamino shares on a Solana address already linked to you, Rhea lending positions, and your recent cross-chain swap history. Each section reads on its own, so a slow source or a missing Solana link only says so in that section instead of hiding the rest. You also get a priced total with per-chain and per-protocol breakdowns, the source of each read and when it was taken. 'Show my portfolio', 'what do I have across chains', 'my balances' and 'show my positions everywhere' open the full overview, 'my swap history' focuses on swaps, and 'how much am I earning' focuses on the earn positions. The Portfolio page has the same 'Across chains' panel. Nothing here is signable: this release reads only, and live deposits, signing and withdraws are coming soon. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T05:20:00Z"
     },
     {
@@ -270,7 +270,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Rhea lending on NEAR — vault list, dry previews and read-only positions",
-      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and — on your first deposit only — the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign in a later phase to create your Rhea account. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
+      "body": "Ask Sparky to show Rhea vaults and you get the Rhea (Burrow) lending market on NEAR with its Rhea and NEAR badges, the supply APY as the contract reports it, and the source of that rate. Preview a deposit to see the estimated supplied amount, the variable-rate note, and — on your first deposit only — the one-time 0.30 USDC Rhea account setup fee, the net amount after it, and the message your wallet will sign when account creation is enabled. The Rhea account the funds go to is derived from your connected wallet, never typed in: an existing account is reused, and a first deposit is addressed to Rhea's account manager. 'Show my Rhea positions' reads your Rhea account and lists what you have supplied, or says plainly that the wallet has no Rhea account yet. You don't need to name Rhea: asking for yield or lending on NEAR now routes to Rhea Lending (USDC only for now), while native NEAR-token staking is honestly not supported. Withdraw links out to app.rhea.finance. Nothing is signable in this release: this is a dry preview and a read-only view, with live deposits and the account signature coming next. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T04:15:00Z"
     },
     {
@@ -278,7 +278,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Kamino SOL vaults and native-share previews in Sparky chat",
-      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which rails can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) — the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
+      "body": "Ask Sparky to show Kamino vaults and you get the Solana vault list with each vault's name, protocol and chain badges, asset, TVL, net APY as Kamino reports it, and which routes can reach it. Kamino's direct deposit is honestly unavailable in the beta, and the NEAR Intents 1Click route delivers the native Kamino kVault share (kV-gtSOLb for SOL Balanced) — the receipt IS the share, not a NEAR wrapper. Preview a deposit to see the estimated share amount, ETA and the keyless 0.25% fee. Kamino previews ask for a pasted Solana recipient: your EVM wallet is never reused as a Solana address, and an EVM 0x address is rejected with a clear message. Deposits from Base USDC show the connected-EVM-wallet path (disabled for now), while SOL-origin deposits explain the copy-address flow. Nothing is signable yet: this release is a dry preview only, and live deposits and withdrawals are coming next. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T03:30:00Z"
     },
     {
@@ -286,7 +286,7 @@
       "type": "changelog",
       "tag": "New",
       "title": "Morpho vaults and dry previews in Sparky chat",
-      "body": "Ask Sparky to show Morpho vaults on Base or Ethereum and you get the current list with each vault's name, chain, asset, TVL, net APY as Morpho reports it, and which rails can actually reach it: a direct same-chain deposit, the NEAR Intents 1Click receipt route (live or no liquidity), or Aurora Intents Connect (still needs access). Pick Preview to see a dry quote for depositing 100 USDC, including the estimated receipt amount, fees and the honest note that a 1Click receipt is a NEAR-issued wrapper, not the native Morpho share. Nothing is signable yet: this release shows the preview only, and a live deposit or withdrawal is coming next. SparkPoint never holds your funds.",
+      "body": "Ask Sparky to show Morpho vaults on Base or Ethereum and you get the current list with each vault's name, chain, asset, TVL, net APY as Morpho reports it, and which routes can actually reach it: a direct deposit on the same network, the NEAR Intents 1Click receipt route (live or no liquidity), or Aurora Intents Connect (still needs access). Pick Preview to see a dry quote for depositing 100 USDC, including the estimated receipt amount, fees and the honest note that a 1Click receipt is a NEAR-issued wrapper, not the native Morpho share. Nothing is signable yet: this release shows the preview only, and a live deposit or withdrawal is coming next. SparkPoint never holds your funds.",
       "published_at": "2026-11-01T03:00:00Z"
     },
     {
@@ -752,6 +752,22 @@
       "title": "Morpho Withdraw Max now fills the amount the vault will actually redeem",
       "body": "On the Morpho Withdraw tab, pressing Max could fill your full share balance and then be refused because the vault would redeem very slightly less. Max now fills the redeemable amount the review already checks, and the field clearly says the amount is in vault shares (such as gtUSDCp shares), not USDC. Deposits are unchanged, and you still review and sign in your own wallet.",
       "published_at": "2026-11-11T23:10:12Z"
+    },
+    {
+      "slug": "rhea-withdraw-max-available-1112-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Rhea withdraw Max now fills the amount you can withdraw",
+      "body": "On the Rhea (Burrow) withdraw screen, pressing Max did nothing, so the amount had to be typed by hand. Max now fills the USDC amount you have supplied and can withdraw, shown under the field as Available to withdraw. The app converts Burrow's balance correctly, so a position worth 0.05 USDC fills 0.05, not a wildly wrong number. The Supply tab shows the idle USDC you can supply, switching tabs clears the previous amount, and the withdraw review now reads as money you receive (for example, \"0.05 USDC to your wallet\") instead of a negative debit. You still review and sign in your own wallet.",
+      "published_at": "2026-11-11T23:30:00Z"
+    },
+    {
+      "slug": "plain-language-earn-copy-1112-2026-11",
+      "type": "changelog",
+      "tag": "Improved",
+      "title": "Clearer, plainer copy on the Vault and Rhea screens",
+      "body": "Several Vault and Rhea screens still showed internal notes meant for the team. Those notes are gone. The screens now use short, plain language about what you can do, keep the important safety line (mainnet funds: review each step in your wallet; SparkPoint never holds your funds), and no longer send mobile users to an empty external Rhea page. Tapping Review cross-chain deposit stays inside SparkPoint. Nothing about signing or custody changes.",
+      "published_at": "2026-11-11T23:31:00Z"
     }
   ]
 }
