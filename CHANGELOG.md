@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
+
+- **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The
+  button now selects the MetaMask EIP-6963 provider (`io.metamask`) or the
+  `window.ethereum.providers` entry with `isMetaMask && !isPhantom`, instead of a generic
+  `window.ethereum` (or any announced injected connector) that Phantom may own. If MetaMask is not
+  installed, the UI says "MetaMask not detected" and does not fall through to another injected
+  wallet. (`apps/web/src/lib/wagmi.ts`, `apps/web/src/app/connect/page.tsx`,
+  `apps/web/src/lib/wallet/metamaskProvider.ts`)
+
 ### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
 
 - **Sign-in no longer fails instantly with `4100 UnauthorizedProviderError` (no wallet prompt) after
