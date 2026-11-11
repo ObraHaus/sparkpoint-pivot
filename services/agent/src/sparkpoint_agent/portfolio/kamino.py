@@ -155,7 +155,7 @@ class KaminoPositionsSource:
             )
         ]
 
-    async def collect(self, wallet: str) -> PortfolioSection:
+    async def collect(self, wallet: str, *, auth_chain: str = "evm") -> PortfolioSection:  # noqa: ARG002 - EVM/Solana/DB sources are only called for EVM sessions
         if self._earn_config is None or not self._earn_config.kamino.enabled:
             return PortfolioSection(
                 key="kamino",

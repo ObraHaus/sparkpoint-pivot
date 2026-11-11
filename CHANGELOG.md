@@ -10,6 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1111-nearbe — no EVM reads for a NEAR owner)
+
+- **The multi-chain portfolio never hands a NEAR account id to an EVM reader.** For a NEP-413
+  session the 072 service now marks the EVM-only sections (`balances`, `morpho`) `not_linked` with
+  an explicit "No EVM wallet is linked to this NEAR sign-in" reason instead of reading
+  `balanceOf(sparkpoint2026.near)` (RPC error) or Morpho's GraphQL with an invalid address, and it
+  never fabricates a zero row. NEAR wallet balances are not read yet, and the text says so. Rhea
+  keeps working by reading the existing Burrow `get_account_all_positions` view with the NEAR
+  account id directly (no EVM-keyed MCA lookup); Kamino stays bound to linked Solana addresses and
+  swap history stays owner-scoped. Chat `portfolio_overview` reuses the same read, so its prose is
+  truthful too. (`services/agent/src/sparkpoint_agent/portfolio/{service,rhea,text}.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`,
+  `services/agent/src/sparkpoint_agent/{api/multichain_portfolio.py,coordinator/dag.py}`)
+- **No auth/session or `x-chain-id` behavior changed.** The BFF still asserts the verified session
+  owner and chain; a NEAR session still sends the neutral EVM chain id (84532 from the identity
+  default) and the agent now ignores it for every EVM read rather than changing the chain.
+
 ### Fixed (1111 — NEAR-session chat/portfolio degradation + Morpho withdraw uses the held vault)
 
 - **A valid NEAR (NEP-413) session no longer 500s chat or 503s notifications/portfolio.**
@@ -773,6 +790,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Navigation cleanup:** Bridge is hidden for now, SRK moved inside Learn, and the Changelog moved into Settings — all still deep-linkable and searchable.
 - **No testnet/faucet copy on the beta.** The testnet funding tip and the vault tips are gone; the SRK page no longer offers a faucet, states that SRK is a placeholder token, and links to its Pons launchpad.
 - **The Sparky Broker page links to OpenSea** and says the collection is a placeholder for testing.
+
+### Fixed (1111-nearui — truthful NEAR-signed-in UI)
+
+- **A verified NEAR session now renders as signed in.** The network pill shows `NEAR` (not
+  "Unsupported network"), the account label shows the NEAR account (not "Not connected"), and the
+  chat sidebar no longer shows the illustrative `$12,184.42` preview: it says the vault position is
+  EVM-only and to connect an EVM wallet. The chat Demo banner remains tied to the agent client
+  (`useAgentClient` is non-null for a NEAR session, so live replies are used), and EVM-only actions
+  still require an EVM wallet — a NEAR session is never presented as one. `/portfolio` copy and the
+  "Across chains" note now state that NEP-413 is server-verified, and the Phase C Solana hint is no
+  longer shown for the NEAR/EVM-only sections. (`apps/web/src/lib/{network.tsx,networkPill.ts,
+  auth/viewerState.ts,portfolio/liveState.ts}`, `apps/web/src/components/{shell/TopBar.tsx,
+  overlays/OverlayProvider.tsx,near/NearWalletPortfolioLine.tsx,
+  screens/chat/portfolio-overview-card.tsx}`, `apps/web/src/app/(app)/{chat,portfolio}/page.tsx`)
+- **A brief session check no longer flashes a mock signed-out UI.** While `/api/auth/session` is
+  in flight and no EVM wallet is connected, the app now has an explicit `loading` viewer state: the
+  chat rail and `/portfolio` render neutral placeholders — no illustrative `$12,184.42`, no
+  "Connect your wallet" prompts, the mandate card reads "Loading your plan…", the "Across chains"
+  panel says it is reading, and the chat "Demo mode" banner stays hidden. Only once the session
+  resolves to `null` does the signed-out preview/demo return; a resolved NEAR session goes straight
+  to the live session. EVM wallet behaviour (including EVM winning over a NEAR session) is
+  unchanged. (`apps/web/src/lib/auth/viewerState.ts`,
+  `apps/web/src/lib/agent/{identity,useAgent}.ts`, `apps/web/src/lib/network.tsx`,
+  `apps/web/src/lib/portfolio/liveState.ts`)
 
 ## [0.3.0] — 2026-09-18 — Beta launch (Robinhood Chain)
 

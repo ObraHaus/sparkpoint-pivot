@@ -13,6 +13,8 @@ import {
 import { wagmiConfig } from "@/lib/wagmi";
 import { APP_DEFAULT_CHAIN_ID } from "@/lib/chain/appChain";
 import type { Network, NetworkId } from "@/lib/mock-data";
+import { useSession } from "@/lib/auth/useSiwe";
+import { viewerState } from "@/lib/auth/viewerState";
 
 /**
  * Real connected-network + wallet context for the app shell (Phase B).
@@ -67,16 +69,21 @@ const SWITCHABLE: SwitchableNetwork[] = SWITCHABLE_CHAINS.filter((c) =>
   live: true,
 }));
 
-const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "Not connected");
-
-
 interface NetworkContextValue {
   networks: Network[];
   activeNetwork: NetworkId;
   /** The active network for display (name reflects the REAL connected chain). */
   network: Network;
-  /** Short connected address, or "Not connected". */
+  /** Short connected address / NEAR account, or "Not connected". */
   wallet: string;
+  /** A server-verified NEAR-only session (NEP-413). EVM-only actions must NOT treat this as a wallet. */
+  nearSignedIn: boolean;
+  /** Any signed-in identity (EVM wallet or verified NEAR session). */
+  signedIn: boolean;
+  /** The server session is still resolving and no EVM wallet is connected — render a neutral state. */
+  sessionLoading: boolean;
+  /** The NEAR account id for a verified NEAR session, else undefined. */
+  nearAccount?: string;
   /** The full connected address (undefined when disconnected). */
   address?: `0x${string}`;
   isConnected: boolean;
@@ -104,6 +111,7 @@ const NetworkContext = createContext<NetworkContextValue | null>(null);
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
   const { address, chainId, isConnected, status } = useAccount();
+  const { session } = useSession();
   const { disconnectAsync } = useDisconnect();
   const { switchChain } = useSwitchChain();
 
@@ -148,10 +156,16 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<NetworkContextValue>(() => {
     const onSupportedChain = isSupportedChain(chainId);
+    const viewer = viewerState({
+      evmConnected: isConnected,
+      evmAddress: address,
+      evmChainName: chainName(chainId),
+      session,
+    });
     const network: Network = {
       id: "base",
-      name: chainName(chainId),
-      color: onSupportedChain ? "#0052FF" : "#f59e0b",
+      name: viewer.networkLabel,
+      color: viewer.nearSignedIn ? "#00ec97" : onSupportedChain ? "#0052FF" : "#f59e0b",
       live: onSupportedChain,
       wallet: "",
     };
@@ -159,12 +173,17 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       networks: NETWORKS,
       activeNetwork: "base",
       network,
-      wallet: isConnected ? short(address) : "Not connected",
+      wallet: viewer.walletLabel,
+      nearSignedIn: viewer.nearSignedIn,
+      signedIn: viewer.signedIn,
+      sessionLoading: viewer.loading,
+      nearAccount: viewer.nearAccount ?? undefined,
       address,
       isConnected,
       chainId,
       onSupportedChain,
-      networkSettling: isConnected && status !== "connected",
+      // A session still resolving with no wallet is not "wrong network" — it is not yet known.
+      networkSettling: viewer.loading || (isConnected && status !== "connected"),
       explorerBase: explorerRoot(chainId) ?? explorerRoot(PREFERRED_CHAIN_ID) ?? "",
       setActiveNetwork: () => undefined,
       switchableNetworks: SWITCHABLE,
@@ -172,7 +191,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       switchToBase,
       disconnectWallet,
     };
-  }, [address, chainId, isConnected, status, switchToChain, switchToBase, disconnectWallet]);
+  }, [address, chainId, isConnected, status, session, switchToChain, switchToBase, disconnectWallet]);
 
   return <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>;
 }

@@ -1420,7 +1420,12 @@ class CoordinatorDag:
                 wallet = chain.owner or chain.user_account
                 if earn_request.kind == "positions":
                     yield ToolStepBlock("Checking your Rhea positions", "running")
-                    earn_outcome = await self.earn.rhea_positions(wallet=wallet)
+                    # 1111 — a NEAR sign-in reads Burrow by its NEAR account id directly; there is
+                    # no EVM wallet to resolve an MCA from.
+                    earn_outcome = await self.earn.rhea_positions(
+                        wallet=wallet,
+                        account_id=wallet if chain.auth_chain != "evm" else None,
+                    )
                     yield ToolStepBlock("Checking your Rhea positions", "done")
                     yield TextBlock(earn_outcome.text)
                     yield earn_outcome.block
@@ -1504,7 +1509,9 @@ class CoordinatorDag:
             if focus is not None:
                 portfolio_wallet = chain.owner or chain.user_account
                 yield ToolStepBlock("Reading your multi-chain portfolio", "running")
-                overview = await self.portfolio.read(portfolio_wallet, focus=focus)
+                overview = await self.portfolio.read(
+                    portfolio_wallet, focus=focus, auth_chain=chain.auth_chain
+                )
                 yield ToolStepBlock("Reading your multi-chain portfolio", "done")
                 portfolio_outcome = build_portfolio_outcome(overview, focus)
                 yield TextBlock(portfolio_outcome.text)
@@ -1875,7 +1882,9 @@ class CoordinatorDag:
             if self.portfolio is not None:
                 portfolio_wallet = chain.owner or chain.user_account
                 yield ToolStepBlock("Reading your multi-chain portfolio", "running")
-                overview = await self.portfolio.read(portfolio_wallet, focus="all")
+                overview = await self.portfolio.read(
+                    portfolio_wallet, focus="all", auth_chain=chain.auth_chain
+                )
                 yield ToolStepBlock("Reading your multi-chain portfolio", "done")
                 portfolio_outcome = build_portfolio_outcome(overview, "all")
                 yield TextBlock(portfolio_outcome.text)

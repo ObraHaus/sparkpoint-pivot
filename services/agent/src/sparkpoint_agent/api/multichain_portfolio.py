@@ -73,7 +73,9 @@ async def get_multichain_portfolio(
                 "accepted.",
             )
     _check_limit(limiter, account)
-    overview: PortfolioOverview = await service.read(account.owner, focus="all")
+    overview: PortfolioOverview = await service.read(
+        account.owner, focus="all", auth_chain=account.auth_chain
+    )
     wire = overview.to_wire()
     wire["text"] = render_text(overview, "all")
     return wire

@@ -15,9 +15,10 @@ import { useNearWallet } from "@/lib/near/NearWalletProvider";
 import { networkPillLabel } from "@/lib/networkPill";
 
 export function TopBar({ active }: { active: string }) {
-  const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling } = useNetwork();
-  // The network indicator is the honest combined state: the connected EVM chain plus the
-  // client-side NEAR claim (when one is connected). NEAR is never server auth.
+  const { network, wallet, isConnected, onSupportedChain, chainId, networkSettling, nearSignedIn } =
+    useNetwork();
+  // The network indicator is the honest combined state: the connected EVM chain, a separately
+  // connected NEAR account (a local claim), or a server-verified NEAR-only NEP-413 session.
   const { accountId: nearAccountId } = useNearWallet();
   const ov = useOverlay();
   // The bell badge = the REAL unread count (§3.11), after the user's on-device category filter. 0
@@ -54,15 +55,22 @@ export function TopBar({ active }: { active: string }) {
           title={
             networkSettling
               ? "Checking which network your wallet is on…"
-              : wrongNetwork
-                ? "Your wallet is on a network this beta does not serve — switch it in your wallet."
-                : "Network status and wallet. Change the network in your wallet."
+              : nearSignedIn
+                ? "Signed in with a verified NEAR account. Connect an EVM wallet for EVM-only actions."
+                : wrongNetwork
+                  ? "Your wallet is on a network this beta does not serve — switch it in your wallet."
+                  : "Network status and wallet. Change the network in your wallet."
           }
         >
           <button type="button" className="accountSeg" onClick={ov.openWalletMenu}>
             <NetworkLogo chainId={wrongNetwork ? undefined : chainId} color={network.color} size={16} />
             <span data-testid="topbar-network">
-              {networkPillLabel({ networkSettling, wrongNetwork, networkName: network.name, nearAccountId })}
+              {networkPillLabel({
+                networkSettling,
+                wrongNetwork,
+                networkName: network.name,
+                nearAccountId: nearSignedIn ? null : nearAccountId,
+              })}
             </span>
           </button>
           <span className="accountDivider" aria-hidden />

@@ -3,7 +3,7 @@
  *
  * Kept pure so the multi-network state (connected EVM chain + optional NEAR account) can be
  * unit-tested without rendering the whole shell. The pill shows the EVM chain name and appends
- * `· NEAR` when a NEAR account is connected — NEAR is a client-side claim, never server auth.
+ * `· NEAR` when a NEAR account is connected, or `NEAR` for a server-verified NEP-413 session.
  */
 export interface NetworkPillInput {
   /** The wallet's chain id is still hydrating, so the name is not trustworthy yet. */

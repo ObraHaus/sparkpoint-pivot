@@ -44,3 +44,75 @@ export function resolveChainId(raw: unknown, fallback: number = DEFAULT_CHAIN_ID
   if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
   return isSupportedChain(n) ? n : fallback;
 }
+
+/**
+ * 076/1111 — the agent identity for the current browser state.
+ *
+ * A server-verified NEAR session has no wagmi account, but it IS a signed-in identity the agent
+ * scopes reads to. Mapping it here keeps `useAgentClient()` non-null (so no "Demo mode" banner and
+ * live replies work) while still sending `authChain: "near"` so EVM-only reads stay disabled
+ * server-side. Never invents an EVM address for a NEAR account.
+ */
+export interface AgentIdentitySession {
+  readonly address: string;
+  readonly chain: "evm" | "near";
+}
+
+export interface ResolvedAgentIdentity {
+  readonly account: string;
+  readonly owner: string;
+  readonly chainId: number;
+  readonly authChain: "evm" | "near";
+}
+
+export function resolveAgentIdentity(
+  address: string | undefined | null,
+  rawChainId: unknown,
+  session: AgentIdentitySession | null | undefined,
+): ResolvedAgentIdentity | null {
+  if (!address && session?.chain === "near") {
+    return {
+      account: session.address,
+      owner: session.address,
+      chainId: DEFAULT_CHAIN_ID,
+      authChain: "near",
+    };
+  }
+  if (!address) return null;
+  return {
+    account: address,
+    owner: address,
+    chainId: resolveChainId(rawChainId),
+    authChain: "evm",
+  };
+}
+
+/**
+ * The agent's connection state for the current browser identity.
+ *
+ * `useSession()` is `undefined` while `/api/auth/session` is in flight. With no wagmi account that
+ * window used to look exactly like a signed-out browser: no identity ⇒ `online: false` ⇒ the chat
+ * page showed "Demo mode" and every surface offered a connect prompt. This resolver keeps the
+ * three states distinct so the UI can show a neutral loading state instead of a lie:
+ *
+ * - {@link loading} — no identity is known YET; show a skeleton, not demo/preview.
+ * - `identity === null` after loading — genuinely signed out; the demo/preview is honest.
+ * - `identity !== null` — an EVM wallet OR a server-verified NEAR session; the agent is online.
+ *
+ * An EVM wallet wins regardless of the session, so connected-wallet behaviour is unchanged.
+ */
+export interface ResolvedAgentConnection {
+  readonly loading: boolean;
+  readonly identity: ResolvedAgentIdentity | null;
+}
+
+export function resolveAgentConnection(
+  address: string | undefined | null,
+  rawChainId: unknown,
+  session: AgentIdentitySession | null | undefined,
+): ResolvedAgentConnection {
+  return {
+    loading: !address && session === undefined,
+    identity: resolveAgentIdentity(address, rawChainId, session),
+  };
+}

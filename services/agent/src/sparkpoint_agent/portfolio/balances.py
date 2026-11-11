@@ -139,7 +139,7 @@ class BalanceSource:
             "reason": None,
         }
 
-    async def collect(self, wallet: str) -> PortfolioSection:
+    async def collect(self, wallet: str, *, auth_chain: str = "evm") -> PortfolioSection:  # noqa: ARG002 - EVM/Solana/DB sources are only called for EVM sessions
         snapshot = await fetch_snapshot(self._pricer, ("ETH", "BTC"))
         rows: list[PortfolioRow] = []
         chains: list[dict[str, Any]] = []

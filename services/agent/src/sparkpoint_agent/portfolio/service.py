@@ -39,7 +39,15 @@ logger = logging.getLogger("sparkpoint_agent.portfolio")
 
 
 class SectionSource(Protocol):
-    async def collect(self, wallet: str) -> PortfolioSection: ...
+    async def collect(self, wallet: str, *, auth_chain: str = "evm") -> PortfolioSection: ...
+
+
+#: Truthful reason for the EVM-only sections when the signed-in owner is a NEAR account.
+NEAR_NO_EVM_WALLET = "No EVM wallet is linked to this NEAR sign-in."
+#: There is no NEAR wallet-token balance reader yet; say so rather than inventing a figure.
+NEAR_BALANCES_NOT_READ = (
+    "No EVM wallet is linked to this NEAR sign-in, and NEAR wallet balances are not read yet."
+)
 
 
 _SECTIONS: tuple[tuple[str, str, str], ...] = (
@@ -102,12 +110,19 @@ class MultichainPortfolioService:
 
     # -- collection --------------------------------------------------------
 
-    async def _collect(self, key: str, source: SectionSource, wallet: str) -> PortfolioSection:
+    async def _collect(
+        self, key: str, source: SectionSource, wallet: str, *, auth_chain: str = "evm"
+    ) -> PortfolioSection:
         cached = self._cached(key, wallet)
         if cached is not None:
             return cached
         try:
-            section = await asyncio.wait_for(source.collect(wallet), timeout=self.config.timeout_s)
+            section = await asyncio.wait_for(
+                source.collect(wallet)
+                if auth_chain == "evm"
+                else source.collect(wallet, auth_chain=auth_chain),
+                timeout=self.config.timeout_s,
+            )
         except TimeoutError:
             section = PortfolioSection(
                 key=key,  # type: ignore[arg-type]
@@ -129,9 +144,62 @@ class MultichainPortfolioService:
         self._store(key, wallet, section)
         return section
 
-    async def read(self, wallet: str, *, focus: PortfolioFocus = "all") -> PortfolioOverview:
+    async def _read_near(self, owner: str, *, focus: PortfolioFocus) -> PortfolioOverview:
+        """A NEAR sign-in has no EVM address: never hand its account id to an EVM reader.
+
+        Balances/Morpho are EVM-only and become ``not_linked`` with an explicit reason. Kamino is
+        Solana (linked-address bound, no EVM read) and swaps are an owner-scoped DB read, so both
+        still run. Rhea uses the existing NEAR ``get_account_all_positions`` reader with the NEAR
+        account id — the same view the EVM path uses after resolving an MCA.
+        """
+        keys = ("balances", "morpho", "kamino", "rhea", "swaps")
+        balances = PortfolioSection(
+            key="balances",
+            label="Wallet balances",
+            status="not_linked",
+            reason=NEAR_BALANCES_NOT_READ,
+            source="rpc",
+        )
+        morpho = PortfolioSection(
+            key="morpho",
+            label="Morpho",
+            status="not_linked",
+            reason=NEAR_NO_EVM_WALLET,
+            source="morpho_api",
+        )
+        kamino, rhea, swaps = await asyncio.gather(
+            self._collect("kamino", self._sources["kamino"], owner, auth_chain="near"),
+            self._collect("rhea", self._sources["rhea"], owner, auth_chain="near"),
+            self._collect("swaps", self._sources["swaps"], owner, auth_chain="near"),
+        )
+        by_key = {
+            "balances": balances,
+            "morpho": morpho,
+            "kamino": kamino,
+            "rhea": rhea,
+            "swaps": swaps,
+        }
+        sections = tuple(
+            replace(by_key[key], as_of=by_key[key].as_of or _now_iso()) for key in keys
+        )
+        return PortfolioOverview(
+            wallet=owner,
+            focus=focus,
+            as_of=_now_iso(),
+            sections=sections,
+        )
+
+    async def read(
+        self,
+        wallet: str,
+        *,
+        focus: PortfolioFocus = "all",
+        auth_chain: str = "evm",
+    ) -> PortfolioOverview:
         """Read every section concurrently and return one honest overview."""
         owner = wallet.strip()
+        if auth_chain != "evm":
+            return await self._read_near(owner, focus=focus)
         keys = [name for name, _, _ in _SECTIONS]
         results = await asyncio.gather(
             *(self._collect(key, self._sources[key], owner) for key in keys)

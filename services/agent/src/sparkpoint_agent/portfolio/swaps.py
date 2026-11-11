@@ -120,7 +120,7 @@ class SwapHistorySource:
             refreshed.append({**row, "lastStatus": str(status)} if status else row)
         return refreshed
 
-    async def collect(self, wallet: str) -> PortfolioSection:
+    async def collect(self, wallet: str, *, auth_chain: str = "evm") -> PortfolioSection:  # noqa: ARG002 - EVM/Solana/DB sources are only called for EVM sessions
         if self._store is None:
             return PortfolioSection(
                 key="swaps",
