@@ -42,6 +42,7 @@ import {
   withChatConnectDeadline,
 } from "@/lib/agent/chatStreamDeadline";
 import { bufferedUpstreamResponse, sseUpstreamResponse } from "@/lib/agent/proxyResponse";
+import { isClientAccountMismatched } from "@/lib/agent/sessionIdentity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,6 +127,25 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   const claims = await verifySession(jar.get(SESSION_COOKIE)?.value);
   if (!claims) {
     return envelope("UNAUTHENTICATED", 401, "Sign in with your wallet to use the assistant.", false);
+  }
+
+  // 1113 — identity is the VERIFIED session's, never the browser's. A client that asserts a
+  // different X-Account/X-Owner is rejected outright rather than silently rewritten; the cross-chain
+  // 1Click calls deliberately send only X-Chain-Id (the swap source chain, which may differ from the
+  // SIWE session chain), so a legitimate request never hits this.
+  if (
+    isClientAccountMismatched(
+      claims,
+      req.headers.get("x-account"),
+      req.headers.get("x-owner"),
+    )
+  ) {
+    return envelope(
+      "ACCOUNT_HEADERS_INVALID",
+      400,
+      "X-Account/X-Owner/X-Chain-Id are malformed or mismatched.",
+      false,
+    );
   }
 
   // BETA GATE (server-enforced, not just at the page middleware which exempts /api/*): the assistant
