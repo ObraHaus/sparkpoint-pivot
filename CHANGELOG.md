@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1112-solana-rpc — Kamino balance reads go through our server)
+
+- **Live Kamino no longer hangs on "Reading your wallet balance…" in the browser.** Solana's
+  official public RPC rejects browser-origin requests (`403 Access forbidden`), so the client now
+  calls a same-origin `POST /api/solana/rpc` proxy that forwards only the read-only JSON-RPC methods
+  the Kamino flow needs (`getBalance`, `getTokenAccountsByOwner`, `getAccountInfo`,
+  `getSignatureStatuses`). The proxy tries `SOLANA_RPC_URL` (when set) → the official public RPC →
+  `https://solana-rpc.publicnode.com`, with a request timeout. Balance reads also have a client
+  timeout and now show a visible error + Retry instead of an endless spinner; Review refuses only
+  after a failed read. (`apps/web/src/lib/solana/rpcProxy.ts`,
+  `apps/web/src/app/api/solana/rpc/route.ts`, `apps/web/src/lib/solana/clientRpc.ts`,
+  `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
+
 ### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
 
 - **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The
@@ -27,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   same cap validation enforces), and the amount field/labels say the unit is vault shares (e.g.
   `gtUSDCp shares`) rather than USDC. Deposit behavior is unchanged.
   (`apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/components/vault/MorphoLiveFlow.tsx`)
+
 
 ### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
 

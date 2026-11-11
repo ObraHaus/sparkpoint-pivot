@@ -11,13 +11,12 @@
  * is re-validated here (not just trusted from the server) before the wallet is asked to sign.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Connection, PublicKey, type VersionedTransaction } from "@solana/web3.js";
 
 import { Icon } from "@/lib/icons";
 import {
   KAMINO_VAULTS,
-  SOLANA_MAINNET_RPC,
   apyPercent,
   assertKaminoTransactionMatches,
   checkSolDepositCapacity,
@@ -40,6 +39,12 @@ import {
 } from "@/lib/earn/kaminoLive";
 import type { LiveEarnMode } from "@/lib/earn/liveFlags";
 import {
+  BALANCE_READ_TIMEOUT_MS,
+  SIGNATURE_STATUS_TIMEOUT_MS,
+  solanaProxyRpcUrl,
+  withTimeout,
+} from "@/lib/solana/clientRpc";
+import {
   connectSolanaWallet,
   getInjectedSolanaProvider,
   solanaWalletErrorMessage,
@@ -60,10 +65,7 @@ type Phase =
   | "failed";
 
 type SignatureOutcome = "confirmed" | "failed" | "pending";
-
-function solanaRpcUrl(): string {
-  return process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() || SOLANA_MAINNET_RPC;
-}
+type BalanceStatus = "idle" | "reading" | "ready" | "error";
 
 function short(value: string, head = 6, tail = 6): string {
   return value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`;
@@ -122,14 +124,22 @@ async function readAssetBalance(
   decimals: number,
 ): Promise<{ text: string; raw: bigint } | null> {
   try {
-    const connection = new Connection(solanaRpcUrl(), "confirmed");
+    const connection = new Connection(solanaProxyRpcUrl(), "confirmed");
     if (assetMint === SOL_MINT) {
-      const lamports = await connection.getBalance(new PublicKey(owner));
+      const lamports = await withTimeout(
+        connection.getBalance(new PublicKey(owner)),
+        BALANCE_READ_TIMEOUT_MS,
+        "Reading your wallet balance timed out.",
+      );
       return { text: formatTokenAmount(BigInt(lamports), 9), raw: BigInt(lamports) };
     }
-    const accounts = await connection.getParsedTokenAccountsByOwner(new PublicKey(owner), {
-      mint: new PublicKey(assetMint),
-    });
+    const accounts = await withTimeout(
+      connection.getParsedTokenAccountsByOwner(new PublicKey(owner), {
+        mint: new PublicKey(assetMint),
+      }),
+      BALANCE_READ_TIMEOUT_MS,
+      "Reading your wallet balance timed out.",
+    );
     let total = 0n;
     for (const account of accounts.value) {
       const amount = (account.account.data as { parsed?: { info?: { tokenAmount?: { amount?: string } } } })
@@ -147,12 +157,16 @@ async function readAssetBalance(
  * success) when the RPC cannot tell us within the window.
  */
 async function waitForSignature(signature: string): Promise<SignatureOutcome> {
-  const connection = new Connection(solanaRpcUrl(), "confirmed");
+  const connection = new Connection(solanaProxyRpcUrl(), "confirmed");
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
-      const status = await connection.getSignatureStatus(signature, {
-        searchTransactionHistory: true,
-      });
+      const status = await withTimeout(
+        connection.getSignatureStatus(signature, {
+          searchTransactionHistory: true,
+        }),
+        SIGNATURE_STATUS_TIMEOUT_MS,
+        "Checking the transaction signature timed out.",
+      );
       const outcome = signatureOutcome(status.value);
       if (outcome !== "pending") return outcome;
     } catch {
@@ -186,6 +200,8 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   const [error, setError] = useState<string | null>(null);
   const [positions, setPositions] = useState<KaminoPositionView[]>([]);
   const [balanceRaw, setBalanceRaw] = useState<bigint | null>(null);
+  const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>("idle");
+  const balanceRequestRef = useRef(0);
 
   const meta = findKaminoVault(vaultAddress) ?? KAMINO_VAULTS[0]!;
   const position = positions.find((row) => row.vaultAddress === vaultAddress) ?? null;
@@ -214,6 +230,19 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
     [readPositions],
   );
 
+  const loadBalance = useCallback(
+    async (owner: string, assetMint: string, decimals: number) => {
+      const requestId = balanceRequestRef.current + 1;
+      balanceRequestRef.current = requestId;
+      setBalanceStatus("reading");
+      const value = await readAssetBalance(owner, assetMint, decimals);
+      if (balanceRequestRef.current !== requestId) return;
+      setBalanceRaw(value?.raw ?? null);
+      setBalanceStatus(value ? "ready" : "error");
+    },
+    [],
+  );
+
   const connect = useCallback(async () => {
     setError(null);
     const injected = provider ?? getInjectedSolanaProvider();
@@ -226,13 +255,11 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       setProvider(injected);
       setWallet(address);
       void refreshPositions(address);
-      void readAssetBalance(address, meta.assetMint, meta.assetDecimals).then((value) =>
-        setBalanceRaw(value?.raw ?? null),
-      );
+      void loadBalance(address, meta.assetMint, meta.assetDecimals);
     } catch (cause) {
       setError(solanaWalletErrorMessage(cause));
     }
-  }, [meta.assetDecimals, meta.assetMint, provider, refreshPositions]);
+  }, [loadBalance, meta.assetDecimals, meta.assetMint, provider, refreshPositions]);
 
   const reset = useCallback(() => {
     setPhase("idle");
@@ -268,7 +295,11 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       return;
     }
     if (isSolDeposit) {
-      if (balanceRaw === null) {
+      if (balanceStatus === "reading" || balanceStatus === "idle") {
+        setError("Still reading your SOL balance — try again in a moment.");
+        return;
+      }
+      if (balanceRaw === null || balanceStatus === "error") {
         setError("Could not read your SOL balance; refusing to build a deposit blind.");
         return;
       }
@@ -313,7 +344,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       let resolved: KaminoLookupAddresses | null = null;
       if (decoded.message.addressTableLookups.length > 0) {
         resolved = await resolveKaminoLookupAddresses(
-          new Connection(solanaRpcUrl(), "confirmed"),
+          new Connection(solanaProxyRpcUrl(), "confirmed"),
           decoded,
         );
         if (!resolved) throw new Error("Could not resolve the transaction's address lookup tables.");
@@ -360,6 +391,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   }, [
     amount,
     balanceRaw,
+    balanceStatus,
     isSolDeposit,
     meta,
     mode,
@@ -426,9 +458,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       setPhase(outcome === "failed" ? "failed" : "confirmed");
       if (wallet) {
         await refreshPositions(wallet);
-        void readAssetBalance(wallet, meta.assetMint, meta.assetDecimals).then((value) =>
-          setBalanceRaw(value?.raw ?? null),
-        );
+        void loadBalance(wallet, meta.assetMint, meta.assetDecimals);
       }
     } catch (cause) {
       setPhase("review");
@@ -437,6 +467,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   }, [
     build,
     expectedAmountRaw,
+    loadBalance,
     meta,
     mode,
     phase,
@@ -537,9 +568,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                     reset();
                     const nextMeta = findKaminoVault(next);
                     if (wallet && nextMeta) {
-                      void readAssetBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals).then(
-                        (value) => setBalanceRaw(value?.raw ?? null),
-                      );
+                      void loadBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals);
                     }
                   }}
                 >
@@ -589,13 +618,33 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                   )}
                 </div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
-                  {mode === "deposit"
-                    ? balanceText
-                      ? `Wallet balance ≈ ${balanceText} ${meta.assetSymbol}`
-                      : "Reading your wallet balance…"
-                    : position
-                      ? `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
-                      : "No position read yet for this vault."}
+                  {mode === "deposit" ? (
+                    balanceStatus === "error" ? (
+                      <span style={{ color: "var(--caution)" }}>
+                        Could not read your wallet balance.{" "}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "0 6px", height: "auto", fontSize: 11.5 }}
+                          onClick={() => {
+                            if (wallet) {
+                              void loadBalance(wallet, meta.assetMint, meta.assetDecimals);
+                            }
+                          }}
+                        >
+                          Retry
+                        </button>
+                      </span>
+                    ) : balanceStatus === "ready" && balanceText ? (
+                      `Wallet balance ≈ ${balanceText} ${meta.assetSymbol}`
+                    ) : (
+                      "Reading your wallet balance…"
+                    )
+                  ) : position ? (
+                    `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
+                  ) : (
+                    "No position read yet for this vault."
+                  )}
                 </div>
                 {isSolDeposit && (
                   <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
