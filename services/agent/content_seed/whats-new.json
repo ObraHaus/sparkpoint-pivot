@@ -728,6 +728,14 @@
       "title": "The MetaMask button now opens MetaMask, even with Phantom installed",
       "body": "If you have both MetaMask and Phantom browser extensions, the MetaMask button used to open Phantom instead. SparkPoint now asks the browser for MetaMask's own wallet connection and uses that, so the button always opens MetaMask. If MetaMask is not installed, the page says \"MetaMask not detected\" and does not open a different wallet. Your other wallets still work as before: the NEAR sign-in and Phantom's Solana wallet are separate, and nothing about signing or custody changes.",
       "published_at": "2026-11-11T23:04:46Z"
+    },
+    {
+      "slug": "morpho-withdraw-max-redeem-1112-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Morpho Withdraw Max now fills the amount the vault will actually redeem",
+      "body": "On the Morpho Withdraw tab, pressing Max could fill your full share balance and then be refused because the vault would redeem very slightly less. Max now fills the redeemable amount the review already checks, and the field clearly says the amount is in vault shares (such as gtUSDCp shares), not USDC. Deposits are unchanged, and you still review and sign in your own wallet.",
+      "published_at": "2026-11-11T23:10:12Z"
     }
   ]
 }
