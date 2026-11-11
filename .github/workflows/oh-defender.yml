@@ -35,6 +35,6 @@ jobs:
           tools: ${{ github.event.inputs.tools || 'all' }}
           trigger: ${{ github.event_name == 'pull_request' && 'pull_request' || (github.event.inputs.trigger || 'manual') }}
           default-branch: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
-          # PR #388 only (owner-authorized 2026-11-11): one AI review capped at 600s, no automatic retries. Other PRs keep the action defaults (300s / 4).
-          ai-review-timeout: ${{ github.event.pull_request.number == 388 && '600' || '300' }}
-          ai-review-max-retries: ${{ github.event.pull_request.number == 388 && '0' || '4' }}
+          # PRs #388 and #390 only (each owner-authorized 2026-11-11): one AI review capped at 600s, no automatic retries. Other PRs keep the action defaults (300s / 4).
+          ai-review-timeout: ${{ (github.event.pull_request.number == 388 || github.event.pull_request.number == 390) && '600' || '300' }}
+          ai-review-max-retries: ${{ (github.event.pull_request.number == 388 || github.event.pull_request.number == 390) && '0' || '4' }}
