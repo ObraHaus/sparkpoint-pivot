@@ -7,7 +7,7 @@
       "tag": "Fixed",
       "title": "Kamino deposits no longer get stuck reading your Solana balance",
       "body": "Behind the scenes: when you connect Phantom (or another Solana wallet) on the Kamino live deposit page, SparkPoint now reads your SOL balance through its own server instead of asking your browser to contact Solana's public endpoint directly. That public endpoint was refusing browser requests, which left the page saying \"Reading your wallet balance\u2026\" and stopped a deposit from being prepared. The page now shows your balance when the read succeeds, and if it cannot read it in time it says so and offers Retry instead of spinning forever. Nothing about signing or custody changes: your wallet is still the only signer, and you still review and approve every transaction yourself.",
-      "published_at": "2026-11-12T00:30:00Z"
+      "published_at": "2026-11-11T23:20:00Z"
     },
     {
       "slug": "near-signed-in-portfolio-and-ui-truth-1111-2026-11",
