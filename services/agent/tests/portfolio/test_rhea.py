@@ -19,9 +19,13 @@ class _Service:
     def __init__(self, block: EarnPositionsBlock) -> None:
         self.block = block
         self.wallets: list[str] = []
+        self.account_ids: list[str | None] = []
 
-    async def rhea_positions(self, *, wallet: str) -> EarnOutcome:
+    async def rhea_positions(
+        self, *, wallet: str, account_id: str | None = None
+    ) -> EarnOutcome:
         self.wallets.append(wallet)
+        self.account_ids.append(account_id)
         return EarnOutcome(text="", block=self.block)
 
 
@@ -72,3 +76,13 @@ async def test_disabled_service_is_unavailable() -> None:
     section = await RheaPositionsSource(None).collect(WALLET)
     assert section.status == "unavailable"
     assert "not configured" in (section.reason or "")
+
+
+@pytest.mark.asyncio
+async def test_a_near_owner_reads_the_account_id_directly() -> None:
+    near = "sparkpoint2026.near"
+    service = _Service(_block(mca=near))
+    section = await RheaPositionsSource(service).collect(near, auth_chain="near")  # type: ignore[arg-type]
+    assert section.status == "ok"
+    assert service.wallets == [near]
+    assert service.account_ids == [near]

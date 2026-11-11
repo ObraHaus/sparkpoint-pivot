@@ -58,7 +58,9 @@ class _PortfolioService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def read(self, wallet: str, *, focus: str = "all") -> PortfolioOverview:
+    async def read(
+        self, wallet: str, *, focus: str = "all", auth_chain: str = "evm"
+    ) -> PortfolioOverview:
         self.calls.append((wallet, focus))
         return PortfolioOverview(
             wallet=wallet,
@@ -78,7 +80,9 @@ class _EarnService:
     feature_enabled = True
     config = earn_config()
 
-    async def rhea_positions(self, *, wallet: str) -> EarnOutcome:
+    async def rhea_positions(
+        self, *, wallet: str, account_id: str | None = None
+    ) -> EarnOutcome:
         return EarnOutcome(
             text="You don't have a Rhea account yet.",
             block=EarnPositionsBlock(

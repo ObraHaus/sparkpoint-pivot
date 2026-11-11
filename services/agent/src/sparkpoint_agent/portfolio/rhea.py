@@ -18,7 +18,9 @@ _STABLES = frozenset({"USDC", "USDT"})
 
 
 class RheaReader(Protocol):
-    async def rhea_positions(self, *, wallet: str) -> EarnOutcome: ...
+    async def rhea_positions(
+        self, *, wallet: str, account_id: str | None = None
+    ) -> EarnOutcome: ...
 
 
 def _rows(block: EarnPositionsBlock) -> list[PortfolioRow]:
@@ -55,7 +57,7 @@ class RheaPositionsSource:
     def __init__(self, service: RheaReader | None) -> None:
         self._service = service
 
-    async def collect(self, wallet: str) -> PortfolioSection:
+    async def collect(self, wallet: str, *, auth_chain: str = "evm") -> PortfolioSection:
         if self._service is None:
             return PortfolioSection(
                 key="rhea",
@@ -64,7 +66,13 @@ class RheaPositionsSource:
                 reason="Rhea lending is not configured on this deployment.",
                 source="rhea_rpc",
             )
-        outcome = await self._service.rhea_positions(wallet=wallet)
+        # 1111 — a NEAR sign-in has no EVM address to resolve an MCA from. The session owner IS a
+        # NEAR account id and Burrow's existing ``get_account_all_positions`` view accepts it
+        # directly, so read it as-is instead of asking ``multica.near`` for an EVM-keyed MCA.
+        if auth_chain != "evm":
+            outcome = await self._service.rhea_positions(wallet=wallet, account_id=wallet)
+        else:
+            outcome = await self._service.rhea_positions(wallet=wallet)
         block = outcome.block
         if not isinstance(block, EarnPositionsBlock):
             return PortfolioSection(

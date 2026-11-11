@@ -1137,8 +1137,15 @@ class EarnService:
         )
         return EarnOutcome(text=text, block=block)
 
-    async def rhea_positions(self, *, wallet: str) -> EarnOutcome:
-        """Read-only Rhea supply positions for the signed-in wallet (never a transaction)."""
+    async def rhea_positions(
+        self, *, wallet: str, account_id: str | None = None
+    ) -> EarnOutcome:
+        """Read-only Rhea supply positions for the signed-in wallet (never a transaction).
+
+        1111 — ``account_id`` lets a NEAR sign-in read Burrow's existing
+        ``get_account_all_positions`` view with its NEAR account id directly, instead of asking
+        ``multica.near`` for an EVM-keyed MCA it does not have.
+        """
         rhea = self.config.rhea
         if not rhea.enabled:
             return EarnOutcome(
@@ -1159,22 +1166,28 @@ class EarnService:
             "uiUrl": rhea.app_url,
             "fetchedAt": _now_iso(),
         }
-        try:
-            lookup = await self.rhea_views.mca_for_wallet(wallet)
-        except RheaRpcError:
-            return EarnOutcome(
-                text=(
-                    "I couldn't read your Rhea account just now — nothing was signed or sent. "
-                    f"You can check positions directly at {rhea.app_url}."
-                ),
-                block=EarnPositionsBlock(
-                    state="unavailable",
-                    app_url=rhea.app_url,
-                    source=source,
-                    unavailable_reason="The NEAR RPC read is unavailable right now.",
-                ),
-            )
-        mca = lookup.mca
+        mca: str | None
+        if account_id is not None:
+            # A NEAR-signed-in owner already IS the Burrow account id: skip the EVM-keyed MCA
+            # lookup (which cannot resolve a NEAR account) and read the existing view directly.
+            mca = account_id
+        else:
+            try:
+                lookup = await self.rhea_views.mca_for_wallet(wallet)
+            except RheaRpcError:
+                return EarnOutcome(
+                    text=(
+                        "I couldn't read your Rhea account just now — nothing was signed or sent. "
+                        f"You can check positions directly at {rhea.app_url}."
+                    ),
+                    block=EarnPositionsBlock(
+                        state="unavailable",
+                        app_url=rhea.app_url,
+                        source=source,
+                        unavailable_reason="The NEAR RPC read is unavailable right now.",
+                    ),
+                )
+            mca = lookup.mca
         if mca is None:
             fee_asset = next(iter(rhea.enabled_assets()), None)
             fee_value = (
