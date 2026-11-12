@@ -79,9 +79,14 @@ export function chainDisplayName(chain: string): string {
 
 /** Curated-board `source` → protocol tag. The board is a Morpho curator today. */
 export function protocolKeyFromSource(source: string | null | undefined): string {
-  const key = (source ?? "").trim().toLowerCase();
-  if (key === "kamino" || key === "rhea" || key === "morpho") return key;
-  return key || "morpho";
+  return normalizeProtocolKey(source);
+}
+
+/** One filter key per protocol: every Morpho source variant (e.g. "morpho-api+onchain") is "morpho". */
+export function normalizeProtocolKey(protocol: string | null | undefined): string {
+  const key = (protocol ?? "").trim().toLowerCase();
+  if (!key || key.startsWith("morpho")) return "morpho";
+  return key;
 }
 
 export function protocolDisplayName(protocol: string): string {
@@ -100,7 +105,9 @@ export function liveDisplayName(live: boolean): string {
 
 export function matchesTagFilter(item: TaggedVault, filter: VaultTagFilter): boolean {
   if (filter.chain !== ALL && item.chain !== filter.chain) return false;
-  if (filter.protocol !== ALL && item.protocol !== filter.protocol) return false;
+  if (filter.protocol !== ALL && normalizeProtocolKey(item.protocol) !== normalizeProtocolKey(filter.protocol)) {
+    return false;
+  }
   return true;
 }
 
@@ -116,7 +123,7 @@ export function collectFilterValues<T extends TaggedVault>(
 ): string[] {
   const seen: string[] = [];
   for (const item of items) {
-    const value = item[key];
+    const value = key === "protocol" ? normalizeProtocolKey(item.protocol) : item[key];
     if (!seen.includes(value)) seen.push(value);
   }
   return seen;

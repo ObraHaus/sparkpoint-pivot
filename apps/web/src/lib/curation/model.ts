@@ -197,9 +197,17 @@ export function screeningFailures(vault: CurationVault): ScreeningVerdict[] {
   return (vault.screening ?? []).filter((v) => !v.ok);
 }
 
+const EVM_ADDRESS_RE = /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
+
+/** Shorten every full 0x…40-hex address inside display text to 0x1234…abcd. */
+export function shortenAddressesInText(text: string): string {
+  return text.replace(EVM_ADDRESS_RE, (a) => shortAddr(a));
+}
+
 export function curatorLabel(vault: CurationVault): string {
   if (!vault.curator) return "Unattributed";
-  return vault.curatorVerified ? `${vault.curator} · verified` : vault.curator;
+  const name = shortenAddressesInText(vault.curator);
+  return vault.curatorVerified ? `${name} · verified` : name;
 }
 
 // ── selection of what to show ────────────────────────────────────────────────────────────────────
