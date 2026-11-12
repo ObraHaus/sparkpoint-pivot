@@ -129,6 +129,80 @@ export function fromBurrowInnerUnits(inner: bigint): bigint {
   return inner / 10n ** BigInt(BURROW_USDC_EXTRA_DECIMALS);
 }
 
+export interface BurrowSuppliedPosition {
+  readonly token_id?: string;
+  readonly balance?: string;
+}
+
+export interface BurrowPositions {
+  readonly supplied?: readonly BurrowSuppliedPosition[];
+}
+
+/**
+ * Read the supplied USDC balance out of Burrow's `get_account` / `get_account_all_positions`
+ * response. Burrow reports inner units (token decimals + extra_decimals), never 6-dp USDC.
+ */
+export function suppliedInnerUnitsFor(
+  positions: BurrowPositions | null | undefined,
+  tokenId: string = USDC_TOKEN_ID,
+): bigint {
+  if (!positions || !Array.isArray(positions.supplied)) return 0n;
+  for (const entry of positions.supplied) {
+    if (entry.token_id === tokenId && entry.balance) {
+      try {
+        return BigInt(entry.balance);
+      } catch {
+        return 0n;
+      }
+    }
+  }
+  return 0n;
+}
+
+/**
+ * Burrow inner units → the human USDC a user can withdraw, or `null` when there is nothing to
+ * withdraw. This is the conversion Max and the "Available" label must use: native USDC is 6 dp
+ * but Burrow `get_account` balances add `extra_decimals` (12), so the raw value is 18-scale.
+ */
+export function withdrawableUsdcAmount(
+  suppliedInnerUnits: bigint | string | null | undefined,
+): string | null {
+  if (suppliedInnerUnits === null || suppliedInnerUnits === undefined) return null;
+  let inner: bigint;
+  try {
+    inner = typeof suppliedInnerUnits === "bigint" ? suppliedInnerUnits : BigInt(suppliedInnerUnits);
+  } catch {
+    return null;
+  }
+  if (inner <= 0n) return null;
+  const amount6 = fromBurrowInnerUnits(inner);
+  if (amount6 <= 0n) return null;
+  return formatUsdc(amount6);
+}
+
+/** Human withdrawable USDC from a Burrow positions read; `null` when the position is empty. */
+export function availableWithdrawUsdc(positions: BurrowPositions | null | undefined): string | null {
+  return withdrawableUsdcAmount(suppliedInnerUnitsFor(positions));
+}
+
+/** Human USDC the wallet can supply from its idle token balance; `null` when empty or unreadable. */
+export function availableSupplyUsdc(tokenBalance6: bigint | string | null | undefined): string | null {
+  if (tokenBalance6 === null || tokenBalance6 === undefined) return null;
+  let raw: bigint;
+  try {
+    raw = typeof tokenBalance6 === "bigint" ? tokenBalance6 : BigInt(tokenBalance6);
+  } catch {
+    return null;
+  }
+  if (raw <= 0n) return null;
+  return formatUsdc(raw);
+}
+
+/** A withdraw is money arriving: drop any leading sign so UI copy never shows "-0.05 USDC". */
+export function withdrawAmountText(amount: string): string {
+  return amount.trim().replace(/^[+-]\s*/, "");
+}
+
 export interface StorageState {
   readonly burrowRegistered: boolean;
   readonly tokenReceiverRegistered: boolean;

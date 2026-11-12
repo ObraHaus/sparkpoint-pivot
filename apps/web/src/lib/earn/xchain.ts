@@ -135,7 +135,7 @@ export function xchainReviewLines(
     },
     {
       key: "recipient",
-      label: block.firstDeposit ? "Rhea account (created on first deposit)" : "Rhea account (MCA)",
+      label: block.firstDeposit ? "Rhea account (created on first deposit)" : "Your Rhea account",
       value: block.recipient ?? "—",
     },
   ];

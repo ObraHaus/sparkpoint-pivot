@@ -131,6 +131,19 @@ export function formatMorphoAmount(raw: bigint, decimals: number): string {
 }
 
 /**
+ * Switching Deposit ↔ Withdraw changes the amount's UNIT (USDC vs vault shares). Never carry the
+ * previous tab's number into the new field — 0.01 USDC is not 0.01 shares, and could exceed the
+ * user's share balance. The caller clears the input when the mode actually changes.
+ */
+export function morphoAmountAfterModeChange(
+  previous: "deposit" | "withdraw",
+  next: "deposit" | "withdraw",
+  current: string,
+): string {
+  return previous === next ? current : "";
+}
+
+/**
  * ERC-4626 dust: `balanceOf(owner)` can exceed `maxRedeem(owner)` (the vault's redeemable cap).
  * `Max` must fill the SAME lower number the withdraw validation enforces, never the full balance.
  */

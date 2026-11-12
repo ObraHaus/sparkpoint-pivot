@@ -97,7 +97,7 @@ export default function Page() {
   // Registry-derived: the swap page must agree with the top bar / settings on what to call the
   // connected network, and unknown chains must never be silently renamed.
   const netLabel = chainName(activeChain);
-  const swapTagTitle = `Manual on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet. Cross-chain swaps use Sparky's NEAR Intents rail.`;
+  const swapTagTitle = `Manual on-chain swaps via ${uniswapVenue} on ${netLabel}. You sign from your own wallet. Cross-chain swaps run through Sparky with NEAR Intents.`;
   const crossChainHref = `${toHref("chat")}?ask=${encodeURIComponent("How do I swap USDC to SOL across chains?")}`;
 
   const s = useSwapConfirm({ tokenIn, tokenOut, amount, slippageBps });
