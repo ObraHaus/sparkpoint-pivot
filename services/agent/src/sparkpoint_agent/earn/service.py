@@ -701,7 +701,8 @@ class EarnService:
                 f"(snapshot {snapshot.age_minutes()} min old):"
             ]
         for vault in vaults:
-            rails = ", ".join(_rail_label(r) for r in vault["rails"]["available"]) or "no live option"
+            available_rails = vault["rails"]["available"]
+            rails = ", ".join(_rail_label(r) for r in available_rails) or "no live option"
             if combined:
                 label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
                     str(vault.get("protocol") or "morpho"), "Morpho"
