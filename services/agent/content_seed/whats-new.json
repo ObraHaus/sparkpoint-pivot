@@ -10,6 +10,14 @@
       "published_at": "2026-11-11T23:20:00Z"
     },
     {
+      "slug": "oneclick-deposit-address-evm-session-1113-2026-11",
+      "type": "changelog",
+      "tag": "Fixed",
+      "title": "Get deposit address now works after switching networks to swap",
+      "body": "Behind the scenes: when you signed in with your EVM wallet on one supported network and then switched the wallet to another network to make a cross-chain swap \u2014 for example, signed in on Robinhood Chain and swapping from Base \u2014 tapping \"Get deposit address\" could stop with an internal header error before anything was signed. The swap request now tells our service which network the swap starts from, while still identifying you by your signed-in wallet address, so it works whether you signed in on Robinhood Chain or Base. A request that tries to act as a different wallet is still refused, and signing in with NEAR keeps working as before. Asking for a deposit address never signs or sends anything: you still send funds yourself only after reviewing the quote.",
+      "published_at": "2026-11-11T07:00:00Z"
+    },
+    {
       "slug": "near-signed-in-portfolio-and-ui-truth-1111-2026-11",
       "type": "changelog",
       "tag": "Fixed",

@@ -23,6 +23,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `apps/web/src/app/api/solana/rpc/route.ts`, `apps/web/src/lib/solana/clientRpc.ts`,
   `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
 
+### Fixed (1113-evmsiwe-xchain — 1Click deposit address across allowed EVM chains)
+
+- **"Get deposit address" works when the SIWE session chain differs from the swap source chain.**
+  The cross-chain card called the BFF with no `x-chain-id`; the BFF only forwards that header from
+  the browser (it derives `x-account`/`x-owner` from the session), so an EVM session that signed in
+  on Robinhood Chain (4663) and then switched the wallet to Base (8453) got
+  `ACCOUNT_HEADERS_INVALID` before 1Click was asked. The card now sends the swap's SOURCE chain
+  (`origin.evmChainId`, falling back to the connected/app chain for non-EVM origins) on quote,
+  status and speed-up submit; the agent already accepts any `API_SUPPORTED_CHAIN_IDS` value and does
+  not bind it to the SIWE chain. A new BFF guard rejects a client-asserted `X-Account`/`X-Owner`
+  that contradicts the verified EVM session (case-insensitive hex compare) instead of trusting or
+  silently rewriting it; NEAR sessions are unchanged. (`apps/web/src/lib/crosschain/requestHeaders.ts`,
+  `apps/web/src/components/screens/chat/crosschain-quote-card.tsx`,
+  `apps/web/src/lib/agent/sessionIdentity.ts`, `apps/web/src/app/api/agent/[...path]/route.ts`)
+
 ### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
 
 - **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The
