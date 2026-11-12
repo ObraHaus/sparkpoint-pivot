@@ -89,6 +89,7 @@ from .chat_blocks import (
     ChatBlock,
     ChatPolicyStamp,
     CitationBlock,
+    EarnVaultsBlock,
     ErrorBlock,
     PortfolioSnapshotBlock,
     PositionLite,
@@ -126,6 +127,14 @@ from .curated import (
     curated_list_answer,
     curated_rate_answer,
     is_vaults_list_question,
+)
+from .earn_vaults import (
+    EARN_BEST_YIELD_RE,
+    apy_bps,
+    detect_earn_filters,
+    earn_option_lines,
+    earn_vaults_answer,
+    earn_vaults_block,
 )
 from .guidance import (
     NEAR_NATIVE_STAKING_ANSWER,
@@ -1309,6 +1318,50 @@ class CoordinatorDag:
 
     # -- high-level: /chat SSE stream -----------------------------------------
 
+    def _earn_vaults_reply(self, message: str, *, kind: str) -> tuple[str, EarnVaultsBlock] | None:
+        """Answer a best/list/rate vault question from the live earn snapshot (all chains).
+
+        Returns ``None`` when there is no EarnService, the feature flag is off, or the snapshot
+        has no vaults — the caller then keeps the 048 curated-record behaviour. Pure read: no
+        model, no action block, no transaction.
+        """
+        if self.earn is None or not self.earn.feature_enabled:
+            return None
+        config = self.earn.config
+        filters = detect_earn_filters(message, config)
+        rows, snapshot = self.earn.list_vaults(
+            chain=filters.chain,
+            asset=filters.asset,
+            protocol=filters.protocol,
+            limit=200,
+            sort="apy",
+        )
+        if snapshot is None or not snapshot.vaults:
+            return None
+        all_rows = rows
+        if not rows and filters.any:
+            all_rows, _ = self.earn.list_vaults(limit=200, sort="apy")
+        text = earn_vaults_answer(
+            config=config,
+            rows=rows,
+            snapshot=snapshot,
+            kind=kind,
+            filters=filters,
+            all_rows=all_rows,
+        )
+        shown = rows[: (12 if kind == "list" else 5)] if rows else all_rows[:12]
+        block = earn_vaults_block(
+            rows=shown,
+            snapshot=snapshot,
+            source=self.earn.registry.loaded_from,
+            note=(
+                "Live snapshot — the same data the Vault page shows."
+                if rows and filters.any
+                else "Live snapshot across every chain — the same data the Vault page shows."
+            ),
+        )
+        return text, block
+
     async def run_chat(
         self,
         message: str,
@@ -1632,6 +1685,32 @@ class CoordinatorDag:
                 guidance_curated = (
                     await self.curated(chain.chain_id) if self.curated is not None else None
                 )
+                # The LIVE earn snapshot spans every chain (the /vault board). Prefer it when it
+                # has vaults so the options block can never say "no curated vaults on this
+                # network" while /vault is showing live Kamino/Rhea/Morpho vaults.
+                guidance_earn_options: list[str] | None = None
+                guidance_earn_top_apy_bps: int | None = None
+                if self.earn is not None and self.earn.feature_enabled:
+                    earn_filters = detect_earn_filters(message, self.earn.config)
+                    earn_rows, earn_snapshot = self.earn.list_vaults(
+                        chain=earn_filters.chain,
+                        asset=earn_filters.asset,
+                        protocol=earn_filters.protocol,
+                        limit=5,
+                        sort="apy",
+                    )
+                    if earn_snapshot is not None and not earn_rows and earn_filters.any:
+                        earn_rows, earn_snapshot = self.earn.list_vaults(limit=5, sort="apy")
+                    if earn_snapshot is not None and earn_rows:
+                        guidance_earn_options = earn_option_lines(self.earn.config, earn_rows)
+                        # The estimate is a USDC figure, so only a USDC vault's APY may feed it
+                        # (a SOL/NEAR vault's rate must not be applied to a USDC amount).
+                        usdc_rows = [
+                            row
+                            for row in earn_rows
+                            if str((row.get("asset") or {}).get("symbol") or "").upper() == "USDC"
+                        ]
+                        guidance_earn_top_apy_bps = apy_bps(usdc_rows[0]) if usdc_rows else None
                 yield ToolStepBlock("Checking the curated vaults", "done")
                 try:
                     cap = get_policy_constants(chain.chain_id).caps.per_user_tvl.amount
@@ -1643,6 +1722,8 @@ class CoordinatorDag:
                         history=history,
                         offers_vault=_offers_vault(chain),
                         curated=guidance_curated,
+                        earn_options=guidance_earn_options,
+                        earn_top_apy_bps=guidance_earn_top_apy_bps,
                         has_positions=False,
                         idle_usdc=guidance_gathered.portfolio.idle_usdc,
                         mandate_risk=None,
@@ -1654,38 +1735,48 @@ class CoordinatorDag:
                 )
                 return
 
-        # 048 — "what's the best vault / where should I deposit?" is answered from the CURATED
-        # RECORD: the same row `/vault` renders, with its stored as-of. Deterministic, because the
-        # one number a user cannot sanity-check is an APY and a model must not supply one. The read
-        # is fail-open: a store outage says so (an error block, never persisted as an answer)
-        # rather than naming a vault from memory.
+        # 048 — "what's the best vault / where should I deposit?" is answered deterministically.
+        # The LIVE earn snapshot (all chains — the same data `/vault` renders) is preferred when
+        # it has vaults, because the 048 curated store is per-connected-chain and can be empty.
+        # With no live snapshot it falls back to the CURATED RECORD: the same row `/vault`
+        # renders, with its stored as-of. Deterministic either way, because the one number a user
+        # cannot sanity-check is an APY and a model must not supply one. The curated read is
+        # fail-open: a store outage says so (an error block, never persisted as an answer) rather
+        # than naming a vault from memory.
         wants_list = is_vaults_list_question(message)
         wants_rate = bool(VAULT_RATE_RE.search(message))
+        wants_best = bool(BEST_VAULT_RE.search(message) or EARN_BEST_YIELD_RE.search(message))
         # 057/B — "Deposit 500 USDC into the safest vault" is a COMMAND with an amount, not a
-        # question about the curated board. It must reach the planner/proposal path with the
-        # user's amount instead of being answered with a vault description.
+        # question about the vault board. It must reach the planner/proposal path with the user's
+        # amount instead of being answered with a vault description.
         is_command = is_explicit_financial_command(message)
-        if (
-            (BEST_VAULT_RE.search(message) or wants_list or wants_rate)
-            and not is_command
-            and not comparative
-        ) and self.curated is not None:
-            yield ToolStepBlock("Checking the curated vaults", "running")
-            curated_record = await self.curated(chain.chain_id)
-            yield ToolStepBlock("Checking the curated vaults", "done")
-            if curated_record is None:
-                yield ErrorBlock("UPSTREAM_UNAVAILABLE", CURATED_FAILURE)
+        if (wants_best or wants_list or wants_rate) and not is_command and not comparative:
+            kind = "list" if wants_list else ("rate" if wants_rate else "best")
+            live_reply = self._earn_vaults_reply(message, kind=kind)
+            if live_reply is not None:
+                live_text, live_block = live_reply
+                yield ToolStepBlock("Checking live vaults", "running")
+                yield ToolStepBlock("Checking live vaults", "done")
+                yield TextBlock(live_text)
+                yield live_block
                 return
-            # A LIST question ("what vaults are available right now?") enumerates the board; a
-            # BEST question names the pick. Both come from the same stored record.
-            if wants_rate:
-                answer = curated_rate_answer(curated_record)
-            elif wants_list:
-                answer = curated_list_answer(curated_record)
-            else:
-                answer = curated_answer(curated_record)
-            yield TextBlock(answer)
-            return
+            if self.curated is not None:
+                yield ToolStepBlock("Checking the curated vaults", "running")
+                curated_record = await self.curated(chain.chain_id)
+                yield ToolStepBlock("Checking the curated vaults", "done")
+                if curated_record is None:
+                    yield ErrorBlock("UPSTREAM_UNAVAILABLE", CURATED_FAILURE)
+                    return
+                # A LIST question ("what vaults are available right now?") enumerates the board; a
+                # BEST question names the pick. Both come from the same stored record.
+                if wants_rate:
+                    answer = curated_rate_answer(curated_record)
+                elif wants_list:
+                    answer = curated_list_answer(curated_record)
+                else:
+                    answer = curated_answer(curated_record)
+                yield TextBlock(answer)
+                return
 
         direct = _direct_answer(message, chain)
         if direct is not None:
