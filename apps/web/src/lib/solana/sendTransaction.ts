@@ -52,6 +52,7 @@ export class SolanaRpcError extends Error {
   readonly code: number | string | null;
   readonly logs: readonly string[] | null;
   readonly data: unknown;
+  readonly transactionError: unknown;
 
   constructor(
     message: string,
@@ -62,17 +63,78 @@ export class SolanaRpcError extends Error {
     this.code = options.code ?? null;
     this.logs = options.logs ?? null;
     this.data = options.data;
+    this.transactionError = transactionErrorFromData(options.data);
   }
 }
 
 export class SolanaSendError extends Error {
   readonly logs: readonly string[] | null;
+  readonly code: string | null;
 
-  constructor(message: string, logs?: readonly string[] | null) {
+  constructor(message: string, logs?: readonly string[] | null, code?: string | null) {
     super(message);
     this.name = "SolanaSendError";
     this.logs = logs ?? null;
+    this.code = code ?? null;
   }
+}
+
+function transactionErrorFromData(data: unknown): unknown {
+  if (!data || typeof data !== "object") return null;
+  return (data as { err?: unknown }).err ?? null;
+}
+
+/**
+ * Turn the RPC's `data.err` (a Solana `TransactionError`) into readable text, keeping the
+ * instruction index and custom program error code — the two things that actually identify a
+ * CPI/program failure.
+ */
+export function describeSolanaTransactionError(error: unknown): string | null {
+  if (error === null || error === undefined) return null;
+  if (typeof error === "string") {
+    switch (error) {
+      case "BlockhashNotFound":
+        return "BlockhashNotFound (the recent blockhash is no longer valid)";
+      case "InsufficientFundsForFee":
+        return "InsufficientFundsForFee (the fee payer cannot pay the network fee)";
+      case "AlreadyProcessed":
+        return "AlreadyProcessed (this transaction was already submitted)";
+      case "AccountNotFound":
+        return "AccountNotFound (a required account does not exist yet)";
+      case "TransactionExpiredBlockheightExceeded":
+        return "TransactionExpiredBlockheightExceeded (the blockhash expired)";
+      default:
+        return error;
+    }
+  }
+  if (typeof error !== "object") return String(error);
+
+  const instructionError = (error as { InstructionError?: unknown }).InstructionError;
+  if (Array.isArray(instructionError) && instructionError.length >= 2) {
+    const [index, detail] = instructionError;
+    const instruction = typeof index === "number" ? `Instruction ${index}` : "Instruction";
+    if (detail && typeof detail === "object" && "Custom" in detail) {
+      const custom = (detail as { Custom?: unknown }).Custom;
+      if (typeof custom === "number") return `${instruction}: custom program error ${custom}`;
+    }
+    if (typeof detail === "string") return `${instruction}: ${detail}`;
+    try {
+      return `${instruction}: ${JSON.stringify(detail)}`;
+    } catch {
+      return instruction;
+    }
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown transaction error";
+  }
+}
+
+function isBlockhashNotFound(error: SolanaRpcError | null): boolean {
+  if (!error) return false;
+  return error.transactionError === "BlockhashNotFound" || /blockhash not found/i.test(error.message);
 }
 
 interface JsonRpcPayload {
@@ -398,6 +460,8 @@ export interface SendSolanaTransactionOptions {
   readonly rebroadcastIntervalMs?: number;
   readonly maxConfirmationAttempts?: number;
   readonly onSignature?: (signature: string, prepared: PrepareSolanaTransactionResult) => void;
+  /** Called when the first approval expired and the wallet is asked to approve a fresh transaction. */
+  readonly onReapprove?: (reason: string) => void;
 }
 
 export interface SendSolanaTransactionResult {
@@ -412,6 +476,56 @@ export interface SendSolanaTransactionResult {
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const EXPIRED_REAPPROVE_MESSAGE =
+  "The approval took longer than Solana allows (~1 minute), so the transaction expired before it was sent. Nothing was spent. Please approve it once more in your wallet.";
+const EXPIRED_FINAL_MESSAGE =
+  "Your wallet approval took longer than Solana allows (about 60 seconds), so the transaction expired and nothing was sent or spent. Review again and approve promptly.";
+
+function sendMeta(prepared: PrepareSolanaTransactionResult) {
+  return {
+    computeUnitLimit: prepared.computeUnitLimit,
+    priorityFeeMicroLamports: prepared.priorityFeeMicroLamports,
+    computeBudgetAdded: prepared.computeBudgetAdded,
+    simulatedUnits: prepared.simulatedUnits,
+    lastValidBlockHeight: prepared.lastValidBlockHeight,
+  };
+}
+
+/** True once the current block height has passed the transaction's last valid block height. */
+async function blockhashExpired(
+  prepared: PrepareSolanaTransactionResult,
+  rpc: SolanaRpcTransport,
+  commitment: string,
+): Promise<boolean> {
+  if (prepared.lastValidBlockHeight === null) return false;
+  try {
+    const blockHeight = await rpc.call<number>("getBlockHeight", [{ commitment }]);
+    return typeof blockHeight === "number" && blockHeight > prepared.lastValidBlockHeight;
+  } catch {
+    // Without a block height we cannot prove expiry; let the send/preflight decide.
+    return false;
+  }
+}
+
+function reportPreflightFailure(params: {
+  rpcMessage: string | null;
+  code: number | string | null;
+  transactionError: unknown;
+  logs: readonly string[] | null;
+  prepared: PrepareSolanaTransactionResult;
+}): void {
+  console.error("[solana] transaction failed preflight", {
+    rpcMessage: params.rpcMessage,
+    code: params.code,
+    transactionError: params.transactionError,
+    logs: params.logs ? [...params.logs] : null,
+    computeUnitLimit: params.prepared.computeUnitLimit,
+    priorityFeeMicroLamports: params.prepared.priorityFeeMicroLamports?.toString() ?? null,
+    simulatedUnits: params.prepared.simulatedUnits,
+    lastValidBlockHeight: params.prepared.lastValidBlockHeight,
+  });
+}
 
 async function pollAndRebroadcast(params: {
   signature: string;
@@ -496,54 +610,95 @@ export async function sendSolanaTransaction(
     sleep = defaultSleep,
     rebroadcastIntervalMs = DEFAULT_REBROADCAST_INTERVAL_MS,
     onSignature,
+    onReapprove,
   } = options;
 
-  const prepared = await prepareSolanaTransaction(transaction, rpc, { commitment });
-  const meta = {
-    computeUnitLimit: prepared.computeUnitLimit,
-    priorityFeeMicroLamports: prepared.priorityFeeMicroLamports,
-    computeBudgetAdded: prepared.computeBudgetAdded,
-    simulatedUnits: prepared.simulatedUnits,
-    lastValidBlockHeight: prepared.lastValidBlockHeight,
-  };
+  let prepared = await prepareSolanaTransaction(transaction, rpc, { commitment });
+  let meta = sendMeta(prepared);
 
   if (typeof provider.signTransaction === "function") {
-    let signed: VersionedTransaction;
-    try {
-      signed = await provider.signTransaction(prepared.transaction);
-    } catch (cause) {
-      if (cause instanceof Error) throw cause;
-      throw new SolanaSendError("The Solana wallet could not sign the transaction.");
-    }
-    const signedBase64 = saveBase64(signed);
-    if (!signedBase64) {
-      throw new SolanaSendError("The wallet returned a transaction that could not be serialized.");
+    let signedBase64: string | null = null;
+    let signature = "";
+    let reapproved = false;
+
+    for (;;) {
+      let signed: VersionedTransaction;
+      try {
+        signed = await provider.signTransaction(prepared.transaction);
+      } catch (cause) {
+        if (cause instanceof Error) throw cause;
+        throw new SolanaSendError("The Solana wallet could not sign the transaction.");
+      }
+      signedBase64 = saveBase64(signed);
+      if (!signedBase64) {
+        throw new SolanaSendError("The wallet returned a transaction that could not be serialized.");
+      }
+
+      const expiredBeforeSend = await blockhashExpired(prepared, rpc, commitment);
+      let sendError: SolanaRpcError | null = null;
+      if (!expiredBeforeSend) {
+        try {
+          signature = await rpc.call<string>("sendTransaction", [
+            signedBase64,
+            {
+              encoding: "base64",
+              skipPreflight: false,
+              preflightCommitment: commitment,
+              maxRetries: 0,
+            },
+          ]);
+        } catch (cause) {
+          sendError =
+            cause instanceof SolanaRpcError
+              ? cause
+              : new SolanaRpcError(cause instanceof Error ? cause.message : "unknown error");
+        }
+      }
+
+      if (expiredBeforeSend || isBlockhashNotFound(sendError)) {
+        // The wallet approval outlived the blockhash. Ask for one fresh signature only.
+        reportPreflightFailure({
+          rpcMessage: sendError?.message ?? null,
+          code: sendError?.code ?? null,
+          transactionError: sendError?.transactionError ?? "BlockhashNotFound",
+          logs: sendError?.logs ?? null,
+          prepared,
+        });
+        if (reapproved) {
+          throw new SolanaSendError(EXPIRED_FINAL_MESSAGE, sendError?.logs ?? null, "expired");
+        }
+        reapproved = true;
+        onReapprove?.(EXPIRED_REAPPROVE_MESSAGE);
+        prepared = await prepareSolanaTransaction(transaction, rpc, { commitment });
+        meta = sendMeta(prepared);
+        continue;
+      }
+
+      if (sendError) {
+        const logs = sendError.logs;
+        reportPreflightFailure({
+          rpcMessage: sendError.message,
+          code: sendError.code,
+          transactionError: sendError.transactionError,
+          logs,
+          prepared,
+        });
+        const readable = describeSolanaTransactionError(sendError.transactionError);
+        const detail = sendError.message || "unknown error";
+        const withReason = readable ? `${detail} (${readable})` : detail;
+        const logText = logs && logs.length > 0 ? ` Logs: ${logs.slice(-4).join(" | ")}` : "";
+        throw new SolanaSendError(
+          `The transaction failed preflight and was not sent: ${withReason}.${logText} Nothing was spent — review again.`,
+          logs,
+        );
+      }
+
+      if (!signature) {
+        throw new SolanaSendError("The Solana RPC accepted the send but returned no signature.");
+      }
+      break;
     }
 
-    let signature: string;
-    try {
-      signature = await rpc.call<string>("sendTransaction", [
-        signedBase64,
-        {
-          encoding: "base64",
-          skipPreflight: false,
-          preflightCommitment: commitment,
-          maxRetries: 0,
-        },
-      ]);
-    } catch (cause) {
-      const rpcError = cause instanceof SolanaRpcError ? cause : null;
-      const detail = rpcError?.message ?? (cause instanceof Error ? cause.message : "unknown error");
-      const logs = rpcError?.logs ?? null;
-      const logText = logs && logs.length > 0 ? ` Logs: ${logs.slice(-4).join(" | ")}` : "";
-      throw new SolanaSendError(
-        `The transaction failed preflight and was not sent: ${detail}.${logText} Nothing was spent — review again.`,
-        logs,
-      );
-    }
-    if (!signature) {
-      throw new SolanaSendError("The Solana RPC accepted the send but returned no signature.");
-    }
     onSignature?.(signature, prepared);
 
     const { outcome, error } = await pollAndRebroadcast({

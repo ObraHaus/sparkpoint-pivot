@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (kamino-expiry-resign — an expired wallet approval is diagnosed, not a blank failure)
+
+- **A Kamino deposit approved too slowly no longer fails with an empty preflight message.** If the
+  blockhash expires while the user is in Phantom, the send path now detects it before broadcasting
+  (or from `BlockhashNotFound`), refreshes the blockhash from the original unsigned transaction and
+  asks the wallet to sign once more. A second expiry stops with a clear "nothing was sent or spent"
+  error marked `code: "expired"`. Other preflight failures now name the instruction index and custom
+  program error (e.g. `Instruction 4: custom program error 6001`), and every failure emits a
+  structured `console.error` diagnostic. The RPC proxy also emits one warning line per failed
+  `sendTransaction`/`simulateTransaction` (method, code, message, `data.err`, last 8 logs — never the
+  transaction bytes).
+  (`apps/web/src/lib/solana/sendTransaction.ts`, `apps/web/src/lib/solana/rpcProxy.ts`,
+  `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
+
 ### Fixed (kamino-send-lands — a signed Kamino deposit now lands or reports why it did not)
 
 - **A Kamino SOL deposit no longer stops at "submitted · confirmation pending".** The unsigned

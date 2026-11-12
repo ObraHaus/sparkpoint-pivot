@@ -151,6 +151,78 @@ test("a simulateTransaction -32002 error is passed through too", async () => {
   assert.deepEqual(result.body, body);
 });
 
+test("a sendTransaction preflight error is logged once on one line, without tx bytes", async () => {
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    error: {
+      code: -32002,
+      message: "Transaction simulation failed",
+      data: {
+        err: { InstructionError: [4, { Custom: 6001 }] },
+        logs: Array.from({ length: 12 }, (_, index) => `Program log: line ${index}`),
+      },
+    },
+  };
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map((arg) => String(arg)).join(" "));
+  };
+  try {
+    const result = await proxySolanaRpc(
+      { jsonrpc: "2.0", id: 1, method: "sendTransaction", params: ["SECRET_TX_BYTES", { encoding: "base64" }] },
+      {
+        fetchImpl: fakeFetch(async () => jsonResponse(body)),
+        upstreams: ["https://rpc.example"],
+      },
+    );
+    assert.deepEqual(result.body, body);
+  } finally {
+    console.warn = original;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] ?? "", /sendTransaction/);
+  assert.match(warnings[0] ?? "", /code=-32002/);
+  assert.match(warnings[0] ?? "", /data\.err=.*InstructionError/);
+  assert.match(warnings[0] ?? "", /Program log: line 11/);
+  assert.equal((warnings[0] ?? "").includes("SECRET_TX_BYTES"), false);
+  assert.equal((warnings[0] ?? "").includes("\n"), false);
+});
+
+test("a simulateTransaction value.err is logged too", async () => {
+  const body = {
+    jsonrpc: "2.0",
+    id: 7,
+    result: {
+      value: {
+        err: "BlockhashNotFound",
+        logs: ["Blockhash not found"],
+      },
+    },
+  };
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map((arg) => String(arg)).join(" "));
+  };
+  try {
+    const result = await proxySolanaRpc(
+      { jsonrpc: "2.0", id: 7, method: "simulateTransaction", params: ["AA==", { encoding: "base64" }] },
+      {
+        fetchImpl: fakeFetch(async () => jsonResponse(body)),
+        upstreams: ["https://rpc.example"],
+      },
+    );
+    assert.deepEqual(result.body, body);
+  } finally {
+    console.warn = original;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] ?? "", /simulateTransaction/);
+  assert.match(warnings[0] ?? "", /data\.err=BlockhashNotFound/);
+});
+
 test("sendTransaction still falls back to the next upstream on a network failure", async () => {
   const calls: string[] = [];
   const result = await proxySolanaRpc(
