@@ -194,6 +194,7 @@ export function CrossChainQuoteCard({
     recipientOverride,
     evmAddress: address,
     nearAccountId,
+    namedRecipient: block.recipient ?? null,
   });
   const recipient = recipientSelection.value;
   const refundTo = evmOrigin ? (address ?? "") : (refundOverride ?? "");
@@ -534,6 +535,11 @@ export function CrossChainQuoteCard({
             {recipient.trim() && !recipientValid && (
               <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 5 }}>
                 That doesn&apos;t look like {expectedAddressDescription(destinationKind)}.
+              </div>
+            )}
+            {recipientSelection.source === "named" && (
+              <div data-testid="cc-recipient-named" style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>
+                Prefilled from the account you named in the chat. Edit it if you want to send somewhere else.
               </div>
             )}
             {recipientSelection.source === "near" && (
