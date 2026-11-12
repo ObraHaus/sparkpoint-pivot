@@ -1,0 +1,206 @@
+/**
+ * Pure display rules for the single `/vault` list.
+ *
+ * The page used to render two surfaces: "Earn across chains" rows and the curated board's
+ * "All live vaults" cards. This module is the shared, testable logic for the merged list:
+ * chain/protocol tags, the tag filter, and the honest balance display state machine.
+ *
+ * PURE: no React, no fetch, no clock read. The component injects every value, so the rules can be
+ * unit-tested and a card can never invent a balance it did not read.
+ */
+
+export const DASH = "—";
+export const ALL = "all";
+export const READING = "Reading…";
+export const UNAVAILABLE = "Unavailable";
+
+/** A list item's filterable identity. */
+export interface TaggedVault {
+  readonly chain: string;
+  readonly protocol: string;
+  readonly live: boolean;
+}
+
+export interface VaultTagFilter {
+  readonly chain: string;
+  readonly protocol: string;
+}
+
+export function emptyFilter(): VaultTagFilter {
+  return { chain: ALL, protocol: ALL };
+}
+
+// ── chain tags ───────────────────────────────────────────────────────────────────────────────────
+
+const CHAIN_LABELS: Record<string, string> = {
+  near: "NEAR",
+  base: "Base",
+  baseSepolia: "Base Sepolia",
+  sol: "Solana",
+  eth: "Ethereum",
+  ethereum: "Ethereum",
+  robinhood: "Robinhood Chain",
+  robinhoodTestnet: "Robinhood Testnet",
+};
+
+/** Normalise the earn registry's chain slug into the list's chain tag. */
+export function chainKeyFromSlug(chain: string | null | undefined): string {
+  const key = (chain ?? "").trim();
+  if (!key) return "unknown";
+  if (key === "ethereum") return "eth";
+  if (key === "robinhoodMainnet") return "robinhood";
+  return key;
+}
+
+/** Map a numeric EVM chain id to the list's chain tag (Base, Ethereum, Robinhood, …). */
+export function chainKeyFromId(chainId: number | null | undefined): string {
+  switch (chainId) {
+    case 8453:
+      return "base";
+    case 84532:
+      return "baseSepolia";
+    case 1:
+      return "eth";
+    case 4663:
+      return "robinhood";
+    case 46630:
+      return "robinhoodTestnet";
+    default:
+      return chainId === null || chainId === undefined ? "unknown" : `chain:${chainId}`;
+  }
+}
+
+/** Human chain label for a tag (unknown tags degrade to their own text, never a wrong chain). */
+export function chainDisplayName(chain: string): string {
+  return CHAIN_LABELS[chain] ?? chain.replace(/^chain:/, "Chain ");
+}
+
+// ── protocol tags ────────────────────────────────────────────────────────────────────────────────
+
+/** Curated-board `source` → protocol tag. The board is a Morpho curator today. */
+export function protocolKeyFromSource(source: string | null | undefined): string {
+  const key = (source ?? "").trim().toLowerCase();
+  if (key === "kamino" || key === "rhea" || key === "morpho") return key;
+  return key || "morpho";
+}
+
+export function protocolDisplayName(protocol: string): string {
+  if (protocol === "kamino") return "Kamino";
+  if (protocol === "rhea") return "Rhea";
+  if (protocol === "morpho") return "Morpho";
+  return protocol.charAt(0).toUpperCase() + protocol.slice(1);
+}
+
+/** The honest live/preview distinction. */
+export function liveDisplayName(live: boolean): string {
+  return live ? "Live deposit" : "Preview";
+}
+
+// ── filter ───────────────────────────────────────────────────────────────────────────────────────
+
+export function matchesTagFilter(item: TaggedVault, filter: VaultTagFilter): boolean {
+  if (filter.chain !== ALL && item.chain !== filter.chain) return false;
+  if (filter.protocol !== ALL && item.protocol !== filter.protocol) return false;
+  return true;
+}
+
+/** Filter by chain and/or protocol. An "all" side means no constraint on that axis. */
+export function filterVaults<T extends TaggedVault>(items: readonly T[], filter: VaultTagFilter): T[] {
+  return items.filter((item) => matchesTagFilter(item, filter));
+}
+
+/** The distinct chain/protocol tags present, in first-seen order. */
+export function collectFilterValues<T extends TaggedVault>(
+  items: readonly T[],
+  key: "chain" | "protocol",
+): string[] {
+  const seen: string[] = [];
+  for (const item of items) {
+    const value = item[key];
+    if (!seen.includes(value)) seen.push(value);
+  }
+  return seen;
+}
+
+/** True when any filter is active (the UI must always offer a way back to "all"). */
+export function hasActiveFilter(filter: VaultTagFilter): boolean {
+  return filter.chain !== ALL || filter.protocol !== ALL;
+}
+
+// ── balances ────────────────────────────────────────────────────────────────────────────────────
+
+export type BalanceState = "disconnected" | "loading" | "error" | "value";
+
+export interface BalanceDisplay {
+  readonly state: BalanceState;
+  readonly text: string;
+}
+
+export interface BalanceInput {
+  /** Is the wallet for THIS chain connected? (NEAR for Rhea, EVM for Morpho, Solana for Kamino.) */
+  readonly connected: boolean;
+  /** The wallet the read belongs to; when it differs from `currentAccount` the value is stale. */
+  readonly valueAccount?: string | null;
+  readonly currentAccount?: string | null;
+  readonly loading?: boolean;
+  readonly error?: boolean;
+  /** A formatted amount (e.g. "1.25 USDC"); `null`/`undefined` means not read yet, never zero. */
+  readonly value?: string | null;
+}
+
+function sameAccount(value: string | null | undefined, current: string | null | undefined): boolean {
+  if (!value || !current) return true;
+  return value === current;
+}
+
+/**
+ * The one place a card decides what "Your balance" says.
+ *
+ * - no wallet on that chain → "—" (the only time a dash is allowed);
+ * - a read for a previous account → loading, never the old amount;
+ * - loading → "Reading…";
+ * - a failed read → "Unavailable" (never a fake 0 or a leftover number);
+ * - a successful read → the value, including a genuine "0 USDC".
+ */
+export function balanceDisplay(input: BalanceInput): BalanceDisplay {
+  if (!input.connected) return { state: "disconnected", text: DASH };
+  if (!sameAccount(input.valueAccount, input.currentAccount)) {
+    return { state: "loading", text: READING };
+  }
+  if (input.error) return { state: "error", text: UNAVAILABLE };
+  if (input.loading) return { state: "loading", text: READING };
+  const value = input.value?.trim();
+  if (!value) return { state: "loading", text: READING };
+  return { state: "value", text: value };
+}
+
+/** Exact raw units → a plain decimal string (no float, no exponent). */
+export function formatRawAmount(raw: bigint, decimals: number): string {
+  const negative = raw < 0n;
+  const value = negative ? -raw : raw;
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = value % scale;
+  const fractionText =
+    decimals === 0 ? "" : fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  const text = fractionText ? `${whole}.${fractionText}` : `${whole}`;
+  return negative ? `-${text}` : text;
+}
+
+/**
+ * A Morpho/ERC-4626 position as USD-pegged asset units.
+ *
+ * `assetsRaw` is the vault's own `convertToAssets(shares)` result — NOT the raw share count. The
+ * caller must pass the converted value; when it has not been read this returns `null` so the card
+ * can stay in a loading/unavailable state rather than presenting shares as USDC.
+ */
+export function morphoPositionValue(
+  shares: bigint | null | undefined,
+  assetsRaw: bigint | null | undefined,
+  assetDecimals = 6,
+): string | null {
+  if (shares === null || shares === undefined) return null;
+  if (shares === 0n) return "0";
+  if (assetsRaw === null || assetsRaw === undefined) return null;
+  return formatRawAmount(assetsRaw, assetDecimals);
+}

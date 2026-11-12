@@ -58,13 +58,13 @@ export function LiveEarnFlow({ protocol, vault, chain, asset, mode, initialAmoun
   if (!enabled) {
     return (
       <div className="card card-pad" data-testid="live-earn-disabled">
-        <div style={{ fontSize: 15, fontWeight: 600 }}>Live {protocol === "kamino" ? "Kamino" : "Morpho"} earn is off</div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Live {protocol === "kamino" ? "Kamino" : "Morpho"} earn isn&apos;t available right now</div>
         <div style={{ fontSize: 13, color: MUTED, marginTop: 6, lineHeight: 1.55 }}>
-          This build has not enabled the live direct-deposit flag. The preview on the{" "}
+          Live deposits aren&apos;t available here yet. The{" "}
           <Link href={toHref("vault")} style={{ color: "var(--primary)" }}>
             Vault page
           </Link>{" "}
-          still shows the vault and its dry rails; nothing is signed or sent.
+          still shows the vault and its preview; nothing is signed or sent.
         </div>
       </div>
     );
@@ -76,8 +76,8 @@ export function LiveEarnFlow({ protocol, vault, chain, asset, mode, initialAmoun
       <div style={{ display: "grid", gap: 12 }}>
         {unknown && (
           <Notice>
-            That vault is not on the live Kamino allowlist in this build. Pick one of the curated
-            vaults below — the registry row remains preview-only.
+            This vault isn&apos;t available for live deposits here yet. Pick one of the curated
+            vaults below; the other option stays a preview.
           </Notice>
         )}
         <KaminoLiveFlow
@@ -94,8 +94,8 @@ export function LiveEarnFlow({ protocol, vault, chain, asset, mode, initialAmoun
     <div style={{ display: "grid", gap: 12 }}>
       {unknown && (
         <Notice>
-          That Morpho vault is not on the live Base allowlist in this build. Pick the curated vault
-          below — the registry row remains preview-only.
+          This vault isn&apos;t available for live deposits here yet. Pick the curated vault
+          below; the other option stays a preview.
         </Notice>
       )}
       <MorphoLiveFlow

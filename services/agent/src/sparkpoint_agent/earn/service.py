@@ -99,6 +99,19 @@ def _usd(value: Decimal | None) -> str | None:
     return f"${value:,.0f}"
 
 
+_RAIL_LABELS = {
+    "direct": "direct deposit",
+    "oneclick_earn": "1Click delivery",
+    "oneclick_rhea": "1Click delivery",
+    "intents_connect": "alternate route",
+}
+
+
+def _rail_label(key: str) -> str:
+    """A plain-language name for an internal route key."""
+    return _RAIL_LABELS.get(key, "alternate route")
+
+
 def _apy(entry: VaultEntry) -> str:
     return f"{entry.net_apy_percent}% net APY" if entry.net_apy_percent else "APY unavailable"
 
@@ -688,7 +701,7 @@ class EarnService:
                 f"(snapshot {snapshot.age_minutes()} min old):"
             ]
         for vault in vaults:
-            rails = ", ".join(vault["rails"]["available"]) or "no live option"
+            rails = ", ".join(_rail_label(r) for r in vault["rails"]["available"]) or "no live option"
             if combined:
                 label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
                     str(vault.get("protocol") or "morpho"), "Morpho"
@@ -1264,7 +1277,7 @@ class EarnService:
             (row.amount for row in rows if row.symbol.upper() in {"USDC", "USDT"}),
             Decimal(0),
         )
-        lines = [f"Your Rhea positions on NEAR ({mca}) — read-only, nothing was signed or sent:"]
+        lines = [f"Your Rhea positions on NEAR ({mca}) — nothing was signed or sent:"]
         for row in rows:
             apy = f", supply APY {percent_string(row.apy)}%" if row.apy is not None else ""
             lines.append(f"- {human_string(row.amount)} {row.symbol}{apy}")
@@ -1357,17 +1370,17 @@ class EarnService:
     ) -> EarnOutcome:
         steps = tuple(rails.detail.get("intentsConnect", {}).get("steps") or ())
         text = (
-            f"Preview only — nothing is submitted or signed. Aurora Intents Connect can run "
-            f"{len(steps)} EVM steps from an MPC intermediary to deposit {entry.asset.symbol} "
+            f"Preview only — nothing is submitted or signed. An alternate route can run "
+            f"{len(steps)} EVM steps to deposit {entry.asset.symbol} "
             f"into {entry.name or entry.symbol} on {_chain_label(self.config, entry)} "
-            "and deliver the native Morpho share. The user address is filled in at execution time."
+            "and deliver the native Morpho share. Your address is filled in at execution time."
         )
         block = EarnQuoteBlock(
             state="preview",
             rail="intents_connect",
             vault=vault,
             steps=steps,
-            receipt_note="Intents Connect delivers the native Morpho vault share.",
+            receipt_note="The alternate route delivers the native Morpho vault share.",
             quoted_at=_now_iso(),
         )
         return EarnOutcome(text=text, block=block)

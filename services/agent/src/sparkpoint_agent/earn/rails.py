@@ -43,7 +43,7 @@ NATIVE_SHARES_NOTE = (
     "vault share (not a NEAR-issued wrapper). You receive the same share mint the vault issues."
 )
 KAMINO_DIRECT_NOTE = (
-    "Direct Kamino deposits require a Solana wallet, which the beta does not support yet."
+    "Direct Kamino deposits open from the Vault page with a connected Solana wallet."
 )
 RHEA_DIRECT_NOTE = (
     "Rhea lending is on NEAR. Supply directly with your NEAR wallet, or through NEAR Intents "
@@ -57,10 +57,8 @@ RHEA_FEE_NOTE = (
     "Includes 1Click's 0.25% keyless routing fee. A one-time 0.60 USDC Rhea account + DApp "
     "registration fee applies on the first deposit only."
 )
-INTENTS_MISSING_KEY = (
-    "Aurora Intents Connect is not configured on this deployment (requires Aurora API access)."
-)
-INTENTS_DISABLED = "Aurora Intents Connect is disabled in the earn config."
+INTENTS_MISSING_KEY = "This extra route isn't available right now."
+INTENTS_DISABLED = "This extra route isn't available right now."
 
 
 _DEFAULT_LIVENESS: ReceiptLivenessCache | None = None
@@ -224,7 +222,7 @@ def _intents_rail(
         return {
             "available": False,
             "reason": (
-                f"Intents Connect cannot deliver {entry.asset.symbol} on this chain for this "
+                f"This extra route can't deliver {entry.asset.symbol} on this chain for this "
                 "vault."
             ),
         }
@@ -255,7 +253,7 @@ def resolve_rails(
                 "oneclickRhea": rhea,
                 "intentsConnect": {
                     "available": False,
-                    "reason": "Intents Connect does not apply to Rhea supply.",
+                    "reason": "This extra route doesn't apply to Rhea supply.",
                 },
             },
         )

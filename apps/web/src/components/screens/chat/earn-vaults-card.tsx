@@ -88,25 +88,42 @@ function ProtocolBadge({ vault }: { vault: EarnVault }) {
 }
 
 function RailChips({ vault }: { vault: EarnVault }) {
+  // Only name routes that are actually available. A missing route is explained by the card's
+  // preview/empty state, never by a developer-looking "not available / needs key" badge.
+  const chips = railChips(vault).filter((chip) => chip.available);
+  if (chips.length === 0) {
+    return (
+      <span
+        data-rail="preview"
+        style={{
+          padding: "1px 6px",
+          borderRadius: 6,
+          fontSize: 10.5,
+          lineHeight: 1.6,
+          color: MUTED,
+          border: "1px solid var(--border-soft)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Preview only
+      </span>
+    );
+  }
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-      {railChips(vault).map((chip) => (
+      {chips.map((chip) => (
         <span
           key={chip.key}
           data-rail={chip.key}
-          data-available={chip.available ? "true" : "false"}
+          data-available="true"
           style={{
             padding: "1px 6px",
             borderRadius: 6,
             fontSize: 10.5,
             lineHeight: 1.6,
-            color: chip.available ? "var(--gain)" : MUTED,
-            background: chip.available
-              ? "color-mix(in srgb, var(--gain) 10%, transparent)"
-              : "transparent",
-            border: `1px solid ${
-              chip.available ? "color-mix(in srgb, var(--gain) 26%, transparent)" : "var(--border-soft)"
-            }`,
+            color: "var(--gain)",
+            background: "color-mix(in srgb, var(--gain) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--gain) 26%, transparent)",
             whiteSpace: "nowrap",
           }}
         >

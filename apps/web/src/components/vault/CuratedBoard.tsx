@@ -26,6 +26,45 @@ import { useWrapperHolding } from "@/lib/portfolio/useHeldWrappers";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { TokenLogo } from "@/components/ui/TokenLogo";
 import { useSession } from "@/lib/auth/useSiwe";
+import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { useEarnVaults } from "@/lib/earn/useEarnVaults";
+import {
+  formatNetApy,
+  formatTvl,
+  previewPrompt,
+  protocolLabel,
+  protocolOf,
+  vaultRowTitle,
+} from "@/lib/earn/format";
+import {
+  kaminoLiveEnabledFromEnv,
+  liveEarnHref,
+  morphoLiveEnabledFromEnv,
+  rheaLiveEnabledFromEnv,
+} from "@/lib/earn/liveFlags";
+import { findKaminoVault } from "@/lib/earn/kaminoLive";
+import { findMorphoVault } from "@/lib/earn/morphoLive";
+import {
+  balanceDisplay,
+  chainDisplayName,
+  chainKeyFromId,
+  chainKeyFromSlug,
+  collectFilterValues,
+  emptyFilter,
+  filterVaults,
+  hasActiveFilter,
+  liveDisplayName,
+  morphoPositionValue,
+  protocolDisplayName,
+  protocolKeyFromSource,
+  type BalanceDisplay,
+  type VaultTagFilter,
+} from "@/lib/vault/vaultList";
+import {
+  useKaminoPositions,
+  useRheaSupplied,
+  useSolanaAccount,
+} from "@/lib/vault/useVaultBalances";
 import {
   boardEmptyCopy,
   boardProvenance,
@@ -34,7 +73,6 @@ import {
 import { depositRail, type KnownVault } from "@/lib/curation/depositRail";
 import {
   LIVE_BATCH_SIZE,
-  filterBoard,
   hasMore,
   heroPick,
   inFlightCounts,
@@ -42,9 +80,9 @@ import {
   nextBatch,
   sparklinePath,
   sparklineRange,
-  type BoardFilters,
   type InFlightCounts,
 } from "@/lib/curation/boardV2";
+import type { EarnVault } from "@sparkpoint/shared/schemas";
 import {
   curatorLabel,
   fmtApyBps,
@@ -64,6 +102,71 @@ import "@/components/vault/board.css";
 /** 052 — the vault's asset as a logo token (local art by address/symbol; avatar fallback). */
 function assetToken(v: CurationVault) {
   return { symbol: v.asset.symbol ?? "?", address: v.asset.address ?? "", verified: true };
+}
+
+/** One set of tags on every card, so live/preview and chain/protocol read the same everywhere. */
+function VaultTags({
+  chain,
+  protocol,
+  live,
+}: {
+  chain: string;
+  protocol: string;
+  live: boolean;
+}) {
+  return (
+    <div className="vb-badges" data-testid="vault-tags">
+      <span className="vb-badge" data-tag="chain">
+        {chainDisplayName(chain)}
+      </span>
+      <span className="vb-badge" data-tag="protocol">
+        {protocolDisplayName(protocol)}
+      </span>
+      <span className={`vb-badge ${live ? "wrapped" : "ghosty"}`} data-tag="kind">
+        {liveDisplayName(live)}
+      </span>
+    </div>
+  );
+}
+
+function BalanceLine({ display, testId }: { display: BalanceDisplay; testId?: string }) {
+  return (
+    <div className="vb-balance" data-testid={testId} data-state={display.state}>
+      <span>Your balance</span>
+      <b className="tnum">{display.text}</b>
+    </div>
+  );
+}
+
+/** The in-app live flow for a curated vault, when this exact vault is on the live allowlist. */
+function curatedLiveMorpho(vault: CurationVault): `0x${string}` | null {
+  if (vault.chainId !== 8453 || !morphoLiveEnabledFromEnv()) return null;
+  return findMorphoVault(vault.address)?.address ?? null;
+}
+
+/** The in-app live flow for an earn-registry row, or `null` when only a preview is honest. */
+function liveProtocolFor(vault: EarnVault): "kamino" | "morpho" | "rhea" | null {
+  const protocol = protocolOf(vault);
+  if (
+    protocol === "kamino" &&
+    vault.chain === "sol" &&
+    kaminoLiveEnabledFromEnv() &&
+    findKaminoVault(vault.address) !== null
+  ) {
+    return "kamino";
+  }
+  if (
+    protocol === "morpho" &&
+    vault.chain === "base" &&
+    morphoLiveEnabledFromEnv() &&
+    findMorphoVault(vault.address) !== null
+  ) {
+    return "morpho";
+  }
+  if (protocol === "rhea" && vault.chain === "near" && rheaLiveEnabledFromEnv()) {
+    return "rhea";
+  }
+  return null;
 }
 
 function RailCta({
@@ -162,6 +265,13 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
   });
   const held = (holding.shares ?? 0n) > 0n;
   const withdrawHref = `${toHref("vault/withdraw")}?vault=${pick.wrapperAddress ?? ""}`;
+  const amount = morphoPositionValue(holding.shares, holding.underlying, pick.asset.decimals ?? 6);
+  const balance = balanceDisplay({
+    connected: !!account,
+    loading: holding.isLoading,
+    error: holding.isError,
+    value: amount === null ? null : `${amount} ${pick.asset.symbol ?? "USDC"}`,
+  });
   return (
     <section className="vb-feature" aria-label="Sparky recommends">
       <div className="vb-feature-grid">
@@ -200,6 +310,10 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
                 <div className="l">Sparky score</div>
               </div>
             )}
+            <div className="vb-stat" data-testid="feature-balance" data-state={balance.state}>
+              <div className="v tnum">{balance.text}</div>
+              <div className="l">your balance</div>
+            </div>
           </div>
           <div className="vb-ctas">
             <RailCta vault={pick} knownVaults={knownVaults} className="btn btn-primary btn-md" />
@@ -259,14 +373,34 @@ function VaultCard({
   const range = sparklineRange(vault.apyHistory);
   const router = useRouter();
   const { address: account } = useAccount();
-  // 053 — a holder sees their position on the card and can withdraw straight from it.
+  const chain = chainKeyFromId(vault.chainId);
+  const protocol = protocolKeyFromSource(vault.source);
+  // 053 — a holder sees their position on the card and can withdraw straight from it. A direct
+  // curated vault is its own ERC-4626, so the same read works with the vault address.
   const holding = useWrapperHolding({
     chainId: vault.chainId,
     account,
-    wrapper: (vault.wrapperAddress as `0x${string}` | null) ?? undefined,
+    wrapper: ((vault.wrapperAddress ?? vault.address) as `0x${string}`) || undefined,
     assetDecimals: vault.asset.decimals ?? 6,
   });
   const held = (holding.shares ?? 0n) > 0n;
+  const amount = morphoPositionValue(holding.shares, holding.underlying, vault.asset.decimals ?? 6);
+  const balance = balanceDisplay({
+    connected: !!account,
+    loading: holding.isLoading,
+    error: holding.isError,
+    value: amount === null ? null : `${amount} ${vault.asset.symbol ?? "USDC"}`,
+  });
+  const liveMorpho = curatedLiveMorpho(vault);
+  const liveHref = liveMorpho
+    ? liveEarnHref({
+        protocol: "morpho",
+        chain: "base",
+        vault: liveMorpho,
+        asset: vault.asset.symbol ?? undefined,
+        mode: "deposit",
+      })
+    : null;
   return (
     <article className="vb-card" id={`vault-${vault.address}`}>
       <div className="vb-card-top">
@@ -286,6 +420,7 @@ function VaultCard({
           </span>
         )}
       </div>
+      <VaultTags chain={chain} protocol={protocol} live />
       <div className="vb-apyrow">
         <div className="vb-apy tnum">
           {fmtApyBps(vault.netApyBps)}
@@ -304,11 +439,18 @@ function VaultCard({
           <b>perf-only</b>fee above HWM
         </div>
       </div>
+      <BalanceLine display={balance} testId="curated-vault-balance" />
       <Badges vault={vault} isNew={isNew} />
       {vault.reason && <div className="vb-card-why">Why: {vault.reason}</div>}
       {range && <div className="vb-card-range">30d range {range} · stored scans</div>}
       <div className="vb-card-cta">
-        <RailCta vault={vault} knownVaults={knownVaults} className="btn btn-primary btn-sm btn-block" />
+        {liveHref ? (
+          <a className="btn btn-primary btn-sm btn-block" href={liveHref} data-testid="curated-live-deposit">
+            Live deposit
+          </a>
+        ) : (
+          <RailCta vault={vault} knownVaults={knownVaults} className="btn btn-primary btn-sm btn-block" />
+        )}
         {held && (
           <button
             className="btn btn-outline btn-sm"
@@ -328,6 +470,177 @@ function VaultCard({
       </div>
     </article>
   );
+}
+
+// ── a live/preview earn-registry card, in the SAME card UI as the curated vaults ────────────────
+
+function EarnVaultCard({ vault }: { vault: EarnVault }) {
+  const protocol = protocolOf(vault);
+  const chain = chainKeyFromSlug(vault.chain);
+  const live = liveProtocolFor(vault);
+  const { address: evmAccount } = useAccount();
+  const { accountId: nearAccount } = useNearWallet();
+  const solanaAccount = useSolanaAccount();
+
+  // Each hook is called for every card but only enabled for its own protocol, so the card never
+  // asks the wrong chain's wallet (and react-query de-dupes reads across cards).
+  const rhea = useRheaSupplied(protocol === "rhea" ? nearAccount : null);
+  const kamino = useKaminoPositions(protocol === "kamino" ? solanaAccount : null);
+  const morpho = useWrapperHolding({
+    chainId: vault.chainId,
+    account: protocol === "morpho" && vault.chainId === 8453 ? evmAccount : undefined,
+    wrapper:
+      protocol === "morpho" && vault.chainId === 8453
+        ? (vault.address as `0x${string}`)
+        : undefined,
+    assetDecimals: vault.asset.decimals ?? 6,
+  });
+
+  const symbol = vault.asset.symbol ?? "USDC";
+  let balance: BalanceDisplay;
+  if (protocol === "rhea") {
+    balance = balanceDisplay({
+      connected: !!rhea.account,
+      currentAccount: nearAccount,
+      valueAccount: rhea.account,
+      loading: rhea.loading,
+      error: rhea.error,
+      value: `${rhea.amount ?? "0"} ${rhea.symbol}`,
+    });
+  } else if (protocol === "kamino") {
+    const position = kamino.positions.find((row) => row.vaultAddress === vault.address);
+    const unreadable = !!position && position.estimatedTokens === null;
+    const value = position
+      ? position.estimatedTokens === null
+        ? null
+        : `${position.estimatedTokens} ${position.assetSymbol ?? symbol}`
+      : `0 ${symbol}`;
+    balance = balanceDisplay({
+      connected: !!kamino.account,
+      currentAccount: solanaAccount,
+      valueAccount: kamino.account,
+      loading: kamino.loading,
+      error: kamino.error || unreadable,
+      value,
+    });
+  } else {
+    const amount =
+      vault.chainId === 8453
+        ? morphoPositionValue(morpho.shares, morpho.underlying, vault.asset.decimals ?? 6)
+        : null;
+    balance = balanceDisplay({
+      connected: protocol === "morpho" && vault.chainId === 8453 && !!evmAccount,
+      loading: morpho.isLoading,
+      error: morpho.isError,
+      value: amount === null ? null : `${amount} ${symbol}`,
+    });
+  }
+
+  const depositHref = live
+    ? liveEarnHref({
+        protocol: live,
+        chain: vault.chain,
+        vault: vault.address,
+        asset: vault.asset.symbol,
+        mode: "deposit",
+      })
+    : null;
+  const withdrawHref = live
+    ? liveEarnHref({
+        protocol: live,
+        chain: vault.chain,
+        vault: vault.address,
+        asset: vault.asset.symbol,
+        mode: "withdraw",
+      })
+    : null;
+  const previewHref = `${toHref("chat")}?ask=${encodeURIComponent(previewPrompt(vault))}`;
+  const appUrl = live === null && protocol === "morpho" ? vaultExternalUrl(vault) : null;
+  const noRail = vault.rails.available.length === 0;
+
+  return (
+    <article
+      className="vb-card"
+      id={`vault-${vault.chain}-${vault.address}`}
+      data-testid="earn-vault-card"
+      data-protocol={protocol}
+      data-chain={chain}
+    >
+      <div className="vb-card-top">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <TokenLogo
+            token={{ symbol, address: vault.asset.address ?? "", verified: true }}
+            chainId={vault.chainId}
+            size={28}
+          />
+          <div>
+            <div className="vb-card-name">{vaultRowTitle(vault)}</div>
+            <div className="vb-card-sub">
+              {protocolLabel(protocol)} · {vault.asset.symbol} · {vault.symbol || vault.address}
+            </div>
+          </div>
+        </div>
+      </div>
+      <VaultTags chain={chain} protocol={protocol} live={!!live} />
+      <div className="vb-apyrow">
+        <div className="vb-apy tnum">
+          {formatNetApy(vault.netApy)}
+          <small>net APY · {protocolLabel(protocol)}</small>
+        </div>
+      </div>
+      <div className="vb-metrics">
+        <div className="vb-metric">
+          <b className="tnum">{formatTvl(vault.tvlUsd)}</b>TVL
+        </div>
+        <div className="vb-metric">
+          <b className="tnum">{vault.asset.symbol}</b>asset
+        </div>
+        <div className="vb-metric">
+          <b>{live ? "In app" : "Preview"}</b>deposit
+        </div>
+      </div>
+      <BalanceLine display={balance} testId="earn-vault-balance" />
+      <div className="vb-card-cta">
+        {depositHref ? (
+          <a className="btn btn-primary btn-sm btn-block" href={depositHref} data-testid="earn-live-deposit">
+            Live deposit
+          </a>
+        ) : (
+          <a className="btn btn-primary btn-sm btn-block" href={previewHref}>
+            Preview in Sparky
+          </a>
+        )}
+        {withdrawHref && (
+          <a className="btn btn-outline btn-sm" href={withdrawHref} data-testid="earn-live-withdraw">
+            Withdraw
+          </a>
+        )}
+        {depositHref && (
+          <a className="btn btn-outline btn-sm" href={previewHref}>
+            Preview
+          </a>
+        )}
+        {appUrl && (
+          <a className="btn btn-outline btn-sm" href={appUrl} target="_blank" rel="noreferrer">
+            Details
+          </a>
+        )}
+      </div>
+      {noRail && (
+        <div style={{ fontSize: 11.5, color: "var(--caution)", lineHeight: 1.45 }}>
+          Live deposit and withdraw aren&apos;t available for this vault yet. You can still preview it
+          with Sparky.
+        </div>
+      )}
+    </article>
+  );
+}
+
+function vaultExternalUrl(vault: EarnVault): string | null {
+  if (protocolOf(vault) === "morpho") {
+    return `https://app.morpho.org/${vault.chain === "eth" ? "ethereum" : vault.chain}/vault/${vault.address}`;
+  }
+  return null;
 }
 
 // ── 050: admin-only in-flight panel ──────────────────────────────────────────────────────────────
@@ -458,18 +771,53 @@ export function CuratedBoard({
   knownVaults?: KnownVault[];
   fetchedAt?: number;
 }) {
-  const [filters, setFilters] = useState<BoardFilters>({ newOnly: false, aiOnly: false });
+  const [tagFilter, setTagFilter] = useState<VaultTagFilter>(emptyFilter());
   const [shown, setShown] = useState(LIVE_BATCH_SIZE);
   const [phase, setPhase] = useState<"idle" | "loading" | "end">("idle");
   const phaseRef = useRef<"idle" | "loading" | "end">("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const earn = useEarnVaults();
 
-  const live = useMemo(() => (board ? liveVaults(board) : []), [board]);
-  const list = useMemo(
-    () => (board ? filterBoard(live, filters, fetchedAt) : []),
-    [board, live, filters, fetchedAt],
-  );
+  // Curated wrapped vaults and the live Rhea/Kamino/Morpho registry rows become ONE list. The
+  // registry can hold 100+ Morpho vaults, so the all-protocol view keeps a short per-protocol tail.
+  const curatedItems = useMemo(() => {
+    if (!board) return [];
+    return liveVaults(board).map((vault) => ({
+      kind: "curated" as const,
+      key: `curated:${vault.chainId}:${vault.address}`,
+      chain: chainKeyFromId(vault.chainId),
+      protocol: protocolKeyFromSource(vault.source),
+      live: true,
+      vault,
+    }));
+  }, [board]);
+
+  const earnItems = useMemo(() => {
+    const curatedKeys = new Set(
+      curatedItems.map((item) => `${item.chain}:${item.vault.address.toLowerCase()}`),
+    );
+    const perProtocol: Record<string, number> = {};
+    return earn.vaults
+      .map((vault) => ({
+        kind: "earn" as const,
+        key: `earn:${vault.chain}:${vault.address}`,
+        chain: chainKeyFromSlug(vault.chain),
+        protocol: protocolOf(vault),
+        live: liveProtocolFor(vault) !== null,
+        vault,
+      }))
+      .filter((item) => !curatedKeys.has(`${item.chain}:${item.vault.address.toLowerCase()}`))
+      .filter((item) => {
+        perProtocol[item.protocol] = (perProtocol[item.protocol] ?? 0) + 1;
+        return perProtocol[item.protocol] <= 6;
+      });
+  }, [curatedItems, earn.vaults]);
+
+  const allItems = useMemo(() => [...curatedItems, ...earnItems], [curatedItems, earnItems]);
+  const list = useMemo(() => filterVaults(allItems, tagFilter), [allItems, tagFilter]);
+  const chainOptions = useMemo(() => collectFilterValues(allItems, "chain"), [allItems]);
+  const protocolOptions = useMemo(() => collectFilterValues(allItems, "protocol"), [allItems]);
   const pick = useMemo(() => (board ? heroPick(board) : null), [board]);
   const fresh = useMemo(
     () =>
@@ -479,8 +827,8 @@ export function CuratedBoard({
     [board, fetchedAt],
   );
 
-  const applyFilters = useCallback((next: BoardFilters) => {
-    setFilters(next);
+  const applyFilters = useCallback((next: VaultTagFilter) => {
+    setTagFilter(next);
     setShown(LIVE_BATCH_SIZE);
     phaseRef.current = "idle";
     setPhase("idle");
@@ -531,10 +879,10 @@ export function CuratedBoard({
     return (
       <div className="card card-pad" style={{ marginTop: 14 }}>
         <div className="card-hd">
-          <span className="t">Curated vaults</span>
+          <span className="t">Vaults</span>
         </div>
         <div className="muted" style={{ fontSize: 13 }}>
-          Reading Sparky’s board…
+          Reading the vault list…
         </div>
       </div>
     );
@@ -544,65 +892,95 @@ export function CuratedBoard({
     return (
       <div className="card card-pad" style={{ marginTop: 14 }}>
         <div className="card-hd">
-          <span className="t">Curated vaults are unavailable</span>
+          <span className="t">Vaults are unavailable</span>
         </div>
         <div style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-          Sparky couldn’t read the curation record just now. Nothing is wrong with your wallet or
-          your funds — this board is a read, and it will come back on its own.
+          Sparky couldn’t read the vault list just now. Nothing is wrong with your wallet or your
+          funds — this list is a read, and it will come back on its own.
         </div>
       </div>
     );
   }
 
   const visible = list.slice(0, shown);
+  const filtered = list.length !== allItems.length;
 
   return (
     <div className="vb-board">
-      {pick ? <FeatureCard pick={pick} knownVaults={knownVaults} /> : <EmptyState board={board} />}
+      {pick ? (
+        <FeatureCard pick={pick} knownVaults={knownVaults} />
+      ) : allItems.length === 0 ? (
+        <EmptyState board={board} />
+      ) : null}
 
       <AdminInFlightPanel />
 
-      {live.length > 0 && (
+      {allItems.length > 0 && (
         <>
           <div className="vb-listhead">
-            <h2>All live vaults</h2>
+            <h2>All vaults</h2>
             <span className="vb-badge ghosty">
-              wrapped only · {list.length === live.length ? live.length : `${list.length} of ${live.length}`}
+              {filtered ? `${list.length} of ${allItems.length}` : allItems.length} · live and preview
             </span>
           </div>
-          <div className="vb-chiprow" role="group" aria-label="Filter live vaults">
+          <div className="vb-chiprow" role="group" aria-label="Filter by chain">
             <button
-              className={`vb-chip${!filters.newOnly && !filters.aiOnly ? " on" : ""}`}
-              onClick={() => applyFilters({ newOnly: false, aiOnly: false })}
+              className={`vb-chip${tagFilter.chain === "all" ? " on" : ""}`}
+              onClick={() => applyFilters({ ...tagFilter, chain: "all" })}
             >
-              All live
+              All chains
             </button>
-            <button
-              className={`vb-chip${filters.newOnly ? " on" : ""}`}
-              onClick={() => applyFilters({ ...filters, newOnly: !filters.newOnly })}
-            >
-              New this week
-            </button>
-            <button
-              className={`vb-chip${filters.aiOnly ? " on" : ""}`}
-              onClick={() => applyFilters({ ...filters, aiOnly: !filters.aiOnly })}
-            >
-              AI-curated
-            </button>
-          </div>
-          <div className="vb-grid">
-            {visible.map((vault) => (
-              <VaultCard
-                key={vault.address}
-                vault={vault}
-                knownVaults={knownVaults}
-                isNew={fresh.has(vault.address)}
-                isPick={pick?.address === vault.address}
-              />
+            {chainOptions.map((chain) => (
+              <button
+                key={chain}
+                className={`vb-chip${tagFilter.chain === chain ? " on" : ""}`}
+                onClick={() => applyFilters({ ...tagFilter, chain })}
+              >
+                {chainDisplayName(chain)}
+              </button>
             ))}
           </div>
+          <div className="vb-chiprow" role="group" aria-label="Filter by protocol">
+            <button
+              className={`vb-chip${tagFilter.protocol === "all" ? " on" : ""}`}
+              onClick={() => applyFilters({ ...tagFilter, protocol: "all" })}
+            >
+              All protocols
+            </button>
+            {protocolOptions.map((protocol) => (
+              <button
+                key={protocol}
+                className={`vb-chip${tagFilter.protocol === protocol ? " on" : ""}`}
+                onClick={() => applyFilters({ ...tagFilter, protocol })}
+              >
+                {protocolDisplayName(protocol)}
+              </button>
+            ))}
+            {hasActiveFilter(tagFilter) && (
+              <button className="vb-chip" onClick={() => applyFilters(emptyFilter())}>
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="vb-grid">
+            {visible.map((item) =>
+              item.kind === "curated" ? (
+                <VaultCard
+                  key={item.key}
+                  vault={item.vault}
+                  knownVaults={knownVaults}
+                  isNew={fresh.has(item.vault.address)}
+                  isPick={pick?.address === item.vault.address}
+                />
+              ) : (
+                <EarnVaultCard key={item.key} vault={item.vault} />
+              ),
+            )}
+          </div>
           {visible.length === 0 && (
-            <div className="vb-loadstatus">No live vaults match that filter.</div>
+            <div className="vb-loadstatus">
+              No vaults match these filters. Clear the filters to see all vaults.
+            </div>
           )}
           <div className="vb-loadstatus" aria-live="polite">
             {phase === "loading" && (
@@ -612,7 +990,7 @@ export function CuratedBoard({
               </>
             )}
             {phase === "end" && (
-              <>You’ve reached the bottom — that’s every live vault Sparky has wrapped.</>
+              <>You’ve reached the bottom — that’s every vault in the list.</>
             )}
           </div>
           <div ref={sentinelRef} className="vb-sentinel" aria-hidden="true" />
@@ -620,9 +998,9 @@ export function CuratedBoard({
       )}
 
       <div className="vb-boardfoot">
-        Figures are as-of the stored scan — no projections. Curation runs off-chain and an admin can
-        always override it; AI picks and admin decisions are labelled on each card.
-        {hasMore(shown, list.length) ? " Scroll for more live vaults." : ""}
+        Figures are as-of the stored scan — no projections. Each card names its chain and protocol,
+        and “Preview” means the live in-app deposit isn’t available yet.
+        {hasMore(shown, list.length) ? " Scroll for more vaults." : ""}
       </div>
     </div>
   );
