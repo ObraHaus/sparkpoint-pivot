@@ -338,6 +338,13 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
       ) {
         throw new Error("Kamino returned a transaction for a different vault, wallet, mode or amount.");
       }
+      const builtAmountRaw = BigInt(body.buildAmountRaw);
+      if (
+        (mode === "withdraw" && builtAmountRaw !== requestedAmountRaw) ||
+        (mode === "deposit" && builtAmountRaw < requestedAmountRaw)
+      ) {
+        throw new Error("Kamino returned a transaction for a different amount.");
+      }
 
       const decoded = decodeKaminoTransaction(body.transaction);
 
@@ -355,7 +362,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         feePayer: wallet,
         mode,
         vault: meta,
-        amountRaw: requestedAmountRaw,
+        amountRaw: builtAmountRaw,
         tokenVault: body.vaultLimits?.tokenVault ?? "",
         vaultFarm: body.vaultLimits?.vaultFarm ?? null,
         positionSharesRaw: mode === "withdraw" ? positionShares : undefined,
@@ -368,7 +375,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         });
         const capacity = checkSolDepositCapacity({
           balanceLamports: balanceRaw,
-          amountLamports: requestedAmountRaw,
+          amountLamports: builtAmountRaw,
           reserveLamports: actualReserve,
         });
         if (!capacity.ok) {
@@ -379,7 +386,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         }
       }
 
-      setExpectedAmountRaw(requestedAmountRaw);
+      setExpectedAmountRaw(builtAmountRaw);
       setReview(summary);
       setTransaction(decoded);
       setBuild(body);

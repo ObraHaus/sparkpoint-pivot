@@ -184,7 +184,7 @@ export async function prepareKaminoTransaction(
       feePayer: built.body.wallet,
       mode: input.mode,
       vault: built.vaultMeta,
-      amountRaw: built.amountRaw,
+      amountRaw: built.buildAmountRaw,
       tokenVault: limits.tokenVault,
       vaultFarm: limits.vaultFarm,
       positionSharesRaw: positionShares,
@@ -197,7 +197,7 @@ export async function prepareKaminoTransaction(
 
   const metrics = await readMetrics(built.vaultMeta.address, deps.fetchImpl);
   const estimate = deriveKaminoEstimate(
-    built.amountRaw,
+    built.buildAmountRaw,
     input.mode,
     metrics.tokensPerShare,
     input.mode === "deposit"
@@ -213,8 +213,9 @@ export async function prepareKaminoTransaction(
       mode: input.mode,
       wallet: built.body.wallet,
       vault: built.vaultMeta,
-      amount: built.body.amount,
+      amount: built.amount,
       amountRaw: built.amountRaw.toString(),
+      buildAmountRaw: built.buildAmountRaw.toString(),
       tokensPerShare: metrics.tokensPerShare,
       apy: metrics.apy,
       tokenPriceUsd: metrics.tokenPrice,

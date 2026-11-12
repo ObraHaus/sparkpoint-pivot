@@ -116,6 +116,17 @@ export const CONSERVATIVE_PRIORITY_FEE_LAMPORTS = 100_000n;
 export const MAX_DEPOSIT_ASSUMED_TOKEN_ACCOUNT_CREATIONS = 2;
 
 /**
+ * Kamino's kVault `deposit` treats its `amount` argument as a maximum: it first subtracts
+ * `crankFundFeePerReserve × reserve count` for the vault's crank fund and deposits the rest.
+ * A request at (or within the share-math round trip of) the vault minimum therefore lands just
+ * below `minDepositAmount` and reverts with `DepositAmountBelowMinimum` (7026). When the request
+ * is that close to the minimum we add the crank wedge back plus this small buffer so the deposit
+ * still clears the minimum. The buffer covers the one- or two-lamport floor loss from
+ * `shares_to_mint` → `user_tokens_to_deposit` (SOL Balanced's price per share is ~1.06).
+ */
+export const KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS = 2n;
+
+/**
  * The `tokenMint` Kamino reports for each curated vault's asset, captured read-only from
  * `GET /kvaults/vaults/{vault}` on 2026-11-09. Both are standard SPL Token (`Tokenkeg…`) mints:
  * the SOL vault's asset is wrapped SOL and the Steakhouse vault's asset is the SPL mint above.
@@ -347,6 +358,11 @@ export interface KaminoVaultLimits {
   readonly vaultFarm: string | null;
   readonly minDepositAmountRaw: bigint;
   readonly minWithdrawAmountRaw: bigint;
+  /**
+   * Lamports the kVault deposit subtracts from the requested `amount` for its crank fund
+   * (`crankFundFeePerReserve × reserve count`). Zero when the upstream response omits the fields.
+   */
+  readonly depositCrankFundLamports: bigint;
   readonly depositCapRaw: bigint | null;
   readonly totalAssetsRaw: bigint | null;
   readonly remainingDepositRaw: bigint | null;
@@ -373,6 +389,12 @@ export function parseKaminoVaultLimits(
   const sharesDecimals = readInt(state.sharesMintDecimals);
   const minDepositAmountRaw = readBigInt(state.minDepositAmount);
   const minWithdrawAmountRaw = readBigInt(state.minWithdrawAmount);
+  const crankFundFeePerReserve = readBigInt(state.crankFundFeePerReserve);
+  const reserveCount = Array.isArray(state.vaultAllocationStrategy)
+    ? BigInt(state.vaultAllocationStrategy.length)
+    : 0n;
+  const depositCrankFundLamports =
+    crankFundFeePerReserve !== null ? crankFundFeePerReserve * reserveCount : 0n;
   if (
     !assetMint ||
     !sharesMint ||
@@ -417,6 +439,7 @@ export function parseKaminoVaultLimits(
     vaultFarm,
     minDepositAmountRaw,
     minWithdrawAmountRaw,
+    depositCrankFundLamports,
     depositCapRaw,
     totalAssetsRaw,
     remainingDepositRaw,
@@ -552,18 +575,41 @@ export function validateKaminoBuildInput(
   return { ...input, wallet, amount: formatTokenAmount(amountRaw, decimals), vaultMeta, amountRaw };
 }
 
+/**
+ * The `max_amount` to send Kamino. The contract subtracts the crank-fund wedge (and share-math
+ * rounding) from it before depositing, so a request at the vault minimum must ask for that wedge
+ * back or it reverts with `DepositAmountBelowMinimum` (7026). Requests comfortably above the
+ * minimum keep the historical value so nothing changes for normal deposits.
+ */
+export function kaminoDepositBuildAmountRaw(
+  amountRaw: bigint,
+  limits?: KaminoVaultLimits | null,
+): bigint {
+  if (!limits) return amountRaw;
+  const crankFund = limits.depositCrankFundLamports;
+  const clearing = limits.minDepositAmountRaw + crankFund + KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS;
+  if (amountRaw >= clearing) return amountRaw;
+  return amountRaw + crankFund + KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS;
+}
+
 /** The exact body Kamino's public API expects (`amount` is human decimal, not raw units). */
 export function kaminoApiRequest(input: KaminoBuildInput, limits?: KaminoVaultLimits | null) {
   const validated = validateKaminoBuildInput(input, limits);
+  const buildAmountRaw =
+    validated.mode === "deposit"
+      ? kaminoDepositBuildAmountRaw(validated.amountRaw, limits)
+      : validated.amountRaw;
   return {
     url: `${KAMINO_API_URL}/ktx/kvault/${validated.mode}`,
     body: {
       wallet: validated.wallet,
       kvault: validated.vaultMeta.address,
-      amount: validated.amount,
+      amount: formatTokenAmount(buildAmountRaw, validated.vaultMeta.assetDecimals),
     },
     vaultMeta: validated.vaultMeta,
+    amount: validated.amount,
     amountRaw: validated.amountRaw,
+    buildAmountRaw,
   };
 }
 
@@ -1968,6 +2014,8 @@ export interface KaminoBuildResponse {
   readonly vault: KaminoVaultMeta;
   readonly amount: string;
   readonly amountRaw: string;
+  /** The on-chain `max_amount` (requested amount plus any crank-fund/rounding top-up). */
+  readonly buildAmountRaw: string;
   readonly tokensPerShare: string | null;
   readonly apy: string | null;
   readonly tokenPriceUsd: string | null;

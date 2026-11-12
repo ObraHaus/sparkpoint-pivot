@@ -18,6 +18,7 @@ import {
   KAMINO_FARM_SHARE_SCALE,
   KAMINO_FARM_STAKE_DISCRIMINATOR,
   KAMINO_FARM_UNSTAKE_DISCRIMINATOR,
+  KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS,
   KAMINO_FARM_WITHDRAW_UNSTAKED_DISCRIMINATOR,
   KAMINO_KVAULT_PROGRAM_ID,
   KAMINO_VAULTS,
@@ -36,7 +37,9 @@ import {
   deriveAssociatedTokenAddress,
   findKaminoVault,
   formatTokenAmount,
+  kaminoApiRequest,
   kaminoAssetMintLabel,
+  kaminoDepositBuildAmountRaw,
   maxSolDepositLamports,
   parseKaminoVaultLimits,
   parseTokenAmount,
@@ -133,6 +136,8 @@ const SOL_LIMITS_RAW = {
     vaultFarm: SOL_VAULT_FARM,
     minDepositAmount: "1000000",
     minWithdrawAmount: "1000",
+    crankFundFeePerReserve: "2",
+    vaultAllocationStrategy: [{}, {}, {}, {}],
     depositCap: "0",
     prevAum: "100.5",
     sharesIssued: "100000000000000",
@@ -331,6 +336,44 @@ test("vault metadata limits enforce min, cap, remaining and mint/decimals", () =
       ),
     (error: unknown) => error instanceof KaminoLiveError && error.code === "mint_mismatch",
   );
+});
+
+test("a deposit at the vault minimum adds the kVault crank wedge so it clears min", () => {
+  const limits = limitsWith({});
+  assert.equal(limits.depositCrankFundLamports, 8n);
+
+  const atMin = kaminoApiRequest(
+    { mode: "deposit", wallet: PROBE, vault: SOL_VAULT, amount: "0.001" },
+    limits,
+  );
+  assert.equal(atMin.amountRaw, 1_000_000n);
+  assert.equal(
+    atMin.buildAmountRaw,
+    1_000_000n + 8n + KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS,
+  );
+  assert.ok(
+    atMin.buildAmountRaw - limits.depositCrankFundLamports >= limits.minDepositAmountRaw,
+    "the amount left after the crank wedge must clear the vault minimum",
+  );
+  assert.equal(atMin.body.amount, "0.00100001");
+
+  // Comfortably above the minimum keeps the historical request, so normal deposits are unchanged.
+  const normal = kaminoApiRequest(
+    { mode: "deposit", wallet: PROBE, vault: SOL_VAULT, amount: "0.01" },
+    limits,
+  );
+  assert.equal(normal.buildAmountRaw, 10_000_000n);
+  assert.equal(normal.body.amount, "0.01");
+
+  // The helper itself is a no-op for amounts that already clear the minimum.
+  assert.equal(kaminoDepositBuildAmountRaw(10_000_000n, limits), 10_000_000n);
+
+  // Withdraw amounts are never adjusted.
+  const withdraw = kaminoApiRequest(
+    { mode: "withdraw", wallet: PROBE, vault: SOL_VAULT, amount: "0.01" },
+    limits,
+  );
+  assert.equal(withdraw.buildAmountRaw, 10_000_000n);
 });
 
 test("SOL reserve math reserves fees, rent and a >=0.005 SOL safety buffer", () => {
@@ -869,6 +912,32 @@ test("prepare route handler: flag off, limits, malicious upstream fixtures", asy
   });
   assert.equal(wrongProgram.status, 502);
   assert.equal((wrongProgram.body.error as { code: string }).code, "wrong_program");
+});
+
+test("prepare handler builds the minimum deposit with the crank wedge included", async () => {
+  const body = { mode: "deposit", wallet: PROBE, vault: SOL_VAULT, amount: "0.001" };
+  const buildAmount = 1_000_000n + 8n + KAMINO_DEPOSIT_ROUNDING_BUFFER_LAMPORTS;
+  const bumpedTx = buildTransaction(PROBE, validSolDepositInstructions(PROBE, buildAmount));
+
+  const bumped = await prepareKaminoTransaction(body, {
+    enabled: true,
+    fetchImpl: prepareFetch(bumpedTx),
+    resolveLookupAddresses: async () => ({ writable: [], readOnly: [] }),
+  });
+  assert.equal(bumped.status, 200);
+  assert.equal(bumped.body.amountRaw, "1000000");
+  assert.equal(bumped.body.buildAmountRaw, buildAmount.toString());
+  assert.equal(bumped.body.amount, "0.001");
+
+  // If the upstream ever returns the old, un-bumped amount the guard refuses it.
+  const staleTx = buildTransaction(PROBE, validSolDepositInstructions(PROBE, 1_000_000n));
+  const stale = await prepareKaminoTransaction(body, {
+    enabled: true,
+    fetchImpl: prepareFetch(staleTx),
+    resolveLookupAddresses: async () => ({ writable: [], readOnly: [] }),
+  });
+  assert.equal(stale.status, 502);
+  assert.equal((stale.body.error as { code: string }).code, "wrong_amount");
 });
 
 test("positions handler is flag-gated and estimates from tokensPerShare", async () => {
