@@ -459,7 +459,7 @@ async def test_positions_parse_inner_units_and_apy() -> None:
     wire = outcome.block.to_wire()
     assert wire["state"] == "ready"
     assert wire["mca"] == MCA
-    assert wire["supplied"] == [{"symbol": "USDC", "amount": "100", "apy": "14"}]
+    assert wire["supplied"] == [{"symbol": "USDC", "amount": "100", "apy": "14.00"}]
     assert wire["totalUsd"] == "100"
     assert wire["source"]["method"] == "get_account_all_positions"
 

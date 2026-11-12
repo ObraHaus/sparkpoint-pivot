@@ -29,7 +29,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Any, Final
 
 import httpx
@@ -401,13 +401,15 @@ def mca_fee_amount(
 
 
 def percent_string(value: Decimal | None) -> str | None:
-    """A fraction (``0.1404``) rendered as a display percent (``14.04``)."""
+    """A fraction (``0.1404``) rendered as a user percent at exactly 2 dp (``14.04``).
+
+    The wire/source may carry a full-precision ratio. A rendered APY must not leak it, so this
+    truncates to two decimals (never rounds up) and always keeps both places.
+    """
     if value is None:
         return None
-    text = format(value * Decimal(100), "f")
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text or "0"
+    percent = (value * Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    return format(percent, "f")
 
 
 def human_string(value: Decimal | None) -> str | None:

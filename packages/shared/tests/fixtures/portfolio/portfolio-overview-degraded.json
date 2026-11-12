@@ -53,7 +53,7 @@
       "label": "Kamino",
       "status": "not_linked",
       "rows": [],
-      "reason": "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)",
+      "reason": "Kamino positions show once a Solana address is linked to your account",
       "source": "solana_rpc",
       "asOf": "2026-11-01T04:30:00+00:00"
     },

@@ -14,6 +14,7 @@ import type { EarnPositionsBlock } from "@sparkpoint/shared/schemas";
 
 import { Icon } from "@/lib/icons";
 import { chainLabel, sourceAttribution } from "@/lib/earn/format";
+import { formatApyPercent } from "@/lib/format/apy";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -153,7 +154,9 @@ export function EarnPositionsCard({ block }: { block: EarnPositionsBlock }) {
                 {position.amount} {position.symbol}
               </div>
               <div style={{ fontSize: 11.5, color: MUTED }} className="tnum">
-                {position.apy ? `${position.apy}% supply APY` : "APY unavailable"}
+                {formatApyPercent(position.apy)
+                  ? `${formatApyPercent(position.apy)} supply APY`
+                  : "APY unavailable"}
               </div>
             </div>
           </div>
@@ -176,8 +179,8 @@ export function EarnPositionsCard({ block }: { block: EarnPositionsBlock }) {
       {block.note && <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{block.note}</div>}
       {withdraw}
       <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-        This is a read-only view of your Rhea account. SparkPoint never holds your funds, and
-        withdraws happen on Rhea with the same wallet.
+        This card only reads your Rhea account. You can supply or withdraw on the Rhea page with
+        the same wallet, and SparkPoint never holds your funds.
       </div>
     </Shell>
   );
