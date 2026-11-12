@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from typing import Any
 
 from ..amounts import bounded_smallest_units
@@ -255,7 +255,8 @@ class CrossChainService:
         usd = f" (about {usd_value})" if usd_value else ""
         text = (
             f"Preview only — nothing is signed or sent. {request.amount_human} "
-            f"{origin.symbol} on {origin.chain_label} → about {amount_out} {destination.symbol} "
+            f"{origin.symbol} on {origin.chain_label} → about {display_amount(amount_out)} "
+            f"{destination.symbol} "
             f"on {destination.chain_label}{usd}, settling in {eta}. {expires_hint}"
         )
         if fee_note:
@@ -308,3 +309,20 @@ def build_service_from_env() -> CrossChainService | None:
     if not config.feature_enabled:
         return None
     return CrossChainService(config, OneClickClient.from_env())
+
+
+def display_amount(value: object, places: int = 6) -> str:
+    """A quote amount for PROSE: at most ``places`` decimals, truncated (never rounded up, so the
+    text can't promise more than the quote), trailing zeros dropped. The block keeps the exact
+    figure; this is display only. Anything unparseable is returned unchanged."""
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    if not number.is_finite():
+        return str(value)
+    quantum = Decimal(1).scaleb(-places)
+    text = format(number.quantize(quantum, rounding=ROUND_DOWN), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"

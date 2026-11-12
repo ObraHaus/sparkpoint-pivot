@@ -301,3 +301,30 @@ async def test_yield_guidance_options_come_from_the_live_snapshot_not_the_empty_
     assert "Rhea Lending USDC" in text
     assert "/vault" in text
     assert "no curated vaults" not in text.lower()
+
+
+def test_apy_text_is_truncated_to_two_decimals_like_the_card() -> None:
+    from sparkpoint_agent.coordinator.earn_vaults import format_apy_percent
+
+    assert format_apy_percent("10.027866896025435") == "10.02%"
+    assert format_apy_percent("8.999578476047444") == "8.99%"
+    assert format_apy_percent("4.4") == "4.40%"
+    assert format_apy_percent(None) is None
+    assert format_apy_percent("n/a") is None
+
+
+def test_vault_rows_are_separate_paragraphs_for_the_chat_renderer() -> None:
+    from sparkpoint_agent.coordinator import earn_vaults
+
+    class _Cfg:
+        def chain(self, key: str) -> None:
+            return None
+
+    rows = [
+        {"name": "A", "protocol": "rhea", "chain": "near", "netApy": "10.1", "tvlUsd": 1000},
+        {"name": "B", "protocol": "morpho", "chain": "base", "netApy": "9.1", "tvlUsd": 1000},
+    ]
+    lines = earn_vaults._bullets(_Cfg(), rows)  # type: ignore[arg-type]
+    text = "\n".join(lines)
+    assert "\n\n- " in text
+    assert len([line for line in lines if line.startswith("- ")]) == 2
