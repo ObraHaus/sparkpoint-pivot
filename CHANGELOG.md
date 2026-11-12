@@ -25,6 +25,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`apps/web/src/lib/solana/sendTransaction.ts`, `apps/web/src/lib/solana/wallet.ts`,
   `apps/web/src/lib/solana/rpcProxy.ts`, `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
 
+### Changed (vault-ui-unify — one deposit/withdraw layout, APY sparkline on every vault card)
+
+- **Every vault deposit and withdraw screen now uses the same Morpho-style layout.** Rhea, Kamino
+  and the live Morpho flow now share the reference amount screen — back link, H1 "Deposit/Withdraw
+  &lt;asset&gt;" with an "Into &lt;vault&gt; · net APY" subtitle, risk pill, amount card with Max,
+  summary box, estimates disclaimer, full-width primary button and the "Next: …" line — instead of
+  three separate layouts. Protocol facts (Rhea MCA balance/Max and the NEAR-only signer, Kamino's
+  vault minimum and crank-fee buffer, Morpho's caps/approve leg) stay as rows in the same summary
+  box. Signing, balances and the Kamino send path are unchanged.
+  (`apps/web/src/components/vault/VaultFlow.tsx`,
+  `apps/web/src/lib/vault/vaultFlow.ts`,
+  `apps/web/src/components/vault/RheaLiveEarn.tsx`,
+  `apps/web/src/components/vault/KaminoLiveFlow.tsx`,
+  `apps/web/src/components/vault/MorphoLiveFlow.tsx`,
+  `apps/web/src/app/(app)/vault/_amount-screen.tsx`,
+  `apps/web/src/app/(app)/vault/live/page.tsx`)
+- **Every `/vault` list card now shows the APY sparkline and its 30-day range.** Cards with stored
+  scans show the same line and "30d range x% – y% · stored scans" label as the Galaxy USDG card.
+  A card with no stored history draws a flat line at its current APY and says "collecting history"
+  — no points are invented.
+  (`apps/web/src/components/vault/CuratedBoard.tsx`, `apps/web/src/lib/curation/boardV2.ts`)
+
 ### Fixed (kamino-min-deposit — depositing the vault minimum no longer fails in the wallet)
 
 - **A Kamino SOL Balanced deposit of exactly the vault minimum (0.001 SOL) now builds a transaction
