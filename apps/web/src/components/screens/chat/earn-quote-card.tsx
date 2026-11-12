@@ -57,7 +57,7 @@ const RAIL_LABEL: Record<EarnQuoteBlock["rail"], string> = {
   direct: "Direct deposit",
   oneclick_earn: "NEAR Intents 1Click Earn",
   oneclick_rhea: "NEAR Intents 1Click → Rhea lending",
-  intents_connect: "Aurora Intents Connect",
+  intents_connect: "Alternate route",
 };
 
 const MAINNET_WARNING =
@@ -347,7 +347,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
             ) : (
               <>
                 <div style={{ fontSize: 20, fontWeight: 600, marginTop: 2 }}>
-                  {block.rail === "direct" ? "Native Morpho vault share" : "Native share via Intents Connect"}
+                  {block.rail === "direct" ? "Native Morpho vault share" : "Native share delivery"}
                 </div>
                 <div style={{ fontSize: 12.5, color: MUTED }}>
                   {vault.asset.symbol} on {chainLabel(vault.chain)}
@@ -786,8 +786,8 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
 
           {deposit === "copy_address" && (
             <Notice tone="info" testId="earn-deposit-copy-address">
-              Send from your own Solana wallet (Phantom etc.) — copy-address deposit, phase C. This
-              preview does not create a deposit address or move funds yet.
+              Send from your own Solana wallet (Phantom etc.) — copy-address deposit. This preview
+              does not create a deposit address or move funds yet.
             </Notice>
           )}
 
@@ -818,7 +818,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
                 Deposit from wallet
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                Live deposits coming soon (phase C). This preview is not signable.
+                This preview is not signable yet — nothing is sent or signed.
               </div>
             </div>
           )}
@@ -826,7 +826,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
           {block.steps && block.steps.length > 0 && (
             <div data-testid="earn-quote-steps">
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: MUTED }}>
-                Intents Connect plan (read-only)
+                Read-only plan
               </div>
               <ol style={{ margin: "6px 0 0", paddingLeft: 20, fontSize: 12.5, lineHeight: 1.55 }}>
                 {block.steps.map((step, i) => (

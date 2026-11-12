@@ -15,6 +15,7 @@ import type {
   EarnSource,
   EarnVault,
 } from "@sparkpoint/shared/schemas";
+import { formatApyPercent } from "../format/apy.ts";
 
 const DASH = "—";
 
@@ -160,10 +161,7 @@ function trim(value: number): string {
  */
 export function formatNetApy(value: string | null | undefined): string {
   if (value === null || value === undefined || value.trim() === "") return DASH;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return DASH;
-  const truncated = Math.trunc(n * 100) / 100;
-  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(truncated)}%`;
+  return formatApyPercent(value) ?? DASH;
 }
 
 /**
@@ -216,7 +214,7 @@ export function railChips(vault: EarnVault): RailChip[] {
       rheaLabel =
         oneclickRhea.liveness === "no_liquidity"
           ? "1Click Rhea no liquidity"
-          : "1Click Rhea unavailable";
+          : "1Click Rhea not available";
     } else if (oneclickRhea.liveness === "live") {
       rheaLabel = "1Click Rhea live";
     }
@@ -225,7 +223,7 @@ export function railChips(vault: EarnVault): RailChip[] {
       { key: "oneclick_rhea", label: rheaLabel, available: oneclickRhea.available },
       {
         key: "intents_connect",
-        label: intentsConnect.available ? "Intents Connect" : "Intents Connect n/a",
+        label: intentsConnect.available ? "Alternate route" : "Alternate route not available",
         available: intentsConnect.available,
       },
     ];
@@ -236,14 +234,14 @@ export function railChips(vault: EarnVault): RailChip[] {
     oneclickLabel =
       oneclickEarn?.liveness === "no_liquidity"
         ? "1Click Earn no liquidity"
-        : "1Click Earn unavailable";
+        : "1Click Earn not available";
   } else if (oneclickEarn.liveness === "live") {
     oneclickLabel = "1Click Earn live";
   }
 
-  // An unavailable Intents Connect rail is always the same honest answer: it needs the Aurora
-  // key/config that this deployment does not have. A live rail says so plainly.
-  const intentsLabel = intentsConnect.available ? "Intents Connect" : "Intents Connect needs key";
+  // An unavailable alternate route is simply unavailable in this build — plain words, no operator
+  // configuration language ("needs key") and no product-internal name.
+  const intentsLabel = intentsConnect.available ? "Alternate route" : "Alternate route not available";
 
   return [
     { key: "direct", label: "Direct", available: direct.available },
@@ -305,5 +303,7 @@ export function netSuppliedLine(
 /** `Supply APY 14.05% (Rhea, variable)`; `null` when the contract read failed. */
 export function rheaApyLine(supplyApy: string | null | undefined): string | null {
   if (!supplyApy) return null;
-  return `Supply APY ${supplyApy} (Rhea, variable)`;
+  const formatted = formatApyPercent(supplyApy);
+  if (!formatted) return null;
+  return `Supply APY ${formatted} (Rhea, variable)`;
 }

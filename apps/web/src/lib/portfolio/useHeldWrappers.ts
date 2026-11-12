@@ -169,8 +169,11 @@ export function useHeldWrappers({
  */
 export interface WrapperHolding {
   readonly shares: bigint | undefined;
+  /** The position converted to the vault's asset (ERC-4626 `convertToAssets`), raw units. */
+  readonly underlying: bigint | undefined;
   readonly valueUsd: number | undefined;
   readonly isLoading: boolean;
+  readonly isError: boolean;
 }
 
 export function useWrapperHolding({
@@ -202,11 +205,15 @@ export function useWrapperHolding({
     chainId: chainId as ReadChainId | undefined,
     query: { enabled: enabled && shares !== undefined && shares > 0n },
   });
-  const underlying = assetsRead.data as bigint | undefined;
+  // A successful `balanceOf` of 0 is a genuine zero, not "not read yet" — only then may the card
+  // show 0. When shares are held, the value stays unknown until `convertToAssets` succeeds.
+  const underlying = shares === 0n ? 0n : (assetsRead.data as bigint | undefined);
   return {
     shares,
+    underlying,
     valueUsd: underlying === undefined ? undefined : Number(formatUnits(underlying, assetDecimals)),
     isLoading:
       enabled && (sharesRead.isLoading || (shares !== undefined && shares > 0n && assetsRead.isLoading)),
+    isError: sharesRead.isError || assetsRead.isError,
   };
 }

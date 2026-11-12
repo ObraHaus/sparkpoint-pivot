@@ -324,8 +324,7 @@ function EarnRow({ row, section }: { row: PortfolioRow; section: PortfolioSectio
       )}
       {section.key === "rhea" && (
         <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-          This is a read-only view. You can review and sign Rhea deposits or withdraws on the Rhea
-          page.
+          You can supply or withdraw on the Rhea page with your own NEAR wallet.
         </div>
       )}
       {withdrawUrl && (
@@ -371,9 +370,9 @@ function EarnSection({ section, headingId }: { section: PortfolioSection; headin
           )}
           <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
             {section.key === "kamino"
-              ? "This section shows shares on a linked Solana address. Live Kamino deposits and withdrawals are coming soon."
+              ? "This section shows shares on a linked Solana address. You can deposit or withdraw from the Vault page when a Solana wallet is connected."
               : section.key === "morpho"
-                ? "Deposits and withdrawals happen in the Morpho app for now; nothing here is signable."
+                ? "You can deposit or withdraw from the Vault page with your own wallet."
                 : "Rates are the protocol's own reads, shown as-is."}
           </div>
         </>

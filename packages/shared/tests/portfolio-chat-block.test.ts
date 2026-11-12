@@ -79,7 +79,7 @@ test("degraded fixture keeps each section's own status and reason", () => {
   assert.equal(byKey.morpho?.status, "unavailable");
   assert.equal(byKey.morpho?.reason, "Morpho API is unreachable.");
   assert.equal(byKey.kamino?.status, "not_linked");
-  assert.match(byKey.kamino?.reason ?? "", /deposit to a Solana address from SparkPoint \(Phase C\)/);
+  assert.match(byKey.kamino?.reason ?? "", /a Solana address is linked to your account/);
   assert.equal(byKey.rhea?.status, "unavailable");
   assert.equal(byKey.swaps?.status, "ok");
   assert.equal(byKey.swaps?.rows.length, 0);
