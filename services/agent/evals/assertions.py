@@ -248,7 +248,7 @@ def classify_route(wires: Sequence[Mapping[str, Any]]) -> str:
         or "is showing" in text
         and "net apy" in text
         or "i'm tracking" in text
-        or "there are no curated vaults on this network" in text
+        or "there are no curated vaults i've screened" in text
     ):
         return "curated"
     if (

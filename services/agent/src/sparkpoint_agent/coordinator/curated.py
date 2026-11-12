@@ -216,8 +216,8 @@ def curated_answer(context: CuratedContext) -> str:
     if pick is None:
         if context.vault_count == 0:
             return (
-                "There are no curated vaults on this network yet — I don't have one I've screened, "
-                "and I won't invent one.\n\n"
+                "I don't have a live vault list right now — there are no curated vaults I've "
+                "screened yet, and I won't invent one.\n\n"
                 "Discovery runs daily against this chain's vault source, and the board on the "
                 "**Vault** page (/vault) fills in by itself when there is something real to show. "
                 "In the meantime I can explain how the vaults work, or help you with a swap."

@@ -785,12 +785,19 @@ def _curated_vaults(curated: CuratedContext | None) -> tuple[CuratedPick, ...]:
     return (curated.pick,) if curated.pick is not None else ()
 
 
-def _options_block(curated: CuratedContext | None) -> str:
+def _options_block(
+    curated: CuratedContext | None, earn_options: Sequence[str] | None = None
+) -> str:
+    if earn_options:
+        lines = ["Live vault options across every chain right now (the same board `/vault` shows):"]
+        lines.extend(f"- {item}" for item in earn_options[:3])
+        return "\n".join(lines)
     vaults = _curated_vaults(curated)
     if not vaults:
         return (
-            "There are no curated vaults on this network yet — I won't invent one. The **Vault** "
-            "page (/vault) fills in when the daily scan finds something real."
+            "I don't have a live vault list right now — there are no curated vaults I've "
+            "screened yet, and I won't invent one. The **Vault** page (/vault) fills in when the "
+            "daily scan finds something real."
         )
     lines = ["Curated options on this network right now (the same board `/vault` shows):"]
     for vault in vaults[:3]:
@@ -916,6 +923,8 @@ def yield_guidance_answer(
     gross_apy_bps: int | None,
     performance_fee_bps: int | None,
     per_user_cap_base: int | None,
+    earn_options: Sequence[str] | None = None,
+    earn_top_apy_bps: int | None = None,
 ) -> str:
     """Compose the empty-wallet / no-mandate yield answer from injected data only."""
     amount = amount_from_text(message)
@@ -933,9 +942,11 @@ def yield_guidance_answer(
             "You don't have a position yet, so there's nothing for a mandate to apply to. "
             "Here's what's actually available."
         )
-    sections.append(_options_block(curated))
+    sections.append(_options_block(curated, earn_options))
 
     apy = _estimate_apy(curated, projected_apy_bps, gross_apy_bps)
+    if apy is None and earn_top_apy_bps is not None:
+        apy = earn_top_apy_bps
     as_of = curated.pick.as_of if curated is not None and curated.pick is not None else None
     if amount is not None and months is not None and apy is not None:
         sections.append(_estimate_block(amount, months, apy, as_of))
