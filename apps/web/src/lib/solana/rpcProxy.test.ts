@@ -29,10 +29,20 @@ const BALANCE_BODY = {
   result: { context: { slot: 123 }, value: 1_500_000_000 },
 };
 
-test("the allowlist only exposes the read-only methods the Kamino flow needs", () => {
+test("the allowlist only exposes the methods the Kamino flow needs", () => {
   assert.deepEqual(
     [...ALLOWED_SOLANA_RPC_METHODS].sort(),
-    ["getAccountInfo", "getBalance", "getSignatureStatuses", "getTokenAccountsByOwner"],
+    [
+      "getAccountInfo",
+      "getBalance",
+      "getBlockHeight",
+      "getLatestBlockhash",
+      "getRecentPrioritizationFees",
+      "getSignatureStatuses",
+      "getTokenAccountsByOwner",
+      "sendTransaction",
+      "simulateTransaction",
+    ],
   );
 });
 
@@ -75,7 +85,7 @@ test("malformed bodies are rejected with 400 before any upstream call", async ()
   assert.equal(calls, 0);
 });
 
-test("sendTransaction and unknown methods are refused", async () => {
+test("unknown methods are refused", async () => {
   let calls = 0;
   const deps = {
     fetchImpl: fakeFetch(async () => {
@@ -84,7 +94,7 @@ test("sendTransaction and unknown methods are refused", async () => {
     }),
     upstreams: ["https://rpc.example"],
   };
-  for (const method of ["sendTransaction", "requestAirdrop", "getBalanceButPlease"]) {
+  for (const method of ["requestAirdrop", "getBalanceButPlease", "sendRawTransaction"]) {
     const result = await proxySolanaRpc(
       { jsonrpc: "2.0", id: 1, method, params: [] },
       deps,
@@ -93,6 +103,70 @@ test("sendTransaction and unknown methods are refused", async () => {
     assert.equal((result.body.error as { code: string }).code, "method_not_allowed");
   }
   assert.equal(calls, 0);
+});
+
+test("a sendTransaction preflight error (-32002) is returned verbatim, not retried elsewhere", async () => {
+  const preflightError = {
+    jsonrpc: "2.0",
+    id: 1,
+    error: {
+      code: -32002,
+      message: "Transaction simulation failed: Error processing Instruction 3: custom program error",
+      data: {
+        err: { InstructionError: [3, { Custom: 6001 }] },
+        logs: ["Program log: insufficient funds"],
+      },
+    },
+  };
+  const calls: string[] = [];
+  const result = await proxySolanaRpc(
+    { jsonrpc: "2.0", id: 1, method: "sendTransaction", params: ["AA==", { encoding: "base64" }] },
+    {
+      fetchImpl: fakeFetch(async (url) => {
+        calls.push(url);
+        return jsonResponse(preflightError);
+      }),
+      upstreams: ["https://first.example", "https://second.example"],
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, preflightError);
+  assert.deepEqual(calls, ["https://first.example"]);
+});
+
+test("a simulateTransaction -32002 error is passed through too", async () => {
+  const body = {
+    jsonrpc: "2.0",
+    id: 7,
+    error: { code: -32002, message: "Transaction simulation failed", data: { err: "BlockhashNotFound" } },
+  };
+  const result = await proxySolanaRpc(
+    { jsonrpc: "2.0", id: 7, method: "simulateTransaction", params: ["AA==", { encoding: "base64" }] },
+    {
+      fetchImpl: fakeFetch(async () => jsonResponse(body)),
+      upstreams: ["https://first.example", "https://second.example"],
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, body);
+});
+
+test("sendTransaction still falls back to the next upstream on a network failure", async () => {
+  const calls: string[] = [];
+  const result = await proxySolanaRpc(
+    { jsonrpc: "2.0", id: 1, method: "sendTransaction", params: ["AA=="] },
+    {
+      fetchImpl: fakeFetch(async (url) => {
+        calls.push(url);
+        if (url === "https://first.example") throw new Error("network down");
+        return jsonResponse({ jsonrpc: "2.0", id: 1, result: "5" + "x".repeat(87) });
+      }),
+      upstreams: ["https://first.example", "https://second.example"],
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal((result.body as { result: string }).result.length, 88);
+  assert.deepEqual(calls, ["https://first.example", "https://second.example"]);
 });
 
 test("a successful getBalance is mapped through unchanged", async () => {

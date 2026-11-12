@@ -6,9 +6,11 @@
  * Amount → build (our BFF asks Kamino for an UNSIGNED transaction) → review every amount/account/
  * fee → the user explicitly confirms in their own Solana wallet → confirm the on-chain signature.
  *
- * The wallet is the only signer. SparkPoint never holds a key and never submits anything itself;
- * `submitSolanaTransaction` is called only from the confirm button below. The returned transaction
- * is re-validated here (not just trusted from the server) before the wallet is asked to sign.
+ * The wallet is the only signer. SparkPoint never holds a key; `sendSolanaTransaction` is called
+ * only from the confirm button below. It adds the compute budget the transaction needs, asks the
+ * wallet to sign, then broadcasts/re-broadcasts the signed bytes through our proxy so preflight
+ * errors and blockhash expiry are visible instead of looking like an endless "pending". The
+ * returned transaction is re-validated here (not just trusted from the server) before signing.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -29,7 +31,6 @@ import {
   maxSolDepositLamports,
   parseTokenAmount,
   resolveKaminoLookupAddresses,
-  signatureOutcome,
   solDepositReserveLamports,
   summarizeKaminoTransaction,
   type KaminoBuildResponse,
@@ -40,15 +41,19 @@ import {
 import type { LiveEarnMode } from "@/lib/earn/liveFlags";
 import {
   BALANCE_READ_TIMEOUT_MS,
-  SIGNATURE_STATUS_TIMEOUT_MS,
   solanaProxyRpcUrl,
   withTimeout,
 } from "@/lib/solana/clientRpc";
 import {
+  createHttpSolanaRpc,
+  sendSolanaTransaction,
+  type SendSolanaTransactionResult,
+  type SolanaSendOutcome,
+} from "@/lib/solana/sendTransaction";
+import {
   connectSolanaWallet,
   getInjectedSolanaProvider,
   solanaWalletErrorMessage,
-  submitSolanaTransaction,
   type SolanaInjectedProvider,
 } from "@/lib/solana/wallet";
 
@@ -62,9 +67,10 @@ type Phase =
   | "submitting"
   | "confirming"
   | "confirmed"
-  | "failed";
+  | "failed"
+  | "expired";
 
-type SignatureOutcome = "confirmed" | "failed" | "pending";
+type SignatureOutcome = SolanaSendOutcome;
 type BalanceStatus = "idle" | "reading" | "ready" | "error";
 
 function short(value: string, head = 6, tail = 6): string {
@@ -152,31 +158,6 @@ async function readAssetBalance(
   }
 }
 
-/**
- * Wait for the wallet's signature to reach a terminal state. Returns `pending` (never a fake
- * success) when the RPC cannot tell us within the window.
- */
-async function waitForSignature(signature: string): Promise<SignatureOutcome> {
-  const connection = new Connection(solanaProxyRpcUrl(), "confirmed");
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    try {
-      const status = await withTimeout(
-        connection.getSignatureStatus(signature, {
-          searchTransactionHistory: true,
-        }),
-        SIGNATURE_STATUS_TIMEOUT_MS,
-        "Checking the transaction signature timed out.",
-      );
-      const outcome = signatureOutcome(status.value);
-      if (outcome !== "pending") return outcome;
-    } catch {
-      // Keep polling; a transient RPC error is not a confirmed success.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-  }
-  return "pending";
-}
-
 export interface KaminoLiveFlowProps {
   readonly vault: string | null;
   readonly mode: LiveEarnMode;
@@ -197,6 +178,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   const [review, setReview] = useState<KaminoTxReview | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
   const [signatureOutcomeState, setSignatureOutcomeState] = useState<SignatureOutcome | null>(null);
+  const [sendResult, setSendResult] = useState<SendSolanaTransactionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [positions, setPositions] = useState<KaminoPositionView[]>([]);
   const [balanceRaw, setBalanceRaw] = useState<bigint | null>(null);
@@ -269,6 +251,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
     setReview(null);
     setSignature(null);
     setSignatureOutcomeState(null);
+    setSendResult(null);
     setError(null);
   }, []);
 
@@ -457,12 +440,25 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
 
     setPhase("submitting");
     try {
-      const submitted = await submitSolanaTransaction(provider, transaction);
-      setSignature(submitted);
-      setPhase("confirming");
-      const outcome = await waitForSignature(submitted);
-      setSignatureOutcomeState(outcome);
-      setPhase(outcome === "failed" ? "failed" : "confirmed");
+      const result = await sendSolanaTransaction({
+        provider,
+        transaction,
+        rpc: createHttpSolanaRpc(solanaProxyRpcUrl()),
+        onSignature: (submitted) => {
+          setSignature(submitted);
+          setPhase("confirming");
+        },
+      });
+      setSendResult(result);
+      setSignature(result.signature);
+      setSignatureOutcomeState(result.outcome);
+      setPhase(
+        result.outcome === "failed"
+          ? "failed"
+          : result.outcome === "expired"
+            ? "expired"
+            : "confirmed",
+      );
       if (wallet) {
         await refreshPositions(wallet);
         void loadBalance(wallet, meta.assetMint, meta.assetDecimals);
@@ -787,8 +783,10 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
             is closed on withdraw; the share account stays until you close it.
           </Notice>
           <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
-            This unsigned transaction carries a recent blockhash that expires in about a minute. If
-            your wallet says it expired, go back and review again — the amount and fee may have moved.
+            At signing SparkPoint refreshes the blockhash and adds a compute-unit limit (from a fresh
+            simulation) plus a small priority fee, so your wallet cannot substitute its 200,000 CU
+            default. The added limit and fee are shown after you submit. This transaction expires in
+            about a minute; if it expires, go back and review again — the amount and fee may have moved.
           </div>
 
           {error && <Notice tone="caution">{error}</Notice>}
@@ -816,7 +814,9 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
                     ? "Confirmed"
                     : phase === "failed"
                       ? "Failed"
-                      : "Confirm in wallet"}
+                      : phase === "expired"
+                        ? "Expired · review again"
+                        : "Confirm in wallet"}
             </button>
           </div>
           <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
@@ -826,24 +826,48 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
         </div>
       )}
 
-      {signature && (phase === "confirming" || phase === "confirmed" || phase === "failed") && (
+      {signature &&
+        (phase === "confirming" || phase === "confirmed" || phase === "failed" || phase === "expired") && (
         <div className="card card-pad" data-testid="kamino-live-done">
           <div style={{ fontSize: 15, fontWeight: 600 }}>
             {phase === "confirming"
-              ? "Submitted · waiting for confirmation"
+              ? "Broadcasting · waiting for confirmation"
               : phase === "failed"
                 ? "Transaction failed on-chain"
-                : signatureOutcomeState === "confirmed"
-                  ? "Transaction confirmed"
-                  : "Submitted · confirmation pending"}
+                : phase === "expired"
+                  ? "Transaction expired — nothing was spent"
+                  : signatureOutcomeState === "confirmed"
+                    ? "Transaction confirmed"
+                    : "Submitted · confirmation pending"}
           </div>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>
             Signature <span className="mono" style={{ wordBreak: "break-all" }}>{signature}</span>
           </div>
+          {sendResult?.computeBudgetAdded && (
+            <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
+              <Row
+                k="Compute limit added"
+                v={`${(sendResult.computeUnitLimit ?? 0).toLocaleString("en-US")} CU${
+                  sendResult.simulatedUnits ? ` (simulated ${sendResult.simulatedUnits.toLocaleString("en-US")})` : ""
+                }`}
+              />
+              <Row
+                k="Priority fee added"
+                v={`${sendResult.priorityFeeMicroLamports?.toString() ?? "0"} µlamports/CU`}
+              />
+            </div>
+          )}
           {phase === "failed" && (
             <Notice tone="caution">
-              The network reported this transaction as failed. Nothing was credited to your
-              position. Check the explorer for the exact error.
+              The network reported this transaction as failed{sendResult?.error ? `: ${sendResult.error}` : ""}.
+              Nothing was credited to your position. Check the explorer for the exact error.
+            </Notice>
+          )}
+          {phase === "expired" && (
+            <Notice tone="caution">
+              The transaction&apos;s blockhash expired before it landed and the network never
+              processed it — <b>nothing was spent</b>. Go back and review again; the amount and fee
+              may have moved.
             </Notice>
           )}
           {phase === "confirmed" && signatureOutcomeState === "pending" && (

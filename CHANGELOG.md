@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (kamino-send-lands — a signed Kamino deposit now lands or reports why it did not)
+
+- **A Kamino SOL deposit no longer stops at "submitted · confirmation pending".** The unsigned
+  Kamino transaction carried no ComputeBudget instructions, so Phantom injected its own 200,000 CU
+  default; the deposit needs ~234,000 CU, failed simulation, and the wallet had already returned a
+  signature the app could neither verify nor rebroadcast. The send path now refreshes the blockhash,
+  simulates through our proxy, prepends `setComputeUnitLimit` (simulated ×1.2, min 300k, max 1.4M)
+  and `setComputeUnitPrice` (median priority fee, clamped 20k–200k µlamports) before the wallet
+  signs, then broadcasts and rebroadcasts the signed bytes itself via `/api/solana/rpc`. Preflight
+  failures surface with program logs (nothing spent), and a blockhash expiry is reported as
+  "expired — nothing was spent" instead of a false pending. Wallets without `signTransaction` keep
+  the old behaviour with longer polling.
+  (`apps/web/src/lib/solana/sendTransaction.ts`, `apps/web/src/lib/solana/wallet.ts`,
+  `apps/web/src/lib/solana/rpcProxy.ts`, `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
+
 ### Fixed (kamino-min-deposit — depositing the vault minimum no longer fails in the wallet)
 
 - **A Kamino SOL Balanced deposit of exactly the vault minimum (0.001 SOL) now builds a transaction

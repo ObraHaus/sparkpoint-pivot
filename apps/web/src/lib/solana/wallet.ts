@@ -2,9 +2,10 @@
  * 077 — minimal injected Solana wallet adapter.
  *
  * Deliberately tiny: connect, read the public key, and (only when the user explicitly confirms)
- * hand an unsigned `VersionedTransaction` to the wallet's own `signAndSendTransaction`. The wallet
- * is the only signer; SparkPoint holds no key, and nothing in this module signs at connect time or
- * on import.
+ * hand an unsigned `VersionedTransaction` to the wallet. `signTransaction` lets the app broadcast
+ * the signed bytes itself (see sendTransaction.ts); `signAndSendTransaction` is the fallback. The
+ * wallet is the only signer; SparkPoint holds no key, and nothing in this module signs at connect
+ * time or on import.
  *
  * Library-free on purpose: Phantom, Solflare and the generic `window.solana` provider all expose
  * the same handful of methods, so no extra wallet-adapter SDK is needed. SSR is a no-op.
@@ -26,6 +27,12 @@ export interface SolanaInjectedProvider {
     transaction: VersionedTransaction,
     options?: { skipPreflight?: boolean; preflightCommitment?: string },
   ): Promise<{ signature: string }>;
+  /**
+   * Sign **without** broadcasting. Phantom and Solflare both expose this; when present the app
+   * sends the signed bytes itself so it can surface preflight errors and rebroadcast until the
+   * transaction lands or its blockhash expires.
+   */
+  signTransaction?(transaction: VersionedTransaction): Promise<VersionedTransaction>;
 }
 
 type SolanaWindow = Window & {
@@ -40,7 +47,12 @@ export function getInjectedSolanaProvider(): SolanaInjectedProvider | null {
   const w = window as SolanaWindow;
   const candidates = [w.phantom?.solana, w.solflare, w.solana];
   for (const candidate of candidates) {
-    if (candidate && typeof candidate.connect === "function" && typeof candidate.signAndSendTransaction === "function") {
+    if (
+      candidate &&
+      typeof candidate.connect === "function" &&
+      (typeof candidate.signAndSendTransaction === "function" ||
+        typeof candidate.signTransaction === "function")
+    ) {
       return candidate;
     }
   }
