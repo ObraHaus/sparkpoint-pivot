@@ -340,7 +340,7 @@ test("universal wrapper shows the STORED curator-scan APY, labeled as such", () 
     { ...DEP, curatedNetApyBps: 362 },
     CTX,
   );
-  assert.equal(m.netApyText, "3.62% (curator scan)");
+  assert.equal(m.netApyText, "3.62% (curated APY)");
   // No stored figure ⇒ "—", never the Aave framing.
   const bare = deriveVaultConfirm(
     makeView({ kind: "universal_wrapper", curatedVerified: true, vault: WRAPPER, asset: USDC }),

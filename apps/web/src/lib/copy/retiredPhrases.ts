@@ -21,6 +21,7 @@
 
 /** Surfaces a user reads that describe Premium, brokers, SRK or revenue. */
 export const AUDITED_SOURCES = [
+  "src/app/(app)/swap/page.tsx",
   "src/app/(app)/premium/page.tsx",
   "src/app/(app)/brokers/page.tsx",
   "src/app/(app)/brokers/[id]/activate/page.tsx",
@@ -84,6 +85,16 @@ export const RETIRED_PHRASES: readonly RetiredPhrase[] = [
     pattern: /\$\s*\d|\d+\s*%/,
     why: "no figure may be projected for a broker; only what the chain says is claimable now",
     only: ["brokers/revenue"],
+  },
+  {
+    pattern: /not faked/i,
+    why: "engineering voice shown to users; describe what the page does instead",
+    only: ["swap/page.tsx"],
+  },
+  {
+    pattern: /run through Sparky/i,
+    why: "the manual swap page now runs cross-chain swaps itself instead of deferring to chat",
+    only: ["swap/page.tsx"],
   },
 ] as const;
 

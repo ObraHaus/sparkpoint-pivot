@@ -173,7 +173,7 @@ export function deriveClockIn(i: ClockInInput): BrokerVerbVerdict {
 
   let blockedReason: string | undefined;
   if (!i.engine) blockedReason = "The broker engine isn’t available on this network.";
-  else if (!i.token) blockedReason = "The utility token isn’t wired on this network.";
+  else if (!i.token) blockedReason = "The utility token isn’t available on this network.";
   else if (i.owns === undefined) blockedReason = "Checking ownership…";
   else if (i.owns === false) blockedReason = "You don’t hold this broker.";
   else if (i.alreadyActive === undefined) blockedReason = "Reading the chain…";
@@ -220,7 +220,7 @@ export function derivePromote(i: PromoteInput): BrokerVerbVerdict {
 
   let blockedReason: string | undefined;
   if (!i.engine) blockedReason = "The broker engine isn’t available on this network.";
-  else if (!i.token) blockedReason = "The utility token isn’t wired on this network.";
+  else if (!i.token) blockedReason = "The utility token isn’t available on this network.";
   else if (i.owns === undefined) blockedReason = "Checking ownership…";
   else if (i.owns === false) blockedReason = "You don’t hold this broker.";
   else if (i.target !== RANK_ASSOCIATE && i.target !== RANK_PARTNER) {
@@ -282,7 +282,7 @@ export function deriveFuse(i: FuseInput): FuseVerdict {
 
   let blockedReason: string | undefined;
   if (!i.engine) blockedReason = "The broker engine isn’t available on this network.";
-  else if (!i.token) blockedReason = "The utility token isn’t wired on this network.";
+  else if (!i.token) blockedReason = "The utility token isn’t available on this network.";
   else if (i.ids.length < FUSE_MIN_PARTS || i.ids.length > FUSE_MAX_PARTS) {
     blockedReason = `Pick ${FUSE_MIN_PARTS} or ${FUSE_MAX_PARTS} brokers to fuse.`;
   } else if (!unique) blockedReason = "The same broker is picked twice.";
