@@ -31,9 +31,11 @@ import {
   TOKEN_2022_PROGRAM_ID,
   U64_MAX,
   WSOL_MINT,
+  COMPUTE_BUDGET_PROGRAM_ID,
   assertKaminoTransactionMatches,
   checkSolDepositCapacity,
   conservativeSolDepositReserveLamports,
+  decodeKaminoTransaction,
   deriveAssociatedTokenAddress,
   findKaminoVault,
   formatTokenAmount,
@@ -52,6 +54,7 @@ import {
   type KaminoVaultLimits,
 } from "./kaminoLive.ts";
 import { prepareKaminoTransaction } from "./kaminoPrepare.ts";
+import { withComputeBudgetInstructions } from "../solana/sendTransaction.ts";
 import { readKaminoPositions } from "./kaminoPositions.ts";
 
 /**
@@ -433,6 +436,26 @@ test("a real unsigned SOL deposit passes full shape validation with resolved loo
   assert.ok(review.accountKeys.includes(SOL_META.assetMint));
   assert.equal(review.kaminoAction?.kind, "deposit");
   assert.equal(review.kaminoAction?.amountRaw, 10_000_000n);
+  assert.doesNotThrow(() => assertKaminoTransactionMatches(review, expectation()));
+});
+
+test("validation still passes when the send path prepends ComputeBudget instructions", () => {
+  const original = summarizeKaminoTransaction(DEPOSIT_TX, { lookupAddresses: DEPOSIT_LOOKUPS });
+  assert.doesNotThrow(() => assertKaminoTransactionMatches(original, expectation()));
+
+  const augmented = withComputeBudgetInstructions(
+    decodeKaminoTransaction(DEPOSIT_TX),
+    300_000,
+    50_000n,
+  );
+  const encoded = Buffer.from(augmented.serialize()).toString("base64");
+  const review = summarizeKaminoTransaction(encoded, { lookupAddresses: DEPOSIT_LOOKUPS });
+
+  assert.equal(review.kaminoAction?.kind, "deposit");
+  assert.equal(review.kaminoAction?.amountRaw, 10_000_000n);
+  assert.ok(review.programIds.includes(COMPUTE_BUDGET_PROGRAM_ID));
+  assert.equal(review.computeUnitLimit, 300_000n);
+  assert.equal(review.priorityFeeMicroLamportsPerCu, 50_000n);
   assert.doesNotThrow(() => assertKaminoTransactionMatches(review, expectation()));
 });
 
