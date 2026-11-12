@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (kamino-min-deposit — depositing the vault minimum no longer fails in the wallet)
+
+- **A Kamino SOL Balanced deposit of exactly the vault minimum (0.001 SOL) now builds a transaction
+  that simulates successfully.** Kamino's kVault `deposit` treats its `amount` as a maximum and
+  first subtracts the vault's per-reserve crank fund (8 lamports on the 4-reserve SOL Balanced
+  vault), so a minimum-sized request landed at 999,992 raw units and reverted with
+  `DepositAmountBelowMinimum` (7026) — Phantom then showed "Failed to simulate the results of this
+  request". When the request is at or near the minimum, the builder now adds the crank wedge plus a
+  2-lamport share-math rounding buffer; amounts comfortably above the minimum are unchanged. The
+  review guard still verifies the exact on-chain amount before the wallet is asked to sign.
+  (`apps/web/src/lib/earn/kaminoLive.ts`, `apps/web/src/lib/earn/kaminoPrepare.ts`,
+  `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
+
 ### Fixed (1112-rhea-mca — the Rhea card reads the EVM wallet's Rhea account)
 
 - **The Rhea card and its Withdraw Max now show a balance for an EVM-only session.** When no NEAR
