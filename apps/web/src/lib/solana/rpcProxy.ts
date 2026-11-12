@@ -9,11 +9,26 @@ export const ALLOWED_SOLANA_RPC_METHODS = [
   "getTokenAccountsByOwner",
   "getAccountInfo",
   "getSignatureStatuses",
+  "getLatestBlockhash",
+  "getBlockHeight",
+  "getRecentPrioritizationFees",
+  "simulateTransaction",
+  "sendTransaction",
 ] as const;
 
 type AllowedSolanaRpcMethod = (typeof ALLOWED_SOLANA_RPC_METHODS)[number];
 
 const ALLOWED_METHOD_SET: ReadonlySet<string> = new Set(ALLOWED_SOLANA_RPC_METHODS);
+
+/**
+ * Methods whose JSON-RPC errors are authoritative and must reach the client unchanged. A preflight
+ * failure (-32002) on `sendTransaction`/`simulateTransaction` describes *this* transaction; trying
+ * another upstream would hide it from the UI (and the user could believe nothing was wrong).
+ */
+const AUTHORITATIVE_ERROR_METHODS: ReadonlySet<string> = new Set([
+  "sendTransaction",
+  "simulateTransaction",
+]);
 
 export type SolanaRpcEnv = Readonly<Record<string, string | undefined>>;
 
@@ -168,6 +183,15 @@ export async function proxySolanaRpc(
     } catch {
       continue;
     }
+    if (
+      AUTHORITATIVE_ERROR_METHODS.has(request.method) &&
+      "error" in payload &&
+      ((payload.error as { code?: unknown } | null)?.code === -32002 || !isUnusableRpcError(payload.error))
+    ) {
+      // A preflight/transaction error is about the transaction, not the upstream. Hand it back
+      // verbatim (HTTP 200, JSON-RPC error body) so the client can show the real reason and logs.
+      return { status: 200, body: payload };
+    }
     if (isUnusableRpcError(payload.error)) continue;
     return { status: 200, body: payload };
   }
@@ -175,6 +199,10 @@ export async function proxySolanaRpc(
   return error(
     502,
     "rpc_unavailable",
-    "The Solana RPC upstreams could not be reached; your balance was not read.",
+    request.method === "sendTransaction"
+      ? "The Solana RPC upstreams could not be reached, so the transaction was not broadcast."
+      : request.method === "simulateTransaction"
+        ? "The Solana RPC upstreams could not be reached, so the transaction could not be simulated."
+        : "The Solana RPC upstreams could not be reached; your balance was not read.",
   );
 }
