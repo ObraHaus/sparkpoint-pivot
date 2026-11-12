@@ -14,7 +14,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from typing import Any
 
 from ..earn.config import EarnConfig
@@ -138,9 +138,23 @@ def _name(row: Mapping[str, Any]) -> str:
     return str(row.get("name") or row.get("symbol") or row.get("address") or "Unnamed vault")
 
 
+def format_apy_percent(value: Any) -> str | None:
+    """Two decimals, TRUNCATED (never rounded up) — the same rule as the web's
+    ``formatApyPercent``, so chat text and the card/board show the identical figure."""
+    if value in (None, ""):
+        return None
+    try:
+        number = Decimal(str(value).strip().rstrip("%").strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not number.is_finite():
+        return None
+    return f"{number.quantize(Decimal('0.01'), rounding=ROUND_DOWN)}%"
+
+
 def _apy_text(row: Mapping[str, Any]) -> str:
-    apy = row.get("netApy")
-    return f"{apy}% net APY" if apy not in (None, "") else "APY unavailable"
+    formatted = format_apy_percent(row.get("netApy"))
+    return f"{formatted} net APY" if formatted is not None else "APY unavailable"
 
 
 def apy_bps(row: Mapping[str, Any]) -> int | None:
