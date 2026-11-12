@@ -74,13 +74,15 @@ import {
 import { depositRail, type KnownVault } from "@/lib/curation/depositRail";
 import {
   LIVE_BATCH_SIZE,
+  cardSparkline,
+  earnApyBps,
+  flatSparklinePath,
   hasMore,
   heroPick,
   inFlightCounts,
   liveVaults,
   nextBatch,
   sparklinePath,
-  sparklineRange,
   type InFlightCounts,
 } from "@/lib/curation/boardV2";
 import type { EarnVault } from "@sparkpoint/shared/schemas";
@@ -212,15 +214,27 @@ function asOfLabel(vault: CurationVault): string {
   return stamp ? `as of ${fmtWhen(stamp)}` : "as stored";
 }
 
-function Sparkline({ points, big = false }: { points?: ApyPoint[]; big?: boolean }) {
-  const path = sparklinePath(points, big ? 300 : 120, big ? 96 : 34);
+function Sparkline({
+  points,
+  flatBps,
+  big = false,
+}: {
+  points?: Array<{ netApyBps: number }>;
+  flatBps?: number | null;
+  big?: boolean;
+}) {
+  const width = big ? 300 : 120;
+  const height = big ? 96 : 34;
+  const path = sparklinePath(points, width, height) ?? flatSparklinePath(flatBps, width, height);
   if (!path) return null;
   return (
     <svg
       className={big ? "vb-spark vb-spark-big" : "vb-spark"}
-      viewBox={`0 0 ${big ? 300 : 120} ${big ? 96 : 34}`}
+      viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
       aria-hidden="true"
+      data-testid={big ? "feature-sparkline" : "vault-sparkline"}
+      data-placeholder={points && points.length >= 2 ? undefined : "collecting"}
     >
       <path d={path} fill="none" stroke="var(--gain)" strokeWidth={big ? 2.4 : 2} />
     </svg>
@@ -254,7 +268,7 @@ function Badges({
 // ── Option C: the feature card ───────────────────────────────────────────────────────────────────
 
 function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: KnownVault[] }) {
-  const range = sparklineRange(pick.apyHistory);
+  const chart = cardSparkline(pick.apyHistory, pick.netApyBps);
   const router = useRouter();
   const { address: account } = useAccount();
   // 053 — a holder gets a Withdraw action on the card itself (not only via Trust & Exit).
@@ -343,13 +357,13 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
         <div className="vb-feature-chart">
           <div className="vb-chart-hd">
             <span>NET APY · 30d</span>
-            {range && <span>{range}</span>}
+            <span data-testid="feature-sparkline-label">{chart.rangeLabel}</span>
           </div>
-          <Sparkline points={pick.apyHistory} big />
-          {!range && (
+          <Sparkline points={chart.points} flatBps={chart.flatBps} big />
+          {!chart.hasHistory && (
             <div className="vb-chart-empty">
-              History builds with each daily scan — the stored APY is shown without a chart until
-              there are at least two observations.
+              No stored scans yet — this is today&apos;s APY, not a trend. History builds with
+              each daily scan.
             </div>
           )}
         </div>
@@ -371,7 +385,7 @@ function VaultCard({
   isNew: boolean;
   isPick: boolean;
 }) {
-  const range = sparklineRange(vault.apyHistory);
+  const chart = cardSparkline(vault.apyHistory, vault.netApyBps);
   const router = useRouter();
   const { address: account } = useAccount();
   const chain = chainKeyFromId(vault.chainId);
@@ -427,7 +441,7 @@ function VaultCard({
           {fmtApyBps(vault.netApyBps)}
           <small>net APY</small>
         </div>
-        <Sparkline points={vault.apyHistory} />
+        <Sparkline points={chart.points} flatBps={chart.flatBps} />
       </div>
       <div className="vb-metrics">
         <div className="vb-metric">
@@ -443,7 +457,9 @@ function VaultCard({
       <BalanceLine display={balance} testId="curated-vault-balance" />
       <Badges vault={vault} isNew={isNew} />
       {vault.reason && <div className="vb-card-why">Why: {vault.reason}</div>}
-      {range && <div className="vb-card-range">30d range {range} · stored scans</div>}
+      <div className="vb-card-range" data-testid="vault-card-range">
+        {chart.rangeLabel}
+      </div>
       <div className="vb-card-cta">
         {liveHref ? (
           <a className="btn btn-primary btn-sm btn-block" href={liveHref} data-testid="curated-live-deposit">
@@ -475,7 +491,8 @@ function VaultCard({
 
 // ── a live/preview earn-registry card, in the SAME card UI as the curated vaults ────────────────
 
-function EarnVaultCard({ vault }: { vault: EarnVault }) {
+function EarnVaultCard({ vault, history }: { vault: EarnVault; history?: ApyPoint[] }) {
+  const chart = cardSparkline(history, earnApyBps(vault.netApy));
   const protocol = protocolOf(vault);
   const chain = chainKeyFromSlug(vault.chain);
   const live = liveProtocolFor(vault);
@@ -590,6 +607,7 @@ function EarnVaultCard({ vault }: { vault: EarnVault }) {
           {formatNetApy(vault.netApy)}
           <small>net APY · {protocolLabel(protocol)}</small>
         </div>
+        <Sparkline points={chart.points} flatBps={chart.flatBps} />
       </div>
       <div className="vb-metrics">
         <div className="vb-metric">
@@ -603,6 +621,9 @@ function EarnVaultCard({ vault }: { vault: EarnVault }) {
         </div>
       </div>
       <BalanceLine display={balance} testId="earn-vault-balance" />
+      <div className="vb-card-range" data-testid="earn-vault-range">
+        {chart.rangeLabel}
+      </div>
       <div className="vb-card-cta">
         {depositHref ? (
           <a className="btn btn-primary btn-sm btn-block" href={depositHref} data-testid="earn-live-deposit">
@@ -796,6 +817,16 @@ export function CuratedBoard({
     }));
   }, [board]);
 
+  const apyHistoryByVault = useMemo(() => {
+    const map = new Map<string, ApyPoint[]>();
+    for (const vault of board?.vaults ?? []) {
+      if (vault.apyHistory && vault.apyHistory.length >= 2) {
+        map.set(`${vault.chainId}:${vault.address.toLowerCase()}`, vault.apyHistory);
+      }
+    }
+    return map;
+  }, [board]);
+
   const earnItems = useMemo(() => {
     const curatedKeys = new Set(
       curatedItems.map((item) => `${item.chain}:${item.vault.address.toLowerCase()}`),
@@ -976,7 +1007,11 @@ export function CuratedBoard({
                   isPick={pick?.address === item.vault.address}
                 />
               ) : (
-                <EarnVaultCard key={item.key} vault={item.vault} />
+                <EarnVaultCard
+                  key={item.key}
+                  vault={item.vault}
+                  history={apyHistoryByVault.get(`${item.vault.chainId}:${item.vault.address.toLowerCase()}`)}
+                />
               ),
             )}
           </div>

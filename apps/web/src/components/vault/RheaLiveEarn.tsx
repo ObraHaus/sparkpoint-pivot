@@ -12,10 +12,22 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 
 import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
+import {
+  AmountField,
+  FlowCard,
+  FlowDisclaimer,
+  FlowModeToggle,
+  FlowNextStep,
+  FlowNotice,
+  FlowPrimary,
+  FlowSectionTitle,
+  SummaryBox,
+  VaultFlowPage,
+} from "@/components/vault/VaultFlow";
+import type { LiveEarnMode } from "@/lib/earn/liveFlags";
 import type { NearTransaction } from "@/lib/near/burrow";
 import { firstTransactionHash } from "@/lib/near/burrow";
 import {
@@ -29,6 +41,12 @@ import {
 } from "@/lib/near/liveEarn";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
 import { useRheaAccount } from "@/lib/vault/useVaultBalances";
+import {
+  rheaFlowRows,
+  vaultFlowCopy,
+  type VaultFlowMode,
+  type VaultFlowSummaryRow,
+} from "@/lib/vault/vaultFlow";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -59,34 +77,20 @@ interface AvailableResponse {
   suppliedUsdc?: string | null;
 }
 
-function Panel({ children, tone }: { children: React.ReactNode; tone?: "caution" | "loss" | "gain" }) {
-  const color = tone === "caution" ? "var(--caution)" : tone === "loss" ? "var(--loss)" : tone === "gain" ? "var(--gain)" : "var(--info)";
-  return (
-    <div
-      style={{
-        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
-        background: `color-mix(in srgb, ${color} 7%, transparent)`,
-        color,
-        borderRadius: 10,
-        padding: "10px 12px",
-        fontSize: 12.5,
-        lineHeight: 1.55,
-      }}
-    >
-      {children}
-    </div>
-  );
+export interface RheaLiveEarnProps {
+  readonly initialMode?: LiveEarnMode;
+  readonly initialAmount?: string | null;
 }
 
-export function RheaLiveEarn() {
+export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiveEarnProps = {}) {
   const enabled = publicLiveRheaEnabled();
   const { accountId: nearAccountId, status, error: walletError, connect, getConnectedAccount, sendTransactions } = useNearWallet();
   // 1112 — an EVM-only session reads the SAME MCA the portfolio path reads. It can show the balance
   // and resolve Max, but it cannot sign a NEAR transaction (there is no NEAR wallet here).
   const rheaAccount = useRheaAccount(nearAccountId);
   const accountId = rheaAccount.account;
-  const [action, setAction] = useState<LiveEarnAction>("supply");
-  const [amount, setAmount] = useState("");
+  const [action, setAction] = useState<LiveEarnAction>(initialMode === "withdraw" ? "withdraw" : "supply");
+  const [amount, setAmount] = useState(initialAmount?.replace(/,/g, "") ?? "");
   const [max, setMax] = useState(false);
   const [available, setAvailable] = useState<{ walletUsdc: string | null; suppliedUsdc: string | null } | null>(null);
   const [availableLoading, setAvailableLoading] = useState(false);
@@ -105,7 +109,26 @@ export function RheaLiveEarn() {
       ? available?.suppliedUsdc
       : available?.walletUsdc
     : null;
-  const availableLabel = action === "withdraw" ? "Available to withdraw" : "Available to supply";
+  const flowMode: VaultFlowMode = action === "supply" ? "deposit" : "withdraw";
+  const copy = vaultFlowCopy({
+    mode: flowMode,
+    assetSymbol: "USDC",
+    vaultName: "Rhea Lending (NEAR)",
+    primaryLabel:
+      !accountId
+        ? "Connect NEAR wallet"
+        : !rheaAccount.canSign
+          ? "Connect the NEAR wallet to sign"
+          : undefined,
+  });
+  const summaryRows = rheaFlowRows({
+    mode: flowMode,
+    receive: amount.trim() ? `${amount.trim()} USDC${flowMode === "deposit" ? " supplied" : ""}` : "—",
+    netApy: null,
+    account: accountId,
+    canSign: rheaAccount.canSign,
+    accountSource: rheaAccount.source,
+  });
 
   useEffect(() => {
     if (!accountId) return;
@@ -256,174 +279,54 @@ export function RheaLiveEarn() {
     }
   }
 
+  function changeMode(next: "deposit" | "withdraw") {
+    const nextAction: LiveEarnAction = next === "deposit" ? "supply" : "withdraw";
+    if (nextAction === action) return;
+    setAction(nextAction);
+    setAmount(amountAfterActionChange(action, nextAction, amount));
+    setMax(false);
+    setReview(null);
+    setPhase("idle");
+    setError(null);
+  }
+
+  const primary =
+    !enabled
+      ? { label: "Live Rhea is off in this build", onClick: undefined, disabled: true }
+      : !accountId || !rheaAccount.canSign
+        ? { label: copy.primaryLabel, onClick: () => void connect(), disabled: status === "connecting" }
+        : {
+            label: phase === "review" ? "Review again" : copy.primaryLabel,
+            onClick: () => void prepare(),
+            disabled: busy || !amount.trim(),
+          };
+
+  const reviewRows: VaultFlowSummaryRow[] = lines.map((line) => ({
+    key: line.key,
+    label: line.label,
+    value: line.value,
+    tone: line.tone,
+  }));
+
   return (
-    <div className="page page-wide" data-testid="rhea-live-earn">
-      <div className="pagehead">
-        <div>
-          <h1>Rhea live earn · NEAR</h1>
-          <div className="sub">
-            Supply and withdraw USDC on NEAR with your own NEAR wallet
-          </div>
-        </div>
-        <div className="actions">
-          <Link className="btn btn-outline btn-md" href={toHref("vault")}>
-            <Icon name="door" size={16} /> Back to vault
-          </Link>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gap: 14 }}>
-        <Panel tone="caution">
-          <b>Supply or withdraw USDC on NEAR.</b> You review every step and approve it in your own
-          wallet. Mainnet funds. Review each step in your wallet; SparkPoint never holds your funds.
-        </Panel>
-
-        {!enabled && (
-          <Panel tone="loss">Live Rhea is off in this build. Nothing can be signed here.</Panel>
-        )}
-
-        <div className="card card-pad" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>Your Rhea account</div>
-              <div style={{ fontSize: 12, color: MUTED }}>
-                {accountId ? accountId : "No NEAR wallet connected. Meteor is tried first."}
-              </div>
-              {rheaAccount.source === "mca" && (
-                <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                  Linked to your signed-in EVM wallet. Reading the balance and Max works; signing a
-                  NEAR transaction still needs a connected NEAR wallet.
-                </div>
-              )}
-              {walletError && <div style={{ fontSize: 12, color: "var(--loss)" }}>{walletError}</div>}
-            </div>
-            {!nearAccountId ? (
-              <button className="btn btn-primary btn-sm" type="button" disabled={status === "connecting"} onClick={() => void connect()}>
-                {status === "connecting" ? "Connecting…" : "Connect NEAR wallet"}
-              </button>
-            ) : (
-              <span className="pill ghosty" style={{ cursor: "default" }}>
-                <Icon name="shieldcheck" size={13} /> {status === "connected" ? "Connected" : status}
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: "flex", gap: 6 }} data-testid="rhea-live-action">
-            {(["supply", "withdraw"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={`pill${action === option ? "" : " ghosty"}`}
-                aria-pressed={action === option}
-                style={{ cursor: "pointer", textTransform: "capitalize" }}
-                onClick={() => {
-                  setAction(option);
-                  setAmount(amountAfterActionChange(action, option, amount));
-                  setMax(false);
-                  setReview(null);
-                  setPhase("idle");
-                  setError(null);
-                }}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <label style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
-            <span style={{ fontWeight: 600 }}>Amount (USDC)</span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                spellCheck={false}
-                value={amount}
-                disabled={busy}
-                placeholder={action === "supply" ? "25" : "10"}
-                onChange={(event) => {
-                  setAmount(event.target.value);
-                  setMax(false);
-                }}
-                style={{
-                  width: 220,
-                  fontSize: 14,
-                  padding: "9px 11px",
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 9,
-                  color: "var(--foreground)",
-                  outline: "none",
-                }}
-              />
-              <button
-                type="button"
-                className={`pill${max ? "" : " ghosty"}`}
-                aria-pressed={max}
-                disabled={!availableAmount || busy}
-                onClick={() => {
-                  if (!availableAmount) return;
-                  setAmount(availableAmount);
-                  setMax(action === "withdraw");
-                  setReview(null);
-                  setPhase("idle");
-                  setError(null);
-                }}
-                style={{ cursor: availableAmount ? "pointer" : "not-allowed" }}
-              >
-                Max
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={!enabled || !accountId || !rheaAccount.canSign || busy || !amount.trim()}
-                onClick={() => void prepare()}
-              >
-                Review {action}
-              </button>
-            </div>
-            <span style={{ fontSize: 11.5, color: MUTED }}>
-              {availableLabel}:{" "}
-              {!accountId ? "connect your wallet to see your balance" : availableLoading ? "Reading…" : `${availableAmount ?? "—"}${availableAmount ? " USDC" : ""}`}
-            </span>
-          </label>
-
-          {error && <Panel tone="loss" >{error}</Panel>}
-
+    <VaultFlowPage
+      backHref={toHref("vault")}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      riskTier={2}
+      testId="rhea-live-earn"
+      footer={
+        <>
           {review && (
-            <div
-              data-testid="rhea-live-review"
-              style={{ border: "1px solid var(--border-soft)", borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 }}
-            >
-              <div style={{ fontWeight: 600 }}>Review before signing</div>
-              <div style={{ display: "grid", gap: 5, fontSize: 12.5 }}>
-                {lines.map((line) => (
-                  <div key={line.key} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                    <span style={{ color: MUTED }}>{line.label}</span>
-                    <span
-                      className="tnum"
-                      style={{
-                        textAlign: "right",
-                        wordBreak: "break-all",
-                        color:
-                          line.tone === "caution"
-                            ? "var(--caution)"
-                            : line.tone === "gain"
-                              ? "var(--gain)"
-                              : undefined,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {line.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <FlowCard testId="rhea-live-review">
+              <FlowSectionTitle>Review before signing</FlowSectionTitle>
+              <SummaryBox rows={reviewRows} testId="rhea-live-review-summary" />
+              {error && <FlowNotice tone="caution">{error}</FlowNotice>}
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
                 {transactions.length} transaction{transactions.length === 1 ? "" : "s"} ready for your
                 wallet to approve. The amount is exact; no price slippage applies.
               </div>
-              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.5 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
                 <input
                   type="checkbox"
                   checked={acknowledged}
@@ -436,10 +339,10 @@ export function RheaLiveEarn() {
                   asks my NEAR wallet to sign and send a mainnet transaction.
                 </span>
               </label>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
+                  className="btn btn-primary btn-md"
                   data-testid="rhea-live-confirm"
                   disabled={!acknowledged || busy}
                   onClick={() => void confirmSend()}
@@ -448,60 +351,129 @@ export function RheaLiveEarn() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-outline btn-sm"
+                  className="btn btn-ghost btn-md"
                   disabled={busy}
                   onClick={() => {
                     setReview(null);
                     setPhase("idle");
                   }}
                 >
-                  Cancel
+                  Back
                 </button>
               </div>
-            </div>
+            </FlowCard>
           )}
 
           {phase === "polling" && (
-            <Panel>
-              Sent. Waiting for finality{txHash ? `: ${txHash.slice(0, 12)}…` : ""}. Status is read from
-              the chain; success is never assumed.
-            </Panel>
+            <FlowCard>
+              <FlowNotice tone="info">
+                Sent. Waiting for finality{txHash ? `: ${txHash.slice(0, 12)}…` : ""}. Status is read
+                from the chain; success is never assumed.
+              </FlowNotice>
+            </FlowCard>
           )}
 
           {phase === "done" && receipt && (
-            <Panel tone={receipt.status === "confirmed" ? "gain" : receipt.status === "failed" ? "loss" : "caution"}>
-              <b>
-                {receipt.status === "confirmed"
-                  ? "Confirmed on-chain."
-                  : receipt.status === "failed"
-                    ? "The transaction failed."
-                    : "Still pending."}
-              </b>{" "}
-              {receipt.error ??
-                (receipt.status === "confirmed"
-                  ? "The wallet transaction finalized successfully."
-                  : "The receipt is not final yet.")}
-              {txHash && (
-                <div style={{ marginTop: 6, wordBreak: "break-all", fontSize: 11.5 }}>
-                  Transaction: {txHash}
-                </div>
-              )}
-            </Panel>
+            <FlowCard>
+              <FlowNotice tone={receipt.status === "confirmed" ? "gain" : receipt.status === "failed" ? "caution" : "info"}>
+                <b>
+                  {receipt.status === "confirmed"
+                    ? "Confirmed on-chain."
+                    : receipt.status === "failed"
+                      ? "The transaction failed."
+                      : "Still pending."}
+                </b>{" "}
+                {receipt.error ??
+                  (receipt.status === "confirmed"
+                    ? "The wallet transaction finalized successfully."
+                    : "The receipt is not final yet.")}
+                {txHash && (
+                  <div style={{ marginTop: 6, wordBreak: "break-all", fontSize: 11.5 }}>
+                    Transaction: {txHash}
+                  </div>
+                )}
+              </FlowNotice>
+            </FlowCard>
           )}
+        </>
+      }
+    >
+      {!review && (
+        <>
+      <FlowModeToggle mode={flowMode} onChange={changeMode} disabled={busy} testId="rhea-live-action" />
 
-          {receipt?.status === "confirmed" && review && (
-            <div style={{ fontSize: 12, color: MUTED }}>
-              Your Rhea position will update after the transaction finalizes.
-            </div>
-          )}
-        </div>
+      {!enabled && <FlowNotice tone="caution">Live Rhea is off in this build. Nothing can be signed here.</FlowNotice>}
 
-        <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-          This screen supplies and withdraws USDC on NEAR. SparkPoint never holds your funds, and
-          connecting your wallet never adds an access key. Nothing is sent until you approve it in
-          your wallet.
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontWeight: 600 }}>Your Rhea account</div>
+          <div style={{ fontSize: 12, color: MUTED }}>
+            {accountId ? accountId : "No NEAR wallet connected. Meteor is tried first."}
+          </div>
         </div>
+        {!nearAccountId ? (
+          <button className="btn btn-outline btn-sm" type="button" disabled={status === "connecting"} onClick={() => void connect()}>
+            {status === "connecting" ? "Connecting…" : "Connect NEAR wallet"}
+          </button>
+        ) : (
+          <span className="pill ghosty" style={{ cursor: "default" }}>
+            <Icon name="shieldcheck" size={13} /> {status === "connected" ? "Connected" : status}
+          </span>
+        )}
       </div>
-    </div>
+
+      {rheaAccount.source === "mca" && (
+        <FlowNotice tone="caution">
+          Reading the balance and Max from your linked Rhea MCA. Signing a NEAR transaction still
+          needs a connected NEAR wallet — an EVM wallet cannot sign this Rhea deposit or withdraw.
+        </FlowNotice>
+      )}
+      {walletError && <FlowNotice tone="caution">{walletError}</FlowNotice>}
+
+      <AmountField
+        id="rhea-amount"
+        label={copy.amountLabel}
+        assetSymbol="USDC"
+        value={amount}
+        onChange={(next) => {
+          setAmount(next);
+          setMax(false);
+        }}
+        onMax={() => {
+          if (!availableAmount) return;
+          setAmount(availableAmount);
+          setMax(action === "withdraw");
+          setReview(null);
+          setPhase("idle");
+          setError(null);
+        }}
+        maxDisabled={!availableAmount || busy}
+        disabled={busy}
+        helper={
+          !accountId
+            ? "Connect your NEAR wallet to see your balance"
+            : availableLoading
+              ? "Reading your balance…"
+              : `${action === "withdraw" ? "Available to withdraw" : "Available to supply"}: ${availableAmount ?? "—"}${availableAmount ? " USDC" : ""}`
+        }
+        extra={
+          rheaAccount.source === "mca" ? (
+            <div className="hint" style={{ color: "var(--caution)" }}>
+              Max uses the Rhea MCA balance. A NEAR wallet is still required to sign.
+            </div>
+          ) : undefined
+        }
+      />
+
+      <SummaryBox rows={summaryRows} />
+      {error && !review && <FlowNotice tone="caution">{error}</FlowNotice>}
+      <FlowDisclaimer>{copy.disclaimer}</FlowDisclaimer>
+      <FlowPrimary onClick={primary.onClick} disabled={primary.disabled}>
+        {primary.label}
+      </FlowPrimary>
+      <FlowNextStep>{copy.nextStep}</FlowNextStep>
+        </>
+      )}
+    </VaultFlowPage>
   );
 }
