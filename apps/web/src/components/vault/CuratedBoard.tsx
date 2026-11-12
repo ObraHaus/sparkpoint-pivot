@@ -88,6 +88,7 @@ import {
 import type { EarnVault } from "@sparkpoint/shared/schemas";
 import {
   curatorLabel,
+  shortenAddressesInText,
   fmtApyBps,
   fmtUsdCompact,
   fmtWhen,
@@ -298,14 +299,14 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
             <TokenLogo token={assetToken(pick)} chainId={pick.chainId} size={34} />
-            <h2 style={{ margin: 0 }}>{pick.label}</h2>
+            <h2 style={{ margin: 0 }}>{shortenAddressesInText(pick.label)}</h2>
           </div>
           <div className="vb-feature-meta">
             {pick.curator ? `${curatorLabel(pick)} · ` : ""}{pick.asset.symbol ?? "—"} ·{" "}
             <span className="mono">{shortAddr(pick.address)}</span>
             {pick.ageSeconds != null ? ` · ${Math.floor(pick.ageSeconds / 86_400)}d live` : ""}
           </div>
-          {pick.reason && <p className="vb-feature-reason">{pick.reason}</p>}
+          {pick.reason && <p className="vb-feature-reason">{shortenAddressesInText(pick.reason)}</p>}
           <div className="vb-stats">
             <div className="vb-stat big">
               <div className="v tnum">{fmtApyBps(pick.netApyBps)}</div>
@@ -422,7 +423,7 @@ function VaultCard({
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TokenLogo token={assetToken(vault)} chainId={vault.chainId} size={28} />
           <div>
-            <div className="vb-card-name">{vault.label}</div>
+            <div className="vb-card-name">{shortenAddressesInText(vault.label)}</div>
             <div className="vb-card-sub">
               {vault.curator ? `${curatorLabel(vault)} · ` : ""}{vault.asset.symbol ?? "—"}
             </div>
@@ -456,7 +457,7 @@ function VaultCard({
       </div>
       <BalanceLine display={balance} testId="curated-vault-balance" />
       <Badges vault={vault} isNew={isNew} />
-      {vault.reason && <div className="vb-card-why">Why: {vault.reason}</div>}
+      {vault.reason && <div className="vb-card-why">Why: {shortenAddressesInText(vault.reason)}</div>}
       <div className="vb-card-range" data-testid="vault-card-range">
         {chart.rangeLabel}
       </div>
