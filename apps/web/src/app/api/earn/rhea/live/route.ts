@@ -10,11 +10,16 @@ import {
   USDC_DECIMALS,
   USDC_SYMBOL,
   USDC_TOKEN_ID,
+  availableSupplyUsdc,
+  availableWithdrawUsdc,
   buildSupplyPlan,
   buildWithdrawPlan,
   checkSupplyBalances,
   checkWithdrawBalances,
+  formatUsdc,
+  fromBurrowInnerUnits,
   parseUsdcAmount,
+  suppliedInnerUnitsFor,
   toBurrowInnerUnits,
   type NearTransaction,
 } from "@/lib/near/burrow";
@@ -76,21 +81,48 @@ function bad(code: string, message: string, status = 400) {
   return NextResponse.json({ ok: false, error: code, message }, { status });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!serverLiveRheaEnabled()) return notFound();
-  return NextResponse.json({
-    ok: true,
-    enabled: true,
-    network: configuredNetwork(),
-    protocol: "rhea",
-    rail: "near_direct",
-    contract: BURROW_CONTRACT,
-    token: USDC_TOKEN_ID,
-    symbol: USDC_SYMBOL,
-    decimals: USDC_DECIMALS,
-    appUrl: RHEA_APP_URL,
-    note: "Same-chain NEAR → Burrow supply/withdraw. NOT the deferred cross-chain MCA/1Click path.",
-  });
+  const accountId = new URL(request.url).searchParams.get("accountId")?.trim() ?? "";
+  if (!accountId) {
+    return NextResponse.json({
+      ok: true,
+      enabled: true,
+      network: configuredNetwork(),
+      protocol: "rhea",
+      contract: BURROW_CONTRACT,
+      token: USDC_TOKEN_ID,
+      symbol: USDC_SYMBOL,
+      decimals: USDC_DECIMALS,
+      appUrl: RHEA_APP_URL,
+      note: "Supply or withdraw USDC on NEAR with your own NEAR wallet.",
+    });
+  }
+  if (!isValidNearAccountId(accountId)) return bad("bad_account", "Enter a valid NEAR account id.");
+
+  try {
+    const [positions, tokenBalance] = await Promise.all([
+      viewCall<AllPositions | null>(BURROW_CONTRACT, "get_account_all_positions", { account_id: accountId }),
+      viewCall<string>(USDC_TOKEN_ID, "ft_balance_of", { account_id: accountId }),
+    ]);
+    const suppliedInner = suppliedInnerUnitsFor(positions);
+    let walletRaw = 0n;
+    try {
+      walletRaw = BigInt(tokenBalance || "0");
+    } catch {
+      walletRaw = 0n;
+    }
+    return NextResponse.json({
+      ok: true,
+      accountId,
+      walletUsdc: availableSupplyUsdc(walletRaw),
+      walletUsdcRaw: walletRaw.toString(),
+      suppliedUsdc: availableWithdrawUsdc(positions),
+      suppliedRaw: suppliedInner.toString(),
+    });
+  } catch {
+    return bad("rpc_unavailable", "The NEAR balance read didn't complete. Nothing was signed.", 503);
+  }
 }
 
 export async function POST(request: Request) {
@@ -106,7 +138,7 @@ export async function POST(request: Request) {
   if (configuredNetwork() !== "mainnet") {
     return bad(
       "unsupported_network",
-      "This pinned Rhea rail is mainnet-only. NEXT_PUBLIC_NEAR_NETWORK is not mainnet; refusing to build.",
+      "This Rhea flow is mainnet-only. The app is not configured for NEAR mainnet; refusing to build.",
       409,
     );
   }
@@ -173,12 +205,12 @@ export async function POST(request: Request) {
     return bad("unknown_asset", "Burrow did not return the expected USDC asset config. Refusing to build.");
   }
 
-  const suppliedInnerUnits = suppliedFor(positions);
+  const suppliedInnerUnits = suppliedInnerUnitsFor(positions);
   if (action === "withdraw" && isMax) {
     if (suppliedInnerUnits <= 0n) {
       return bad("no_position", "There is no supplied USDC position to withdraw for this account.");
     }
-    amount6 = suppliedInnerUnits / 10n ** 12n;
+    amount6 = fromBurrowInnerUnits(suppliedInnerUnits);
     if (amount6 < MIN_WITHDRAW_UNITS) {
       return bad("no_position", "The supplied balance is too small to withdraw.");
     }
@@ -269,20 +301,6 @@ function storageMin(bounds: StorageBounds, fallback: bigint): bigint {
   return fallback;
 }
 
-function suppliedFor(positions: AllPositions | null): bigint {
-  if (!positions || !Array.isArray(positions.supplied)) return 0n;
-  for (const entry of positions.supplied) {
-    if (entry.token_id === USDC_TOKEN_ID && entry.balance) {
-      try {
-        return BigInt(entry.balance);
-      } catch {
-        return 0n;
-      }
-    }
-  }
-  return 0n;
-}
-
 function amountMessage(error: string, action: "supply" | "withdraw"): string {
   switch (error) {
     case "empty":
@@ -355,7 +373,7 @@ function planResponse(input: {
       tokenBalance: formatYoctoToken(input.tokenBalanceRaw),
       nearBalance: formatNearYocto(input.nearBalance),
       nearRequired: formatNearYocto(input.plan.nearRequiredYocto),
-      supplied: input.action === "withdraw" ? formatYoctoToken(input.suppliedInnerUnits / 10n ** 12n) : null,
+      supplied: input.action === "withdraw" ? formatUsdc(fromBurrowInnerUnits(input.suppliedInnerUnits)) : null,
       storage: {
         registersBurrowAccount: input.plan.storage.registersBurrowAccount,
         registersTokenReceiver: input.plan.storage.registersTokenReceiver,
@@ -373,7 +391,7 @@ function planResponse(input: {
         : "UNSIGNED. Review, then your NEAR wallet signs the Burrow execute Withdraw call. Nothing is sent by this route.",
     crossChain: {
       satisfied: false,
-      note: "Same-chain NEAR only. The original 071 cross-chain MCA/1Click Phase C path remains deferred.",
+      note: "This flow supplies and withdraws USDC on NEAR only.",
     },
     innerUnits: toBurrowInnerUnits(input.amount6).toString(),
   });

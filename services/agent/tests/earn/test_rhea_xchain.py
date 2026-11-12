@@ -237,7 +237,7 @@ def test_withdraw_review_is_honest_about_nep413_and_custody() -> None:
     assert review["custodian"] is None
     assert review["signedBySparkPoint"] is False
     assert review["inAppUnsigned"] is False
-    assert "relayer" in review["inAppUnsignedReason"]
+    assert "not available yet" in review["inAppUnsignedReason"]
     assert review["requiredWallet"] and review["requiredChain"]
     assert len(review["steps"]) >= 3
     ids = [path["id"] for path in review["paths"]]

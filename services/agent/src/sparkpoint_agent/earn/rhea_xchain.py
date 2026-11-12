@@ -251,51 +251,46 @@ def withdraw_review(*, app_url: str = RHEA_APP_SOURCE) -> dict[str, Any]:
         "signedBySparkPoint": False,
         "inAppUnsigned": False,
         "inAppUnsignedReason": (
-            "An unsigned in-app withdraw is not built: the relayer path needs a Rhea API "
-            "credential we do not hold, and nearMcaWithdrawTx needs a NEAR transaction surface "
-            "this build does not expose. We do not invent a custodian or relayer to fake it."
+            "Withdrawing from this screen is not available yet. The options below show where you "
+            "can withdraw with the same wallet."
         ),
         "requiredWallet": (
-            "The same wallet you supplied with: your EVM wallet (Base/Ethereum) for the origin "
-            "leg and your Rhea Multichain Account (MCA) on NEAR for the supplied balance."
+            "The same wallet you supplied with: your Base or Ethereum wallet for the deposit, and "
+            "your Rhea account on NEAR for the supplied balance."
         ),
-        "requiredChain": "Origin leg on Base or Ethereum; supplied balance on NEAR (Burrow).",
+        "requiredChain": "Deposit on Base or Ethereum; supplied balance on NEAR.",
         "note": (
-            "In-app cross-chain withdraw is not implemented in this beta. This is a guided review: "
-            "NEP-413 is off-chain authentication, never a Burrow/MCA transaction; SparkPoint does "
-            "not custody funds and does not invent a relayer. A URL link-out opens Rhea's own app "
-            "and is NOT a SparkPoint-signed transaction. Nothing here signs or sends."
+            "Cross-chain withdraw is not available in this app yet. The options below show where "
+            "you can withdraw with the same wallet. Nothing here signs or sends."
         ),
         "steps": [
-            "Confirm which Rhea Multichain Account (MCA) / NEAR wallet holds the supplied USDC.",
-            "Pick one documented Rhea SDK withdraw path below: an "
-            '`executionPreference: "relayer"` business message or the direct `nearMcaWithdrawTx` '
-            "route. Both need Rhea API access and are documented-but-not-implemented in this beta.",
-            "If neither documented path is available to you, open the Rhea app with the same "
-            "wallet and withdraw there. The link-out is not a SparkPoint-signed transaction.",
-            "Verify the result in Rhea and your own wallet; SparkPoint cannot recover funds.",
+            "Confirm which NEAR wallet holds your supplied USDC.",
+            "Choose one of the withdraw options below. Some options need Rhea API access and are "
+            "not available in this beta.",
+            "If none of the options work for you, withdraw in the Rhea app with the same wallet. "
+            "That link is not a SparkPoint-signed transaction.",
+            "Check the result in Rhea and your own wallet; SparkPoint cannot recover funds.",
         ],
         "paths": [
             {
                 "id": "rhea_relayer",
-                "label": "Rhea SDK relayer withdrawal",
+                "label": "Rhea relayer withdrawal",
                 "status": "documented_not_implemented",
                 "url": None,
                 "note": (
-                    "Rhea's CrossChainDexSdk documents an "
-                    '`executionPreference: "relayer"` withdraw business message. It needs Rhea '
-                    "API access and a signed MCA business message; this beta does not enable it."
+                    "Rhea documents a relayer withdraw option. It needs Rhea API access and is "
+                    "not enabled in this beta."
                 ),
                 "source": RHEA_SDK_SOURCE,
             },
             {
                 "id": "near_mca_withdraw_tx",
-                "label": "nearMcaWithdrawTx (direct NEAR)",
+                "label": "Direct NEAR withdrawal",
                 "status": "documented_not_implemented",
                 "url": None,
                 "note": (
-                    "The SDK documents a direct `nearMcaWithdrawTx` path when the recipient and "
-                    "NEAR conditions match. The agent does not build or send it here."
+                    "Rhea documents a direct NEAR withdraw path when the recipient and NEAR "
+                    "conditions match. SparkPoint does not build or send it here."
                 ),
                 "source": RHEA_SDK_SOURCE,
             },

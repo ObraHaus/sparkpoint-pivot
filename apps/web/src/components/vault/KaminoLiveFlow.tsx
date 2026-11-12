@@ -530,7 +530,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
             </div>
           </div>
           <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
-            Live · flagged
+            Live
           </span>
         </div>
 

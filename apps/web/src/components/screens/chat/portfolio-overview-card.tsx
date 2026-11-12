@@ -214,7 +214,7 @@ function SectionState({ section }: { section: PortfolioSection }) {
         </div>
         {section.status === "not_linked" && section.key === "kamino" && (
           <div style={{ marginTop: 4, fontSize: 11.5 }}>
-            Phase C: deposits to a linked Solana address from SparkPoint will populate this section.
+            Kamino positions will appear here once a Solana address is linked.
           </div>
         )}
       </div>
@@ -324,7 +324,8 @@ function EarnRow({ row, section }: { row: PortfolioRow; section: PortfolioSectio
       )}
       {section.key === "rhea" && (
         <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-          Live deposits, signing and withdraws arrive in Phase C. This is a read-only view.
+          This is a read-only view. You can review and sign Rhea deposits or withdraws on the Rhea
+          page.
         </div>
       )}
       {withdrawUrl && (
@@ -370,9 +371,9 @@ function EarnSection({ section, headingId }: { section: PortfolioSection; headin
           )}
           <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
             {section.key === "kamino"
-              ? "Kamino deposits and withdrawals are Phase C — this section reads shares on a linked Solana address only."
+              ? "This section shows shares on a linked Solana address. Live Kamino deposits and withdrawals are coming soon."
               : section.key === "morpho"
-                ? "Deposits and withdrawals stay in the Morpho app in this phase; nothing here is signable."
+                ? "Deposits and withdrawals happen in the Morpho app for now; nothing here is signable."
                 : "Rates are the protocol's own reads, shown as-is."}
           </div>
         </>

@@ -106,8 +106,8 @@ export function LiveEarnFlow({ protocol, vault, chain, asset, mode, initialAmoun
         initialAmount={initialAmount}
       />
       <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-        <Icon name="info" size={12} /> Morpho live deposits are same-chain on Base only in this
-        slice. Cross-chain routes remain dry previews in Sparky.
+        <Icon name="info" size={12} /> Live Morpho deposits are available on Base. Cross-chain
+        options are previews in Sparky for now.
       </div>
     </div>
   );

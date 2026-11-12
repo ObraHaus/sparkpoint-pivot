@@ -17,6 +17,7 @@ import { useAccount, useSendTransaction, useSignMessage } from "wagmi";
 import { EarnQuoteBlockSchema, type EarnQuoteBlock } from "@sparkpoint/shared/schemas";
 
 import { useAgentClient } from "@/lib/agent/useAgent";
+import { liveEarnHref, rheaLiveEnabledFromEnv } from "@/lib/earn/liveFlags";
 import type { WagmiChainId } from "@/lib/wagmi";
 import {
   gateAllowsLive,
@@ -272,19 +273,19 @@ export function RheaXchainReview({
         <div>
           <h1>Rhea cross-chain deposit</h1>
           <div className="sub">
-            071 cross-chain MCA rail · EVM USDC → Rhea (Burrow) on NEAR via 1Click · dry by default
+            Deposit USDC from Base or Ethereum into Rhea (Burrow) on NEAR
           </div>
         </div>
       </div>
 
       <Card testId="rhea-xchain-gate">
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Server gate</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Availability</div>
         <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
           {gate
-            ? `server flag ${gate.serverEnabled ? "on" : "off"} · 1Click key ${
-                gate.keyPresent ? "present" : "absent"
-              } · live commit ${liveAllowed ? "available" : "disabled"}`
-            : "Reading the non-custodial gate…"}
+            ? liveAllowed
+              ? "Live deposits are available. A preview moves no funds."
+              : "Live deposits are not available right now. You can still run a preview that moves no funds."
+            : "Checking availability…"}
         </div>
         {gate?.reason && (
           <div data-testid="rhea-xchain-gate-reason" style={{ fontSize: 12, color: "var(--caution)" }}>
@@ -334,17 +335,17 @@ export function RheaXchainReview({
               disabled={!online || busy || !amountValid}
               onClick={() => void quote(true)}
             >
-              {busy ? "Reviewing…" : "Dry review (dry=true)"}
+              {busy ? "Reviewing…" : "Preview (no funds move)"}
             </button>
             <button
               type="button"
               className="btn btn-primary btn-sm"
               data-testid="rhea-xchain-live"
               disabled={!online || busy || !liveAllowed || !amountValid}
-              title={!liveAllowed ? "Live commit needs the server flag and a configured 1Click key." : undefined}
+              title={!liveAllowed ? "Live deposits are not available right now." : undefined}
               onClick={() => void quote(false)}
             >
-              Prepare live commit (dry=false)
+              Prepare live deposit
             </button>
           </div>
           {!amountValid && (
@@ -374,10 +375,10 @@ export function RheaXchainReview({
         <Card testId="rhea-xchain-block">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {block.live ? "Live review — unsigned plan ready" : "Dry review"}
+              {block.live ? "Live review — ready to sign" : "Preview"}
             </div>
             <span style={{ fontSize: 11.5, color: MUTED }}>
-              {block.state === "unavailable" ? "Unavailable" : block.live ? "live quote" : "not signable"}
+              {block.state === "unavailable" ? "Unavailable" : block.live ? "live" : "preview only"}
             </span>
           </div>
           <div style={{ display: "grid", gap: 5, fontSize: 12.5 }}>
@@ -391,7 +392,7 @@ export function RheaXchainReview({
           {block.customRecipientMsg && (
             <details data-testid="rhea-xchain-message">
               <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
-                Rhea recipient message (customRecipientMsg)
+                Rhea account message
               </summary>
               <pre
                 style={{
@@ -442,7 +443,7 @@ export function RheaXchainReview({
 
           {block.live && (
             <div data-testid="rhea-xchain-live-plan" style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Unsigned origin transfer</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Transfer you&apos;ll approve</div>
               <div style={{ fontSize: 12.5, color: MUTED, wordBreak: "break-all" }}>
                 {transferPlanLine(plan)}
               </div>
@@ -471,7 +472,7 @@ export function RheaXchainReview({
                 />
                 <span>
                   I reviewed the origin chain, amount, refund address, Rhea recipient message and
-                  fees. The transfer is unsigned until my wallet confirms it.
+                  fees. Nothing is sent until my wallet confirms it.
                 </span>
               </label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -521,22 +522,16 @@ export function RheaXchainReview({
           <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
             {signature
               ? "Your off-chain signature was used only to prepare the live quote."
-              : "Nothing here is signed by SparkPoint. A dry review moves no funds."}
+              : "Nothing here is signed by SparkPoint. A preview moves no funds."}
           </div>
         </Card>
       )}
 
       <Card testId="rhea-xchain-withdraw">
-        <div style={{ fontSize: 15, fontWeight: 600 }}>Withdraw (honest review)</div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Withdraw</div>
         {withdraw ? (
           <>
             <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>{withdraw.note}</div>
-            <div style={{ fontSize: 12, color: MUTED }}>
-              NEP-413 is a transaction: <strong>{withdraw.nep413IsTransaction ? "yes" : "no"}</strong> ·
-              custodian: <strong>{withdraw.custodian ?? "none"}</strong> · signed by SparkPoint:{" "}
-              <strong>{withdraw.signedBySparkPoint ? "yes" : "no"}</strong> · in-app unsigned
-              withdraw: <strong>{withdraw.inAppUnsigned ? "yes" : "no"}</strong>
-            </div>
             {withdraw.inAppUnsignedReason && (
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
                 {withdraw.inAppUnsignedReason}
@@ -570,14 +565,12 @@ export function RheaXchainReview({
                     <span style={{ fontWeight: 400, color: MUTED }}>· {path.status}</span>
                   </div>
                   <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{path.note}</div>
-                  {path.url && (
+                  {path.url && rheaLiveEnabledFromEnv() && (
                     <a
-                      href={path.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={liveEarnHref({ protocol: "rhea", mode: "withdraw" })}
                       style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}
                     >
-                      Open Rhea ↗ (not a SparkPoint-signed transaction)
+                      Open the Rhea withdraw screen in this app
                     </a>
                   )}
                 </div>
@@ -590,9 +583,8 @@ export function RheaXchainReview({
       </Card>
 
       <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-        This is the 071 cross-chain MCA/1Click rail. 078&apos;s same-chain NEAR → Burrow supply is a
-        separate flow. Nothing on this page is a transaction until your own wallet confirms the
-        unsigned plan.
+        This page reviews a deposit from another chain into Rhea on NEAR. Nothing is sent until you
+        approve it in your own wallet. SparkPoint never holds your funds.
       </div>
     </div>
   );
