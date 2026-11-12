@@ -27,10 +27,16 @@ import { useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { parseUnits, formatUnits } from "viem";
 import type { Address } from "viem";
-import { Icon } from "@/lib/icons";
 import { money, fmt } from "@/lib/utils";
 import { capNoun } from "@/lib/stage";
-import { RiskChip } from "@/components/ui/risk-chip";
+import { AmountField, FlowDisclaimer, FlowNextStep, FlowPrimary, SummaryBox, VaultFlowPage } from "@/components/vault/VaultFlow";
+import {
+  VAULT_FLOW_NEXT_STEP,
+  vaultFlowDisclaimer,
+  vaultFlowSubtitle,
+  vaultFlowTitle,
+  type VaultFlowSummaryRow,
+} from "@/lib/vault/vaultFlow";
 import { toHref } from "@/lib/nav";
 import { ConfirmFlow } from "@/components/ui/ConfirmFlow";
 import { useVaultConfirm, toNum } from "@/lib/chain/useVaultConfirm";
@@ -77,7 +83,6 @@ export function AmountScreen({
   const isDep = mode === "deposit";
   const { chainId, isConnected } = useAccount();
   const [amount, setAmount] = useState("");
-  const [focused, setFocused] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   const wantUnits = parseUnitsSafe(amount);
@@ -190,127 +195,75 @@ export function AmountScreen({
     );
   }
 
+  const flowTitle = vaultFlowTitle(mode, assetSymbol);
+  const flowSubtitle = isDep
+    ? isWrapper
+      ? vaultFlowSubtitle({ mode, vaultName, netApy: netApyText })
+      : vaultFlowSubtitle({ mode: "deposit", vaultName, netApy: netApyText, apySource: "estimate" })
+    : "Withdraw anytime — even if Sparky is offline";
+  const summaryRows: VaultFlowSummaryRow[] = isDep
+    ? [
+        {
+          key: "receive",
+          label: "You'll receive ≈",
+          value:
+            v.previewDepositShares === undefined && wantUnits > 0n
+              ? "…"
+              : `${fmt(toNum(depositShares, shareDec), 4)} ${shareSymbol}`,
+        },
+        {
+          key: "apy",
+          label: "Net APY",
+          value: `${netApyText}${!isWrapper ? " (breakdown)" : ""}`,
+        },
+        {
+          key: "cap",
+          label: `${capNoun} after`,
+          value: `${money(toNum(usedAfter), 0)} / ${money(toNum(capRaw), 0)}`,
+        },
+      ]
+    : [
+        {
+          key: "redeem",
+          label: "You'll redeem ≈",
+          value: `${fmt(toNum(redeemShares, shareDec), 4)} ${shareSymbol}`,
+        },
+        {
+          key: "receive",
+          label: "You'll receive",
+          value: `≈ ${fmt(toNum(redeemAssetsOut))} ${assetSymbol}`,
+        },
+        { key: "remaining", label: "Remaining position", value: money(toNum(remaining)) },
+      ];
+
   return (
-    <div className="page page-narrow">
-      <Link className="qlink" style={{ display: "inline-flex", marginBottom: 14 }} href={backHref}>
-        <Icon name="chevr" size={15} /> Back to vault
-      </Link>
-      <div className="pagehead">
-        <div>
-          <h1>{isDep ? `Deposit ${assetSymbol}` : "Withdraw"}</h1>
-          <div className="sub">
-            {isDep
-              ? isWrapper
-                ? `Into ${vaultName} · net APY ${netApyText}`
-                : `Into the ${vaultName} · ${netApyText} net APY (estimate)`
-              : "Withdraw anytime — even if Sparky is offline"}
-          </div>
-        </div>
-        <RiskChip tier={1} />
-      </div>
-      <div className="card card-pad">
-        <div className="field" style={{ marginBottom: 16 }}>
-          <label>{isDep ? "Amount to deposit" : "Amount to withdraw"}</label>
-          <div className={"amtbox" + (focused ? " focus" : "")} id="amtbox">
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                className="input big"
-                id="amt"
-                inputMode="decimal"
-                placeholder="0.00"
-                style={{ border: "none", boxShadow: "none", padding: 0, background: "none" }}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-              />
-              <span style={{ fontSize: 18, fontWeight: 600, color: "var(--muted-foreground)" }}>{assetSymbol}</span>
-              <button className="btn btn-ghost btn-sm" id="maxbtn" onClick={onMax}>
-                Max
-              </button>
-            </div>
-          </div>
-          <div className="hint">
-            {isDep
-              ? `Max ${money(toNum(v.usdcBalance))} (idle) · ${money(toNum(capRaw), 0)} ${capNoun}`
-              : `You hold ${money(toNum(v.underlying))} · withdraw any amount`}
-          </div>
-        </div>
-        <div
-          style={{
-            background: "var(--background)",
-            border: "1px solid var(--border-soft)",
-            borderRadius: "var(--radius)",
-            padding: 14,
-            marginBottom: 8,
-          }}
-        >
-          {isDep ? (
-            <>
-              <div className="preview-row">
-                <span className="muted">You&apos;ll receive ≈</span>
-                <span className="tnum">
-                  {v.previewDepositShares === undefined && wantUnits > 0n
-                    ? "…"
-                    : `${fmt(toNum(depositShares, shareDec), 4)} ${shareSymbol}`}
-                </span>
-              </div>
-              <div className="preview-row">
-                <span className="muted">Net APY</span>
-                <span className="tnum">
-                  {netApyText}
-                  {!isWrapper && (
-                    <>
-                      {" "}
-                      <a className="cite" style={{ cursor: "pointer" }}>
-                        breakdown
-                      </a>
-                    </>
-                  )}
-                </span>
-              </div>
-              <div className="preview-row">
-                <span className="muted" style={{ textTransform: "capitalize" }}>{capNoun} after</span>
-                <span className="tnum">
-                  {money(toNum(usedAfter), 0)} / {money(toNum(capRaw), 0)}
-                </span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="preview-row">
-                <span className="muted">You&apos;ll redeem ≈</span>
-                <span className="tnum">{fmt(toNum(redeemShares, shareDec), 4)} {shareSymbol}</span>
-              </div>
-              <div className="preview-row">
-                <span className="muted">You&apos;ll receive</span>
-                <span className="tnum">≈ {fmt(toNum(redeemAssetsOut))} {assetSymbol}</span>
-              </div>
-              <div className="preview-row">
-                <span className="muted">Remaining position</span>
-                <span className="tnum">{money(toNum(remaining))}</span>
-              </div>
-            </>
-          )}
-        </div>
-        <div style={{ fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5, marginBottom: 16 }}>
-          {isDep
-            ? "Estimates, not guarantees. Shares: your fixed slice of the vault; its USDC value grows as the vault earns."
-            : "No fees to exit. Nothing moves until you sign."}
-        </div>
-        <button
-          className="btn btn-primary btn-lg"
-          style={{ width: "100%" }}
-          disabled={!ready}
-          onClick={() => setConfirming(true)}
-        >
-          {ctaLabel}
-        </button>
-        <div style={{ textAlign: "center", fontSize: 11, color: "var(--muted-foreground)", marginTop: 10 }}>
-          Next: live quote + on-chain preview, then you sign.
-        </div>
-      </div>
-    </div>
+    <VaultFlowPage
+      backHref={backHref}
+      title={flowTitle}
+      subtitle={flowSubtitle}
+      riskTier={1}
+      testId="vault-amount-screen"
+    >
+      <AmountField
+        id="amt"
+        label={isDep ? "Amount to deposit" : "Amount to withdraw"}
+        assetSymbol={assetSymbol}
+        value={amount}
+        onChange={setAmount}
+        onMax={onMax}
+        helper={
+          isDep
+            ? `Max ${money(toNum(v.usdcBalance))} (idle) · ${money(toNum(capRaw), 0)} ${capNoun}`
+            : `You hold ${money(toNum(v.underlying))} · withdraw any amount`
+        }
+      />
+      <SummaryBox rows={summaryRows} />
+      <FlowDisclaimer>{vaultFlowDisclaimer(mode)}</FlowDisclaimer>
+      <FlowPrimary disabled={!ready} onClick={() => setConfirming(true)}>
+        {ctaLabel}
+      </FlowPrimary>
+      <FlowNextStep>{VAULT_FLOW_NEXT_STEP}</FlowNextStep>
+    </VaultFlowPage>
   );
 }
 

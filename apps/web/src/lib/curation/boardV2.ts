@@ -105,6 +105,72 @@ export function sparklineRange(points: Array<{ netApyBps: number }> | undefined)
   return `${(Math.min(...values) / 100).toFixed(2)}% – ${(Math.max(...values) / 100).toFixed(2)}%`;
 }
 
+/** The label used when a card has no stored APY observations yet. */
+export const COLLECTING_HISTORY = "collecting history";
+
+/**
+ * A flat placeholder line from the CURRENT APY, for a card whose vault has no stored scans yet.
+ * It draws one honest horizontal rule (today's value, not a fabricated trend) and is never used
+ * when two or more real observations exist.
+ */
+export function flatSparklinePath(
+  netApyBps: number | null | undefined,
+  width: number,
+  height: number,
+): string | null {
+  if (netApyBps === null || netApyBps === undefined || !Number.isFinite(netApyBps)) return null;
+  const y = height / 2;
+  return `M0.00,${y.toFixed(2)} L${width.toFixed(2)},${y.toFixed(2)}`;
+}
+
+/** The earn registry stores APY as a decimal fraction (`0.0598` → 598 bps); null when unknown. */
+export function earnApyBps(netApy: string | null | undefined): number | null {
+  if (netApy === null || netApy === undefined || netApy.trim() === "") return null;
+  const n = Number(netApy);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 10_000);
+}
+
+export interface CardSparkline {
+  /** Real stored observations when they exist (two or more). */
+  readonly points?: Array<{ netApyBps: number }>;
+  /** The current APY for the flat no-history placeholder line, or null when unreadable. */
+  readonly flatBps: number | null;
+  readonly hasHistory: boolean;
+  /** `x% – y%` when a real chart exists. */
+  readonly range: string | null;
+  /** The line under the card: stored-scan range, or the honest collecting-history label. */
+  readonly rangeLabel: string;
+}
+
+/**
+ * One decision for every list card: real history wins; otherwise the card draws a flat line from
+ * the current APY and says "collecting history". No points are ever invented.
+ */
+export function cardSparkline(
+  history: Array<{ netApyBps: number }> | undefined,
+  currentBps: number | null,
+): CardSparkline {
+  const values = (history ?? []).filter((p) => Number.isFinite(p.netApyBps));
+  if (values.length >= 2) {
+    const range = sparklineRange(values);
+    return {
+      points: values,
+      flatBps: null,
+      hasHistory: true,
+      range,
+      rangeLabel: range ? `30d range ${range} · stored scans` : COLLECTING_HISTORY,
+    };
+  }
+  return {
+    points: undefined,
+    flatBps: currentBps !== null && Number.isFinite(currentBps) ? currentBps : null,
+    hasHistory: false,
+    range: null,
+    rangeLabel: COLLECTING_HISTORY,
+  };
+}
+
 // ── admin panel (050) ────────────────────────────────────────────────────────────────────────────
 
 export interface InFlightCounts {
