@@ -407,6 +407,7 @@ class CrossChainQuoteBlock(ChatBlock):
     unavailable_reason: str | None = None
     quoted_at: str | None = None
     expires_hint: str | None = None
+    recipient: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
         wire: dict[str, Any] = {
@@ -426,6 +427,7 @@ class CrossChainQuoteBlock(ChatBlock):
             ("unavailable_reason", "unavailableReason"),
             ("quoted_at", "quotedAt"),
             ("expires_hint", "expiresHint"),
+            ("recipient", "recipient"),
         ):
             value = getattr(self, attr)
             if value is not None:

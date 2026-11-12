@@ -11,6 +11,7 @@ from sparkpoint_agent.crosschain.config import config_from_dict, default_config
 from sparkpoint_agent.crosschain.parse import (
     parse_cross_chain_clarification,
     parse_cross_chain_request,
+    parse_named_recipient,
 )
 
 
@@ -270,3 +271,33 @@ def test_missing_amount_is_a_clarification_not_a_dead_end(prompt: str, destinati
 )
 def test_clarification_does_not_fire_without_a_real_route(prompt: str) -> None:
     assert parse_cross_chain_clarification(prompt, default_config()) is None
+
+
+def test_named_near_recipient_is_parsed_from_the_prompt() -> None:
+    request = parse_cross_chain_request(
+        "swap 0.15 USDC from Base to NEAR, recipient sparkpoint2026.near",
+        default_config(),
+    )
+    assert request is not None
+    assert request.recipient == "sparkpoint2026.near"
+
+
+def test_named_near_recipient_after_to() -> None:
+    message = "swap 0.15 USDC to sparkpoint2026.near"
+    assert parse_named_recipient(message, "near") == "sparkpoint2026.near"
+    request = parse_cross_chain_request(message, default_config())
+    if request is not None:
+        assert request.recipient == "sparkpoint2026.near"
+
+
+def test_chain_name_near_is_not_treated_as_an_account() -> None:
+    assert parse_named_recipient("swap 0.15 USDC from Base to NEAR", "near") is None
+    request = parse_cross_chain_request("swap 0.15 USDC from Base to NEAR", default_config())
+    if request is not None:
+        assert request.recipient is None
+
+
+def test_named_evm_recipient_is_extracted_for_an_evm_destination() -> None:
+    address = "0xBddA41D11014FdD9a656386e29Af1a1349f94f13"
+    assert parse_named_recipient(f"send 0.15 USDC to {address} on Base", "evm") == address
+    assert parse_named_recipient(f"send 0.15 USDC to {address} on Base", "near") is None

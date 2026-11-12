@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1113-named-recipient — chat-named cross-chain destination prefills the swap card)
+
+- **The cross-chain swap card prefills a destination you already named in the chat.** If you ask
+  Sparky to send to `sparkpoint2026.near` (or another valid NEAR account / EVM address), the
+  recipient field on the quote card is filled with that account so you do not have to type it
+  again. You can still edit it. A connected NEAR or EVM wallet is used only when the message did
+  not name a destination. (`apps/web/src/lib/near/recipient.ts`,
+  `services/agent/src/sparkpoint_agent/crosschain/parse.py`,
+  `apps/web/src/components/screens/chat/crosschain-quote-card.tsx`)
+
+
 ### Fixed (1112-solana-rpc — Kamino balance reads go through our server)
 
 - **Live Kamino no longer hangs on "Reading your wallet balance…" in the browser.** Solana's
