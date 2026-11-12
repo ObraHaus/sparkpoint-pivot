@@ -54,7 +54,7 @@ ENV SERVICE=keeper
 ENV HEARTBEAT_DIR=/tmp/sparky-beta-runners
 
 # ⚠️ A hot-key process must never run as root. uid 10001 matches the app image's convention.
-RUN useradd --system --uid 10001 --home /app runner && chown -R runner:runner /app
+RUN useradd --system --no-log-init --uid 10001 --home /app runner && chown -R runner:runner /app
 USER runner
 
 # ⚠️ No EXPOSE and no port. Liveness is a file each service touches only after a tick that actually
