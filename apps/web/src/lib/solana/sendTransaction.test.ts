@@ -14,6 +14,7 @@ import {
   SolanaSendError,
   computeUnitLimitFor,
   countComputeBudgetInstructions,
+  describeSolanaTransactionError,
   medianPriorityFeeMicroLamports,
   prepareSolanaTransaction,
   sendSolanaTransaction,
@@ -90,6 +91,26 @@ function signingProvider(transaction: VersionedTransaction): SolanaInjectedProvi
       throw new Error("signAndSendTransaction must not be used when signTransaction exists");
     },
     signTransaction: async () => transaction,
+  };
+}
+
+function recordingProvider(): {
+  provider: SolanaInjectedProvider;
+  signed: VersionedTransaction[];
+} {
+  const signed: VersionedTransaction[] = [];
+  return {
+    signed,
+    provider: {
+      connect: async () => ({}),
+      signAndSendTransaction: async () => {
+        throw new Error("signAndSendTransaction must not be used when signTransaction exists");
+      },
+      signTransaction: async (transaction) => {
+        signed.push(transaction);
+        return transaction;
+      },
+    },
   };
 }
 
@@ -209,12 +230,17 @@ test("signed bytes are broadcast, rebroadcast, then confirmed", async () => {
   assert.ok(calls.some((call) => call.method === "getSignatureStatuses"));
 });
 
-test("a blockhash expiry ends as 'expired — nothing was spent'", async () => {
+test("a blockhash expiry after send ends as 'expired — nothing was spent'", async () => {
+  let blockHeightCalls = 0;
   const { transport } = mockRpc(
     baseHandlers({
       sendTransaction: () => "5" + "x".repeat(87),
       getSignatureStatuses: () => ({ value: [null] }),
-      getBlockHeight: () => 1_001,
+      getBlockHeight: () => {
+        blockHeightCalls += 1;
+        // The pre-send check passes; the blockhash expires while the transaction is pending.
+        return blockHeightCalls === 1 ? 999 : 1_001;
+      },
     }),
   );
 
@@ -228,6 +254,170 @@ test("a blockhash expiry ends as 'expired — nothing was spent'", async () => {
 
   assert.equal(result.outcome, "expired");
   assert.equal(result.error, null);
+});
+
+test("an expired blockhash before send triggers one re-sign with a fresh blockhash", async () => {
+  let blockHeightCalls = 0;
+  let blockhashCalls = 0;
+  const { provider, signed } = recordingProvider();
+  const reapprovals: string[] = [];
+  const { transport, calls } = mockRpc(
+    baseHandlers({
+      getLatestBlockhash: () => {
+        blockhashCalls += 1;
+        return {
+          value: {
+            blockhash: Keypair.generate().publicKey.toBase58(),
+            lastValidBlockHeight: 1_000,
+          },
+        };
+      },
+      sendTransaction: () => "5" + "x".repeat(87),
+      getSignatureStatuses: () => ({ value: [{ err: null, confirmationStatus: "confirmed" }] }),
+      getBlockHeight: () => {
+        blockHeightCalls += 1;
+        return blockHeightCalls === 1 ? 1_001 : 999;
+      },
+    }),
+  );
+
+  const result = await sendSolanaTransaction({
+    provider,
+    transaction: baseTransaction(),
+    rpc: transport,
+    sleep: async () => {},
+    onReapprove: (reason) => reapprovals.push(reason),
+    maxConfirmationAttempts: 2,
+  });
+
+  assert.equal(result.outcome, "confirmed");
+  assert.equal(signed.length, 2, "the wallet is asked to sign exactly twice");
+  assert.equal(blockhashCalls, 2, "a fresh blockhash is fetched before the retry");
+  assert.notEqual(
+    signed[0]?.message.recentBlockhash,
+    signed[1]?.message.recentBlockhash,
+    "the retry uses a new blockhash",
+  );
+  assert.equal(reapprovals.length, 1);
+  assert.match(reapprovals[0] ?? "", /approve it once more/i);
+  assert.equal(calls.some((call) => call.method === "sendTransaction"), true);
+});
+
+test("BlockhashNotFound from sendTransaction triggers one re-sign", async () => {
+  let sendAttempts = 0;
+  const { provider, signed } = recordingProvider();
+  const reapprovals: string[] = [];
+  const { transport } = mockRpc(
+    baseHandlers({
+      sendTransaction: () => {
+        sendAttempts += 1;
+        if (sendAttempts === 1) {
+          throw new SolanaRpcError("Transaction simulation failed: Blockhash not found", {
+            code: -32002,
+            logs: ["Blockhash not found"],
+            data: { err: "BlockhashNotFound", logs: ["Blockhash not found"] },
+          });
+        }
+        return "5" + "x".repeat(87);
+      },
+      getSignatureStatuses: () => ({ value: [{ err: null, confirmationStatus: "confirmed" }] }),
+      getBlockHeight: () => 999,
+    }),
+  );
+
+  const result = await sendSolanaTransaction({
+    provider,
+    transaction: baseTransaction(),
+    rpc: transport,
+    sleep: async () => {},
+    onReapprove: (reason) => reapprovals.push(reason),
+    maxConfirmationAttempts: 2,
+  });
+
+  assert.equal(result.outcome, "confirmed");
+  assert.equal(signed.length, 2);
+  assert.equal(reapprovals.length, 1);
+});
+
+test("a second expiry throws a SolanaSendError with code 'expired'", async () => {
+  const { provider, signed } = recordingProvider();
+  const { transport, calls } = mockRpc(
+    baseHandlers({
+      sendTransaction: () => "5" + "x".repeat(87),
+      getSignatureStatuses: () => ({ value: [null] }),
+      getBlockHeight: () => 1_001,
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      sendSolanaTransaction({
+        provider,
+        transaction: baseTransaction(),
+        rpc: transport,
+        sleep: async () => {},
+        maxConfirmationAttempts: 2,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof SolanaSendError);
+      assert.equal(error.code, "expired");
+      assert.match(error.message, /expired/i);
+      assert.match(error.message, /nothing was sent or spent/i);
+      return true;
+    },
+  );
+  assert.equal(signed.length, 2, "only one automatic retry is allowed");
+  assert.equal(calls.some((call) => call.method === "sendTransaction"), false);
+});
+
+test("describeSolanaTransactionError renders instruction index and custom code", () => {
+  assert.equal(
+    describeSolanaTransactionError({ InstructionError: [4, { Custom: 6001 }] }),
+    "Instruction 4: custom program error 6001",
+  );
+  assert.equal(
+    describeSolanaTransactionError({ InstructionError: [0, "InvalidArgument"] }),
+    "Instruction 0: InvalidArgument",
+  );
+  assert.match(describeSolanaTransactionError("BlockhashNotFound") ?? "", /blockhash/i);
+  assert.match(describeSolanaTransactionError("InsufficientFundsForFee") ?? "", /fee payer/i);
+  assert.equal(describeSolanaTransactionError(null), null);
+});
+
+test("data.err is preserved on SolanaRpcError and rendered in the preflight message", async () => {
+  const transactionError = { InstructionError: [4, { Custom: 6001 }] };
+  const error = new SolanaRpcError("Transaction simulation failed", {
+    code: -32002,
+    logs: ["Program log: custom"],
+    data: { err: transactionError, logs: ["Program log: custom"] },
+  });
+  assert.deepEqual(error.transactionError, transactionError);
+
+  const { transport } = mockRpc(
+    baseHandlers({
+      sendTransaction: () => {
+        throw error;
+      },
+      getSignatureStatuses: () => ({ value: [null] }),
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      sendSolanaTransaction({
+        provider: signingProvider(baseTransaction()),
+        transaction: baseTransaction(),
+        rpc: transport,
+        sleep: async () => {},
+      }),
+    (cause: unknown) => {
+      assert.ok(cause instanceof SolanaSendError);
+      assert.match(cause.message, /Instruction 4: custom program error 6001/);
+      assert.match(cause.message, /preflight/i);
+      assert.deepEqual(cause.logs, ["Program log: custom"]);
+      return true;
+    },
+  );
 });
 
 test("a preflight error surfaces with logs and never reaches the confirmation loop", async () => {

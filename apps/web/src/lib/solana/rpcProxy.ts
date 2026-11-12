@@ -108,6 +108,37 @@ function isUnusableRpcError(value: unknown): boolean {
   );
 }
 
+function logValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/** One grep-friendly line for production logs; never includes the transaction bytes. */
+function logTransactionRpcFailure(method: string, payload: Record<string, unknown>): void {
+  if (method !== "sendTransaction" && method !== "simulateTransaction") return;
+  const error = payload.error as { code?: unknown; message?: unknown; data?: unknown } | undefined;
+  const value = (payload.result as { value?: { err?: unknown; logs?: unknown } } | undefined)?.value;
+  const data = (error?.data ?? value) as { err?: unknown; logs?: unknown } | undefined;
+  const transactionError = data?.err;
+  if (!error && !transactionError) return;
+  const code = error?.code ?? null;
+  const message =
+    typeof error?.message === "string"
+      ? error.message
+      : transactionError
+        ? "Transaction simulation failed"
+        : null;
+  const logs = Array.isArray(data?.logs)
+    ? data.logs.filter((line): line is string => typeof line === "string").slice(-8)
+    : [];
+  const line = `[solana-rpc] ${method} error code=${logValue(code)} message=${logValue(message)} data.err=${logValue(transactionError)} logs=${logValue(logs)}`;
+  console.warn(line.replace(/\s*\n\s*/g, " "));
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -183,6 +214,7 @@ export async function proxySolanaRpc(
     } catch {
       continue;
     }
+    logTransactionRpcFailure(request.method, payload);
     if (
       AUTHORITATIVE_ERROR_METHODS.has(request.method) &&
       "error" in payload &&
