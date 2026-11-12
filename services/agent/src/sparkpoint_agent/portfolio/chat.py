@@ -28,6 +28,10 @@ _PORTFOLIO_PATTERNS = tuple(
     for pattern in (
         r"^show (?:me )?my portfolio$",
         r"^my portfolio$",
+        # 1112 — the plain "what's my portfolio?" ask must take the same deterministic 072 read
+        # instead of falling through to the chain-scoped vault snapshot. "worth" and any other
+        # extra clause still keep the existing snapshot route (the anchors below).
+        r"^(?:what(?:'s| is) )?my portfolio$",
         # 1110 — the multi-chain ask was answered by the chain-scoped vault snapshot instead of
         # the existing `/portfolio/multichain` aggregation because these phrasings missed.
         r"^(?:what(?:'s| is) )?my multi[ -]?chain portfolio$",

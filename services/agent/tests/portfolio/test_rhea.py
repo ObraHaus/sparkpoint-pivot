@@ -21,9 +21,7 @@ class _Service:
         self.wallets: list[str] = []
         self.account_ids: list[str | None] = []
 
-    async def rhea_positions(
-        self, *, wallet: str, account_id: str | None = None
-    ) -> EarnOutcome:
+    async def rhea_positions(self, *, wallet: str, account_id: str | None = None) -> EarnOutcome:
         self.wallets.append(wallet)
         self.account_ids.append(account_id)
         return EarnOutcome(text="", block=self.block)
@@ -86,3 +84,22 @@ async def test_a_near_owner_reads_the_account_id_directly() -> None:
     assert section.status == "ok"
     assert service.wallets == [near]
     assert service.account_ids == [near]
+
+
+@pytest.mark.asyncio
+async def test_evm_sign_in_rhea_copy_names_the_linked_multichain_account() -> None:
+    """1112 — an Rhea row for an EVM session must not imply a connected Meteor/NEAR wallet."""
+    service = _Service(_block())
+    section = await RheaPositionsSource(service).collect(WALLET)  # type: ignore[arg-type]
+    note = section.meta["note"]
+    assert "Multichain Account" in note
+    assert "no Meteor/NEAR wallet connection is required" in note
+    assert service.account_ids == [None]
+
+
+@pytest.mark.asyncio
+async def test_near_sign_in_does_not_get_the_evm_mca_note() -> None:
+    near = "sparkpoint2026.near"
+    service = _Service(_block(mca=near))
+    section = await RheaPositionsSource(service).collect(near, auth_chain="near")  # type: ignore[arg-type]
+    assert "note" not in section.meta

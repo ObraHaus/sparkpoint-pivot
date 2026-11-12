@@ -21,7 +21,7 @@ from ..crosschain.addresses import placeholder_for
 from ..crosschain.config import CrossChainAsset, CrossChainConfig
 from ..crosschain.config import default_config as cc_config
 from ..crosschain.oneclick import OneClickClient, QuoteUnavailable, deadline_at
-from ..crosschain.service import amount_from_human
+from ..crosschain.service import amount_from_human, format_quote_error_amount
 from ..portfolio.models import PortfolioRow, PortfolioSection
 from .config import EarnConfig, addresses_equal
 from .parse import EarnRequest
@@ -848,7 +848,10 @@ class EarnService:
             )
         except QuoteUnavailable as exc:
             self.liveness.set(receipt.asset_id, NO_LIQUIDITY)
-            return self._unavailable(entry, vault, "oneclick_earn", exc.reason)
+            reason = format_quote_error_amount(
+                exc.reason, decimals=origin.decimals, symbol=origin.symbol
+            )
+            return self._unavailable(entry, vault, "oneclick_earn", reason)
         self.liveness.set(receipt.asset_id, LIVE)
         fee_note = None if self.oneclick.has_api_key else FEE_NOTE
         eta = (
@@ -1028,7 +1031,9 @@ class EarnService:
                 )
             except QuoteUnavailable as exc:
                 self.liveness.set(entry.address, NO_LIQUIDITY)
-                reason = exc.reason
+                reason = format_quote_error_amount(
+                    exc.reason, decimals=origin.decimals, symbol=origin.symbol
+                )
                 if "liquidity" in reason.lower() and "smaller" not in reason.lower():
                     reason = f"{reason} — try a smaller amount."
                 return self._unavailable(entry, vault, "oneclick_rhea", reason)

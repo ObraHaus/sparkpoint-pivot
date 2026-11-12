@@ -97,6 +97,13 @@ class RheaPositionsSource:
             meta["appUrl"] = block.app_url
         if block.state == "empty" and block.explainer is not None:
             meta["explainer"] = block.explainer
+        # 1112 — an EVM sign-in reads Rhea through the Multichain Account linked to that same
+        # wallet. Say so, so a Rhea row is never mistaken for a connected Meteor/NEAR wallet.
+        if auth_chain == "evm" and block.mca is not None:
+            meta["note"] = (
+                "Read from the Multichain Account linked to your signed-in EVM wallet — no "
+                "Meteor/NEAR wallet connection is required."
+            )
         rows = _rows(block) if block.state == "ready" else []
         return PortfolioSection(
             key="rhea",
