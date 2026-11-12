@@ -19,6 +19,17 @@ def _money(value: str | None) -> str:
     return f"~${value}" if value is not None else "value unavailable"
 
 
+def _priced_native(overview: PortfolioOverview) -> PortfolioRow | None:
+    """The priced native-coin row (ETH), when the balances section could value it."""
+    balances = overview.section("balances")
+    if balances is None or balances.status != "ok":
+        return None
+    for row in balances.rows:
+        if row.kind == "native" and row.value_usd is not None:
+            return row
+    return None
+
+
 def _row_line(row: PortfolioRow) -> str:
     amount = row.amount or ""
     symbol = row.symbol or ""
@@ -154,6 +165,15 @@ def render_text(overview: PortfolioOverview, focus: PortfolioFocus = "all") -> s
         lines.append("You don't have any positions in these sections yet.")
     elif totals["totalUsd"] is not None:
         lines.append(f"Your priced positions total about ${totals['totalUsd']}.")
+        native = _priced_native(overview)
+        if native is not None:
+            # 1112 — the Portfolio page's Net worth values stablecoins/vault positions only and
+            # shows ETH separately. Say that here so the two totals never read as a contradiction.
+            lines.append(
+                f"That includes {native.amount} {native.symbol} (~${native.value_usd}); the "
+                "Portfolio Net worth figure counts stablecoins and vault positions only and "
+                "excludes ETH."
+            )
     else:
         lines.append(
             "I can show what you hold, but I couldn't price it right now — no total is invented."

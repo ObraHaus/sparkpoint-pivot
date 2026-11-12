@@ -11,6 +11,7 @@ Config drives everything (asset ids, decimals, enabled/paused routes), so a clie
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -58,6 +59,42 @@ def format_raw_units(raw: str, decimals: int) -> str:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+#: 1Click's bridge minimums arrive as smallest units inside a prose error, e.g.
+#: ``"Amount is too low for bridge, try at least 150000"``. Only a number that follows a
+#: minimum/threshold phrase is a candidate — never every integer in the message (status codes,
+#: request ids, chain ids). An already-human decimal (``"at least 0.15"``) is left untouched.
+_MIN_AMOUNT_ERROR_RE = re.compile(
+    r"(?i)(?P<lead>(?:too low|at least|minimum(?:\s+amount)?|min(?:imum)?\s+amount|"
+    r"below(?:\s+the)?\s+minimum)[^\d]{0,40}?)(?<![$€£])(?P<amount>\d+(?:\.\d+)?)"
+)
+
+
+def format_quote_error_amount(reason: str, *, decimals: int, symbol: str) -> str:
+    """Render an upstream minimum-amount error in the SENDING asset's human units.
+
+    The upstream (1Click) number is smallest units, but it is shown to a person. ``150000`` with
+    USDC's 6 decimals becomes ``0.15 USDC``; ETH (18), SOL (9) and NEAR (24) convert the same way.
+    The asset is always the quote's origin leg — never a guessed or destination asset. A reason
+    with no threshold phrase, or one that already carries a decimal, is returned unchanged.
+    """
+    if not reason or decimals < 0:
+        return reason
+
+    def _replace(match: re.Match[str]) -> str:
+        raw = match.group("amount")
+        # A decimal is already human; a small integer is more likely a human amount ("100 USDC")
+        # than a raw minimum. Real 1Click base-unit minimums are large, so only convert those.
+        if "." in raw or int(raw) < 1000:
+            return match.group(0)
+        try:
+            value = Decimal(int(raw)).scaleb(-decimals)
+        except (InvalidOperation, ValueError):
+            return match.group(0)
+        return f"{match.group('lead')}{_trim_decimal(value)} {symbol}".rstrip()
+
+    return _MIN_AMOUNT_ERROR_RE.sub(_replace, reason)
 
 
 def format_usd_two_dp(value: str | None) -> str | None:
@@ -119,6 +156,8 @@ class CrossChainService:
     ) -> CrossChainOutcome:
         wire_origin = origin.origin_wire(request.amount_human)
         wire_destination = destination.destination_wire()
+        # 1112 — the minimum, if the upstream names one, is in the ORIGIN asset's smallest units.
+        reason = format_quote_error_amount(reason, decimals=origin.decimals, symbol=origin.symbol)
         block = CrossChainQuoteBlock(
             state="unavailable",
             origin=wire_origin,
