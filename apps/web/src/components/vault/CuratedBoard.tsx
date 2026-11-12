@@ -720,11 +720,11 @@ function AdminInFlightPanel() {
   return (
     <section className="vb-admin" aria-label="Admin: in-flight vaults">
       <div className="vb-admin-hd">
-        <h3>Not on this page — admin only</h3>
+        <h3>In-flight vaults</h3>
         <span className="vb-badge admin">operator view</span>
       </div>
       <p>
-        In-flight rows are never public. These counts come from the admin endpoints, not the board:
+        These vaults are not on the public board yet:
       </p>
       <div className="vb-admin-counts">
         <span>
