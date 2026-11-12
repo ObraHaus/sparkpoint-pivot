@@ -292,7 +292,7 @@ export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiv
 
   const primary =
     !enabled
-      ? { label: "Live Rhea is off in this build", onClick: undefined, disabled: true }
+      ? { label: "Rhea isn't available right now", onClick: undefined, disabled: true }
       : !accountId || !rheaAccount.canSign
         ? { label: copy.primaryLabel, onClick: () => void connect(), disabled: status === "connecting" }
         : {
@@ -402,7 +402,7 @@ export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiv
         <>
       <FlowModeToggle mode={flowMode} onChange={changeMode} disabled={busy} testId="rhea-live-action" />
 
-      {!enabled && <FlowNotice tone="caution">Live Rhea is off in this build. Nothing can be signed here.</FlowNotice>}
+      {!enabled && <FlowNotice tone="caution">Rhea deposits and withdrawals aren&apos;t available right now.</FlowNotice>}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div>
