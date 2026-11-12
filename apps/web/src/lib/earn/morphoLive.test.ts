@@ -9,6 +9,7 @@ import {
   feeBpsLabel,
   findMorphoVault,
   formatMorphoAmount,
+  morphoAmountAfterModeChange,
   morphoMaxWithdrawShares,
   parseMorphoAmount,
   validateMorphoVaultMetadata,
@@ -102,6 +103,12 @@ test("live vault reads must match the curated asset and decimals", () => {
     () => validateMorphoVaultMetadata(findMorphoVault(VAULT)!, { shareDecimals: 6 }),
     (error: unknown) => error instanceof MorphoLiveError && error.code === "decimals_mismatch",
   );
+});
+
+test("switching Deposit and Withdraw clears the input instead of carrying asset units as shares", () => {
+  assert.equal(morphoAmountAfterModeChange("deposit", "withdraw", "0.01"), "");
+  assert.equal(morphoAmountAfterModeChange("withdraw", "deposit", "0.5"), "");
+  assert.equal(morphoAmountAfterModeChange("deposit", "deposit", "0.01"), "0.01");
 });
 
 test("ERC-4626 maxDeposit/maxRedeem/maxWithdraw bound the plan", () => {

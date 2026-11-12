@@ -34,7 +34,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (USDC 6 decimals + Burrow `extra_decimals` 12 = 18-scale) to a human amount (`0.05`, not a
   scale-wrong value or `NaN`). The Withdraw tab's "Available" now shows the withdrawable supplied
   balance, Supply shows idle wallet USDC, and switching tabs clears the other tab's amount.
-  (`apps/web/src/lib/near/burrow.ts`, `apps/web/src/lib/near/liveEarn.ts`,
+  The Morpho Deposit/Withdraw tabs get the same reset, so a deposit USDC amount is never reused as
+  a share amount in the withdraw field. (`apps/web/src/lib/near/burrow.ts`,
+  `apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/lib/near/liveEarn.ts`,
   `apps/web/src/components/vault/RheaLiveEarn.tsx`, `apps/web/src/app/api/earn/rhea/live/route.ts`)
 - **The Rhea withdraw review reads as money received, not a second debit.** A withdraw row no longer
   shows a leading minus (`-0.05 USDC`); it reads `0.05 USDC to your wallet`.
