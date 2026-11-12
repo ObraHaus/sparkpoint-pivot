@@ -326,6 +326,14 @@ async def crosschain_quote(
             last_status=None,
         )
     except Exception as exc:  # noqa: BLE001 — cannot bind the address to its owner ⇒ fail closed
+        # Diagnosable without leaking the quote payload or any credential: the exception TYPE
+        # identifies a codec/constraint bug, and the message is truncated. The deposit address is
+        # deliberately NOT logged (it is a one-time payment target).
+        logger.error(
+            "crosschain_quote_record_failed error_type=%s error=%s",
+            type(exc).__name__,
+            str(exc)[:200],
+        )
         raise ApiError(
             ErrorCode.UPSTREAM_UNAVAILABLE,
             "The cross-chain quote was created but could not be recorded; please retry.",
