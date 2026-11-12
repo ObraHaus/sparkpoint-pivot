@@ -15,19 +15,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useSwitchChain, useWriteContract } from "wagmi";
-import { erc20Abi, type Address, type Hex } from "viem";
+import { erc20Abi, type Address } from "viem";
 import type { CrossChainQuoteBlock } from "@sparkpoint/shared/schemas";
 
 import { Icon } from "@/lib/icons";
 import { wagmiConfig } from "@/lib/wagmi";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
 import { resolveCrossChainRecipient } from "@/lib/near/recipient";
+import { firstTransactionHash } from "@/lib/near/burrow";
 import { swapTokens } from "@/lib/swap/tokens";
 import {
   addressKindForOrigin,
   expectedAddressDescription,
   isValidAddress,
 } from "@/lib/crosschain/address";
+import { crossChainAssetByKey } from "@/lib/crosschain/assets";
+import { crossChainErrorMessage, crossChainWalletErrorCopy } from "@/lib/crosschain/errors";
 import {
   formatCountdown,
   formatEta,
@@ -36,7 +39,11 @@ import {
   formatUsd,
 } from "@/lib/crosschain/format";
 import { isTerminalStatus, pollDelayMs, statusView } from "@/lib/crosschain/status";
-import { canSendFromWallet, humanToBaseUnits } from "@/lib/crosschain/walletSend";
+import {
+  buildNearDepositTransaction,
+  canSendFromWallet,
+  humanToBaseUnits,
+} from "@/lib/crosschain/walletSend";
 import {
   crosschainAddressUrl,
   crosschainTxUrl,
@@ -119,31 +126,6 @@ function Notice({
   );
 }
 
-async function errorMessage(res: Response): Promise<string> {
-  try {
-    const body: unknown = await res.json();
-    if (typeof body === "object" && body !== null) {
-      const error = (body as { error?: unknown }).error;
-      if (typeof error === "object" && error !== null) {
-        const message = (error as { message?: unknown }).message;
-        if (typeof message === "string" && message.trim()) return message;
-      }
-      const message = (body as { message?: unknown }).message;
-      if (typeof message === "string" && message.trim()) return message;
-    }
-  } catch {
-    // fall through to the status-based message
-  }
-  return `The cross-chain service answered ${res.status}. Please try again.`;
-}
-
-function walletErrorCopy(error: unknown): string {
-  const raw = error instanceof Error ? error.message : "";
-  if (/user rejected|denied|rejected request/i.test(raw)) return "You cancelled the wallet request. Nothing was sent.";
-  if (/insufficient/i.test(raw)) return "Your wallet doesn't have enough of this token for that transfer.";
-  return raw || "The wallet couldn't send that transaction.";
-}
-
 export function CrossChainQuoteCard({
   block,
   conversationId,
@@ -152,7 +134,7 @@ export function CrossChainQuoteCard({
   conversationId?: string;
 }) {
   const { address, chainId, isConnected } = useAccount();
-  const { accountId: nearAccountId } = useNearWallet();
+  const { accountId: nearAccountId, sendTransactions } = useNearWallet();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
 
@@ -170,7 +152,7 @@ export function CrossChainQuoteCard({
   const [now, setNow] = useState(() => nowMs());
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
-  const [walletTxHash, setWalletTxHash] = useState<Hex | null>(null);
+  const [walletTxHash, setWalletTxHash] = useState<string | null>(null);
   const [swapDetails, setSwapDetails] = useState<ReturnType<typeof parseSwapDetails>>(null);
   const [submitRetryable, setSubmitRetryable] = useState(false);
 
@@ -197,7 +179,10 @@ export function CrossChainQuoteCard({
     namedRecipient: block.recipient ?? null,
   });
   const recipient = recipientSelection.value;
-  const refundTo = evmOrigin ? (address ?? "") : (refundOverride ?? "");
+  // EVM origins refund to the connected EVM wallet; a NEAR origin prefills the connected NEAR
+  // account (still editable); other non-EVM origins need their own refund address.
+  const refundDefault = evmOrigin ? (address ?? "") : originKind === "near" ? (nearAccountId ?? "") : "";
+  const refundTo = refundOverride ?? refundDefault;
 
   const storageKey = useMemo(
     () => depositStorageKey(conversationId, block),
@@ -256,7 +241,7 @@ export function CrossChainQuoteCard({
             headers: { "x-chain-id": requestChainId },
           },
         );
-        if (!res.ok) throw new Error(await errorMessage(res));
+        if (!res.ok) throw new Error(await crossChainErrorMessage(res));
         const body = (await res.json()) as { status?: unknown; swapDetails?: unknown };
         if (cancelled) return;
         const next = typeof body.status === "string" ? body.status : undefined;
@@ -281,6 +266,9 @@ export function CrossChainQuoteCard({
     };
   }, [deposit, requestChainId]);
 
+  // The catalog is the shared source of decimals for every 1Click origin (EVM and non-EVM). The
+  // EVM token is still resolved separately because the ERC-20 transfer needs its contract address.
+  const catalogOrigin = useMemo(() => crossChainAssetByKey(block.origin.key), [block.origin.key]);
   const originToken = useMemo(() => {
     if (typeof block.origin.evmChainId !== "number") return undefined;
     return swapTokens(block.origin.evmChainId).find(
@@ -288,16 +276,20 @@ export function CrossChainQuoteCard({
     );
   }, [block.origin.evmChainId, block.origin.symbol]);
 
+  const amountDecimals = catalogOrigin?.decimals ?? originToken?.decimals;
   const amountInUnits = useMemo(
     () =>
-      originToken ? humanToBaseUnits(block.origin.amount, originToken.decimals) : null,
-    [originToken, block.origin.amount],
+      amountDecimals === undefined ? null : humanToBaseUnits(block.origin.amount, amountDecimals),
+    [amountDecimals, block.origin.amount],
   );
 
-  const walletSendAvailable =
+  const evmSendAvailable =
     canSendFromWallet(block.origin.evmChainId, REGISTERED_CHAIN_IDS) &&
     !!originToken &&
     amountInUnits !== null;
+  const nearSendAvailable =
+    originKind === "near" && !!nearAccountId && !!catalogOrigin && amountInUnits !== null;
+  const walletSendAvailable = evmSendAvailable || nearSendAvailable;
 
   const recipientValid = isValidAddress(recipient, destinationKind);
   const refundValid = evmOrigin ? isValidAddress(refundTo, "evm") : originKind ? isValidAddress(refundTo, originKind) : false;
@@ -332,7 +324,7 @@ export function CrossChainQuoteCard({
         }),
       });
       if (!res.ok) {
-        setError(await errorMessage(res));
+        setError(await crossChainErrorMessage(res));
         return;
       }
       const body = (await res.json()) as HttpQuote;
@@ -368,7 +360,7 @@ export function CrossChainQuoteCard({
 
   // 068b — the speed-up notice is optional; the on-chain transfer already happened. Keep it
   // retryable instead of leaving the user with a dead-end warning.
-  async function submitDepositNotice(hash: Hex): Promise<void> {
+  async function submitDepositNotice(hash: string): Promise<void> {
     if (!deposit) return;
     setSubmitRetryable(false);
     try {
@@ -394,12 +386,41 @@ export function CrossChainQuoteCard({
   }
 
   async function sendFromWallet() {
-    if (!deposit || !originToken || amountInUnits === null) return;
-    if (typeof block.origin.evmChainId !== "number") return;
-    const targetChainId = block.origin.evmChainId as WagmiChainId;
+    if (!deposit || amountInUnits === null) return;
     setWalletBusy(true);
     setWalletError(null);
     try {
+      // NEAR origin: build the unsigned native transfer / ft_transfer and hand it to the user's own
+      // NEAR wallet. The provider re-checks the connected account immediately before signing.
+      if (originKind === "near") {
+        if (!catalogOrigin || !nearAccountId) return;
+        const tx = buildNearDepositTransaction({
+          depositAddress: deposit.depositAddress,
+          amountBaseUnits: amountInUnits,
+          asset: catalogOrigin,
+        });
+        if (!tx) {
+          setWalletError(
+            "The deposit details don't look valid, so nothing was sent. Start a new quote and try again.",
+          );
+          return;
+        }
+        const outcomes = await sendTransactions([tx], { expectedAccountId: nearAccountId });
+        const hash = firstTransactionHash(outcomes);
+        if (!hash) {
+          setWalletError(
+            "Your NEAR wallet didn't return a transaction hash. Check the wallet and the deposit status before retrying.",
+          );
+          return;
+        }
+        setWalletTxHash(hash);
+        await submitDepositNotice(hash);
+        return;
+      }
+
+      // EVM origin: the existing ERC-20 transfer path.
+      if (!originToken || typeof block.origin.evmChainId !== "number") return;
+      const targetChainId = block.origin.evmChainId as WagmiChainId;
       if (chainId !== targetChainId) {
         await switchChainAsync({ chainId: targetChainId });
       }
@@ -413,7 +434,7 @@ export function CrossChainQuoteCard({
       setWalletTxHash(hash);
       await submitDepositNotice(hash);
     } catch (err) {
-      setWalletError(walletErrorCopy(err));
+      setWalletError(crossChainWalletErrorCopy(err));
     } finally {
       setWalletBusy(false);
     }
@@ -760,8 +781,8 @@ export function CrossChainQuoteCard({
                 {walletTxHash ? "Transaction sent" : walletBusy ? "Waiting for wallet…" : "Send from wallet"}
               </button>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-                This sends the exact amount from your connected wallet as an ERC-20 transfer. It is the only
-                transaction you sign — nothing is auto-sent.
+                This sends the exact amount from your connected {originKind === "near" ? "NEAR" : "EVM"} wallet.
+                It is the only transaction you sign — nothing is auto-sent.
               </div>
               {walletTxHash && (
                 <div style={{ fontSize: 11.5, color: MUTED, wordBreak: "break-all" }}>
@@ -793,7 +814,7 @@ export function CrossChainQuoteCard({
           ) : (
             <div data-testid="cc-send-instruction" style={{ fontSize: 13, lineHeight: 1.55 }}>
               Send <b>{formatHumanAmount(block.origin.amount)} {block.origin.symbol}</b> on{" "}
-              <b>{block.origin.chainLabel}</b> to this address from your wallet. This build can&apos;t send it for you.
+              <b>{block.origin.chainLabel}</b> to this address from a {block.origin.chainLabel} wallet.
             </div>
           )}
 

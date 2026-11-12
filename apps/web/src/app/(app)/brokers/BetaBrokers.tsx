@@ -237,7 +237,7 @@ export function BetaBrokers() {
         <div className="card card-pad">
           <div className="payrow">
             <span className="muted">Sparky Broker on this network</span>
-            <span>Unavailable — the broker contracts aren’t wired on {chainName(BROKER_ENGINE_CHAIN)}</span>
+            <span>Unavailable — the broker contracts aren’t available on {chainName(BROKER_ENGINE_CHAIN)}</span>
           </div>
         </div>
       ) : (

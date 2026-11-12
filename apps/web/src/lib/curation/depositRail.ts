@@ -122,9 +122,8 @@ export function depositRail(
         kind: "wrapper-pending",
         label: "In-app deposit coming soon",
         note:
-          `The wrapper for this vault is deployed on-chain (${vault.wrapperAddress}), ` +
-          "but in-app deposits aren't wired for it in this build yet. Nothing is deposit-ready in " +
-          "the app here yet.",
+          `The fee wrapper for this vault is deployed on-chain (${vault.wrapperAddress}). ` +
+          "In-app deposits are coming soon — there is nothing to deposit into here yet.",
       };
     }
     // No wrapper address on the record at all: the honest M1-gated note.

@@ -150,7 +150,7 @@ test("missing engine or token configuration is reported, not treated as a price 
 
   const noToken = deriveClockIn({ ...READY, token: undefined, burn: BURNS.clockIn, alreadyActive: false });
   assert.equal(noToken.configured, false);
-  assert.match(noToken.blockedReason ?? "", /token isn’t wired/);
+  assert.match(noToken.blockedReason ?? "", /token isn’t available/);
 });
 
 // ── promote ──────────────────────────────────────────────────────────────────────────────────
