@@ -278,7 +278,9 @@ class EarnService:
         ]
         named = (request.asset or "").strip().upper()
         if named:
-            matches = [entry for entry in candidates if entry.asset.symbol.strip().upper() == named]
+            matches = [
+                entry for entry in candidates if entry.asset.symbol.strip().upper() == named
+            ]
             if not matches:
                 return None, False
             matches.sort(key=lambda item: item.tvl_usd or Decimal(0), reverse=True)
@@ -324,7 +326,9 @@ class EarnService:
         """
         protocol = request.protocol or "morpho"
         if protocol == "morpho":
-            return await self._morpho_withdraw_outcome(request, wallet=wallet, non_evm=non_evm)
+            return await self._morpho_withdraw_outcome(
+                request, wallet=wallet, non_evm=non_evm
+            )
         return self._snapshot_withdraw_outcome(request, protocol)
 
     async def _morpho_withdraw_outcome(
@@ -404,7 +408,9 @@ class EarnService:
                 block=EarnVaultsBlock(
                     state="ready",
                     vaults=tuple(wires),
-                    note=("Multiple held Morpho positions matched — pick one before withdrawing."),
+                    note=(
+                        "Multiple held Morpho positions matched — pick one before withdrawing."
+                    ),
                 ),
             )
 
@@ -1041,7 +1047,9 @@ class EarnService:
             if quote is not None and quote.time_estimate_sec
             else "a short time"
         )
-        deposit_address = quote.deposit_address if quote is not None and not dry else None
+        deposit_address = (
+            quote.deposit_address if quote is not None and not dry else None
+        )
         transfer_plan: dict[str, Any] | None = None
         if not dry and not requires_signature:
             if not deposit_address:
@@ -1134,7 +1142,9 @@ class EarnService:
         )
         return EarnOutcome(text=text, block=block)
 
-    async def rhea_positions(self, *, wallet: str, account_id: str | None = None) -> EarnOutcome:
+    async def rhea_positions(
+        self, *, wallet: str, account_id: str | None = None
+    ) -> EarnOutcome:
         """Read-only Rhea supply positions for the signed-in wallet (never a transaction).
 
         1111 — ``account_id`` lets a NEAR sign-in read Burrow's existing
@@ -1328,11 +1338,15 @@ class EarnService:
         """Honest withdraw review: link-out + documented Rhea SDK paths, no fake NEP-413 tx."""
         return withdraw_review(app_url=self.config.rhea.app_url)
 
-    async def rhea_xchain_status(self, *, wallet: str, deposit_address: str) -> dict[str, Any]:
+    async def rhea_xchain_status(
+        self, *, wallet: str, deposit_address: str
+    ) -> dict[str, Any]:
         """Live 1Click status for a deposit address this process prepared for ``wallet``."""
         owner = self._xchain_deposits.get(deposit_address.strip().lower())
         if not wallet or owner != wallet.strip().lower():
-            raise RheaXchainError("That deposit address was not prepared for the signed-in wallet.")
+            raise RheaXchainError(
+                "That deposit address was not prepared for the signed-in wallet."
+            )
         return dict(await self.oneclick.status(deposit_address=deposit_address))
 
     def _intents_preview(

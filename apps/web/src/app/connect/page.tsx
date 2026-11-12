@@ -7,57 +7,30 @@ import { Icon, SparkMark } from "@/lib/icons";
 import { PUBLIC_NETWORKS } from "@sparkpoint/shared/networks";
 import { PubTop } from "@/components/screens/PubTop";
 import { useNearLogin } from "@/lib/near/useNearLogin";
+import {
+  metaMaskAvailableSnapshot,
+  metaMaskServerSnapshot,
+  requestMetaMaskProvider,
+  subscribeMetaMaskProvider,
+} from "@/lib/wallet/metamaskProvider";
 import "@/components/screens/public.css";
-
-/** The one wallet row this build actually wires: the injected/browser connector. */
-type InjectedProvider = { isMetaMask?: boolean; providers?: InjectedProvider[] };
-
-/** MetaMask injects `isMetaMask`; a multi-wallet browser exposes it inside `providers`. */
-function isMetaMaskProvider(provider: unknown): boolean {
-  const p = provider as InjectedProvider | undefined;
-  return Boolean(p?.isMetaMask || p?.providers?.some((x) => x.isMetaMask));
-}
-
-/**
- * A browser-wallet glyph that is deliberately NOT a globe: the old shared globe made every row
- * look identical. MetaMask gets its real fox logo; every other injected wallet gets this.
- */
-const BrowserWalletIcon = (
-  <svg width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden>
-    <rect width="40" height="40" rx="10" fill="#2a3346" />
-    <path
-      d="M10.5 14.5h17a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5h-17A2.5 2.5 0 0 1 8 27V17a2.5 2.5 0 0 1 2.5-2.5Z"
-      stroke="#cbd5e1"
-      strokeWidth="2"
-    />
-    <path d="M8 19.5h21.5" stroke="#cbd5e1" strokeWidth="2" />
-    <circle cx="25.5" cy="24.5" r="1.6" fill="#cbd5e1" />
-  </svg>
-);
 
 export default function ConnectPage() {
   const router = useRouter();
-  // REAL wagmi connect (the injected/browser-wallet connector is the only one wired in
-  // this build; WalletConnect/Coinbase SDKs are deferred). No wallet is ever faked — the
-  // page advances to /verify ONLY after an actual connection is established.
+  // REAL wagmi connect: the MetaMask-labeled row drives the one connector in the build, which
+  // targets MetaMask's own provider (EIP-6963 rDNS `io.metamask`, or `providers[]` where
+  // `isMetaMask && !isPhantom`). It never falls through to a generic `window.ethereum` that
+  // another extension (e.g. Phantom) may own. No wallet is ever faked.
   const { isConnected } = useAccount();
   const { connect, connectors, isPending, error } = useConnect();
-  // HONEST ROWS: exactly ONE real injected connector. `wagmi` can surface the same injected wallet
-  // twice (window.ethereum + an EIP-6963 announcement), which used to render duplicate MetaMask
-  // rows that both drove the same connector. Prefer the announced/named connector, otherwise the
-  // first injected one, and render it once. Add another row only when its connector is truly wired.
-  const injectedConnectors = connectors.filter((c) => c.type === "injected");
-  const walletConnector =
-    injectedConnectors.find((c) => c.name && c.name.trim().toLowerCase() !== "injected") ??
-    injectedConnectors[0];
+  const metaMaskConnector =
+    connectors.find((c) => c.id === "metaMask") ?? connectors.find((c) => c.type === "injected");
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
-  // Read the injected provider's real identity without a setState-in-effect cascade: false on the
-  // server, the actual provider flag on the client. Every non-MetaMask injected wallet stays the
-  // honest generic "Browser wallet" with the distinct wallet glyph.
-  const isMetaMask = useSyncExternalStore(
-    () => () => {},
-    () => isMetaMaskProvider((window as unknown as { ethereum?: InjectedProvider }).ethereum),
-    () => false,
+  const [localError, setLocalError] = useState<string | null>(null);
+  const hasMetaMask = useSyncExternalStore(
+    subscribeMetaMaskProvider,
+    metaMaskAvailableSnapshot,
+    metaMaskServerSnapshot,
   );
   const nearLogin = useNearLogin();
 
@@ -66,9 +39,20 @@ export default function ConnectPage() {
   }, [isConnected, router]);
 
   const onConnect = () => {
-    if (isPending || !walletConnector) return;
+    if (isPending) return;
+    if (!requestMetaMaskProvider()) {
+      setLocalError(
+        "MetaMask not detected. Install the MetaMask browser extension, then reload this page.",
+      );
+      return;
+    }
+    if (!metaMaskConnector) {
+      setLocalError("MetaMask not detected. Install the MetaMask browser extension, then reload this page.");
+      return;
+    }
+    setLocalError(null);
     setPendingIdx(0);
-    connect({ connector: walletConnector });
+    connect({ connector: metaMaskConnector });
   };
   const connecting = isPending ? pendingIdx : null;
   const nearPhaseLabel =
@@ -130,25 +114,30 @@ export default function ConnectPage() {
               </span>
               <Icon name="chevr" size={16} />
             </button>
-            {!walletConnector ? (
-              <p
-                style={{
-                  textAlign: "center",
-                  fontSize: "12.5px",
-                  color: "var(--muted-foreground)",
-                  margin: 0,
-                  lineHeight: 1.5,
-                }}
+            {!hasMetaMask ? (
+              <div
+                className="walletrow"
+                data-testid="metamask-not-detected"
+                aria-disabled="true"
+                style={{ cursor: "default", opacity: 0.8 }}
               >
-                No browser wallet detected. Install MetaMask (or another browser wallet) to connect.
-              </p>
+                <span className="wl-ico">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 38px wallet logo */}
+                  <img src="/wallets/metamask.png" alt="" width={38} height={38} />
+                </span>
+                <span className="wl-name">MetaMask not detected</span>
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--muted-foreground)" }}>
+                  Install
+                </span>
+              </div>
             ) : (
               <button
                 className="walletrow"
                 data-i={0}
-                key={walletConnector.uid}
+                key={metaMaskConnector?.uid ?? "metamask"}
                 data-testid="connect-wallet-row"
                 onClick={onConnect}
+                disabled={!metaMaskConnector}
               >
                 {connecting === 0 ? (
                   <>
@@ -160,23 +149,19 @@ export default function ConnectPage() {
                 ) : (
                   <>
                     <span className="wl-ico">
-                      {isMetaMask ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- 38px wallet logo
-                        <img src="/wallets/metamask.png" alt="" width={38} height={38} />
-                      ) : (
-                        BrowserWalletIcon
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element -- 38px wallet logo */}
+                      <img src="/wallets/metamask.png" alt="" width={38} height={38} />
                     </span>
-                    <span className="wl-name">{isMetaMask ? "MetaMask" : "Browser wallet"}</span>
+                    <span className="wl-name">MetaMask</span>
                     <Icon name="chevr" size={16} />
                   </>
                 )}
               </button>
             )}
           </div>
-          {(error || nearLogin.error) && (
+          {(error || localError || nearLogin.error) && (
             <p style={{ textAlign: "center", fontSize: "12.5px", color: "var(--loss, #ff6b6b)", margin: "10px 0 0", lineHeight: 1.5 }}>
-              {error?.message ?? nearLogin.error}
+              {error?.message ?? localError ?? nearLogin.error}
             </p>
           )}
           <div className="connect-reassure">

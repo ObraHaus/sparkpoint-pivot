@@ -10,6 +10,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1113-evmsiwe-xchain — 1Click deposit address across allowed EVM chains)
+
+- **"Get deposit address" works when the SIWE session chain differs from the swap source chain.**
+  The cross-chain card called the BFF with no `x-chain-id`; the BFF only forwards that header from
+  the browser (it derives `x-account`/`x-owner` from the session), so an EVM session that signed in
+  on Robinhood Chain (4663) and then switched the wallet to Base (8453) got
+  `ACCOUNT_HEADERS_INVALID` before 1Click was asked. The card now sends the swap's SOURCE chain
+  (`origin.evmChainId`, falling back to the connected/app chain for non-EVM origins) on quote,
+  status and speed-up submit; the agent already accepts any `API_SUPPORTED_CHAIN_IDS` value and does
+  not bind it to the SIWE chain. A new BFF guard rejects a client-asserted `X-Account`/`X-Owner`
+  that contradicts the verified EVM session (case-insensitive hex compare) instead of trusting or
+  silently rewriting it; NEAR sessions are unchanged. (`apps/web/src/lib/crosschain/requestHeaders.ts`,
+  `apps/web/src/components/screens/chat/crosschain-quote-card.tsx`,
+  `apps/web/src/lib/agent/sessionIdentity.ts`, `apps/web/src/app/api/agent/[...path]/route.ts`)
+
+### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
+
+- **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The
+  button now selects the MetaMask EIP-6963 provider (`io.metamask`) or the
+  `window.ethereum.providers` entry with `isMetaMask && !isPhantom`, instead of a generic
+  `window.ethereum` (or any announced injected connector) that Phantom may own. If MetaMask is not
+  installed, the UI says "MetaMask not detected" and does not fall through to another injected
+  wallet. (`apps/web/src/lib/wagmi.ts`, `apps/web/src/app/connect/page.tsx`,
+  `apps/web/src/lib/wallet/metamaskProvider.ts`)
+
+### Fixed (1112-morpho — Morpho Withdraw Max uses maxRedeem, not full share balance)
+
+- **Morpho Withdraw → Max no longer fills more shares than the vault will redeem.** ERC-4626 dust
+  can leave `balanceOf(owner)` slightly above `maxRedeem(owner)`; Max now fills `maxRedeem` (the
+  same cap validation enforces), and the amount field/labels say the unit is vault shares (e.g.
+  `gtUSDCp shares`) rather than USDC. Deposit behavior is unchanged.
+  (`apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/components/vault/MorphoLiveFlow.tsx`)
+
 ### Fixed (1112-sparky — portfolio chat, swap minimums, portfolio totals)
 
 - **Asking Sparky "What's my portfolio?" now uses the read-only multi-chain overview instead of the

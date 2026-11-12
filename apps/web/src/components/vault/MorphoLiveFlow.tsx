@@ -26,6 +26,7 @@ import {
   findMorphoVault,
   validateMorphoVaultMetadata,
   MORPHO_VAULTS,
+  morphoMaxWithdrawShares,
   parseMorphoAmount,
   type MorphoPlan,
   type MorphoVaultMeta,
@@ -365,11 +366,12 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
     execCtl.reset();
   }, [execCtl]);
 
+  const maxWithdrawShares = morphoMaxWithdrawShares(shareBalance, maxRedeem);
   const maxAmount =
     mode === "deposit"
       ? formatUnits(assetBalance, meta.assetDecimals)
-      : formatUnits(shareBalance, shareDecimals);
-  const withdrawBlocked = mode === "withdraw" && shareBalance === 0n;
+      : formatUnits(maxWithdrawShares, shareDecimals);
+  const withdrawBlocked = mode === "withdraw" && maxWithdrawShares === 0n;
 
   const totalGas =
     gas?.main !== undefined ? (gas.main + (gas.approve ?? 0n)).toString() : undefined;
@@ -455,7 +457,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
 
               <div className="field">
                 <label htmlFor="morpho-amount">
-                  {mode === "deposit" ? `Amount to deposit (${meta.assetSymbol})` : `Shares to redeem (${meta.symbol})`}
+                  {mode === "deposit" ? `Amount to deposit (${meta.assetSymbol})` : `Shares to redeem (${meta.symbol} shares, not ${meta.assetSymbol})`}
                 </label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input
@@ -476,7 +478,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
                 <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
                   {mode === "deposit"
                     ? `Wallet ${meta.assetSymbol} ≈ ${formatUnits(assetBalance, meta.assetDecimals)}`
-                    : `Position ≈ ${formatUnits(shareBalance, shareDecimals)} ${meta.symbol}${
+                    : `Position ≈ ${formatUnits(shareBalance, shareDecimals)} ${meta.symbol} shares${
                         positionAssets !== undefined ? ` ≈ ${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}` : ""
                       }`}
                 </div>
@@ -520,11 +522,11 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
         ) : (
           <div data-testid="morpho-live-review" style={{ marginTop: 14, display: "grid", gap: 5 }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Review {plan.kind} · {amount} {plan.kind === "deposit" ? meta.assetSymbol : meta.symbol}
+              Review {plan.kind} · {amount} {plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}
             </div>
             <Row k="Vault" v={`${meta.name} (${short(meta.address)})`} />
             <Row k="Signing account" v={short(plan.account, 8, 6)} />
-            <Row k={plan.kind === "deposit" ? "You deposit" : "You redeem"} v={`${amount} ${plan.kind === "deposit" ? meta.assetSymbol : meta.symbol}`} />
+            <Row k={plan.kind === "deposit" ? "You deposit" : "You redeem"} v={`${amount} ${plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}`} />
             <Row
               k="You receive (estimate)"
               v={
