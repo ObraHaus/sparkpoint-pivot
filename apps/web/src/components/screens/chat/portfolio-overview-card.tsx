@@ -363,6 +363,11 @@ function EarnSection({ section, headingId }: { section: PortfolioSection; headin
               <EarnRow key={`${row.chain}:${row.vaultAddress ?? row.symbol}:${i}`} row={row} section={section} />
             ))}
           </ul>
+          {section.note && (
+            <div data-testid={`portfolio-${section.key}-note`} style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+              {section.note}
+            </div>
+          )}
           <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
             {section.key === "kamino"
               ? "Kamino deposits and withdrawals are Phase C — this section reads shares on a linked Solana address only."
@@ -424,6 +429,12 @@ function SwapsSection({ section, headingId, nowMs }: { section: PortfolioSection
 
 function TotalsHeader({ block }: { block: PortfolioOverviewBlock }) {
   const { totals } = block;
+  // 1112 — the classic Portfolio "Net worth" card values stablecoins/vault positions only and
+  // shows native ETH separately. This panel is the full multi-chain priced sum, so when ETH is
+  // priced here, say so: the two totals are intentionally different, not a double count.
+  const nativeRow = block.sections
+    .find((section) => section.key === "balances")
+    ?.rows.find((row) => row.kind === "native" && row.valueUsd);
   return (
     <div className="cf-sec" data-testid="portfolio-totals" style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -441,6 +452,13 @@ function TotalsHeader({ block }: { block: PortfolioOverviewBlock }) {
             : "Nothing here can be priced right now — no total is invented."}
         </div>
       </div>
+      {nativeRow && (
+        <div data-testid="portfolio-eth-note" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+          Includes {nativeRow.amount} {nativeRow.symbol} ({money(nativeRow.valueUsd)}). The Portfolio
+          page&apos;s Net worth figure counts stablecoins and vault positions only, so it excludes
+          ETH — the two totals can differ.
+        </div>
+      )}
       {(totals.byChain.length > 0 || totals.byProtocol.length > 0) && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }} data-testid="portfolio-breakdown">
           {totals.byChain.map((row) => (

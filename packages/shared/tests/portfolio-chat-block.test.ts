@@ -157,3 +157,26 @@ test("the API response shape (wallet + text) validates with the same schema", ()
   });
   assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
 });
+
+test("1112 — an absent optional row field validates, but a literal null does not", () => {
+  // The agent OMITS an unavailable APY/status instead of emitting `null`. This pins why: the
+  // strict schema treats these as optional strings, and a null would invalidate the whole block.
+  const ready = fixture("portfolio-overview-ready.json") as Record<string, unknown>;
+  const sections = ready.sections as Record<string, unknown>[];
+  const morpho = sections[1] as Record<string, unknown>;
+  const morphoRows = morpho.rows as Record<string, unknown>[];
+  const withoutApy = { ...morphoRows[0] };
+  delete withoutApy.netApy;
+
+  const absent = ChatBlockSchema.safeParse({
+    ...ready,
+    sections: [sections[0], { ...morpho, rows: [withoutApy] }, ...sections.slice(2)],
+  });
+  assert.equal(absent.success, true, JSON.stringify(absent.error?.issues));
+
+  const asNull = ChatBlockSchema.safeParse({
+    ...ready,
+    sections: [sections[0], { ...morpho, rows: [{ ...morphoRows[0], netApy: null }] }, ...sections.slice(2)],
+  });
+  assert.equal(asNull.success, false, "null must be omitted, never serialized");
+});
