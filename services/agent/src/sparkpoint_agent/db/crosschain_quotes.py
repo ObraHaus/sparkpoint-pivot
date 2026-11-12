@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 from .pool import Database
@@ -54,6 +55,32 @@ LIMIT $2
 """
 
 
+def _deadline_value(value: str | datetime | None) -> datetime | None:
+    """Coerce a 1Click ISO-8601 deadline into the ``datetime`` asyncpg binds to TIMESTAMPTZ.
+
+    asyncpg's timestamp codec requires a ``datetime`` (a ``str`` raises TypeError before the
+    INSERT reaches Postgres). A deadline that cannot be parsed is stored as NULL rather than
+    failing the insert: the row's purpose is to bind the deposit address to its owner, and
+    ``deadline`` is nullable.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            logger.warning("crosschain_quote_deadline_unparseable")
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
 def _row_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
     raw = row["quote_response"]
     if isinstance(raw, str):
@@ -89,7 +116,7 @@ class CrossChainQuoteStore:
         destination_key: str,
         amount_in: str,
         deposit_address: str,
-        deadline: str | None,
+        deadline: str | datetime | None,
         quote_response: Mapping[str, Any],
         last_status: str | None = None,
     ) -> dict[str, Any]:
@@ -100,7 +127,7 @@ class CrossChainQuoteStore:
             destination_key,
             amount_in,
             deposit_address,
-            deadline,
+            _deadline_value(deadline),
             json.dumps(quote_response, ensure_ascii=False, default=str),
             last_status,
         )

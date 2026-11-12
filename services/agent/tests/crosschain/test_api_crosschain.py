@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -26,6 +27,7 @@ from sparkpoint_agent.api.vault import get_account
 from sparkpoint_agent.crosschain.config import default_config
 from sparkpoint_agent.crosschain.oneclick import OneClickClient
 from sparkpoint_agent.crosschain.service import CrossChainService
+from sparkpoint_agent.db.crosschain_quotes import CrossChainQuoteStore
 
 OWNER = "0x2222222222222222222222222222222222222222"
 DEPOSIT = "0x9999999999999999999999999999999999999999"
@@ -269,3 +271,51 @@ def test_rate_limit_is_enforced(client: TestClient) -> None:
     )
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "RATE_LIMITED"
+
+
+class _RecordingDb:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def fetchrow(self, sql: str, *args: Any) -> Any:
+        self.calls.append((sql, args))
+        return {"id": "quote-live", "created_at": datetime(2026, 10, 31, 12, 0, tzinfo=UTC)}
+
+
+def test_live_base_to_near_confirms_through_the_real_store(client: TestClient) -> None:
+    """The exact shape the web card sends (Base USDC -> NEAR, nullable status, ISO deadline)."""
+    db = _RecordingDb()
+    client.app.dependency_overrides[get_crosschain_store] = lambda: CrossChainQuoteStore(db)  # type: ignore[arg-type]
+
+    response = client.post(
+        "/crosschain/quote",
+        json={
+            "originKey": "base:USDC",
+            "destinationKey": "near:wNEAR",
+            "amount": "0.15",
+            "recipient": "sparkpoint2026.near",
+            "refundTo": OWNER,
+            "dry": False,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["state"] == "live"
+    assert body["depositAddress"] == DEPOSIT
+    assert body["quoteId"] == "quote-live"
+
+    (sql, args) = db.calls[0]
+    assert "INSERT INTO crosschain_quotes" in sql
+    owner, origin, destination, amount, deposit, deadline, quote_response, last_status = args
+    assert owner == OWNER.lower()
+    assert (origin, destination, amount, deposit) == (
+        "base:USDC",
+        "near:wNEAR",
+        "0.15",
+        DEPOSIT,
+    )
+    # The regression: asyncpg raises on a str TIMESTAMPTZ binding, so this MUST be a datetime.
+    assert isinstance(deadline, datetime)
+    assert isinstance(quote_response, str)
+    assert last_status is None

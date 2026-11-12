@@ -28,6 +28,7 @@ import {
   type PreflightReview,
 } from "@/lib/near/liveEarn";
 import { useNearWallet } from "@/lib/near/NearWalletProvider";
+import { useRheaAccount } from "@/lib/vault/useVaultBalances";
 
 const MUTED = "var(--muted-foreground)";
 
@@ -79,7 +80,11 @@ function Panel({ children, tone }: { children: React.ReactNode; tone?: "caution"
 
 export function RheaLiveEarn() {
   const enabled = publicLiveRheaEnabled();
-  const { accountId, status, error: walletError, connect, getConnectedAccount, sendTransactions } = useNearWallet();
+  const { accountId: nearAccountId, status, error: walletError, connect, getConnectedAccount, sendTransactions } = useNearWallet();
+  // 1112 — an EVM-only session reads the SAME MCA the portfolio path reads. It can show the balance
+  // and resolve Max, but it cannot sign a NEAR transaction (there is no NEAR wallet here).
+  const rheaAccount = useRheaAccount(nearAccountId);
+  const accountId = rheaAccount.account;
   const [action, setAction] = useState<LiveEarnAction>("supply");
   const [amount, setAmount] = useState("");
   const [max, setMax] = useState(false);
@@ -175,6 +180,12 @@ export function RheaLiveEarn() {
   async function prepare() {
     if (!accountId) {
       setError("Connect your NEAR wallet first.");
+      return;
+    }
+    if (!rheaAccount.canSign) {
+      setError(
+        "This Rhea account is linked to your signed-in EVM wallet, so its balance and Max are readable — but a NEAR supply/withdraw needs a NEAR wallet to sign. Connect the NEAR wallet that controls it, or withdraw on Rhea.",
+      );
       return;
     }
     setError(null);
@@ -274,13 +285,19 @@ export function RheaLiveEarn() {
         <div className="card card-pad" style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontWeight: 600 }}>Your NEAR wallet</div>
+              <div style={{ fontWeight: 600 }}>Your Rhea account</div>
               <div style={{ fontSize: 12, color: MUTED }}>
                 {accountId ? accountId : "No NEAR wallet connected. Meteor is tried first."}
               </div>
+              {rheaAccount.source === "mca" && (
+                <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+                  Linked to your signed-in EVM wallet. Reading the balance and Max works; signing a
+                  NEAR transaction still needs a connected NEAR wallet.
+                </div>
+              )}
               {walletError && <div style={{ fontSize: 12, color: "var(--loss)" }}>{walletError}</div>}
             </div>
-            {!accountId ? (
+            {!nearAccountId ? (
               <button className="btn btn-primary btn-sm" type="button" disabled={status === "connecting"} onClick={() => void connect()}>
                 {status === "connecting" ? "Connecting…" : "Connect NEAR wallet"}
               </button>
@@ -359,7 +376,7 @@ export function RheaLiveEarn() {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={!enabled || !accountId || busy || !amount.trim()}
+                disabled={!enabled || !accountId || !rheaAccount.canSign || busy || !amount.trim()}
                 onClick={() => void prepare()}
               >
                 Review {action}

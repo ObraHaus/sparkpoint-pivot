@@ -16,7 +16,9 @@
 import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useRheaMcaAccount } from "@/lib/agent/useAgent";
 import { getInjectedSolanaProvider } from "@/lib/solana/wallet";
+import { resolveRheaAccount, type RheaAccount } from "./vaultList";
 
 export interface ProtocolBalance {
   /** The account this read is scoped to (`null` when that chain has no wallet). */
@@ -57,6 +59,23 @@ function solanaAccountSnapshot(): string | null {
 /** The Solana wallet's public address if it is already connected/trusted, else `null`. */
 export function useSolanaAccount(): string | null {
   return useSyncExternalStore(subscribeSolanaAccount, solanaAccountSnapshot, () => null);
+}
+
+/**
+ * Resolve the account the Rhea card should read.
+ *
+ * A directly connected NEAR wallet always wins. When there is none, an EVM-only session falls back
+ * to the Rhea Multichain Account (MCA) linked to that wallet — the exact same account the portfolio
+ * path reads. `enabled=false` skips the MCA read for cards that are not Rhea.
+ */
+export function useRheaAccount(
+  directNear: string | null | undefined,
+  enabled = true,
+): RheaAccount {
+  const direct = directNear?.trim() || null;
+  const mca = useRheaMcaAccount(enabled && !direct);
+  if (!enabled && !direct) return resolveRheaAccount(null, null);
+  return resolveRheaAccount(direct, mca);
 }
 
 /** Rhea/Burrow supplied USDC for a NEAR account (same read as the Rhea Withdraw Max helper). */

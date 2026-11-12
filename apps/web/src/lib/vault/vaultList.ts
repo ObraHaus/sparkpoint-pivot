@@ -129,6 +129,33 @@ export function hasActiveFilter(filter: VaultTagFilter): boolean {
 
 // ── balances ────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The account a Rhea read should use, and whether a NEAR wallet is available to SIGN for it.
+ *
+ * `source="near"` is a directly connected NEAR wallet (Meteor/Near Connect) and is always preferred.
+ * `source="mca"` is the Multichain Account derived from the signed-in EVM wallet — the SAME account
+ * the portfolio path reads — which is enough to READ a balance and resolve Max, but NOT to sign a
+ * NEAR transaction. `source=null` means no Rhea account could be resolved.
+ */
+export interface RheaAccount {
+  readonly account: string | null;
+  readonly source: "near" | "mca" | null;
+  /** True only when a connected NEAR wallet can sign; an MCA-only account cannot. */
+  readonly canSign: boolean;
+}
+
+/** Direct NEAR wallet wins; otherwise fall back to the EVM session's MCA; otherwise none. */
+export function resolveRheaAccount(
+  directNear: string | null | undefined,
+  mca: string | null | undefined,
+): RheaAccount {
+  const near = directNear?.trim() || null;
+  if (near) return { account: near, source: "near", canSign: true };
+  const derived = mca?.trim() || null;
+  if (derived) return { account: derived, source: "mca", canSign: false };
+  return { account: null, source: null, canSign: false };
+}
+
 export type BalanceState = "disconnected" | "loading" | "error" | "value";
 
 export interface BalanceDisplay {
