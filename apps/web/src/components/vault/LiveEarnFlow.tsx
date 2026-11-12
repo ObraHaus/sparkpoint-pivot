@@ -6,11 +6,12 @@
  * The flags are OFF by default: with no `NEXT_PUBLIC_EARN_LIVE_*` the route says so plainly and
  * offers no wallet action. When on, it renders the Kamino (Solana) or Morpho (Base) flow and
  * keeps the same review → explicit wallet confirm shape for both.
+ *
+ * 073 — every protocol now renders the SAME deposit/withdraw layout (back link, H1 + subtitle +
+ * risk pill, amount card + Max, summary box, disclaimer, primary button, next-step line). This
+ * switch only chooses the protocol container; it never re-implements the visual layout.
  */
 
-import Link from "next/link";
-
-import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
 import {
   protocolLiveEnabled,
@@ -21,8 +22,8 @@ import { findKaminoVault } from "@/lib/earn/kaminoLive";
 import { findMorphoVault } from "@/lib/earn/morphoLive";
 import { KaminoLiveFlow } from "@/components/vault/KaminoLiveFlow";
 import { MorphoLiveFlow } from "@/components/vault/MorphoLiveFlow";
-
-const MUTED = "var(--muted-foreground)";
+import { FlowNextStep, FlowNotice, VaultFlowPage } from "@/components/vault/VaultFlow";
+import { VAULT_FLOW_NEXT_STEP, vaultFlowTitle } from "@/lib/vault/vaultFlow";
 
 export interface LiveEarnFlowProps {
   readonly protocol: LiveEarnProtocol;
@@ -33,82 +34,53 @@ export interface LiveEarnFlowProps {
   readonly initialAmount: string | null;
 }
 
-function Notice({ children, tone = "caution" }: { children: React.ReactNode; tone?: "caution" | "info" }) {
-  const c = tone === "caution" ? "var(--caution)" : "var(--info)";
-  return (
-    <div
-      style={{
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: c,
-        background: `color-mix(in srgb, ${c} 8%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 26%, transparent)`,
-        borderRadius: 10,
-        padding: "8px 10px",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+const UNKNOWN_NOTICE =
+  "This vault isn't available for live deposits here yet. Pick one of the curated vaults below; " +
+  "the other option stays a preview.";
 
 export function LiveEarnFlow({ protocol, vault, chain, asset, mode, initialAmount }: LiveEarnFlowProps) {
   const enabled = protocolLiveEnabled(protocol);
 
   if (!enabled) {
+    const label = protocol === "kamino" ? "Kamino" : "Morpho";
     return (
-      <div className="card card-pad" data-testid="live-earn-disabled">
-        <div style={{ fontSize: 15, fontWeight: 600 }}>Live {protocol === "kamino" ? "Kamino" : "Morpho"} earn isn&apos;t available right now</div>
-        <div style={{ fontSize: 13, color: MUTED, marginTop: 6, lineHeight: 1.55 }}>
-          Live deposits aren&apos;t available here yet. The{" "}
-          <Link href={toHref("vault")} style={{ color: "var(--primary)" }}>
-            Vault page
-          </Link>{" "}
-          still shows the vault and its preview; nothing is signed or sent.
-        </div>
-      </div>
+      <VaultFlowPage
+        backHref={toHref("vault")}
+        title={vaultFlowTitle(mode, asset ?? "vault")}
+        subtitle={`Live ${label} earn isn't available right now`}
+        riskTier={2}
+        testId="live-earn-disabled"
+      >
+        <FlowNotice tone="caution">
+          Live deposits aren&apos;t available here yet. The Vault page still shows the vault and its
+          preview; nothing is signed or sent.
+        </FlowNotice>
+        <FlowNextStep>{VAULT_FLOW_NEXT_STEP}</FlowNextStep>
+      </VaultFlowPage>
     );
   }
 
   if (protocol === "kamino") {
     const unknown = vault !== null && vault !== "" && findKaminoVault(vault) === null;
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        {unknown && (
-          <Notice>
-            This vault isn&apos;t available for live deposits here yet. Pick one of the curated
-            vaults below; the other option stays a preview.
-          </Notice>
-        )}
-        <KaminoLiveFlow
-          vault={unknown ? null : vault}
-          mode={mode}
-          initialAmount={initialAmount}
-        />
-      </div>
+      <KaminoLiveFlow
+        vault={unknown ? null : vault}
+        mode={mode}
+        initialAmount={initialAmount}
+        notice={unknown ? UNKNOWN_NOTICE : null}
+      />
     );
   }
 
   const unknown = vault !== null && vault !== "" && findMorphoVault(vault) === null;
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {unknown && (
-        <Notice>
-          This vault isn&apos;t available for live deposits here yet. Pick the curated vault
-          below; the other option stays a preview.
-        </Notice>
-      )}
-      <MorphoLiveFlow
-        vault={unknown ? null : vault}
-        chain={chain}
-        asset={asset}
-        mode={mode}
-        initialAmount={initialAmount}
-      />
-      <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-        <Icon name="info" size={12} /> Live Morpho deposits are available on Base. Cross-chain
-        options are previews in Sparky for now.
-      </div>
-    </div>
+    <MorphoLiveFlow
+      vault={unknown ? null : vault}
+      chain={chain}
+      asset={asset}
+      mode={mode}
+      initialAmount={initialAmount}
+      notice={unknown ? UNKNOWN_NOTICE : null}
+    />
   );
 }

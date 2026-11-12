@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  COLLECTING_HISTORY,
   LIVE_BATCH_SIZE,
+  cardSparkline,
+  earnApyBps,
   filterBoard,
+  flatSparklinePath,
   hasMore,
   heroPick,
   inFlightCounts,
@@ -180,4 +184,56 @@ test("a zero-result filter still leaves the unfiltered list for the chip row", (
   assert.deepEqual(filtered, []);
   // The count the fixed header shows is "0 of 2", not a vanished row.
   assert.equal(`${filtered.length} of ${live.length}`, "0 of 2");
+});
+
+
+test("every card gets a sparkline: real history wins, otherwise a flat current-APY line", () => {
+  // History: the 30d range + stored-scans label, exactly like the Galaxy card today.
+  const withHistory = cardSparkline(
+    [
+      { netApyBps: 300 },
+      { netApyBps: 420 },
+      { netApyBps: 360 },
+    ],
+    360,
+  );
+  assert.equal(withHistory.hasHistory, true);
+  assert.equal(withHistory.range, "3.00% – 4.20%");
+  assert.equal(withHistory.rangeLabel, "30d range 3.00% – 4.20% · stored scans");
+  assert.equal(withHistory.flatBps, null);
+  assert.equal(withHistory.points?.length, 3);
+
+  // No history: a flat line from the CURRENT APY, labelled honestly. No points are invented.
+  const noHistory = cardSparkline(undefined, 598);
+  assert.equal(noHistory.hasHistory, false);
+  assert.equal(noHistory.points, undefined);
+  assert.equal(noHistory.flatBps, 598);
+  assert.equal(noHistory.range, null);
+  assert.equal(noHistory.rangeLabel, COLLECTING_HISTORY);
+  assert.equal(noHistory.rangeLabel, "collecting history");
+
+  // One observation is NOT a chart — stay on the honest placeholder.
+  const onePoint = cardSparkline([{ netApyBps: 400 }], 400);
+  assert.equal(onePoint.hasHistory, false);
+  assert.equal(onePoint.flatBps, 400);
+  assert.equal(onePoint.rangeLabel, "collecting history");
+
+  // An unknown APY still says collecting history; it just cannot draw a line.
+  const unknown = cardSparkline(undefined, null);
+  assert.equal(unknown.flatBps, null);
+  assert.equal(unknown.rangeLabel, "collecting history");
+});
+
+test("flatSparklinePath draws one horizontal rule and never a trend", () => {
+  assert.equal(flatSparklinePath(null, 120, 34), null);
+  assert.equal(flatSparklinePath(Number.NaN, 120, 34), null);
+  assert.equal(flatSparklinePath(420, 120, 34), "M0.00,17.00 L120.00,17.00");
+});
+
+test("earnApyBps converts the registry's decimal fraction without rounding a real figure away", () => {
+  assert.equal(earnApyBps("0.05983023393148187"), 598);
+  assert.equal(earnApyBps("0"), 0);
+  assert.equal(earnApyBps(null), null);
+  assert.equal(earnApyBps(""), null);
+  assert.equal(earnApyBps("not-a-number"), null);
 });

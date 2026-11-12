@@ -39,25 +39,17 @@ export default async function Page({ searchParams }: PageProps) {
 
   if (protocol === "rhea") {
     if (!serverLiveRheaEnabled()) notFound();
-    return <RheaLiveEarn />;
+    return <RheaLiveEarn initialMode={mode} initialAmount={first(params.amount)} />;
   }
 
   return (
-    <div className="page page-narrow">
-      <div className="pagehead">
-        <div>
-          <h1>Live earn</h1>
-          <div className="sub">Review first. Your wallet signs. SparkPoint holds nothing.</div>
-        </div>
-      </div>
-      <LiveEarnFlow
-        protocol={protocol}
-        vault={first(params.vault)}
-        chain={first(params.chain)}
-        asset={first(params.asset)}
-        mode={mode}
-        initialAmount={first(params.amount)}
-      />
-    </div>
+    <LiveEarnFlow
+      protocol={protocol}
+      vault={first(params.vault)}
+      chain={first(params.chain)}
+      asset={first(params.asset)}
+      mode={mode}
+      initialAmount={first(params.amount)}
+    />
   );
 }

@@ -17,6 +17,24 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Connection, PublicKey, type VersionedTransaction } from "@solana/web3.js";
 
 import { Icon } from "@/lib/icons";
+import { toHref } from "@/lib/nav";
+import {
+  AmountField,
+  FlowCard,
+  FlowDisclaimer,
+  FlowModeToggle,
+  FlowNextStep,
+  FlowNotice,
+  FlowPrimary,
+  FlowSectionTitle,
+  SummaryBox,
+  VaultFlowPage,
+} from "@/components/vault/VaultFlow";
+import {
+  kaminoFlowRows,
+  vaultFlowCopy,
+  type VaultFlowSummaryRow,
+} from "@/lib/vault/vaultFlow";
 import {
   KAMINO_VAULTS,
   apyPercent,
@@ -86,44 +104,6 @@ function providerAddress(provider: SolanaInjectedProvider): string | null {
   }
 }
 
-function Row({ k, v, tone }: { k: string; v: string; tone?: "caution" | "gain" }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-      <span style={{ color: MUTED }}>{k}</span>
-      <span
-        style={{
-          color: tone === "caution" ? "var(--caution)" : tone === "gain" ? "var(--gain)" : "var(--foreground)",
-          fontWeight: 500,
-          textAlign: "right",
-          wordBreak: "break-word",
-        }}
-      >
-        {v}
-      </span>
-    </div>
-  );
-}
-
-function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "caution" | "gain" }) {
-  const c = tone === "caution" ? "var(--caution)" : tone === "gain" ? "var(--gain)" : "var(--info)";
-  return (
-    <div
-      style={{
-        marginTop: 10,
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: c,
-        background: `color-mix(in srgb, ${c} 8%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 26%, transparent)`,
-        borderRadius: 10,
-        padding: "8px 10px",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 async function readAssetBalance(
   owner: string,
   assetMint: string,
@@ -162,9 +142,10 @@ export interface KaminoLiveFlowProps {
   readonly vault: string | null;
   readonly mode: LiveEarnMode;
   readonly initialAmount: string | null;
+  readonly notice?: string | null;
 }
 
-export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: KaminoLiveFlowProps) {
+export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice }: KaminoLiveFlowProps) {
   const initialVault = useMemo(() => findKaminoVault(vault) ?? KAMINO_VAULTS[0]!, [vault]);
   const [provider, setProvider] = useState<SolanaInjectedProvider | null>(null);
   const [wallet, setWallet] = useState<string | null>(null);
@@ -521,398 +502,431 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount }: Kami
   const balanceText =
     balanceRaw === null ? null : formatTokenAmount(balanceRaw, meta.assetDecimals);
 
+  const copy = vaultFlowCopy({
+    mode,
+    assetSymbol: meta.assetSymbol,
+    vaultName: `Kamino ${meta.name}`,
+    primaryLabel: !wallet
+      ? "Connect Solana wallet"
+      : phase === "building"
+        ? "Building unsigned transaction…"
+        : "Review transaction",
+  });
+
+  const receiveEstimate = build?.estimate
+    ? `≈ ${build.estimate} ${build.estimateUnit === "shares" ? "shares" : meta.assetSymbol}`
+    : "estimated after review";
+  const summaryRows = kaminoFlowRows({
+    mode,
+    receive: receiveEstimate,
+    netApy: apyPercent(build?.apy),
+    minDeposit: build ? `${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}` : "checked at review",
+    minWithdraw: build ? `${build.vaultLimits.minWithdrawAmount} shares` : "checked at review",
+    assetSymbol: meta.assetSymbol,
+    crankNote: "crank fee + 2-lamport buffer above the vault minimum",
+  });
+
+  const reviewRows: VaultFlowSummaryRow[] =
+    review && build
+      ? [
+          { key: "vault", label: "Vault", value: `${meta.name} (${short(meta.address, 6, 6)})` },
+          {
+            key: "pay",
+            label: mode === "deposit" ? "You pay" : "You redeem",
+            value: `${build.amount} ${mode === "deposit" ? meta.assetSymbol : "shares"}`,
+          },
+          {
+            key: "receive",
+            label: "You receive (estimate)",
+            value: build.estimate
+              ? `≈ ${build.estimate} ${build.estimateUnit === "shares" ? "shares" : meta.assetSymbol}`
+              : "unavailable",
+          },
+          { key: "apy", label: "Vault APY (Kamino)", value: apyPercent(build.apy) ?? "unavailable" },
+          {
+            key: "fees",
+            label: "Vault fees",
+            value: `${(meta.managementFeeBps / 100).toFixed(2)}% mgmt · ${(meta.performanceFeeBps / 100).toFixed(2)}% perf`,
+          },
+          { key: "spfee", label: "SparkPoint fee", value: "0% — none on a direct deposit", tone: "gain" },
+          { key: "payer", label: "Fee payer / owner", value: short(review.feePayer, 8, 8) },
+          { key: "asset", label: "Asset", value: kaminoAssetMintLabel(meta) },
+          { key: "share", label: "Share mint", value: short(meta.sharesMint, 8, 8) },
+          {
+            key: "minDep",
+            label: "Min deposit (vault)",
+            value: `${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}`,
+          },
+          {
+            key: "minWd",
+            label: "Min withdraw (vault)",
+            value: `${build.vaultLimits.minWithdrawAmount} shares`,
+          },
+          ...(build.vaultLimits.depositCap
+            ? [{ key: "cap", label: "Vault deposit cap", value: `${build.vaultLimits.depositCap} ${meta.assetSymbol}` }]
+            : []),
+          ...(build.vaultLimits.remainingDeposit
+            ? [
+                {
+                  key: "capLeft",
+                  label: "Vault cap remaining",
+                  value: `${build.vaultLimits.remainingDeposit} ${meta.assetSymbol}`,
+                },
+              ]
+            : []),
+          {
+            key: "program",
+            label: "kVault program",
+            value: short(
+              review.instructions.find((ix) => ix.programLabel === "Kamino kVault")?.programId ?? "—",
+              8,
+              8,
+            ),
+          },
+          { key: "signatures", label: "Signatures", value: String(review.signatures) },
+          { key: "networkFee", label: "Network fee", value: `≈ ${formatLamports(review.networkFeeLamports)} SOL` },
+          ...(review.priorityFeeLamports > 0n
+            ? [{ key: "priority", label: "Priority fee", value: `${formatLamports(review.priorityFeeLamports)} SOL` }]
+            : []),
+          {
+            key: "rent",
+            label: "New token accounts",
+            value: `${review.tokenAccountCreations} · ≈ ${formatLamports(review.tokenAccountRentLamports)} SOL rent`,
+            tone: "caution" as const,
+          },
+          ...(review.transferredLamports > 0n
+            ? [
+                {
+                  key: "wrapped",
+                  label: "SOL wrapped in this tx",
+                  value: `${formatLamports(review.transferredLamports)} SOL`,
+                },
+              ]
+            : []),
+        ]
+      : [];
+
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div className="card card-pad" data-testid="kamino-live-flow">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>Kamino · {meta.name}</div>
-            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
-              Direct kVault {mode} on Solana · asset {kaminoAssetMintLabel(meta)} · share mint{" "}
-              {short(meta.sharesMint)}
-            </div>
-          </div>
-          <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
-            Live
-          </span>
-        </div>
+    <VaultFlowPage
+      backHref={toHref("vault")}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      riskTier={2}
+      testId="kamino-live-flow"
+      footer={
+        <>
+          {phase !== "idle" && phase !== "building" && review && build && (
+            <FlowCard testId="kamino-live-review">
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <FlowSectionTitle>
+                  Review {mode} · {build.amount} {mode === "deposit" ? meta.assetSymbol : "shares"}
+                </FlowSectionTitle>
+                <span style={{ fontSize: 11.5, color: MUTED }}>Unsigned · not sent</span>
+              </div>
+              <SummaryBox rows={reviewRows} testId="kamino-review-summary" />
 
-        {!wallet ? (
-          <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-            <button type="button" className="btn btn-primary btn-md" onClick={() => void connect()}>
-              <Icon name="wallet" size={16} /> Connect Solana wallet
-            </button>
-            <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-              Phantom, Solflare or any injected Solana wallet. Connecting reads your public address
-              only; it does not sign anything.
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-            <span style={{ color: MUTED }}>Connected</span>
-            <span className="mono" style={{ wordBreak: "break-all" }}>{short(wallet, 8, 8)}</span>
-          </div>
-        )}
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, marginTop: 6 }}>
+                Asset symbol, mint and token program come from Kamino&apos;s vault metadata.
+                SparkPoint does not claim an issuer or &quot;native&quot; status — verify the mint in
+                your wallet before signing.
+              </div>
 
-        {error && <Notice tone="caution">{error}</Notice>}
+              {build.withdrawsAllShares && (
+                <FlowNotice tone="caution">
+                  Kamino&apos;s public API always builds a <b>withdraw-ALL-shares</b> transaction. This
+                  one only proceeds because the amount you entered equals your current full share
+                  balance; partial withdraws are refused. If your balance changed, go back and review
+                  again — nothing has been signed yet.
+                </FlowNotice>
+              )}
 
-        {phase === "idle" || phase === "building" ? (
-          <>
-            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-              <div className="field">
-                <label htmlFor="kamino-vault">Vault</label>
-                <select
-                  id="kamino-vault"
-                  className="input"
-                  value={vaultAddress}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setVaultAddress(next);
-                    reset();
-                    const nextMeta = findKaminoVault(next);
-                    if (wallet && nextMeta) {
-                      void loadBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals);
-                    }
-                  }}
-                >
-                  {KAMINO_VAULTS.map((vault) => (
-                    <option key={vault.address} value={vault.address}>
-                      {vault.name} · {vault.assetSymbol}
-                    </option>
+              <details style={{ marginTop: 12 }} open>
+                <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                  Instructions in this transaction ({review.instructions.length})
+                </summary>
+                <ol style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.6 }}>
+                  {review.instructions.map((instruction, index) => (
+                    <li key={`${instruction.programId}-${index}`}>
+                      <b>{instruction.programLabel}</b> · {instruction.instruction}
+                      <span style={{ color: MUTED }}> ({instruction.accountCount} accounts)</span>
+                    </li>
                   ))}
-                </select>
+                </ol>
+              </details>
+
+              <FlowNotice tone="caution">
+                Associated-token-account rent ({formatLamports(review.tokenAccountRentLamports)} SOL) is
+                locked while a new token account exists, not a Kamino or SparkPoint fee. The wSOL account
+                is closed on withdraw; the share account stays until you close it.
+              </FlowNotice>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+                At signing SparkPoint refreshes the blockhash and adds a compute-unit limit (from a fresh
+                simulation) plus a small priority fee, so your wallet cannot substitute its 200,000 CU
+                default. The added limit and fee are shown after you submit. This transaction expires in
+                about a minute; if it expires, go back and review again — the amount and fee may have moved.
               </div>
 
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["deposit", "withdraw"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`pill${mode === option ? "" : " ghosty"}`}
-                    onClick={() => {
-                      setMode(option);
-                      reset();
-                    }}
-                    style={{ cursor: "pointer", textTransform: "capitalize" }}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
+              {error && <FlowNotice tone="caution">{error}</FlowNotice>}
 
-              <div className="field">
-                <label htmlFor="kamino-amount">
-                  {mode === "deposit" ? `Amount to deposit (${meta.assetSymbol})` : "Vault shares to withdraw"}
-                </label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    id="kamino-amount"
-                    className="input"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    style={{ flex: 1 }}
+              <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-md"
+                  onClick={reset}
+                  disabled={phase === "submitting" || phase === "confirming"}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-md"
+                  onClick={() => void confirm()}
+                  disabled={phase !== "review"}
+                >
+                  {phase === "submitting"
+                    ? "Waiting for your wallet…"
+                    : phase === "confirming"
+                      ? "Confirming on-chain…"
+                      : phase === "confirmed"
+                        ? "Confirmed"
+                        : phase === "failed"
+                          ? "Failed"
+                          : phase === "expired"
+                            ? "Expired · review again"
+                            : "Confirm in wallet"}
+                </button>
+              </div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+                Your wallet shows its own confirmation and is the only signer. SparkPoint cannot sign,
+                submit or move these funds. {meta.assetSymbol} stays in the Kamino vault under your wallet.
+              </div>
+            </FlowCard>
+          )}
+
+          {signature &&
+            (phase === "confirming" || phase === "confirmed" || phase === "failed" || phase === "expired") && (
+            <FlowCard testId="kamino-live-done">
+              <FlowSectionTitle>
+                {phase === "confirming"
+                  ? "Broadcasting · waiting for confirmation"
+                  : phase === "failed"
+                    ? "Transaction failed on-chain"
+                    : phase === "expired"
+                      ? "Transaction expired — nothing was spent"
+                      : signatureOutcomeState === "confirmed"
+                        ? "Transaction confirmed"
+                        : "Submitted · confirmation pending"}
+              </FlowSectionTitle>
+              <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>
+                Signature <span className="mono" style={{ wordBreak: "break-all" }}>{signature}</span>
+              </div>
+              {sendResult?.computeBudgetAdded && (
+                <div style={{ marginTop: 10 }}>
+                  <SummaryBox
+                    rows={[
+                      {
+                        key: "compute",
+                        label: "Compute limit added",
+                        value: `${(sendResult.computeUnitLimit ?? 0).toLocaleString("en-US")} CU${
+                          sendResult.simulatedUnits
+                            ? ` (simulated ${sendResult.simulatedUnits.toLocaleString("en-US")})`
+                            : ""
+                        }`,
+                      },
+                      {
+                        key: "priority",
+                        label: "Priority fee added",
+                        value: `${sendResult.priorityFeeMicroLamports?.toString() ?? "0"} µlamports/CU`,
+                      },
+                    ]}
+                    testId="kamino-send-summary"
                   />
-                  {maxAmount && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(maxAmount)}>
-                      Max
-                    </button>
-                  )}
                 </div>
-                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
-                  {mode === "deposit" ? (
-                    balanceStatus === "error" ? (
-                      <span style={{ color: "var(--caution)" }}>
-                        Could not read your wallet balance.{" "}
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          style={{ padding: "0 6px", height: "auto", fontSize: 11.5 }}
-                          onClick={() => {
-                            if (wallet) {
-                              void loadBalance(wallet, meta.assetMint, meta.assetDecimals);
-                            }
-                          }}
-                        >
-                          Retry
-                        </button>
-                      </span>
-                    ) : balanceStatus === "ready" && balanceText ? (
-                      `Wallet balance ≈ ${balanceText} ${meta.assetSymbol}`
-                    ) : (
-                      "Reading your wallet balance…"
-                    )
-                  ) : position ? (
-                    `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
-                  ) : (
-                    "No position read yet for this vault."
-                  )}
-                </div>
-                {isSolDeposit && (
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
-                    Max reserves ≈ {formatLamports(depositReserve)} SOL for network/priority fees,
-                    token-account rent and a 0.005 SOL safety buffer.
-                  </div>
-                )}
-                {withdrawBlocked && (
-                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
-                    No shares to withdraw in this vault — withdraw is disabled.
-                  </div>
-                )}
-                {mode === "withdraw" && !withdrawBlocked && (
-                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4, lineHeight: 1.5 }}>
-                    Kamino&apos;s public API only builds a <b>withdraw-ALL-shares</b> transaction. Enter
-                    your full share balance ({formatTokenAmount(positionShares, meta.sharesDecimals)}{" "}
-                    shares) or press Max; partial withdraws are refused.
-                  </div>
-                )}
-                {withdrawPartial && (
-                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
-                    That is a partial amount. Use Max (or type your full share balance) to review.
-                  </div>
-                )}
-              </div>
-            </div>
+              )}
+              {phase === "failed" && (
+                <FlowNotice tone="caution">
+                  The network reported this transaction as failed{sendResult?.error ? `: ${sendResult.error}` : ""}.
+                  Nothing was credited to your position. Check the explorer for the exact error.
+                </FlowNotice>
+              )}
+              {phase === "expired" && (
+                <FlowNotice tone="caution">
+                  The transaction&apos;s blockhash expired before it landed and the network never
+                  processed it — <b>nothing was spent</b>. Go back and review again; the amount and fee
+                  may have moved.
+                </FlowNotice>
+              )}
+              {phase === "confirmed" && signatureOutcomeState === "pending" && (
+                <FlowNotice tone="caution">
+                  The wallet submitted the transaction, but the RPC has not confirmed it yet. Refresh
+                  the position to check again — this is not a success claim.
+                </FlowNotice>
+              )}
+              <a
+                href={`https://solscan.io/tx/${signature}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-outline btn-sm"
+                style={{ marginTop: 10 }}
+              >
+                View on Solscan <Icon name="ext" size={11} />
+              </a>
+            </FlowCard>
+          )}
 
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              style={{ width: "100%", marginTop: 14 }}
-              disabled={!canReview}
-              onClick={() => void buildTransaction()}
-            >
-              {phase === "building" ? "Building unsigned transaction…" : "Review transaction"}
-            </button>
-          </>
-        ) : null}
+          {wallet && (
+            <FlowCard testId="kamino-live-position">
+              <FlowSectionTitle>Your Kamino position</FlowSectionTitle>
+              {positions.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>
+                  No curated Kamino position read for this wallet yet.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                  {positions.map((row) => (
+                    <div key={row.vaultAddress} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
+                      <span>{row.vaultName}</span>
+                      <span className="tnum">
+                        {row.shares} shares
+                        {row.estimatedTokens ? ` ≈ ${row.estimatedTokens} ${row.assetSymbol ?? ""}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => void refreshPositions(wallet)}>
+                Refresh position
+              </button>
+            </FlowCard>
+          )}
+        </>
+      }
+    >
+      {!(review && phase !== "idle" && phase !== "building") && (
+        <>
+      {notice && <FlowNotice tone="caution">{notice}</FlowNotice>}
+
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label htmlFor="kamino-vault">Vault</label>
+        <select
+          id="kamino-vault"
+          className="input"
+          value={vaultAddress}
+          onChange={(event) => {
+            const next = event.target.value;
+            setVaultAddress(next);
+            reset();
+            const nextMeta = findKaminoVault(next);
+            if (wallet && nextMeta) {
+              void loadBalance(wallet, nextMeta.assetMint, nextMeta.assetDecimals);
+            }
+          }}
+        >
+          {KAMINO_VAULTS.map((vault) => (
+            <option key={vault.address} value={vault.address}>
+              {vault.name} · {vault.assetSymbol}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {phase !== "idle" && phase !== "building" && review && build && (
-        <div className="card card-pad" data-testid="kamino-live-review">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              Review {mode} · {build.amount} {mode === "deposit" ? meta.assetSymbol : "shares"}
-            </div>
-            <span style={{ fontSize: 11.5, color: MUTED }}>Unsigned · not sent</span>
-          </div>
+      <FlowModeToggle mode={mode} onChange={(next) => { setMode(next); reset(); }} testId="kamino-live-action" />
 
-          <div style={{ display: "grid", gap: 5, marginTop: 12 }}>
-            <Row k="Vault" v={`${meta.name} (${short(meta.address, 6, 6)})`} />
-            <Row
-              k={mode === "deposit" ? "You pay" : "You redeem"}
-              v={`${build.amount} ${mode === "deposit" ? meta.assetSymbol : "shares"}`}
-            />
-            <Row
-              k="You receive (estimate)"
-              v={
-                build.estimate
-                  ? `≈ ${build.estimate} ${build.estimateUnit === "shares" ? "shares" : meta.assetSymbol}`
-                  : "unavailable"
-              }
-            />
-            <Row k="Vault APY (Kamino)" v={apyPercent(build.apy) ?? "unavailable"} />
-            <Row
-              k="Vault fees"
-              v={`${(meta.managementFeeBps / 100).toFixed(2)}% mgmt · ${(meta.performanceFeeBps / 100).toFixed(2)}% perf`}
-            />
-            <Row k="SparkPoint fee" v="0% — none on a direct deposit" tone="gain" />
-          </div>
 
-          <div className="divider" style={{ margin: "12px 0" }} />
-
-          <div style={{ display: "grid", gap: 5 }}>
-            <Row k="Fee payer / owner" v={short(review.feePayer, 8, 8)} />
-            <Row k="Asset" v={kaminoAssetMintLabel(meta)} />
-            <Row k="Share mint" v={short(meta.sharesMint, 8, 8)} />
-            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-              Asset symbol, mint and token program come from Kamino&apos;s vault metadata. SparkPoint
-              does not claim an issuer or &quot;native&quot; status — verify the mint in your wallet
-              before signing.
-            </div>
-            <Row k="Min deposit (vault)" v={`${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}`} />
-            <Row k="Min withdraw (vault)" v={`${build.vaultLimits.minWithdrawAmount} shares`} />
-            {build.vaultLimits.depositCap && (
-              <Row k="Vault deposit cap" v={`${build.vaultLimits.depositCap} ${meta.assetSymbol}`} />
-            )}
-            {build.vaultLimits.remainingDeposit && (
-              <Row k="Vault cap remaining" v={`${build.vaultLimits.remainingDeposit} ${meta.assetSymbol}`} />
-            )}
-            <Row k="kVault program" v={short(review.instructions.find((ix) => ix.programLabel === "Kamino kVault")?.programId ?? "—", 8, 8)} />
-            <Row k="Signatures" v={String(review.signatures)} />
-            <Row k="Network fee" v={`≈ ${formatLamports(review.networkFeeLamports)} SOL`} />
-            {review.priorityFeeLamports > 0n && (
-              <Row k="Priority fee" v={`${formatLamports(review.priorityFeeLamports)} SOL`} />
-            )}
-            <Row
-              k="New token accounts"
-              v={`${review.tokenAccountCreations} · ≈ ${formatLamports(review.tokenAccountRentLamports)} SOL rent`}
-              tone="caution"
-            />
-            {review.transferredLamports > 0n && (
-              <Row k="SOL wrapped in this tx" v={`${formatLamports(review.transferredLamports)} SOL`} />
-            )}
-          </div>
-
-          {build.withdrawsAllShares && (
-            <Notice tone="caution">
-              Kamino&apos;s public API always builds a <b>withdraw-ALL-shares</b> transaction. This
-              one only proceeds because the amount you entered equals your current full share
-              balance; partial withdraws are refused. If your balance changed, go back and review
-              again — nothing has been signed yet.
-            </Notice>
-          )}
-
-          <details style={{ marginTop: 12 }} open>
-            <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
-              Instructions in this transaction ({review.instructions.length})
-            </summary>
-            <ol style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.6 }}>
-              {review.instructions.map((instruction, index) => (
-                <li key={`${instruction.programId}-${index}`}>
-                  <b>{instruction.programLabel}</b> · {instruction.instruction}
-                  <span style={{ color: MUTED }}> ({instruction.accountCount} accounts)</span>
-                </li>
-              ))}
-            </ol>
-          </details>
-
-          <Notice tone="caution">
-            Associated-token-account rent ({formatLamports(review.tokenAccountRentLamports)} SOL) is
-            locked while a new token account exists, not a Kamino or SparkPoint fee. The wSOL account
-            is closed on withdraw; the share account stays until you close it.
-          </Notice>
-          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
-            At signing SparkPoint refreshes the blockhash and adds a compute-unit limit (from a fresh
-            simulation) plus a small priority fee, so your wallet cannot substitute its 200,000 CU
-            default. The added limit and fee are shown after you submit. This transaction expires in
-            about a minute; if it expires, go back and review again — the amount and fee may have moved.
-          </div>
-
-          {error && <Notice tone="caution">{error}</Notice>}
-
-          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btn btn-ghost btn-md"
-              onClick={reset}
-              disabled={phase === "submitting" || phase === "confirming"}
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-md"
-              onClick={() => void confirm()}
-              disabled={phase !== "review"}
-            >
-              {phase === "submitting"
-                ? "Waiting for your wallet…"
-                : phase === "confirming"
-                  ? "Confirming on-chain…"
-                  : phase === "confirmed"
-                    ? "Confirmed"
-                    : phase === "failed"
-                      ? "Failed"
-                      : phase === "expired"
-                        ? "Expired · review again"
-                        : "Confirm in wallet"}
-            </button>
-          </div>
-          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
-            Your wallet shows its own confirmation and is the only signer. SparkPoint cannot sign,
-            submit or move these funds. {meta.assetSymbol} stays in the Kamino vault under your wallet.
-          </div>
-        </div>
+      {!wallet && (
+        <FlowNotice tone="info">
+          Phantom, Solflare or any injected Solana wallet. Connecting reads your public address only;
+          it does not sign anything.
+        </FlowNotice>
       )}
 
-      {signature &&
-        (phase === "confirming" || phase === "confirmed" || phase === "failed" || phase === "expired") && (
-        <div className="card card-pad" data-testid="kamino-live-done">
-          <div style={{ fontSize: 15, fontWeight: 600 }}>
-            {phase === "confirming"
-              ? "Broadcasting · waiting for confirmation"
-              : phase === "failed"
-                ? "Transaction failed on-chain"
-                : phase === "expired"
-                  ? "Transaction expired — nothing was spent"
-                  : signatureOutcomeState === "confirmed"
-                    ? "Transaction confirmed"
-                    : "Submitted · confirmation pending"}
-          </div>
-          <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4 }}>
-            Signature <span className="mono" style={{ wordBreak: "break-all" }}>{signature}</span>
-          </div>
-          {sendResult?.computeBudgetAdded && (
-            <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-              <Row
-                k="Compute limit added"
-                v={`${(sendResult.computeUnitLimit ?? 0).toLocaleString("en-US")} CU${
-                  sendResult.simulatedUnits ? ` (simulated ${sendResult.simulatedUnits.toLocaleString("en-US")})` : ""
-                }`}
-              />
-              <Row
-                k="Priority fee added"
-                v={`${sendResult.priorityFeeMicroLamports?.toString() ?? "0"} µlamports/CU`}
-              />
-            </div>
-          )}
-          {phase === "failed" && (
-            <Notice tone="caution">
-              The network reported this transaction as failed{sendResult?.error ? `: ${sendResult.error}` : ""}.
-              Nothing was credited to your position. Check the explorer for the exact error.
-            </Notice>
-          )}
-          {phase === "expired" && (
-            <Notice tone="caution">
-              The transaction&apos;s blockhash expired before it landed and the network never
-              processed it — <b>nothing was spent</b>. Go back and review again; the amount and fee
-              may have moved.
-            </Notice>
-          )}
-          {phase === "confirmed" && signatureOutcomeState === "pending" && (
-            <Notice tone="caution">
-              The wallet submitted the transaction, but the RPC has not confirmed it yet. Refresh
-              the position to check again — this is not a success claim.
-            </Notice>
-          )}
-          <a
-            href={`https://solscan.io/tx/${signature}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-outline btn-sm"
-            style={{ marginTop: 10 }}
-          >
-            View on Solscan <Icon name="ext" size={11} />
-          </a>
-        </div>
-      )}
-
-      {wallet && (
-        <div className="card card-pad" data-testid="kamino-live-position">
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Your Kamino position</div>
-          {positions.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>
-              No curated Kamino position read for this wallet yet.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {positions.map((row) => (
-                <div key={row.vaultAddress} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
-                  <span>{row.vaultName}</span>
-                  <span className="tnum">
-                    {row.shares} shares
-                    {row.estimatedTokens ? ` ≈ ${row.estimatedTokens} ${row.assetSymbol ?? ""}` : ""}
-                  </span>
+      <div style={{ marginTop: 12 }}>
+        <AmountField
+          id="kamino-amount"
+          label={copy.amountLabel}
+          assetSymbol={mode === "deposit" ? meta.assetSymbol : "shares"}
+          value={amount}
+          onChange={(event) => setAmount(event)}
+          onMax={maxAmount ? () => setAmount(maxAmount) : undefined}
+          helper={
+            mode === "deposit" ? (
+              balanceStatus === "error" ? (
+                <span style={{ color: "var(--caution)" }}>
+                  Could not read your wallet balance.{" "}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: "0 6px", height: "auto", fontSize: 11.5 }}
+                    onClick={() => {
+                      if (wallet) {
+                        void loadBalance(wallet, meta.assetMint, meta.assetDecimals);
+                      }
+                    }}
+                  >
+                    Retry
+                  </button>
+                </span>
+              ) : balanceStatus === "ready" && balanceText ? (
+                `Wallet balance ≈ ${balanceText} ${meta.assetSymbol}`
+              ) : (
+                "Reading your wallet balance…"
+              )
+            ) : position ? (
+              `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
+            ) : (
+              "No position read yet for this vault."
+            )
+          }
+          extra={
+            <>
+              {isSolDeposit && (
+                <div className="hint">
+                  Max reserves ≈ {formatLamports(depositReserve)} SOL for network/priority fees,
+                  token-account rent and a 0.005 SOL safety buffer.
                 </div>
-              ))}
-            </div>
-          )}
-          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => void refreshPositions(wallet)}>
-            Refresh position
-          </button>
-        </div>
+              )}
+              {withdrawBlocked && (
+                <div className="hint" style={{ color: "var(--caution)" }}>
+                  No shares to withdraw in this vault — withdraw is disabled.
+                </div>
+              )}
+              {mode === "withdraw" && !withdrawBlocked && (
+                <div className="hint" style={{ color: "var(--caution)", lineHeight: 1.5 }}>
+                  Kamino&apos;s public API only builds a <b>withdraw-ALL-shares</b> transaction. Enter
+                  your full share balance ({formatTokenAmount(positionShares, meta.sharesDecimals)}{" "}
+                  shares) or press Max; partial withdraws are refused.
+                </div>
+              )}
+              {withdrawPartial && (
+                <div className="hint" style={{ color: "var(--caution)" }}>
+                  That is a partial amount. Use Max (or type your full share balance) to review.
+                </div>
+              )}
+            </>
+          }
+        />
+      </div>
+
+      {error && !review && <FlowNotice tone="caution">{error}</FlowNotice>}
+
+      <SummaryBox rows={summaryRows} />
+
+      <FlowDisclaimer>{copy.disclaimer}</FlowDisclaimer>
+      <FlowPrimary
+        onClick={() => {
+          if (!wallet) {
+            void connect();
+            return;
+          }
+          void buildTransaction();
+        }}
+        disabled={!wallet ? phase === "building" : !canReview}
+      >
+        {copy.primaryLabel}
+      </FlowPrimary>
+      <FlowNextStep>{copy.nextStep}</FlowNextStep>
+        </>
       )}
-    </div>
+    </VaultFlowPage>
   );
 }

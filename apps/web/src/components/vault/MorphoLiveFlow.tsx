@@ -16,9 +16,25 @@ import { useAccount, usePublicClient, useReadContract, useReadContracts, useSwit
 import { base } from "wagmi/chains";
 import { encodeFunctionData, erc20Abi, formatUnits, parseAbi, type Address } from "viem";
 
-import { Icon } from "@/lib/icons";
 import { toHref } from "@/lib/nav";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  AmountField,
+  FlowCard,
+  FlowDisclaimer,
+  FlowModeToggle,
+  FlowNextStep,
+  FlowNotice,
+  FlowPrimary,
+  FlowSectionTitle,
+  SummaryBox,
+  VaultFlowPage,
+} from "@/components/vault/VaultFlow";
+import {
+  morphoFlowRows,
+  vaultFlowCopy,
+  type VaultFlowSummaryRow,
+} from "@/lib/vault/vaultFlow";
 import { sparkPointVaultAbi } from "@sparkpoint/shared/abis";
 import {
   buildMorphoDepositPlan,
@@ -55,50 +71,13 @@ function short(value: string, head = 6, tail = 4): string {
   return value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
-function Row({ k, v, tone }: { k: string; v: string; tone?: "caution" | "gain" }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-      <span style={{ color: MUTED }}>{k}</span>
-      <span
-        style={{
-          color: tone === "caution" ? "var(--caution)" : tone === "gain" ? "var(--gain)" : "var(--foreground)",
-          fontWeight: 500,
-          textAlign: "right",
-          wordBreak: "break-word",
-        }}
-      >
-        {v}
-      </span>
-    </div>
-  );
-}
-
-function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "caution" | "gain" }) {
-  const c = tone === "caution" ? "var(--caution)" : tone === "gain" ? "var(--gain)" : "var(--info)";
-  return (
-    <div
-      style={{
-        marginTop: 10,
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: c,
-        background: `color-mix(in srgb, ${c} 8%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 26%, transparent)`,
-        borderRadius: 10,
-        padding: "8px 10px",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 export interface MorphoLiveFlowProps {
   readonly vault: string | null;
   readonly chain: string | null;
   readonly asset: string | null;
   readonly mode: LiveEarnMode;
   readonly initialAmount: string | null;
+  readonly notice?: string | null;
 }
 
 interface GasEstimate {
@@ -108,13 +87,13 @@ interface GasEstimate {
   readonly error?: string;
 }
 
-export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initialAmount }: MorphoLiveFlowProps) {
+export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initialAmount, notice }: MorphoLiveFlowProps) {
   const meta: MorphoVaultMeta = useMemo(
     () => findMorphoVault(vault) ?? MORPHO_VAULTS[0]!,
     [vault],
   );
   const { address, chainId, isConnected } = useAccount();
-  const { switchChain, isPending: switching } = useSwitchChain();
+  const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient({ chainId: READ_CHAIN_ID });
 
   const [mode, setMode] = useState<LiveEarnMode>(initialMode);
@@ -381,283 +360,324 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
       ? (Number(gas.main + (gas.approve ?? 0n)) * Number(gas.priceGwei)) / 1e9
       : undefined;
 
+  const router = useRouter();
+  const copy = vaultFlowCopy({
+    mode,
+    assetSymbol: meta.assetSymbol,
+    vaultName: `Morpho ${meta.name}`,
+    primaryLabel: !isConnected
+      ? "Connect your wallet"
+      : wrongChain
+        ? "Switch to Base"
+        : "Review transaction",
+  });
+
+  const receiveEstimate =
+    mode === "deposit"
+      ? previewDepositShares === undefined
+        ? "estimated after you enter an amount"
+        : `≈ ${formatUnits(previewDepositShares, shareDecimals)} ${meta.symbol} shares`
+      : previewRedeemAssets === undefined
+        ? "estimated after you enter an amount"
+        : `≈ ${formatUnits(previewRedeemAssets, meta.assetDecimals)} ${meta.assetSymbol}`;
+  const summaryRows = morphoFlowRows({
+    mode,
+    receive: receiveEstimate,
+    netApy: null,
+    maxDeposit: maxDeposit === undefined ? null : `${formatUnits(maxDeposit, meta.assetDecimals)} ${meta.assetSymbol}`,
+    maxRedeem: maxRedeem === undefined ? null : `${formatUnits(maxRedeem, shareDecimals)} ${meta.symbol} shares`,
+    assetSymbol: meta.assetSymbol,
+  });
+
+  const reviewRows: VaultFlowSummaryRow[] = plan
+    ? [
+        { key: "vault", label: "Vault", value: `${meta.name} (${short(meta.address)})` },
+        { key: "signer", label: "Signing account", value: short(plan.account, 8, 6) },
+        {
+          key: "pay",
+          label: plan.kind === "deposit" ? "You deposit" : "You redeem",
+          value: `${amount} ${plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}`,
+        },
+        {
+          key: "receive",
+          label: "You receive (estimate)",
+          value:
+            plan.kind === "deposit"
+              ? previewDepositShares === undefined
+                ? "…"
+                : `${formatUnits(previewDepositShares, shareDecimals)} ${meta.symbol}`
+              : previewRedeemAssets === undefined
+                ? "…"
+                : `${formatUnits(previewRedeemAssets, meta.assetDecimals)} ${meta.assetSymbol}`,
+        },
+        {
+          key: "asset",
+          label: "Asset",
+          value: `${meta.assetSymbol} (${liveAssetDecimals ?? meta.assetDecimals} dp) · ${short(liveAsset ?? meta.asset)}`,
+        },
+        {
+          key: "maxDeposit",
+          label: "Vault max deposit (now)",
+          value: maxDeposit === undefined ? "…" : `${formatUnits(maxDeposit, meta.assetDecimals)} ${meta.assetSymbol}`,
+        },
+        ...(mode === "withdraw"
+          ? [
+              {
+                key: "maxRedeem",
+                label: "Your max redeem",
+                value: maxRedeem === undefined ? "…" : `${formatUnits(maxRedeem, shareDecimals)} ${meta.symbol} shares`,
+              },
+            ]
+          : []),
+        { key: "shares", label: "Shares", value: `${meta.symbol} (${shareDecimals} dp)` },
+        {
+          key: "total",
+          label: "Vault total assets",
+          value: totalAssets === undefined ? "…" : formatUnits(totalAssets, meta.assetDecimals),
+        },
+        { key: "fee", label: "SparkPoint fee", value: "0% — none on a direct deposit", tone: "gain" },
+        ...(plan.kind === "deposit"
+          ? [
+              {
+                key: "approve",
+                label: "Approve leg",
+                value: plan.needsApprove
+                  ? `Approve ${meta.assetSymbol} (one extra wallet step)`
+                  : "Not needed — allowance is enough",
+                tone: plan.needsApprove ? ("caution" as const) : ("gain" as const),
+              },
+            ]
+          : []),
+        gas?.error
+          ? { key: "gas", label: "Gas estimate", value: gas.error, tone: "caution" as const }
+          : totalGas
+            ? { key: "gasUnits", label: "Gas units (est.)", value: totalGas }
+            : { key: "gas", label: "Gas estimate", value: "…" },
+        ...(totalGas
+          ? [
+              {
+                key: "gasFee",
+                label: "Network fee (est.)",
+                value:
+                  gasCostEth !== undefined
+                    ? `≈ ${gasCostEth.toFixed(6)} ETH`
+                    : `@ ${gas?.priceGwei ?? "?"} gwei`,
+              },
+            ]
+          : []),
+      ]
+    : [];
+
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div className="card card-pad" data-testid="morpho-live-flow">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>Morpho · {meta.name}</div>
-            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>
-              Direct ERC-4626 {mode} on Base · {meta.assetSymbol} · {meta.symbol} shares
-            </div>
-          </div>
-          <span className="pill" style={{ alignSelf: "flex-start", fontSize: 11.5 }}>
-            Live
-          </span>
-        </div>
+    <VaultFlowPage
+      backHref={toHref("vault")}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      riskTier={2}
+      testId="morpho-live-flow"
+      footer={
+        <>
+          {plan && (
+            <FlowCard testId="morpho-live-review">
+              <FlowSectionTitle>
+                Review {plan.kind} · {amount} {plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}
+              </FlowSectionTitle>
+              <SummaryBox rows={reviewRows} testId="morpho-review-summary" />
 
-        {!isConnected ? (
-          <Notice>
-            Connect an EVM wallet on <b>Base</b> to continue. Sign-in and connecting never move funds.
-          </Notice>
-        ) : wrongChain ? (
-          <Notice tone="caution">
-            Your wallet is on chain {chainId}. Morpho live deposits in this slice are on Base only.{" "}
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              style={{ marginLeft: 8 }}
-              disabled={switching}
-              onClick={() => switchChain({ chainId: READ_CHAIN_ID })}
-            >
-              {switching ? "Switching…" : "Switch to Base"}
-            </button>
-          </Notice>
-        ) : (
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-            <span style={{ color: MUTED }}>Connected</span>
-            <span className="mono">{address ? short(address, 8, 6) : "—"}</span>
-          </div>
-        )}
-
-        {chain && chain !== "base" && (
-          <Notice tone="caution">
-            This link came from {chain}. Live Morpho deposits are on Base only for now; the
-            cross-chain option remains a preview in Sparky.
-          </Notice>
-        )}
-        {asset && asset.toUpperCase() !== meta.assetSymbol.toUpperCase() && (
-          <Notice tone="caution">
-            This vault accepts {meta.assetSymbol}, not {asset}. Amounts below are in {meta.assetSymbol}.
-          </Notice>
-        )}
-
-        {error && <Notice tone="caution">{error}</Notice>}
-
-        {!plan ? (
-          <>
-            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["deposit", "withdraw"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`pill${mode === option ? "" : " ghosty"}`}
-                    onClick={() => {
-                      setAmount(morphoAmountAfterModeChange(mode, option, amount));
-                      setMode(option);
-                      setPlan(null);
-                      setGas(null);
-                      setError(null);
-                    }}
-                    style={{ cursor: "pointer", textTransform: "capitalize" }}
+              {accountChanged && (
+                <FlowNotice tone="caution">
+                  Your wallet account changed after review. This plan was prepared for{" "}
+                  {short(plan.account)}; reconnect that account or go back and review again. Nothing
+                  will be signed from the new account.
+                </FlowNotice>
+              )}
+              <FlowNotice tone="caution">
+                Review only until you confirm. Your wallet signs
+                {plan.kind === "deposit" && plan.needsApprove ? " the approve, then the deposit" : ""};
+                SparkPoint never signs or submits.
+              </FlowNotice>
+              {execCtl.error && <FlowNotice tone="caution">{execCtl.error}</FlowNotice>}
+              {execCtl.isDone && execCtl.txHash && (
+                <FlowNotice tone="gain">
+                  Confirmed:{" "}
+                  <a
+                    href={`https://basescan.org/tx/${execCtl.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--primary)" }}
                   >
-                    {option}
-                  </button>
-                ))}
-              </div>
-
-              <div className="field">
-                <label htmlFor="morpho-amount">
-                  {mode === "deposit" ? `Amount to deposit (${meta.assetSymbol})` : `Shares to redeem (${meta.symbol} shares, not ${meta.assetSymbol})`}
-                </label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    id="morpho-amount"
-                    className="input"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  {!withdrawBlocked && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(maxAmount)}>
-                      Max
-                    </button>
-                  )}
-                </div>
-                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>
-                  {mode === "deposit"
-                    ? `Wallet ${meta.assetSymbol} ≈ ${formatUnits(assetBalance, meta.assetDecimals)}`
-                    : `Position ≈ ${formatUnits(shareBalance, shareDecimals)} ${meta.symbol} shares${
-                        positionAssets !== undefined ? ` ≈ ${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}` : ""
-                      }`}
-                </div>
-                {withdrawBlocked && (
-                  <div style={{ fontSize: 11.5, color: "var(--caution)", marginTop: 4 }}>
-                    No shares to redeem in this vault — withdraw is disabled.
-                  </div>
-                )}
-              </div>
-
-              {mode === "deposit" && amountRaw !== null && (
-                <div style={{ fontSize: 12, color: MUTED }}>
-                  You receive ≈{" "}
-                  {previewDepositShares === undefined
-                    ? "…"
-                    : formatUnits(previewDepositShares, shareDecimals)}{" "}
-                  {meta.symbol} shares
-                </div>
+                    {short(execCtl.txHash)} ↗
+                  </a>
+                </FlowNotice>
               )}
-              {mode === "withdraw" && amountRaw !== null && (
-                <div style={{ fontSize: 12, color: MUTED }}>
-                  You receive ≈{" "}
-                  {previewRedeemAssets === undefined
-                    ? "…"
-                    : formatUnits(previewRedeemAssets, meta.assetDecimals)}{" "}
-                  {meta.assetSymbol}
-                </div>
-              )}
-            </div>
 
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              style={{ width: "100%", marginTop: 14 }}
-              disabled={!isConnected || wrongChain || amount.trim() === "" || withdrawBlocked}
-              onClick={() => void review()}
-            >
-              Review transaction
-            </button>
-          </>
-        ) : (
-          <div data-testid="morpho-live-review" style={{ marginTop: 14, display: "grid", gap: 5 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Review {plan.kind} · {amount} {plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}
-            </div>
-            <Row k="Vault" v={`${meta.name} (${short(meta.address)})`} />
-            <Row k="Signing account" v={short(plan.account, 8, 6)} />
-            <Row k={plan.kind === "deposit" ? "You deposit" : "You redeem"} v={`${amount} ${plan.kind === "deposit" ? meta.assetSymbol : `${meta.symbol} shares`}`} />
-            <Row
-              k="You receive (estimate)"
-              v={
-                plan.kind === "deposit"
-                  ? previewDepositShares === undefined
-                    ? "…"
-                    : `${formatUnits(previewDepositShares, shareDecimals)} ${meta.symbol}`
-                  : previewRedeemAssets === undefined
-                    ? "…"
-                    : `${formatUnits(previewRedeemAssets, meta.assetDecimals)} ${meta.assetSymbol}`
-              }
-            />
-            <Row
-              k="Asset"
-              v={`${meta.assetSymbol} (${liveAssetDecimals ?? meta.assetDecimals} dp) · ${short(liveAsset ?? meta.asset)}`}
-            />
-            <Row
-              k="Vault max deposit (now)"
-              v={maxDeposit === undefined ? "…" : `${formatUnits(maxDeposit, meta.assetDecimals)} ${meta.assetSymbol}`}
-            />
-            {mode === "withdraw" && (
-              <Row
-                k="Your max redeem"
-                v={maxRedeem === undefined ? "…" : `${formatUnits(maxRedeem, shareDecimals)} ${meta.symbol} shares`}
-              />
-            )}
-            <Row k="Shares" v={`${meta.symbol} (${shareDecimals} dp)`} />
-            <Row k="Vault total assets" v={totalAssets === undefined ? "…" : formatUnits(totalAssets, meta.assetDecimals)} />
-            <Row k="SparkPoint fee" v="0% — none on a direct deposit" tone="gain" />
-            {plan.kind === "deposit" && (
-              <Row
-                k="Approve leg"
-                v={plan.needsApprove ? `Approve ${meta.assetSymbol} (one extra wallet step)` : "Not needed — allowance is enough"}
-                tone={plan.needsApprove ? "caution" : "gain"}
-              />
-            )}
-            {gas?.error ? (
-              <Row k="Gas estimate" v={gas.error} tone="caution" />
-            ) : totalGas ? (
-              <>
-                <Row k="Gas units (est.)" v={totalGas} />
-                <Row
-                  k="Network fee (est.)"
-                  v={gasCostEth !== undefined ? `≈ ${gasCostEth.toFixed(6)} ETH` : `@ ${gas?.priceGwei ?? "?"} gwei`}
-                />
-              </>
-            ) : (
-              <Row k="Gas estimate" v="…" />
-            )}
-
-            {accountChanged && (
-              <Notice tone="caution">
-                Your wallet account changed after review. This plan was prepared for{" "}
-                {short(plan.account)}; reconnect that account or go back and review again. Nothing
-                will be signed from the new account.
-              </Notice>
-            )}
-            <Notice tone="caution">
-              Review only until you confirm. Your wallet signs{plan.kind === "deposit" && plan.needsApprove ? " the approve, then the deposit" : ""}; SparkPoint never signs or submits.
-            </Notice>
-            {execCtl.error && <Notice tone="caution">{execCtl.error}</Notice>}
-            {execCtl.isDone && execCtl.txHash && (
-              <Notice tone="gain">
-                Confirmed:{" "}
-                <a
-                  href={`https://basescan.org/tx/${execCtl.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--primary)" }}
+              <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-ghost btn-md" onClick={resetPlan} disabled={execCtl.isBusy}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-md"
+                  onClick={() => {
+                    if (accountChanged) {
+                      setError(
+                        "Your wallet account changed after review. Go back and review again; nothing was signed.",
+                      );
+                      return;
+                    }
+                    execCtl.start();
+                  }}
+                  disabled={execCtl.isBusy || execCtl.isDone || accountChanged || wrongChain}
                 >
-                  {short(execCtl.txHash)} ↗
-                </a>
-              </Notice>
-            )}
+                  {execCtl.isBusy ? execCtl.label : execCtl.isDone ? "Confirmed" : "Confirm in wallet"}
+                </button>
+              </div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8, lineHeight: 1.5 }}>
+                {meta.assetSymbol} stays in the Morpho vault under your wallet. There is no SparkPoint
+                fee on this direct deposit; Morpho&apos;s own vault fee is disclosed by the vault.
+              </div>
+            </FlowCard>
+          )}
 
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <button type="button" className="btn btn-ghost btn-md" onClick={resetPlan} disabled={execCtl.isBusy}>
-                Back
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-md"
-                onClick={() => {
-                  if (accountChanged) {
-                    setError(
-                      "Your wallet account changed after review. Go back and review again; nothing was signed.",
-                    );
-                    return;
-                  }
-                  execCtl.start();
-                }}
-                disabled={execCtl.isBusy || execCtl.isDone || accountChanged || wrongChain}
-              >
-                {execCtl.isBusy ? execCtl.label : execCtl.isDone ? "Confirmed" : "Confirm in wallet"}
-              </button>
-            </div>
-            <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-              {meta.assetSymbol} stays in the Morpho vault under your wallet. There is no SparkPoint
-              fee on this direct deposit; Morpho&apos;s own vault fee is disclosed by the vault.
-            </div>
-          </div>
-        )}
-      </div>
+          {isConnected && (
+            <FlowCard>
+              <FlowSectionTitle>Your Morpho position</FlowSectionTitle>
+              <SummaryBox
+                rows={[
+                  { key: "shares", label: "Shares", value: `${formatUnits(shareBalance, shareDecimals)} ${meta.symbol}` },
+                  {
+                    key: "value",
+                    label: "Value",
+                    value:
+                      positionAssets === undefined
+                        ? "…"
+                        : `${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}`,
+                  },
+                  { key: "fee", label: "Vault fee", value: "Set by the vault's curator — see the vault on app.morpho.org" },
+                ]}
+                testId="morpho-position-summary"
+              />
+            </FlowCard>
+          )}
+        </>
+      }
+    >
+      {!plan && (
+        <>
+      {notice && <FlowNotice tone="caution">{notice}</FlowNotice>}
 
-      {isConnected && (
-        <div className="card card-pad">
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Your Morpho position</div>
-          <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
-            <Row k="Shares" v={`${formatUnits(shareBalance, shareDecimals)} ${meta.symbol}`} />
-            <Row
-              k="Value"
-              v={
-                positionAssets === undefined
-                  ? "…"
-                  : `${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}`
-              }
-            />
-            <Row k="Vault fee" v="Set by the vault's curator — see the vault on app.morpho.org" />
-          </div>
+      {!isConnected ? (
+        <FlowNotice tone="info">
+          Connect an EVM wallet on <b>Base</b> to continue. Sign-in and connecting never move funds.
+        </FlowNotice>
+      ) : wrongChain ? (
+        <FlowNotice tone="caution">
+          Your wallet is on chain {chainId}. Morpho live deposits in this slice are on Base only.
+        </FlowNotice>
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, marginBottom: 8 }}>
+          <span style={{ color: MUTED }}>Connected</span>
+          <span className="mono">{address ? short(address, 8, 6) : "—"}</span>
         </div>
       )}
 
-      <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-        <Icon name="info" size={12} /> Prefer the registry view?{" "}
-        <Link href={toHref("vault")} style={{ color: "var(--primary)" }}>
-          Back to Vault
-        </Link>
-        . The cross-chain Morpho receipt preview in Sparky is unchanged.
-      </div>
-    </div>
+      {chain && chain !== "base" && (
+        <FlowNotice tone="caution">
+          This link came from {chain}. Live Morpho deposits are on Base only for now; the cross-chain
+          option remains a preview in Sparky.
+        </FlowNotice>
+      )}
+      {asset && asset.toUpperCase() !== meta.assetSymbol.toUpperCase() && (
+        <FlowNotice tone="caution">
+          This vault accepts {meta.assetSymbol}, not {asset}. Amounts below are in {meta.assetSymbol}.
+        </FlowNotice>
+      )}
+
+          <FlowModeToggle
+            mode={mode}
+            onChange={(option) => {
+              setAmount(morphoAmountAfterModeChange(mode, option, amount));
+              setMode(option);
+              setPlan(null);
+              setGas(null);
+              setError(null);
+            }}
+            testId="morpho-live-action"
+          />
+
+          <AmountField
+            id="morpho-amount"
+            label={copy.amountLabel}
+            assetSymbol={mode === "deposit" ? meta.assetSymbol : "shares"}
+            value={amount}
+            onChange={(next) => setAmount(next)}
+            onMax={withdrawBlocked ? undefined : () => setAmount(maxAmount)}
+            helper={
+              mode === "deposit"
+                ? `Wallet ${meta.assetSymbol} ≈ ${formatUnits(assetBalance, meta.assetDecimals)}`
+                : `Position ≈ ${formatUnits(shareBalance, shareDecimals)} ${meta.symbol} shares${
+                    positionAssets !== undefined
+                      ? ` ≈ ${formatUnits(positionAssets, meta.assetDecimals)} ${meta.assetSymbol}`
+                      : ""
+                  }`
+            }
+            extra={
+              <>
+                {mode === "deposit" && amountRaw !== null && (
+                  <div className="hint">
+                    You receive ≈{" "}
+                    {previewDepositShares === undefined
+                      ? "…"
+                      : formatUnits(previewDepositShares, shareDecimals)}{" "}
+                    {meta.symbol} shares
+                  </div>
+                )}
+                {mode === "withdraw" && amountRaw !== null && (
+                  <div className="hint">
+                    You receive ≈{" "}
+                    {previewRedeemAssets === undefined
+                      ? "…"
+                      : formatUnits(previewRedeemAssets, meta.assetDecimals)}{" "}
+                    {meta.assetSymbol}
+                  </div>
+                )}
+                {withdrawBlocked && (
+                  <div className="hint" style={{ color: "var(--caution)" }}>
+                    No shares to redeem in this vault — withdraw is disabled.
+                  </div>
+                )}
+              </>
+            }
+          />
+
+          {error && <FlowNotice tone="caution">{error}</FlowNotice>}
+
+          <SummaryBox rows={summaryRows} />
+
+          <FlowDisclaimer>{copy.disclaimer}</FlowDisclaimer>
+          <FlowPrimary
+            onClick={() => {
+              if (!isConnected) {
+                router.push(toHref("connect"));
+                return;
+              }
+              if (wrongChain) {
+                switchChain({ chainId: READ_CHAIN_ID });
+                return;
+              }
+              void review();
+            }}
+            disabled={
+              isConnected &&
+              !wrongChain &&
+              (amount.trim() === "" || withdrawBlocked)
+            }
+          >
+            {copy.primaryLabel}
+          </FlowPrimary>
+          <FlowNextStep>{copy.nextStep}</FlowNextStep>
+        </>
+      )}
+    </VaultFlowPage>
   );
 }
