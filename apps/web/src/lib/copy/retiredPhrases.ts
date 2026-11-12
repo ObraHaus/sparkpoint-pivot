@@ -21,6 +21,9 @@
 
 /** Surfaces a user reads that describe Premium, brokers, SRK or revenue. */
 export const AUDITED_SOURCES = [
+  "src/components/vault/KaminoLiveFlow.tsx",
+  "src/components/vault/RheaLiveEarn.tsx",
+  "src/components/vault/CuratedBoard.tsx",
   "src/app/(app)/swap/page.tsx",
   "src/app/(app)/premium/page.tsx",
   "src/app/(app)/brokers/page.tsx",
@@ -95,6 +98,41 @@ export const RETIRED_PHRASES: readonly RetiredPhrase[] = [
     pattern: /run through Sparky/i,
     why: "the manual swap page now runs cross-chain swaps itself instead of deferring to chat",
     only: ["swap/page.tsx"],
+  },
+  {
+    pattern: /success claim/i,
+    why: "engineering voice; say the transaction is waiting for confirmation instead",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /in this build/i,
+    why: "internal build language must not appear in user-facing vault copy",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /admin only/i,
+    why: "dev/operator voice on a public surface; hide from users or use plain wording",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /position read/i,
+    why: "internal 'curated read' phrasing; say whether a position exists",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /Not on this page/i,
+    why: "internal routing note, not user copy",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /Live Rhea is off/i,
+    why: "engineering flag language; say Rhea is unavailable in plain words",
+    only: ["components/vault"],
+  },
+  {
+    pattern: /Nothing can be signed here/i,
+    why: "internal signing-gate voice",
+    only: ["components/vault"],
   },
 ] as const;
 

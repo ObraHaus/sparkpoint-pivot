@@ -758,8 +758,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
               )}
               {phase === "confirmed" && signatureOutcomeState === "pending" && (
                 <FlowNotice tone="caution">
-                  The wallet submitted the transaction, but the RPC has not confirmed it yet. Refresh
-                  the position to check again — this is not a success claim.
+                  Submitted — waiting for network confirmation. Refresh your position in a moment.
                 </FlowNotice>
               )}
               <a
@@ -779,7 +778,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
               <FlowSectionTitle>Your Kamino position</FlowSectionTitle>
               {positions.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>
-                  No curated Kamino position read for this wallet yet.
+                  No Kamino position yet.
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
@@ -874,7 +873,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
             ) : position ? (
               `Position ≈ ${position.shares} shares${position.estimatedTokens ? ` ≈ ${position.estimatedTokens} ${meta.assetSymbol}` : ""}`
             ) : (
-              "No position read yet for this vault."
+              "No position in this vault yet."
             )
           }
           extra={
