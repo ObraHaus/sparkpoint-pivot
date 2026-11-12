@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from ..amounts import bounded_smallest_units
-from .config import CrossChainAsset, CrossChainConfig
+from .addresses import is_valid_address
+from .config import AddressKind, CrossChainAsset, CrossChainConfig
 
 _ACTION_RE = re.compile(
     r"\b(?:swap|swaps|swapping|move|moves|moving|turn|turns|turning|convert|converts|"
@@ -50,6 +51,39 @@ _DEST_RE = re.compile(r"\b(?:into|to|for)\s+(?P<dest>.+)$", re.IGNORECASE)
 _CHAIN_MARKER_RE = re.compile(r"\b(?:on|in)\s+(?P<chain>[a-z][a-z ]{0,30})", re.IGNORECASE)
 _TRAILING_NOISE_RE = re.compile(r"\b(?:please|now|today|thanks|asap)\b.*$", re.IGNORECASE)
 
+#: Named recipients in the user's message. The bare word "NEAR" is a chain name, not an
+#: account — only an explicit ``*.near`` id, a 64-hex implicit account, or a 0x EVM address
+#: counts, and only when it matches the route's destination family.
+_NAMED_NEAR_RE = re.compile(r"\b[a-z0-9]+(?:[._-][a-z0-9]+)*\.near\b", re.IGNORECASE)
+_NAMED_NEAR_IMPLICIT_RE = re.compile(r"\b[0-9a-f]{64}\b")
+_NAMED_EVM_RE = re.compile(r"\b0x[0-9a-fA-F]{40}\b")
+
+
+def parse_named_recipient(message: str, address_kind: AddressKind) -> str | None:
+    """Return a destination address the user named, or ``None``.
+
+    Used to prefill the swap card so the user does not have to retype an account they
+    already wrote in chat (e.g. ``sparkpoint2026.near``).
+    """
+    if address_kind == "near":
+        match = _NAMED_NEAR_RE.search(message)
+        if match is not None:
+            candidate = match.group(0).lower()
+            return candidate if is_valid_address(candidate, "near") else None
+        implicit = _NAMED_NEAR_IMPLICIT_RE.search(message)
+        if implicit is not None:
+            candidate = implicit.group(0)
+            return candidate if is_valid_address(candidate, "near") else None
+        return None
+    if address_kind == "evm":
+        match = _NAMED_EVM_RE.search(message)
+        if match is None:
+            return None
+        candidate = match.group(0)
+        return candidate if is_valid_address(candidate, "evm") else None
+    return None
+
+
 
 @dataclass(frozen=True, slots=True)
 class CrossChainRequest:
@@ -60,6 +94,7 @@ class CrossChainRequest:
     amount: Decimal
     amount_raw: int
     message: str
+    recipient: str | None = None
 
     @property
     def amount_human(self) -> str:
@@ -199,6 +234,7 @@ def parse_cross_chain_request(message: str, config: CrossChainConfig) -> CrossCh
         amount=amount,
         amount_raw=amount_raw,
         message=message,
+        recipient=parse_named_recipient(text, destination.address_kind),
     )
 
 

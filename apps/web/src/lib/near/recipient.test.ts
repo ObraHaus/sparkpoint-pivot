@@ -71,3 +71,56 @@ test("no connected account of the matching family leaves the field empty", () =>
     { value: "", source: "none" },
   );
 });
+
+test("a recipient named in chat prefills a NEAR destination over a connected NEAR wallet", () => {
+  assert.deepEqual(
+    resolveCrossChainRecipient({
+      destinationKind: "near",
+      recipientOverride: null,
+      evmAddress: EVM,
+      nearAccountId: "connected.near",
+      namedRecipient: NEAR,
+    }),
+    { value: NEAR, source: "named" },
+  );
+});
+
+test("a named recipient also prefills when no NEAR wallet is connected", () => {
+  assert.deepEqual(
+    resolveCrossChainRecipient({
+      destinationKind: "near",
+      recipientOverride: null,
+      evmAddress: EVM,
+      nearAccountId: null,
+      namedRecipient: NEAR,
+    }),
+    { value: NEAR, source: "named" },
+  );
+});
+
+test("an explicit override still wins over a named recipient", () => {
+  assert.deepEqual(
+    resolveCrossChainRecipient({
+      destinationKind: "near",
+      recipientOverride: "someone.else.near",
+      evmAddress: EVM,
+      nearAccountId: "connected.near",
+      namedRecipient: NEAR,
+    }),
+    { value: "someone.else.near", source: "manual" },
+  );
+});
+
+test("blank named recipients are ignored so the connected wallet can still prefill", () => {
+  assert.deepEqual(
+    resolveCrossChainRecipient({
+      destinationKind: "near",
+      recipientOverride: null,
+      evmAddress: EVM,
+      nearAccountId: NEAR,
+      namedRecipient: "   ",
+    }),
+    { value: NEAR, source: "near" },
+  );
+});
+

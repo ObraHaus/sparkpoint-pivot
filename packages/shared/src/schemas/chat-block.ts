@@ -206,6 +206,7 @@ export const CrossChainQuoteBlockSchema = z
     unavailableReason: z.string().optional(),
     quotedAt: z.string().optional(),
     expiresHint: z.string().optional(),
+    recipient: z.string().min(1).optional(),
   })
   .strict();
 export type CrossChainQuoteBlock = z.infer<typeof CrossChainQuoteBlockSchema>;
