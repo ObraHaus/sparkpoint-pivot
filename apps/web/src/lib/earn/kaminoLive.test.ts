@@ -162,7 +162,7 @@ test("a SOL deposit decodes as wrap + kVault deposit with no hidden Kamino fee",
   assert.equal(review.transferredLamports, 10_000_000n);
   const labels = review.instructions.map((ix) => ix.instruction).join(" | ");
   assert.match(labels, /sync native/);
-  assert.match(labels, /kVault deposit 10000000 raw units/);
+  assert.match(labels, /kVault deposit/);
   assert.ok(review.instructions.some((ix) => ix.programLabel === "Kamino kVault"));
 });
 

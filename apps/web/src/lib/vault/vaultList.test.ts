@@ -7,6 +7,8 @@ import {
   READING,
   UNAVAILABLE,
   balanceDisplay,
+  KNOWN_CHAINS,
+  KNOWN_PROTOCOLS,
   chainDisplayName,
   chainKeyFromId,
   chainKeyFromSlug,
@@ -17,6 +19,7 @@ import {
   hasActiveFilter,
   liveDisplayName,
   matchesTagFilter,
+  mergeFilterValues,
   morphoPositionValue,
   protocolDisplayName,
   protocolKeyFromSource,
@@ -75,6 +78,23 @@ test("chain and protocol filters combine, and 'all' always clears", () => {
 test("filter options are distinct and in list order", () => {
   assert.deepEqual(collectFilterValues(vaults, "chain"), ["near", "sol", "base", "eth"]);
   assert.deepEqual(collectFilterValues(vaults, "protocol"), ["rhea", "kamino", "morpho"]);
+});
+
+test("filter options include every known chain/protocol before all sources load", () => {
+  // First paint can have only the curated source, but the chips must already be complete.
+  assert.deepEqual(
+    mergeFilterValues(["robinhood"], KNOWN_CHAINS),
+    ["robinhood", "base", "near", "sol"],
+  );
+  assert.deepEqual(
+    mergeFilterValues(["morpho"], KNOWN_PROTOCOLS),
+    ["morpho", "rhea", "kamino"],
+  );
+  // Values from the loaded data are kept, never duplicated.
+  assert.deepEqual(
+    mergeFilterValues(["near", "eth"], KNOWN_CHAINS),
+    ["near", "eth", "robinhood", "base", "sol"],
+  );
 });
 
 test("a balance is only dashed when that chain has no wallet", () => {

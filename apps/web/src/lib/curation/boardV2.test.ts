@@ -199,7 +199,7 @@ test("every card gets a sparkline: real history wins, otherwise a flat current-A
   );
   assert.equal(withHistory.hasHistory, true);
   assert.equal(withHistory.range, "3.00% – 4.20%");
-  assert.equal(withHistory.rangeLabel, "30d range 3.00% – 4.20% · stored scans");
+  assert.equal(withHistory.rangeLabel, "Last 30 days: 3.00% – 4.20%");
   assert.equal(withHistory.flatBps, null);
   assert.equal(withHistory.points?.length, 3);
 
