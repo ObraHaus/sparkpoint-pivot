@@ -251,7 +251,7 @@ export function curatorRunLabel(data: {
     case "failed":
       return "Last discovery run failed";
     case "ok":
-      return `Last scan ${fmtWhen(data.lastRunAt)}`;
+      return `Last updated ${fmtWhen(data.lastRunAt)}`;
   }
 }
 

@@ -15,7 +15,7 @@
  * with the performance-fee disclosure; a claimed-but-undeployed wrapper is an honest "not yet".
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
@@ -46,6 +46,8 @@ import { findKaminoVault } from "@/lib/earn/kaminoLive";
 import { findMorphoVault } from "@/lib/earn/morphoLive";
 import {
   balanceDisplay,
+  KNOWN_CHAINS,
+  KNOWN_PROTOCOLS,
   chainDisplayName,
   chainKeyFromId,
   chainKeyFromSlug,
@@ -54,6 +56,7 @@ import {
   filterVaults,
   hasActiveFilter,
   liveDisplayName,
+  mergeFilterValues,
   morphoPositionValue,
   protocolDisplayName,
   protocolKeyFromSource,
@@ -73,15 +76,12 @@ import {
 } from "@/lib/curation/board";
 import { depositRail, type KnownVault } from "@/lib/curation/depositRail";
 import {
-  LIVE_BATCH_SIZE,
   cardSparkline,
   earnApyBps,
   flatSparklinePath,
-  hasMore,
   heroPick,
   inFlightCounts,
   liveVaults,
-  nextBatch,
   sparklinePath,
   type InFlightCounts,
 } from "@/lib/curation/boardV2";
@@ -211,7 +211,7 @@ function RailCta({
 /** 060 — the stored APY's own as-of, from the freshest timestamp the row carries. */
 function asOfLabel(vault: CurationVault): string {
   const stamp = vault.lastScanAt ?? vault.asOf ?? vault.updatedAt;
-  return stamp ? `as of ${fmtWhen(stamp)}` : "as stored";
+  return stamp ? `as of ${fmtWhen(stamp)}` : "recent data";
 }
 
 function Sparkline({
@@ -301,7 +301,7 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
             <h2 style={{ margin: 0 }}>{pick.label}</h2>
           </div>
           <div className="vb-feature-meta">
-            {curatorLabel(pick)} · {pick.asset.symbol ?? "—"} ·{" "}
+            {pick.curator ? `${curatorLabel(pick)} · ` : ""}{pick.asset.symbol ?? "—"} ·{" "}
             <span className="mono">{shortAddr(pick.address)}</span>
             {pick.ageSeconds != null ? ` · ${Math.floor(pick.ageSeconds / 86_400)}d live` : ""}
           </div>
@@ -362,8 +362,8 @@ function FeatureCard({ pick, knownVaults }: { pick: CurationVault; knownVaults: 
           <Sparkline points={chart.points} flatBps={chart.flatBps} big />
           {!chart.hasHistory && (
             <div className="vb-chart-empty">
-              No stored scans yet — this is today&apos;s APY, not a trend. History builds with
-              each daily scan.
+              History is still building — this is today&apos;s APY, not a trend. It updates as
+              more data comes in.
             </div>
           )}
         </div>
@@ -424,7 +424,7 @@ function VaultCard({
           <div>
             <div className="vb-card-name">{vault.label}</div>
             <div className="vb-card-sub">
-              {curatorLabel(vault)} · {vault.asset.symbol ?? "—"}
+              {vault.curator ? `${curatorLabel(vault)} · ` : ""}{vault.asset.symbol ?? "—"}
             </div>
           </div>
         </div>
@@ -596,7 +596,7 @@ function EarnVaultCard({ vault, history }: { vault: EarnVault; history?: ApyPoin
           <div>
             <div className="vb-card-name">{vaultRowTitle(vault)}</div>
             <div className="vb-card-sub">
-              {protocolLabel(protocol)} · {vault.asset.symbol} · {vault.symbol || vault.address}
+              {protocolLabel(protocol)} · {vault.asset.symbol} · {vault.symbol || shortAddr(vault.address)}
             </div>
           </div>
         </div>
@@ -775,7 +775,7 @@ function EmptyState({ board }: { board: Board }) {
         <Link className="btn btn-primary btn-md" href={chatAskHref()}>
           Ask Sparky about vaults
         </Link>
-        <span className="vb-badge ghosty">last scan {fmtWhen(board.lastRunAt)} · 0 wrapped</span>
+        <span className="vb-badge ghosty">last updated {fmtWhen(board.lastRunAt)} · 0 wrapped</span>
       </div>
       <div className="vb-empty-prov">{boardProvenance(board)}</div>
     </section>
@@ -796,11 +796,6 @@ export function CuratedBoard({
   fetchedAt?: number;
 }) {
   const [tagFilter, setTagFilter] = useState<VaultTagFilter>(emptyFilter());
-  const [shown, setShown] = useState(LIVE_BATCH_SIZE);
-  const [phase, setPhase] = useState<"idle" | "loading" | "end">("idle");
-  const phaseRef = useRef<"idle" | "loading" | "end">("idle");
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const earn = useEarnVaults();
 
   // Curated wrapped vaults and the live Rhea/Kamino/Morpho registry rows become ONE list. The
@@ -850,8 +845,15 @@ export function CuratedBoard({
 
   const allItems = useMemo(() => [...curatedItems, ...earnItems], [curatedItems, earnItems]);
   const list = useMemo(() => filterVaults(allItems, tagFilter), [allItems, tagFilter]);
-  const chainOptions = useMemo(() => collectFilterValues(allItems, "chain"), [allItems]);
-  const protocolOptions = useMemo(() => collectFilterValues(allItems, "protocol"), [allItems]);
+  // Chips are present before both data sources resolve, so the row never appears to lose options.
+  const chainOptions = useMemo(
+    () => mergeFilterValues(collectFilterValues(allItems, "chain"), KNOWN_CHAINS),
+    [allItems],
+  );
+  const protocolOptions = useMemo(
+    () => mergeFilterValues(collectFilterValues(allItems, "protocol"), KNOWN_PROTOCOLS),
+    [allItems],
+  );
   const pick = useMemo(() => (board ? heroPick(board) : null), [board]);
   const fresh = useMemo(
     () =>
@@ -863,51 +865,7 @@ export function CuratedBoard({
 
   const applyFilters = useCallback((next: VaultTagFilter) => {
     setTagFilter(next);
-    setShown(LIVE_BATCH_SIZE);
-    phaseRef.current = "idle";
-    setPhase("idle");
-    if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
-
-  const reveal = useCallback(() => {
-    if (phaseRef.current !== "idle") return;
-    const total = list.length;
-    phaseRef.current = "loading";
-    setPhase("loading");
-    if (shown >= total) {
-      // Nothing left: one spinner beat, then the honest terminal message.
-      timerRef.current = setTimeout(() => {
-        phaseRef.current = "end";
-        setPhase("end");
-      }, 700);
-      return;
-    }
-    timerRef.current = setTimeout(() => {
-      setShown((current) => nextBatch(current, total));
-      phaseRef.current = "idle";
-      setPhase("idle");
-    }, 600);
-  }, [list.length, shown]);
-
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node || list.length === 0) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) reveal();
-      },
-      { rootMargin: "200px" },
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, [reveal, list.length]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    },
-    [],
-  );
 
   if (state === "loading") {
     return (
@@ -936,7 +894,7 @@ export function CuratedBoard({
     );
   }
 
-  const visible = list.slice(0, shown);
+  const visible = list;
   const filtered = list.length !== allItems.length;
 
   return (
@@ -1020,25 +978,12 @@ export function CuratedBoard({
               No vaults match these filters. Clear the filters to see all vaults.
             </div>
           )}
-          <div className="vb-loadstatus" aria-live="polite">
-            {phase === "loading" && (
-              <>
-                <span className="vb-spinner" />
-                Loading more vaults…
-              </>
-            )}
-            {phase === "end" && (
-              <>You’ve reached the bottom — that’s every vault in the list.</>
-            )}
-          </div>
-          <div ref={sentinelRef} className="vb-sentinel" aria-hidden="true" />
         </>
       )}
 
       <div className="vb-boardfoot">
-        Figures are as-of the stored scan — no projections. Each card names its chain and protocol,
+        Figures reflect recent data; not projections. Each card names its chain and protocol,
         and “Preview” means the live in-app deposit isn’t available yet.
-        {hasMore(shown, list.length) ? " Scroll for more vaults." : ""}
       </div>
     </div>
   );

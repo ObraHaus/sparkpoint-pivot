@@ -159,7 +159,7 @@ export function cardSparkline(
       flatBps: null,
       hasHistory: true,
       range,
-      rangeLabel: range ? `30d range ${range} · stored scans` : COLLECTING_HISTORY,
+      rangeLabel: range ? `Last 30 days: ${range}` : COLLECTING_HISTORY,
     };
   }
   return {

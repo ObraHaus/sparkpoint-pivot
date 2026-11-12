@@ -70,15 +70,15 @@ test("provenance chips distinguish an admin pin from an AI row", () => {
   assert.equal(provenanceChip(vault({ pinned: true })).label, "Admin pick");
 });
 
-test("the provenance line reports the scan and admits when there was none", () => {
-  assert.equal(boardProvenance(board()), "No scan yet");
+test("the provenance line reports the update and admits when there was none", () => {
+  assert.equal(boardProvenance(board()), "No updates yet");
   assert.match(
     boardProvenance(board({ lastRunAt: "2026-09-18T00:00:00Z", lastRunOk: true })),
-    /Last scan/,
+    /Last updated/,
   );
   assert.equal(
     boardProvenance(board({ lastRunAt: null, lastRunOk: false })),
-    "Last scan failed",
+    "Last update failed",
   );
 });
 
