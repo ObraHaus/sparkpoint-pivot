@@ -20,6 +20,7 @@ import {
   morphoPositionValue,
   protocolDisplayName,
   protocolKeyFromSource,
+  resolveRheaAccount,
 } from "./vaultList.ts";
 import { availableWithdrawUsdc, USDC_TOKEN_ID } from "../near/burrow.ts";
 
@@ -115,6 +116,31 @@ test("a value for a previous account is never shown after an account change", ()
     }),
     { state: "value", text: "42 USDC" },
   );
+});
+
+test("an EVM-only session reads the Rhea MCA but cannot sign for it", () => {
+  assert.deepEqual(resolveRheaAccount(null, "rhea001598.multica.near"), {
+    account: "rhea001598.multica.near",
+    source: "mca",
+    canSign: false,
+  });
+  assert.deepEqual(resolveRheaAccount(undefined, null), {
+    account: null,
+    source: null,
+    canSign: false,
+  });
+});
+
+test("a directly connected NEAR wallet always wins over the MCA", () => {
+  assert.deepEqual(
+    resolveRheaAccount("sparkpoint2026.near", "rhea001598.multica.near"),
+    { account: "sparkpoint2026.near", source: "near", canSign: true },
+  );
+  assert.deepEqual(resolveRheaAccount("  sparkpoint2026.near  ", "mca.near"), {
+    account: "sparkpoint2026.near",
+    source: "near",
+    canSign: true,
+  });
 });
 
 test("Morpho shows converted asset value, never the raw share count", () => {

@@ -62,6 +62,7 @@ import {
 } from "@/lib/vault/vaultList";
 import {
   useKaminoPositions,
+  useRheaAccount,
   useRheaSupplied,
   useSolanaAccount,
 } from "@/lib/vault/useVaultBalances";
@@ -481,10 +482,12 @@ function EarnVaultCard({ vault }: { vault: EarnVault }) {
   const { address: evmAccount } = useAccount();
   const { accountId: nearAccount } = useNearWallet();
   const solanaAccount = useSolanaAccount();
+  // A connected NEAR wallet wins; an EVM-only session reads the Rhea MCA the portfolio path uses.
+  const rheaAccount = useRheaAccount(nearAccount, protocol === "rhea");
 
   // Each hook is called for every card but only enabled for its own protocol, so the card never
   // asks the wrong chain's wallet (and react-query de-dupes reads across cards).
-  const rhea = useRheaSupplied(protocol === "rhea" ? nearAccount : null);
+  const rhea = useRheaSupplied(protocol === "rhea" ? rheaAccount.account : null);
   const kamino = useKaminoPositions(protocol === "kamino" ? solanaAccount : null);
   const morpho = useWrapperHolding({
     chainId: vault.chainId,
@@ -501,7 +504,7 @@ function EarnVaultCard({ vault }: { vault: EarnVault }) {
   if (protocol === "rhea") {
     balance = balanceDisplay({
       connected: !!rhea.account,
-      currentAccount: nearAccount,
+      currentAccount: rhea.account,
       valueAccount: rhea.account,
       loading: rhea.loading,
       error: rhea.error,
