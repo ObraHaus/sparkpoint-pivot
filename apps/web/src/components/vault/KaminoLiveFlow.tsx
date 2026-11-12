@@ -161,6 +161,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
   const [signatureOutcomeState, setSignatureOutcomeState] = useState<SignatureOutcome | null>(null);
   const [sendResult, setSendResult] = useState<SendSolanaTransactionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reapproveNotice, setReapproveNotice] = useState<string | null>(null);
   const [positions, setPositions] = useState<KaminoPositionView[]>([]);
   const [balanceRaw, setBalanceRaw] = useState<bigint | null>(null);
   const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>("idle");
@@ -234,6 +235,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
     setSignatureOutcomeState(null);
     setSendResult(null);
     setError(null);
+    setReapproveNotice(null);
   }, []);
 
   const buildTransaction = useCallback(async () => {
@@ -375,6 +377,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
     if (phase !== "review") return;
     if (!provider || !transaction || !review || !build || expectedAmountRaw === null) return;
     setError(null);
+    setReapproveNotice(null);
     // The wallet provider can switch accounts between prepare and confirm. Refuse a stale review
     // instead of handing the old transaction to a different signer.
     const currentWallet = providerAddress(provider);
@@ -427,7 +430,11 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
         rpc: createHttpSolanaRpc(solanaProxyRpcUrl()),
         onSignature: (submitted) => {
           setSignature(submitted);
+          setReapproveNotice(null);
           setPhase("confirming");
+        },
+        onReapprove: (reason) => {
+          setReapproveNotice(reason);
         },
       });
       setSendResult(result);
@@ -666,6 +673,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
                 about a minute; if it expires, go back and review again — the amount and fee may have moved.
               </div>
 
+              {reapproveNotice && <FlowNotice tone="caution">{reapproveNotice}</FlowNotice>}
               {error && <FlowNotice tone="caution">{error}</FlowNotice>}
 
               <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
