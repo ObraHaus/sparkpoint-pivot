@@ -194,6 +194,17 @@ def _as_of(snapshot: EarnSnapshot) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _bullets(config: EarnConfig, rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """One vault per PARAGRAPH: the chat renderer (web ``parseRichText``) treats a single newline
+    as a space, so rows joined by one newline collapse into a wall of text."""
+    out: list[str] = []
+    for index, row in enumerate(rows):
+        if index:
+            out.append("")
+        out.append(f"- {_row_line(config, row)}")
+    return out
+
+
 def _row_line(config: EarnConfig, row: Mapping[str, Any]) -> str:
     return (
         f"**{_name(row)}** — {_protocol_label(row)} · {_chain_label(config, row)} · "
@@ -273,7 +284,7 @@ def earn_vaults_answer(
             f"I don't see a {_filter_description(config, filters)} in the live snapshot right "
             "now — I won't invent one. Here are the vaults I do have across every chain:",
             "",
-            *[f"- {_row_line(config, row)}" for row in fallback[:12]],
+            *_bullets(config, fallback[:12]),
             "",
             f"Snapshot as of {as_of}. The full board is on the **Vault** page (/vault). I "
             "suggest; you choose and sign.",
@@ -296,7 +307,7 @@ def earn_vaults_answer(
         lines = [
             header,
             "",
-            *[f"- {_row_line(config, row)}" for row in rows[:12]],
+            *_bullets(config, rows[:12]),
             "",
             "The full board is on the **Vault** page (/vault). I suggest; you choose and sign.",
         ]
@@ -328,7 +339,7 @@ def earn_vaults_answer(
         "",
         f"Snapshot as of {as_of}. Top vaults by net APY right now:",
         "",
-        *[f"- {_row_line(config, row)}" for row in rows[:5]],
+        *_bullets(config, rows[:5]),
         "",
         "Rates float with the market, so treat them as an estimate, not a promise.",
         "",
