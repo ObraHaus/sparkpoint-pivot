@@ -916,7 +916,7 @@ function describeInstruction(
       const amount = data.length >= 9 ? readU64LE(data, 1) : 0n;
       return {
         ...base,
-        label: `token transfer ${amount} raw units`,
+        label: "token transfer",
         tokenTransfer: {
           source: accounts[0] ?? "",
           destination: accounts[1] ?? "",
@@ -930,7 +930,7 @@ function describeInstruction(
       const amount = data.length >= 9 ? readU64LE(data, 1) : 0n;
       return {
         ...base,
-        label: `token transfer checked ${amount} raw units`,
+        label: "token transfer checked",
         tokenTransfer: {
           source: accounts[0] ?? "",
           destination: accounts[2] ?? "",
@@ -951,7 +951,7 @@ function describeInstruction(
       const amount = data.length >= 16 ? readU64LE(data, 8) : 0n;
       return {
         ...base,
-        label: `kVault deposit ${amount} raw units`,
+        label: "kVault deposit",
         action: { kind: "deposit", amountRaw: amount },
       };
     }
@@ -970,8 +970,8 @@ function describeInstruction(
               ? "kVault withdraw_from_available ALL shares"
               : "kVault withdraw ALL shares"
             : fromAvailable
-              ? `kVault withdraw_from_available ${amount} raw shares`
-              : `kVault withdraw ${amount} raw shares`,
+              ? "kVault withdraw_from_available shares"
+              : "kVault withdraw shares",
         action: { kind: "withdraw", amountRaw: amount },
         withdrawFromAvailable: fromAvailable,
       };
@@ -1006,9 +1006,13 @@ function describeInstruction(
             : null;
       const label =
         farmKind === "stake"
-          ? `Kamino farm stake ${farmAmount === null ? "(unreadable amount)" : `${farmAmount} raw units`}`
+          ? farmAmount === U64_MAX
+            ? "Kamino farms stake all available"
+            : "Kamino farms stake"
           : farmKind === "unstake"
-            ? `Kamino farm unstake ${farmAmount === null ? "(unreadable amount)" : `${farmAmount} scaled shares`}`
+            ? farmAmount === U64_MAX * KAMINO_FARM_SHARE_SCALE
+              ? "Kamino farm unstake all staked shares"
+              : "Kamino farm unstake"
             : `Kamino farm instruction ${discriminator} (${farmKind})`;
       return {
         ...base,

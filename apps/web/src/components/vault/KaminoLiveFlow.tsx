@@ -530,7 +530,7 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
     minDeposit: build ? `${build.vaultLimits.minDepositAmount} ${meta.assetSymbol}` : "checked at review",
     minWithdraw: build ? `${build.vaultLimits.minWithdrawAmount} shares` : "checked at review",
     assetSymbol: meta.assetSymbol,
-    crankNote: "crank fee + 2-lamport buffer above the vault minimum",
+    crankNote: "Minimum deposit includes a small network fee buffer",
   });
 
   const reviewRows: VaultFlowSummaryRow[] =
@@ -854,7 +854,14 @@ export function KaminoLiveFlow({ vault, mode: initialMode, initialAmount, notice
           assetSymbol={mode === "deposit" ? meta.assetSymbol : "shares"}
           value={amount}
           onChange={(event) => setAmount(event)}
-          onMax={maxAmount ? () => setAmount(maxAmount) : undefined}
+          onMax={
+            wallet
+              ? () => {
+                  if (maxAmount) setAmount(maxAmount);
+                }
+              : undefined
+          }
+          maxDisabled={!maxAmount}
           helper={
             mode === "deposit" ? (
               balanceStatus === "error" ? (

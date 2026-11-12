@@ -98,12 +98,12 @@ test("Kamino rows keep the crank-fee buffer and vault minimums in the shared sum
     minDeposit: "0.001 SOL",
     minWithdraw: "0.001 shares",
     assetSymbol: "SOL",
-    crankNote: "crank fee + 2-lamport buffer above the vault minimum",
+    crankNote: "Minimum deposit includes a small network fee buffer",
   });
   const byKey = Object.fromEntries(rows.map((row) => [row.key, row]));
   assert.equal(byKey.min?.label, "Min deposit (vault)");
   assert.equal(byKey.min?.value, "0.001 SOL");
-  assert.equal(byKey.crank?.value, "crank fee + 2-lamport buffer above the vault minimum");
+  assert.equal(byKey.crank?.value, "Minimum deposit includes a small network fee buffer");
   assert.equal(byKey.apy?.value, "4.10%");
   assert.equal(byKey.network?.value, "Solana");
 });
@@ -164,4 +164,41 @@ test("every /vault card renders the shared Sparkline and a range/collecting-hist
   assert.match(board, /data-testid="earn-vault-range"/);
   // Earn cards read the same stored history when a curated row exists for the same vault.
   assert.match(board, /apyHistoryByVault\.get/);
+});
+
+test("Kamino's amount field always offers Max once a Solana wallet is connected", () => {
+  const kamino = source("../../components/vault/KaminoLiveFlow.tsx");
+  // The button is not conditional on the balance read finishing — it shows (disabled until then)
+  // exactly like Rhea/Morpho, and uses the reserve-aware `maxAmount` computation.
+  assert.match(kamino, /onMax=\{\s*wallet/);
+  assert.match(kamino, /maxDisabled=\{!maxAmount\}/);
+  assert.match(kamino, /maxSolDepositLamports|maxAmount/);
+});
+
+test("the vault board renders every filtered card and known chips from first paint", () => {
+  const board = source("../../components/vault/CuratedBoard.tsx");
+  // No lazy batch may hide cards: the rendered list IS the filtered list.
+  assert.match(board, /const visible = list;/);
+  assert.match(
+    board,
+    /mergeFilterValues\(collectFilterValues\(allItems, "chain"\), KNOWN_CHAINS\)/,
+  );
+  assert.match(
+    board,
+    /mergeFilterValues\(collectFilterValues\(allItems, "protocol"\), KNOWN_PROTOCOLS\)/,
+  );
+  assert.doesNotMatch(board, /Scroll for more vaults/);
+});
+
+test("the swap tab choice wins over the NEAR-only cross-chain default", () => {
+  const swap = source("../../app/(app)/swap/page.tsx");
+  assert.match(swap, /useState<SwapMode \| null>\(null\)/);
+  assert.match(swap, /requestedMode \?\? \(nearOnly \? "cross-chain" : "same-chain"\)/);
+});
+
+test("the Rhea balance read is bounded by a timeout so it cannot read forever", () => {
+  const rhea = source("../../components/vault/RheaLiveEarn.tsx");
+  assert.match(rhea, /new AbortController\(\)/);
+  assert.match(rhea, /controller\.abort\(\)/);
+  assert.match(rhea, /Balance unavailable/);
 });
