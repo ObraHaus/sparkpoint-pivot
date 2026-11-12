@@ -26,7 +26,7 @@ from .pricing import PriceSource, fetch_snapshot, price_row
 from .rpc import PortfolioRpcError, SolanaRpc
 
 NOT_LINKED_COPY = (
-    "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)"
+    "Kamino positions appear here once a Solana address is linked to your account."
 )
 MAX_LINKED_ADDRESSES = 5
 

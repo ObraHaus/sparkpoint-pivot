@@ -11,6 +11,8 @@ import {
   USDC_DECIMALS,
   USDC_TOKEN_ID,
   buildSupplyPlan,
+  availableSupplyUsdc,
+  availableWithdrawUsdc,
   buildWithdrawPlan,
   checkSupplyBalances,
   checkWithdrawBalances,
@@ -25,6 +27,8 @@ import {
   planIsFresh,
   refusedWalletSwitch,
   toBurrowInnerUnits,
+  withdrawAmountText,
+  withdrawableUsdcAmount,
 } from "./burrow.ts";
 
 const ACCOUNT = "sparkpoint2026.near";
@@ -210,6 +214,37 @@ test("withdraw Max uses the exact supplied inner balance, not a floored 6-dp val
     actions: Array<{ Withdraw: { max_amount: string } }>;
   };
   assert.equal(args.actions[0].Withdraw.max_amount, supplied.toString());
+});
+
+test("Max/available convert Burrow 6+12 inner units to the human withdrawable amount", () => {
+  // 0.05 USDC supplied into Burrow is 0.05 * 10^(6+12) = 5e16 inner units.
+  const supplied = 50_000_000_000_000_000n;
+  assert.equal(withdrawableUsdcAmount(supplied), "0.05");
+  assert.equal(withdrawableUsdcAmount(supplied.toString()), "0.05");
+  assert.equal(
+    availableWithdrawUsdc({ supplied: [{ token_id: USDC_TOKEN_ID, balance: supplied.toString() }] }),
+    "0.05",
+  );
+  // A wrong extra-decimals scale (treating inner units as 6-dp) would show 50000000000, not 0.05.
+  assert.notEqual(withdrawableUsdcAmount(supplied), "50000000000");
+  // Max must not be a no-op when a supplied position exists.
+  const max = availableWithdrawUsdc({
+    supplied: [{ token_id: USDC_TOKEN_ID, balance: supplied.toString() }],
+  });
+  assert.equal(typeof max, "string");
+  assert.ok(max && max.length > 0);
+  assert.equal(withdrawableUsdcAmount(0n), null);
+  assert.equal(withdrawableUsdcAmount("not-a-number"), null);
+  assert.equal(availableWithdrawUsdc({ supplied: [] }), null);
+  assert.equal(availableWithdrawUsdc(null), null);
+  assert.equal(availableSupplyUsdc(25_000_000n), "25");
+  assert.equal(availableSupplyUsdc("0"), null);
+});
+
+test("withdraw copy never keeps a leading minus on money received", () => {
+  assert.equal(withdrawAmountText("-0.05"), "0.05");
+  assert.equal(withdrawAmountText("+0.05"), "0.05");
+  assert.equal(withdrawAmountText(" 0.05 "), "0.05");
 });
 
 test("withdraw refuses when disabled, over supplied, or invalid", () => {
