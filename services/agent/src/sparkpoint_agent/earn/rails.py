@@ -35,7 +35,8 @@ UNKNOWN = "unknown"
 FEE_NOTE = "Includes 1Click's 0.25% keyless routing fee."
 RECEIPT_NOTE = (
     "This route delivers a NEAR-issued receipt token, not the native Morpho vault share. "
-    "The receipt is backed by the vault; a direct same-chain deposit gives you the native share."
+    "The receipt is backed by the vault; a direct deposit on the same network gives you the "
+    "native share."
 )
 NATIVE_SHARES_NOTE = (
     "This route delivers the native Kamino kVault share token on Solana — the receipt IS the "
@@ -45,12 +46,12 @@ KAMINO_DIRECT_NOTE = (
     "Direct Kamino deposits require a Solana wallet, which the beta does not support yet."
 )
 RHEA_DIRECT_NOTE = (
-    "Rhea lending is on NEAR; the beta has no NEAR wallet. Supply runs through NEAR Intents "
-    "1Click instead."
+    "Rhea lending is on NEAR. Supply directly with your NEAR wallet, or through NEAR Intents "
+    "1Click."
 )
 RHEA_NOTE = (
     "Supplies into your Rhea (Burrow) account on NEAR through NEAR Intents 1Click — no NEAR "
-    "wallet, gas or chain switch. Withdraw on app.rhea.finance with the same wallet."
+    "wallet, gas or chain switch. Withdraw in the app with the same wallet."
 )
 RHEA_FEE_NOTE = (
     "Includes 1Click's 0.25% keyless routing fee. A one-time 0.60 USDC Rhea account + DApp "
@@ -114,7 +115,7 @@ def _direct_rail(config: EarnConfig, entry: VaultEntry) -> dict[str, Any]:
         return {
             "available": False,
             "reason": KAMINO_DIRECT_NOTE,
-            "note": "The beta has no Solana wallet connection, so 1Click Earn is the only rail.",
+            "note": "The beta has no Solana wallet connection, so 1Click Earn is the only option.",
         }
     enabled = bool(chain and chain.enabled and config.rails.direct)
     return {

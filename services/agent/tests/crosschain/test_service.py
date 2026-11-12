@@ -202,3 +202,57 @@ async def test_a_rejected_live_quote_is_typed() -> None:
             refund_to="0x0000000000000000000000000000000000000001",
         )
     assert raised.value.reason == "Quoting for this pair is not available"
+
+
+# ── 1112 — a 1Click minimum is base units; show it in the sending asset's human units ──
+
+
+def test_minimum_amount_error_is_formatted_with_the_sending_asset_decimals() -> None:
+    from sparkpoint_agent.crosschain.service import format_quote_error_amount
+
+    raw = "Amount is too low for bridge, try at least 150000"
+    assert format_quote_error_amount(raw, decimals=6, symbol="USDC") == (
+        "Amount is too low for bridge, try at least 0.15 USDC"
+    )
+    # 18-dec ETH, 9-dec SOL, 24-dec NEAR: the same threshold renders in each asset's units.
+    assert (
+        format_quote_error_amount("try at least 150000000000000000", decimals=18, symbol="ETH")
+        == "try at least 0.15 ETH"
+    )
+    assert format_quote_error_amount("minimum amount is 150000000", decimals=9, symbol="SOL") == (
+        "minimum amount is 0.15 SOL"
+    )
+    assert (
+        format_quote_error_amount(
+            "below the minimum: 150000000000000000000000", decimals=24, symbol="NEAR"
+        )
+        == "below the minimum: 0.15 NEAR"
+    )
+
+
+def test_already_human_or_unrelated_numbers_are_left_alone() -> None:
+    from sparkpoint_agent.crosschain.service import format_quote_error_amount
+
+    for human in (
+        "Amount is too low for bridge, try at least 0.15",
+        "Temporary swap limits: minimum swap amount is $100",
+        "Quoting for this pair is not available",
+        "RPC HTTP 400",
+    ):
+        assert format_quote_error_amount(human, decimals=6, symbol="USDC") == human
+
+
+async def test_preview_surfaces_the_minimum_in_human_units_not_base_units() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"message": "Amount is too low for bridge, try at least 150000"},
+        )
+
+    service, _ = _service(handler)
+    outcome = await service.preview(_request())
+    wire = outcome.block.to_wire()
+    assert wire["state"] == "unavailable"
+    assert wire["unavailableReason"] == ("Amount is too low for bridge, try at least 0.15 USDC")
+    assert "0.15 USDC" in outcome.text
+    assert "150000" not in outcome.text

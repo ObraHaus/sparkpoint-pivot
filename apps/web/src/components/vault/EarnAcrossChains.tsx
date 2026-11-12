@@ -104,7 +104,7 @@ function RailChips({ vault }: { vault: EarnVault }) {
           key={chip.key}
           data-rail={chip.key}
           data-available={chip.available ? "true" : "false"}
-          title={chip.available ? "Rail available in this build" : "This rail is not available yet — the preview says why"}
+          title={chip.available ? "Available in this build" : "Not available yet — the preview says why"}
           style={{
             padding: "1px 6px",
             borderRadius: 6,
@@ -233,7 +233,7 @@ function VaultRow({ vault }: { vault: EarnVault }) {
               Review cross-chain deposit
             </a>
           )}
-          {appUrl && (
+          {appUrl && protocol !== "rhea" && (
             <a className="btn btn-ghost btn-sm" href={appUrl} target="_blank" rel="noopener noreferrer">
               Open {protocolLabel(protocol)} <Icon name="ext" size={11} />
             </a>
@@ -242,8 +242,8 @@ function VaultRow({ vault }: { vault: EarnVault }) {
       </div>
       {noRail && (
         <div style={{ fontSize: 11.5, color: "var(--caution)", lineHeight: 1.45 }}>
-          No enabled rail in this build yet — this is an honest unavailable state, not a funded-wallet
-          prompt. The dry preview explains which rail is missing.
+          Live supply and withdraw aren&apos;t available for this vault yet. You can still preview it
+          with Sparky.
         </div>
       )}
     </div>
@@ -282,9 +282,9 @@ export function EarnAcrossChains() {
         <div>
           <span className="t">Earn across chains</span>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.55, maxWidth: 720 }}>
-            Morpho on Base/Ethereum, Kamino on Solana and Rhea on NEAR — the same registry Sparky
-            reads. Rows are previews; where a live direct rail is flagged on, the row links to the
-            one shared review+confirm flow. Nothing signs or sends from this page.
+            Morpho on Base and Ethereum, Kamino on Solana, and Rhea on NEAR — all in one place. Each
+            row is a preview; when a live flow is available, the row links straight to the review
+            screen. Nothing is signed or sent from this page.
           </div>
         </div>
         <span className="lbl" data-testid="earn-snapshot" title="Stored registry snapshot — never a live quote">
@@ -345,10 +345,10 @@ export function EarnAcrossChains() {
 
       <div style={{ marginTop: 12, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
         {chain === "all" && vaults.length > shown.length
-          ? "Showing the top five per protocol. Pick a chain chip to see more. "
+          ? "Showing up to five options per protocol. Pick a chain to see more. "
           : ""}
-        Deposits need a funded wallet on the origin chain and a live rail. Where a rail is missing the
-        row says so instead of hiding the vault; Sparky&apos;s preview names the exact reason.
+        Deposits need funds on the right network and a live flow. If one isn&apos;t available yet, the
+        row says so and Sparky explains why.
       </div>
     </section>
   );

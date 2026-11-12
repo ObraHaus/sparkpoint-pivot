@@ -84,7 +84,11 @@ class PortfolioRow:
             wire["valueUsd"] = self.value_usd
         if self.price_source is not None:
             wire["priceSource"] = self.price_source
-        wire.update(dict(self.extra))
+        # Optional display extras (APY, rail, status, note, …) are OMITTED when absent. The shared
+        # TS schema declares them optional strings, not nullable, so a literal ``null`` here would
+        # fail ``safeParse`` and render the whole overview inert (the same class of bug as the
+        # undeclared additive keys). Never drop a real value — only the JSON null.
+        wire.update({key: value for key, value in self.extra.items() if value is not None})
         return wire
 
 
@@ -126,7 +130,8 @@ class PortfolioSection:
         if self.as_of is not None:
             wire["asOf"] = self.as_of
         if self.meta:
-            wire.update(dict(self.meta))
+            # Same rule as rows: an absent optional section field is omitted, never ``null``.
+            wire.update({key: value for key, value in self.meta.items() if value is not None})
         total = usd_string(self.total_usd())
         if total is not None:
             wire["totalUsd"] = total

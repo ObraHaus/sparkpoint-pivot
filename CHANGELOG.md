@@ -23,6 +23,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `apps/web/src/app/api/solana/rpc/route.ts`, `apps/web/src/lib/solana/clientRpc.ts`,
   `apps/web/src/components/vault/KaminoLiveFlow.tsx`)
 
+### Fixed (1113-evmsiwe-xchain — 1Click deposit address across allowed EVM chains)
+
+- **"Get deposit address" works when the SIWE session chain differs from the swap source chain.**
+  The cross-chain card called the BFF with no `x-chain-id`; the BFF only forwards that header from
+  the browser (it derives `x-account`/`x-owner` from the session), so an EVM session that signed in
+  on Robinhood Chain (4663) and then switched the wallet to Base (8453) got
+  `ACCOUNT_HEADERS_INVALID` before 1Click was asked. The card now sends the swap's SOURCE chain
+  (`origin.evmChainId`, falling back to the connected/app chain for non-EVM origins) on quote,
+  status and speed-up submit; the agent already accepts any `API_SUPPORTED_CHAIN_IDS` value and does
+  not bind it to the SIWE chain. A new BFF guard rejects a client-asserted `X-Account`/`X-Owner`
+  that contradicts the verified EVM session (case-insensitive hex compare) instead of trusting or
+  silently rewriting it; NEAR sessions are unchanged. (`apps/web/src/lib/crosschain/requestHeaders.ts`,
+  `apps/web/src/components/screens/chat/crosschain-quote-card.tsx`,
+  `apps/web/src/lib/agent/sessionIdentity.ts`, `apps/web/src/app/api/agent/[...path]/route.ts`)
+
+### Fixed (1112-rheamax — Rhea/Burrow Withdraw Max + plain user copy)
+
+- **Rhea/Burrow NEAR Withdraw → Max now fills the withdrawable supplied USDC amount.** The button
+  only toggled a boolean and cleared/disabled the input, so a real Meteor session (`sparkpoint2026.near`,
+  ~0.05 USDC supplied) saw no change and had to type the amount by hand. Max now reads the live
+  Burrow position and fills the amount, converting `get_account[_all_positions]` inner units
+  (USDC 6 decimals + Burrow `extra_decimals` 12 = 18-scale) to a human amount (`0.05`, not a
+  scale-wrong value or `NaN`). The Withdraw tab's "Available" now shows the withdrawable supplied
+  balance, Supply shows idle wallet USDC, and switching tabs clears the other tab's amount.
+  The Morpho Deposit/Withdraw tabs get the same reset, so a deposit USDC amount is never reused as
+  a share amount in the withdraw field. (`apps/web/src/lib/near/burrow.ts`,
+  `apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/lib/near/liveEarn.ts`,
+  `apps/web/src/components/vault/RheaLiveEarn.tsx`, `apps/web/src/app/api/earn/rhea/live/route.ts`)
+- **The Rhea withdraw review reads as money received, not a second debit.** A withdraw row no longer
+  shows a leading minus (`-0.05 USDC`); it reads `0.05 USDC to your wallet`.
+- **Removed developer/internal copy from user-facing Vault, Rhea and Sparky surfaces.** Phase/ticket
+  references, "rail", "MCA", "deferred", "flagged", "flow floor", "high-path", build-flag names and
+  similar internal language are gone from rendered UI, empty states, helper text and the in-app
+  changelog; the concise funds-safety line remains. The Rhea row no longer links mobile users to the
+  blank external `app.rhea.finance/lending` page. (`apps/web/src/components/vault/*`,
+  `apps/web/src/components/screens/chat/{portfolio-overview,earn-quote}-card.tsx`,
+  `services/agent/src/sparkpoint_agent/earn/{rails,service,rhea_xchain}.py`,
+  `services/agent/src/sparkpoint_agent/portfolio/kamino.py`,
+  `services/agent/content_seed/whats-new.json`)
+
 ### Fixed (1112-metamask — MetaMask connect targets MetaMask, not Phantom)
 
 - **The MetaMask connect button no longer opens Phantom when both extensions are installed.** The
@@ -41,6 +81,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `gtUSDCp shares`) rather than USDC. Deposit behavior is unchanged.
   (`apps/web/src/lib/earn/morphoLive.ts`, `apps/web/src/components/vault/MorphoLiveFlow.tsx`)
 
+### Fixed (1112-sparky — portfolio chat, swap minimums, portfolio totals)
+
+- **Asking Sparky "What's my portfolio?" now uses the read-only multi-chain overview instead of the
+  old chain-scoped vault snapshot.** The deterministic 072 router only recognised "show my
+  portfolio"/"multi-chain portfolio", so the plain ask fell through to the legacy snapshot path.
+  The plain "what's/what is my portfolio" phrasing now routes to the same `/portfolio/multichain`
+  read as the other 072 asks. The streamed block is also persisted/replayed like every other answer
+  card. (`services/agent/src/sparkpoint_agent/portfolio/chat.py`,
+  `services/agent/src/sparkpoint_agent/api/chat.py`)
+- **The 072 card can no longer be made inert by an absent APY/status.** Optional row and section
+  extras (e.g. Rhea `apy`, Morpho `netApy`, swap `lastStatus`/`createdAt`) were serialized as
+  literal `null`, but the shared strict TS schema declares them optional strings — so one missing
+  value failed `safeParse` and the whole overview rendered inert. Absent optional fields are now
+  omitted, exactly like the other wire models. (`services/agent/src/sparkpoint_agent/portfolio/models.py`)
+- **A 1Click bridge minimum is shown in human token units, not raw base units.** "Amount is too low
+  for bridge, try at least 150000" now reads "…try at least 0.15 USDC", using the sending asset's
+  decimals and symbol (USDC 6 / ETH 18 / SOL 9 / NEAR 24); already-human and unrelated numbers are
+  left untouched. Applied to the chat swap preview, the cross-chain quote endpoint and the
+  Morpho/Rhea 1Click earn previews — no quote math, custody or signing changed.
+  (`services/agent/src/sparkpoint_agent/crosschain/service.py`,
+  `services/agent/src/sparkpoint_agent/api/crosschain.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`)
+- **The "Net worth" and "Across chains" totals no longer look contradictory.** The `/portfolio`
+  Net worth card deliberately counts stablecoins/vault positions only (ETH is shown separately),
+  while the 072 "Priced positions" total includes priced ETH too; the panel and chat prose now say
+  so explicitly. The live read was verified: $0.61 USDC + $0.44 ETH = $1.05 Base, plus $0.40 Rhea
+  on NEAR = $1.45, with each dollar counted exactly once. A Rhea row for an EVM sign-in now states
+  it comes from the linked Multichain Account, so it no longer looks like a connected Meteor/NEAR
+  wallet. (`services/agent/src/sparkpoint_agent/portfolio/{models,rhea,text}.py`,
+  `apps/web/src/components/screens/chat/portfolio-overview-card.tsx`)
 
 ### Fixed (1112-siwe — SIWE sign-in recovers from wallet 4100)
 

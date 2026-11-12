@@ -21,7 +21,7 @@ from ..crosschain.addresses import placeholder_for
 from ..crosschain.config import CrossChainAsset, CrossChainConfig
 from ..crosschain.config import default_config as cc_config
 from ..crosschain.oneclick import OneClickClient, QuoteUnavailable, deadline_at
-from ..crosschain.service import amount_from_human
+from ..crosschain.service import amount_from_human, format_quote_error_amount
 from ..portfolio.models import PortfolioRow, PortfolioSection
 from .config import EarnConfig, addresses_equal
 from .parse import EarnRequest
@@ -645,11 +645,11 @@ class EarnService:
         if combined:
             note = (
                 "Kamino runs on Solana, Morpho on Base/Ethereum, and Rhea on NEAR. Each row "
-                "lists the rails enabled for that vault; nothing here is a transaction."
+                "lists the options available for that vault; nothing here is a transaction."
             )
         elif protocol == "kamino":
             note = (
-                "Kamino's vault list is data-driven. The 1Click rail uses a configured receipt "
+                "Kamino's vault list is data-driven. The 1Click route uses a configured receipt "
                 "whose underlying vault matches; the native kVault share is what the user receives."
             )
         elif protocol == "rhea":
@@ -660,8 +660,9 @@ class EarnService:
             )
         else:
             note = (
-                "Morpho's vault list is data-driven. The 1Click receipt rail is shown only where "
-                "a receipt is configured; a direct same-chain deposit gives the native vault share."
+                "Morpho's vault list is data-driven. The 1Click receipt route is shown only where "
+                "a receipt is configured; a direct deposit on the same network gives the native "
+                "vault share."
             )
         block = EarnVaultsBlock(
             state="ready",
@@ -687,7 +688,7 @@ class EarnService:
                 f"(snapshot {snapshot.age_minutes()} min old):"
             ]
         for vault in vaults:
-            rails = ", ".join(vault["rails"]["available"]) or "no enabled rail"
+            rails = ", ".join(vault["rails"]["available"]) or "no live option"
             if combined:
                 label = {"kamino": "Kamino", "morpho": "Morpho", "rhea": "Rhea"}.get(
                     str(vault.get("protocol") or "morpho"), "Morpho"
@@ -755,7 +756,9 @@ class EarnService:
             rails.detail.get("oneclickEarn", {}).get("reason"),
             rails.detail.get("intentsConnect", {}).get("reason"),
         ]
-        reason = next((item for item in reasons if item), "No enabled rail can reach this vault.")
+        reason = next(
+            (item for item in reasons if item), "No live route can reach this vault right now."
+        )
         rail = rails.available[0] if rails.available else "direct"
         return self._unavailable(entry, vault, rail, reason)
 
@@ -797,8 +800,8 @@ class EarnService:
             origin=origin.origin_wire(human) if origin is not None else None,
             amount_in=human,
             receipt_note=(
-                "Direct same-chain deposit: you receive the native Morpho vault share, not a "
-                "wrapped receipt."
+                "Direct deposit on the same network: you receive the native Morpho vault "
+                "share, not a wrapped receipt."
             ),
             quoted_at=_now_iso(),
         )
@@ -848,7 +851,10 @@ class EarnService:
             )
         except QuoteUnavailable as exc:
             self.liveness.set(receipt.asset_id, NO_LIQUIDITY)
-            return self._unavailable(entry, vault, "oneclick_earn", exc.reason)
+            reason = format_quote_error_amount(
+                exc.reason, decimals=origin.decimals, symbol=origin.symbol
+            )
+            return self._unavailable(entry, vault, "oneclick_earn", reason)
         self.liveness.set(receipt.asset_id, LIVE)
         fee_note = None if self.oneclick.has_api_key else FEE_NOTE
         eta = (
@@ -1028,7 +1034,9 @@ class EarnService:
                 )
             except QuoteUnavailable as exc:
                 self.liveness.set(entry.address, NO_LIQUIDITY)
-                reason = exc.reason
+                reason = format_quote_error_amount(
+                    exc.reason, decimals=origin.decimals, symbol=origin.symbol
+                )
                 if "liquidity" in reason.lower() and "smaller" not in reason.lower():
                     reason = f"{reason} — try a smaller amount."
                 return self._unavailable(entry, vault, "oneclick_rhea", reason)

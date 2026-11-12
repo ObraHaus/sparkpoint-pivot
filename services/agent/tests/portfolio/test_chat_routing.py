@@ -80,9 +80,7 @@ class _EarnService:
     feature_enabled = True
     config = earn_config()
 
-    async def rhea_positions(
-        self, *, wallet: str, account_id: str | None = None
-    ) -> EarnOutcome:
+    async def rhea_positions(self, *, wallet: str, account_id: str | None = None) -> EarnOutcome:
         return EarnOutcome(
             text="You don't have a Rhea account yet.",
             block=EarnPositionsBlock(
@@ -132,6 +130,8 @@ async def _wires(dag: CoordinatorDag, message: str) -> list[dict[str, Any]]:
     [
         ("show my portfolio", "all"),
         ("show me my portfolio", "all"),
+        ("what's my portfolio?", "all"),
+        ("what is my portfolio", "all"),
         ("what is my multi-chain portfolio?", "all"),
         ("what's my multichain portfolio?", "all"),
         ("show me my multi chain portfolio", "all"),
@@ -197,6 +197,17 @@ async def test_multichain_portfolio_question_uses_the_aggregation() -> None:
     block = next(wire for wire in wires if wire["type"] == "portfolio_overview")
     assert block["focus"] == "all"
     assert len(block["sections"]) == 5
+    assert service.calls == [(OWNER, "all")]
+
+
+@pytest.mark.asyncio
+async def test_plain_whats_my_portfolio_uses_the_aggregation_not_the_snapshot() -> None:
+    """1112 — the reported phrase must take the deterministic 072 read, never the old snapshot."""
+    service = _PortfolioService()
+    wires = await _wires(_dag(portfolio=service), "What's my portfolio?")
+    kinds = [wire["type"] for wire in wires]
+    assert "portfolio_overview" in kinds
+    assert "portfolio_snapshot" not in kinds
     assert service.calls == [(OWNER, "all")]
 
 

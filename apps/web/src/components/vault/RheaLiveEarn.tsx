@@ -19,7 +19,7 @@ import { toHref } from "@/lib/nav";
 import type { NearTransaction } from "@/lib/near/burrow";
 import { firstTransactionHash } from "@/lib/near/burrow";
 import {
-  RHEA_LIVE_MARKET,
+  amountAfterActionChange,
   confirmBlocker,
   confirmBlockerCopy,
   publicLiveRheaEnabled,
@@ -52,6 +52,12 @@ interface ReceiptResponse {
   message?: string;
 }
 
+interface AvailableResponse {
+  ok?: boolean;
+  walletUsdc?: string | null;
+  suppliedUsdc?: string | null;
+}
+
 function Panel({ children, tone }: { children: React.ReactNode; tone?: "caution" | "loss" | "gain" }) {
   const color = tone === "caution" ? "var(--caution)" : tone === "loss" ? "var(--loss)" : tone === "gain" ? "var(--gain)" : "var(--info)";
   return (
@@ -77,6 +83,8 @@ export function RheaLiveEarn() {
   const [action, setAction] = useState<LiveEarnAction>("supply");
   const [amount, setAmount] = useState("");
   const [max, setMax] = useState(false);
+  const [available, setAvailable] = useState<{ walletUsdc: string | null; suppliedUsdc: string | null } | null>(null);
+  const [availableLoading, setAvailableLoading] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [review, setReview] = useState<PreflightReview | null>(null);
   const [transactions, setTransactions] = useState<readonly NearTransaction[]>([]);
@@ -87,6 +95,39 @@ export function RheaLiveEarn() {
 
   const lines = useMemo(() => (review ? reviewLines(review) : []), [review]);
   const busy = phase === "sending" || phase === "polling";
+  const availableAmount = accountId
+    ? action === "withdraw"
+      ? available?.suppliedUsdc
+      : available?.walletUsdc
+    : null;
+  const availableLabel = action === "withdraw" ? "Available to withdraw" : "Available to supply";
+
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    void (async () => {
+      setAvailableLoading(true);
+      try {
+        const res = await fetch(`/api/earn/rhea/live?accountId=${encodeURIComponent(accountId)}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => ({}))) as AvailableResponse;
+        if (cancelled) return;
+        if (res.ok && data.ok) {
+          setAvailable({ walletUsdc: data.walletUsdc ?? null, suppliedUsdc: data.suppliedUsdc ?? null });
+        } else {
+          setAvailable(null);
+        }
+      } catch {
+        if (!cancelled) setAvailable(null);
+      } finally {
+        if (!cancelled) setAvailableLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, receipt?.status]);
 
   useEffect(() => {
     if (phase !== "polling" || !txHash || !review) return;
@@ -144,7 +185,7 @@ export function RheaLiveEarn() {
       const res = await fetch("/api/earn/rhea/live", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, accountId, amount: max ? undefined : amount, max }),
+        body: JSON.stringify({ action, accountId, amount, max: action === "withdraw" && max }),
         cache: "no-store",
       });
       const data = (await res.json().catch(() => ({}))) as PreflightResponse;
@@ -210,7 +251,7 @@ export function RheaLiveEarn() {
         <div>
           <h1>Rhea live earn · NEAR</h1>
           <div className="sub">
-            Same-chain USDC supply and withdraw through Burrow · signed by your own NEAR wallet
+            Supply and withdraw USDC on NEAR with your own NEAR wallet
           </div>
         </div>
         <div className="actions">
@@ -222,17 +263,12 @@ export function RheaLiveEarn() {
 
       <div style={{ display: "grid", gap: 14 }}>
         <Panel tone="caution">
-          <b>Same-chain only.</b> This rail supplies/withdraws native USDC on NEAR directly with your
-          NEAR account and the Burrow contract ({RHEA_LIVE_MARKET.contract}). It does <b>not</b> satisfy
-          the original 071 cross-chain MCA/1Click Phase C requirement — that path remains deferred.
-          Mainnet funds: review every step; SparkPoint never holds or moves your funds.
+          <b>Supply or withdraw USDC on NEAR.</b> You review every step and approve it in your own
+          wallet. Mainnet funds. Review each step in your wallet; SparkPoint never holds your funds.
         </Panel>
 
         {!enabled && (
-          <Panel tone="loss">
-            Live Rhea is off in this build (<code>NEXT_PUBLIC_EARN_LIVE_RHEA</code> is not
-            <code> true</code>). Nothing can be signed here.
-          </Panel>
+          <Panel tone="loss">Live Rhea is off in this build. Nothing can be signed here.</Panel>
         )}
 
         <div className="card card-pad" style={{ display: "grid", gap: 12 }}>
@@ -265,6 +301,7 @@ export function RheaLiveEarn() {
                 style={{ cursor: "pointer", textTransform: "capitalize" }}
                 onClick={() => {
                   setAction(option);
+                  setAmount(amountAfterActionChange(action, option, amount));
                   setMax(false);
                   setReview(null);
                   setPhase("idle");
@@ -284,10 +321,13 @@ export function RheaLiveEarn() {
                 inputMode="decimal"
                 autoComplete="off"
                 spellCheck={false}
-                value={max ? "" : amount}
-                disabled={max || busy}
+                value={amount}
+                disabled={busy}
                 placeholder={action === "supply" ? "25" : "10"}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => {
+                  setAmount(event.target.value);
+                  setMax(false);
+                }}
                 style={{
                   width: 220,
                   fontSize: 14,
@@ -299,33 +339,35 @@ export function RheaLiveEarn() {
                   outline: "none",
                 }}
               />
-              {action === "withdraw" && (
-                <button
-                  type="button"
-                  className={`pill${max ? "" : " ghosty"}`}
-                  aria-pressed={max}
-                  onClick={() => {
-                    setMax((value) => !value);
-                    setReview(null);
-                    setPhase("idle");
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
-                  Max
-                </button>
-              )}
+              <button
+                type="button"
+                className={`pill${max ? "" : " ghosty"}`}
+                aria-pressed={max}
+                disabled={!availableAmount || busy}
+                onClick={() => {
+                  if (!availableAmount) return;
+                  setAmount(availableAmount);
+                  setMax(action === "withdraw");
+                  setReview(null);
+                  setPhase("idle");
+                  setError(null);
+                }}
+                style={{ cursor: availableAmount ? "pointer" : "not-allowed" }}
+              >
+                Max
+              </button>
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={!enabled || !accountId || busy || (!max && !amount.trim())}
+                disabled={!enabled || !accountId || busy || !amount.trim()}
                 onClick={() => void prepare()}
               >
                 Review {action}
               </button>
             </div>
             <span style={{ fontSize: 11.5, color: MUTED }}>
-              Native NEAR USDC ({RHEA_LIVE_MARKET.token.slice(0, 10)}…). USDC has 6 decimals; the
-              preflight refuses unknown assets and out-of-bound amounts.
+              {availableLabel}:{" "}
+              {!accountId ? "connect your wallet to see your balance" : availableLoading ? "Reading…" : `${availableAmount ?? "—"}${availableAmount ? " USDC" : ""}`}
             </span>
           </label>
 
@@ -346,7 +388,12 @@ export function RheaLiveEarn() {
                       style={{
                         textAlign: "right",
                         wordBreak: "break-all",
-                        color: line.tone === "caution" ? "var(--caution)" : undefined,
+                        color:
+                          line.tone === "caution"
+                            ? "var(--caution)"
+                            : line.tone === "gain"
+                              ? "var(--gain)"
+                              : undefined,
                         fontWeight: 500,
                       }}
                     >
@@ -356,11 +403,8 @@ export function RheaLiveEarn() {
                 ))}
               </div>
               <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
-                {transactions.length} unsigned transaction{transactions.length === 1 ? "" : "s"} prepared.
-                {action === "supply"
-                  ? " Supply is a documented Burrow ft_transfer_call (1 yoctoNEAR attached; storage_deposit only when registration is missing)."
-                  : " Withdraw is Burrow execute → Withdraw with the exact token_id and max_amount."}{" "}
-                No slippage applies to exact supply/withdraw, but the amount and bounds are enforced.
+                {transactions.length} transaction{transactions.length === 1 ? "" : "s"} ready for your
+                wallet to approve. The amount is exact; no price slippage applies.
               </div>
               <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.5 }}>
                 <input
@@ -371,8 +415,8 @@ export function RheaLiveEarn() {
                   style={{ marginTop: 2 }}
                 />
                 <span>
-                  I reviewed the account, amount, contract, storage/gas reserve and block. I understand
-                  this asks my NEAR wallet to sign and send a mainnet transaction.
+                  I reviewed the account, amount, network fee and current block. I understand this
+                  asks my NEAR wallet to sign and send a mainnet transaction.
                 </span>
               </label>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -430,19 +474,15 @@ export function RheaLiveEarn() {
 
           {receipt?.status === "confirmed" && review && (
             <div style={{ fontSize: 12, color: MUTED }}>
-              Re-open the review or refresh the vault to read your updated Burrow position.{" "}
-              <a href={RHEA_LIVE_MARKET.appUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)" }}>
-                Rhea lending ↗
-              </a>
+              Your Rhea position will update after the transaction finalizes.
             </div>
           )}
         </div>
 
         <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-          What this is not: it is not the 071 cross-chain MCA/1Click deposit (which needs an EVM
-          signature and a Rhea 1Click flow), it is not custody, and it never adds an access key. The
-          login path remains transaction-free; only this reviewed confirm step can ask the wallet to
-          send.
+          This screen supplies and withdraws USDC on NEAR. SparkPoint never holds your funds, and
+          connecting your wallet never adds an access key. Nothing is sent until you approve it in
+          your wallet.
         </div>
       </div>
     </div>
