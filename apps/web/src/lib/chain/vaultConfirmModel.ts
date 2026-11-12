@@ -352,7 +352,7 @@ export function deriveVaultConfirm(
   const netApyText =
     isWrapper
       ? typeof curatedApy === "number" && Number.isFinite(curatedApy)
-        ? `${(curatedApy / 100).toFixed(2)}% (curator scan)`
+        ? `${(curatedApy / 100).toFixed(2)}% (curated APY)`
         : "—"
       : framing === null
         ? "—"

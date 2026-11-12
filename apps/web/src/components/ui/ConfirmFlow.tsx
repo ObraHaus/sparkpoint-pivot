@@ -681,7 +681,7 @@ function placeholderBody(intent: ConfirmIntent, go: (r: string) => void): React.
   return (
     <>
       <p style={{ fontSize: 13.5, color: "var(--muted-foreground)", lineHeight: 1.6, margin: "0 0 6px" }}>
-        {label} aren&rsquo;t live in this build yet. Sparky only proposes — <b>nothing is signed and nothing moves</b>.
+        {label} aren&rsquo;t available yet. Sparky only proposes — <b>nothing is signed and nothing moves</b>.
         On-chain execution ships at launch.
       </p>
       <p style={{ fontSize: 12.5, color: "var(--muted-foreground)", lineHeight: 1.6, margin: "0 0 14px" }}>

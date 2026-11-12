@@ -61,9 +61,19 @@ export interface FunctionCallAction {
   };
 }
 
+/** A plain native-NEAR transfer (no function call) — used by the 1Click deposit path. */
+export interface TransferAction {
+  readonly type: "Transfer";
+  readonly params: {
+    readonly deposit: string;
+  };
+}
+
+export type NearAction = FunctionCallAction | TransferAction;
+
 export interface NearTransaction {
   readonly receiverId: string;
-  readonly actions: readonly FunctionCallAction[];
+  readonly actions: readonly NearAction[];
 }
 
 export interface NearTransactionOutcome {
