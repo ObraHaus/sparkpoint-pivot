@@ -22,7 +22,7 @@ from sparkpoint_agent.portfolio.models import (
 
 AS_OF = "2026-11-01T04:30:00+00:00"
 WALLET = "0x2222222222222222222222222222222222222222"
-NOT_LINKED = "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)"
+NOT_LINKED = "Kamino positions show once a Solana address is linked to your account"
 
 
 def _section(

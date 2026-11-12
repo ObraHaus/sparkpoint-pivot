@@ -80,7 +80,7 @@ test. Simulations are labelled **SIMULATED**.
   (`relayer`, `nearMcaWithdrawTx`) first and the Rhea app link-out last, and states
   `nep413IsTransaction=false`, `custodian=null`, `signedBySparkPoint=false`. A link-out is not a
   SparkPoint-signed transaction.
-- **Rhea preview (071):** an external link to `app.rhea.finance`.
+- **Rhea preview:** an external link to `app.rhea.finance`.
 
 No rail gives SparkPoint the ability to move, freeze or withhold a user's funds.
 

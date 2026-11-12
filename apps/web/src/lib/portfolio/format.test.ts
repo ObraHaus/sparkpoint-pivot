@@ -95,5 +95,9 @@ test("empty copy and APY lines are plain and non-fabricating", () => {
   assert.match(sectionEmptyCopy("kamino"), /linked Solana address/);
   assert.equal(apyLine("4.41"), "4.41% net APY");
   assert.equal(apyLine("14.05", "supply"), "14.05% supply APY");
+  assert.equal(
+    apyLine("10.2023855120367229327150527", "supply"),
+    "10.20% supply APY",
+  );
   assert.equal(apyLine(null), "APY unavailable");
 });

@@ -11,6 +11,7 @@ import type {
   PortfolioSectionStatus,
   PortfolioRow,
 } from "@sparkpoint/shared/schemas";
+import { formatApyPercent } from "../format/apy.ts";
 
 const DASH = "—";
 
@@ -137,8 +138,9 @@ export function sectionEmptyCopy(key: PortfolioSectionKey): string {
   }
 }
 
-/** `4.41% net APY` / `APY unavailable` for an earn row. */
+/** `4.41% net APY` / `APY unavailable` for an earn row — always two decimals. */
 export function apyLine(apy: string | null | undefined, kind: "net" | "supply" = "net"): string {
-  if (!apy || apy.trim() === "") return "APY unavailable";
-  return `${apy}% ${kind === "supply" ? "supply APY" : "net APY"}`;
+  const formatted = formatApyPercent(apy);
+  if (!formatted) return "APY unavailable";
+  return `${formatted} ${kind === "supply" ? "supply APY" : "net APY"}`;
 }

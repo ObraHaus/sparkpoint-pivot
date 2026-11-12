@@ -88,7 +88,8 @@ test("TVL is compact, formatted and never invented", () => {
 test("net APY truncates to two decimals and shows an em dash when absent", () => {
   assert.equal(formatNetApy("4.41"), "4.41%");
   assert.equal(formatNetApy("5.983023393148187"), "5.98%");
-  assert.equal(formatNetApy("5"), "5%");
+  assert.equal(formatNetApy("5"), "5.00%");
+  assert.equal(formatNetApy("10.2023855120367229327150527"), "10.20%");
   assert.equal(formatNetApy(null), "—");
   assert.equal(formatNetApy("n/a"), "—");
 });
@@ -103,7 +104,7 @@ test("snapshot age attributes a fresh snapshot to Morpho and calls a fallback ca
 test("rail chips always name all three rails honestly", () => {
   assert.deepEqual(
     railChips(vault()).map((chip) => chip.label),
-    ["Direct", "1Click Earn live", "Intents Connect needs key"],
+    ["Direct", "1Click Earn live", "Alternate route not available"],
   );
 
   const noLiquidity = railChips(
@@ -120,7 +121,7 @@ test("rail chips always name all three rails honestly", () => {
       intentsConnect: { available: false, reason: "Aurora Intents Connect is disabled in the earn config." },
     }),
   );
-  assert.equal(disabled[2]?.label, "Intents Connect needs key");
+  assert.equal(disabled[2]?.label, "Alternate route not available");
 
   const available = railChips(
     vault({
@@ -139,7 +140,7 @@ test("rail chips always name all three rails honestly", () => {
       },
     }),
   );
-  assert.equal(available[2]?.label, "Intents Connect");
+  assert.equal(available[2]?.label, "Alternate route");
 });
 
 test("the preview prompt names the amount, vault and chain", () => {
@@ -348,7 +349,7 @@ test("Rhea rail chips name the Rhea rail and keep the others visible", () => {
     [
       ["direct", "Direct", false],
       ["oneclick_rhea", "1Click Rhea live", true],
-      ["intents_connect", "Intents Connect n/a", false],
+      ["intents_connect", "Alternate route not available", false],
     ],
   );
 
@@ -391,6 +392,10 @@ test("Rhea preview copy is honest about the contract APY and the one-time fee", 
   assert.equal(netSuppliedLine(undefined, "USDC"), null);
   assert.equal(netSuppliedLine("", "USDC"), null);
   assert.equal(rheaApyLine("14.05%"), "Supply APY 14.05% (Rhea, variable)");
+  assert.equal(
+    rheaApyLine("10.2023855120367229327150527%"),
+    "Supply APY 10.20% (Rhea, variable)",
+  );
   assert.equal(rheaApyLine(undefined), null);
 
   assert.equal(vaultAppUrl(rheaVault()), RHEA_APP_URL);

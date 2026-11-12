@@ -10,6 +10,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Improved (1114-vault-list — one tagged, filterable vault list with real balances)
+
+- **The Vault page now has ONE list instead of a separate "Earn across chains" section and an
+  "All live vaults" board.** Curated wrapped vaults and the live Rhea (NEAR), Morpho (Base) and
+  Kamino (Solana) registry rows render in the same existing card UI, each tagged by chain and
+  protocol. Two chip rows filter by chain and by protocol, with "All chains" / "All protocols" and
+  an explicit **Clear filters** control so a filter can never hide a vault with no way back.
+  Live rows keep their `Live deposit` / `Withdraw` links into the in-app review flow; a row with
+  no live rail is tagged **Preview** rather than silently omitted.
+  (`apps/web/src/components/vault/CuratedBoard.tsx`,
+  `apps/web/src/app/(app)/vault/page.tsx`, `apps/web/src/lib/vault/vaultList.ts`)
+
+### Fixed (1114-vault-list — cards show your real position, never a stale or fake balance)
+
+- **Every vault card now shows the connected wallet's real position on that chain.** Rhea reads
+  the Burrow supplied USDC with the existing 6+12 extra-decimal conversion, Morpho converts vault
+  shares to the underlying USDC value via `convertToAssets` (never the raw share count), and Kamino
+  uses the same read-only position endpoint as the live Kamino flow. A dash (`—`) appears only
+  when no wallet for that chain is connected; while a read is in flight the card says
+  "Reading…", a failed read says "Unavailable", and a genuine zero is shown as `0`. The value is
+  scoped to the account it was read for, so disconnecting or switching accounts clears it instead
+  of leaving the previous wallet's amount on screen.
+  (`apps/web/src/lib/vault/useVaultBalances.ts`,
+  `apps/web/src/lib/portfolio/useHeldWrappers.ts`,
+  `apps/web/src/lib/vault/vaultList.test.ts`)
+
+### Fixed (1114-vault-copy — plain copy, two-decimal APY, no developer badges)
+
+- **Sparky's multi-chain portfolio and earn cards no longer say live deposits "arrive in Phase C"
+  or call the view read-only when Kamino and Rhea can already deposit/withdraw.** The Kamino and
+  Rhea sections now point to the Vault page and say the move is reviewed and signed in the user's
+  own wallet. (`apps/web/src/components/screens/chat/portfolio-overview-card.tsx`,
+  `apps/web/src/components/screens/chat/earn-positions-card.tsx`)
+- **Every user-facing APY now renders at two decimal places.** A raw contract ratio such as
+  `10.2023855120367229327150527` renders as `10.20%` in vault cards, the live Kamino/Rhea flows,
+  Sparky's earn and portfolio cards, and the agent's own Rhea text. New shared formatter
+  (`apps/web/src/lib/format/apy.ts`) plus `formatNetApy`, `apyLine`, `rheaApyLine`; the agent's
+  `percent_string` truncates to two decimals for the same reason.
+- **Developer-looking route badges are gone from user-facing cards.** "1Click Earn unavailable"
+  and "Intents Connect needs key" are no longer rendered; a card shows only working routes, or a
+  plain "Preview only". Live earn and vault routes now describe availability in ordinary words
+  instead of "flag"/"allowlist"/"rail" language.
+  (`apps/web/src/lib/earn/format.ts`,
+  `apps/web/src/components/screens/chat/earn-vaults-card.tsx`,
+  `apps/web/src/components/vault/LiveEarnFlow.tsx`,
+  `services/agent/src/sparkpoint_agent/earn/rails.py`,
+  `services/agent/src/sparkpoint_agent/earn/service.py`)
+- **Removed the now-unused separate "Earn across chains" component** so there is one vault list
+  and one source of chain/protocol tags.
+  (`apps/web/src/components/vault/EarnAcrossChains.tsx`)
+
 ### Fixed (1113-named-recipient — chat-named cross-chain destination prefills the swap card)
 
 - **The cross-chain swap card prefills a destination you already named in the chat.** If you ask
