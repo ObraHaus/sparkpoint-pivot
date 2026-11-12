@@ -404,7 +404,7 @@ export default function Page() {
                   <span className="pill" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", color: "var(--muted-foreground)" }}>indexed</span>
                 </span>
               ) : (
-                <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which isn't wired yet." />
+                <Note text="PnL pending" title="Profit/Loss over time needs a history indexer, which is coming soon." />
               )}
               {netRealizedUsd !== undefined && netRealizedUsd !== 0 && (
                 <span

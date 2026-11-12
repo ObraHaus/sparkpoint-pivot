@@ -853,7 +853,7 @@ export function EarnQuoteCard({ block }: { block: EarnQuoteBlock }) {
           </div>
 
           <Notice tone="info" testId="earn-quote-not-signable">
-            Not signable in this build: there is no confirm or send button for a {protocolLabel(protocol)} earn preview
+            This {protocolLabel(protocol)} earn preview can’t be signed yet — there is no confirm or send button.
             here. Nothing is signed or sent.
           </Notice>
 

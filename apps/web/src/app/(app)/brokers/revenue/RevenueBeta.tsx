@@ -149,7 +149,7 @@ export function RevenueBeta() {
           <div className="payrow">
             <span className="muted">Revenue on this network</span>
             <span>
-              Unavailable — the revenue contracts aren’t wired on {chainName(BROKER_ENGINE_CHAIN)}
+              Unavailable — the revenue contracts aren’t available on {chainName(BROKER_ENGINE_CHAIN)}
             </span>
           </div>
         </div>

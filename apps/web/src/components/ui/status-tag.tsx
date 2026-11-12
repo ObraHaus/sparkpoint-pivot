@@ -105,7 +105,7 @@ export function StatusTag({ variant, label, title, works, pending }: StatusTagPr
           {(pending?.length ?? 0) > 0 && (
             <>
               <div style={{ fontWeight: 700, color: "var(--caution)", marginBottom: 4 }}>
-                Not wired yet
+                Coming soon
               </div>
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 {pending!.map((p, i) => (

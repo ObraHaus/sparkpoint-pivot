@@ -181,7 +181,7 @@ export default function Page({ params }: { params: Promise<{ positionId: string 
           </div>
         ) : (
           <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted-foreground)", display: "inline-flex", gap: 8, alignItems: "center" }}>
-            Accrued yield / PnL <Tag text="pending" title="PnL over time needs a history indexer, not wired yet." />
+            Accrued yield / PnL <Tag text="pending" title="PnL over time needs a history indexer, coming soon." />
           </div>
         )}
       </div>

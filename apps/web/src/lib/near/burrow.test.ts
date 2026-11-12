@@ -28,6 +28,7 @@ import {
   refusedWalletSwitch,
   toBurrowInnerUnits,
   withdrawAmountText,
+  type FunctionCallAction,
   withdrawableUsdcAmount,
 } from "./burrow.ts";
 
@@ -112,15 +113,17 @@ test("supply emits one transaction per target contract when registration is miss
     [BURROW_CONTRACT, USDC_TOKEN_ID],
   );
   const [burrowTx, tokenTx] = plan.transactions;
-  assert.equal(burrowTx.actions.length, 1);
-  assert.equal(burrowTx.actions[0].params.methodName, "storage_deposit");
-  assert.deepEqual(burrowTx.actions[0].params.args, {});
-  assert.equal(burrowTx.actions[0].params.deposit, BURROW_STORAGE_MIN_YOCTO.toString());
-  assert.equal(tokenTx.actions.length, 2);
-  assert.equal(tokenTx.actions[0].params.methodName, "storage_deposit");
-  assert.deepEqual(tokenTx.actions[0].params.args, { account_id: BURROW_CONTRACT, registration_only: true });
-  assert.equal(tokenTx.actions[0].params.deposit, TOKEN_STORAGE_MIN_YOCTO.toString());
-  assert.equal(tokenTx.actions[1].params.methodName, "ft_transfer_call");
+  const burrowActions = burrowTx.actions as FunctionCallAction[];
+  const tokenActions = tokenTx.actions as FunctionCallAction[];
+  assert.equal(burrowActions.length, 1);
+  assert.equal(burrowActions[0].params.methodName, "storage_deposit");
+  assert.deepEqual(burrowActions[0].params.args, {});
+  assert.equal(burrowActions[0].params.deposit, BURROW_STORAGE_MIN_YOCTO.toString());
+  assert.equal(tokenActions.length, 2);
+  assert.equal(tokenActions[0].params.methodName, "storage_deposit");
+  assert.deepEqual(tokenActions[0].params.args, { account_id: BURROW_CONTRACT, registration_only: true });
+  assert.equal(tokenActions[0].params.deposit, TOKEN_STORAGE_MIN_YOCTO.toString());
+  assert.equal(tokenActions[1].params.methodName, "ft_transfer_call");
   assert.equal(plan.storage.registersBurrowAccount, true);
   assert.equal(plan.storage.registersTokenReceiver, true);
   assert.equal(plan.storage.totalYocto, BURROW_STORAGE_MIN_YOCTO + TOKEN_STORAGE_MIN_YOCTO);
@@ -191,7 +194,7 @@ test("withdraw builds Burrow execute Withdraw with token_id and 18-dp max_amount
   });
   assert.equal(plan.transactions.length, 1);
   assert.equal(plan.transactions[0].receiverId, BURROW_CONTRACT);
-  const action = plan.transactions[0].actions[0];
+  const action = plan.transactions[0].actions[0] as FunctionCallAction;
   assert.equal(action.params.methodName, "execute");
   assert.equal(action.params.gas, "100000000000000");
   assert.equal(action.params.deposit, "1");
@@ -210,7 +213,7 @@ test("withdraw Max uses the exact supplied inner balance, not a floored 6-dp val
     canWithdraw: true,
     maxAmountInnerUnits: supplied,
   });
-  const args = plan.transactions[0].actions[0].params.args as {
+  const args = (plan.transactions[0].actions[0] as FunctionCallAction).params.args as {
     actions: Array<{ Withdraw: { max_amount: string } }>;
   };
   assert.equal(args.actions[0].Withdraw.max_amount, supplied.toString());
