@@ -26,6 +26,7 @@ import {
   findMorphoVault,
   validateMorphoVaultMetadata,
   MORPHO_VAULTS,
+  morphoAmountAfterModeChange,
   morphoMaxWithdrawShares,
   parseMorphoAmount,
   type MorphoPlan,
@@ -443,6 +444,7 @@ export function MorphoLiveFlow({ vault, chain, asset, mode: initialMode, initial
                     type="button"
                     className={`pill${mode === option ? "" : " ghosty"}`}
                     onClick={() => {
+                      setAmount(morphoAmountAfterModeChange(mode, option, amount));
                       setMode(option);
                       setPlan(null);
                       setGas(null);

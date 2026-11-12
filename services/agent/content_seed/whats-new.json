@@ -758,7 +758,7 @@
       "type": "changelog",
       "tag": "Fixed",
       "title": "Rhea withdraw Max now fills the amount you can withdraw",
-      "body": "On the Rhea (Burrow) withdraw screen, pressing Max did nothing, so the amount had to be typed by hand. Max now fills the USDC amount you have supplied and can withdraw, shown under the field as Available to withdraw. The app converts Burrow's balance correctly, so a position worth 0.05 USDC fills 0.05, not a wildly wrong number. The Supply tab shows the idle USDC you can supply, switching tabs clears the previous amount, and the withdraw review now reads as money you receive (for example, \"0.05 USDC to your wallet\") instead of a negative debit. You still review and sign in your own wallet.",
+      "body": "On the Rhea (Burrow) withdraw screen, pressing Max did nothing, so the amount had to be typed by hand. Max now fills the USDC amount you have supplied and can withdraw, shown under the field as Available to withdraw. The app converts Burrow's balance correctly, so a position worth 0.05 USDC fills 0.05, not a wildly wrong number. The Supply tab shows the idle USDC you can supply, switching between Supply and Withdraw clears the previous amount on Rhea, the Morpho Deposit and Withdraw tabs now clear the amount when you switch too (so a deposit amount is never reused as a share amount), and the withdraw review now reads as money you receive (for example, \"0.05 USDC to your wallet\") instead of a negative debit. You still review and sign in your own wallet.",
       "published_at": "2026-11-11T23:30:00Z"
     },
     {
