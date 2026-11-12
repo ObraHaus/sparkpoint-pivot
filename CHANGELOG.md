@@ -10,6 +10,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (1112-rhea-mca — the Rhea card reads the EVM wallet's Rhea account)
+
+- **The Rhea card and its Withdraw Max now show a balance for an EVM-only session.** When no NEAR
+  wallet is connected, the vault card and the live Rhea screen resolve the same Rhea Multichain
+  Account (MCA) the portfolio path reads, so "Your balance" and Max use the real supplied USDC
+  instead of a dash. A directly connected NEAR wallet still wins. The MCA balance is readable, but
+  an EVM wallet cannot sign a NEAR transaction for it, so the live supply/withdraw review stays disabled
+  for MCA-only users with an explicit explanation (withdraw on Rhea with the same wallet).
+  (`apps/web/src/lib/vault/useVaultBalances.ts`,
+  `apps/web/src/lib/vault/vaultList.ts`,
+  `apps/web/src/components/vault/CuratedBoard.tsx`,
+  `apps/web/src/components/vault/RheaLiveEarn.tsx`)
+
+### Fixed (1113-crosschain-record — a live 1Click quote is recorded reliably)
+
+- **"Get deposit address" no longer fails after 1Click issues the address.** The 1Click deadline is
+  an ISO-8601 string but the `crosschain_quotes.deadline` column is `TIMESTAMPTZ`; asyncpg's codec
+  rejects a string, so every live confirm threw before the INSERT and the quote could not be bound
+  to its owner. The store now binds a parsed `datetime`, and the API logs the exception type and a
+  safe truncated message so a future persistence failure is diagnosable without the quote payload.
+  Fail-closed ownership is unchanged: an unrecorded address is still never returned.
+  (`services/agent/src/sparkpoint_agent/db/crosschain_quotes.py`,
+  `services/agent/src/sparkpoint_agent/api/crosschain.py`)
+
 ### Improved (1114-vault-list — one tagged, filterable vault list with real balances)
 
 - **The Vault page now has ONE list instead of a separate "Earn across chains" section and an

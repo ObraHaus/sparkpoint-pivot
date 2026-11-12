@@ -219,11 +219,13 @@ export interface MultichainPortfolioState {
  * session, so no wallet/address parameter is ever sent (the agent rejects one). The response is
  * validated fail-closed against the same shared schema the chat block uses.
  */
-export function useMultichainPortfolio(): MultichainPortfolioState {
+export function useMultichainPortfolio(
+  options: { enabled?: boolean } = {},
+): MultichainPortfolioState {
   const { client, online, identity, loading: sessionLoading } = useAgentClient();
   const query = useQuery({
     queryKey: ["agent", "portfolio", "multichain", identity?.account, identity?.chainId],
-    enabled: online,
+    enabled: online && options.enabled !== false,
     staleTime: 30_000,
     retry: 2,
     queryFn: async ({ signal }) => {
@@ -245,6 +247,22 @@ export function useMultichainPortfolio(): MultichainPortfolioState {
     online,
     refetch: () => void query.refetch(),
   };
+}
+
+/**
+ * The signed-in EVM wallet's Rhea Multichain Account (MCA) on NEAR, or `null`.
+ *
+ * This reuses the SAME `/portfolio/multichain` read that powers the "Across chains" panel, so the
+ * vault card and Sparky's portfolio can never resolve a different Rhea account. The agent derives
+ * the owner from the SIWE session; the browser supplies no address. `enabled` lets a caller skip
+ * the read when a direct NEAR wallet is already connected (that account wins).
+ */
+export function useRheaMcaAccount(enabled = true): string | null {
+  const { block } = useMultichainPortfolio({ enabled });
+  if (!enabled) return null;
+  const rhea = block?.sections.find((section) => section.key === "rhea");
+  if (!rhea || rhea.status !== "ok") return null;
+  return rhea.mca?.trim() || null;
 }
 
 /* ── GET /portfolio/positions/{id} — transaction history (§tx) ─────────────── */
