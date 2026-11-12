@@ -34,13 +34,13 @@ export function provenanceChip(vault: CurationVault): ProveanceChip {
   return { label: "AI pick", tone: "ghosty" };
 }
 
-/** "AI pick · last scan 18 Sep 2026, 12:00" — the board's as-of line, or an honest absence. */
+/** "AI pick · last updated 18 Sep 2026, 12:00" — the board's as-of line, or an honest absence. */
 export function boardProvenance(board: CurationBoard): string {
-  if (board.lastRunOk === false && !board.lastRunAt) return "Last scan failed";
-  if (!board.lastRunAt) return "No scan yet";
+  if (board.lastRunOk === false && !board.lastRunAt) return "Last update failed";
+  if (!board.lastRunAt) return "No updates yet";
   const when = new Date(board.lastRunAt);
-  if (!Number.isFinite(when.getTime())) return "Last scan time unavailable";
-  return `Last scan ${when.toLocaleString(undefined, {
+  if (!Number.isFinite(when.getTime())) return "Last update time unavailable";
+  return `Last updated ${when.toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",

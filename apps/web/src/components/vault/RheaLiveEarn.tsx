@@ -133,11 +133,15 @@ export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiv
   useEffect(() => {
     if (!accountId) return;
     let cancelled = false;
+    const controller = new AbortController();
+    // A hung read must never leave the page on "Reading your balance…" forever.
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
     void (async () => {
       setAvailableLoading(true);
       try {
         const res = await fetch(`/api/earn/rhea/live?accountId=${encodeURIComponent(accountId)}`, {
           cache: "no-store",
+          signal: controller.signal,
         });
         const data = (await res.json().catch(() => ({}))) as AvailableResponse;
         if (cancelled) return;
@@ -149,11 +153,14 @@ export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiv
       } catch {
         if (!cancelled) setAvailable(null);
       } finally {
+        window.clearTimeout(timeout);
         if (!cancelled) setAvailableLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, [accountId, receipt?.status]);
 
@@ -454,7 +461,9 @@ export function RheaLiveEarn({ initialMode = "deposit", initialAmount }: RheaLiv
             ? "Connect your NEAR wallet to see your balance"
             : availableLoading
               ? "Reading your balance…"
-              : `${action === "withdraw" ? "Available to withdraw" : "Available to supply"}: ${availableAmount ?? "—"}${availableAmount ? " USDC" : ""}`
+              : available
+                ? `${action === "withdraw" ? "Available to withdraw" : "Available to supply"}: ${availableAmount ?? "—"}${availableAmount ? " USDC" : ""}`
+                : "Balance unavailable — retry in a moment."
         }
         extra={
           rheaAccount.source === "mca" ? (

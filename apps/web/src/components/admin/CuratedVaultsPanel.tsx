@@ -553,7 +553,7 @@ export function CuratedVaultsPanel() {
 
       <div className="muted" style={{ fontSize: 12, marginTop: 10, lineHeight: 1.5 }}>
         Curation is off-chain and AI-assisted; an admin can always override it, and every override
-        is audited above. Figures are as-of the stored scan — never projections.
+        is audited above. Figures reflect recent data; not projections.
       </div>
     </>
   );

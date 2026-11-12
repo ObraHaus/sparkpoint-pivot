@@ -167,8 +167,8 @@ export function kaminoFlowRows(input: KaminoFlowRowsInput): VaultFlowSummaryRow[
   if (input.mode === "deposit") {
     rows.push({
       key: "crank",
-      label: "Crank-fee buffer",
-      value: input.crankNote ?? "applied above the vault minimum",
+      label: "Network fee buffer",
+      value: input.crankNote ?? "Included in the minimum deposit",
       tone: "info",
     });
   }

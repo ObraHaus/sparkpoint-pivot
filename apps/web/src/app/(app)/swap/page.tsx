@@ -83,11 +83,12 @@ export default function Page() {
 
   const nearConnected = !!nearAccountId;
   const swapConnected = isSwapConnected({ evmConnected: isConnected, nearAccountId });
-  // A NEAR-only user can only use the cross-chain rail; an EVM user starts on the same-chain form
-  // and may switch. No effect: the effective mode is derived from what is actually connected.
-  const [requestedMode, setRequestedMode] = useState<SwapMode>("same-chain");
+  // A NEAR-only user starts on the cross-chain rail; an EVM user starts on the same-chain form.
+  // Once the user clicks a tab their choice wins, so a connected NEAR wallet can no longer pin the
+  // view to cross-chain. No effect: the default is derived from what is actually connected.
+  const [requestedMode, setRequestedMode] = useState<SwapMode | null>(null);
   const nearOnly = !isConnected && nearConnected;
-  const mode: SwapMode = nearOnly ? "cross-chain" : requestedMode;
+  const mode: SwapMode = requestedMode ?? (nearOnly ? "cross-chain" : "same-chain");
 
   const initial = defaultTokens(DISPLAY_CHAIN_ID);
   const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(initial.tin);

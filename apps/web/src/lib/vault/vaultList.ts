@@ -87,7 +87,7 @@ export function protocolKeyFromSource(source: string | null | undefined): string
 export function protocolDisplayName(protocol: string): string {
   if (protocol === "kamino") return "Kamino";
   if (protocol === "rhea") return "Rhea";
-  if (protocol === "morpho") return "Morpho";
+  if (protocol === "morpho" || protocol.toLowerCase().startsWith("morpho")) return "Morpho";
   return protocol.charAt(0).toUpperCase() + protocol.slice(1);
 }
 
@@ -125,6 +125,26 @@ export function collectFilterValues<T extends TaggedVault>(
 /** True when any filter is active (the UI must always offer a way back to "all"). */
 export function hasActiveFilter(filter: VaultTagFilter): boolean {
   return filter.chain !== ALL || filter.protocol !== ALL;
+}
+
+/**
+ * The chains and protocols the product can list, independent of what has loaded so far. The
+ * `/vault` board reads two sources (the curated board and the earn registry); without this the
+ * chip row would briefly show only the first source's values and then grow under the user.
+ */
+export const KNOWN_CHAINS = ["robinhood", "base", "near", "sol"] as const;
+export const KNOWN_PROTOCOLS = ["morpho", "rhea", "kamino"] as const;
+
+/** Union of the values present in the list and the known values, preserving first-seen order. */
+export function mergeFilterValues(
+  present: readonly string[],
+  known: readonly string[],
+): string[] {
+  const out = [...present];
+  for (const value of known) {
+    if (!out.includes(value)) out.push(value);
+  }
+  return out;
 }
 
 // ── balances ────────────────────────────────────────────────────────────────────────────────────
