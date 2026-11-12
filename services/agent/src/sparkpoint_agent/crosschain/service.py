@@ -165,6 +165,7 @@ class CrossChainService:
             slippage_bps=self.config.slippage_bps,
             unavailable_reason=reason,
             quoted_at=_now_iso(),
+            recipient=request.recipient,
         )
         text = (
             f"I can't quote that cross-chain route right now: {reason}. Nothing was signed or sent."
@@ -242,6 +243,7 @@ class CrossChainService:
             fee_note=fee_note,
             quoted_at=_now_iso(),
             expires_hint=expires_hint,
+            recipient=request.recipient,
         )
 
         eta = (
