@@ -16,7 +16,7 @@ SKIPPING ON CHAIN SIMULATION.
 
 ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
 
-Transactions saved to: /home/hello/project/sparkpoint-pivot/contracts/broadcast/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
+Transactions saved to: /path/to/sparkpoint-pivot/contracts/broadcast/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
 
-Sensitive values saved to: /home/hello/project/sparkpoint-pivot/contracts/cache/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
+Sensitive values saved to: /path/to/sparkpoint-pivot/contracts/cache/BundlerSpikeSessionDeploy.s.sol/8453/run-latest.json
 

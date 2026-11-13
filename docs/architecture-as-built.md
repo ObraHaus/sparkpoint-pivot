@@ -74,10 +74,10 @@ recommender / literacy calls.
 
 | Resource | Coolify UUID | FQDN / host | Notes |
 |---|---|---|---|
-| `sparkpoint-web` | `i4cw0ogsookkkocsw808gwc4` | `https://71zxh8ed1ejf8132l46joodp17.aldrickb.app` | full app; `SITE_LOCKED=false`; BFF + SIWE |
-| `sparkpoint-agent-develop` | `fw8s4ko4080wgk8okso8go48` | `8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app` (:8000) | hardened public FQDN behind the BFF S2S bearer |
-| `sparkpoint-litellm-develop` | `fog4okko4csgscgos00ws48c` | `fi5zmq5osp0g3aam93gnv2j4rl.aldrickb.app` (:4000) | guard proxy 404s `/`,`/docs`,`/openapi.json`,`/ui/*`; alias `sparkpoint-chat` → OpenRouter |
-| `sparkpoint-litellm-db-develop` | `t4w8wokwgk4ooosk0cwckg8g` | internal | isolated (keys/budgets) — NOT spark-postgres |
+| `sparkpoint-web` | `<coolify-uuid>` | `<internal-host>` | full app; `SITE_LOCKED=false`; BFF + SIWE |
+| `sparkpoint-agent-develop` | `<coolify-uuid>` | `<internal-host>` (:8000) | hardened public FQDN behind the BFF S2S bearer |
+| `sparkpoint-litellm-develop` | `<coolify-uuid>` | `<internal-host>` (:4000) | guard proxy 404s `/`,`/docs`,`/openapi.json`,`/ui/*`; alias `sparkpoint-chat` → OpenRouter |
+| `sparkpoint-litellm-db-develop` | `<coolify-uuid>` | internal | isolated (keys/budgets) — NOT spark-postgres |
 | `spark-postgres` | (existing) | private LAN | mandates + `memory_chunks` (knowledge) + `wallet_allowlist` + audit; migrations 0001–0007 |
 
 On-chain (Base Sepolia 84532): vault `0x15D269B1D4fb3581E5a47482A70215e63Ed547f2`, guardian

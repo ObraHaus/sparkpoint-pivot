@@ -1,75 +1,119 @@
-# SparkPoint Pivot — The First AI-Native Onchain Hedge Fund
+# SparkPoint Pivot
 
-> A **non-custodial**, chat-based **Personal DeFi Assistant** paired with an **AI-managed Aave Yield Vault** on **Base**. Autonomous AI agents (reasoning on Claude, fenced by a deterministic policy layer) manage capital, risk, and strategy — and **the protocol can never hold, move, or lose your money.**
+**Live demo:** [https://beta.sparkpoint.io](https://beta.sparkpoint.io)
 
-This repository is the home for the SparkPoint Pivot **source code and docs**. It is organized for **Spec-Driven Development** using [GitHub Spec Kit](https://github.com/github/spec-kit).
+SparkPoint Pivot is a **non-custodial, AI-native DeFi assistant**. It pairs manual onchain
+pages with **Sparky**, a chat assistant that can perform the same operations: quote and
+confirm swaps, discover and enter yield vaults, and review a multi-chain portfolio.
 
----
+The assistant proposes; the user always signs. SparkPoint never holds keys, and custody-critical
+reads and withdrawals stay available even when the AI service is offline.
 
-## Delivery pipeline
+## What it does
 
+- **Sparky AI chat** (`/chat`) — ask for a swap, a vault, or a portfolio review and get
+  structured, signable actions in the same conversation.
+- **Manual pages** — `/swap`, `/vault`, and `/portfolio` expose the same capabilities without chat.
+- **Cross-chain swaps** — NEAR Intents (1Click) quotes and deposits across EVM, Solana, and NEAR.
+- **Onchain yield** — Morpho curated vaults on Base EVM, Kamino on Solana, and Rhea/Burrow on NEAR,
+  alongside SparkPoint's curated vault registry.
+- **Multi-chain wallets** — EVM (Base, Base Sepolia, Robinhood testnet), Solana, and NEAR, with
+  SIWE and NEP-413 login flows.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[Browser] --> W["Next.js web app<br/>UI · same-origin BFF · SIWE / NEP-413 session"]
+  W -->|"/api/agent/*"| A["FastAPI agent<br/>Coordinator DAG · deterministic policy · Sparky"]
+  A --> L["LLM gateway<br/>OpenRouter / LiteLLM"]
+  A --> D[("Postgres + pgvector<br/>derived index · mandates · knowledge")]
+  A -->|"NEAR Intents 1Click"| X[Cross-chain quotes]
+  W -->|"custody reads · user-signed transactions"| R[Chain RPCs]
+  A --> R
+  R --> V["Morpho · Kamino · Rhea/Burrow · SparkPoint vaults"]
 ```
-① High-level app plan  →  ② Architecture + Spec (Spec Kit)  →  ③ Tasks  →  ④ High-fidelity design (Claude Design)  →  ⑤ Build
-        (docs/)                    (specs/001-…/)                            (docs/design-handover/)
+
+- **`apps/web`** — Next.js App Router UI, wallet/session handling, and the server-side BFF that
+  keeps the agent URL and service token out of the browser.
+- **`services/agent`** — FastAPI service with the coordinator, policy gate, Sparky persona,
+  knowledge retrieval, earn/cross-chain rails, and the data layer.
+- **`contracts`** — Foundry contracts for the SparkPoint vault and ERC-4337 account/session stack.
+- **`packages/shared`** — Shared chain metadata, addresses, ABIs, policy constants, and wire schemas.
+- **`specs/`, `docs/`** — Spec-driven design history, architecture notes, and runbooks.
+
+The core safety property is structural: the browser talks to chains directly for custody reads and
+the user's wallet signs every state-changing transaction. Postgres and the agent are accelerators,
+never the withdrawal path.
+
+## Quickstart
+
+Prerequisites: Node.js 22, `pnpm` 9.15.9, Python 3.12 with `uv`, Foundry, and optionally Docker and
+Postgres 16 + pgvector. See [DEVELOPMENT.md](./DEVELOPMENT.md) and
+[specs/001-sparkpoint-pivot-mvp/quickstart.md](./specs/001-sparkpoint-pivot-mvp/quickstart.md)
+for the full environment matrix.
+
+```bash
+git clone https://github.com/ObraHaus/sparkpoint-pivot.git
+cd sparkpoint-pivot
+pnpm install
+cp .env.example .env.local   # fill in RPC / wallet / database values
+pnpm dev                     # web app
 ```
 
-- **①** Foundational product/strategy plan — see [`docs/high-level-plan/`](docs/high-level-plan/) (v1, v2 "Natively Non-Custodial", and PDFs).
-- **②–③** Spec-Kit artifacts for the launch feature — see [`specs/001-sparkpoint-pivot-mvp/`](specs/001-sparkpoint-pivot-mvp/).
-- **④** Design handover for Claude Design — see [`docs/design-handover/`](docs/design-handover/).
+Run the agent separately:
 
-## Repository structure
-
+```bash
+cd services/agent
+uv sync
+uv run uvicorn sparkpoint_agent.api.main:app --reload --port 8000
 ```
+
+Build and test the contracts:
+
+```bash
+cd contracts
+forge build
+forge test
+```
+
+## Tests
+
+```bash
+# JavaScript / TypeScript workspace
+pnpm lint
+pnpm typecheck
+pnpm test
+
+# Python agent
+cd services/agent
+uv run ruff check .
+uv run mypy src/sparkpoint_agent
+uv run pytest -q
+```
+
+The test suites cover the web unit tests, the agent's policy/custody boundaries, and the Foundry
+contract tests. CI runs the same gates in `.github/workflows/`.
+
+## Repository layout
+
+```text
 sparkpoint-pivot/
-├── .specify/                     # Spec Kit: templates, scripts, memory/constitution.md
-├── .claude/skills/               # Spec Kit slash-command skills (/speckit-*)
-├── apps/web/                     # ⑤ the Next.js web app — faithful UI build (see apps/web/README.md)
-├── e2e/                          # Playwright parity harness (scaffold vs the approved showcase)
-├── specs/
-│   ├── 001-sparkpoint-pivot-mvp/ # The launch feature (spec → plan → tasks)
-│   │   ├── spec.md               # WHAT & WHY (product spec)
-│   │   ├── plan.md               # HOW (architectural / implementation plan)
-│   │   ├── research.md           # Phase 0 — decisions & rationale
-│   │   ├── data-model.md         # Phase 1 — entities & relationships
-│   │   ├── contracts/            # Phase 1 — API + smart-contract interfaces
-│   │   ├── quickstart.md         # Phase 1 — end-to-end validation
-│   │   └── tasks.md              # Dependency-ordered, story-grouped tasks
-│   └── 002-web-app-ui/           # The faithful UI build feature (spec → plan → tasks)
-└── docs/
-    ├── high-level-plan/          # Foundational plan (input to everything)
-    ├── design-handover/          # Brief for Claude Design (web-app flows & UI) + the showcase
-    └── parity/                   # Scaffold-vs-showcase parity verdict + report
+├── apps/web/          # Next.js app, BFF, wallet auth, Sparky UI
+├── services/agent/    # FastAPI agent, policy, earn/cross-chain rails, migrations
+├── contracts/         # Foundry contracts and deployment scripts
+├── packages/shared/   # Chain metadata, addresses, ABIs, schemas
+├── specs/             # Spec-driven feature history
+└── docs/              # Architecture, design handover, ops notes
 ```
 
-## Spec Kit workflow (`/speckit-*` skills)
+## Security model
 
-| Skill | Purpose |
-|---|---|
-| `/speckit-constitution` | Establish/After-update project principles (`.specify/memory/constitution.md`) |
-| `/speckit-specify` | Create/update the feature specification (`spec.md`) |
-| `/speckit-clarify` | De-risk ambiguous areas before planning |
-| `/speckit-plan` | Generate the implementation/architecture plan + design artifacts |
-| `/speckit-tasks` | Generate the dependency-ordered task list |
-| `/speckit-analyze` | Cross-artifact consistency check |
-| `/speckit-implement` | Execute the plan |
+- User wallets are the only source of signing authority.
+- The agent emits unsigned, simulated, policy-checked intents.
+- Withdrawals and trust/exit surfaces are never gated on the AI service being healthy.
+- Secrets live in environment variables; only `.env.example` is committed.
 
-> The constitution, spec, plan, and tasks in this repo were authored to conform to the Spec Kit templates and serve as the source of truth for stage ⑤ (build).
+## License
 
-## Core principles (see the [Constitution](.specify/memory/constitution.md))
-
-1. **Non-custodial by construction** — the protocol can *direct* strategy but has no code path to take user funds.
-2. **AI proposes, deterministic policy + the user disposes** — the model never has final execution authority; the user signs every transaction.
-3. **Provable, not promised** — results and permissions are reconstructable on-chain.
-4. **Conservative, transparent launch** — a single 0-management / profit-only performance-fee Aave Yield Vault (0% management, 0% on principal, 10% performance fee on yield above a high-water mark); honest, net-of-everything yield.
-
-## Tech stack (authoritative)
-
-Frontend **Next.js (App Router) · TailwindCSS · shadcn/ui** · Wagmi v3 + Viem · WalletConnect v2 · Coinbase Wallet SDK
-Agents **OpenClaw / Hermes** (self-hosted, Docker) reasoning on **Claude (Anthropic API)** behind a deterministic policy layer
-Onchain (Base) **Custom ERC-4337** (SparkPointAccount, AccountFactory, SessionKeyValidator, PolicyModule) + **SparkPointVault (ERC-4626)** · Aave v3 · Aerodrome · Foundry
-Data **Dune API · DeFiLlama API · hosted Aave/Aerodrome subgraphs · Postgres + pgvector**
-Infra **Alchemy (Base RPC) · Tenderly (simulation + Web3 Actions) · Sentry · GitHub Actions**
-
----
-
-*Confidential — internal project repository. Build window: Jun 1 – Sep 4, 2026.*
+MIT — see [LICENSE](./LICENSE).

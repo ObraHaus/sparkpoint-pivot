@@ -10,7 +10,7 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=%h/project/sparkpoint-pivot/ops/testnet-bots
 # The keystore. Holds DEPLOYER_PRIVATE_KEY, BOT_MNEMONIC and AGENT_S2S_TOKEN.
-EnvironmentFile=%h/project/.claude/.env
+EnvironmentFile=%h/.env
 Environment=BOT_SCHEDULE=hourly
 Environment=BOT_INTERVAL_SEC=3600
 ExecStart=/usr/bin/env bash run-cycle.sh --broadcast

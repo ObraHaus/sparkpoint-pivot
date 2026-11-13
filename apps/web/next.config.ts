@@ -13,17 +13,23 @@ import type { NextConfig } from "next";
 const RELEASE_COMMIT = process.env.SPARKPOINT_BUILD_ID || process.env.SOURCE_COMMIT || "dev";
 const BUILD_ID = RELEASE_COMMIT;
 
+// Dev-only allowlist for cross-origin dev-proxy hosts (comma-separated). Defaults to
+// localhost so no internal hostname is baked into the public repo.
+const ALLOWED_DEV_ORIGINS = (process.env.ALLOWED_DEV_ORIGINS ?? "*.localhost")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const nextConfig: NextConfig = {
   // The shared source-of-truth package (`@sparkpoint/shared`) ships raw TS
   // (`type: module`, subpath exports to `./src/*.ts`) — transpile it here so the
   // seam consumers (policy mirror, agent-card zod schemas, address registry) can
   // import it directly without a separate build step. T098 keeps it drift-free.
   transpilePackages: ["@sparkpoint/shared"],
-  // Dev-only: allow the Coder workspace proxy hosts to load Next's dev
-  // resources (HMR + on-demand chunks) cross-origin. Without this, previewing
-  // `next dev` through `*--…--hello.testcoder.aldrickb.xyz` blocks the client
-  // chunks and the page renders without its client JS. No effect on `next start`.
-  allowedDevOrigins: ["*.testcoder.aldrickb.xyz", "*.aldrickb.xyz"],
+  // Dev-only: allow cross-origin dev proxy hosts to load Next's dev resources
+  // (HMR + on-demand chunks). Configure them with ALLOWED_DEV_ORIGINS
+  // (comma-separated) when previewing through a proxy. No effect on `next start`.
+  allowedDevOrigins: ALLOWED_DEV_ORIGINS,
   // Feature 006: tie Next's chunk buildId to our release id AND inline the same value into the
   // bundle so the client knows the build it booted with. A same-origin /api/version echoes the
   // running server's value for the stale-tab comparison (see src/lib/version.ts).

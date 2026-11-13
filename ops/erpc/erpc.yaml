@@ -141,7 +141,7 @@ projects:
     cors:
       allowedOrigins:
         - "https://alpha.sparkpoint.io"
-        - "https://*.aldrickb.app"
+        - "https://*.example.com"
       allowedMethods:
         - POST
         - OPTIONS

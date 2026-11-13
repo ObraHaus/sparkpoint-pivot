@@ -3,7 +3,7 @@
 # Re-run at each wave barrier. W0 baseline expects some FAILs (unfunded wallets,
 # Anvil not yet up); later barriers require PREFLIGHT GREEN. Informational exit 0.
 set -uo pipefail
-ENVF="${ENV_FILE:-/home/hello/project/.claude/.env}"
+ENVF="${ENV_FILE:-$HOME/.env}"
 # shellcheck disable=SC1090
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
 export PATH="$HOME/.foundry/bin:$HOME/.local/bin:$PATH"
@@ -26,8 +26,8 @@ for v in ANTHROPIC_OAUTH_TOKEN ALCHEMY_ACCESS_KEY REOWN_WALLET_CONNECT_PROJECT_I
 done
 [ -z "${TENDERLY_API_URL:-}" ] && ok "no TENDERLY_* runtime dep" || echo "  WARN  TENDERLY_* still present — remove (downstream sync)"
 
-echo "== sim-fork reachable (spark-anvil) =="
-if [ -n "${SIM_FORK_RPC_URL:-}" ] && cast block-number --rpc-url "$SIM_FORK_RPC_URL" >/dev/null 2>&1; then ok "SIM_FORK eth_blockNumber"; else no "SIM_FORK unreachable (install Anvil on spark-anvil — W3)"; fi
+echo "== sim-fork reachable (<anvil-host>) =="
+if [ -n "${SIM_FORK_RPC_URL:-}" ] && cast block-number --rpc-url "$SIM_FORK_RPC_URL" >/dev/null 2>&1; then ok "SIM_FORK eth_blockNumber"; else no "SIM_FORK unreachable (install Anvil on <anvil-host> — W3)"; fi
 
 echo "== chain: pinned code + deployer + Aave USDC (Base Sepolia 84532) =="
 SEP="${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}"

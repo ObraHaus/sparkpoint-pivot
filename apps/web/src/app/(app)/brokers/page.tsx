@@ -53,7 +53,7 @@ const BROKER_ON_THIS_BUILD = wagmiConfig.chains.some((c) => c.id === BROKER_CHAI
 
 /** Where the collection's metadata and images are served from — its OWN deploy, never this app. */
 const METADATA_ORIGIN =
-  process.env.NEXT_PUBLIC_BROKER_METADATA_ORIGIN ?? "https://brokers-dev.aldrickb.app";
+  process.env.NEXT_PUBLIC_BROKER_METADATA_ORIGIN ?? "http://localhost:3001";
 
 /**
  * ⚠️ KNOWN LIMIT, stated rather than hidden. `SparkyBroker` is solady ERC-721 and is **not

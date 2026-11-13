@@ -13,7 +13,7 @@ already-deployed vault. There is **no database migration**.
 - A funded deployer key on Base Sepolia (84532) that is the Timelock's **proposer + executor** (the testnet MVP config).
 - `pnpm install --frozen-lockfile` at the repo root.
 - **No** `@safe-global/*` / Safe SDK is added — the Safe is created via `app.safe.global` (UI), not Foundry.
-- The two new signer keys live **outside the repo** at `/home/hello/project/.claude/testnet-wallets.txt` (`0600`, testnet only). **Never** commit them (FR-003).
+- The two new signer keys live **outside the repo** at `/path/to/testnet-wallets.txt` (`0600`, testnet only). **Never** commit them (FR-003).
 
 Fixed on-chain facts (Base Sepolia 84532):
 

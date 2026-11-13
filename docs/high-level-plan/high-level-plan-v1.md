@@ -234,4 +234,4 @@ Full sourced reports (with comparison tables and inline URLs) produced for this 
 - **UI/UX benchmarks & 55-item screen inventory:** `right-now-we-have-swift-volcano-agent-a262f8ce54ea59f87.md`
 - **AI fund-manager category & credibility playbook:** *(see the inline category report in the session transcript — Almanak, Numerai, Morpho curators, daos.fun/ai16z analysis)*
 
-Located in `/home/hello/.claude/plans/`.
+Located in `/path/to/.claude/plans/`.

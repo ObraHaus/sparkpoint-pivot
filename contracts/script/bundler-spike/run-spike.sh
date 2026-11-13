@@ -9,7 +9,7 @@
 #   3. starts Alto pointed at the local Anvil RPC (op-stack gas model, safe-mode off for the spike)
 #   4. builds/signs/submits ONE owner-mode no-op UserOp and polls the receipt (submit-userop.sh)
 #
-# The fork RPC URL is read from .claude/.env and NEVER printed. Anvil's stdout (which echoes the
+# The fork RPC URL is read from .env and NEVER printed. Anvil's stdout (which echoes the
 # fork URL) is redirected to a log this script never prints.
 #
 # Requirements: foundry (anvil/forge/cast), jq, curl, and the Alto binary.
@@ -18,8 +18,8 @@
 # Env overrides: SPARK_ROOT, ENV_FILE, ANVIL_PORT, ALTO_PORT, ALTO_BIN, FOUNDRY_BIN, LOGDIR
 set -euo pipefail
 
-SPARK_ROOT="${SPARK_ROOT:-/home/hello/project/sparkpoint-pivot}"
-ENV_FILE="${ENV_FILE:-/home/hello/project/.claude/.env}"
+SPARK_ROOT="${SPARK_ROOT:-$HOME/project/sparkpoint-pivot}"
+ENV_FILE="${ENV_FILE:-$HOME/.env}"
 CONTRACTS="$SPARK_ROOT/contracts"
 HERE="$CONTRACTS/script/bundler-spike"
 FOUNDRY_BIN="${FOUNDRY_BIN:-$HOME/.foundry/bin}"

@@ -6,7 +6,7 @@
 ## Why
 
 Beta chat was failing every free turn with an inert `UPSTREAM_UNAVAILABLE` block. The diagnosis
-(`/home/hello/project/.oc-ai-fix/diagnosis.md`, 2026-10-27) found:
+(`/path/to/.oc-ai-fix/diagnosis.md`, 2026-10-27) found:
 
 - `sparkpoint-chat` had two free deployments, both dead: Nvidia returned **404** for
   `nvidia/nemotron-3-super-120b-a12b:free` (endpoint `status -5`) and Google AI Studio returned
@@ -38,7 +38,7 @@ Separately, quota was charged **before** the route ran, so a turn that ended in
    consume time**, clamped at 0, with a masked `refund` limits event. No migration. Refunds are
    fail-safe; success and client disconnects are not refunded.
 
-Evidence table: `/home/hello/project/.oc-ai-fix/candidates.md`.
+Evidence table: `/path/to/.oc-ai-fix/candidates.md`.
 
 ### Follow-up 056 — refund internally-degraded turns
 
@@ -72,9 +72,9 @@ error shape. `/onboarding/turn` is unchanged — its machine has no internal deg
 
 ## Rollout
 
-1. Deploy `sparkpoint-litellm-beta` (`kw80k400c4ssc04w0kwkgwow`) from this branch/main so the new
+1. Deploy `sparkpoint-litellm-beta` (`<coolify-uuid>`) from this branch/main so the new
    `config.yaml` is baked into the gateway image.
-2. Deploy `sparkpoint-agent-beta` (`k4cwosc0c8kkswcco0wg8cko`) so Sparky's 640-token cap and the
+2. Deploy `sparkpoint-agent-beta` (`<coolify-uuid>`) so Sparky's 640-token cap and the
    quota refund are live.
 3. Verify on beta: one prose question, one Taglish question, one intent-style action request; then
    force/observe a failed turn and confirm the quota counter is unchanged.
