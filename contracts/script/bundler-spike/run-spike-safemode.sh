@@ -7,8 +7,8 @@
 #
 # Env overrides: SPARK_ROOT, ENV_FILE, ANVIL_PORT, ALTO_PORT, ALTO_BIN, FOUNDRY_BIN, LOGDIR
 set -uo pipefail
-SPARK_ROOT="${SPARK_ROOT:-/home/hello/project/sparkpoint-pivot}"
-ENV_FILE="${ENV_FILE:-/home/hello/project/.claude/.env}"
+SPARK_ROOT="${SPARK_ROOT:-$HOME/project/sparkpoint-pivot}"
+ENV_FILE="${ENV_FILE:-$HOME/.env}"
 CONTRACTS="$SPARK_ROOT/contracts"; HERE="$CONTRACTS/script/bundler-spike"
 FOUNDRY_BIN="${FOUNDRY_BIN:-$HOME/.foundry/bin}"
 NODE_BIN="${NODE_BIN:-$HOME/.nvm/versions/node/v22.23.1/bin}"

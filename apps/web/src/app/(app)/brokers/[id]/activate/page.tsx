@@ -40,7 +40,7 @@ import { toHref } from "@/lib/nav";
 
 const BROKER_CHAIN = CHAIN_IDS.robinhoodTestnet;
 const METADATA_ORIGIN =
-  process.env.NEXT_PUBLIC_BROKER_METADATA_ORIGIN ?? "https://brokers-dev.aldrickb.app";
+  process.env.NEXT_PUBLIC_BROKER_METADATA_ORIGIN ?? "http://localhost:3001";
 const DEAD = "0x000000000000000000000000000000000000dEaD";
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {

@@ -1,8 +1,7 @@
 """Database connection configuration for the SparkPoint agent data layer.
 
-Reads ``DATABASE_URL`` from the environment (see /home/hello/project/.claude/.env
--> spark-postgres 192.168.31.26:5432, db ``sparkpoint``). Holds NO secrets in
-source; the DSN is supplied by the environment only.
+Reads ``DATABASE_URL`` from the environment (see the repo ``.env.example``).
+Holds NO secrets in source; the DSN is supplied by the environment only.
 
 NON-CUSTODY: the data layer is a derived index/accelerator only. It is never on
 the withdrawal path and stores no keys (data-model.md sec.16, sec.18; N2).
@@ -43,6 +42,6 @@ class DatabaseConfig:
         if not dsn:
             raise RuntimeError(
                 f"{DATABASE_URL_ENV} is not set; the data layer needs a Postgres DSN "
-                "(see /home/hello/project/.claude/.env)."
+                "(see .env.example)."
             )
         return cls(dsn=dsn)

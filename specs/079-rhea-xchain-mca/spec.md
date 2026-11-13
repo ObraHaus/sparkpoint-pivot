@@ -81,4 +81,4 @@ It is **not** 078. **078 is the same-chain NEAR → Burrow rail** (a connected N
 - A funded EVM wallet on Base/Ethereum (USDC + gas) to exercise a real origin transfer.
 - A live `ONECLICK_API_KEY` (value in the secret store only) and the Rhea/1Click credential wiring.
 - An owner decision to enable the flags after a funded test.
-- Sources: see `research.md` and `/home/hello/project/jobs/sparkpoint/1109-079-finish/STATUS.md`.
+- Sources: see `research.md` and `/path/to/jobs/sparkpoint/1109-079-finish/STATUS.md`.

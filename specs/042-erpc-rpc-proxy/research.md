@@ -27,7 +27,7 @@
 ### D2 — Hosting: Coolify service on the existing host
 **Decision**: Coolify service `sparkpoint-erpc` from `ops/erpc/compose.yaml`; LAN name for the `core` lane, public HTTPS FQDN (Coolify's proxy terminates TLS) for the `app` lane; port 4001 (metrics) LAN-only.
 **Rationale**: same host as agent + web ⇒ container-network reachability, no new LXC, no new cost; Coolify is the established deploy surface (and its env editor is what makes stages 1–3 one-line reversible).
-**Alternatives**: new LXC (more isolation, more ops surface — unneeded at alpha); spark-mon box (512 MB, already tight with Kuma).
+**Alternatives**: new LXC (more isolation, more ops surface — unneeded at alpha); <monitor-host> box (512 MB, already tight with Kuma).
 
 ### D3 — Two consumer lanes (eRPC projects): `core` and `app`
 **Decision**: `core` = agent + web server + indexers, secret-token auth, LAN URL. `app` = browsers, public HTTPS, CORS allowlist (alpha.sparkpoint.io + aldrickb domains), own budget, no secret.
@@ -66,14 +66,14 @@
 - Stage-B mutable-data caching (own feature, own freshness verification).
 - Chainstack as an additional upstream (revisit when the panel shows Alchemy budget sustained >70%).
 - Postgres cache connector (revisit with real hit-rate data).
-- Public FQDN choice: `rpc.aldrickb.app` default; a sparkpoint.io subdomain is one CORS line + one env later.
+- Public FQDN choice: `<internal-host>` default; a sparkpoint.io subdomain is one CORS line + one env later.
 - Indexer cursor-lag tile in the System section (separate small feature; noted during review).
 
 ## Stage-0 captured facts (2026-08-04 — live boots of ghcr.io/erpc/erpc:0.1.1)
 
-**Deployment reality**: the Coolify host is a public VPS (139.59.99.233), NOT the home LAN —
+**Deployment reality**: the Coolify host is a public VPS (<public-server-ip>), NOT the home LAN —
 so no host ports are mapped at all. Both lanes ride the service's generated domain
-`erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app` through Coolify's TLS proxy (`core` protected by
+`<internal-host>` through Coolify's TLS proxy (`core` protected by
 `?secret=`, `app` CORS-fenced + own budget); the metrics port 4001 has no domain and is
 reachable only container-to-container (`http://sparkpoint-erpc:4001/metrics`).
 

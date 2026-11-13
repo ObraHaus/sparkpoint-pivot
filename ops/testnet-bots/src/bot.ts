@@ -483,7 +483,7 @@ async function cmdFund(args: Args): Promise<void> {
   if (!process.env.BOT_MNEMONIC) {
     const { generateMnemonic, english } = await import("viem/accounts");
     console.log("\nBOT_MNEMONIC is unset. Here is a fresh one — store it in the workspace keystore");
-    console.log("(.claude/.env), NEVER in the repo, then re-run:\n");
+    console.log("(.env), NEVER in the repo, then re-run:\n");
     console.log(`  BOT_MNEMONIC="${generateMnemonic(english)}"\n`);
     console.log("These wallets are the bots' own. Do not reuse the project's testnet wallets.");
     return;

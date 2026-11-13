@@ -3,7 +3,7 @@
 > **Milestone:** W1–2 "Live Wireframe & UI/UX Finalization" (Jun 8–19, 2026) — the **critical design-feedback window** before the coded build. Major change requests after this window significantly impact the build schedule.
 > **Audience:** Claude Design (high-fidelity screen production), plus stakeholders reviewing the milestone.
 > **Build target:** coded **Next.js (App Router) + TailwindCSS + shadcn/ui** (+ Recharts + Lucide), desktop **and** mobile at equal priority.
-> **Source of truth:** the Spec Kit spec and plan at `/home/hello/project/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/spec.md` and `…/plan.md`. Where this handover and those disagree on *product behavior*, the spec/plan win.
+> **Source of truth:** the Spec Kit spec and plan at `/path/to/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/spec.md` and `…/plan.md`. Where this handover and those disagree on *product behavior*, the spec/plan win.
 
 ---
 
@@ -41,7 +41,7 @@ Read in this order on a first pass — each doc assumes you have read the ones a
 
 ## Precedence (who wins on a conflict)
 
-- **Product behavior** → the spec/plan (`/home/hello/project/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/`).
+- **Product behavior** → the spec/plan (`/path/to/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/`).
 - **What to ship / done-ness** → `08-deliverables-and-handoff.md`.
 - **The inventory of screens & states** → `03-screen-inventory.md`.
 - **Visual tokens / color systems** → `04-design-system.md`.

@@ -12,7 +12,7 @@
 > - `06-component-library.md` — the **25 custom components** + their states.
 > - `07-content-and-tone.md` — canonical copy (wins on any wording conflict).
 > - `09-references.md` — the named UX benchmarks.
-> - Spec & plan: `/home/hello/project/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/spec.md` and `/home/hello/project/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/plan.md`.
+> - Spec & plan: `/path/to/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/spec.md` and `/path/to/sparkpoint-pivot/specs/001-sparkpoint-pivot-mvp/plan.md`.
 >
 > **What this doc IS:** the deliverables manifest, acceptance criteria, milestone/critical-feedback-window framing, the design→code handoff contract, and the explicit out-of-scope boundary. **What it is NOT:** the screen list (`03`), the flows (`02`), the tokens (`04`), the components (`06`), or the copy (`07`). It tells you *what to hand over and when you're done*; those tell you *what to draw*.
 

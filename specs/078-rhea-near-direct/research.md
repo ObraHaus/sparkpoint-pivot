@@ -2,7 +2,7 @@
 
 All facts below come from **read-only** NEAR mainnet JSON-RPC views and public Burrow documentation.
 No key, signature, approval, transfer, submit or broadcast was made. No value from
-`/home/hello/project/.claude/` was read, printed or copied.
+`/path/to/.claude/` was read, printed or copied.
 
 ## Scope: same-chain only (and what it is not)
 

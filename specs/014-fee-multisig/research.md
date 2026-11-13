@@ -80,7 +80,7 @@ a bespoke multisig contract (reinventing an audited, standard artifact).
 
 **Decision**: Threshold 2-of-3. Signers = the deployer EOA `0xA71e…5c30` plus two new keys
 (`0x867ED872388D9fB613892E0a73c696c2207E5fEb`, `0x122DAB67a798179304CFEe0CD143b121E7A805Ed`). The two new
-private keys are stored `0600` at `/home/hello/project/.claude/testnet-wallets.txt`, **outside** the
+private keys are stored `0600` at `/path/to/testnet-wallets.txt`, **outside** the
 repository (testnet only).
 
 **Rationale**: 2-of-3 gives signer redundancy (tolerates one lost key) without requiring all three to move

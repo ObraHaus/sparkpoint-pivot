@@ -1,7 +1,7 @@
 # Plan — 077 first live earn vertical slice
 
 **Branch:** `feat/077-live-earn-kamino-morpho` (off `origin/develop`) · **Worktree:**
-`/home/hello/project/sparkpoint-pivot-077` (the repo worktree used for this task).
+`/path/to/sparkpoint-pivot-077` (the repo worktree used for this task).
 
 ## Goal
 
