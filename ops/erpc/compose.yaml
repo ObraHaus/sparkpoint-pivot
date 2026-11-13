@@ -41,6 +41,6 @@ services:
     # (This file used to carry a `CMD-SHELL` wget probe that could never have passed.)
     #
     # It would not buy recovery either way: plain Compose does not restart an unhealthy container
-    # (only Swarm does). Liveness is asserted from OUTSIDE instead — Uptime Kuma on spark-mon polls
+    # (only Swarm does). Liveness is asserted from OUTSIDE instead — Uptime Kuma on <monitor-host> polls
     # the no-secret `app` lane with a real `eth_blockNumber` (NOT eth_chainId, which answers from the
     # permanent cache and lies during the ~60s post-restart cold start).

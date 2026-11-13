@@ -24,7 +24,7 @@ import {
   wholeSrk,
 } from "./brokers.ts";
 
-const ORIGIN = "https://brokers-dev.aldrickb.app";
+const ORIGIN = "https://example.com";
 const SALE = "0x488268134af3d01E0672A9Ea17d529D4C5E275Dd";
 const REGISTRY = "0xD95067667E5ff2B1e898AF83063e8D2ca7D8D775";
 const PRICE = 10_000n * 10n ** 18n;
@@ -59,7 +59,7 @@ test("ids are zero-padded for display but never for the image path", () => {
 
 test("a trailing slash on the origin never produces a doubled slash", () => {
   assert.equal(
-    brokerView({ id: 3, activatedAt: 0n }, "https://brokers-dev.aldrickb.app/").imagePath,
+    brokerView({ id: 3, activatedAt: 0n }, "https://example.com/").imagePath,
     `${ORIGIN}/i/3.png`,
   );
 });

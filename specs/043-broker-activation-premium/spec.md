@@ -17,7 +17,7 @@ Phases 1 and 2 shipped before this spec and are **live**, not assumptions:
 | Testnet SRK on Robinhood 46630 | `0x4538B536b1da5940deC8e15048Ce07a053699B04` — fixed supply, no mint, no owner |
 | `SrkFaucet` on 46630 | `0x39C38c86611FF3679802D5341E830c83DB7F4537` — 5,000 SRK / 24h |
 | `SparkyBroker` NFT on 46630 | `0x15D269B1D4fb3581E5a47482A70215e63Ed547f2` — 10,000 cap, `minter`/`activator` **unset** |
-| Metadata service | <https://brokers-dev.aldrickb.app> — reads the chain, serves the gold frame |
+| Metadata service | <internal-host> — reads the chain, serves the gold frame |
 
 The NFT contract already owns the state and the product rule. It is **not** in scope to change:
 

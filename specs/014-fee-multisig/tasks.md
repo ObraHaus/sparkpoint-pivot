@@ -55,7 +55,7 @@ A task-group / phase is "done" only when:
 ### Implementation for US1
 
 - [x] T006 [US1] **Operator action** — create the **2-of-3 Safe** on Base Sepolia via `app.safe.global` (New Safe → Base Sepolia → owners `0xA71e24359A6cb7A939aae2d62dD12b6256365c30` (deployer) + `0x867ED872388D9fB613892E0a73c696c2207E5fEb` + `0x122DAB67a798179304CFEe0CD143b121E7A805Ed`, threshold 2). **No** Safe SDK / Foundry. Capture the Safe address as `$SAFE`; record its creation in `DEPLOYMENT.md`. ⚠️ Confirm before any on-chain action.
-- [x] T007 [P] [US1] Repo-hygiene scan — `git grep -nE '(PRIVATE_KEY|BEGIN [A-Z ]*PRIVATE KEY|mnemonic|seed phrase)' -- . ':!*.md'` returns clean; confirm the two new signer keys live only at `/home/hello/project/.claude/testnet-wallets.txt` (`0600`, outside the repo) — never committed (FR-003, SC-006).
+- [x] T007 [P] [US1] Repo-hygiene scan — `git grep -nE '(PRIVATE_KEY|BEGIN [A-Z ]*PRIVATE KEY|mnemonic|seed phrase)' -- . ':!*.md'` returns clean; confirm the two new signer keys live only at `/path/to/testnet-wallets.txt` (`0600`, outside the repo) — never committed (FR-003, SC-006).
 - [x] T008 [US1] `packages/shared/src/addresses/baseSepolia.ts` — record `feeTreasury: "$SAFE"` (address of record only; it does **not** itself move the vault fee — that is US2) (depends on T001/T006).
 - [x] T009 [US1] Set `FEE_WALLET_ADDRESS=$SAFE` in the `services/agent` dev/staging env and document it in `DEVELOPMENT.md` (public address only) (depends on T003/T006).
 - [x] T010 [P] [US1] Verify no-op-on-chain (US1 acceptance #4): accrue a fee before US2 and confirm it still lands on the current recipient `0xA71e…5c30` — recording the address alone moves no money.

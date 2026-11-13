@@ -1,6 +1,6 @@
 # systemd timer — the runner's schedule lives HERE, not in the app.
 #
-# Install (as the user that holds .claude/.env):
+# Install (as the user that holds .env):
 #   mkdir -p ~/.config/systemd/user
 #   cp sparkpoint-bots.{service,timer} ~/.config/systemd/user/
 #   systemctl --user daemon-reload

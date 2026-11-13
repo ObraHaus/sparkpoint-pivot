@@ -11,7 +11,7 @@ product. It runs against **Robinhood testnet 46630**, where the collection is al
 | SRK | `0x4538B536b1da5940deC8e15048Ce07a053699B04` |
 | `SrkFaucet` | `0x39C38c86611FF3679802D5341E830c83DB7F4537` — 5,000 SRK / 24h |
 | RPC | `https://rpc.testnet.chain.robinhood.com`, or eRPC `/core/evm/46630?secret=…` |
-| Wallets | deployer `0xA71e…5c30` (NFT owner), test user `0x32Ed…e8b5` — both funded, keys in `.claude/.env` |
+| Wallets | deployer `0xA71e…5c30` (NFT owner), test user `0x32Ed…e8b5` — both funded, keys in `.env` |
 
 Gas is cheap here (0.02 gwei) and both wallets are funded. **Do not ask for testnet gas without
 probing `eth_getBalance` first** — it was assumed to be a blocker for phases 1 and 2 and was not.
@@ -73,7 +73,7 @@ confirm an ineligible wallet and an over-allocation attempt both revert without 
 
 ## The visible half
 
-`https://brokers-dev.aldrickb.app/api/metadata/<id>` and `/og/<id>.png` — an activated broker serves
+`<internal-host>/api/metadata/<id>` and `/og/<id>.png` — an activated broker serves
 `<id>-a.png` with the gold frame; an unactivated one serves `<id>.png`.
 
 ⚠️ **There is deliberately no `Activated` date attribute on this chain.** `activatedAt` is a block

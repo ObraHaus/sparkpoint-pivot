@@ -5,8 +5,8 @@ develop stack (public web → same-origin BFF → agent → LiteLLM gateway → 
 
 ## Topology
 
-`browser → https://71zxh8ed…aldrickb.app (web) → /api/agent BFF → agent (Hermes) →
-LiteLLM gateway (fi5zmq5osp0g3aam93gnv2j4rl.aldrickb.app, alias sparkpoint-chat) → OpenRouter`
+`browser → https://<coolify-uuid><internal-host> (web) → /api/agent BFF → agent (Hermes) →
+LiteLLM gateway (<internal-host>, alias sparkpoint-chat) → OpenRouter`
 
 - Gateway model group `sparkpoint-chat`: primary `openrouter/google/gemma-4-31b-it:free`
   (operator's `OPENROUTER_MODEL`) + verified free fallback `google/gemma-4-26b-a4b-it:free`,

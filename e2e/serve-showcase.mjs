@@ -1,6 +1,6 @@
 // Minimal static file server for the approved showcase (the design source of truth).
 // Serves docs/design-handover/showcase/ so Playwright can drive it like the deployed
-// prototype (https://kg88wkk4g84wccokc4w000ss.aldrickb.app). No deps.
+// prototype (<internal-host>). No deps.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname, normalize } from "node:path";

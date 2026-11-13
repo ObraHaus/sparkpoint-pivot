@@ -14,7 +14,7 @@ section links here.
 
 | Variable | Proxied value | RESTORE to (pre-039 live value) |
 |---|---|---|
-| `VAULT_INDEX_RPC_URL` | `https://erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app/core/evm/84532?secret=…` | `https://sepolia.base.org` |
+| `VAULT_INDEX_RPC_URL` | `<internal-host>/core/evm/84532?secret=…` | `https://sepolia.base.org` |
 
 Verify after restore: `indexer_cursors` advance within 2 ticks (≤10 min).
 

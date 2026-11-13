@@ -6,8 +6,8 @@
 # table so "VERIFIED LIVE" claims are reproducible.
 #
 # Usage:
-#   WEB_URL=https://<web-slug>.aldrickb.app \
-#   AGENT_URL=https://<agent-slug>.aldrickb.app \
+#   WEB_URL=https://<web-slug>.<internal-host> \
+#   AGENT_URL=https://<agent-slug>.<internal-host> \
 #   S2S_TOKEN=<agent s2s bearer> \
 #   [CHATS=20] [RECS=5] \
 #   bash scripts/e2e-soak.sh

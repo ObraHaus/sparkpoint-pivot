@@ -1,7 +1,7 @@
 # SparkPoint parity harness (Playwright)
 
 Proves the **scaffold** (`apps/web`) is detail-identical to the **approved showcase** design
-(the prototype the client loves at `kg88wkk4g84wccokc4w000ss.aldrickb.app`). It pokes, clicks,
+(the prototype the client loves at `<internal-host>`). It pokes, clicks,
 screenshots, and diffs every screen — including the admin panel — across desktop + mobile and
 light + dark themes.
 
@@ -33,7 +33,7 @@ pnpm report                    # open the HTML report (side-by-side images + dif
 Override targets with env: `SCAFFOLD_URL` (default `http://localhost:3000`),
 `SHOWCASE_URL` (default `http://localhost:4123`, served from `docs/design-handover/showcase/`).
 To compare against the live deploy instead of the local showcase:
-`SHOWCASE_URL=https://kg88wkk4g84wccokc4w000ss.aldrickb.app pnpm test` (note its routes may differ).
+`SHOWCASE_URL=<internal-host> pnpm test` (note its routes may differ).
 
 ## Reading results
 

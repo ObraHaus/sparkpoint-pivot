@@ -35,9 +35,9 @@ The next record in the same run (a non-custody knowledge question, 12:14:19Z) re
 
 ### 2. Logs (read-only, redacted)
 
-- **litellm-beta** (`kw80k400c4ssc04w0kwkgwow`, restarted 12:06Z): the only completion lines were
+- **litellm-beta** (`<coolify-uuid>`, restarted 12:06Z): the only completion lines were
   `POST /chat/completions HTTP/1.1 200 OK`; **no 429 and no 5xx**.
-- **agent-beta** (`k4cwosc0c8kkswcco0wg8cko`): `POST /chat HTTP/1.1 200 OK` only. No application
+- **agent-beta** (`<coolify-uuid>`): `POST /chat HTTP/1.1 200 OK` only. No application
   INFO lines exist on the deployed build — the `sparkpoint_agent.*` loggers inherit the root
   `WARNING` level (this is Part C of 065), so **the absence of an app log was not evidence of
   success**. The SSE body is where the failure is visible.
