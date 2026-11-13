@@ -21,7 +21,7 @@ import {
 
 /**
  * §2.3 (rev 3.2 — self-hosted Simulator, no vendor): the engine that produced this preview.
- *   `anvil_fork`           — PRIMARY: the supervised Anvil Base-mainnet fork (spark-anvil); trace + before/after
+ *   `anvil_fork`           — PRIMARY: the supervised Anvil Base-mainnet fork (<anvil-host>); trace + before/after
  *                            asset diffs + snapshot/revert; the only engine that covers the fork-only Aerodrome swap.
  *   `bundler_gas_estimate` — ERC-4337 UserOp path: eth_estimateUserOperationGas + on-chain EntryPoint.simulateHandleOp.
  *   `viem_eth_call`        — lightweight live-chain revert/return check (Alchemy eth_call + state override).

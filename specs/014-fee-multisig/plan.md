@@ -153,7 +153,7 @@ apps/web/src/
 contracts/                            # NO change — no contract edit, no redeploy; feeRecipient is mutable state, guardian is immutable
                                       #   (ceremony targets the deployed vault 0x15D269…47f2 via the Timelock 0x0A21A9B4…d720)
 
-# Outside the repo (testnet only, 0600): /home/hello/project/.claude/testnet-wallets.txt — the two NEW signer keys.
+# Outside the repo (testnet only, 0600): /path/to/testnet-wallets.txt — the two NEW signer keys.
 
 Living docs: CHANGELOG.md · DEVELOPMENT.md (FEE_WALLET_ADDRESS + feeTreasury address-book field) ·
 DEPLOYMENT.md (the Safe creation + the Timelock schedule/execute ceremony, tx hashes) ·

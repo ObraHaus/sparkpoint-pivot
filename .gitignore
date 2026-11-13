@@ -21,6 +21,11 @@ secrets/
 *.key
 # Defense in depth: never commit a wallet/seed note, API-key sheet or key file even if someone
 # drops one under .claude/. Shared Spec Kit skills/templates are deliberately NOT matched.
+**/*apikeys*
+**/*wallet*.txt
+**/*seed*.txt
+.claude/**/.env
+.claude/settings.local.json
 .claude/near-wallet.txt
 **/near-wallet*.txt
 .claude/hackathon-apikeys.txt

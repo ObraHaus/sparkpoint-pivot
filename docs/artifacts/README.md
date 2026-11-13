@@ -8,7 +8,7 @@ Served locally from this directory:
 pkill -f "http.server 8123" || true
 cd docs/artifacts
 setsid nohup python3 -m http.server 8123 </dev/null >/tmp/opencode/artifact-server.log 2>&1 &
-# LAN: http://192.168.31.232:8123/<file>.html
+# LAN: http://<internal-ip>:8123/<file>.html
 ```
 
 | Artifact | What |

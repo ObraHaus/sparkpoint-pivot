@@ -855,15 +855,12 @@ app.add_middleware(RequestContextMiddleware, store=idempotency_store)
 # headers explicitly, not cookies), so this never widens auth. Added AFTER the context
 # middleware so it is the OUTERMOST layer and also decorates error responses.
 # NOTE: with the same-origin BFF the browser never calls this service cross-origin, so CORS is
-# defense-in-depth only. The committed default lists the REAL web origins (http+https of the
-# current develop slug) + localhost + the marketing domain; deployments override via
-# CORS_ALLOW_ORIGINS. (Prior default pointed at a stale/typo'd slug — corrected.)
+# defense-in-depth only. The committed default is localhost + the public marketing domain;
+# deployments override via CORS_ALLOW_ORIGINS.
 _CORS_ORIGINS = [
     o.strip()
     for o in os.getenv(
         "CORS_ALLOW_ORIGINS",
-        "https://71zxh8ed1ejf8132l46joodp17.aldrickb.app,"
-        "http://71zxh8ed1ejf8132l46joodp17.aldrickb.app,"
         "http://localhost:3000,https://sparkpoint.io",
     ).split(",")
     if o.strip()

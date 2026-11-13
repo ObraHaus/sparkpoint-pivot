@@ -2,7 +2,7 @@
 // self-signed wallets. Self-contained (generates keys, does the real SIWE handshake, drives the
 // live BFF + middleware). Skips (never fails) when WEB_URL is unset.
 //
-//   WEB_URL=https://<slug>.aldrickb.app node --test apps/web/e2e/auth.e2e.mjs
+//   WEB_URL=https://<slug>.<internal-host> node --test apps/web/e2e/auth.e2e.mjs
 //
 // Optional beta path: set BETA_TEST_PK to an ephemeral private key that YOU have added to
 // BETA_ALLOWLIST (agent) — then the beta-allowed scenarios run too. Lives in apps/web so `viem`

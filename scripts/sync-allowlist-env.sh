@@ -17,13 +17,13 @@
 # never gate /exit, /trust, or withdraw (N2).
 set -euo pipefail
 
-BASE="${COOLIFY_BASE:-https://coolifyadmin.aldrickb.xyz}"
+BASE="${COOLIFY_BASE:-https://coolify.example.com}"
 : "${COOLIFY_API_TOKEN_RWD:?set COOLIFY_API_TOKEN_RWD (write token)}"
 BETA_CSV="${1:?usage: sync-allowlist-env.sh <beta_csv> <admin_csv>}"
 ADMIN_CSV="${2:?usage: sync-allowlist-env.sh <beta_csv> <admin_csv>}"
 
 # develop agent app UUID (see COOLIFY.md inventory). The agent is the ONLY consumer.
-AGENT_UUID="${AGENT_UUID:-fw8s4ko4080wgk8okso8go48}"
+AGENT_UUID="${AGENT_UUID:?set AGENT_UUID (see COOLIFY.md inventory)}"
 
 set_var() { # <app_uuid> <key> <value>
   local uuid="$1" key="$2" val="$3"

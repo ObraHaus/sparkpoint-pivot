@@ -143,7 +143,7 @@ BASESCAN_API_KEY=               # contract verification
 
 Migrations will live in a migrations dir (e.g. `services/agent/migrations/` or `packages/shared/db/migrations/`, finalized at build time); track applied state in [MIGRATIONS.md](./MIGRATIONS.md).
 - Postgres + **pgvector** (one migration must `CREATE EXTENSION IF NOT EXISTS vector;`).
-- Apply to a hosted env via the project's migrate command (TBD) — reach the Coolify DB via the coolify-master LAN IP + published port (see COOLIFY.md; the internal container URL does not resolve).
+- Apply to a hosted env via the project's migrate command (TBD) — reach the Coolify DB via the <coolify-server-a> LAN IP + published port (see COOLIFY.md; the internal container URL does not resolve).
 - ⚠️ Apply migrations to **PROD before merging to `main`**.
 
 ## Smart-contract development
@@ -241,7 +241,7 @@ Two pieces of config:
 
 ## Dev environment
 
-Developed in a [Coder](https://coder.com/) workspace (`testcoder.aldrickb.xyz`); forwarded ports reached at `https://<port>--<workspace-host>`.
+Developed in a [Coder](https://coder.com/) workspace (`<internal-host>`); forwarded ports reached at `https://<port>--<workspace-host>`.
 
 ### ⚠️ Parallel repo copies: validate the tree you think you are validating
 

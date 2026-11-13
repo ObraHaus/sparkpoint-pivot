@@ -1,7 +1,7 @@
 # Scaffold ↔ Showcase parity
 
 How faithfully the Next.js scaffold (`apps/web`) reproduces the approved showcase design
-(the prototype the client approved at `kg88wkk4g84wccokc4w000ss.aldrickb.app`). Measured by the
+(the prototype the client approved at `<internal-host>`). Measured by the
 Playwright harness in [`/e2e`](../../e2e) — poke/click/screenshot/diff of every screen across
 desktop + mobile and light + dark, plus DOM-text and interaction checks.
 

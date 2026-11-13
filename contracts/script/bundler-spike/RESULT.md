@@ -50,7 +50,7 @@ Verified from Alto's log: it received the **unpacked v0.7** op (`factory/paymast
   no-op UserOp does **not** touch the live vault (which lives on Base Sepolia / 84532), so the
   spike is independent of which chain state the fork carries.
 - **No mainnet broadcast.** `anvil --fork-url` creates a fresh in-memory chain; all writes
-  (deploys, the bundle tx) stayed local. The shared `spark-anvil` node is not mutated.
+  (deploys, the bundle tx) stayed local. The shared `<anvil-host>` node is not mutated.
 - Anvil's stdout echoes the secret fork URL, so the runner redirects it to a log it never
   prints; Alto only ever sees the local `http://127.0.0.1:8545` RPC. The Alto log was checked
   to contain zero secret-URL hits.

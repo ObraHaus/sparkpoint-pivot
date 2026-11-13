@@ -102,7 +102,7 @@ export const robinhoodTestnet: AddressBook = {
   // none of this changes `offersVault(46630) === false` or the fail-closed vault path below.
   //
   //   brokerNft      the collection (10,000 cap, ids from 1). Metadata is served by its OWN deploy
-  //                  at brokers-dev.aldrickb.app — never from apps/web, whose middleware would
+  //                  at <internal-host> — never from apps/web, whose middleware would
   //                  silently 307 a marketplace crawler to a holding page.
   //   brokerRegistry the `activator`: retires SRK and activates, atomically, user-signed.
   //   brokerSale     the `minter`: free and open, per-wallet cap 5.

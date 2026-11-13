@@ -161,11 +161,11 @@ export function RpcProxyPanel() {
           </div>
           <div className="statusrow">
             <span className="muted">Core lane (agent + indexers)</span>
-            <span className="mono" style={{ fontSize: 11 }}>https://erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app/core/evm/&lt;chainId&gt; · secret-authed</span>
+            <span className="mono" style={{ fontSize: 11 }}>{"<internal-host>"}/core/evm/&lt;chainId&gt; · secret-authed</span>
           </div>
           <div className="statusrow">
             <span className="muted">App lane (browsers)</span>
-            <span className="mono" style={{ fontSize: 11 }}>https://erpc-t84o44c0ss04k0oswc00wg0k.aldrickb.app/app/evm/84532</span>
+            <span className="mono" style={{ fontSize: 11 }}>{"<internal-host>"}/app/evm/84532</span>
           </div>
           <div className="statusrow">
             <span className="muted">Metrics (LAN only)</span>

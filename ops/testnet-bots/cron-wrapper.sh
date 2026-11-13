@@ -17,7 +17,7 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-LOG=/home/hello/project/.claude/bots-cron.log
+LOG=$HOME/.config/sparkpoint/bots-cron.log
 
 # ⚠️⚠️ cron runs with a MINIMAL PATH — roughly /bin:/usr/bin:/sbin — which does NOT include an
 # nvm-managed node. Every scheduled cycle for ten hours died on `node: command not found`, logged
@@ -38,12 +38,12 @@ fi
 
 set -a
 # shellcheck disable=SC1091
-. /home/hello/project/.claude/.env 2>/dev/null
+. $HOME/.env 2>/dev/null
 set +a
 
 export BOT_SCHEDULE="hourly"
 export BOT_INTERVAL_SEC=3600
-export AGENT_BASE_URL="${AGENT_BASE_URL:-https://8jcvimzny63tw81xkfl3wwmdzz.aldrickb.app}"
+export AGENT_BASE_URL="${AGENT_BASE_URL:-http://localhost:8000}"
 BOT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 export BOT_COMMIT
 

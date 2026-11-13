@@ -42,7 +42,7 @@ Everything is a **dry run** unless you pass `--broadcast`.
 # read-only snapshot: balances, caps, vault TVL, whether a fee is realisable right now
 node --experimental-strip-types src/bot.ts status --chain 84532
 
-# create the bot wallets (prints a mnemonic to store in .claude/.env, then funds them)
+# create the bot wallets (prints a mnemonic to store in .env, then funds them)
 node --experimental-strip-types src/bot.ts fund --chain 84532 --wallets 20 --broadcast
 
 # realise the vault performance fee — permissionless, anyone may call it
@@ -66,7 +66,7 @@ node --experimental-strip-types src/bot.ts brokers --chain 46630 --wallets 6 --b
 | `DEPLOYER_PRIVATE_KEY` | `fund`, `accrue` | the funder only — bots never use it |
 | `BOT_MNEMONIC` | `fund`, `vault`, `swap` | derives the bot wallets; `fund` mints one if unset |
 
-Keys live in the workspace keystore (`.claude/.env`), never in the repo. The bot mnemonic is the
+Keys live in the workspace keystore (`.env`), never in the repo. The bot mnemonic is the
 bots' **own** — do not reuse the project's testnet wallets, and never the Robin Brokers ones.
 
 ## Running it on a schedule
