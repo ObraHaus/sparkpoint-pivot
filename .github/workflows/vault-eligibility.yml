@@ -32,11 +32,21 @@ on:
     branches: [develop]
   pull_request:
     branches: [develop]
+
+# GITHUB_TOKEN is read-only. The gate is cast call only; it does not comment,
+# publish checks, or use OIDC. The fork job does not receive RPC secrets and
+# uses each chain's public RPC fallback.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   eligibility:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run on eligibility-fork-pr instead.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
@@ -49,6 +59,28 @@ jobs:
       ROBINHOOD_MAINNET_RPC_URL: ${{ secrets.ROBINHOOD_MAINNET_RPC_URL }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: FR-020 — provenance · 3 critical gates abdicated · asset match · native fee ceilings
+        run: bash contracts/script/vault-eligibility-check.sh
+
+  # Fork PRs only. Same read-only gate on a GitHub-hosted runner. No secrets:
+  # the helper falls back to each chain's public RPC. Same-repo PRs skip this
+  # so the gate is not run twice.
+  eligibility-fork-pr:
+    name: eligibility (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
         with: { version: stable }
 

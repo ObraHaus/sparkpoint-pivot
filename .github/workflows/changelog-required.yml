@@ -14,12 +14,21 @@ on:
     branches: [develop]
     # Re-evaluate on relabel / body edit so applying the escape hatch after a red run re-runs the gate.
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+# GITHUB_TOKEN is read-only. Labels and the PR body come from the event payload,
+# not the API. The job does not comment, publish checks, or use OIDC.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   changelog:
+    # Self-hosted runners we operate (label oh-ci) only for pull requests opened
+    # from this repository. Fork PRs skip this job (the check still reports
+    # skipped) and run the same gate on changelog-fork-pr.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
@@ -27,6 +36,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Require a changelog entry for user-facing changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -71,6 +81,62 @@ jobs:
             fail=1
           fi
           # (2) The committed client changelog source must be updated for user-facing changes.
+          if ! printf '%s\n' "$CHANGED" | grep -qE '^services/agent/content_seed/whats-new\.json$'; then
+            echo "::error::services/agent/content_seed/whats-new.json not updated — add a client-facing entry. If the change isn't visually obvious, add an honest 'behind-the-scenes' entry (CLAUDE.md: BOTH changelogs stay current)."
+            fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "Both changelog surfaces updated — gate green."; else exit 1; fi
+
+  # Fork PRs only. Same gate, GitHub-hosted, no secrets. The PR body and labels
+  # are the event payload. Same-repo PRs skip this so the gate is not run twice.
+  changelog-fork-pr:
+    name: changelog (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a changelog entry for user-facing changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -e
+          CHANGED="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          PRODUCT="$(printf '%s\n' "$CHANGED" \
+            | grep -E '^(apps/web/src/|services/agent/src/)' \
+            | grep -vE '(\.test\.|\.spec\.|\.stories\.|__tests__/|\.d\.ts$)' || true)"
+
+          has_skip_label() { case ",${LABELS}," in *,skip-changelog,*) return 0 ;; *) return 1 ;; esac; }
+          has_skip_marker() {
+            printf '%s' "$PR_BODY" | grep -qiE '(^|[[:space:]])\[skip changelog\]([[:space:]]|$)'
+          }
+
+          if [ -z "$PRODUCT" ]; then
+            if has_skip_label; then echo "skip-changelog label present (no product source changed) — gate skipped."; exit 0; fi
+            if has_skip_marker; then echo "[skip changelog] marker present (no product source changed) — gate skipped."; exit 0; fi
+            echo "No user-facing product source changed (tests/types/stories excluded) — changelog not required."
+            exit 0
+          fi
+
+          echo "User-facing source changed:"; printf '%s\n' "$PRODUCT" | sed 's/^/  /'
+          if has_skip_label || has_skip_marker; then
+            echo "::warning::skip-changelog is IGNORED for a PR that changes product source — both changelogs are still required (hardened 2026-07-24)."
+          fi
+
+          fail=0
+          ADDS="$(git diff -U0 "$BASE_SHA...$HEAD_SHA" -- CHANGELOG.md | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+          if [ -z "$ADDS" ]; then
+            echo "::error::CHANGELOG.md has no added lines — add a bullet under '## [Unreleased]'. A product-source PR cannot skip this; for a genuinely non-user-visible internal change, add a one-line Fixed/Improved bullet."
+            fail=1
+          fi
           if ! printf '%s\n' "$CHANGED" | grep -qE '^services/agent/content_seed/whats-new\.json$'; then
             echo "::error::services/agent/content_seed/whats-new.json not updated — add a client-facing entry. If the change isn't visually obvious, add an honest 'behind-the-scenes' entry (CLAUDE.md: BOTH changelogs stay current)."
             fail=1

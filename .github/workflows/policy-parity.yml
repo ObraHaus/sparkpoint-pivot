@@ -17,11 +17,21 @@ on:
     branches: [develop, main]
   pull_request:
     branches: [develop, main]
+
+# GITHUB_TOKEN is read-only. The gate reads chain state and the checkout; it does
+# not comment, publish checks, or use OIDC. The fork job does not receive the RPC
+# secret and uses the helper's public-RPC fallback.
+permissions:
+  contents: read
+
 concurrency:
   group: policy-parity-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   parity:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run on parity-fork-pr instead.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
@@ -32,6 +42,8 @@ jobs:
       BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 9.15.9 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -51,6 +63,49 @@ jobs:
 
       # Build the shared package: the .mjs dumper imports its tsc-built dist to read
       # getPolicyConstants(chainId) — the TS source of truth for the parity assertion.
+      - name: install deps + build @sparkpoint/shared
+        if: steps.guard.outputs.deployed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @sparkpoint/shared build
+
+      - name: on-chain == shared(TS) == agent(Python) — per chainId, FAIL on drift
+        if: steps.guard.outputs.deployed == 'true'
+        run: bash contracts/script/policy-parity-check.sh "${CHAIN_ID}"
+
+  # Fork PRs only. Same gate on a GitHub-hosted runner. No secrets: the helper
+  # falls back to the public Base Sepolia RPC. Same-repo PRs skip this so the
+  # gate is not run twice.
+  parity-fork-pr:
+    name: parity (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    env:
+      CHAIN_ID: "84532"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with: { version: 9.15.9 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: green-by-skip when not deployed on chainId ${{ env.CHAIN_ID }}
+        id: guard
+        run: |
+          if [ -f "contracts/deployments/${CHAIN_ID}/addresses.json" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::policy-parity: contracts/deployments/${CHAIN_ID}/addresses.json absent — not deployed; green-by-skip (enforces once deployed)."
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: install deps + build @sparkpoint/shared
         if: steps.guard.outputs.deployed == 'true'
         run: |

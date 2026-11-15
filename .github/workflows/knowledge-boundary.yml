@@ -7,17 +7,28 @@ on:
     branches: [develop, main]
   pull_request:
     branches: [develop, main]
+
+# GITHUB_TOKEN is read-only. The gate is a grep over the checkout; it does not
+# comment, publish checks, or use OIDC.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   boundary:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run the same grep on boundary-fork-pr.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: knowledge/ ↛ policy/ (and policy/ decision path pure) — real imports only
         run: |
           set -e
@@ -36,6 +47,36 @@ jobs:
           # DIRECTION (B5): the dependency is one-way — coordinator/agents import knowledge, NEVER the
           # reverse. knowledge/ importing coordinator/ or agents/ would create a cycle + let corpus
           # code reach the DAG/proposer/policy assembly; forbid it.
+          if [ -d "$AG/knowledge" ] && grep -rEn "$imp" "$AG/knowledge" | grep -E '\b(coordinator|agents)\b'; then
+            echo "::error::knowledge/ imports coordinator/ or agents/ — the edge is one-way (they import knowledge, not vice-versa)"; fail=1
+          fi
+          if [ "$fail" = 0 ]; then echo "knowledge<->policy/coordinator/agents boundary clean (statement-anchored)"; else exit 1; fi
+
+  # Fork PRs only. Same statement-anchored grep, on a GitHub-hosted runner,
+  # with no secrets. Same-repo PRs skip this so the gate is not run twice.
+  boundary-fork-pr:
+    name: boundary (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: knowledge/ ↛ policy/ (and policy/ decision path pure) — real imports only
+        run: |
+          set -e
+          AG=services/agent/src/sparkpoint_agent
+          imp='^[[:space:]]*(import[[:space:]]|from[[:space:]])'
+          fail=0
+          if [ -d "$AG/knowledge" ] && grep -rEn "$imp" "$AG/knowledge" | grep -E '\bpolicy\b'; then
+            echo "::error::knowledge/ imports policy/ — Obsidian is advisory context; it must never feed evaluate()"; fail=1
+          fi
+          if [ -d "$AG/policy" ] && grep -rEn "$imp" "$AG/policy" | grep -E '\b(knowledge|obsidian|embeddings|llm|memory)\b'; then
+            echo "::error::policy/ imports knowledge/llm/memory — the deterministic decision path must be LLM/knowledge-free"; fail=1
+          fi
           if [ -d "$AG/knowledge" ] && grep -rEn "$imp" "$AG/knowledge" | grep -E '\b(coordinator|agents)\b'; then
             echo "::error::knowledge/ imports coordinator/ or agents/ — the edge is one-way (they import knowledge, not vice-versa)"; fail=1
           fi

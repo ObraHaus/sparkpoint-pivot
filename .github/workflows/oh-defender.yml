@@ -11,11 +11,22 @@ on:
         description: 'How the scan was triggered (manual | scheduled).'
         required: false
         default: 'manual'
+# GITHUB_TOKEN stays read-only. This job does not push, comment, or open a
+# check run; "Scan & review" is the job result itself. The scan reports through
+# the Defender API. Do not grant a write scope here without proof the action
+# calls the GitHub API.
 permissions:
   contents: read
 jobs:
   security:
+    # Required status check: workflow name "OH Defender", job name "Scan & review".
+    # Do not rename either. Self-hosted (label oh-defender) only for
+    # workflow_dispatch and for pull requests opened from this repository.
+    # Fork PRs skip this job, so the check still reports skipped, and fork
+    # code never runs on a runner we operate. There is no GitHub-hosted
+    # stand-in: the scan needs DEFENDER_API_URL and DEFENDER_API_KEY.
     name: Scan & review
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-defender]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -28,6 +39,7 @@ jobs:
           # `forge install` at scan time would not: that re-resolves from the
           # network and can pick up something the PR never pinned.
           submodules: recursive
+          persist-credentials: false
       - uses: ObraHaus/obrahaus-defender/ci/scan-action@2b46e3dcc1608af186dcbf167b2ac5d59eb5b0cd # develop: PR #122 AI-review timeout/progress repair
         with:
           defender-api-url: ${{ secrets.DEFENDER_API_URL }}

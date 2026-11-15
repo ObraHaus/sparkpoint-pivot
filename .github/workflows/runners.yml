@@ -6,18 +6,28 @@ on:
   pull_request:
     branches: [develop, main]
     paths: ["runners/**", ".github/workflows/runners.yml"]
+
+# GITHUB_TOKEN is read-only. No job comments, publishes checks, or uses OIDC.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   runners:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run on runners-fork-pr instead.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 15
     defaults: { run: { working-directory: runners } }
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 9.15.9 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -32,5 +42,29 @@ jobs:
         run: pnpm typecheck
       # 048: the curator's screening/scoring/selection + the Morpho adapter + the loop's publish
       # paths. Pure node:test — no chain, no RPC, no network.
+      - name: unit tests (node:test)
+        run: pnpm test
+
+  # Fork PRs only. GitHub-hosted, no secrets, contents: read. Same typecheck
+  # and unit tests as `runners`. Same-repo PRs skip this so CI is not doubled.
+  runners-fork-pr:
+    name: runners (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    defaults: { run: { working-directory: runners } }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with: { version: 9.15.9 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: runners/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile --ignore-workspace
+      - name: typecheck
+        run: pnpm typecheck
       - name: unit tests (node:test)
         run: pnpm test

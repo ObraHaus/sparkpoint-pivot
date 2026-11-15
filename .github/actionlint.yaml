@@ -1,0 +1,6 @@
+# Custom labels for the ephemeral runners we operate. actionlint otherwise
+# only knows GitHub-hosted labels plus "self-hosted".
+self-hosted-runner:
+  labels:
+    - oh-ci
+    - oh-defender

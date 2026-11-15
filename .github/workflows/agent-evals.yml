@@ -31,6 +31,9 @@ on:
       - "services/agent/tests/evals/**"
       - ".github/workflows/agent-evals.yml"
 
+# GITHUB_TOKEN is read-only. upload-artifact@v4 uses the runner artifact
+# token, not actions: write. No job pushes, comments, or opens a check run.
+# There is no pull_request trigger, so these self-hosted jobs never run fork code.
 permissions:
   contents: read
 

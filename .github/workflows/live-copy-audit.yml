@@ -13,6 +13,9 @@ name: live copy audit
 # This workflow is the other half: it catches what a source scan structurally cannot, namely copy
 # that arrives from an API, is assembled at runtime, or comes from the agent's knowledge corpus.
 # Both are needed; neither replaces the other.
+#
+# No pull_request trigger. The self-hosted job therefore never runs fork code,
+# and it must not gain one: this job audits a deployment and can mint a session.
 
 on:
   workflow_dispatch:
@@ -26,6 +29,8 @@ on:
     # tied to a merge and a per-merge run would not catch it any sooner.
     - cron: "17 6 * * 1"
 
+# GITHUB_TOKEN is read-only. upload-artifact@v4 uses the runner artifact
+# token, not actions: write. No job pushes, comments, or opens a check run.
 permissions:
   contents: read
 
@@ -38,6 +43,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
