@@ -10,17 +10,28 @@ on:
     branches: [develop, main]
   pull_request:
     branches: [develop, main]
+
+# GITHUB_TOKEN is read-only. The gate is a grep over the checkout; it does not
+# comment, publish checks, or use OIDC.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   seam:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run the same grep on seam-fork-pr.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: apps/web/src + packages/shared/src ↛ services/agent (real imports only)
         run: |
           set -e
@@ -29,6 +40,32 @@ jobs:
           # CJS `require(...)`, and `export ... from ...` re-exports.
           stmt='(^[[:space:]]*import[[:space:]]|(^|[^[:alnum:]_])import\(|^[[:space:]]*export[[:space:]].*[[:space:]]from[[:space:]]|(^|[^[:alnum:]_])require\()'
           # Forbidden dependency: the agent service directory or its python package name.
+          tgt='(services/agent|sparkpoint_agent)'
+          fail=0
+          for dir in apps/web/src packages/shared/src; do
+            if [ -d "$dir" ] && grep -rEn "$stmt" "$dir" 2>/dev/null | grep -E "$tgt"; then
+              echo "::error::$dir imports from the agent (services/agent | sparkpoint_agent) — the frontend/shared must never depend on the agent (custody seam)"; fail=1
+            fi
+          done
+          if [ "$fail" = 0 ]; then echo "custody seam clean — web/shared ↛ agent (statement-anchored)"; else exit 1; fi
+
+  # Fork PRs only. Same statement-anchored grep, on a GitHub-hosted runner,
+  # with no secrets. Same-repo PRs skip this so the gate is not run twice.
+  seam-fork-pr:
+    name: seam (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: apps/web/src + packages/shared/src ↛ services/agent (real imports only)
+        run: |
+          set -e
+          stmt='(^[[:space:]]*import[[:space:]]|(^|[^[:alnum:]_])import\(|^[[:space:]]*export[[:space:]].*[[:space:]]from[[:space:]]|(^|[^[:alnum:]_])require\()'
           tgt='(services/agent|sparkpoint_agent)'
           fail=0
           for dir in apps/web/src packages/shared/src; do

@@ -6,12 +6,22 @@ on:
   pull_request:
     branches: [develop, main]
     paths: ["services/agent/**", ".github/workflows/agent.yml"]
+
+# GITHUB_TOKEN is read-only. These jobs check out the repo and run CI; none
+# comment, publish checks, or request an OIDC token. Fork jobs restate this
+# so a later workflow-level grant cannot widen them.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   agent:
+    # Self-hosted runners we operate (label oh-ci) only for pushes and for
+    # pull requests opened from this repository. Fork PRs skip this job
+    # (the check still reports skipped) and run on agent-fork-pr instead.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
@@ -22,6 +32,8 @@ jobs:
       SPARKPOINT_VAULT_ABI_PATH: ${{ github.workspace }}/packages/shared/src/abis/SparkPointVault.abi.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
       - name: venv + deps (uv sync from the lockfile — runtime + dev group)
         # `uv sync` installs EXACTLY the locked deps (incl. eth-abi + asyncpg), so a new
@@ -36,6 +48,34 @@ jobs:
         # No `|| echo ...` escape: a strict-mypy failure MUST fail CI. tool.mypy stays
         # `strict = true` (pyproject.toml); the only overrides are the documented
         # missing-stub / implicit-reexport shims for asyncpg + eth-abi, not a strictness weaken.
+        run: .venv/bin/mypy src/sparkpoint_agent
+      - name: pytest
+        run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }
+
+  # Fork PRs only. GitHub-hosted, no secrets, contents: read. Same lint,
+  # typecheck, and tests as `agent`. Same-repo PRs skip this so CI is not doubled.
+  agent-fork-pr:
+    name: agent (fork PR)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    defaults: { run: { working-directory: services/agent } }
+    env:
+      SPARKPOINT_VAULT_ABI_PATH: ${{ github.workspace }}/packages/shared/src/abis/SparkPointVault.abi.json
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          enable-cache: false
+      - name: venv + deps (uv sync from the lockfile — runtime + dev group)
+        run: uv sync --frozen --python 3.12
+      - name: ruff
+        run: .venv/bin/ruff check .
+      - name: mypy (BLOCKING — strict, ITEM 4)
         run: .venv/bin/mypy src/sparkpoint_agent
       - name: pytest
         run: .venv/bin/pytest -q || { rc=$?; [ "$rc" -eq 5 ] && echo "no tests yet — green-by-skip" || exit $rc; }

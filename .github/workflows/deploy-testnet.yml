@@ -32,6 +32,8 @@ concurrency:
   group: deploy-testnet-${{ github.ref }}
   cancel-in-progress: true
 
+# GITHUB_TOKEN is read-only. This workflow never pushes or comments. The
+# fork job restates contents: read and does not receive the RPC secret.
 permissions:
   contents: read
 
@@ -39,22 +41,24 @@ jobs:
   simulate:
     # workflow_dispatch requires the typed confirm; PRs to develop always dry-run. Never on push.
     # The pull_request arm is narrowed to SAME-REPOSITORY pull requests: this job
-    # now runs on self-hosted fleet capacity, so a fork's PR would otherwise
-    # execute untrusted code on a host we own. Flagged as a high finding by the
-    # OH Defender gate on the migration PR; the workflow_dispatch arm is unchanged.
+    # runs on self-hosted runners we operate, so a fork's PR must not execute
+    # here. workflow_dispatch is unchanged and still requires the confirm string.
+    # Fork PRs skip this job (the check still reports skipped) and run the
+    # secret-free steps on simulate-fork-pr.
     if: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event.inputs.confirm == 'simulate-sepolia' }}
     runs-on: [self-hosted, oh-ci]
     timeout-minutes: 30
     env:
-      # The ONLY RPC this job may use. On fork PRs (no secrets) it is empty and the
-      # RPC-backed steps self-skip — exactly like the fork tests — while the secret-free
-      # N1-N5 gate below still runs. Base Sepolia only; a mainnet RPC is rejected at runtime.
+      # The ONLY RPC this job may use. Fork PRs do not run this job. Base Sepolia
+      # only; a mainnet RPC is rejected at runtime.
       SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
       EXPECTED_CHAIN_ID: '84532' # Base Sepolia — the only allowed target
       MAINNET_CHAIN_ID: '8453' # Base mainnet — hard-denied here (Gate-C / guard hook)
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with: { submodules: recursive }
+        with:
+          submodules: recursive
+          persist-credentials: false
       - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
         with: { version: stable }
 
@@ -63,8 +67,8 @@ jobs:
         run: forge build
 
       # ── N1-N5 gate that needs NO secrets: the in-EVM invariant suite (mock USDC/Aave,
-      #    an `attacker` that hammers every exit/admin/governance selector). Runs on every
-      #    PR incl. forks, so custody is gated even when the testnet RPC is unavailable. ──
+      #    an `attacker` that hammers every exit/admin/governance selector). Fork PRs
+      #    run the same suite on simulate-fork-pr (GitHub-hosted, no RPC secret). ──
       - name: N1-N5 non-custody invariant suite (REQUIRED — gates the job)
         working-directory: contracts
         run: forge test --match-path "test/invariant/*" -vvv
@@ -80,7 +84,7 @@ jobs:
             --show-standard-json-input > /tmp/spv.verify.json
           python3 -c "import json,os;json.load(open('/tmp/spv.verify.json'));print('standard-json-input OK,', os.path.getsize('/tmp/spv.verify.json'),'bytes')"
 
-      # ── Everything below needs the testnet RPC. On fork PRs (no secrets) these self-skip. ──
+      # ── Everything below needs the testnet RPC (BASE_SEPOLIA_RPC_URL). ──
       - name: mainnet guard — target MUST be Base Sepolia (84532), NEVER mainnet (8453)
         if: env.SEPOLIA_RPC_URL != ''
         working-directory: contracts
@@ -163,3 +167,38 @@ jobs:
         env:
           VAULT_ADDRESS: ${{ steps.live.outputs.vault }}
         run: forge script script/AssertNonCustody.s.sol:AssertNonCustody --rpc-url "$SEPOLIA_RPC_URL"
+
+  # Fork PRs only. GitHub-hosted, no secrets, contents: read. Runs the steps
+  # that do not need BASE_SEPOLIA_RPC_URL (build, N1-N5, source-verify dry-run).
+  # The RPC simulation stays on `simulate` and does not run for a fork.
+  # Same-repo PRs skip this so the suite is not run twice.
+  simulate-fork-pr:
+    name: simulate (fork PR, no RPC)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with: { version: stable }
+
+      - name: build (ITEM 5 — a real build, not a green-by-skip echo)
+        working-directory: contracts
+        run: forge build
+
+      - name: N1-N5 non-custody invariant suite (REQUIRED — gates the job)
+        working-directory: contracts
+        run: forge test --match-path "test/invariant/*" -vvv
+
+      - name: Verify — source-verification dry-run (emits standard-json-input, submits nothing)
+        working-directory: contracts
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('deployments/84532/addresses.json'))['SparkPointVault'])")
+          forge verify-contract "$V" src/vault/SparkPointVault.sol:SparkPointVault \
+            --show-standard-json-input > /tmp/spv.verify.json
+          python3 -c "import json,os;json.load(open('/tmp/spv.verify.json'));print('standard-json-input OK,', os.path.getsize('/tmp/spv.verify.json'),'bytes')"
