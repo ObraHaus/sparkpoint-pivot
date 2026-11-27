@@ -192,9 +192,8 @@ test.describe("072 multi-chain portfolio chat card", () => {
     const kamino = card.getByTestId("portfolio-section-kamino");
     await expect(kamino).toHaveAttribute("data-status", "not_linked");
     await expect(kamino.getByTestId("portfolio-section-kamino-degraded")).toContainText(
-      "Kamino positions show once you deposit to a Solana address from SparkPoint (Phase C)",
+      "Kamino positions show once a Solana address is linked to your account",
     );
-    await expect(kamino).toContainText("Phase C");
 
     const rhea = card.getByTestId("portfolio-section-rhea");
     await expect(rhea).toHaveAttribute("data-status", "unavailable");

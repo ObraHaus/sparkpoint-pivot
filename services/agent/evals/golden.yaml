@@ -1381,7 +1381,7 @@ cases:
       blocks_present: [text, portfolio_overview]
       blocks_absent: [action, recommendation]
       sections: {morpho: unavailable, kamino: not_linked, rhea: unavailable, swaps: ok}
-      must_contain: ["kamino positions show once you deposit", "morpho: unavailable", "nothing was signed"]
+      must_contain: ["kamino positions show once a solana address is linked", "morpho: unavailable", "nothing was signed"]
     offline:
       intent: {kind: other}
 
